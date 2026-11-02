@@ -1,4 +1,4 @@
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { type AgentToolResult, defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { setCustomSetting } from "../shared/settings.js";
 

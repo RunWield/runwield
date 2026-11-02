@@ -5,7 +5,7 @@ import { ok as assert, match as assertMatch } from "node:assert/strict";
 import { createUserInterviewTool, type InterviewResultDetails } from "../user-interview.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 import type { AgentToolResult, ExtensionToolContext } from "@earendil-works/pi-coding-agent";
-import type { Static } from "@earendil-works/pi-ai";
+import type { Static } from "typebox";
 import type { RuntimeInteractionOption } from "../../shared/session/session-runtime-interactions.js";
 
 type InterviewTool = ReturnType<typeof createUserInterviewTool>;

@@ -724,6 +724,10 @@ outcomes. _Avoid_: Agent-specific handler, special agent handler
 
 ### Execution & Tools
 
+**Codemode**: Pi-backed JavaScript composition of an Agent's authorized tools in a QuickJS sandbox. Scripts filter output,
+can call configured non-chat models, and retain successful small JSON stores on their Session branch. Codemode adds no
+tool authority; workflow decisions remain direct calls. _Avoid_: Shell, arbitrary host JavaScript, MCP connection host
+
 **Workflow Orchestrator**: The runtime coordinator that consumes workflow Custom Tool outcomes and starts the next Agent
 Session. _Avoid_: Router, dispatcher agent
 

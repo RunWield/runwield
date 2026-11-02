@@ -77,7 +77,13 @@ export async function checkBunPackage(
             });
             return { child, finished, output: () => output };
         };
-        for (const args of [["--help"], ["--version"], ["plans"], ["package-smoke", "image-resize"]]) {
+        for (const args of [
+            ["--help"],
+            ["--version"],
+            ["plans"],
+            ["package-smoke", "image-resize"],
+            ["package-smoke", "codemode"],
+        ]) {
             const running = start(args);
             const timeout = setTimeout(() => running.child.kill("SIGKILL"), 30_000);
             try {
@@ -85,6 +91,7 @@ export async function checkBunPackage(
                 if (args[0] === "--help") match(running.output(), /RunWield.*Plan-by-Default/s);
                 else if (args[0] === "--version") ok(running.output().includes(metadata.version));
                 else if (args[0] === "plans") match(running.output(), /No saved plans found/);
+                else if (args[1] === "codemode") match(running.output(), /Packaged codemode passed/);
                 else match(running.output(), /Packaged image resize passed/);
             } finally {
                 clearTimeout(timeout);

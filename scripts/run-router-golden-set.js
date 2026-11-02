@@ -16,7 +16,7 @@ import process from "node:process";
  */
 
 import { parseArgs } from "../src/shared/cli-args.ts";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { dirname, join } from "node:path";
 import { AGENTS, getCwd, getHomeDir } from "../src/constants.js";

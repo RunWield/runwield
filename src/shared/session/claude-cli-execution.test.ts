@@ -13,7 +13,7 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { defineTool, SessionManager } from "@earendil-works/pi-coding-agent";
 import { AGENTS } from "../../constants.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";

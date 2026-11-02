@@ -3,7 +3,7 @@
  * Conversational checkpoints for Plan Pair Execution.
  */
 
-import { type Static, Type } from "@earendil-works/pi-ai";
+import { type Static, Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { ActiveExecutionWorkflow, HostedSession } from "../shared/session/hosted-session.js";
@@ -16,42 +16,66 @@ import {
 } from "../shared/session/pair-checkpoint-session.ts";
 import { recordWorkflowMetric } from "../shared/workflow/metrics.js";
 
-const PARAMETERS = Type.Object({
-    action: Type.Optional(Type.Union([Type.Literal("report"), Type.Literal("resolve")], {
-        description: "Report a new checkpoint or resolve the current checkpoint from the user's direction.",
-    })),
-    summary: Type.Optional(Type.String({
-        minLength: 1,
-        description:
-            "Concise Markdown description of the observable increment now available for review. Use short paragraphs or bullets; separate changes and verification with bold section titles and blank lines. Put supporting evidence, diagnostics, and next steps in their dedicated fields.",
-    })),
-    route: Type.Optional(Type.String({ minLength: 1, description: "Route or URL currently shown." })),
-    state: Type.Optional(Type.String({ minLength: 1, description: "Application state or scenario inspected." })),
-    viewport: Type.Optional(Type.String({ minLength: 1, description: "Viewport or device inspected." })),
-    evidence: Type.Optional(Type.Array(Type.String({ minLength: 1 }), {
-        description: "Content-safe notes or screenshot paths describing visible evidence.",
-    })),
-    diagnostics: Type.Optional(Type.String({
-        minLength: 1,
-        description: "Console, network, accessibility, or runtime health summary.",
-    })),
-    nextIncrement: Type.Optional(Type.String({ minLength: 1, description: "The next coherent increment proposed." })),
-    final: Type.Optional(Type.Boolean({ description: "Whether this is the final checkpoint before task completion." })),
-    checkpointId: Type.Optional(Type.String({
-        minLength: 1,
-        description: "Current checkpoint ID shown in the restored Pair context.",
-    })),
-    decision: Type.Optional(Type.Union([
-        Type.Literal("continue"),
-        Type.Literal("revise"),
-        Type.Literal("switch_to_autonomous"),
-        Type.Literal("stop"),
-    ], { description: "Typed interpretation of the user's direction." })),
-    revisionDirection: Type.Optional(Type.String({
-        minLength: 1,
-        description: "The user's full revision direction. Required for revise.",
-    })),
-}, { additionalProperties: false });
+const PARAMETERS = Type.Object(
+    {
+        action: Type.Optional(
+            Type.Union([Type.Literal("report"), Type.Literal("resolve")], {
+                description: "Report a new checkpoint or resolve the current checkpoint from the user's direction.",
+            }),
+        ),
+        summary: Type.Optional(
+            Type.String({
+                minLength: 1,
+                description:
+                    "Concise Markdown description of the observable increment now available for review. Use short paragraphs or bullets; separate changes and verification with bold section titles and blank lines. Put supporting evidence, diagnostics, and next steps in their dedicated fields.",
+            }),
+        ),
+        route: Type.Optional(Type.String({ minLength: 1, description: "Route or URL currently shown." })),
+        state: Type.Optional(Type.String({ minLength: 1, description: "Application state or scenario inspected." })),
+        viewport: Type.Optional(Type.String({ minLength: 1, description: "Viewport or device inspected." })),
+        evidence: Type.Optional(
+            Type.Array(Type.String({ minLength: 1 }), {
+                description: "Content-safe notes or screenshot paths describing visible evidence.",
+            }),
+        ),
+        diagnostics: Type.Optional(
+            Type.String({
+                minLength: 1,
+                description: "Console, network, accessibility, or runtime health summary.",
+            }),
+        ),
+        nextIncrement: Type.Optional(
+            Type.String({ minLength: 1, description: "The next coherent increment proposed." }),
+        ),
+        final: Type.Optional(
+            Type.Boolean({ description: "Whether this is the final checkpoint before task completion." }),
+        ),
+        checkpointId: Type.Optional(
+            Type.String({
+                minLength: 1,
+                description: "Current checkpoint ID shown in the restored Pair context.",
+            }),
+        ),
+        decision: Type.Optional(
+            Type.Union(
+                [
+                    Type.Literal("continue"),
+                    Type.Literal("revise"),
+                    Type.Literal("switch_to_autonomous"),
+                    Type.Literal("stop"),
+                ],
+                { description: "Typed interpretation of the user's direction." },
+            ),
+        ),
+        revisionDirection: Type.Optional(
+            Type.String({
+                minLength: 1,
+                description: "The user's full revision direction. Required for revise.",
+            }),
+        ),
+    },
+    { additionalProperties: false },
+);
 
 export type PairCheckpointParameters = Static<typeof PARAMETERS>;
 
@@ -60,12 +84,12 @@ export type PairCheckpointDetails =
     | { outcome: "rejected"; reason: string; checkpointId?: string }
     | { outcome: "reported"; checkpointId: string; checkpointNumber: number; final: boolean }
     | {
-        outcome: "resolved";
-        checkpointId: string;
-        checkpointNumber: number;
-        decision: PairCheckpointDecision;
-        revisionDirection?: string;
-    };
+          outcome: "resolved";
+          checkpointId: string;
+          checkpointNumber: number;
+          decision: PairCheckpointDecision;
+          revisionDirection?: string;
+      };
 
 type PairCheckpointResult = AgentToolResult<PairCheckpointDetails> & { terminate: boolean };
 
@@ -73,11 +97,7 @@ interface PairCheckpointToolOptions {
     hostedSession: HostedSession;
 }
 
-function checkpointResult(
-    text: string,
-    details: PairCheckpointDetails,
-    terminate = false,
-): PairCheckpointResult {
+function checkpointResult(text: string, details: PairCheckpointDetails, terminate = false): PairCheckpointResult {
     return { content: [{ type: "text", text }], details, terminate };
 }
 
@@ -124,6 +144,7 @@ export function createPairCheckpointTool({ hostedSession }: PairCheckpointToolOp
     if (!hostedSession) throw new Error("createPairCheckpointTool: hostedSession is required");
     return defineTool<typeof PARAMETERS, PairCheckpointDetails>({
         name: "pair_checkpoint",
+        exposure: "model-only",
         label: "Pair Checkpoint",
         description:
             "Report a Pair Execution increment and end the turn for ordinary conversation. On a later real user turn, resolve the current checkpoint from the user's natural-language direction. Questions need no resolution call.",
@@ -132,12 +153,13 @@ export function createPairCheckpointTool({ hostedSession }: PairCheckpointToolOp
             const workflow = hostedSession.getActiveExecutionWorkflow?.();
             if (
                 (workflow?.executionAgent !== "engineer" && workflow?.executionAgent !== "frontend-engineer") ||
-                workflow.executionStarted === false || workflow.collaborationStyle !== "pair"
+                workflow.executionStarted === false ||
+                workflow.collaborationStyle !== "pair"
             ) {
-                return checkpointResult(
-                    "Pair checkpoint is inactive; continue autonomously.",
-                    { outcome: "inactive", reason: "pair_execution_inactive" },
-                );
+                return checkpointResult("Pair checkpoint is inactive; continue autonomously.", {
+                    outcome: "inactive",
+                    reason: "pair_execution_inactive",
+                });
             }
 
             const action = params.action || (params.summary ? "report" : "resolve");
@@ -151,10 +173,10 @@ export function createPairCheckpointTool({ hostedSession }: PairCheckpointToolOp
                 }
                 const summary = params.summary?.trim() || "";
                 if (!summary) {
-                    return checkpointResult(
-                        "pair_checkpoint report rejected: summary is required.",
-                        { outcome: "rejected", reason: "summary_required" },
-                    );
+                    return checkpointResult("pair_checkpoint report rejected: summary is required.", {
+                        outcome: "rejected",
+                        reason: "summary_required",
+                    });
                 }
                 const report: PairCheckpointReport = {
                     summary,
@@ -180,10 +202,10 @@ export function createPairCheckpointTool({ hostedSession }: PairCheckpointToolOp
                     );
                 } catch (error) {
                     const reason = error instanceof Error ? error.message : String(error);
-                    return checkpointResult(
-                        `pair_checkpoint report rejected: ${reason}.`,
-                        { outcome: "rejected", reason },
-                    );
+                    return checkpointResult(`pair_checkpoint report rejected: ${reason}.`, {
+                        outcome: "rejected",
+                        reason,
+                    });
                 }
             }
 
@@ -191,21 +213,19 @@ export function createPairCheckpointTool({ hostedSession }: PairCheckpointToolOp
             const decision = params.decision;
             const current = readCurrentPairCheckpoint(hostedSession);
             if (!checkpointId || !decision) {
-                return checkpointResult(
-                    "pair_checkpoint resolve rejected: checkpointId and decision are required.",
-                    {
-                        outcome: "rejected",
-                        reason: "resolution_fields_required",
-                        ...(current ? { checkpointId: current.report.checkpointId } : {}),
-                    },
-                );
+                return checkpointResult("pair_checkpoint resolve rejected: checkpointId and decision are required.", {
+                    outcome: "rejected",
+                    reason: "resolution_fields_required",
+                    ...(current ? { checkpointId: current.report.checkpointId } : {}),
+                });
             }
             const revisionDirection = params.revisionDirection?.trim() || "";
             if (decision === "revise" && !revisionDirection) {
-                return checkpointResult(
-                    "pair_checkpoint resolve rejected: revisionDirection is required for revise.",
-                    { outcome: "rejected", reason: "revision_direction_required", checkpointId },
-                );
+                return checkpointResult("pair_checkpoint resolve rejected: revisionDirection is required for revise.", {
+                    outcome: "rejected",
+                    reason: "revision_direction_required",
+                    checkpointId,
+                });
             }
             const nextWorkflow = nextWorkflowForDecision(workflow, decision);
             const resolved = resolvePairCheckpoint({
@@ -216,30 +236,35 @@ export function createPairCheckpointTool({ hostedSession }: PairCheckpointToolOp
                 ...(revisionDirection ? { revisionDirection } : {}),
             });
             if (!resolved.ok) {
-                return checkpointResult(
-                    `pair_checkpoint resolve rejected: ${resolved.reason}.`,
-                    { outcome: "rejected", reason: resolved.reason, checkpointId },
-                );
+                return checkpointResult(`pair_checkpoint resolve rejected: ${resolved.reason}.`, {
+                    outcome: "rejected",
+                    reason: resolved.reason,
+                    checkpointId,
+                });
             }
             hostedSession.setActiveExecutionWorkflow(nextWorkflow);
-            await recordWorkflowMetric({
-                category: "execution",
-                event: "pair_checkpoint_decided",
-                details: {
-                    checkpointNumber: resolved.checkpoint.report.checkpointNumber,
-                    decision,
+            await recordWorkflowMetric(
+                {
+                    category: "execution",
+                    event: "pair_checkpoint_decided",
+                    details: {
+                        checkpointNumber: resolved.checkpoint.report.checkpointNumber,
+                        decision,
+                    },
                 },
-            }, hostedSession.cwd);
+                hostedSession.cwd,
+            );
 
-            const text = decision === "revise"
-                ? `Apply the user's revision direction: ${revisionDirection}`
-                : decision === "continue"
-                ? resolved.checkpoint.report.report.final
-                    ? "Final Pair checkpoint accepted. Call task_completed with the verified completion report."
-                    : "Continue to the next coherent increment, then report a fresh Pair checkpoint."
-                : decision === "switch_to_autonomous"
-                ? "Continue autonomously. Pair checkpoints are no longer required; typed task completion remains required."
-                : "Stop Pair Execution now. Keep the Plan In Progress and preserve the work.";
+            const text =
+                decision === "revise"
+                    ? `Apply the user's revision direction: ${revisionDirection}`
+                    : decision === "continue"
+                      ? resolved.checkpoint.report.report.final
+                          ? "Final Pair checkpoint accepted. Call task_completed with the verified completion report."
+                          : "Continue to the next coherent increment, then report a fresh Pair checkpoint."
+                      : decision === "switch_to_autonomous"
+                        ? "Continue autonomously. Pair checkpoints are no longer required; typed task completion remains required."
+                        : "Stop Pair Execution now. Keep the Plan In Progress and preserve the work.";
             return checkpointResult(
                 text,
                 {

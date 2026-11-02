@@ -3,7 +3,7 @@
  * Structured user interview tool for planning agents.
  */
 
-import { type Static, StringEnum, Type } from "@earendil-works/pi-ai";
+import { type Static, Type } from "typebox";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "../shared/session/hosted-session.js";
@@ -29,7 +29,7 @@ const QUESTION_ID = Type.String({
 const YES_NO_QUESTION = Type.Object(
     {
         id: Type.Optional(QUESTION_ID),
-        type: StringEnum(["yes_no"]),
+        type: Type.Enum(["yes_no"]),
         prompt: Type.String({ minLength: 1, maxLength: 400, description: "Question text shown to the user." }),
         default: Type.Optional(Type.Boolean({ description: "Optional recommended default answer." })),
         allowOther: Type.Optional(
@@ -44,7 +44,7 @@ const YES_NO_QUESTION = Type.Object(
 const TEXT_QUESTION = Type.Object(
     {
         id: Type.Optional(QUESTION_ID),
-        type: StringEnum(["text"]),
+        type: Type.Enum(["text"]),
         prompt: Type.String({ minLength: 1, maxLength: 400, description: "Question text shown to the user." }),
         default: Type.Optional(Type.String({ maxLength: 400, description: "Optional default text answer." })),
         placeholder: Type.Optional(Type.String({ maxLength: 200, description: "Optional prompt hint." })),
@@ -56,7 +56,7 @@ const TEXT_QUESTION = Type.Object(
 const MULTIPLE_CHOICE_QUESTION = Type.Object(
     {
         id: Type.Optional(QUESTION_ID),
-        type: StringEnum(["multiple_choice"]),
+        type: Type.Enum(["multiple_choice"]),
         prompt: Type.String({ minLength: 1, maxLength: 400, description: "Question text shown to the user." }),
         choices: Type.Array(
             Type.Object(
@@ -256,6 +256,7 @@ export function createUserInterviewTool(
     const hostedSession = opts.hostedSession;
     return defineTool<typeof PARAMETERS, InterviewResultDetails>({
         name: "user_interview",
+        exposure: "model-only",
         label: "User Interview",
         description:
             "Ask the user 1-3 structured clarification questions (yes_no, text, multiple_choice) and receive ordered answers. Yes/no and multiple-choice always include an 'Other' option with free-text follow-up.",

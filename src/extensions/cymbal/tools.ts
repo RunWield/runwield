@@ -1,4 +1,4 @@
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { HelperBinaryExec } from "../helper-binary-exec.ts";
 
@@ -10,23 +10,32 @@ export interface CymbalToolHost {
 export const MAX_CODE_BATCH_OPERATIONS = 5;
 export const MAX_CODE_BATCH_OUTPUT_CHARS = 50_000;
 
-const codeBatchShowOperationSchema = Type.Object({
-    op: Type.Literal("show"),
-    target: Type.String({ description: "Symbol name or file path (e.g. file.js:10-20) to show." }),
-}, { additionalProperties: false });
-const codeBatchOutlineOperationSchema = Type.Object({
-    op: Type.Literal("outline"),
-    file: Type.String({ description: "File path to outline." }),
-}, { additionalProperties: false });
+const codeBatchShowOperationSchema = Type.Object(
+    {
+        op: Type.Literal("show"),
+        target: Type.String({ description: "Symbol name or file path (e.g. file.js:10-20) to show." }),
+    },
+    { additionalProperties: false },
+);
+const codeBatchOutlineOperationSchema = Type.Object(
+    {
+        op: Type.Literal("outline"),
+        file: Type.String({ description: "File path to outline." }),
+    },
+    { additionalProperties: false },
+);
 const codeBatchOperationSchema = Type.Union([codeBatchShowOperationSchema, codeBatchOutlineOperationSchema]);
-const codeBatchParametersSchema = Type.Object({
-    operations: Type.Array(codeBatchOperationSchema, {
-        minItems: 1,
-        maxItems: MAX_CODE_BATCH_OPERATIONS,
-        description:
-            "One to five known code show/outline reads. Results follow request order. Search is not supported.",
-    }),
-}, { additionalProperties: false });
+const codeBatchParametersSchema = Type.Object(
+    {
+        operations: Type.Array(codeBatchOperationSchema, {
+            minItems: 1,
+            maxItems: MAX_CODE_BATCH_OPERATIONS,
+            description:
+                "One to five known code show/outline reads. Results follow request order. Search is not supported.",
+        }),
+    },
+    { additionalProperties: false },
+);
 
 type CodeBatchOperation = { op: "show"; target: string } | { op: "outline"; file: string };
 interface CodeBatchParams {
@@ -108,14 +117,22 @@ function formatNativeBatchEntry(entry: CymbalBatchEntry, op: CodeBatchOperation[
     if (typeof entry !== "object") throw new Error("Invalid result entry");
     if (!Array.isArray(entry) && typeof entry.error === "string") return `Error: ${entry.error}`;
     if (op === "outline" && Array.isArray(entry)) {
-        return entry.map((symbol) => {
-            if (
-                !symbol || typeof symbol.name !== "string" || typeof symbol.kind !== "string" ||
-                !Number.isInteger(symbol.start_line) || !Number.isInteger(symbol.end_line)
-            ) throw new Error("Invalid outline symbol");
-            const depth = Number.isInteger(symbol.depth) ? Math.max(0, Math.min(symbol.depth ?? 0, 20)) : 0;
-            return `${"  ".repeat(depth)}${symbol.kind} ${symbol.name} (L${symbol.start_line}-${symbol.end_line})`;
-        }).join("\n") || "No results found.";
+        return (
+            entry
+                .map((symbol) => {
+                    if (
+                        !symbol ||
+                        typeof symbol.name !== "string" ||
+                        typeof symbol.kind !== "string" ||
+                        !Number.isInteger(symbol.start_line) ||
+                        !Number.isInteger(symbol.end_line)
+                    )
+                        throw new Error("Invalid outline symbol");
+                    const depth = Number.isInteger(symbol.depth) ? Math.max(0, Math.min(symbol.depth ?? 0, 20)) : 0;
+                    return `${"  ".repeat(depth)}${symbol.kind} ${symbol.name} (L${symbol.start_line}-${symbol.end_line})`;
+                })
+                .join("\n") || "No results found."
+        );
     }
     if (op === "show" && !Array.isArray(entry) && typeof entry.file === "string" && Array.isArray(entry.lines)) {
         const lines = entry.lines.map((line) => {
@@ -154,14 +171,23 @@ function parseNativeBatchResults(
     try {
         response = JSON.parse(output.text);
         if (
-            !response || typeof response !== "object" || !response.results ||
-            typeof response.results !== "object" || Array.isArray(response.results)
-        ) throw new Error("Missing results map");
+            !response ||
+            typeof response !== "object" ||
+            !response.results ||
+            typeof response.results !== "object" ||
+            Array.isArray(response.results)
+        )
+            throw new Error("Missing results map");
     } catch {
-        return new Map(targets.map((target) => [target, {
-            text: "Error: Cymbal returned invalid batch JSON.",
-            isError: true,
-        }]));
+        return new Map(
+            targets.map((target) => [
+                target,
+                {
+                    text: "Error: Cymbal returned invalid batch JSON.",
+                    isError: true,
+                },
+            ]),
+        );
     }
     for (const target of targets) {
         if (!Object.hasOwn(response.results, target)) {
@@ -457,10 +483,7 @@ export function createCymbalTools(host: CymbalToolHost): ToolDefinition[] {
                     if (targets.length === 1) {
                         results.set(
                             op,
-                            new Map([[
-                                targets[0],
-                                await runCymbal(getCodeBatchCymbalArgs(operations[0]), signal),
-                            ]]),
+                            new Map([[targets[0], await runCymbal(getCodeBatchCymbalArgs(operations[0]), signal)]]),
                         );
                     } else {
                         const output = await runCymbal(["--json", op, "--", ...targets], signal);
@@ -479,7 +502,7 @@ export function createCymbalTools(host: CymbalToolHost): ToolDefinition[] {
                         operation,
                         results.get(operation.op)!.get(codeBatchTarget(operation))!,
                         sectionBudget,
-                    )
+                    ),
                 );
                 return {
                     content: [{ type: "text" as const, text: sections.map((section) => section.text).join(separator) }],
