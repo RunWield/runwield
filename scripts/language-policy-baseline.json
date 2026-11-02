@@ -6,7 +6,6 @@
     "src/cmd/registry.js",
     "src/constants.js",
     "src/plan-store.js",
-    "src/shared/collaboration/client.js",
     "src/shared/collaboration/protocol.js",
     "src/shared/collaboration/secrets.js",
     "src/shared/owner-coordination/database.js",
