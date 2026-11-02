@@ -1,5 +1,5 @@
 import process from "node:process";
-import { initRunWieldTheme } from "../theme/theme.js";
+import { initRunWieldTheme } from "../theme/theme.ts";
 import { Key, matchesKey } from "@earendil-works/pi-tui";
 import { getCwd } from "../../constants.js";
 import {

@@ -27,7 +27,7 @@ import {
     getSettingsManager,
 } from "../../shared/settings.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { discoverAndRegisterThemes, getAvailableThemes, initRunWieldTheme, setTheme } from "../../ui/theme/theme.js";
+import { discoverAndRegisterThemes, getAvailableThemes, initRunWieldTheme, setTheme } from "../../ui/theme/theme.ts";
 import { runRemoveCommand } from "./index.ts";
 
 interface RemoveCommandFixture {

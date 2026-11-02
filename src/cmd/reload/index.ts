@@ -3,7 +3,7 @@
  * Implementation of the reload command.
  */
 
-import { discoverAndRegisterThemes, setTheme } from "../../ui/theme/theme.js";
+import { discoverAndRegisterThemes, setTheme } from "../../ui/theme/theme.ts";
 import { clearMascotEnabledCache, getSettingsManager } from "../../shared/settings.js";
 import type { CommandContext } from "../registry.js";
 

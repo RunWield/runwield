@@ -25,7 +25,7 @@ import {
     initRunWieldTheme,
     onThemeChange,
     theme,
-} from "../theme/theme.js";
+} from "../theme/theme.ts";
 import { VERSION } from "../../shared/version.js";
 import {
     getCachedUpdateAvailabilitySync,

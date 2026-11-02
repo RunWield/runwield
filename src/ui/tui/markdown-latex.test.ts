@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertStringIncludes } from "../../testing/assertions.ts";
 import stripAnsi from "strip-ansi";
-import { getMarkdownTheme, initRunWieldTheme } from "../theme/theme.js";
+import { getMarkdownTheme, initRunWieldTheme } from "../theme/theme.ts";
 import { MermaidMarkdown } from "./mermaid-markdown.js";
 
 initRunWieldTheme();

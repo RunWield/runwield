@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { __resetSettingsForTests } from "../../shared/settings.js";
 import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { initRunWieldTheme } from "../../ui/theme/theme.js";
+import { initRunWieldTheme } from "../../ui/theme/theme.ts";
 import { runNameCommand } from "./index.ts";
 
 interface NameCommandFixture {

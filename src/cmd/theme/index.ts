@@ -6,7 +6,7 @@ import process from "node:process";
 
 import { getSettingsManager, setCustomSetting } from "../../shared/settings.js";
 import { remotePersonalResourcesActive } from "../../shared/remote/personal-resources.ts";
-import { DEFAULT_THEME_NAME, discoverAndRegisterThemes, getAvailableThemes, setTheme } from "../../ui/theme/theme.js";
+import { DEFAULT_THEME_NAME, discoverAndRegisterThemes, getAvailableThemes, setTheme } from "../../ui/theme/theme.ts";
 import { printCommandHelp } from "../help/index.js";
 import { COMMAND_NAMES } from "../registry.js";
 

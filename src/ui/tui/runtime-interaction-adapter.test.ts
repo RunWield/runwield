@@ -9,7 +9,7 @@ import { getStoredPlanPath, savePlan } from "../../plan-store.js";
 import { createScriptedReviewBrowser } from "../review/review-test-fixture.ts";
 import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";
 import { ToolExecutionBlock } from "./blocks.js";
-import { initRunWieldTheme } from "../theme/theme.js";
+import { initRunWieldTheme } from "../theme/theme.ts";
 
 import type { SelectOption, UiAPI } from "./types.js";
 import type { RuntimeInteractionRequest } from "../../shared/session/session-runtime-interactions.js";

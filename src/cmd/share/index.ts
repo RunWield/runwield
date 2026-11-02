@@ -10,7 +10,7 @@ import { rm as fsRm } from "node:fs/promises";
  * Share the complete Session as HTML and JSON in one secret GitHub Gist.
  */
 
-import { theme } from "../../ui/theme/theme.js";
+import { theme } from "../../ui/theme/theme.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 
 interface CommandResult {
