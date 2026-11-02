@@ -36,7 +36,6 @@
     "src/shared/workflow/plan-lifecycle.js",
     "src/shared/workflow/plan-review-recovery.js",
     "src/shared/workflow/validation-test-helpers.js",
-    "src/shared/workflow/workflow-results.js",
     "src/shared/worktree-registry.js",
     "src/shared/worktree.js",
     "src/ui/design-system/components/Dialog.jsx",

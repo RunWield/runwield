@@ -666,7 +666,7 @@ The six routing intents have distinct ceremony:
   legacy classification value that normalizes to `PLANNED_CHANGE`.
 - `PROJECT` creates an Epic container. It is decomposed into child PLANNED_CHANGE Plans and is never executed directly.
 
-`workflow-results.js` extracts structured outcomes. `decisions.ts` converts them into semantic actions such as
+`workflow-results.ts` extracts structured outcomes. `decisions.ts` converts them into semantic actions such as
 `execute_plan`, `start_slicer`, `run_validation`, `stay_with_agent`, or `halt`. Callers retain responsibility for state
 mutation, user interaction, recovery, and agent switching.
 
@@ -1096,7 +1096,7 @@ The highest-value cross-boundary paths for later confidence analysis are visible
 | Agent switching                           | `src/shared/session/agent-switching.js`                                       |
 | Workflow-aware turn handling              | `src/shared/session/agent-handler.js`                                         |
 | Routing orchestration                     | `src/shared/workflow/orchestrator.js`                                         |
-| Workflow decisions and outcome parsing    | `src/shared/workflow/decisions.ts`, `src/shared/workflow/workflow-results.js` |
+| Workflow decisions and outcome parsing    | `src/shared/workflow/decisions.ts`, `src/shared/workflow/workflow-results.ts` |
 | Plan execution facade                     | `src/shared/workflow/workflow.ts`                                             |
 | Validation and repair                     | `src/shared/workflow/validation.ts`                                           |
 | Plan lifecycle                            | `src/shared/workflow/plan-lifecycle.js`                                       |

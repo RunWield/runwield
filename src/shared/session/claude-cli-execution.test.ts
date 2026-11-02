@@ -30,7 +30,7 @@ import {
 } from "./session.js";
 import { ClaudeCliBackendError } from "./backends/claude-cli/failure.ts";
 import { CLAUDE_CLI_MCP_PROVENANCE } from "./backends/claude-cli/mcp-bridge.ts";
-import { readLatestTaskCompletedOutcome } from "../workflow/workflow-results.js";
+import { readLatestTaskCompletedOutcome } from "../workflow/workflow-results.ts";
 import { readLatestTriageOutcome } from "../workflow/orchestrator.ts";
 import { startMcpIntegration } from "../mcp/integration.ts";
 import { runValidationAgentUntilEvent } from "./agent-workflow-step.ts";

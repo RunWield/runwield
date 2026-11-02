@@ -28,7 +28,7 @@ import type {
 import type { HostedSession } from "../shared/session/hosted-session.js";
 import type { AgentDefinition } from "../shared/session/types.js";
 import type { BashAllowedCommands } from "../shared/bash-command-policy.ts";
-import { extractAssistantOutput } from "../shared/workflow/workflow-results.js";
+import { extractAssistantOutput } from "../shared/workflow/workflow-results.ts";
 
 export type DelegationMode = "read" | "write";
 

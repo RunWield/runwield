@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { getHomeDir } from "../../constants.js";
 import { remoteBackgroundTaskLogDirectory } from "../remote/background-task-logs.ts";
 import { spawnForegroundShell } from "../foreground-process.ts";
-import { extractAssistantOutput } from "../workflow/workflow-results.js";
+import { extractAssistantOutput } from "../workflow/workflow-results.ts";
 import type { DelegatedAgentSessionOptions } from "../../tools/delegate-agent.ts";
 import type { HostedSession } from "./hosted-session.js";
 
