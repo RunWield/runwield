@@ -590,7 +590,9 @@ _Avoid_: Workspace, workspace root, project space
 **Project Identity**: An opaque Core Project ID, stable across folder moves and linked worktrees. A matching clone
 shares it only after an explicit linking choice. Git's common configuration or a non-Git marker supplies local identity;
 paths and remote URLs do not. Workspace registration IDs are separate identifiers associated with existing Core identity.
-Legacy Plan and Session locators retain their current storage behavior until their migration.
+Verified personal locator bindings connect legacy Session IDs and Attached Workflow directories to this identity across
+moves and accepted clone links. They do not own transcript generations, workflow revisions, or execution attempts.
+Physical bundles and native locks retain their paths; Plan/runtime relocation remains separate.
 
 **Repository binding**: One local repository instance associated with a Project ID. Linked worktrees share a repository
 binding; explicitly linked clones share Project identity while keeping separate repository bindings.

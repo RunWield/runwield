@@ -28,9 +28,12 @@ replacement. The [Epic](../plans/external-plan-store.md) owns implementation out
 
 The stable-identity slice now uses `runwield.projectId` and `runwield.repositoryId` from the Git common directory's own
 configuration, a distinct administrative-directory checkout ID, and `.wld-project.json` before Git adoption. Local
-identity-only records live under `~/.wld/projects/<projectId>/project.wld.json`. Workspace registration remains optional
+identity and verified Session/Attached locator records live under `~/.wld/projects/<projectId>/project.wld.json`. Workspace registration remains optional
 and separate. Explicit managed-remote owner context does not introduce remote-store persistence. This narrow delivery
-does not accept or implement the runtime and document relocation decisions below.
+does not accept or implement the runtime and document relocation decisions below. Session/Connect continuation now
+resolves verified original stores after moves and accepted clone links, without relocating bundles or locks, rewriting
+historical evidence, transferring execution attempts, or changing managed-remote ownership. ADR-015 owns that accepted
+Session lookup decision; the broader home-state proposal remains proposed.
 
 ## Decision and Rationale
 

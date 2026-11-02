@@ -277,9 +277,10 @@ or by copying the file.
 
 **Scope and maturity:** Stable opaque identity, repository/checkout bindings, non-Git adoption, and deliberate clone
 linking are current; [Core Project initialization](runwield-core-prd.md#project-context-and-initialization) owns their
-requirements and acceptance scenarios. Moving Plans and Sessions to that identity, preserving their continuity through
-moves and clone links, and managed-remote personal-store persistence remain targets. Existing runtime and Session
-locators remain unchanged in this identity slice.
+requirements and acceptance scenarios. [Session continuity](runwield-core-prd.md#session-continuity) and
+[Connect recovery](runwield-connect-prd.md#lazy-project-setup-and-recovery) now follow verified original-store bindings
+across moves and accepted clone links. Physical Session bundles and native locks remain in place. Plan/Work Record
+continuity and relocation, runtime relocation, and managed-remote personal-store persistence remain targets.
 
 **Requirement: Plans and Sessions belong to the project, not its folder.** RunWield identifies a project by an identity
 it creates once and keeps with the project's local repository configuration, or in a small file for a folder without a
