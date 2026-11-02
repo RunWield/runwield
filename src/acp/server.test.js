@@ -2371,7 +2371,7 @@ test("ACP streams exact current context usage from a real Runtime turn", async (
         let latestInputTokens = 0;
         fixture.setModelResponseFactory((context) => {
             latestInputTokens = estimateFauxPromptTokens(context);
-            const outputTokens = 52_000 - latestInputTokens * 2;
+            const outputTokens = 52_000 - latestInputTokens;
             assert(outputTokens > 0, "fixture prompt must leave room for a 52k exact context total");
             return fauxAssistantMessage(fauxText("x".repeat(outputTokens * 4)));
         });

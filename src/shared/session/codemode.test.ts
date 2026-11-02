@@ -190,9 +190,12 @@ test("plain schemas coerce identically for direct and nested calls, rejecting in
             label: "Collect",
             description: "Collect numbers",
             parameters: Type.Object({ values: Type.Array(Type.Number()) }),
-            async execute(_id, params) {
+            execute(_id, params) {
                 received.push(params.values);
-                return { content: [{ type: "text", text: JSON.stringify(params.values) }], details: {} };
+                return Promise.resolve({
+                    content: [{ type: "text", text: JSON.stringify(params.values) }],
+                    details: {},
+                });
             },
         });
         const { session } = await buildAgentSession({ agentName: "engineer", cwd: f.projectRoot, customTools: [tool] });
@@ -369,7 +372,9 @@ test("non-chat models use configured auth and persist attributed usage exactly o
             createProvider({
                 id: "codemode-fixture",
                 name: "Codemode fixture",
-                auth: { apiKey: { name: "Fixture", resolve: async () => ({ auth: { apiKey: "configured-key" } }) } },
+                auth: {
+                    apiKey: { name: "Fixture", resolve: () => Promise.resolve({ auth: { apiKey: "configured-key" } }) },
+                },
                 models: [
                     {
                         type: "classifier",
@@ -385,9 +390,9 @@ test("non-chat models use configured auth and persist attributed usage exactly o
                 ],
                 classifiers: {
                     "typesafe-system-one": {
-                        async classify(model, _context, options) {
+                        classify(model, _context, options) {
                             calls.push(`${model.provider}/${model.id}:${options?.apiKey}`);
-                            return {
+                            return Promise.resolve({
                                 api: model.api,
                                 provider: model.provider,
                                 model: model.id,
@@ -402,7 +407,7 @@ test("non-chat models use configured auth and persist attributed usage exactly o
                                     totalTokens: 12,
                                     cost: { input: 0.1, output: 0.02, cacheRead: 0, cacheWrite: 0, total: 0.12 },
                                 },
-                            };
+                            });
                         },
                     },
                 },
