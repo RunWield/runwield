@@ -43,7 +43,7 @@ import {
     ScriptedHumanReviewSurface,
     ScriptedInteractionSurface,
     ScriptedReviewSurface,
-} from "./scripted-review-surface.js";
+} from "./scripted-review-surface.ts";
 import { normalizeScreenText, VirtualTerminal } from "./virtual-terminal.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../../shared/browser-port.ts";
 import {
@@ -241,10 +241,10 @@ function findFixturePlanLifecycle(directory, expectedStatus) {
  * @property {Array<Object>} [actions]
  * @property {Array<import('./scenario-actor.ts').GoldenScriptTurn>} [script]
  * @property {Array<{ interactionType: string, decision?: string }>} [interactions]
- * @property {Array<import('./scripted-review-surface.js').ScriptedRuntimeInteraction>} [scriptedInteractions]
+ * @property {Array<import('./scripted-review-surface.ts').ScriptedRuntimeInteraction>} [scriptedInteractions]
  * @property {string[]} [interactiveSelectPrompts] Prompt fragments driven by real terminal input even with other scripted interactions.
- * @property {Array<import('./scripted-review-surface.js').ScriptedReviewDecision>} [reviewDecisions]
- * @property {Array<import('./scripted-review-surface.js').ScriptedHumanReviewDecision>} [humanReviewDecisions]
+ * @property {Array<import('./scripted-review-surface.ts').ScriptedReviewDecision>} [reviewDecisions]
+ * @property {Array<import('./scripted-review-surface.ts').ScriptedHumanReviewDecision>} [humanReviewDecisions]
  * @property {"new" | "continue"} [sessionStartMode]
  * @property {string} [initialAgentName]
  * @property {unknown} [reviewedPlan]

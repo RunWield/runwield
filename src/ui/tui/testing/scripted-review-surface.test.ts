@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { strictEqual, throws } from "node:assert/strict";
-import { ScriptedInteractionSurface } from "./scripted-review-surface.js";
+import { ScriptedInteractionSurface } from "./scripted-review-surface.ts";
 
 const resume = {
     type: "select" as const,
