@@ -17,7 +17,7 @@ import {
     buildRemoteCommentPayload,
     normalizeRemoteCommentPayload,
     remoteCommentToPlannotatorAnnotation,
-} from "./remote-review-payload.js";
+} from "./remote-review-payload.ts";
 import "./plannotator.css";
 
 const DISPLAY_NAME_KEY = "runwield.remoteReview.displayName";
