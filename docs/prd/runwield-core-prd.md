@@ -973,6 +973,15 @@ repair. Diagnosis and explicit user requests can call for earlier full runs. Sta
 validation. Reports separate completed focused checks from pending full validation. Only the runtime gate permits
 publication.
 
+**Requirement: Fresh, focused repair verification.** Validation Repair Engineer instructions require rerunning every
+previously failing test file identified in the repair context, plus focused checks for the repairs, after the final
+edit using the project's supported runner. Non-test failures require the relevant failing checks. Later edits require
+rerunning those checks before task completion. Reports give exact commands and results, identify unverified items, and
+leave full validation pending. Repair guidance distinguishes assertion/build failures, timeouts or suspected hangs,
+and interrupted/unstarted checks. Timeouts prompt wait and contention diagnosis rather than automatic deadline
+increases; they do not alone prove deadlock. Missing reports after a timeout remain incomplete evidence. This is Agent
+guidance, not an additional runtime admission gate; existing validation commands and repair limits remain unchanged.
+
 **Requirement: Required checks fail closed.** A required check returns failure when its checker or prerequisites cannot
 load, as well as when diagnostics fail. Workspace checking resolves its project root consistently under the pinned Bun
 runtime and cannot report success without running the Astro checker.
@@ -989,6 +998,10 @@ progress display comes from the confirmed validation and publication results of 
   project keeps it after worktree removal.
 - Given a managed repair, after the Agent's focused checks, RunWield runs the full command against the repair checkout;
   a failure keeps the workflow in repair.
+- Given edits after passing focused repair checks, the Repair Engineer is instructed to rerun every supplied failing
+  test file and repair-focused check before task completion and report the fresh results.
+- Given a timeout with no test report, repair guidance treats the report as incomplete evidence, investigates the
+  waiting operation, and does not assume an assertion defect or increase the timeout automatically.
 - Given passed checks and a process restart, the Plan stays implemented and resumes semantic review.
 - Given a Session that shows failed checks from an earlier attempt, a resumed delivery that publishes successfully
   reports completion with current results.
