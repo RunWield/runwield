@@ -294,6 +294,7 @@
     "src/shared/models/agy-cli-models.test.ts",
     "src/shared/models/claude-cli-models.test.ts",
     "src/shared/models/model-price-catalog.test.ts",
+    "src/shared/models/model-login.test.ts",
     "src/shared/models/model-registry.test.ts",
     "src/shared/models/model-validation.test.ts",
     "src/shared/models/remote-model-composition.test.ts",
