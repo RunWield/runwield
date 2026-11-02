@@ -9,7 +9,7 @@ import { SessionHost } from "../session/session-host.ts";
 import { SessionRuntime } from "../session/session-runtime.ts";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
 import type { RuntimeValidationProgress } from "../session/session-runtime-events.js";
-import { createTuiInteractionAdapter } from "../../ui/tui/runtime-interaction-adapter.js";
+import { createTuiInteractionAdapter } from "../../ui/tui/runtime-interaction-adapter.ts";
 import { readDeliveryEvidence } from "./delivery-evidence.ts";
 import { normalizeHumanReview } from "./validation-human-review.ts";
 import {
