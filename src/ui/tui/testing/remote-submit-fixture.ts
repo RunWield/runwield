@@ -120,7 +120,12 @@ async function startProcess(f: RuntimeFixture): Promise<RemoteSubmitProcess> {
     const stderr = new Response(child.stderr).text();
     await writer.write(
         new TextEncoder().encode(
-            JSON.stringify({ connection: f.control.connection, cwd: f.remoteProject, resources: f.resources }) + "\n",
+            JSON.stringify({
+                connection: f.control.connection,
+                cwd: f.remoteProject,
+                resources: f.resources,
+                laptopHome: f.homeDir,
+            }) + "\n",
         ),
     );
     let closed = false;

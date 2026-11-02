@@ -5,6 +5,7 @@ import {
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,
     rm as fsRm,
+    readdir as fsReaddir,
     stat as fsStat,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
@@ -39,7 +40,7 @@ async function journalExists(projectRoot: string, transitionId: string): Promise
         await fsStat(getTransitionJournalPath(projectRoot, transitionId));
         return true;
     } catch (error) {
-        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return false;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
         throw error;
     }
 }
@@ -55,6 +56,11 @@ test("healing a Plan with no journals returns empty without starting Git", async
             process.env["PATH"] = emptyBin;
             const result = await healSettledTransitionRecords(projectRoot, { planName: "nothing-to-heal" });
             assertEquals(result, { closed: [], remaining: [] });
+            assertEquals(
+                await fsReaddir(projectRoot),
+                [],
+                "A no-op heal must not admit identity or create runtime files",
+            );
         } finally {
             if (previousPath === undefined) delete process.env["PATH"];
             else process.env["PATH"] = previousPath;
@@ -86,7 +92,10 @@ test("healing one Plan does not remove another Plan's settled journal", async ()
         });
 
         // The selected Plan's settled record is closed...
-        assertEquals(result.closed.map((entry) => entry.transitionId), ["selected-record"]);
+        assertEquals(
+            result.closed.map((entry) => entry.transitionId),
+            ["selected-record"],
+        );
         assertEquals(result.remaining, []);
         assertEquals(await journalExists(projectRoot, "selected-record"), false, "selected journal should be removed");
         // ...and the unrelated Plan's journal is untouched, byte for byte.

@@ -8,6 +8,7 @@
  * model/tools.
  */
 
+import { admitProjectWithIdentityChoice } from "../../ui/tui/project-identity-entry.ts";
 import { parseArgs } from "../../shared/cli-args.ts";
 import { dirname } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
@@ -130,6 +131,7 @@ export async function runInitCommand(argv: string[], options: InitCommandOptions
         else console.warn(INIT_DECLINED_MESSAGE);
         return;
     }
+    if (!(await admitProjectWithIdentityChoice(projectRoot))) return;
     await enterProjectRuntime(projectRoot);
 
     // ── Load init subagent definition ──────
