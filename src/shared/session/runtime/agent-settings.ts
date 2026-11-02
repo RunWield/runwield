@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { AGENTS } from "../../../constants.js";
-import { recordManualModelSelection } from ".././active-agent-session.js";
+import { recordManualModelSelection } from ".././active-agent-session.ts";
 import { resolveActiveWorkflowRuntimeAgent } from "../../workflow/execution-agent.ts";
 import { getAgentBusyLines, getAgentDisplayName } from ".././agents.js";
 import { switchActiveAgent } from ".././agent-switching.js";
