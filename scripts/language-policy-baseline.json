@@ -68,7 +68,6 @@
 
     "src/ui/workspace/routes/api/review-agent-handlers.js",
     "src/ui/workspace/routes/api/review-handlers.js",
-    "src/ui/workspace/routes/api/review-widget-handlers.js",
     "src/ui/workspace/routes/owner-api.js",
     "src/ui/workspace/routes/owner-session-api.js",
     "src/ui/workspace/routes/remote-api.js",
