@@ -31,6 +31,7 @@ dependencies:
 targetBranch: "epic/external-plan-store"
 userVerifiedAt: null
 status: "reviewed"
+validatedCommit: "65ea94532b188fac9dfac88a3913e4bf8c9ffb16"
 ---
 
 # Preserve Session and Connect Continuity
