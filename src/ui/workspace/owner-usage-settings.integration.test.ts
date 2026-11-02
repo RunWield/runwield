@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withMetricsExportFixture } from "../../testing/metrics-export-fixture.ts";
 import type { MetricsExportFixture } from "../../testing/metrics-export-fixture.ts";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import {
     approveMetricsExporter,
     listInstalledMetricsExporters,

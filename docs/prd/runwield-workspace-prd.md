@@ -2,13 +2,13 @@
 title: RunWield Workspace
 status: living-roadmap
 createdAt: "2026-07-06T00:00:00.000Z"
-updatedAt: "2026-10-16"
+updatedAt: "2026-11-01"
 ---
 
 # RunWield Workspace PRD
 
-**Document role: Living central PRD.** Principles and lasting requirements for the personal browser Workspace and its
-continuity with the TUI and phone.
+**Document role: Living central PRD.** Principles and lasting requirements for Workspace across browser and desktop,
+including continuity with the TUI and paired browser devices. Desktop and hosted-account capabilities below are targets.
 
 **Status:** The personal local Workspace is delivered in its first iteration and remains free and open source.
 External-client and chat access are owned by the [ACP PRD](runwield-acp-protocol-prd.md); external
@@ -16,7 +16,7 @@ Agent hosts are owned by the [Connect PRD](runwield-connect-prd.md).
 
 Architectural choices belong in ADRs, implementation steps and remaining work in Plans, and delivery evidence in Work
 Records. Shared lifecycle, validation, and Session behavior are owned by the [Core PRD](runwield-core-prd.md); this
-document adds only the browser experience.
+document owns the Workspace experience.
 
 ## Objective
 
@@ -119,6 +119,9 @@ This is a durable personal self-hosted product included in RunWield Core.
 Each capability owns its browser requirements and links to Core for shared behavior.
 
 - [Container hosting](#container-hosting)
+- [Desktop Workspace](#desktop-workspace) — target; local application first
+- [Workspace identity and cloud services](#workspace-identity-and-cloud-services) — future target
+- [Network runtime access](#network-runtime-access) — future target
 - [Browser appearance and themes](#browser-appearance-and-themes)
 - [Local Plan management](#local-plan-management)
 - [Shared Plan collaboration](#shared-plan-collaboration)
@@ -134,6 +137,103 @@ Each capability owns its browser requirements and links to Core for shared behav
 - [Browser Plan review and workflow](#browser-plan-review-and-workflow)
 - [Durable knowledge search](#durable-knowledge-search)
 - [Device pairing and remote trust](#device-pairing-and-remote-trust)
+
+### Desktop Workspace
+
+**Scope and maturity:** Target, not implemented. The first desktop delivery is free local work on Windows, macOS, and
+Linux. Electron is the selected desktop technology; architecture and delivery are proposed in
+[ADR-0021](../adr/0021-electron-workspace-acp-client.md) and the
+[local desktop Epic](../plans/local-workspace-desktop.md). Native mobile applications are deferred; existing phone
+browser access remains supported.
+
+**Requirement: Work locally without a Workspace account.** A user installs the application, opens a Project, and uses
+local Workspace without signing up, subscribing, or connecting to hosted Workspace. Existing Core provider credentials
+and saved work remain usable. Provider setup is distinct from a Workspace account, and provider usage may carry its
+own costs. A missing provider does not prevent browsing saved local work or configuring the application.
+
+**Requirement: The installed app owns the workbench.** Desktop supplies the Workspace application and native desktop
+integration, sharing product components and the design system with the required browser application. It controls a
+separate `wld` runtime through ACP and negotiated extensions. `wld` remains independently useful as the TUI and runtime.
+Desktop supports the existing local workbench, including Sessions, Plans, review, workflow actions, knowledge, and
+settings; an embedded launch of `wld workspace serve` alone does not meet this requirement.
+
+**Requirement: Preserve work across desktop and existing surfaces.** Desktop uses the same canonical Projects, Sessions,
+artifacts, and Core approval/recovery rules as TUI and browser clients. Changing or closing a view does not duplicate a
+Session or authorize execution. Window close allows running local work to continue while the application remains
+running. Explicit application exit handles owned active work deliberately and leaves saved continuation recoverable.
+Interrupted or disconnected presentation is never successful completion evidence.
+
+**Requirement: Install and update a compatible application.** Desktop includes a compatible runtime without requiring a
+separate CLI or development toolchain. It preserves existing data and keeps the independent shell installation usable.
+App/runtime compatibility is checked before dependent actions. A published platform claim requires installed-app
+evidence for that platform; a development build is not a signed or published release.
+
+Protocol behavior belongs to [Workspace client access](runwield-acp-protocol-prd.md#workspace-client-access). Shared
+runtime authority remains in [Core Session continuity](runwield-core-prd.md#session-continuity) and
+[execution, validation, and recovery](runwield-core-prd.md#execution-validation-and-recovery).
+
+**Acceptance scenarios:**
+
+- Given a clean installation without a Workspace account or global `wld`, open the desktop app, register a Project,
+  configure a supported provider, and complete local work while Workspace cloud endpoints are unavailable.
+- Given existing provider settings and saved Sessions, open the app and resume the same work without importing it into
+  a second authoritative store. With provider access unavailable, browse saved work and see its actual prerequisite.
+- Given an approved Plan saved for later, open it in desktop and browser; neither action starts execution. A stale
+  review decision is refused by the same Core checks on both surfaces.
+- Given an idle TUI and desktop showing the same Session, continue from either; the other observes committed history
+  without becoming a second writer or replacing newer configuration.
+- Given active work, close and reopen the desktop window and see its current progress. Explicit Quit and unexpected
+  runtime exit preserve truthful saved state and never cause automatic replay of an uncertain action.
+- Install and update compatible desktop artifacts on macOS, Windows, and Linux without a development toolchain;
+  retain Projects, settings, and Sessions and identify which artifacts are actually published.
+
+### Workspace identity and cloud services
+
+**Scope and maturity:** Future target after the local application. Hosted Workspace account identity, authentication,
+service deployment, and account-based cloud features are not delivered by the current personal Workspace or self-hosted
+Shared Plan protocol. Detailed cloud capabilities and entitlements require subsequent product planning.
+
+**Requirement: Add optional identity and cloud capabilities.** A user can sign in to hosted Workspace from the desktop
+application to obtain an identity and use available cloud features. Sign-in adds capabilities to the same workbench;
+it does not make free local operation contingent on an account. Provider credentials, runtime access, and Workspace
+identity are separate permissions.
+
+**Requirement: Keep local work independent and private.** Signing out, expired account credentials, or a cloud outage
+does not remove local Projects or prevent supported local work. Account sign-in does not automatically share local
+transcripts, repository contents, provider credentials, or grant another person runtime control. Sharing remains a
+deliberate action under the owning feature's access rules.
+
+**Acceptance scenarios:**
+
+- Given a working local installation, sign in and gain the cloud capabilities available to that identity while the
+  selected local runtime and existing work remain usable.
+- Sign out or lose cloud access and continue supported local work; cloud-specific operations show their actual access
+  state without being reported as complete.
+- Sign in with no sharing action and observe no implicit upload of private local work or authorization of another
+  runtime. These scenarios remain future acceptance until the relevant service exists.
+
+### Network runtime access
+
+**Scope and maturity:** Future target after local desktop acceptance. The application will control a `wld` process on
+another network machine through ACP plus negotiated extensions. This is distinct from paired browser access to the
+current Workspace server and from [Core Remote SSH](runwield-core-prd.md#remote-connection).
+
+**Requirement: Select where work runs.** The user can connect to an authorized runtime and operate its Projects,
+Sessions, and review workflows with the same Workspace UI. The selected machine and connection status stay clear;
+paths are resolved by that runtime and equal paths on different machines do not identify the same Project.
+
+**Requirement: Preserve authority through disconnection.** Host trust, access grants, observation recovery, runtime
+lifetime, and storage ownership must be defined before delivering remote attachment. A lost connection is not proof
+that work stopped, failed, or completed, and reconnect does not blindly resubmit work. Connecting to a runtime is not
+implicitly authorized by a hosted Workspace identity.
+
+**Acceptance scenarios:**
+
+- Connect to an authorized `wld` on another network machine, select one of its Projects, and run/review work there
+  without accidentally reading or executing against the desktop's same-named path.
+- Open a Session remotely, disconnect, and reconnect; observe its actual durable/live state and preserve its identity
+  without duplicate turns or decisions. Execution lifetime follows the subsequently defined remote-host policy.
+- Reject an untrusted host or unauthorized Project before exposing its data or performing work.
 
 ### Container hosting
 

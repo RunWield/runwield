@@ -111,7 +111,7 @@ import {
 import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./server/owner-projects.ts";
 import { ownerProjectPlanSessionsApi } from "./server/owner-plan-sessions.ts";
 import { createOwnerConnectionRegistry } from "./server/owner-connections.ts";
-import { setAstroOwnerWorkspaceSessionContinuation, setAstroOwnerWorkspaceStore } from "./server/astro-owner-data.js";
+import { setAstroOwnerWorkspaceSessionContinuation, setAstroOwnerWorkspaceStore } from "./server/astro-owner-data.ts";
 import { workspacePwaResponse } from "./server/workspace-pwa.ts";
 import { isPublicWorkspaceAsset, WORKSPACE_PWA_PATHS } from "./server/public-workspace-assets.ts";
 import { reviewHost } from "./server/review-host.ts";
@@ -164,7 +164,7 @@ const QUESTION_PAYLOAD_HEADER = "x-runwield-question-payload";
  * @typedef {Object} OwnerWorkspaceAppOptions
  * @property {"owner"} mode
  * @property {string} publicOrigin
- * @property {import("../../shared/owner-coordination/index.js").OwnerCoordinationStore} store
+ * @property {import("../../shared/owner-coordination/index.ts").OwnerCoordinationStore} store
  */
 
 /**
@@ -1432,7 +1432,7 @@ function assertWorkspaceServerTransportPolicy(options) {
 }
 
 /**
- * @param {{ mode?: "local" | "remote" | "owner", cwd?: string, host: string, port: number, token?: string, dbPath?: string, signal?: AbortSignal, maxRequestBytes?: number, retentionDays?: number, publicOrigin?: string, trustTlsTerminator?: boolean, store?: import("../../shared/owner-coordination/index.js").OwnerCoordinationStore }} options
+ * @param {{ mode?: "local" | "remote" | "owner", cwd?: string, host: string, port: number, token?: string, dbPath?: string, signal?: AbortSignal, maxRequestBytes?: number, retentionDays?: number, publicOrigin?: string, trustTlsTerminator?: boolean, store?: import("../../shared/owner-coordination/index.ts").OwnerCoordinationStore }} options
  */
 export function startWorkspaceServer(options) {
     assertWorkspaceServerTransportPolicy(options);

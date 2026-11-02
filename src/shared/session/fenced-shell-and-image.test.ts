@@ -11,7 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import process from "node:process";
 import { join } from "node:path";
-import { openOwnerCoordinationStore } from "../owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
 import { getRunWieldSessionDir } from "./root-session.js";

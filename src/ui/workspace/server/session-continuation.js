@@ -316,7 +316,7 @@ async function readSessionDisplayName(paths) {
     return name || infos.find((info) => info.firstMessage)?.firstMessage || "";
 }
 
-/** @param {import('../../../shared/owner-coordination/index.js').OwnerCoordinationStore} store @param {{ transcriptCwd: string }} session @param {string} projectId */
+/** @param {import('../../../shared/owner-coordination/index.ts').OwnerCoordinationStore} store @param {{ transcriptCwd: string }} session @param {string} projectId */
 /**
  * @typedef {Object} WorkspaceOperationRecord
  * @property {string} status
@@ -348,7 +348,7 @@ async function readSessionDisplayName(paths) {
 
 export class WorkspaceSessionContinuationService {
     /**
-     * @param {{ store: import('../../../shared/owner-coordination/index.js').OwnerCoordinationStore }} options
+     * @param {{ store: import('../../../shared/owner-coordination/index.ts').OwnerCoordinationStore }} options
      */
     constructor(options) {
         this.store = options.store;
@@ -2795,7 +2795,7 @@ export class WorkspaceSessionContinuationService {
     }
 }
 
-/** @param {{ store: import('../../../shared/owner-coordination/index.js').OwnerCoordinationStore }} options */
+/** @param {{ store: import('../../../shared/owner-coordination/index.ts').OwnerCoordinationStore }} options */
 export function createWorkspaceSessionContinuationService(options) {
     return new WorkspaceSessionContinuationService(options);
 }

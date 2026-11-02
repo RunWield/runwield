@@ -115,7 +115,7 @@ dependencies, not tasks the prospective customer must solve before receiving a p
 
 RunWield loads enabled WLD-compatible Pi package extensions. The package must declare compatibility, extension API 1,
 and `code-extension` kind. Pi extensions can observe message/tool lifecycle events and read Session state. Sources:
-[src/shared/extensions/wld-extension-manifest.js](../../src/shared/extensions/wld-extension-manifest.js),
+[src/shared/extensions/wld-extension-manifest.ts](../../src/shared/extensions/wld-extension-manifest.ts),
 `src/shared/session/session.js:2236–2279`.
 
 However, the inspected CLI-backend construction does not load these package extensions. There is also no dedicated

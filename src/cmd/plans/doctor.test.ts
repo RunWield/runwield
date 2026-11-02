@@ -1497,7 +1497,7 @@ test("Doctor check reports missing local target and publication evidence without
             await savePlan(cwd, "project", "# Project\n", {
                 planId: "trace-project",
                 classification: "PROJECT",
-                status: "draft",
+                status: "approved",
                 targetBranch: "topic/not-cached",
             });
             await savePlan(cwd, "claim", "# Published claim\n", {
@@ -1719,6 +1719,126 @@ for (const source of ["snapshot", "active-copy", "live-attempt"]) {
                     [],
                 );
             }
+        } finally {
+            await fsRm(cwd, { recursive: true, force: true });
+        }
+    });
+}
+
+for (const scenario of ["unstarted", "approved", "child", "attempt", "invalid-target", "unreadable"]) {
+    test(`Doctor checks a missing Epic target only when required: ${scenario}`, async () => {
+        const cwd = await ancestryRepo.checkout({ prefix: "runwield-doctor-draft-target-" });
+        try {
+            await savePlan(cwd, "project", "# Project\n", {
+                planId: "draft-project",
+                classification: "PROJECT",
+                status: scenario === "approved" ? "approved" : "draft",
+                targetBranch: scenario === "invalid-target" ? "refs/heads/invalid" : "project/not-started",
+            });
+            if (scenario === "unreadable") {
+                const refs = join(cwd, ".git/refs/heads/project");
+                await fsMkdir(refs, { recursive: true });
+                await fsWriteFile(join(refs, "not-started"), `${"a".repeat(40)}\n`);
+            }
+            if (scenario === "child") {
+                await savePlan(cwd, "project/child", "# Child\n", {
+                    planId: "draft-child",
+                    classification: "PLANNED_CHANGE",
+                    status: "draft",
+                    parentPlan: "project",
+                });
+            }
+            if (scenario === "attempt") {
+                await git(cwd, ["add", "docs/plans/project.md"]);
+                await git(cwd, ["commit", "-m", "Save Epic before its attempt"]);
+                const path = join(cwd, "execution");
+                await git(cwd, ["worktree", "add", "-b", "execution", path, "main"]);
+                await addEntry(cwd, {
+                    id: "draft-attempt",
+                    planId: "draft-project",
+                    planName: "project",
+                    path,
+                    branch: "execution",
+                    baseBranch: "main",
+                    baseRef: "main",
+                    baseCommit: await git(cwd, ["rev-parse", "main"]),
+                    status: "active",
+                    createdAt: "now",
+                    updatedAt: "now",
+                });
+            }
+            for (const repair of [false, true]) {
+                const report = await runPlansDoctor(cwd, repair);
+                assertEquals(
+                    report.issues.some(
+                        (issue) => issue.kind === "target_branch_inspection_error" && issue.planName === "project",
+                    ),
+                    scenario !== "unstarted",
+                );
+            }
+        } finally {
+            await fsRm(cwd, { recursive: true, force: true });
+        }
+    });
+}
+
+for (const identity of ["missing-target-id", "explicit-target-id", "target-only"]) {
+    test(`Doctor retains assigned child identity across older target snapshots: ${identity}`, async () => {
+        const cwd = await ancestryRepo.checkout({ prefix: "runwield-doctor-child-identity-" });
+        try {
+            await savePlan(cwd, "project", "# Project\n", {
+                planId: "project-id",
+                classification: "PROJECT",
+                status: "draft",
+                targetBranch: "epic/project",
+            });
+            const childPath = join(cwd, "docs/plans/project/child.md");
+            await fsMkdir(dirname(childPath), { recursive: true });
+            await fsWriteFile(
+                childPath,
+                `---\n${identity === "explicit-target-id" ? "planId: target-id\n" : ""}classification: PLANNED_CHANGE\nparentPlan: project\nstatus: draft\n---\n# Child\n`,
+            );
+            await git(cwd, ["add", "docs/plans"]);
+            await git(cwd, ["commit", "-m", "Save target child identity"]);
+            await git(cwd, ["branch", "epic/project"]);
+            if (identity === "target-only") {
+                await fsRm(childPath);
+            } else {
+                await fsWriteFile(
+                    childPath,
+                    "---\nplanId: local-id\nclassification: PLANNED_CHANGE\nparentPlan: project\nstatus: draft\n---\n# Current child\n",
+                );
+            }
+            if (identity === "explicit-target-id") {
+                await addEntry(cwd, {
+                    id: "historical-target-attempt",
+                    planId: "target-id",
+                    planName: "project/child",
+                    path: cwd,
+                    branch: "main",
+                    baseBranch: "main",
+                    baseRef: "main",
+                    baseCommit: await git(cwd, ["rev-parse", "main"]),
+                    status: "abandoned",
+                    createdAt: "now",
+                    updatedAt: "now",
+                });
+            }
+            const before = await fsReadFile(childPath, "utf8").catch(() => null);
+            for (const repair of [false, true]) {
+                const report = await runPlansDoctor(cwd, repair);
+                assertEquals(
+                    report.issues.some(
+                        (issue) => issue.kind === "missing_plan_id" && issue.planName === "project/child",
+                    ),
+                    identity === "target-only",
+                );
+                assertEquals(
+                    report.issues.some((issue) => issue.kind === "registry_plan_id_not_found"),
+                    false,
+                );
+            }
+            assertEquals(await fsReadFile(childPath, "utf8").catch(() => null), before);
         } finally {
             await fsRm(cwd, { recursive: true, force: true });
         }

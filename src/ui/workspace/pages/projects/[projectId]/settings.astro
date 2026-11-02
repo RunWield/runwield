@@ -2,7 +2,7 @@
 import ProjectRootForm from "../../../islands/ProjectRootForm.tsx";
 import ArchivedSessions from "../../../islands/ArchivedSessions.tsx";
 import SettingsLayout from "../../../layouts/SettingsLayout.astro";
-import { loadOwnerProjects } from "../../../server/astro-owner-data.js";
+import { loadOwnerProjects } from "../../../server/astro-owner-data.ts";
 
 const archived = Astro.url.searchParams.get("tab") === "archived";
 const projectId = Astro.params.projectId ?? "";

@@ -729,7 +729,7 @@ test("Workspace answers a live question in a separate TUI process", async () => 
     await withRuntimeCommandFixture("workspace-live-tui-", async ({ homeDir, projectRoot }) => {
         const fixture = await makeManagedSessionFixture({ home: homeDir, projectRoot });
         const service = new WorkspaceSessionContinuationService({ store: fixture.openStore() });
-        const storeUrl = new URL("../../shared/owner-coordination/index.js", import.meta.url).href;
+        const storeUrl = new URL("../../shared/owner-coordination/index.ts", import.meta.url).href;
         const runtimeUrl = new URL("../../shared/session/session-runtime.ts", import.meta.url).href;
         const code = `
             import { openOwnerCoordinationStore } from ${JSON.stringify(storeUrl)};

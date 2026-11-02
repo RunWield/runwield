@@ -72,6 +72,7 @@ else if (process.argv.slice(2)[0] === "--remote-model-proof") {
     reader.releaseLock();
     process.on("SIGTERM", () => {});
     process.on("SIGUSR1", () => process.exit(0));
+    process.on("SIGWINCH", () => fsWriteFile("view-size", JSON.stringify([process.stdout.columns, process.stdout.rows])));
     spawn("sh", ["-c", "trap '' TERM; echo $$ > detached; exec sleep 120"], { detached: true, stdio: "ignore" });
     spawn("python3", ["-c", "import os;\\nif os.fork(): os._exit(0)\\nos.setsid()\\nif os.fork(): os._exit(0)\\nopen('orphan', 'w').write(str(os.getpid()))\\nos.execlp('nohup', 'nohup', 'sleep', '120')"], { stdio: "ignore" });
     const child = spawn("sh", ["-c", "trap '' TERM; sleep 60 & echo $! > descendant; wait"], { stdio: "ignore" });
@@ -81,7 +82,7 @@ else if (process.argv.slice(2)[0] === "--remote-model-proof") {
 }
 `;
 
-const terminal = String.raw`import fcntl, json, os, pty, select, socket, subprocess, sys, termios, time
+const terminal = String.raw`import fcntl, json, os, pty, select, signal, socket, struct, subprocess, sys, termios, time
 binary, cwd, header, port, directory = sys.argv[1:]
 master, slave = pty.openpty()
 def child_terminal():
@@ -118,6 +119,14 @@ try:
     elif command == 'close': os.close(master)
     elif command == 'kill-launcher': os._exit(0)
     elif command in ('kill-view', 'normal-exit'):
+        if command == 'normal-exit':
+            fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack('HHHH', 62, 212, 0, 0))
+            os.kill(child.pid, signal.SIGWINCH)
+            until = time.monotonic() + 3
+            while not os.path.exists(os.path.join(cwd, 'view-size')) and time.monotonic() < until: time.sleep(.02)
+            if not os.path.exists(os.path.join(cwd, 'view-size')): raise RuntimeError('view did not receive terminal resize')
+            with open(os.path.join(cwd, 'view-size')) as sizefile:
+                if json.load(sizefile) != [212, 62]: raise RuntimeError('view has wrong terminal size')
         with open(os.path.join(cwd, 'view')) as pidfile: view = int(pidfile.read())
         os.kill(view, 9 if command == 'kill-view' else 10)
     deadline = time.monotonic() + 45

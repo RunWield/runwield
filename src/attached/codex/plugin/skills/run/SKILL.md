@@ -17,6 +17,10 @@ Use the user's intent to choose:
   `payload: { requestText, hostRequestId }`. Put only this request in `requestText`. Use a request identifier supplied
   by Codex when available, otherwise generate a UUID. Keep those IDs when retrying an activation that returned no
   result. The installed MCP server supplies host and adapter evidence; do not construct or override it.
+- **Start planning an existing Plan or Epic child:** use `activate` with the explicit request and
+  `payload.existingPlan: { planName, planId, targetBranch? }`. Use the selected Plan's name relative to `docs/plans/`
+  without `.md`, and its actual Plan ID. Select only the child the user named. Do not encode the selection solely in
+  request prose or choose another child. If a workflow already exists for that request, continue it instead.
 - **Continue existing work**, such as `$runwield:run resume` or `$runwield:run implement the saved Plan`: first call `status`
   with `inspectOnly: true` and the known `workflowId`, or only `{ inspectOnly: true }` to inspect the most recent open
   workflow in this repository without continuing it. Do not activate a new
@@ -99,3 +103,8 @@ Use Core's supplied execution directory for every worker command and edit. Do no
 isolation, create another worktree, or move the invoking checkout. If the host cannot provide a fresh worker, or a
 reviewer cannot access RunWield MCP directly, report the missing capability and keep the workflow resumable. Do not
 substitute a review in this coordinating conversation.
+
+For planning, use Core's `planningCwd` and `planPath`. Follow the planning reference's `start_planning` step before
+dispatch. If preparation fails or authority is missing, stop dependent work, repair the integration, and retry the same
+workflow. Do not use temporary Core scripts, manual HTTP approvals, coordinator-proxied worker instructions, or manually
+created planning worktrees to bypass the native handoff.

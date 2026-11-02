@@ -10,7 +10,7 @@ import {
     resolveProjectRuntimeLayout,
     WORKFLOW_DETAILS_PENDING,
 } from "../../shared/project-runtime-layout.ts";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
 import { addEntry } from "../../shared/worktree-registry.js";
 import { loadOwnerSidebar } from "./server/owner-dashboard.ts";

@@ -1,5 +1,17 @@
 # Planning and Plan review
 
+Before dispatching any `plan` action, disclose `workflow.nextAction.projectSetup` paths, then call `start_planning` with
+the current workflow ID, revision, operation ID, and
+`payload.actionId`. For an existing Plan, activation must bind `payload.existingPlan: { planName, planId, targetBranch? }`.
+If continuing an older unbound workflow, supply that same explicit selection to `start_planning`; do not reactivate.
+This is the Core-owned preparation boundary. Reuse the operation ID after a lost response. A retry reuses the prepared
+workspace. Passive `status` and instruction reads never prepare one.
+
+Require `workflow.nextAction.planningRequired: false` and `planningCwd` before dispatch. An existing Plan also requires
+its matching `planId`, `planName`, and `planPath`. Dispatch the worker in `planningCwd`; it must fetch its own native
+`get_instructions` and verify the same authority in context before editing. Missing authority or failed preparation
+stops dependent work for integration repair and native retry. Never create a worktree or relay instructions as a bypass.
+
 Apply the skill's **Fresh Codex workers** dispatch rules before handling Router or Planner work. With an explicit model
 or thinking level, dispatch a fresh worker with the native overrides, workflow ID, revision, action ID, and project
 directory. It fetches its own `get_instructions` and context. Before a Planner writes, have it return
@@ -13,7 +25,8 @@ For `triage`, fetch `get_instructions` for the workflow and action IDs. Require 
 Submit `triage_report` with the issued `actionId` and the Core Triage fields in `payload.outcome`. Follow the returned
 action rather than assuming the request is FEATURE-sized.
 
-For `plan`, fetch current instructions and context; require `runwield.attached.planner/1`. Follow the Planner role and
+For `plan`, fetch current instructions and context; require `runwield.attached.planner/1`. Use `context.planningCwd` for
+every command and edit, and `context.planPath` for the bound existing Plan. Follow the Planner role and
 returned request, triage outcome, feedback, image paths, and note. Before writing a Plan, show the returned
 `context.projectSetup` paths that Core will create; an empty list means no setup files are added. Write the canonical
 Plan and call `plan_written` with `payload.actionId`, `payload.planName`, and any requested execution policy fields.
