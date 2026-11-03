@@ -19,12 +19,12 @@ userVerifiedAt: null
 routingIntent: "PLANNED_CHANGE"
 targetBranch: "main"
 deliveryBranch: "main"
-status: "reviewed"
 validatedCommit: "3158ba6e2090ada88c951322bd03a3c829dcdc71"
 workRecord:
     status: "failed"
     lastAttemptAt: "2026-11-03T02:02:06.248Z"
     error: "docs/work-records/2026-10-16-remote-mcp-transport-pilot.md: Invalid Work Record: front matter is required."
+status: "verified"
 ---
 
 # Send Epics Back to Architect for Re-review
