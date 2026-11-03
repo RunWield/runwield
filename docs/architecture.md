@@ -339,7 +339,7 @@ flowchart LR
 
 The former `attachUiSubscribers()` implementation in `src/shared/session/session.js` subscribed directly to Pi and
 called presentation methods such as `appendThinkingStart()`, `appendAgentMessageStart()`, and `startToolExecution()`. At
-the same time it emitted semantic Runtime events. The TUI had also attached `runtime-adapter.js`, so that adapter
+the same time it emitted semantic Runtime events. The TUI had also attached `runtime-adapter.ts`, so that adapter
 rendered the same semantic update again.
 
 The former `session-runtime-ui.js` did not remove the second route. It translated legacy presentation calls back into
@@ -957,7 +957,7 @@ flowchart LR
 ### TUI adapter
 
 The TUI creates one `SessionRuntime`, retains opaque Runtime session IDs, and never constructs or receives a
-`SessionHost`, `HostedSession`, Pi `SessionManager`, or Pi `AgentSession`. `runtime-adapter.js` renders semantic events
+`SessionHost`, `HostedSession`, Pi `SessionManager`, or Pi `AgentSession`. `runtime-adapter.ts` renders semantic events
 into terminal blocks, while `runtime-interaction-adapter.ts` implements selection, text, approval, and browser review
 interactions.
 
@@ -1104,7 +1104,7 @@ The highest-value cross-boundary paths for later confidence analysis are visible
 | Worktree operations and registry          | `src/shared/worktree.js`, `src/shared/worktree-registry.js`                   |
 | Settings and models                       | `src/shared/settings.js`, `src/shared/models/`                                |
 | Tool policy                               | `src/tools/registry.ts`, agent front matter in `src/agent-definitions/`       |
-| TUI adapter                               | `src/ui/tui/chat-session.js`, `src/ui/tui/runtime-adapter.js`                 |
+| TUI adapter                               | `src/ui/tui/chat-session.js`, `src/ui/tui/runtime-adapter.ts`                 |
 | ACP adapter                               | `src/acp/server.js`, `src/acp/session-map.ts`, mapper modules in `src/acp/`   |
 | Workspace Plan adapter                    | `src/ui/workspace/server/plan-adapter.js`                                     |
 | Review consumer surface                   | `src/ui/review/review-launcher.js`, `src/review-workspace-server.ts`          |

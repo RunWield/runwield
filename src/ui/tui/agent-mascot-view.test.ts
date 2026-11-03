@@ -9,7 +9,7 @@ import { createChatView } from "./chat-view.ts";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { mascotForAgent } from "../mascot/mascot.ts";
 import { createValidationSessionPort } from "../../shared/workflow/validation-session-adapter.ts";
-import { attachTuiRuntimeAdapter } from "./runtime-adapter.js";
+import { attachTuiRuntimeAdapter } from "./runtime-adapter.ts";
 
 test("publication shows Base and default working text without an active Agent", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId, session }) => {

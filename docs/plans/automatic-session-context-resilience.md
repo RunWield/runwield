@@ -30,7 +30,7 @@ affectedPaths:
     - "src/tools/__tests__/delegate-agent.test.js"
     - "src/cmd/compact/index.ts"
     - "src/cmd/compact/index.test.js"
-    - "src/ui/tui/runtime-adapter.js"
+    - "src/ui/tui/runtime-adapter.ts"
     - "src/ui/tui/runtime-adapter.test.js"
     - "src/acp/event-mapper.ts"
     - "src/acp/server.test.js"
@@ -340,7 +340,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   fields and display one concise retry-later message.
 - `src/cmd/compact/index.test.js` — cover shared-arbiter acquisition, immediate `compaction_in_progress` behavior,
   manual-compaction re-arm, and non-duplicated manual/automatic status.
-- `src/ui/tui/runtime-adapter.js` — render canonical context-resilience messages without implementing policy or
+- `src/ui/tui/runtime-adapter.ts` — render canonical context-resilience messages without implementing policy or
   normalization in the TUI.
 - `src/ui/tui/runtime-adapter.test.js` — verify each user-visible context outcome renders once.
 - `src/acp/event-mapper.ts` — map the same semantic event to ACP text plus structured `_meta` status/reason fields.
