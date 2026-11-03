@@ -53,7 +53,7 @@ import { getProjectById, listProjectRootEvidence } from "./projects.js";
 /** @param {unknown} value */
 function requireDatabase(value) {
     if (!value || typeof value !== "object" || !("handle" in value)) throw new Error("Owner database is required");
-    return /** @type {import('./database.js').OwnerCoordinationDatabase} */ (value);
+    return /** @type {import('./database.ts').OwnerCoordinationDatabase} */ (value);
 }
 
 /** @param {() => string} [now] */
@@ -155,7 +155,7 @@ function mtimeMs(value) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {string} projectId
  * @returns {Set<string>}
  */
@@ -169,7 +169,7 @@ function listKnownTranscriptPaths(database, projectId) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {string} projectId
  * @param {string} cwd
  * @param {string} sessionDir
@@ -187,7 +187,7 @@ function shouldIncrementallyScan(database, projectId, cwd, sessionDir, dirMtimeM
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {string} projectId
  * @param {string} cwd
  * @param {string} sessionDir
@@ -363,7 +363,7 @@ function orderConservativeLineageGroup(group) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {string} projectId
  * @param {LineageCatalogLocator[]} group
  * @param {{ idFactory?: () => string, now?: () => string }} options
@@ -430,7 +430,7 @@ function catalogLineageSegmentGroup(database, projectId, group, options) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {{ projectId: string, piSessionId: string, transcriptPath: string, transcriptCwd: string }} locator
  * @returns {Promise<import('../session/root-session.js').CatalogSafeRootSessionLocator>}
  */
@@ -479,7 +479,7 @@ function assertStoredHeaderEvidence(existing, safeLocator) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {string} runwieldSessionId
  * @returns {CatalogedSession | null}
  */
@@ -505,7 +505,7 @@ export function getSessionById(database, runwieldSessionId) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {{ transcriptPath?: string, projectId?: string, piSessionId?: string }} locator
  * @returns {CatalogedSession | null}
  */
@@ -551,7 +551,7 @@ export function findSessionByLocator(database, locator) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {{ projectId: string, piSessionId: string, transcriptPath: string, transcriptCwd: string, headerVersion?: number | null, headerTimestamp?: string | null, source?: 'catalog' | 'created' | 'imported', idFactory?: () => string, now?: () => string }} locator
  * @returns {Promise<CatalogedSession>}
  */
@@ -630,13 +630,13 @@ export async function ensureSessionCatalogRecord(database, locator) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {string} projectId
  * @param {{ catalog?: boolean, fullRescan?: boolean, idFactory?: () => string, now?: () => string }} [options]
  * @returns {Promise<{ sessions: CatalogedSession[], diagnostics: CatalogDiagnostic[] }>}
  */
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {string} runwieldSessionId
  * @returns {import('../types.js').SessionTranscriptSegment[]}
  */
@@ -650,7 +650,7 @@ export function listSessionTranscriptSegments(database, runwieldSessionId) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {string} runwieldSessionId
  * @returns {import('../types.js').SessionTranscriptSegment | null}
  */
@@ -666,12 +666,12 @@ export function getCurrentSessionSegment(database, runwieldSessionId) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {{ runwieldSessionId: string, projectId: string, piSessionId: string, transcriptPath: string, transcriptCwd: string, kind: 'planning' | 'execution' | 'semantic_repair', lineageParentSegmentId?: string | null, lineageParentPiSessionId?: string | null, lineageGroupKey?: string | null, idFactory?: () => string, now?: () => string }} segment
  * @returns {Promise<import('../types.js').SessionTranscriptSegment>}
  */
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {{ runwieldSessionId: string, projectId: string, piSessionId: string, transcriptPath: string, transcriptCwd: string, kind: 'planning' | 'execution' | 'semantic_repair', lineageParentSegmentId?: string | null, lineageParentPiSessionId?: string | null, lineageGroupKey?: string | null, idFactory?: () => string, now?: () => string }} segment
  * @param {import('../session/root-session.js').CatalogSafeRootSessionLocator} safeLocator
  * @returns {import('../types.js').SessionTranscriptSegment}
@@ -722,7 +722,7 @@ export function insertSessionTranscriptSegmentRow(database, segment, safeLocator
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {{ runwieldSessionId: string, projectId: string, piSessionId: string, transcriptPath: string, transcriptCwd: string, kind: 'planning' | 'execution' | 'semantic_repair', lineageParentSegmentId?: string | null, lineageParentPiSessionId?: string | null, lineageGroupKey?: string | null, idFactory?: () => string, now?: () => string }} segment
  * @returns {Promise<import('../types.js').SessionTranscriptSegment>}
  */
@@ -746,7 +746,7 @@ export async function appendSessionTranscriptSegment(database, segment) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {{ runwieldSessionId: string, segmentId: string, evidence?: { byteLength: number, digestHex: string, terminalEntryId: string | null }, now?: () => string }} options
  * @returns {import('../types.js').SessionTranscriptSegment}
  */
@@ -789,7 +789,7 @@ export function sealSessionTranscriptSegmentRow(database, options) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {{ runwieldSessionId: string, segmentId: string, evidence?: { byteLength: number, digestHex: string, terminalEntryId: string | null }, now?: () => string }} options
  * @returns {import('../types.js').SessionTranscriptSegment}
  */
@@ -803,7 +803,7 @@ export function sealSessionTranscriptSegment(database, options) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {{ runwieldSessionId: string, projectId: string, transcriptCwd: string }} options
  * @returns {Promise<import('../session/segment-rollover.ts').OrphanRolloverCandidate[]>}
  */
@@ -839,7 +839,7 @@ export async function findOrphanRolloverCandidates(database, options) {
  */
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {{ runwieldSessionId: string, projectId: string, transcriptCwd: string, successorTranscriptPath?: string | null, predecessorSegmentId?: string | null }} options
  * @returns {Promise<{ state: SegmentRolloverRecoveryState, transcriptPath: string | null, segmentId: string | null, reason: string }>}
  */
@@ -913,7 +913,7 @@ export async function inspectSegmentRolloverRecovery(database, options) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {{ runwieldSessionId: string, transcriptCwd: string, transcriptPath: string }} options
  */
 export async function discardOrphanRolloverCandidate(database, options) {
@@ -942,7 +942,7 @@ export async function discardOrphanRolloverCandidate(database, options) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {string} runwieldSessionId
  * @returns {import('../types.js').SessionLineageDiagnostic[]}
  */
@@ -1008,7 +1008,7 @@ export function diagnoseSessionSegmentLineage(database, runwieldSessionId) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {string} projectId
  * @param {{ catalog?: boolean, fullRescan?: boolean, idFactory?: () => string, now?: () => string }} [options]
  * @returns {Promise<{ sessions: CatalogedSession[], diagnostics: CatalogDiagnostic[] }>}
@@ -1037,7 +1037,7 @@ export async function listProjectSessions(database, projectId, options = {}) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {string} projectId
  * @param {{ fullRescan?: boolean, idFactory?: () => string, now?: () => string }} [options]
  * @returns {Promise<{ cataloged: CatalogedSession[], diagnostics: CatalogDiagnostic[] }>}

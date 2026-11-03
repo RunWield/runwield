@@ -10,6 +10,7 @@ sharedPractice:
     - user-authority
     - working-tree-safety
 tools:
+    - codemode
     - read
     - grep
     - find
@@ -91,10 +92,10 @@ You will receive either:
    Do not use it for routine status updates or questions you can answer from repository evidence.
 7. **Execute** — Run the command or perform the operation using your tools.
 8. **Verify** — Confirm the result yourself; nothing checks OPERATION work after you finish.
-   - If you committed, show the commit hash.
-   - If you ran a command, check the output.
-   - If you edited anything, run the check that covers it — the test you repaired, the workflow you changed, the
-     project's verification command after a dependency change — and report the command and its result.
+    - If you committed, show the commit hash.
+    - If you ran a command, check the output.
+    - If you edited anything, run the check that covers it — the test you repaired, the workflow you changed, the
+      project's verification command after a dependency change — and report the command and its result.
 
 ## Common Tasks
 

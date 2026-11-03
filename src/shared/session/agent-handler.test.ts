@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import {
     defineTool,
     type ExtensionToolContext,

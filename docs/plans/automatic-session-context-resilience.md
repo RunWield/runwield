@@ -32,7 +32,7 @@ affectedPaths:
     - "src/cmd/compact/index.test.js"
     - "src/ui/tui/runtime-adapter.js"
     - "src/ui/tui/runtime-adapter.test.js"
-    - "src/acp/event-mapper.js"
+    - "src/acp/event-mapper.ts"
     - "src/acp/server.test.js"
     - "src/ui/workspace/components/SessionTimeline.jsx"
     - "src/shared/session/session-transcript-projection.js"
@@ -343,7 +343,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/ui/tui/runtime-adapter.js` — render canonical context-resilience messages without implementing policy or
   normalization in the TUI.
 - `src/ui/tui/runtime-adapter.test.js` — verify each user-visible context outcome renders once.
-- `src/acp/event-mapper.js` — map the same semantic event to ACP text plus structured `_meta` status/reason fields.
+- `src/acp/event-mapper.ts` — map the same semantic event to ACP text plus structured `_meta` status/reason fields.
 - `src/acp/server.test.js` — verify ACP receives equivalent outcomes without Session content or TUI-specific semantics.
 - `src/ui/workspace/components/SessionTimeline.jsx` and Session history/event projection tests — render the new event
   once with the existing system-event row, in both live and saved history. Reuse `docs/design-system.md` patterns and

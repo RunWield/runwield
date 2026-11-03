@@ -1,7 +1,7 @@
 import { getCwd } from "../../constants.js";
 import { test } from "node:test";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
-import { mapRuntimeEventToAcpUpdate } from "../../acp/event-mapper.js";
+import { mapRuntimeEventToAcpUpdate } from "../../acp/event-mapper.ts";
 import { createSessionRuntimeEvent, RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { attachTuiRuntimeAdapter as attachRuntimeAdapter } from "./runtime-adapter.js";

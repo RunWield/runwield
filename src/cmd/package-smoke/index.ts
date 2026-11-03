@@ -11,6 +11,7 @@ import process from "node:process";
 import { WORK_RECORDS_DIR_NAME } from "../../constants.js";
 import { publishExecutionWorktreeIsolated } from "../../shared/isolated-publication.ts";
 import { RUNWIELD_GITIGNORE_BLOCK } from "../../shared/runwield-owned-paths.ts";
+import { checkPackagedCodemode } from "./codemode.ts";
 import { checkPackagedImageResize } from "./image-resize.ts";
 import { checkPackagedRemoteSessionSave } from "./remote-session-save.ts";
 import { createRunWieldBashToolDefinition } from "../../tools/bash.ts";
@@ -185,6 +186,11 @@ export async function runPackageSmokeCommand(argv: string[]): Promise<void> {
         console.log("[RunWield] Packaged metrics export passed.");
         return;
     }
+    if (subcommand === "codemode") {
+        await checkPackagedCodemode();
+        console.log("[RunWield] Packaged codemode passed.");
+        return;
+    }
     if (subcommand === "image-resize") {
         await checkPackagedImageResize();
         console.log("[RunWield] Packaged image resize passed.");
@@ -206,6 +212,6 @@ export async function runPackageSmokeCommand(argv: string[]): Promise<void> {
         return;
     }
     throw new Error(
-        "Usage: wld package-smoke <core-flows|publication|image-resize|remote-session-save|metrics-export>",
+        "Usage: wld package-smoke <core-flows|publication|codemode|image-resize|remote-session-save|metrics-export>",
     );
 }

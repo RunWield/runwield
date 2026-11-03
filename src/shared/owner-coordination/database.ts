@@ -22,25 +22,26 @@ import {
     OWNER_COORDINATION_SCHEMA_VERSION,
 } from "./schema.ts";
 
-/**
- * @typedef {Object} OwnerCoordinationDatabase
- * @property {DatabaseSync} handle
- * @property {string} path
- * @property {() => void} close
- * @property {<T>(callback: () => T) => T} transaction
- */
+import type { SQLOutputValue } from "node:sqlite";
 
-/**
- * @typedef {Object} OpenOwnerDatabaseOptions
- * @property {string} [dbPath]
- * @property {() => string} [now]
- */
+export interface OwnerCoordinationDatabase {
+    handle: DatabaseSync;
+    path: string;
+    close: () => void;
+    transaction<Result>(callback: () => Result): Result;
+}
 
-/**
- * @param {OpenOwnerDatabaseOptions} [options]
- * @returns {OwnerCoordinationDatabase}
- */
-export function openOwnerCoordinationDatabase(options = {}) {
+export interface OpenOwnerDatabaseOptions {
+    dbPath?: string;
+    now?: () => string;
+}
+
+// node:sqlite does not infer the named column returned by PRAGMA quick_check.
+interface OwnerDatabaseQuickCheckRow extends Record<string, SQLOutputValue> {
+    quick_check: string;
+}
+
+export function openOwnerCoordinationDatabase(options: OpenOwnerDatabaseOptions = {}): OwnerCoordinationDatabase {
     const dbPath = options.dbPath || getOwnerCoordinationDatabasePath();
     ensureOwnerDatabaseDirectory(dbPath);
     const db = new DatabaseSync(dbPath);
@@ -55,7 +56,7 @@ export function openOwnerCoordinationDatabase(options = {}) {
             handle: db,
             path: dbPath,
             close: () => db.close(),
-            transaction(callback) {
+            transaction<Result>(callback: () => Result): Result {
                 db.exec("BEGIN IMMEDIATE");
                 try {
                     const result = callback();
@@ -64,7 +65,9 @@ export function openOwnerCoordinationDatabase(options = {}) {
                 } catch (error) {
                     try {
                         db.exec("ROLLBACK");
-                    } catch { /* SQLite may already have rolled back after an I/O failure. */ }
+                    } catch {
+                        /* SQLite may already have rolled back after an I/O failure. */
+                    }
                     throw error;
                 }
             },
@@ -75,11 +78,7 @@ export function openOwnerCoordinationDatabase(options = {}) {
     }
 }
 
-/**
- * @param {DatabaseSync} db
- * @param {{ dbPath?: string, now?: () => string }} [options]
- */
-export function runOwnerCoordinationMigrations(db, options = {}) {
+export function runOwnerCoordinationMigrations(db: DatabaseSync, options: OpenOwnerDatabaseOptions = {}) {
     const latestVersion = getLatestSchemaVersionIfPresent(db);
     if (latestVersion > OWNER_COORDINATION_SCHEMA_VERSION) {
         throw new Error(
@@ -155,43 +154,27 @@ export function runOwnerCoordinationMigrations(db, options = {}) {
     }
 }
 
-/**
- * @param {DatabaseSync} db
- * @returns {number}
- */
-export function getLatestOwnerCoordinationSchemaVersion(db) {
+export function getLatestOwnerCoordinationSchemaVersion(db: DatabaseSync): number {
     return getLatestSchemaVersionIfPresent(db);
 }
 
-/**
- * @param {DatabaseSync} db
- * @returns {string | null}
- */
-export function getOwnerCoordinationDatabaseEpoch(db) {
+export function getOwnerCoordinationDatabaseEpoch(db: DatabaseSync): string | null {
     const table = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'owner_metadata'").get();
     if (!table) return null;
     const row = db.prepare("SELECT value FROM owner_metadata WHERE key = 'database_epoch'").get();
     return typeof row?.value === "string" ? row.value : null;
 }
 
-/**
- * @param {DatabaseSync} db
- * @returns {number}
- */
-function getLatestSchemaVersionIfPresent(db) {
-    const table = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'")
+function getLatestSchemaVersionIfPresent(db: DatabaseSync): number {
+    const table = db
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'")
         .get();
     if (!table) return 0;
     const row = db.prepare("SELECT MAX(version) AS version FROM schema_migrations").get();
     return Number(row?.version ?? 0);
 }
 
-/**
- * @param {DatabaseSync} db
- * @param {number} version
- * @param {() => string} [now]
- */
-function recordMigration(db, version, now) {
+function recordMigration(db: DatabaseSync, version: number, now?: OpenOwnerDatabaseOptions["now"]) {
     const row = db.prepare("SELECT version FROM schema_migrations WHERE version = ?").get(version);
     if (row) return;
     db.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)").run(
@@ -200,11 +183,7 @@ function recordMigration(db, version, now) {
     );
 }
 
-/**
- * @param {DatabaseSync} db
- * @param {() => string} [now]
- */
-function ensureDatabaseEpoch(db, now) {
+function ensureDatabaseEpoch(db: DatabaseSync, now?: OpenOwnerDatabaseOptions["now"]) {
     const existing = getOwnerCoordinationDatabaseEpoch(db);
     if (existing) return;
     db.prepare("INSERT INTO owner_metadata(key, value, updated_at) VALUES ('database_epoch', ?, ?)").run(
@@ -213,26 +192,26 @@ function ensureDatabaseEpoch(db, now) {
     );
 }
 
-/** @param {DatabaseSync} db */
-function assertSessionLocatorProjectConsistency(db) {
-    const table = db.prepare(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'session_transcript_locators'",
-    ).get();
+function assertSessionLocatorProjectConsistency(db: DatabaseSync) {
+    const table = db
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'session_transcript_locators'")
+        .get();
     if (!table) return;
-    const row = db.prepare(
-        `SELECT COUNT(*) AS mismatches
+    const row = db
+        .prepare(
+            `SELECT COUNT(*) AS mismatches
            FROM session_transcript_locators locators
            JOIN runwield_sessions sessions
              ON sessions.id = locators.runwield_session_id
           WHERE sessions.project_id <> locators.project_id`,
-    ).get();
+        )
+        .get();
     if (Number(row?.mismatches || 0) > 0) {
         throw new Error("Owner coordination migration found Session transcript locators with mismatched Project IDs");
     }
 }
 
-/** @param {string} path */
-function fileExists(path) {
+function fileExists(path: string) {
     try {
         return statSync(path).isFile();
     } catch {
@@ -240,12 +219,7 @@ function fileExists(path) {
     }
 }
 
-/**
- * @param {string} dbPath
- * @param {number} sourceVersion
- * @param {() => string} [now]
- */
-function backupPathFor(dbPath, sourceVersion, now) {
+function backupPathFor(dbPath: string, sourceVersion: number, now?: OpenOwnerDatabaseOptions["now"]) {
     const stamp = (now ? now() : new Date().toISOString()).replace(/[:.]/g, "-");
     const suffix = extname(dbPath);
     if (!suffix) return `${dbPath}.backup-v${sourceVersion}-${stamp}.sqlite3`;
@@ -253,13 +227,12 @@ function backupPathFor(dbPath, sourceVersion, now) {
     return `${base}.backup-v${sourceVersion}-${stamp}${suffix}`;
 }
 
-/**
- * @param {DatabaseSync} db
- * @param {string} dbPath
- * @param {number} sourceVersion
- * @param {() => string} [now]
- */
-function backupOwnerDatabase(db, dbPath, sourceVersion, now) {
+function backupOwnerDatabase(
+    db: DatabaseSync,
+    dbPath: string,
+    sourceVersion: number,
+    now?: OpenOwnerDatabaseOptions["now"],
+) {
     if (!dbPath || dbPath === ":memory:" || !fileExists(dbPath)) return;
     // Use SQLite's opened location. Deno resolves macOS /var and /tmp aliases
     // when opening a database, but VACUUM INTO does not pass through that resolver.
@@ -279,7 +252,7 @@ function backupOwnerDatabase(db, dbPath, sourceVersion, now) {
     const backup = new DatabaseSync(backupPath);
     try {
         backup.exec("PRAGMA journal_mode = DELETE");
-        const quickCheck = /** @type {{ quick_check: string }} */ (backup.prepare("PRAGMA quick_check").get());
+        const quickCheck = backup.prepare("PRAGMA quick_check").get() as OwnerDatabaseQuickCheckRow;
         if (quickCheck.quick_check !== "ok") {
             throw new Error(`Owner coordination backup failed quick_check: ${backupPath}`);
         }

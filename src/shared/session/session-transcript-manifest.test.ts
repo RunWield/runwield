@@ -14,7 +14,7 @@ import type { PersistedActiveAgentState } from "./active-agent-session.ts";
 import { tmpdir } from "node:os";
 import { ok as assert } from "node:assert/strict";
 import { join } from "node:path";
-import { openOwnerCoordinationDatabase } from "../owner-coordination/database.js";
+import { openOwnerCoordinationDatabase } from "../owner-coordination/database.ts";
 import { registerProject } from "../owner-coordination/projects.js";
 import {
     appendSessionTranscriptSegment,

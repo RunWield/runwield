@@ -6,7 +6,7 @@ status: accepted
 
 ## Context and Constraints
 
-The owner chose Pi's official MCP integration after the Pi 1.0 upgrade, with codemode handled separately. RunWield
+The owner chose Pi's official MCP integration and Pi-backed codemode through the coordinated Pi 1.5.0 upgrade. RunWield
 already owns trusted `.wld/mcp.json` loading, additive ACP request configuration, and Session access rules. Root Agents
 can change or use external CLI backends while the Session's MCP connections remain available. Delegated and isolated
 Agents do not inherit those connections.
@@ -57,8 +57,20 @@ allowlists and receive no MCP binding. A root tool-call guard restricts other la
 selected names; MCP access comes from Pi's current registered definitions. External CLI tool lists refresh between
 turns.
 
-This migration keeps stdio configuration and direct exposure. Codemode, HTTP/OAuth configuration, and Pi's interactive
-configuration/sign-in manager remain separate scope. RunWield exposes the official status and reconnect command actions
+MCP keeps stdio configuration and direct exposure. Codemode belongs to each executing Pi AgentSession, never the
+connection host, so discovery, authorization, stores, and nested events use the executing Agent's transcript and policy.
+Workflow decision tools use Pi's public `model-only` exposure. Auxiliary model requests use the configured runtime;
+RunWield records individual model-attributed usage entries and removes only the duplicate script aggregate.
+
+The owner approved a narrow build-time exception to the original public-API-only packaging boundary. Pi 1.5.0 exposes
+its worker publicly but no extension option for embedded worker/WASM paths. Source execution succeeded while compiled
+probes failed resolving `quickjs-wasi/quickjs.wasm`, including with passive assets and explicit WASM imports. The build
+adapter checks exact Pi 1.5.0 and the expected source contract, initializes Pi's existing embedded-WASM setter, and
+compiles the upstream worker at Pi's expected entrypoint. It changes no installed dependency or sandbox implementation.
+A future Pi upgrade must requalify this adapter and standalone execution. Copying the interpreter or silently relying
+on a development checkout was rejected.
+
+HTTP/OAuth configuration and Pi's interactive configuration/sign-in manager remain separate scope. RunWield exposes the official status and reconnect command actions
 without a model turn. Automatic diagnostics stay redacted; explicit inspection can show server error text.
 
 Product requirements belong in

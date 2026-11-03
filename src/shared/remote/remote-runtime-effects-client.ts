@@ -1,6 +1,6 @@
 /** Separate process. Exercise workflow boundaries with a real remote managed operation. */
 import type { ExtensionToolContext, SessionManager } from "@earendil-works/pi-coding-agent";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { createBackgroundTaskTool } from "../../tools/background-task.ts";
 import { readFile, writeFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";

@@ -13,7 +13,7 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { defineTool, SessionManager } from "@earendil-works/pi-coding-agent";
 import { AGENTS } from "../../constants.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
@@ -30,7 +30,7 @@ import {
 } from "./session.js";
 import { ClaudeCliBackendError } from "./backends/claude-cli/failure.ts";
 import { CLAUDE_CLI_MCP_PROVENANCE } from "./backends/claude-cli/mcp-bridge.ts";
-import { readLatestTaskCompletedOutcome } from "../workflow/workflow-results.js";
+import { readLatestTaskCompletedOutcome } from "../workflow/workflow-results.ts";
 import { readLatestTriageOutcome } from "../workflow/orchestrator.ts";
 import { startMcpIntegration } from "../mcp/integration.ts";
 import { runValidationAgentUntilEvent } from "./agent-workflow-step.ts";

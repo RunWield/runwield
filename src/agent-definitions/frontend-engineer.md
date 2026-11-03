@@ -14,6 +14,7 @@ sharedPractice:
     - engineering-practice
     - plan-execution
 tools:
+    - codemode
     - read
     - grep
     - find

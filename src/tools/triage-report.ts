@@ -3,7 +3,7 @@
  * Custom tool for emitting a structured Triage Report.
  */
 
-import { StringEnum, Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "../shared/session/hosted-session.js";
@@ -15,18 +15,18 @@ import { normalizeTriageOutcome, TRIAGE_COMPLEXITIES, type TriageOutcome } from 
 
 const PARAMETERS = Type.Object({
     routingIntent: Type.Optional(
-        StringEnum(ROUTING_INTENTS, {
+        Type.Enum(ROUTING_INTENTS, {
             description:
                 "Canonical Routing Intent. INQUIRY: direct informational answer. IDEATION: explicit brainstorming/research/interview/PRD work. OPERATION: direct non-code repository/environment operation. QUICK_FIX: bounded no-plan code implementation. PLANNED_CHANGE: reviewed executable planned work. FEATURE is accepted only as a legacy planned-change workflow label. PROJECT: architecture/Epic plan. Router calls should provide this field; legacy direct calls may provide classification instead.",
         }),
     ),
     classification: Type.Optional(
-        StringEnum(ROUTING_INTENTS, {
+        Type.Enum(ROUTING_INTENTS, {
             description:
                 "Legacy compatibility field. Use routingIntent for new calls. FEATURE here is accepted and normalized to PLANNED_CHANGE.",
         }),
     ),
-    complexity: StringEnum([...TRIAGE_COMPLEXITIES], {
+    complexity: Type.Enum([...TRIAGE_COMPLEXITIES], {
         description: "How complex is this request?",
     }),
     summary: Type.String({
@@ -39,7 +39,7 @@ const PARAMETERS = Type.Object({
         }),
     ),
     workKind: Type.Optional(
-        StringEnum(WORK_KINDS, {
+        Type.Enum(WORK_KINDS, {
             description:
                 "Optional Work Kind for PLANNED_CHANGE. BUG_FIX for planned bug fixes, FEATURE for new/enhanced functionality, REFACTOR for structural changes, MAINTENANCE for upkeep, DOCUMENTATION for documentation creation or substantial documentation updates.",
         }),
@@ -55,6 +55,7 @@ interface TriageReportToolOptions {
 export function createTriageReportTool({ hostedSession }: TriageReportToolOptions = {}) {
     return defineTool<typeof PARAMETERS, TriageOutcome>({
         name: "triage_report",
+        exposure: "model-only",
         label: "Routing Intent Report",
         description:
             "Submit your Routing Intent for the user's request. " +

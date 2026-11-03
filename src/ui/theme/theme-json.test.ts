@@ -118,3 +118,13 @@ test("createThemeFromJson constructs the real Pi Theme from resolved colors", as
     assertEquals(theme.fg("accent", "RunWield").includes("RunWield"), true);
     assertEquals(theme.bg("selectedBg", "RunWield").includes("RunWield"), true);
 });
+
+test("Pi 1.5 themes retain RunWield footer colors through public rendering methods", async () => {
+    const base: ThemeJson = JSON.parse(await fsReadFile(new URL("./catppuccin-mocha.json", import.meta.url), "utf8"));
+    const theme = createThemeFromJson(mergeThemeJson(base, { colors: { routingFeature: "#123456" } }), {
+        colorMode: "truecolor",
+    });
+    const token = "routingFeature" as Parameters<typeof theme.fg>[0];
+    assertEquals(theme.fg(token, "Plan"), "\x1b[38;2;18;52;86mPlan\x1b[39m");
+    assertEquals(theme.getFgAnsi(token), "\x1b[38;2;18;52;86m");
+});
