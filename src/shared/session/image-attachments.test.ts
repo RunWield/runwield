@@ -28,17 +28,44 @@ import {
 } from "./image-attachments.ts";
 import { __resetSettingsForTests } from "../settings.js";
 
+import type { SessionManager } from "@earendil-works/pi-coding-agent";
+import type { ImageContent } from "@earendil-works/pi-ai";
+import type { RunWieldModel, RunWieldModelRegistry } from "../models/model-registry.ts";
+import type { FetchRequest } from "../fetch-request.ts";
+
+type VisionFixtureModel = Pick<RunWieldModel, "provider" | "id" | "input">;
+
+interface VisionProviderFixture {
+    models: Omit<VisionFixtureModel, "provider">[];
+}
+
+interface VisionRegistryFixture {
+    models: VisionFixtureModel[];
+    find(provider: string, id: string): VisionFixtureModel | undefined;
+    hasConfiguredAuth: () => boolean;
+    registerProvider(provider: string, config: VisionProviderFixture): void;
+}
+
+interface VisionFallbackSettings {
+    model: string;
+}
+
+interface VisionSettings {
+    visionFallback: VisionFallbackSettings;
+}
+
+type VisionSettingsCallback = (tempHome: string, tempProject: string) => Promise<void>;
+
 const NO_MODEL_DISCOVERY_NETWORK = {
     fetch: () => Promise.reject(new Error("Unexpected model discovery network call")),
 };
 
-function makeSessionManager(id = "session-1") {
-    return { getSessionId: () => id };
+function makeSessionManager(id = "session-1"): SessionManager {
+    return { getSessionId: () => id } as SessionManager;
 }
 
-/** @param {string} path */
-async function removeTempDir(path) {
-    let lastError;
+async function removeTempDir(path: string) {
+    let lastError: unknown;
     for (let attempt = 0; attempt < 5; attempt += 1) {
         try {
             await fsRm(path, { recursive: true });
@@ -68,15 +95,15 @@ test("persistImageAttachment stores session-scoped file and resolves attachment 
             const sessionManager = makeSessionManager("abc");
             const stored = await persistImageAttachment(
                 { base64: btoa("hello"), mimeType: "image/png" },
-                /** @type {any} */ (sessionManager),
+                sessionManager,
                 cwd,
             );
             assertEquals(stored.ref?.startsWith("attachment:"), true);
             assertEquals(await fsReadFile(stored.path || "", "utf8"), "hello");
-            assertEquals(stored.path?.startsWith(getSessionImageDir(/** @type {any} */ (sessionManager), cwd)), true);
+            assertEquals(stored.path?.startsWith(getSessionImageDir(sessionManager, cwd)), true);
 
             const resolved = await resolveImageRef(stored.ref || "", {
-                sessionManager: /** @type {any} */ (sessionManager),
+                sessionManager: sessionManager,
                 cwd,
             });
             assertEquals(resolved.mimeType, "image/png");
@@ -144,7 +171,7 @@ test("direct image preparation retains portable references but leaves local text
         assertEquals(portable, { ...image, ref: local.ref });
         const activeModel = { input: ["text", "image"] };
         const text = "Describe the amber pixel.";
-        const modelImage = { type: /** @type {const} */ ("image"), data: image.base64, mimeType: image.mimeType };
+        const modelImage: ImageContent = { type: "image", data: image.base64, mimeType: image.mimeType };
         assertEquals(prepareImagesForModel({ text, images: [local], activeModel }), {
             ok: true,
             text,
@@ -183,11 +210,7 @@ test("preflightImageAttachments blocks text-only model without fallback", () => 
     );
 });
 
-/**
- * @param {Record<string, unknown>} settings
- * @param {(tempHome: string, tempProject: string) => Promise<void>} fn
- */
-async function withVisionSettings(settings, fn) {
+async function withVisionSettings(settings: VisionSettings, fn: VisionSettingsCallback) {
     const originalHome = getHomeDir();
     const originalCwd = getCwd();
     const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-vision-settings-home-"));
@@ -215,12 +238,10 @@ test("resolveVisionFallbackModel reports unknown, unauthenticated, and non-visio
             await assertRejects(
                 () =>
                     resolveVisionFallbackModel(
-                        /** @type {import("../models/model-registry.ts").RunWieldModelRegistry} */ (
-                            /** @type {unknown} */ ({
-                                find: () => undefined,
-                                hasConfiguredAuth: () => true,
-                            })
-                        ),
+                        {
+                            find: () => undefined,
+                            hasConfiguredAuth: () => true,
+                        } as unknown as RunWieldModelRegistry,
                         NO_MODEL_DISCOVERY_NETWORK,
                         getCwd(),
                     ),
@@ -230,16 +251,14 @@ test("resolveVisionFallbackModel reports unknown, unauthenticated, and non-visio
         });
 
         await withVisionSettings({ visionFallback: { model: "test/vision" } }, async () => {
-            const model = { provider: "test", id: "vision", input: ["text", "image"] };
+            const model: VisionFixtureModel = { provider: "test", id: "vision", input: ["text", "image"] };
             await assertRejects(
                 () =>
                     resolveVisionFallbackModel(
-                        /** @type {import("../models/model-registry.ts").RunWieldModelRegistry} */ (
-                            /** @type {unknown} */ ({
-                                find: () => model,
-                                hasConfiguredAuth: () => false,
-                            })
-                        ),
+                        {
+                            find: () => model,
+                            hasConfiguredAuth: () => false,
+                        } as unknown as RunWieldModelRegistry,
                         NO_MODEL_DISCOVERY_NETWORK,
                         getCwd(),
                     ),
@@ -249,16 +268,14 @@ test("resolveVisionFallbackModel reports unknown, unauthenticated, and non-visio
         });
 
         await withVisionSettings({ visionFallback: { model: "test/text" } }, async () => {
-            const model = { provider: "test", id: "text", input: ["text"] };
+            const model: VisionFixtureModel = { provider: "test", id: "text", input: ["text"] };
             await assertRejects(
                 () =>
                     resolveVisionFallbackModel(
-                        /** @type {import("../models/model-registry.ts").RunWieldModelRegistry} */ (
-                            /** @type {unknown} */ ({
-                                find: () => model,
-                                hasConfiguredAuth: () => true,
-                            })
-                        ),
+                        {
+                            find: () => model,
+                            hasConfiguredAuth: () => true,
+                        } as unknown as RunWieldModelRegistry,
                         NO_MODEL_DISCOVERY_NETWORK,
                         getCwd(),
                     ),
@@ -285,31 +302,30 @@ test("resolveVisionFallbackModel discovers configured provider models", async ()
                     },
                 }),
             );
-            const registry = {
-                /** @type {any[]} */
+            const registry: VisionRegistryFixture = {
                 models: [],
-                /** @param {string} provider @param {string} id */
+
                 find(provider, id) {
                     return this.models.find((model) => model.provider === provider && model.id === id);
                 },
                 hasConfiguredAuth: () => true,
-                /** @param {string} provider @param {{ models: any[] }} config */
+
                 registerProvider(provider, config) {
                     for (const model of config.models) this.models.push({ provider, ...model });
                 },
             };
             const network = {
-                fetch: /** @type {import("../fetch-request.ts").FetchRequest} */ (
-                    () =>
-                        Promise.resolve(
-                            /** @type {Response} */ ({
-                                ok: true,
-                                json: () => Promise.resolve({ data: [{ id: "discovered" }] }),
-                            }),
-                        )
-                ),
+                fetch: (() =>
+                    Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({ data: [{ id: "discovered" }] }),
+                    } as Response)) as FetchRequest,
             };
-            const resolved = await resolveVisionFallbackModel(/** @type {any} */ (registry), network, tempProject);
+            const resolved = await resolveVisionFallbackModel(
+                registry as unknown as RunWieldModelRegistry,
+                network,
+                tempProject,
+            );
             assertEquals(resolved?.modelRef, "local/discovered");
             assertEquals(resolved?.model.input, ["text", "image"]);
             assertEquals(getCwd().endsWith(tempProject.replace(/^\/private/, "")), true);
