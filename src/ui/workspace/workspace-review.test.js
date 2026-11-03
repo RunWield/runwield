@@ -37,7 +37,7 @@ import {
     registerReviewDecisionPromise,
     resolveReviewDecision,
     unregisterReviewDecision,
-} from "./routes/api/review-handlers.js";
+} from "./routes/api/review-handlers.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { makeToolProjectFixture, withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 

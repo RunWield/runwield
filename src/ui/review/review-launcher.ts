@@ -11,7 +11,7 @@ import { parsePlanFrontMatter, resolvePlanExecutionPolicy } from "../../plan-sto
 import type { PlanExecutionPolicy, PlanFrontMatter } from "../../plan-store.js";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 import type { GuidedReviewPolicy } from "../../shared/workflow/guided-review.js";
-import type { ReviewDecisionSink } from "../workspace/routes/api/review-handlers.js";
+import type { ReviewDecisionSink } from "../workspace/routes/api/review-handlers.ts";
 
 export type ReviewDecisionValue =
     string | number | boolean | null | undefined | ReviewDecisionValue[] | { [key: string]: ReviewDecisionValue };

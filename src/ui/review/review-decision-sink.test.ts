@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { startPlanReviewSurface } from "./review-launcher.ts";
-import { type ReviewDecision } from "../workspace/routes/api/review-handlers.js";
+import { type ReviewDecision } from "../workspace/routes/api/review-handlers.ts";
 import { withProject } from "../../shared/attached/attached-test-fixture.ts";
 
 test("the review browser acknowledgment and Core waiter both wait for decision acceptance", async () => {
