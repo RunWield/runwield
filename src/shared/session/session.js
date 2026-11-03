@@ -4313,7 +4313,7 @@ export function getRootSessionSwitchState(hostedSession) {
 
 /**
  * @param {import('./hosted-session.js').HostedSession} hostedSession
- * @returns {Partial<import('./agent-switching.js').AgentSwitchOptions>}
+ * @returns {Partial<import('./agent-switching.ts').AgentSwitchOptions>}
  */
 export function getRootSessionRebuildOptions(hostedSession) {
     const session = /** @type {any} */ (hostedSession?.getRootAgentSession?.());

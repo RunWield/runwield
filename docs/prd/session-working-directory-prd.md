@@ -188,7 +188,7 @@ under the repository's PRD policy. No implementing Plan exists yet.
   context; approved same-Project scope and the four protected phases, including Plan and code review.
 - [Current Git prompt context](../../src/shared/git.ts): `readGitPromptState` and `formatGitPromptState` report branch and
   clean/dirty state, not Plan/Epic ownership.
-- [Existing Agent switching](../../src/shared/session/agent-switching.js): `switchActiveAgent` can rebuild for another
+- [Existing Agent switching](../../src/shared/session/agent-switching.ts): `switchActiveAgent` can rebuild for another
   cwd and rebind the Session. This is internal support, not proof of a complete Agent-facing movement capability.
 - [Epic child discovery](../../src/shared/workflow/planning-worktree.ts): `readTargetBranchPlansByParent` can read the
   committed target branch instead of uncommitted files in a separate Epic worktree. The reported incident was not

@@ -31,7 +31,7 @@ import { settleWorkflowToolEvent } from "./workflow-tool-events.ts";
 import { createManualQaCompletedTool } from "../../tools/manual-qa-completed.ts";
 import { logValidationFailure } from "./validation-state-errors.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { runActiveAgentTurn, switchActiveAgent } from "../session/agent-switching.js";
+import { runActiveAgentTurn, switchActiveAgent } from "../session/agent-switching.ts";
 import {
     requestHostedSessionInteraction,
     RuntimeInteractionOutcomes,

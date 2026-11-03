@@ -4,7 +4,7 @@ workKind: "BUG_FIX"
 complexity: "HIGH"
 affectedPaths:
     - "src/shared/workflow/planning-worktree.ts"
-    - "src/shared/session/agent-switching.js"
+    - "src/shared/session/agent-switching.ts"
     - "src/shared/session/session-runtime.js"
     - "src/shared/worktree-registry.js"
     - "src/tools/plan-written.ts"
@@ -178,7 +178,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 
 - `src/shared/workflow/planning-worktree.ts`, `src/shared/worktree.js`, `src/shared/worktree-registry.js` — unnamed
   Session ownership, binding, retained container/child worktrees, and safe target refresh.
-- `src/shared/session/agent-switching.js`, `session.js`, `session-runtime.js`, `hosted-session.js`, Session persistence
+- `src/shared/session/agent-switching.ts`, `session.js`, `session-runtime.js`, `hosted-session.js`, Session persistence
   helpers — restore working-directory evidence before constructing tools while preserving transcript continuity.
 - `src/tools/plan-written.ts`, `src/shared/workflow/sequence-review.ts` — real identity binding before review and saved
   container/child document references; all tools use the selected cwd.

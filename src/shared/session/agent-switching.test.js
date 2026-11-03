@@ -7,7 +7,7 @@ import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { fauxAssistantMessage, fauxText, getCurrentTools, getSystemMessageText } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { runActiveAgentTurn, switchActiveAgent } from "./agent-switching.js";
+import { runActiveAgentTurn, switchActiveAgent } from "./agent-switching.ts";
 import { __getRootSessionMetadataForTests } from "./session.js";
 import { HostedSession } from "./hosted-session.js";
 import { RuntimeEventTypes } from "./session-runtime-events.js";

@@ -16,41 +16,84 @@ import {
     shouldReuseExistingRootSession,
 } from "./session.js";
 import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "./session-runtime-events.js";
-/** @type {WeakMap<import('./hosted-session.js').HostedSession, { agentName: string, model?: string, cwd?: string }>} */
-const switchMetadata = new WeakMap();
 
-/** @type {WeakMap<Function, { agentName: string }>} */
-const handlerMetadata = new WeakMap();
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { SessionManager, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { HostedSession, ThinkingLevel } from "./hosted-session.js";
+import type { ImageAttachment } from "./types.js";
+import type { TriageMeta } from "../../tools/plan-written.ts";
+import type { McpIntegration } from "../mcp/integration.ts";
+import type { McpServerDefinition } from "../mcp/config.ts";
+import type { ManagedOperationCapability } from "./managed-operation.ts";
+import type { RequestDispatchKind } from "./request-dispatch.ts";
 
-/**
- * @typedef {Object} AgentSwitchOptions
- * @property {string} agentName
- * @property {string} [model]
- * @property {import('./hosted-session.js').ThinkingLevel} [thinkingLevelOverride]
- * @property {string} [cwd]
- * @property {Array<{base64: string, mimeType: string}>} [images]
- * @property {boolean} [forceRebuild]
- * @property {boolean} [reloadMcpTools]
- * @property {import('@earendil-works/pi-coding-agent').SessionManager} [sessionManager]
- * @property {import('../../tools/plan-written.ts').TriageMeta} [triageMeta]
- * @property {{ id: import('./subagent-definitions.ts').SubAgentDefinitionId, options?: import('./subagent-definitions.ts').LoadSubAgentDefinitionOptions }} [subAgentDefinition]
- * @property {import('@earendil-works/pi-coding-agent').ToolDefinition[]} [customTools]
- * @property {import('@earendil-works/pi-coding-agent').ToolDefinition[]} [mcpRootTools]
- * @property {import('../mcp/integration.ts').McpIntegration} [mcpIntegration]
- * @property {string[]} [toolNames]
- * @property {string} [projectStateContext]
- * @property {boolean} [includeEditFallback]
- * @property {string} [debugLogPath]
- * @property {boolean} [releaseActiveWorkflow]
- * @property {import('./managed-operation.ts').ManagedOperationCapability} [managedOperationCapability]
- * @property {import('../mcp/config.ts').McpServerDefinition[]} [mcpServers]
- */
+export interface AgentSwitchOptions {
+    agentName: string;
+    model?: string;
+    thinkingLevelOverride?: ThinkingLevel;
+    cwd?: string;
+    images?: ImageAttachment[];
+    forceRebuild?: boolean;
+    reloadMcpTools?: boolean;
+    sessionManager?: SessionManager;
+    triageMeta?: TriageMeta;
+    subAgentDefinition?: Parameters<typeof ensureRootAgentSession>[0]["subAgentDefinition"];
+    customTools?: ToolDefinition[];
+    mcpRootTools?: ToolDefinition[];
+    mcpIntegration?: McpIntegration;
+    toolNames?: string[];
+    projectStateContext?: string;
+    includeEditFallback?: boolean;
+    debugLogPath?: string;
+    releaseActiveWorkflow?: boolean;
+    managedOperationCapability?: ManagedOperationCapability;
+    mcpServers?: McpServerDefinition[];
+}
 
-/**
- * @param {import('./hosted-session.js').HostedSession} hostedSession
- * @param {string} agentName
- */
-function releaseActiveWorkflowAfterUserSwitch(hostedSession, agentName) {
+export interface AgentSwitchResult {
+    ok: true;
+    agentName: string;
+    model?: string;
+    changed: boolean;
+}
+
+export interface ActiveAgentTurnOptions extends Omit<
+    AgentSwitchOptions,
+    | "thinkingLevelOverride"
+    | "reloadMcpTools"
+    | "mcpRootTools"
+    | "mcpIntegration"
+    | "releaseActiveWorkflow"
+    | "managedOperationCapability"
+    | "mcpServers"
+> {
+    hostedSession: HostedSession;
+    userRequest: string;
+    dispatchKind?: RequestDispatchKind;
+    /** True when continuing the preceding failed or interrupted request. */
+    resumePreviousRequest?: boolean;
+    /** Stable identity for the controller-owned task being continued. */
+    taskId?: string;
+    signal?: AbortSignal;
+}
+
+interface AgentSwitchMetadata {
+    agentName: string;
+    model?: string;
+    cwd?: string;
+}
+
+interface AgentHandlerMetadata {
+    agentName: string;
+}
+
+type ActiveAgentHandler = NonNullable<ReturnType<HostedSession["getActiveOnMessage"]>>;
+
+const switchMetadata = new WeakMap<HostedSession, AgentSwitchMetadata>();
+
+const handlerMetadata = new WeakMap<ActiveAgentHandler, AgentHandlerMetadata>();
+
+function releaseActiveWorkflowAfterUserSwitch(hostedSession: HostedSession, agentName: string) {
     const workflow = hostedSession.getActiveExecutionWorkflow?.() || null;
     if (!workflow) return;
     const planName = typeof workflow.planName === "string" && workflow.planName ? workflow.planName : "quick-fix";
@@ -70,9 +113,8 @@ function releaseActiveWorkflowAfterUserSwitch(hostedSession, agentName) {
 /**
  * Release the selected Agent for RunWield-owned work without disposing its context.
  *
- * @param {import('./hosted-session.js').HostedSession} hostedSession
  */
-export function releaseActiveAgent(hostedSession) {
+export function releaseActiveAgent(hostedSession: HostedSession) {
     hostedSession.assertActive();
     hostedSession.setRootAgentName(null);
     while (hostedSession.getActiveAgentInfo()) hostedSession.popAgentInfo();
@@ -88,11 +130,11 @@ export function releaseActiveAgent(hostedSession) {
  * The target root Agent Session is built before the active handler is replaced,
  * so construction failures leave the previous root/handler pair intact.
  *
- * @param {import('./hosted-session.js').HostedSession} hostedSession
- * @param {AgentSwitchOptions} options
- * @returns {Promise<{ ok: true, agentName: string, model?: string, changed: boolean }>}
  */
-export async function switchActiveAgent(hostedSession, options) {
+export async function switchActiveAgent(
+    hostedSession: HostedSession,
+    options: AgentSwitchOptions,
+): Promise<AgentSwitchResult> {
     if (!hostedSession) throw new Error("switchActiveAgent requires a HostedSession");
     hostedSession.assertActive();
     const managedOperationCapability =
@@ -285,36 +327,11 @@ export async function switchActiveAgent(hostedSession, options) {
 }
 
 /**
- * @typedef {Object} ActiveAgentTurnOptions
- * @property {import('./hosted-session.js').HostedSession} hostedSession
- * @property {string} agentName
- * @property {string} userRequest
- * @property {Array<{base64: string, mimeType: string}>} [images]
- * @property {import('@earendil-works/pi-coding-agent').SessionManager} [sessionManager]
- * @property {import('../../tools/plan-written.ts').TriageMeta} [triageMeta]
- * @property {string} [model]
- * @property {string} [cwd]
- * @property {boolean} [forceRebuild]
- * @property {{ id: import('./subagent-definitions.ts').SubAgentDefinitionId, options?: import('./subagent-definitions.ts').LoadSubAgentDefinitionOptions }} [subAgentDefinition]
- * @property {import('@earendil-works/pi-coding-agent').ToolDefinition[]} [customTools]
- * @property {string[]} [toolNames]
- * @property {string} [projectStateContext]
- * @property {boolean} [includeEditFallback]
- * @property {string} [debugLogPath]
- * @property {import('./request-dispatch.ts').RequestDispatchKind} [dispatchKind]
- * @property {boolean} [resumePreviousRequest] True when continuing the preceding failed or interrupted request.
- * @property {string} [taskId] Stable identity for the controller-owned task being continued.
- * @property {AbortSignal} [signal]
- */
-
-/**
  * Activate an Agent and run its root turn without exposing a state where the
  * root session and interactive handler belong to different Agents.
  *
- * @param {ActiveAgentTurnOptions} options
- * @returns {Promise<import('@earendil-works/pi-agent-core').AgentMessage[]>}
  */
-export async function runActiveAgentTurn(options) {
+export async function runActiveAgentTurn(options: ActiveAgentTurnOptions): Promise<AgentMessage[]> {
     const {
         hostedSession,
         agentName,

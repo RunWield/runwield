@@ -30,7 +30,7 @@ import { ensurePlansDir, loadPlan } from "../../plan-store.js";
 import { probeGitRepository } from "../git.ts";
 import { hasNonGitExecutionConsent, rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
 import { resolvePlanExecutionRuntimeAgent } from "./execution-agent.ts";
-import { switchActiveAgent } from "../session/agent-switching.js";
+import { switchActiveAgent } from "../session/agent-switching.ts";
 import { runRootTurn } from "../session/session.js";
 import { getAgentDisplayName } from "../session/agents.js";
 import { sanitizeSessionName } from "../session-name.ts";
