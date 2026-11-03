@@ -11,7 +11,7 @@ import {
     parseGuidedReviewMetadataLine,
     parseGuidedReviewUsageEventLine,
 } from "../../../../cmd/guided-review/protocol.ts";
-import { buildGuidedReviewPrompt, validateGuidedReviewExplainer } from "../../../../shared/workflow/guided-review.js";
+import { buildGuidedReviewPrompt, validateGuidedReviewExplainer } from "../../../../shared/workflow/guided-review.ts";
 import { RuntimeUsageTotals } from "../../../../shared/session/runtime-usage-totals.ts";
 import { ExecutionMetricsRecorder } from "../../../../shared/workflow/execution-metrics.ts";
 import { buildAiReviewPrompt, validateAiReviewResult } from "../../../../shared/standalone-review/ai-review.ts";
