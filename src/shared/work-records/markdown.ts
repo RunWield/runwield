@@ -16,28 +16,81 @@ import {
     WORK_RECORD_OPTIONAL_SECTION_TITLES,
 } from "./schema.ts";
 
+import type { TicketReference } from "../ticket-references.ts";
+import type {
+    WorkRecordEvidence,
+    WorkRecordFrontMatter,
+    WorkRecordProvenance,
+    WorkRecordResource,
+    WorkRecordSections,
+    WorkRecordSupersessionCandidate,
+    WorkRecordSupersessionProposal,
+} from "./schema.ts";
+
+/** Raw YAML values retain the existing normalization and validation boundaries. */
+export interface RawWorkRecordFrontMatter {
+    [key: string]: unknown;
+    kind?: unknown;
+    recordId?: unknown;
+    status?: unknown;
+    scope?: unknown;
+    workKind?: unknown;
+    origin?: unknown;
+    completionMode?: unknown;
+    createdAt?: unknown;
+    tickets?: unknown;
+    archivedAt?: unknown;
+    supersedes?: unknown;
+    supersededBy?: unknown;
+    supersessionProposal?: unknown;
+    provenance?: unknown;
+}
+
+export type WorkRecordFrontMatterInput = WorkRecordFrontMatter | RawWorkRecordFrontMatter;
+export type ParseWorkRecordOptions = Partial<Pick<WorkRecordResource, "path" | "relativePath">>;
+
+interface RawWorkRecordEvidence {
+    path?: unknown;
+    note?: unknown;
+}
+
+interface RawWorkRecordProvenance {
+    sourcePlans?: unknown;
+    evidence?: unknown;
+}
+
+interface RawSupersessionProposal {
+    candidates?: unknown;
+}
+
+interface RawSupersessionCandidate {
+    recordId?: unknown;
+    reason?: unknown;
+}
+
+interface RawYamlRecord {
+    [key: string]: unknown;
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-/** @param {unknown} value */
-function asTrimmedString(value) {
+function asTrimmedString(value: unknown): string {
     if (typeof value === "string") return value.trim();
     if (value instanceof Date) return value.toISOString();
     return "";
 }
 
-/** @param {unknown} value */
-function stringList(value) {
+function stringList(value: unknown): string[] | undefined {
     if (!Array.isArray(value)) return undefined;
     const list = value.map(asTrimmedString).filter(Boolean);
     return list.length ? list : undefined;
 }
 
-/** @param {unknown} value */
-function evidenceList(value) {
+function evidenceList(value: unknown): WorkRecordEvidence[] | undefined {
     if (!Array.isArray(value) || !value.length) return undefined;
     return value.map((item) => {
         if (!item || typeof item !== "object") return { path: "", note: "" };
-        const record = /** @type {Record<string, unknown>} */ (item);
+        const record = item as RawWorkRecordEvidence;
         return {
             path: asTrimmedString(record.path),
             note: asTrimmedString(record.note),
@@ -45,10 +98,9 @@ function evidenceList(value) {
     });
 }
 
-/** @param {unknown} value */
-export function normalizeWorkRecordProvenance(value) {
+export function normalizeWorkRecordProvenance(value: unknown): WorkRecordProvenance | undefined {
     if (!value || typeof value !== "object") return undefined;
-    const record = /** @type {Record<string, unknown>} */ (value);
+    const record = value as RawWorkRecordProvenance;
     const sourcePlans = stringList(record.sourcePlans);
     const evidence = evidenceList(record.evidence);
     if (!sourcePlans && !evidence) return undefined;
@@ -58,16 +110,15 @@ export function normalizeWorkRecordProvenance(value) {
     };
 }
 
-/**
- * @param {unknown} value
- * @param {Set<string>} supersedes
- */
-function normalizeSupersessionProposal(value, supersedes) {
+function normalizeSupersessionProposal(
+    value: unknown,
+    supersedes: Set<string>,
+): WorkRecordSupersessionProposal | undefined {
     if (value === undefined || value === null) return undefined;
     if (!value || typeof value !== "object" || Array.isArray(value)) {
         throw new Error("Invalid Work Record: supersessionProposal must be an object.");
     }
-    const proposal = /** @type {Record<string, unknown>} */ (value);
+    const proposal = value as RawSupersessionProposal;
     const proposalKeys = Object.keys(proposal);
     if (proposalKeys.some((key) => key !== "candidates")) {
         throw new Error("Invalid Work Record: supersessionProposal contains unknown keys.");
@@ -75,13 +126,13 @@ function normalizeSupersessionProposal(value, supersedes) {
     if (!Array.isArray(proposal.candidates)) {
         throw new Error("Invalid Work Record: supersessionProposal.candidates must be an array.");
     }
-    const seen = new Set();
-    const candidates = [];
+    const seen = new Set<string>();
+    const candidates: WorkRecordSupersessionCandidate[] = [];
     for (const item of proposal.candidates) {
         if (!item || typeof item !== "object" || Array.isArray(item)) {
             throw new Error("Invalid Work Record: each supersessionProposal candidate must be an object.");
         }
-        const candidate = /** @type {Record<string, unknown>} */ (item);
+        const candidate = item as RawSupersessionCandidate;
         if (Object.keys(candidate).some((key) => key !== "recordId" && key !== "reason")) {
             throw new Error("Invalid Work Record: supersessionProposal candidate contains unknown keys.");
         }
@@ -106,8 +157,7 @@ function normalizeSupersessionProposal(value, supersedes) {
     return candidates.length ? { candidates } : undefined;
 }
 
-/** @param {import("./schema.ts").WorkRecordFrontMatter | Record<string, unknown>} attrs */
-export function normalizeWorkRecordFrontMatter(attrs) {
+export function normalizeWorkRecordFrontMatter(attrs: WorkRecordFrontMatterInput): WorkRecordFrontMatter {
     const provenance = normalizeWorkRecordProvenance(attrs.provenance);
     const normalizedSupersedes = Array.isArray(attrs.supersedes)
         ? stringList(attrs.supersedes) || []
@@ -116,23 +166,22 @@ export function normalizeWorkRecordFrontMatter(attrs) {
         (Array.isArray(normalizedSupersedes)
             ? normalizedSupersedes
             : normalizedSupersedes
-            ? [normalizedSupersedes]
-            : [])
-            .map((recordId) => recordId.toLowerCase()),
+              ? [normalizedSupersedes]
+              : []
+        ).map((recordId) => recordId.toLowerCase()),
     );
     const supersessionProposal = normalizeSupersessionProposal(attrs.supersessionProposal, supersedesIdentities);
     const rawWorkKind = normalizeWorkKind(attrs.workKind);
     const rawScope = asTrimmedString(attrs.scope);
     const normalizedScope = rawScope === "feature" ? "planned_change" : rawScope;
-    /** @type {import('./schema.ts').WorkRecordFrontMatter} */
-    const normalized = {
-        kind: attrs.kind === WORK_RECORD_KIND ? WORK_RECORD_KIND : /** @type {any} */ (attrs.kind),
+    const normalized: WorkRecordFrontMatter = {
+        kind: attrs.kind === WORK_RECORD_KIND ? WORK_RECORD_KIND : (attrs.kind as WorkRecordFrontMatter["kind"]),
         recordId: asTrimmedString(attrs.recordId),
-        status: /** @type {any} */ (asTrimmedString(attrs.status)),
-        scope: /** @type {any} */ (normalizedScope),
+        status: asTrimmedString(attrs.status) as WorkRecordFrontMatter["status"],
+        scope: normalizedScope as WorkRecordFrontMatter["scope"],
         ...(rawWorkKind ? { workKind: rawWorkKind } : {}),
-        origin: /** @type {any} */ (asTrimmedString(attrs.origin)),
-        completionMode: /** @type {any} */ (asTrimmedString(attrs.completionMode)),
+        origin: asTrimmedString(attrs.origin) as WorkRecordFrontMatter["origin"],
+        completionMode: asTrimmedString(attrs.completionMode) as WorkRecordFrontMatter["completionMode"],
         createdAt: asTrimmedString(attrs.createdAt),
         ...(normalizeTicketReferences(attrs.tickets) ? { tickets: normalizeTicketReferences(attrs.tickets) } : {}),
         ...(asTrimmedString(attrs.archivedAt) ? { archivedAt: asTrimmedString(attrs.archivedAt) } : {}),
@@ -144,17 +193,11 @@ export function normalizeWorkRecordFrontMatter(attrs) {
     return normalized;
 }
 
-/** @param {string} value */
-function yamlScalar(value) {
+function yamlScalar(value: string) {
     return `"${String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
-/**
- * @param {string[]} lines
- * @param {string} key
- * @param {unknown} value
- */
-function appendScalarOrList(lines, key, value) {
+function appendScalarOrList(lines: string[], key: string, value: unknown) {
     if (value === undefined || value === null) return;
     if (Array.isArray(value)) {
         if (!value.length) return;
@@ -165,13 +208,7 @@ function appendScalarOrList(lines, key, value) {
     if (String(value).trim()) lines.push(`${key}: ${yamlScalar(String(value))}`);
 }
 
-/**
- * @param {string[]} lines
- * @param {string} key
- * @param {unknown} value
- * @param {number} indent
- */
-function appendYamlValue(lines, key, value, indent) {
+function appendYamlValue(lines: string[], key: string, value: unknown, indent: number) {
     const pad = " ".repeat(indent);
     if (Array.isArray(value)) {
         if (!value.length) return;
@@ -180,9 +217,7 @@ function appendYamlValue(lines, key, value, indent) {
         return;
     }
     if (value && typeof value === "object") {
-        const entries = Object.entries(/** @type {Record<string, unknown>} */ (value)).filter(([, child]) =>
-            child !== undefined
-        );
+        const entries = Object.entries(value as RawYamlRecord).filter(([, child]) => child !== undefined);
         if (!entries.length) return;
         lines.push(`${pad}${key}:`);
         for (const [childKey, childValue] of entries) appendYamlValue(lines, childKey, childValue, indent + 4);
@@ -193,17 +228,10 @@ function appendYamlValue(lines, key, value, indent) {
     else lines.push(`${pad}${key}: ${String(value)}`);
 }
 
-/**
- * @param {string[]} lines
- * @param {unknown} value
- * @param {number} indent
- */
-function appendYamlObjectListItem(lines, value, indent) {
+function appendYamlObjectListItem(lines: string[], value: unknown, indent: number) {
     const pad = " ".repeat(indent);
     if (value && typeof value === "object" && !Array.isArray(value)) {
-        const entries = Object.entries(/** @type {Record<string, unknown>} */ (value)).filter(([, child]) =>
-            child !== undefined
-        );
+        const entries = Object.entries(value as RawYamlRecord).filter(([, child]) => child !== undefined);
         if (!entries.length) return;
         const [firstKey, firstValue] = entries[0];
         if (typeof firstValue === "string") lines.push(`${pad}- ${firstKey}: ${yamlScalar(firstValue)}`);
@@ -222,20 +250,12 @@ function appendYamlObjectListItem(lines, value, indent) {
     else lines.push(`${pad}- ${String(value)}`);
 }
 
-/**
- * @param {string[]} lines
- * @param {import('../ticket-references.ts').TicketReference[] | undefined} tickets
- */
-function appendTickets(lines, tickets) {
+function appendTickets(lines: string[], tickets: TicketReference[] | undefined) {
     const normalized = normalizeTicketReferences(tickets);
     if (normalized) appendYamlValue(lines, WORK_RECORD_FRONT_MATTER_KEYS.tickets, normalized, 0);
 }
 
-/**
- * @param {string[]} lines
- * @param {import('./schema.ts').WorkRecordProvenance | undefined} provenance
- */
-function appendProvenance(lines, provenance) {
+function appendProvenance(lines: string[], provenance: WorkRecordProvenance | undefined) {
     if (!provenance) return;
     const hasSourcePlans = Array.isArray(provenance.sourcePlans) && provenance.sourcePlans.length > 0;
     const hasEvidence = Array.isArray(provenance.evidence) && provenance.evidence.length > 0;
@@ -254,9 +274,8 @@ function appendProvenance(lines, provenance) {
     }
 }
 
-/** @param {import('./schema.ts').WorkRecordFrontMatter} attrs */
-export function formatWorkRecordFrontMatter(attrs) {
-    const fm = /** @type {any} */ (normalizeWorkRecordFrontMatter(attrs));
+export function formatWorkRecordFrontMatter(attrs: WorkRecordFrontMatter) {
+    const fm = normalizeWorkRecordFrontMatter(attrs);
     const lines = ["---"];
     appendScalarOrList(lines, WORK_RECORD_FRONT_MATTER_KEYS.kind, fm.kind);
     appendScalarOrList(lines, WORK_RECORD_FRONT_MATTER_KEYS.recordId, fm.recordId);
@@ -278,22 +297,16 @@ export function formatWorkRecordFrontMatter(attrs) {
     return lines.join("\n");
 }
 
-/**
- * @param {import('./schema.ts').WorkRecordFrontMatter} attrs
- * @param {string} body
- */
-export function formatWorkRecordMarkdown(attrs, body) {
+export function formatWorkRecordMarkdown(attrs: WorkRecordFrontMatter, body: string) {
     return `${formatWorkRecordFrontMatter(attrs)}\n${String(body || "").replace(/^\s*/, "")}`;
 }
 
-/** @param {string} body */
-export function extractWorkRecordSections(body) {
+export function extractWorkRecordSections(body: string): WorkRecordSections {
     const text = String(body || "").replace(/^\s+/, "");
     const titleMatch = text.match(/^#\s+(.+)\s*$/m);
     const title = titleMatch ? titleMatch[1].trim() : "";
     const headingMatches = [...text.matchAll(/^##\s+(.+)\s*$/gm)];
-    /** @type {Record<string, string>} */
-    const sections = {};
+    const sections: WorkRecordSections["optional"] = {};
     for (let i = 0; i < headingMatches.length; i += 1) {
         const match = headingMatches[i];
         const name = match[1].trim();
@@ -301,8 +314,7 @@ export function extractWorkRecordSections(body) {
         const end = i + 1 < headingMatches.length ? headingMatches[i + 1].index || text.length : text.length;
         sections[name] = text.slice(start, end).trim();
     }
-    /** @type {Record<string, string>} */
-    const optional = {};
+    const optional: WorkRecordSections["optional"] = {};
     for (const title of WORK_RECORD_OPTIONAL_SECTION_TITLES) {
         if (sections[title]) optional[title] = sections[title];
     }
@@ -311,11 +323,7 @@ export function extractWorkRecordSections(body) {
     return { title, summary: sections.Summary || sections.Result || "", optional };
 }
 
-/**
- * @param {import('./schema.ts').WorkRecordFrontMatter} attrs
- * @param {string} body
- */
-export function validateWorkRecord(attrs, body) {
+export function validateWorkRecord(attrs: WorkRecordFrontMatter, body: string) {
     const errors = [];
     if (attrs.kind !== WORK_RECORD_KIND) errors.push('kind must be "work_record".');
     if (!UUID_RE.test(attrs.recordId || "")) errors.push("recordId must be a plain UUID string.");
@@ -326,7 +334,7 @@ export function validateWorkRecord(attrs, body) {
         errors.push(`completionMode is invalid: ${attrs.completionMode || "missing"}.`);
     }
     if (!attrs.createdAt) errors.push("createdAt is required.");
-    if (attrs.origin === "internal" && !(attrs.provenance?.sourcePlans?.length)) {
+    if (attrs.origin === "internal" && !attrs.provenance?.sourcePlans?.length) {
         errors.push("provenance.sourcePlans is required for internal Work Records.");
     }
     if (attrs.provenance?.evidence) {
@@ -352,12 +360,7 @@ export function validateWorkRecord(attrs, body) {
     if (errors.length) throw new Error(`Invalid Work Record: ${errors.join(" ")}`);
 }
 
-/**
- * @param {string} markdown
- * @param {{ path?: string, relativePath?: string }} [options]
- * @returns {import('./schema.ts').WorkRecordResource}
- */
-export function parseWorkRecordMarkdown(markdown, options = {}) {
+export function parseWorkRecordMarkdown(markdown: string, options: ParseWorkRecordOptions = {}): WorkRecordResource {
     if (!hasFrontMatter(markdown)) throw new Error("Invalid Work Record: front matter is required.");
     const { attrs, body } = extractYaml(markdown);
     const normalized = normalizeWorkRecordFrontMatter(attrs);

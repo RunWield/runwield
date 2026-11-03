@@ -1,5 +1,5 @@
 export * from "./schema.ts";
-export * from "./markdown.js";
+export * from "./markdown.ts";
 export * from "./store.ts";
 export * from "./lifecycle.ts";
 export * from "./list.ts";

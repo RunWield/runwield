@@ -7,7 +7,7 @@ import { readWorkspaceStyles } from "./workspace-styles.ts";
 import { sessionArtifactKindLabel } from "../../shared/session/session-sidebar.ts";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { pathToFileURL as toFileUrl } from "node:url";
-import { parseWorkRecordMarkdown } from "../../shared/work-records/markdown.js";
+import { parseWorkRecordMarkdown } from "../../shared/work-records/markdown.ts";
 import { workRecordNotices } from "../../shared/work-records/list.ts";
 import { isEpicArtifactPlanName } from "../../shared/epic-artifacts.ts";
 import { RUNWIELD_ROOT, RUNWIELD_SOURCE_ROOT } from "../../../runtime-root.js";
