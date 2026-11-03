@@ -20,9 +20,14 @@ devServerCommand: "deno task workspace:dev"
 devServerUrl: "http://127.0.0.1:5173"
 devServerHmr: true
 createdAt: "2026-10-11"
+status: "verified"
 origin: "internal"
-status: "ready_for_work"
 userVerifiedAt: null
+workRecord:
+    status: "generated"
+    recordId: "0f8a6806-e5c2-4ebf-a95c-b371a7ce5ddb"
+    path: "docs/work-records/2026-10-12-home-and-system-folder-consent-across-cli-and-workspace.md"
+    lastAttemptAt: "2026-11-03T00:35:53.961Z"
 targetBranch: "main"
 deliveryBranch: "plan/home-system-folder-warning"
 archivedAt: "2026-10-16T19:04:59.594Z"

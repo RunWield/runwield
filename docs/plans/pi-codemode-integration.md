@@ -17,6 +17,13 @@ createdAt: "2026-11-02"
 origin: "internal"
 status: "ready_for_work"
 userVerifiedAt: null
+targetBranch: "main"
+deliveryBranch: "main"
+workRecord:
+    status: "generated"
+    recordId: "32f639f0-7748-419f-86b6-898977d3ac09"
+    path: "docs/work-records/2026-11-03-pi-codemode-for-authorized-tool-composition.md"
+    lastAttemptAt: "2026-11-03T00:32:45.520Z"
 ---
 
 # Integrate Pi codemode into RunWield

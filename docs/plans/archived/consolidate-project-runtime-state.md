@@ -30,9 +30,14 @@ affectedPaths:
     - "docs/adr/016-proof-bearing-publication-state-machine.md"
     - "docs/adr/017-project-runtime-state-under-wld-internal.md"
 createdAt: "2026-08-28T11:53:52-04:00"
+status: "closed_without_verification"
 origin: "internal"
 userVerifiedAt: null
-status: "validated"
+workRecord:
+    status: "generated"
+    recordId: "86b2aebc-73a5-455f-8316-687bfbed497f"
+    path: "docs/work-records/2026-11-03-project-runtime-state-under-wld-internal.md"
+    lastAttemptAt: "2026-11-03T00:35:05.917Z"
 epicCompletionMode: "done_enough"
 epicDoneEnoughAt: "2026-09-16T20:07:59.119Z"
 epicDoneEnoughSummary: "All 8 child plans are completed after consolidate-project-runtime-state/08-update-doctor-documentation-and-final-test-cleanup."

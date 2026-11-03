@@ -1,12 +1,19 @@
 ---
+planId: "6356d270-7145-4aaa-b1ed-4a0e8e8a35b2"
 classification: "PLANNED_CHANGE"
 workKind: "REFACTOR"
 complexity: "HIGH"
+affectedPaths: []
+createdAt: "2026-10-12"
 status: "user_verified"
+origin: "internal"
 userVerifiedAt: "2026-10-26T12:52:17-04:00"
 userVerificationNote: "This was implemented by Codex"
-createdAt: "2026-10-12"
-planId: "6356d270-7145-4aaa-b1ed-4a0e8e8a35b2"
+workRecord:
+    status: "generated"
+    recordId: "6cfa2e07-17b6-4c82-aa75-deb26799c370"
+    path: "docs/work-records/2026-11-03-bun-only-development-and-build-toolchain.md"
+    lastAttemptAt: "2026-11-03T00:34:35.214Z"
 ---
 
 # Complete the Bun toolchain migration

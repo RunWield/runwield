@@ -16,11 +16,12 @@ routingIntent: "PLANNED_CHANGE"
 targetBranch: "main"
 deliveryBranch: "main"
 validatedCommit: "96fd54a5f4c31e2fb5d1412048b708e94f3dec03"
-workRecord:
-    status: "failed"
-    lastAttemptAt: "2026-11-01T02:12:43.538Z"
-    error: "docs/work-records/2026-10-16-remote-mcp-transport-pilot.md: Invalid Work Record: front matter is required."
 status: "verified"
+workRecord:
+    status: "generated"
+    recordId: "bf562b2a-9fbf-4eec-9c52-3eb84f08c6a7"
+    path: "docs/work-records/2026-11-01-server-only-workspace-import-diagnostics.md"
+    lastAttemptAt: "2026-11-03T00:33:56.079Z"
 ---
 
 # Workspace Dynamic Import Warnings

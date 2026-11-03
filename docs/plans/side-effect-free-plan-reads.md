@@ -23,6 +23,11 @@ deliveryBranch: "main"
 status: "user_verified"
 userVerifiedAt: "2026-11-01T02:00:25.156Z"
 userVerificationNote: "Finished with Codex."
+workRecord:
+    status: "generated"
+    recordId: "771b1169-a9b9-4539-a441-8971c06ae260"
+    path: "docs/work-records/2026-11-03-side-effect-free-plan-reads.md"
+    lastAttemptAt: "2026-11-03T00:33:59.220Z"
 ---
 
 # Side-Effect-Free Plan Reads

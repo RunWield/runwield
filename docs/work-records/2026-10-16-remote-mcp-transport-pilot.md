@@ -1,4 +1,25 @@
+---
+kind: "work_record"
+recordId: "d9425b58-3d95-4c78-9340-7867a1e7b8eb"
+status: "approved"
+scope: "planned_change"
+workKind: "FEATURE"
+origin: "internal"
+completionMode: "verified"
+createdAt: "2026-10-16"
+provenance:
+    sourcePlans:
+        - "5df960b5-5c59-41b7-935a-3dc7511ad917"
+---
+
 # Remote MCP transport pilot
+
+## Summary
+
+A bounded live SSH pilot verified personal MCP forwarding from macOS ARM64 to Linux x86-64, including discovery,
+tool calls, reconnect, cancellation, disconnect cleanup, and a fresh connection without replaying earlier calls.
+This evidence covers the transport path only; it does not establish release qualification, TUI behavior, or live
+model-provider compatibility.
 
 ## Scope
 
