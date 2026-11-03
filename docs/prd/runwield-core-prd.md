@@ -311,6 +311,15 @@ user sends a message.
 a valid execution policy offers direct Plan Review. Users inspect and annotate the saved Plan, and the decision follows
 the normal review flow.
 
+**Requirement: Send a ready Plan back for re-review.** The load-plan menu offers **Send back to Planner for re-review**
+for a ready-for-work Planned Change. A non-Sequence Epic at `ready_for_decomposition` or `ready_for_work` offers
+**Send back to Architect for re-review**, with or without children. This explicit action returns the authoritative
+Plan document to `draft` before starting its planning Agent. It opens no review page first and requires no submitted
+feedback. A reply, error, or interrupted Agent turn leaves a resumable draft; new approval is required. Child documents,
+statuses, IDs, order, dependencies, worktree records, and existing Epic branch history stay intact. Approve for Later
+returns an Epic to `ready_for_decomposition`, even when children exist. Approve & Slice starts Slicer. Neither action
+executes the Epic. Viewing or canceling the menu does not send the Plan back or reset approval.
+
 **Requirement: Return to the most recent Plan review.** `/plan-review` returns the link to the Session's live review.
 When the Session is idle, it opens the Session's most recently presented Plan for a new decision after checking its
 identity and review eligibility. A Session with no earlier review, a busy Session, or a changed Plan receives an
@@ -344,6 +353,15 @@ stays light, terminal animations pause during human input, and the decision cont
   code, links, or execution policy requires a new decision.
 - Given a ready-for-work Plan, when the user loads it and chooses **Review plan**, the saved Plan opens for review
   directly.
+- Given a `ready_for_decomposition` Epic with no children, selecting **Send back to Architect for re-review** starts
+  Architect with the saved parent already draft, before any review page opens. A reply-only turn keeps Architect active
+  and the parent draft.
+- Given a `ready_for_work` Epic with started and unfinished children, sending it back starts Architect on the draft
+  parent and preserves child documents, statuses, IDs, order, dependencies, worktrees, and Epic branch history.
+- Given a sent-back Epic, Architect submits it with `plan_written`. Approve for Later returns it to
+  `ready_for_decomposition` and leaves Slicer available without starting it; Approve & Slice starts Slicer. Existing
+  children remain visible after reapproval. Neither choice executes the parent.
+- Given a ready Epic menu, viewing or canceling leaves approval intact. Sequences do not offer Architect send-back.
 - Given an earlier review and an idle Session, `/plan-review` opens the current saved Plan for a new decision.
 - Given a Sequence saved in its planning worktree, reopening its review checks the group against that worktree.
 - Given Plan Review open in a browser for a long time, returning to submit a decision continues the same Session.
@@ -523,7 +541,8 @@ own review and approval. The conversation can pause and resume. `load-plan` offe
 child selection, execution, or recovery action and explains unfinished dependencies. `wld plans` shows Epic progress and
 child status separately from standalone Plans. While a child's publication is pending, loading the parent Epic shows
 that state and offers the child's publication continuation. Changed child scope after an Epic revision needs the user's
-review.
+review. Ready Epics also offer the explicit Architect send-back action defined in
+[Plan review](#plan-review); it preserves child work and requires new parent approval.
 
 **Requirement: Every Epic starts and ends on its own branch.** Architect names an Epic branch, by default
 `epic/<epic-name>`. Children deliver to it, so the primary branch receives the Epic only when it is ready. When the Epic

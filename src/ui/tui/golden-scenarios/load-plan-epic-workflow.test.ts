@@ -2,6 +2,8 @@ import { assertEquals } from "../../../testing/assertions.ts";
 import { test } from "node:test";
 import {
     loadPlanEpicArchitectReviewScenario,
+    loadPlanEpicArchitectReReviewScenario,
+    loadPlanEpicChildrenArchitectReReviewScenario,
     loadPlanEpicChildMenusScenario,
     loadPlanEpicDirectReviewFeedbackScenario,
     loadPlanEpicDirectReviewLaterScenario,
@@ -13,6 +15,8 @@ import {
 } from "./load-plan-epic-workflow.ts";
 
 const scenarioExportNames = new Map<object, string>([
+    [loadPlanEpicArchitectReReviewScenario, "loadPlanEpicArchitectReReviewScenario"],
+    [loadPlanEpicChildrenArchitectReReviewScenario, "loadPlanEpicChildrenArchitectReReviewScenario"],
     [loadPlanEpicMenuOptionsScenario, "loadPlanEpicMenuOptionsScenario"],
     [loadPlanEpicDirectReviewScenario, "loadPlanEpicDirectReviewScenario"],
     [loadPlanEpicDirectReviewFeedbackScenario, "loadPlanEpicDirectReviewFeedbackScenario"],
