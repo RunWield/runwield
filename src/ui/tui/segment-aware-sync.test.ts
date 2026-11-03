@@ -8,7 +8,7 @@ import {
 } from "../../shared/session/session-runtime-events.js";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import type { UiAPI } from "./types.js";
-import { attachTuiRuntimeAdapter, type TuiRuntimeAdapterOptions } from "./runtime-adapter.js";
+import { attachTuiRuntimeAdapter, type TuiRuntimeAdapterOptions } from "./runtime-adapter.ts";
 
 type SessionEventListener = Parameters<SessionRuntime["subscribeSessionEvents"]>[1];
 type FixtureUserMessage = Omit<RuntimeUserMessageEvent, "sessionId" | "timestamp" | "messageId">;

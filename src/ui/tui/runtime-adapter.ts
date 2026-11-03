@@ -12,42 +12,54 @@ import { createTuiInteractionAdapter } from "./runtime-interaction-adapter.ts";
 import { setTerminalTitleForName } from "./terminal-title.ts";
 import { presentTutorialEvent } from "./tutorial-guidance.ts";
 
-/**
- * @typedef {Object} TuiRuntimeAdapterRegistration
- * @property {() => void} dispose
- * @property {(options?: { discard?: boolean }) => void} resumeTutorialPresentation
- */
+import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
+import type {
+    RuntimeAssistantTextDeltaEvent,
+    RuntimeQueuedMessage,
+    SessionRuntimeEvent,
+    RuntimeSessionReplacedEvent,
+} from "../../shared/session/session-runtime-events.js";
+import type { UiAPI } from "./types.js";
+import type { BrowserPort } from "../../shared/browser-port.ts";
+import type { notifyRunWieldEventQuietly } from "./system-notifications.ts";
 
-/** @type {WeakMap<import('../../shared/session/session-runtime.ts').SessionRuntime, Map<string, TuiRuntimeAdapterRegistration>>} */
-const activeAdapters = new WeakMap();
+export interface ResumeTutorialPresentationOptions {
+    discard?: boolean;
+}
 
-/**
- * @typedef {Object} TuiRuntimeAdapterOptions
- * @property {import('../../shared/session/session-runtime.ts').SessionRuntime} runtime
- * @property {string} sessionId
- * @property {import('./types.js').UiAPI} uiAPI
- * @property {import('../../shared/browser-port.ts').BrowserPort} browser
- * @property {typeof import('./system-notifications.ts').notifyRunWieldEventQuietly} notifyRunWieldEvent
- * @property {(replacement: { oldSessionId: string, newSessionId: string }) => void} [onSessionReplaced]
- * @property {boolean} [pauseTutorialPresentation]
- * @property {(sessionId: string, workRecordFailed?: boolean, workRecordPlanName?: string) => void} [onSessionComplete]
- */
+export interface TuiRuntimeAdapterRegistration {
+    dispose: () => void;
+    resumeTutorialPresentation: (options?: ResumeTutorialPresentationOptions) => void;
+}
 
-/**
- * @param {import('../../shared/session/session-runtime-events.js').RuntimeQueuedMessage} message
- * @returns {string}
- */
-export function formatQueuedMessageText(message) {
+export type TuiSessionReplacement = Pick<RuntimeSessionReplacedEvent, "oldSessionId" | "newSessionId">;
+
+export interface TuiRuntimeAdapterOptions {
+    runtime: SessionRuntime;
+    sessionId: string;
+    uiAPI: UiAPI;
+    browser: BrowserPort;
+    notifyRunWieldEvent: typeof notifyRunWieldEventQuietly;
+    onSessionReplaced?: (replacement: TuiSessionReplacement) => void;
+    pauseTutorialPresentation?: boolean;
+    onSessionComplete?: (sessionId: string, workRecordFailed?: boolean, workRecordPlanName?: string) => void;
+}
+
+type RuntimeReviewResultPresenter = (
+    agentName: RuntimeAssistantTextDeltaEvent["agentName"],
+    markdown: RuntimeAssistantTextDeltaEvent["delta"],
+    approved: RuntimeAssistantTextDeltaEvent["approved"],
+) => void;
+
+const activeAdapters = new WeakMap<SessionRuntime, Map<string, TuiRuntimeAdapterRegistration>>();
+
+export function formatQueuedMessageText(message: RuntimeQueuedMessage): string {
     if (message.images.length === 0) return message.text;
     const markers = message.images.map(formatImageAttachmentMarker).join("\n");
     if (!message.text.trim()) return markers;
     return `${message.text}\n\n${markers}`;
 }
 
-/**
- * @param {TuiRuntimeAdapterOptions} options
- * @returns {TuiRuntimeAdapterRegistration}
- */
 export function attachTuiRuntimeAdapter({
     runtime,
     sessionId,
@@ -57,7 +69,7 @@ export function attachTuiRuntimeAdapter({
     onSessionReplaced,
     pauseTutorialPresentation = false,
     onSessionComplete,
-}) {
+}: TuiRuntimeAdapterOptions): TuiRuntimeAdapterRegistration {
     let registrations = activeAdapters.get(runtime);
     if (!registrations) {
         registrations = new Map();
@@ -84,17 +96,14 @@ export function attachTuiRuntimeAdapter({
     let completionWorkRecordPlanName = "";
     let completionGeneration = 0;
     let disposed = false;
-    /** @type {Set<string>} */
-    const seenProjectedEventIds = new Set();
+
+    const seenProjectedEventIds = new Set<string>();
     let tutorialPresentation = Promise.resolve();
     let tutorialPresentationPaused = pauseTutorialPresentation;
-    /** @type {import('../../shared/session/session-runtime-events.js').SessionRuntimeEvent[]} */
-    const bufferedTutorialEvents = [];
-    /**
-     * @param {import('../../shared/session/session-runtime-events.js').SessionRuntimeEvent} event
-     * @param {string} [tutorialSessionId]
-     */
-    const queueTutorialPresentation = (event, tutorialSessionId = sessionId) => {
+
+    const bufferedTutorialEvents: SessionRuntimeEvent[] = [];
+
+    const queueTutorialPresentation = (event: SessionRuntimeEvent, tutorialSessionId = sessionId) => {
         // Capture settlement now: an older idle event waiting behind Tutorial
         // presentation must not consume a later publication's completion.
         const settlementGeneration =
@@ -125,10 +134,9 @@ export function attachTuiRuntimeAdapter({
             if (seenProjectedEventIds.has(event.eventId)) return;
             seenProjectedEventIds.add(event.eventId);
         }
-        const value = /** @type {any} */ (event);
         switch (event.type) {
             case RuntimeEventTypes.SESSION_REPLACED:
-                onSessionReplaced?.({ oldSessionId: value.oldSessionId, newSessionId: value.newSessionId });
+                onSessionReplaced?.({ oldSessionId: event.oldSessionId, newSessionId: event.newSessionId });
                 break;
             case RuntimeEventTypes.USER_MESSAGE:
                 completionPending = false;
@@ -144,11 +152,8 @@ export function attachTuiRuntimeAdapter({
                 display.consume(event);
                 break;
             case RuntimeEventTypes.QUEUED_MESSAGE_CHANGED: {
-                const message =
-                    /** @type {import('../../shared/session/session-runtime-events.js').RuntimeQueuedMessage} */ (
-                        value.message
-                    );
-                if (value.status === "queued") {
+                const message = event.message;
+                if (event.status === "queued") {
                     uiAPI.appendQueuedMessage?.(message.id, formatQueuedMessageText(message));
                     break;
                 }
@@ -156,34 +161,39 @@ export function attachTuiRuntimeAdapter({
                 break;
             }
             case RuntimeEventTypes.ASSISTANT_TEXT_DELTA: {
-                if (value.workflowMessage === "task_completed" && shouldCacheValidationReport()) {
+                if (event.workflowMessage === "task_completed" && shouldCacheValidationReport()) {
                     uiAPI.updateValidationReport?.("engineer", {
-                        agentName: value.agentName,
-                        markdown: value.delta,
+                        agentName: event.agentName,
+                        markdown: event.delta,
                     });
                     hiddenValidationReportCached ||= !validationSessionActive;
                 }
-                if (value.workflowMessage === "review_complete" && shouldCacheValidationReport()) {
+                if (event.workflowMessage === "review_complete" && shouldCacheValidationReport()) {
                     uiAPI.updateValidationReport?.("reviewer", {
-                        agentName: value.agentName,
-                        markdown: value.delta,
-                        approved: value.approved,
+                        agentName: event.agentName,
+                        markdown: event.delta,
+                        approved: event.approved,
                     });
                     hiddenValidationReportCached ||= !validationSessionActive;
                 }
-                if (value.workflowMessage === "review_report_update") {
+                if (event.workflowMessage === "review_report_update") {
                     if (shouldCacheValidationReport()) {
                         uiAPI.updateValidationReport?.("reviewer", {
-                            agentName: value.agentName,
-                            markdown: value.delta,
-                            approved: value.approved,
+                            agentName: event.agentName,
+                            markdown: event.delta,
+                            approved: event.approved,
                         });
                         hiddenValidationReportCached ||= !validationSessionActive;
                     }
                     break;
                 }
-                if (value.messageKind === "review_result" && uiAPI.appendReviewResult) {
-                    uiAPI.appendReviewResult(value.agentName, value.delta, value.approved);
+                if (event.messageKind === "review_result" && uiAPI.appendReviewResult) {
+                    // Preserve the JS adapter's forwarding of optional approval; the legacy UiAPI requires boolean.
+                    (uiAPI.appendReviewResult as RuntimeReviewResultPresenter)(
+                        event.agentName,
+                        event.delta,
+                        event.approved,
+                    );
                     break;
                 }
                 display.consume(event);
@@ -197,34 +207,34 @@ export function attachTuiRuntimeAdapter({
                 display.consume(event);
                 break;
             case RuntimeEventTypes.SYSTEM_STATUS:
-                if (value.validationProgress) {
+                if (event.validationProgress) {
                     hiddenValidationReportCached = false;
                     const completed =
-                        value.validationProgress.stage === "terminal" &&
-                        value.validationProgress.outcome === "verified";
+                        event.validationProgress.stage === "terminal" &&
+                        event.validationProgress.outcome === "verified";
                     validationSessionActive = !completed;
-                    terminalValidationPanelVisible = value.validationProgress.outcome === "failed";
+                    terminalValidationPanelVisible = event.validationProgress.outcome === "failed";
                     if (completed) {
                         // Older transcripts have completion events but no saved sidebar progress.
-                        uiAPI.updateValidationProgress?.(value.validationProgress);
+                        uiAPI.updateValidationProgress?.(event.validationProgress);
                         uiAPI.clearValidationPanel?.(true);
-                        if (!event._meta?.replay && value.validationProgress.kind === "workflow") {
+                        if (!event._meta?.replay && event.validationProgress.kind === "workflow") {
                             completionGeneration += 1;
                             completionPending = true;
-                            completionWorkRecordFailed = value.validationProgress.workRecordFailed === true;
-                            completionWorkRecordPlanName = value.validationProgress.workRecordPlanName || "";
+                            completionWorkRecordFailed = event.validationProgress.workRecordFailed === true;
+                            completionWorkRecordPlanName = event.validationProgress.workRecordPlanName || "";
                         }
                     } else {
                         completionPending = false;
-                        uiAPI.updateValidationProgress?.(value.validationProgress);
+                        uiAPI.updateValidationProgress?.(event.validationProgress);
                     }
                 }
                 uiAPI.appendSystemMessage(
-                    value.validationProgress?.deliveryReport
-                        ? deliveryReportText(value.validationProgress.deliveryReport, sessionId)
-                        : value.message,
-                    value.level === "error",
-                    value.header,
+                    event.validationProgress?.deliveryReport
+                        ? deliveryReportText(event.validationProgress.deliveryReport, sessionId)
+                        : event.message,
+                    event.level === "error",
+                    event.header,
                 );
                 break;
             case RuntimeEventTypes.TERMINAL_ERROR:
@@ -235,45 +245,45 @@ export function attachTuiRuntimeAdapter({
                     terminalValidationPanelVisible = false;
                     hiddenValidationReportCached = false;
                 }
-                if (!value.messageAlreadyReported) uiAPI.appendSystemMessage(value.message, true);
+                if (!event.messageAlreadyReported) uiAPI.appendSystemMessage(event.message, true);
                 break;
             case RuntimeEventTypes.CANCELLATION:
-                if (value.message) uiAPI.appendSystemMessage(value.message, false, "RunWield");
+                if (event.message) uiAPI.appendSystemMessage(event.message, false, "RunWield");
                 break;
             case RuntimeEventTypes.BUSY_CHANGED:
-                uiAPI.setBusy?.(value.busy);
+                uiAPI.setBusy?.(event.busy);
                 break;
             case RuntimeEventTypes.AGENT_CHANGED: {
                 let nextRootAgentName = "";
                 try {
-                    nextRootAgentName = value.agentName ? normalizeAgentInternalName(value.agentName) : "";
+                    nextRootAgentName = event.agentName ? normalizeAgentInternalName(event.agentName) : "";
                 } catch (_error) {
                     nextRootAgentName = "";
                 }
-                if (value.rootHandoff && nextRootAgentName && nextRootAgentName !== currentRootAgentName) {
+                if (event.rootHandoff && nextRootAgentName && nextRootAgentName !== currentRootAgentName) {
                     uiAPI.appendSystemMessage(
-                        `Agent switched to ${value.displayName || value.agentName}`,
+                        `Agent switched to ${event.displayName || event.agentName}`,
                         false,
                         "RunWield",
                     );
                     currentRootAgentName = nextRootAgentName;
-                } else if (!currentRootAgentName && nextRootAgentName && !value.rootHandoff) {
+                } else if (!currentRootAgentName && nextRootAgentName && !event.rootHandoff) {
                     currentRootAgentName = nextRootAgentName;
                 }
                 uiAPI.setAgentBusyLines?.(
-                    Array.isArray(value.busyLines) && value.busyLines.length > 0 ? value.busyLines : undefined,
+                    Array.isArray(event.busyLines) && event.busyLines.length > 0 ? event.busyLines : undefined,
                 );
                 uiAPI.requestRender();
                 break;
             }
             case RuntimeEventTypes.KEYBOARD_HELP:
                 uiAPI.showKeyboardHelp?.({
-                    title: value.title,
-                    items: value.items,
+                    title: event.title,
+                    items: event.items,
                 });
                 break;
             case RuntimeEventTypes.INPUT_STATE_CHANGED:
-                if (value.enabled) uiAPI.enableInput?.();
+                if (event.enabled) uiAPI.enableInput?.();
                 else uiAPI.disableInput?.();
                 break;
             case RuntimeEventTypes.MESSAGES_CLEARED:
@@ -294,8 +304,8 @@ export function attachTuiRuntimeAdapter({
                 uiAPI.requestRender();
                 break;
             case RuntimeEventTypes.WORKFLOW_CONTEXT_CHANGED:
-                currentRoutingIntent = value.workflowContext?.routingIntent || null;
-                if (!value.workflowContext?.validationProgress) uiAPI.clearValidationPanel?.();
+                currentRoutingIntent = event.workflowContext?.routingIntent || null;
+                if (!event.workflowContext?.validationProgress) uiAPI.clearValidationPanel?.();
                 uiAPI.requestRender();
                 break;
             case RuntimeEventTypes.USAGE:
@@ -303,22 +313,22 @@ export function attachTuiRuntimeAdapter({
                 break;
             case RuntimeEventTypes.MANAGED_SYNC_STATE_CHANGED:
                 uiAPI.setManagedSyncStatus?.({
-                    status: value.status,
-                    localGeneration: value.localGeneration,
-                    latestGeneration: value.latestGeneration,
-                    owningSurfaceKind: value.owningSurfaceKind,
-                    message: value.message,
+                    status: event.status,
+                    localGeneration: event.localGeneration,
+                    latestGeneration: event.latestGeneration,
+                    owningSurfaceKind: event.owningSurfaceKind,
+                    message: event.message,
                 });
                 break;
             case RuntimeEventTypes.SESSION_RENAMED:
-                setTerminalTitleForName(value.name);
+                setTerminalTitleForName(event.name);
                 uiAPI.requestRender();
                 break;
             case RuntimeEventTypes.ATTENTION_REQUESTED: {
-                if (value.notificationSurface && !["tui", "test"].includes(value.notificationSurface)) break;
-                notifyRunWieldEvent(value.reason, {
-                    sessionName: value.sessionName,
-                    agentName: value.agentName,
+                if (event.notificationSurface && !["tui", "test"].includes(event.notificationSurface)) break;
+                notifyRunWieldEvent(event.reason, {
+                    sessionName: event.sessionName,
+                    agentName: event.agentName,
                 });
                 break;
             }
@@ -326,7 +336,7 @@ export function attachTuiRuntimeAdapter({
         if (tutorialPresentationPaused) bufferedTutorialEvents.push(event);
         else {
             const tutorialSessionId =
-                event.type === RuntimeEventTypes.SESSION_REPLACED ? value.newSessionId : sessionId;
+                event.type === RuntimeEventTypes.SESSION_REPLACED ? event.newSessionId : sessionId;
             queueTutorialPresentation(event, tutorialSessionId);
         }
     });
@@ -335,8 +345,7 @@ export function attachTuiRuntimeAdapter({
         uiAPI.appendQueuedMessage?.(message.id, formatQueuedMessageText(message));
     }
 
-    const registration = {
-        /** @param {{ discard?: boolean }} [options] */
+    const registration: TuiRuntimeAdapterRegistration = {
         resumeTutorialPresentation(options = {}) {
             if (!tutorialPresentationPaused) return;
             tutorialPresentationPaused = false;
