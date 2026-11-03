@@ -19,8 +19,12 @@ publication, and Work Records. Other request types, hooks, and enforced worker t
 | Codex app-server `0.164.0-alpha.11.1` | Live source-skill journey through recovery, independent review, repair, publication, and a Work Record | Uses an explicit packaged skill path and full access in disposable repositories; installation is tested separately. |
 | Codex desktop app                     | The package targets the app's native plugin format                                                     | App-server results do not establish desktop installation or a completed desktop UI journey.                         |
 
-Core has no tested Codex versions in its Compatibility Matrix yet. It allows a recognized Codex host with a visible
-untested-version notice. The [Codex acceptance requirements](../prd/runwield-connect-prd.md#codex-acceptance) distinguish
+Core’s Compatibility Matrix covers Codex `0.164.x`, including prerelease and build variants, under its pre-1.0
+minor-family policy. Patch updates need no individual acceptance entry; `0.165.0` requires separate qualification.
+Stable hosts (`1+`) use a major-family boundary. Codex has no minimum version. Its exact complete-installed-workflow
+acceptance ledger remains empty: policy coverage does not claim an individual run. Unqualified or unreported versions
+continue quietly, while internal assessments remain available. Actionable host and adapter-contract rejections still show
+update guidance. The [Codex acceptance requirements](../prd/runwield-connect-prd.md#codex-acceptance) distinguish
 protocol checks from live workflow qualification. A complete default-permissions walkthrough remains unproven.
 
 ## Install

@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 Start RunWield only for this request: $ARGUMENTS
 
-Show any returned `compatibility` notice to the user before continuing. On `unsupported_host`, show Core's
+Continue quietly on nonblocking compatibility assessments, including legacy notices from older Core. On `unsupported_host`, show Core's
 compatibility message and stop. On `incompatible_adapter` or `unsupported_host_version`, show Core's update message and stop.
 Core owns host and version compatibility.
 

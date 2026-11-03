@@ -751,13 +751,14 @@ owner is gone; elapsed time alone does not establish interruption. Shared Core o
 **Scope and maturity:** The Core-owned [Compatibility Matrix](../../src/shared/attached/compatibility.ts) recognizes
 Claude Code and Codex. Claude's tested entries and [host guide](../user-documentation/connect-claude-code.md) retain the
 source and permission limits in [Preview Acceptance](#preview-acceptance). Codex has no tested-version entries yet;
-recognized versions continue with an explicit untested notice. Protocol probes do not qualify a complete desktop or CLI
+policy coverage includes Codex `0.164.x` separately from its exact-run ledger. Protocol probes do not qualify a complete desktop or CLI
 workflow. Other hosts and stable support remain targets.
 
 Core checks every evidence-carrying operation before dispatch. Unrecognized hosts reject with `unsupported_host`.
 An incompatible adapter contract or host below its tested floor also rejects without changing the workflow, Plan, or
-worktree. Newer or unreported host versions continue with a visible notice, not a tested-support claim. Prerelease
-versions remain distinct from stable versions. Current-action instruction, artifact, and pending-chat reads require
+worktree. Unqualified or unreported versions continue quietly. Core retains internal assessments and evidence, while
+model-facing results omit nonblocking compatibility assessments, including saved legacy notices. Prerelease
+ordering still applies to the minimum-version check. Current-action instruction, artifact, and pending-chat reads require
 current host evidence and reject under these same rules without returning work content.
 
 Both adapters use the shared MCP carrier. It derives host identity from recognized MCP initialization names. Claude
@@ -796,7 +797,13 @@ Planner is told to write only Plan files; neither Core nor Connect blocks its ot
 instructions as a hard restriction, and do not claim independent verification when review lacks independence. Preserve
 the user's host permissions. A model's claim of completion cannot replace actual validation and delivery evidence.
 
-Maintain tested host-version ranges and clear Preview or stable labels. Architecture and implementation Plans choose
+Maintain qualified release families separately from exact acceptance-run entries and clear Preview or stable labels.
+Stable hosts (`1.0.0` and later) share coverage within a major; pre-1.0 hosts share coverage within a minor. Claude
+major `2` and Codex minor `0.164` are covered. Claude’s minimum remains `2.1.303`; Codex has no minimum. Prerelease and
+build suffixes retain their numeric family. New stable majors and pre-1.0 minors need acceptance qualification before
+coverage expands; stable minor/patch and pre-1.0 patch updates need no individual acceptance entry. Coverage never
+claims an exact-version run or a completed desktop/CLI journey. Routine compatibility notices are suppressed in both
+plugins, including notices from older compatible Core. Actionable blocking diagnostics remain visible. Architecture and implementation Plans choose
 transports, role dispatch, tool contracts, and host-specific hooks; this PRD defines the outcomes those choices support.
 
 - The README must position RunWield as the planning, verification, and organizational-memory layer for AI software
@@ -815,8 +822,11 @@ transports, role dispatch, tool contracts, and host-specific hooks; this PRD def
 - Given an unrecognized host with a tested version number and supported adapter contract, activation rejects with
   `unsupported_host` before changing any workflow, Plan, or worktree. Selecting the Codex adapter or supplying claimed
   Codex evidence in tool arguments does not bypass the host check. Status remains readable for recovery.
-- Given a recognized Codex prerelease without saved live acceptance, activation discloses untested support and never
-  reports that the version or its desktop/CLI journey is tested.
+- Given Claude `2.1.304` or `2.99.0`, or Codex `0.164.0-alpha.11.1`, `0.164.0`, or `0.164.1`, Core records
+  compatible family coverage and returns no routine compatibility material. The exact acceptance ledger stays unchanged.
+- Given Claude `3.0.0`, Codex `0.165.0`, or an unreported version, work continues quietly with an internal unqualified
+  or unreported assessment. Codex `0.165.0` requires separate qualification; it does not inherit `0.164.x` coverage.
+- Given a prerelease below Claude’s `2.1.303` minimum, Core rejects with actionable update guidance.
 - Given an open workflow from either supported host, the other host restores its same identity, Plan and pending action,
   shows the handoff summary, and continues with current-host instructions. Stale outcomes remain rejected, and a host
   change neither creates a new workflow nor resets approval.
@@ -1075,8 +1085,8 @@ host-version compatibility audit:
 - [Pi extensions](https://pi.dev/docs/latest/extensions) and [Pi packages](https://pi.dev/docs/latest/packages) provide
   broad command, tool, event, UI, and package extension surfaces.
 
-These are feasibility facts, not a guarantee of parity. Every supported host/version combination still requires tested
-capability evidence.
+These are feasibility facts, not a guarantee of parity. Each qualified host release family requires capability
+evidence under the [compatibility policy](#compatibility-and-honest-availability); coverage does not imply an exact-version run.
 
 ## Out of Scope
 

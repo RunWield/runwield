@@ -1,3 +1,4 @@
+import { isBlockingCompatibility } from "./compatibility.ts";
 import type { AttachedCarrierResult } from "./coordinator.ts";
 import type { AttachedNextAction, AttachedWorkflowView } from "./operations.ts";
 
@@ -144,11 +145,16 @@ function compactWorkflow(workflow: AttachedWorkflowView) {
 }
 
 export function compactStatus(result: AttachedCarrierResult, review: { url: string } | null) {
-    if (!result.workflow) return result;
+    const { compatibility, ...quiet } = {
+        ...result,
+        compatibility: "compatibility" in result ? result.compatibility : undefined,
+    };
+    const projected = compatibility && isBlockingCompatibility(compatibility) ? { ...quiet, compatibility } : quiet;
+    if (!result.workflow) return projected;
     return {
         ok: result.ok,
         operation: "status" as const,
-        ...(result.ok && result.compatibility && { compatibility: result.compatibility }),
+        ...(compatibility && isBlockingCompatibility(compatibility) && { compatibility }),
         ...(!result.ok && { rejection: result.rejection }),
         workflow: compactWorkflow(result.workflow),
         ...(review && { review }),
@@ -156,9 +162,14 @@ export function compactStatus(result: AttachedCarrierResult, review: { url: stri
 }
 
 export function compactResult(result: AttachedCarrierResult) {
-    if (!result.workflow) return result;
-    return {
+    const { compatibility, ...quiet } = {
         ...result,
+        compatibility: "compatibility" in result ? result.compatibility : undefined,
+    };
+    const projected = compatibility && isBlockingCompatibility(compatibility) ? { ...quiet, compatibility } : quiet;
+    if (!result.workflow) return projected;
+    return {
+        ...projected,
         workflow: compactWorkflow(result.workflow),
         ...((result.workflow.nextAction.kind === "validation" || result.workflow.nextAction.kind === "recorder") && {
             instructions: undefined,

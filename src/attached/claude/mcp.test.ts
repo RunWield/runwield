@@ -338,7 +338,7 @@ for (const hostVersion of [EVIDENCE.hostVersion, "2.1.302"]) {
             assert(result.ok);
             assertEquals(
                 result.compatibility?.status,
-                hostVersion === EVIDENCE.hostVersion ? "compatible" : "unsupported_host_version",
+                hostVersion === EVIDENCE.hostVersion ? undefined : "unsupported_host_version",
             );
             assertEquals(await readRecordBytes(root, ids.workflowId), before);
         } finally {
