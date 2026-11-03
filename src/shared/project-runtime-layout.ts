@@ -1,4 +1,16 @@
-import { admitProjectIdentity, ProjectIdentityEntryRequired, type ProjectIdentityOptions } from "./project-identity.ts";
+import {
+    admitProjectIdentity,
+    inspectProjectIdentity,
+    projectLaunchContext,
+    ProjectIdentityEntryRequired,
+    type ProjectIdentityOptions,
+} from "./project-identity.ts";
+import {
+    homeProjectRuntimeLayout,
+    inspectHomeProjectRuntime,
+    enterHomeProjectRuntime,
+} from "./project-runtime-home.ts";
+import { remoteProjectOwner } from "./remote/personal-resources.ts";
 import { recoverWindowsRename } from "./native-file-replace-windows.ts";
 import fsPromises from "node:fs/promises";
 import { open as fsOpen, rmdir as fsRmdir } from "node:fs/promises";
@@ -271,7 +283,20 @@ function internalRootFor(checkoutRoot: string): string {
     return join(getRunWieldRuntimeDir(checkoutRoot), PROJECT_INTERNAL_RUNTIME_DIR_NAME);
 }
 
-export function resolveProjectRuntimeLayout(selectedCheckoutRoot: string): ProjectRuntimeLayout {
+export function resolveProjectRuntimeLayout(
+    selectedCheckoutRoot: string,
+    options: ProjectIdentityOptions = {},
+): ProjectRuntimeLayout {
+    if ((options.context?.personalOwner ?? remoteProjectOwner())?.kind === "managed-remote")
+        return resolveCheckoutRuntimeLayout(selectedCheckoutRoot);
+    const inspection = inspectProjectIdentity(selectedCheckoutRoot, options);
+    if (inspection.kind === "invalid") throw new ProjectIdentityEntryRequired(inspection);
+    if (inspection.kind === "existing" && inspection.identity.personalOwner.kind === "execution-account")
+        return homeProjectRuntimeLayout(inspection.identity);
+    return resolveCheckoutRuntimeLayout(selectedCheckoutRoot);
+}
+
+function resolveCheckoutRuntimeLayout(selectedCheckoutRoot: string): ProjectRuntimeLayout {
     const selectedProjectRoot = resolveProjectRoot(selectedCheckoutRoot);
     const primaryCheckoutRoot = resolveProjectRoot(resolvePrimaryCheckoutRoot(selectedProjectRoot));
     const primaryInternalRoot = internalRootFor(primaryCheckoutRoot);
@@ -315,6 +340,7 @@ export function resolveProjectRuntimeLayout(selectedCheckoutRoot: string): Proje
 export interface ProjectRuntimeReadAccess {
     kind: "ready" | "fresh" | "pending";
     layout: ProjectRuntimeLayout;
+    adoptedSelectedCheckoutRoots?: string[];
 }
 
 export type ProjectRuntimeReadInspection = ProjectRuntimeReadAccess | ProjectRuntimeMigrationBlockedResult;
@@ -342,7 +368,12 @@ export function inspectProjectRuntimeReadAccess(root: string): Promise<ProjectRu
 }
 
 async function inspectProjectRuntimeReadAccessUncached(root: string): Promise<ProjectRuntimeReadInspection> {
-    const layout = resolveProjectRuntimeLayout(root);
+    const identity =
+        remoteProjectOwner()?.kind === "managed-remote" ? { kind: "fresh" as const } : inspectProjectIdentity(root);
+    if (identity.kind === "invalid") return block("malformed_migration_evidence", [root], identity.message);
+    if (identity.kind === "existing" && identity.identity.personalOwner.kind === "execution-account")
+        return inspectHomeProjectRuntime(identity.identity);
+    const layout = resolveCheckoutRuntimeLayout(root);
     const primary = await canonicalExistingRoot(layout.primary.checkoutRoot);
     const symlinks = await findSymlinkBlocker(layout, primary, [layout.selected.checkoutRoot]);
     if (symlinks.length)
@@ -426,6 +457,17 @@ export async function checkedProjectRuntimeLayout(root: string): Promise<Project
 export async function inspectProjectRuntimeLayout(root: string): Promise<ProjectRuntimeLayoutInspection> {
     const access = await inspectProjectRuntimeReadAccess(root);
     if (access.kind === "blocked") return access;
+    if (access.kind === "ready" && access.adoptedSelectedCheckoutRoots)
+        return {
+            kind: "adopted",
+            layout: access.layout,
+            adoptedSelectedCheckoutRoots: access.adoptedSelectedCheckoutRoots,
+        };
+    if (
+        inspectProjectIdentity(root).kind === "existing" &&
+        projectLaunchContext().personalOwner.kind === "execution-account"
+    )
+        return { kind: "pending", layout: access.layout, selectedCheckoutRoots: [access.layout.selected.checkoutRoot] };
     const marker = await readLayoutMarker(access.layout);
     if (isBlocked(marker)) return marker;
     if (access.kind === "ready" && marker.marker)
@@ -489,31 +531,50 @@ async function enterProjectRuntimeUncached(
         if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
         throw error;
     });
-    if (rootInfo && !rootInfo.isDirectory()) throw new Error("Project root must be a directory");
+    if (!rootInfo || !rootInfo.isDirectory()) throw new Error("Project root must be an existing directory");
     if (rootInfo) {
         const admission = await admitProjectIdentity(selectedCheckoutRoot, identityOptions);
         if (admission.kind !== "existing") throw new ProjectIdentityEntryRequired(admission);
-    }
-    const result = await migrateLegacyProjectRuntimeState(selectedCheckoutRoot);
-    if (result.kind === "blocked") throw new ProjectRuntimeEntryRefusedError(result);
-    if (rootInfo) {
-        const projectRoot = result.layout.primary.checkoutRoot;
-        const reconciliation = await ensureRunWieldOwnedGitignoreBlock(projectRoot);
-        const previous = reportedGitignoreWarnings.get(projectRoot);
-        const current = new Set(reconciliation.warnings.map((warning) => warning.message));
-        if (current.size) reportedGitignoreWarnings.set(projectRoot, current);
-        else reportedGitignoreWarnings.delete(projectRoot);
-        for (const message of current) {
-            if (!previous?.has(message)) console.warn(`${join(projectRoot, ".gitignore")}: ${message}`);
+        if (admission.identity.personalOwner.kind === "execution-account") {
+            const { layout } = await enterHomeProjectRuntime(admission.identity);
+            await reconcileRuntimeIgnore(layout.primary.checkoutRoot);
+            return layout;
         }
     }
+    const result = await migrateCheckoutRuntimeState(selectedCheckoutRoot);
+    if (result.kind === "blocked") throw new ProjectRuntimeEntryRefusedError(result);
+    if (rootInfo) await reconcileRuntimeIgnore(result.layout.primary.checkoutRoot);
     return result.layout;
+}
+
+async function reconcileRuntimeIgnore(projectRoot: string): Promise<void> {
+    const reconciliation = await ensureRunWieldOwnedGitignoreBlock(projectRoot);
+    const previous = reportedGitignoreWarnings.get(projectRoot);
+    const current = new Set(reconciliation.warnings.map((warning) => warning.message));
+    if (current.size) reportedGitignoreWarnings.set(projectRoot, current);
+    else reportedGitignoreWarnings.delete(projectRoot);
+    for (const message of current) {
+        if (!previous?.has(message)) console.warn(`${join(projectRoot, ".gitignore")}: ${message}`);
+    }
 }
 
 export async function migrateLegacyProjectRuntimeState(
     selectedCheckoutRoot: string,
 ): Promise<ProjectRuntimeMigrationResult> {
-    const layout = resolveProjectRuntimeLayout(selectedCheckoutRoot);
+    if (remoteProjectOwner()?.kind === "managed-remote") return migrateCheckoutRuntimeState(selectedCheckoutRoot);
+    const admission = await admitProjectIdentity(selectedCheckoutRoot);
+    if (admission.kind !== "existing") throw new ProjectIdentityEntryRequired(admission);
+    try {
+        return await enterHomeProjectRuntime(admission.identity);
+    } catch (error) {
+        if (error instanceof ProjectRuntimeEntryRefusedError)
+            return block(error.reason, error.paths, error.message, error.securityAction);
+        throw error;
+    }
+}
+
+async function migrateCheckoutRuntimeState(selectedCheckoutRoot: string): Promise<ProjectRuntimeMigrationResult> {
+    const layout = resolveCheckoutRuntimeLayout(selectedCheckoutRoot);
     const primaryCheckoutRoot = await canonicalExistingRoot(layout.primary.checkoutRoot);
     const earlySymlink = await findSymlinkBlocker(layout, primaryCheckoutRoot, [layout.selected.checkoutRoot]);
     if (earlySymlink.length > 0) {

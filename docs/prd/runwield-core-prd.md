@@ -2585,12 +2585,22 @@ repair, writes, or writer-lock probes. Fresh Projects need no storage; unmigrate
 workflow details pending without combining old and new stores. Adopted authority remains readable when legacy recovery
 input returns. Path resolution alone is not permission to read runtime state.
 
-Deliberate actions enter runtime state before mutation locks or writes. RunWield 0.11 adopts eligible 0.10 state once,
-including unfinished publications and saved repairs. Unsafe layouts receive a retryable refusal with the reason and
+Deliberate actions enter runtime state before mutation locks or writes. Ordinary local execution and manual SSH
+execution adopt checkout runtime into the executing account's `~/.wld/projects/<projectId>/`, including unfinished
+publications and saved repairs. Explicit managed-remote entry retains its versioned layout and laptop-owner boundary;
+it cannot fall through to ordinary-account adoption. Unsafe layouts receive a retryable refusal with the reason and
 safe paths, and all user work stays in place. Adoption is one-way; after it, use only the new version. Each action entry
 rechecks changed runtime evidence independently of earlier reads. Nested inspection reuse ends with its operation;
 new requests see newly tracked runtime paths, attached worktrees, and changed files. See
 [ADR-017](../adr/017-project-runtime-state-under-wld-internal.md).
+
+**Requirement: Keep ordinary runtime in home storage.** Controller records, secrets, indexes, migration receipts,
+registries, staging, delivery evidence, diagnostics, backups, journals, and locks have explicit personal, repository,
+and checkout owners in the home Project tree. Linked worktrees share repository resources; linked clones retain
+separate attempts and Git authority. Copy verification and durable path publication precede retirement of unchanged
+sources. Dirty fallback worktrees and repair clones remain usable by Git. Normal external worktrees keep their paths.
+No runtime marker, alias, or internal directory remains under project `.wld/`. Unavailable home access preserves work
+and reports the prerequisite. Runtime relocation does not import canonical Plans or Work Records.
 
 **Requirement: Reconcile leftovers automatically.** When a Plan is selected, RunWield reconciles files recreated by
 older processes, stale runtime records, and concurrent migrations. Current progress, review decisions, and
@@ -2618,6 +2628,17 @@ Open product questions:
 - Is architecture governance useful as a dedicated workflow or as an optional policy?
 
 **Acceptance scenarios:**
+
+- Given ordinary runtime in primary and linked checkouts, entry moves every item into its home owner, preserves
+  configuration bytes and legacy Plan authority, and leaves both checkout internal roots absent.
+- Given a crash after copying, verification, Git repair, mapping publication, or source retirement, a fresh process
+  resumes the same transfer without losing bytes, resetting review decisions, or advancing delivery proof.
+- Given a held legacy controller, registry, Plan, or Work Record lock, cutover preserves source work until the writer
+  settles. Competing migrations converge on one home authority.
+- Given a dirty fallback worktree or publication repair clone, relocation preserves HEAD, index, unstaged and untracked
+  work; registered worktrees remain registered and normal publication can resume.
+- Given manual SSH environment variables, ordinary execution still selects that account's home. Given explicit managed
+  ownership, it retains its admitted mode and does not adopt the ordinary personal store.
 
 - Given untracked runtime state and changed user `.wld` configuration, checkpoints and publications include the
   configuration and leave runtime state out.

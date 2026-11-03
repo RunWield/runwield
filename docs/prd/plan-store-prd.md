@@ -12,7 +12,8 @@ RunWield-managed store outside the repository. Plan documents stay plain, unencr
 metadata RunWield owns moves into a separate file beside them. Each project chooses separately whether delivered Plans
 and Work Records are also committed to the repository. The full proposal also moves all state currently under
 project `.wld/internal/` into `~/.wld/projects/<projectId>/`. Only local settings and user overrides remain in project
-`.wld/`. These are target requirements, not implemented behavior.
+`.wld/`. Ordinary runtime relocation is current under the Core work-protection capability. Plan/Work Record package
+adoption and managed transport remain target requirements.
 
 ## Problem Description
 
@@ -199,8 +200,10 @@ store's copy at every status, from draft through delivery, with no reconciliatio
 
 ### Project runtime outside checkouts
 
-**Scope and maturity:** Target. Changes [Work protection](runwield-core-prd.md#work-protection) and
+**Scope and maturity:** Ordinary local and manual SSH runtime relocation is current; see
+[Work protection](runwield-core-prd.md#work-protection) and
 [Project context and initialization](runwield-core-prd.md#project-context-and-initialization).
+Managed-remote personal transfer remains target. Runtime relocation does not adopt Plan or Work Record packages.
 
 **Requirement: All internal state leaves the project.** Everything currently stored under `.wld/internal/` moves
 under `~/.wld/projects/<projectId>/` on its responsible host. This includes controller state, worktree registries,

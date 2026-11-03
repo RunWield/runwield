@@ -213,18 +213,17 @@ test("linked checkout registry operations share the primary internal store, lock
             delete process.env["WLD_TEST_SANDBOX_HOME"];
             await git(root, ["worktree", "add", "-b", "linked-registry", linked]);
             await addEntry(root, entry({ id: "shared", planId: "plan-shared" }));
-            const primaryRoot = await fsRealpath(root);
 
             assertEquals(getWorktreeRegistryPath(linked), getWorktreeRegistryPath(root));
             assertEquals(getWorktreeRegistryLockPath(linked), getWorktreeRegistryLockPath(root));
-            assertEquals(getWorktreeRegistryPath(root), join(primaryRoot, ".wld", "internal", "worktrees.json"));
-            assertEquals(getWorktreeRegistryLockPath(root), join(primaryRoot, ".wld", "internal", "worktrees.lock"));
+            assertEquals(getWorktreeRegistryPath(root).startsWith(join(identityHome, ".wld", "projects")), true);
+            assertEquals(getWorktreeRegistryLockPath(root).startsWith(join(identityHome, ".wld", "projects")), true);
             assertEquals((await findById(linked, "shared"))?.planId, "plan-shared");
 
             const updated = await updateEntry(linked, "shared", { status: "completed" });
             assertEquals(updated?.status, "completed");
             assertEquals((await findById(root, "shared"))?.status, "completed");
-            await fsLstat(join(primaryRoot, ".wld", "internal", "worktrees.json"));
+            await fsLstat(getWorktreeRegistryPath(root));
             await assertRejects(() => fsLstat(join(root, ".wld", "worktrees.json")), Error, "ENOENT");
             await assertRejects(() => fsLstat(join(linked, ".wld", "internal", "worktrees.json")), Error, "ENOENT");
             await assertRejects(() => fsLstat(join(linked, ".wld", "worktrees.json")), Error, "ENOENT");
@@ -240,7 +239,7 @@ test("linked checkout registry operations share the primary internal store, lock
             const events: string[] = [];
             const first = withWorktreeRegistryLock(root, async () => {
                 events.push("first-start");
-                await fsLstat(join(primaryRoot, ".wld", "internal", "worktrees.lock"));
+                await fsLstat(getWorktreeRegistryLockPath(root));
                 firstReady();
                 await releaseFirstPromise;
                 events.push("first-end");
@@ -265,7 +264,7 @@ test("linked checkout registry operations share the primary internal store, lock
                 }),
             );
             await prepareWorktreeRegistry(linked);
-            const issuesPath = join(primaryRoot, ".wld", "internal", "worktree-registry-migration-issues.json");
+            const issuesPath = resolveProjectRuntimeLayout(root).primary.worktreeRegistryMigrationIssuesPath;
             const issues = JSON.parse(await fsReadFile(issuesPath, "utf8"));
             assertEquals(issues.issues[0].id, "legacy");
             await assertRejects(

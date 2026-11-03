@@ -5,8 +5,7 @@ import { captureForegroundProcess } from "../captured-process.ts";
  * Derived Mnemoteca index for canonical Work Records.
  */
 
-import { remotePersonalResourcesActive } from "../remote/personal-resources.ts";
-import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { basename, dirname } from "node:path";
 import { listWorkRecords } from "./store.ts";
 import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
@@ -124,18 +123,12 @@ export async function runMnemotecaWorkRecordCommand(cwd: string, args: string[],
     const mnemotecaPort = options.mnemotecaPort;
     let result;
     try {
-        if (remotePersonalResourcesActive()) {
-            const commonDir = await resolveGitCommonDir(cwd);
-            const root = commonDir && basename(commonDir) === ".git" ? dirname(commonDir) : cwd;
-            const layout = resolveProjectRuntimeLayout(root).primary;
-            await fsMkdir(layout.internalRoot, { recursive: true, mode: 0o700 });
-            result = await mnemotecaPort.run(args, {
-                cwd,
-                env: { MNEMOTECA_DB_PATH: layout.workRecordIndexDatabasePath },
-            });
-        } else {
-            result = await mnemotecaPort.run(args, { cwd });
-        }
+        const layout = (await enterProjectRuntime(cwd)).primary;
+        await fsMkdir(dirname(layout.workRecordIndexDatabasePath), { recursive: true, mode: 0o700 });
+        result = await mnemotecaPort.run(args, {
+            cwd,
+            env: { MNEMOTECA_DB_PATH: layout.workRecordIndexDatabasePath },
+        });
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         throw new Error(`mnemoteca ${args[0] || ""} failed: ${message}`);

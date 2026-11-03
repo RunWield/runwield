@@ -89,7 +89,11 @@ async function withTracedProject(run: (project: TracedProject) => Promise<void>)
                     const events: GitTraceEvent[] = lines.map((line) => JSON.parse(line));
                     return events.filter(
                         (event) =>
-                            event.event === "start" && event.argv?.slice(-3).join(" ") === "worktree list --porcelain",
+                            event.event === "start" &&
+                            event.argv
+                                ?.filter((arg) => arg !== "-z")
+                                .slice(-3)
+                                .join(" ") === "worktree list --porcelain",
                     ).length;
                 },
             });
