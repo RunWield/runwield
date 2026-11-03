@@ -26,7 +26,7 @@ import {
     getProjectSecretStoreLocation,
     getSecretRecord,
     putSecretRecord,
-} from "../../shared/collaboration/secrets.js";
+} from "../../shared/collaboration/secrets.ts";
 import { buildCollaborationUrl, redactCollaborationUrl } from "../../shared/collaboration/urls.ts";
 import { getDefaultPlanServerUrl } from "../../shared/settings.js";
 import { normalizePlanServerUrl } from "../../shared/collaboration/urls.ts";

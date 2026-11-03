@@ -55,6 +55,6 @@ test("isProhibitedImageFile allows only passive assets below /app/src", () => {
     assertEquals(isProhibitedImageFile("/app/src/agent-definitions/subagent-definitions/reviewer-prompt.md"), true);
     assertEquals(isProhibitedImageFile("/app/src/ui/design-system/tokens.css"), false);
     assertEquals(isProhibitedImageFile("/app/src/ui/theme/catppuccin-mocha.json"), false);
-    assertEquals(isProhibitedImageFile("/app/src/shared/collaboration/secrets.js"), true);
+    assertEquals(isProhibitedImageFile("/app/src/shared/collaboration/secrets.ts"), true);
     assertEquals(isProhibitedImageFile("/app/src/ui/theme/unlisted-theme.json"), true);
 });

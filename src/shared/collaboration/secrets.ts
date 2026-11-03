@@ -16,79 +16,71 @@ import { getHomeDir, PROJECT_SECRET_STORE_RELATIVE_PATH } from "../../constants.
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { ensureRunWieldOwnedGitignoreBlock } from "../runwield-owned-paths.ts";
 
+import type { LocalSecretRecord } from "./protocol.js";
+
+export interface SecretStoreDocument {
+    schemaVersion: number;
+    records: Record<string, LocalSecretRecord>;
+}
+
+export interface SecretStoreLocation {
+    owner: "global" | "project";
+    path: string;
+    projectRoot?: string;
+}
+
+export interface PullSecretMatch {
+    path: string;
+    key: string;
+    record: LocalSecretRecord;
+}
+
+export interface DeletedSecretRecord {
+    path: string;
+    key: string;
+}
+
+interface RawSecretStoreDocument {
+    schemaVersion?: unknown;
+    records?: unknown;
+}
+
+type SecretCapabilityField = keyof Pick<
+    LocalSecretRecord,
+    "contentKey" | "maintainerCapability" | "reviewerCapability"
+>;
+
 export const SECRET_STORE_SCHEMA_VERSION = 1;
 export { PROJECT_SECRET_STORE_RELATIVE_PATH };
 
-/**
- * @param {string} planId
- * @param {string} spaceId
- * @returns {string}
- */
-export function secretRecordKey(planId, spaceId) {
+export function secretRecordKey(planId: string, spaceId: string): string {
     return `${planId}:${spaceId}`;
 }
 
-/**
- * @typedef {Object} SecretStoreDocument
- * @property {number} schemaVersion
- * @property {Record<string, import("./protocol.js").LocalSecretRecord>} records
- */
-
-/**
- * @typedef {Object} SecretStoreLocation
- * @property {"global"|"project"} owner
- * @property {string} path
- * @property {string} [projectRoot]
- */
-
-/**
- * @param {string} [homeDir]
- * @returns {string}
- */
-export function getGlobalSecretStorePath(homeDir = getHomeDir()) {
+export function getGlobalSecretStorePath(homeDir = getHomeDir()): string {
     return join(homeDir, ".wld", "collaboration-secrets.json");
 }
 
-/**
- * @param {string} [homeDir]
- * @returns {SecretStoreLocation}
- */
-export function getGlobalSecretStoreLocation(homeDir = getHomeDir()) {
+export function getGlobalSecretStoreLocation(homeDir = getHomeDir()): SecretStoreLocation {
     return { owner: "global", path: getGlobalSecretStorePath(homeDir) };
 }
 
-/**
- * @param {string} projectRoot
- * @returns {string}
- */
-export function getProjectSecretStorePath(projectRoot) {
+export function getProjectSecretStorePath(projectRoot: string): string {
     return resolveProjectRuntimeLayout(projectRoot).primary.projectSecretStorePath;
 }
 
-/**
- * @param {string} projectRoot
- * @returns {Promise<SecretStoreLocation>}
- */
-export async function getProjectSecretStoreLocation(projectRoot) {
+export async function getProjectSecretStoreLocation(projectRoot: string): Promise<SecretStoreLocation> {
     const layout = await enterProjectRuntime(projectRoot);
     return { owner: "project", projectRoot, path: layout.primary.projectSecretStorePath };
 }
 
-/**
- * @param {SecretStoreLocation} location
- * @returns {Promise<string>}
- */
-async function resolveSecretStorePath(location) {
+async function resolveSecretStorePath(location: SecretStoreLocation): Promise<string> {
     if (location.owner === "global") return location.path;
     if (!location.projectRoot) throw new Error("Project secret store location requires a project root.");
     return (await enterProjectRuntime(location.projectRoot)).primary.projectSecretStorePath;
 }
 
-/**
- * @param {SecretStoreLocation} location
- * @returns {Promise<SecretStoreDocument>}
- */
-export async function readSecretStore(location) {
+export async function readSecretStore(location: SecretStoreLocation): Promise<SecretStoreDocument> {
     const path = await resolveSecretStorePath(location);
     try {
         const raw = await fsReadFile(path, "utf8");
@@ -101,11 +93,7 @@ export async function readSecretStore(location) {
     }
 }
 
-/**
- * @param {SecretStoreLocation} location
- * @param {SecretStoreDocument} document
- */
-export async function writeSecretStore(location, document) {
+export async function writeSecretStore(location: SecretStoreLocation, document: SecretStoreDocument) {
     const path = await resolveSecretStorePath(location);
     const normalized = normalizeSecretStore(document);
     await fsMkdir(dirname(path), { recursive: true });
@@ -138,51 +126,24 @@ export async function writeSecretStore(location, document) {
     }
 }
 
-/**
- * @param {SecretStoreLocation} path
- * @param {string} key
- * @param {import("./protocol.js").LocalSecretRecord} record
- */
-export async function putSecretRecord(path, key, record) {
+export async function putSecretRecord(path: SecretStoreLocation, key: string, record: LocalSecretRecord) {
     const document = await readSecretStore(path);
     document.records[key] = normalizeLocalSecretRecord(record);
     await writeSecretStore(path, document);
 }
 
-/**
- * @param {SecretStoreLocation} path
- * @param {string} key
- * @returns {Promise<import("./protocol.js").LocalSecretRecord | undefined>}
- */
-export async function getSecretRecord(path, key) {
+export async function getSecretRecord(path: SecretStoreLocation, key: string): Promise<LocalSecretRecord | undefined> {
     return (await readSecretStore(path)).records[key];
 }
 
-/**
- * @typedef {Object} PullSecretMatch
- * @property {string} path
- * @property {string} key
- * @property {import("./protocol.js").LocalSecretRecord} record
- */
-
-/**
- * @param {import("./protocol.js").LocalSecretRecord} record
- * @param {string} planId
- * @param {string} spaceId
- * @returns {boolean}
- */
-function isCompatibleSecretRecord(record, planId, spaceId) {
+function isCompatibleSecretRecord(record: LocalSecretRecord, planId: string, spaceId: string) {
     const normalized = normalizeLocalSecretRecord(record);
     if (normalized.planId && normalized.planId !== planId) return false;
     if (normalized.spaceId && normalized.spaceId !== spaceId) return false;
     return true;
 }
 
-/**
- * @param {PullSecretMatch[]} matches
- * @param {import("./protocol.js").LocalSecretRecord} [expected]
- */
-function assertCompatiblePullSecretMatches(matches, expected) {
+function assertCompatiblePullSecretMatches(matches: PullSecretMatch[], expected?: LocalSecretRecord) {
     const normalizedExpected = expected ? normalizeLocalSecretRecord(expected) : undefined;
     const records = normalizedExpected
         ? [
@@ -193,14 +154,12 @@ function assertCompatiblePullSecretMatches(matches, expected) {
               },
           ]
         : matches.map((match) => ({ label: `${match.path}:${match.key}`, record: match.record }));
-    for (const field of ["contentKey", "maintainerCapability"]) {
-        const baseline = records.find(
-            (entry) => /** @type {Record<string, string | undefined>} */ (entry.record)[field],
-        );
+    for (const field of ["contentKey", "maintainerCapability"] satisfies SecretCapabilityField[]) {
+        const baseline = records.find((entry) => entry.record[field]);
         if (!baseline) continue;
-        const expectedValue = /** @type {Record<string, string | undefined>} */ (baseline.record)[field];
+        const expectedValue = baseline.record[field];
         for (const entry of records) {
-            const actualValue = /** @type {Record<string, string | undefined>} */ (entry.record)[field];
+            const actualValue = entry.record[field];
             if (expectedValue && actualValue && expectedValue !== actualValue) {
                 throw new Error(
                     `Conflicting collaboration secret record for ${field}; refusing to choose between ${baseline.label} and ${entry.label}.`,
@@ -210,19 +169,17 @@ function assertCompatiblePullSecretMatches(matches, expected) {
     }
 }
 
-/**
- * @param {SecretStoreLocation[]} paths
- * @param {string} planId
- * @param {string} spaceId
- * @returns {Promise<PullSecretMatch[]>}
- */
-async function collectPullSecretMatches(paths, planId, spaceId) {
+async function collectPullSecretMatches(
+    paths: SecretStoreLocation[],
+    planId: string,
+    spaceId: string,
+): Promise<PullSecretMatch[]> {
     const keys = [secretRecordKey(planId, spaceId), planId];
     const documents = [];
     for (const path of paths) {
         documents.push({ path: path.path, document: await readSecretStore(path) });
     }
-    const matches = /** @type {PullSecretMatch[]} */ ([]);
+    const matches: PullSecretMatch[] = [];
     for (const key of keys) {
         for (const { path, document } of documents) {
             const record = document.records[key];
@@ -232,24 +189,21 @@ async function collectPullSecretMatches(paths, planId, spaceId) {
     return matches;
 }
 
-/**
- * @param {SecretStoreLocation[]} paths
- * @param {string} planId
- * @param {string} spaceId
- * @param {import("./protocol.js").LocalSecretRecord} expected
- */
-export async function assertCompatiblePullSecretRecord(paths, planId, spaceId, expected) {
+export async function assertCompatiblePullSecretRecord(
+    paths: SecretStoreLocation[],
+    planId: string,
+    spaceId: string,
+    expected: LocalSecretRecord,
+) {
     const matches = await collectPullSecretMatches(paths, planId, spaceId);
     assertCompatiblePullSecretMatches(matches, expected);
 }
 
-/**
- * @param {SecretStoreLocation[]} paths
- * @param {string} planId
- * @param {string} spaceId
- * @returns {Promise<PullSecretMatch | null>}
- */
-export async function resolvePullSecretRecord(paths, planId, spaceId) {
+export async function resolvePullSecretRecord(
+    paths: SecretStoreLocation[],
+    planId: string,
+    spaceId: string,
+): Promise<PullSecretMatch | null> {
     const matches = await collectPullSecretMatches(paths, planId, spaceId);
     assertCompatiblePullSecretMatches(matches);
     return matches[0] || null;
@@ -260,12 +214,12 @@ export async function resolvePullSecretRecord(paths, planId, spaceId) {
  * Space or legacy records with no stored spaceId. Records for another Shared
  * Space are ignored instead of being used for authorization.
  *
- * @param {SecretStoreLocation[]} paths
- * @param {string} planId
- * @param {string} spaceId
- * @returns {Promise<PullSecretMatch | null>}
  */
-export async function resolveCompatibleSecretRecord(paths, planId, spaceId) {
+export async function resolveCompatibleSecretRecord(
+    paths: SecretStoreLocation[],
+    planId: string,
+    spaceId: string,
+): Promise<PullSecretMatch | null> {
     const matches = (await collectPullSecretMatches(paths, planId, spaceId)).filter((match) =>
         isCompatibleSecretRecord(match.record, planId, spaceId),
     );
@@ -273,18 +227,17 @@ export async function resolveCompatibleSecretRecord(paths, planId, spaceId) {
     return matches[0] || null;
 }
 
-/**
- * @param {SecretStoreLocation} path
- * @param {string} key
- * @param {import("./protocol.js").LocalSecretRecord} record
- */
-export async function putCompatibleSecretRecord(path, key, record) {
+export async function putCompatibleSecretRecord(path: SecretStoreLocation, key: string, record: LocalSecretRecord) {
     const existing = await getSecretRecord(path, key);
     const normalized = normalizeLocalSecretRecord(record);
     if (existing) {
-        for (const field of ["contentKey", "maintainerCapability", "reviewerCapability"]) {
-            const oldValue = /** @type {Record<string, string | undefined>} */ (existing)[field];
-            const newValue = /** @type {Record<string, string | undefined>} */ (normalized)[field];
+        for (const field of [
+            "contentKey",
+            "maintainerCapability",
+            "reviewerCapability",
+        ] satisfies SecretCapabilityField[]) {
+            const oldValue = existing[field];
+            const newValue = normalized[field];
             if (oldValue && newValue && oldValue !== newValue) {
                 throw new Error(`Conflicting collaboration secret record for ${key}; refusing to replace ${field}.`);
             }
@@ -293,11 +246,7 @@ export async function putCompatibleSecretRecord(path, key, record) {
     await putSecretRecord(path, key, { ...existing, ...normalized });
 }
 
-/**
- * @param {SecretStoreLocation} path
- * @param {string} key
- */
-export async function deleteSecretRecord(path, key) {
+export async function deleteSecretRecord(path: SecretStoreLocation, key: string) {
     const document = await readSecretStore(path);
     if (!Object.hasOwn(document.records, key)) return;
     delete document.records[key];
@@ -305,24 +254,18 @@ export async function deleteSecretRecord(path, key) {
 }
 
 /**
- * @typedef {Object} DeletedSecretRecord
- * @property {string} path
- * @property {string} key
- */
-
-/**
  * Delete local secret records for the given Plan/Shared Space pair from all
  * provided stores. Legacy planId-only records are deleted only when they are
  * not bound to a different Shared Space.
  *
- * @param {SecretStoreLocation[]} paths
- * @param {string} planId
- * @param {string} spaceId
- * @returns {Promise<DeletedSecretRecord[]>}
  */
-export async function deleteCompatibleSecretRecords(paths, planId, spaceId) {
+export async function deleteCompatibleSecretRecords(
+    paths: SecretStoreLocation[],
+    planId: string,
+    spaceId: string,
+): Promise<DeletedSecretRecord[]> {
     const keys = [secretRecordKey(planId, spaceId), planId];
-    const deleted = /** @type {DeletedSecretRecord[]} */ ([]);
+    const deleted: DeletedSecretRecord[] = [];
     for (const path of paths) {
         const document = await readSecretStore(path);
         let changed = false;
@@ -338,50 +281,35 @@ export async function deleteCompatibleSecretRecords(paths, planId, spaceId) {
     return deleted;
 }
 
-/**
- * @param {unknown} value
- * @returns {SecretStoreDocument}
- */
-export function normalizeSecretStore(value) {
-    const record = assertRecord(value, "Secret store");
+export function normalizeSecretStore(value: unknown): SecretStoreDocument {
+    const record: RawSecretStoreDocument = assertRecord(value, "Secret store");
     if (record.schemaVersion !== SECRET_STORE_SCHEMA_VERSION) {
         throw new Error(`Unsupported collaboration secret store schema version: ${String(record.schemaVersion)}`);
     }
-    const records = assertRecord(record.records, "Secret store records");
-    /** @type {Record<string, import("./protocol.js").LocalSecretRecord>} */
-    const normalizedRecords = {};
+    const records: Record<string, unknown> = assertRecord(record.records, "Secret store records");
+
+    const normalizedRecords: SecretStoreDocument["records"] = {};
     for (const [key, secretRecord] of Object.entries(records)) {
         normalizedRecords[key] = normalizeLocalSecretRecord(secretRecord);
     }
     return { schemaVersion: SECRET_STORE_SCHEMA_VERSION, records: normalizedRecords };
 }
 
-/**
- * @param {string} projectRoot
- */
-export async function ensureProjectSecretStoreIgnored(projectRoot) {
+export async function ensureProjectSecretStoreIgnored(projectRoot: string) {
     const layout = await enterProjectRuntime(projectRoot);
     await fsMkdir(layout.primary.internalRoot, { recursive: true });
     await ensureRunWieldOwnedGitignoreBlock(layout.primary.checkoutRoot);
 }
 
-/**
- * @param {unknown} value
- * @returns {string}
- */
-export function redactSecretStoreValue(value) {
+export function redactSecretStoreValue(value: unknown): string {
     return redactSecrets(JSON.stringify(redactSecretStoreFields(value)));
 }
 
-/**
- * @param {unknown} value
- * @returns {unknown}
- */
-function redactSecretStoreFields(value) {
+function redactSecretStoreFields(value: unknown): unknown {
     if (!value || typeof value !== "object") return value;
     if (Array.isArray(value)) return value.map((item) => redactSecretStoreFields(item));
-    /** @type {Record<string, unknown>} */
-    const redacted = {};
+
+    const redacted: Record<string, unknown> = {};
     for (const [key, fieldValue] of Object.entries(value)) {
         if (key === "contentKey" || key === "reviewerCapability" || key === "maintainerCapability") {
             redacted[key] = redactCapabilityValue(typeof fieldValue === "string" ? fieldValue : "");

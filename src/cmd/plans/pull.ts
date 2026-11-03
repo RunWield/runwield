@@ -32,7 +32,7 @@ import {
     putCompatibleSecretRecord,
     resolvePullSecretRecord,
     secretRecordKey,
-} from "../../shared/collaboration/secrets.js";
+} from "../../shared/collaboration/secrets.ts";
 import { parseCollaborationUrl, redactCollaborationUrl } from "../../shared/collaboration/urls.ts";
 import { normalizePlanServerUrl } from "../../shared/collaboration/urls.ts";
 import { SessionRuntime } from "../../shared/session/session-runtime.ts";
