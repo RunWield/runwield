@@ -16,7 +16,7 @@ import {
     validationProgressCheckSummary,
     validationProgressHeading,
 } from "../../shared/workflow/validation-progress-presentation.ts";
-import { MermaidMarkdown } from "./mermaid-markdown.js";
+import { MermaidMarkdown } from "./mermaid-markdown.ts";
 import stripAnsi from "strip-ansi";
 
 /**

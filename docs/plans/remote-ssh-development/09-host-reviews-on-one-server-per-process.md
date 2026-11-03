@@ -133,7 +133,7 @@ first `resolve`, re-registers on `rebind` (the old token is released, so old lin
 > [!WARNING]
 > **Registration must be synchronous**
 >
-> `DocumentLinkHost.resolve` runs during TUI Markdown rendering (`mermaid-markdown.js`) and must return a URL right
+> `DocumentLinkHost.resolve` runs during TUI Markdown rendering (`mermaid-markdown.ts`) and must return a URL right
 > away. `register` therefore starts the listener synchronously, as `serveHttp` already does. On `rebind`, the reader
 > registers the new token **before** it releases the old one, so the host never goes empty and the origin stays the same.
 
