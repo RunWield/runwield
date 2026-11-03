@@ -37,7 +37,7 @@ start checks, or dispatch a worker before showing this summary. A workflow start
 in Codex with the same Plan, action, revision, and execution directory. The explicit resume already authorizes that
 handoff; no additional host-switch confirmation is needed. Do not import the other host's conversation.
 
-Show any returned `compatibility` notice before continuing. For `unsupported_host`, `incompatible_adapter`, or
+Continue quietly on nonblocking compatibility assessments, including legacy notices from older Core. For `unsupported_host`, `incompatible_adapter`, or
 `unsupported_host_version`, show Core's explanation and update guidance and stop. Never claim a host version is tested
 when Core describes it as untested.
 

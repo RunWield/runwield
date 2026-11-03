@@ -37,11 +37,14 @@ test("Claude command instructions automatically dispatch a host worker and retur
     }
 });
 
-test("every Claude command shows Core compatibility guidance before continuing", async () => {
+test("every Claude command suppresses routine notices and preserves blocking guidance", async () => {
     for (const command of ["request", "plan-review", "implement", "validate"]) {
         const source = await fsReadFile(new URL(`./plugin/commands/${command}.md`, import.meta.url), "utf8");
         const text = source.replace(/\s+/g, " ");
-        assertStringIncludes(text, "Show any returned `compatibility` notice to the user before continuing");
+        assertStringIncludes(
+            text,
+            "Continue quietly on nonblocking compatibility assessments, including legacy notices from older Core.",
+        );
         assertStringIncludes(text, "`incompatible_adapter`");
         assertStringIncludes(text, "`unsupported_host_version`");
         assertStringIncludes(text, "show Core's update message and stop");

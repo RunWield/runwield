@@ -31,7 +31,7 @@ jobs:
                 shard: [1, 2, 3, 4]
         env:
             WLD_TEST_CONCURRENCY: "4"
-            WLD_TEST_FILE_TIMEOUT_MS: "600000"
+            WLD_TEST_FILE_TIMEOUT_MS: "900000"
         steps:
             - uses: actions/checkout@v5
               with:

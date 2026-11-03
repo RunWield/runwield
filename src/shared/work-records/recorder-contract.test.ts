@@ -47,7 +47,7 @@ for (const field of ["deviationsFromPlan", "deferredWork"]) {
                         },
                     }),
                 Error,
-                "additional",
+                `${field}: unknown field`,
             );
             const args = {
                 title: "Search cache",

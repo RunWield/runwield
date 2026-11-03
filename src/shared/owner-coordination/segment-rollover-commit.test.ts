@@ -6,7 +6,7 @@ import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { getRunWieldSessionDir } from "../session/root-session.js";
 import { captureTranscriptEvidence } from "../session/session-transcript-projection.js";
-import { openOwnerCoordinationDatabase } from "./database.js";
+import { openOwnerCoordinationDatabase } from "./database.ts";
 import { registerProject } from "./projects.js";
 import {
     acquireSessionActivation,

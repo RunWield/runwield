@@ -29,6 +29,7 @@ import { createAssistantMessageEventStream, getCurrentSystemMessage } from "@ear
 import { formatProviderError, formatProviderRetryExhaustion, normalizeProviderStream } from "./provider-errors.ts";
 import { completeSimple } from "@earendil-works/pi-ai/compat";
 import { getRemoteSessionSaveBridge } from "./root-session.js";
+import { createRunWieldCodemodeExtension } from "./codemode.ts";
 import { WorkflowStepCompleted } from "../workflow/workflow-tool-events.ts";
 import { createSingleEditToolDefinition } from "../../tools/edit.ts";
 import { createEditDocsToolDefinition, createWriteDocsToolDefinition } from "../../tools/docs-file-tools.ts";
@@ -1663,7 +1664,11 @@ export async function assembleFinalSystemPromptWithContextProjection(
     }
 
     const toolItems = tools.map((t) => {
-        const desc = customToolMap.get(t) || "Built-in tool";
+        const desc =
+            customToolMap.get(t) ||
+            (t === "codemode"
+                ? "Run JavaScript against authorized tools; discover tools with ALL_TOOLS and emit filtered output with text(). Workflow decisions remain direct calls."
+                : "Built-in tool");
         const line = `- ${t} - ${desc}`;
         const schemaText = serializeToolContextForProjection(t, effectiveToolMap.get(t), desc);
         return { line, item: createContextProjectionItem(t, schemaText, { name: t }) };
@@ -2106,9 +2111,10 @@ export async function buildAgentSession({
             }),
         );
     }
-    const effectiveMcpRootTools = mcpRootTools || targetHostedSession?.getMcpRootTools?.() || [];
     const effectiveMcpIntegration =
         mcpIntegration || (mcpRootTools?.length === 0 ? undefined : targetHostedSession?.getMcpIntegration?.());
+    const effectiveMcpRootTools =
+        mcpRootTools || effectiveMcpIntegration?.getTools() || targetHostedSession?.getMcpRootTools?.() || [];
     for (const tool of effectiveMcpRootTools) {
         if (!effectiveMcpIntegration && !finalCustomTools.find((existing) => existing.name === tool.name)) {
             finalCustomTools.push(tool);
@@ -2356,6 +2362,7 @@ export async function buildAgentSession({
     });
     const packageExtensionResources = await resolveInstalledWldExtensionResources({ cwd: sessionCwd }).catch(() => []);
     const extensionFactories = [
+        createRunWieldCodemodeExtension(effectiveSessionManager),
         mnemotecaExtension,
         cymbalExtension,
         ketchExtension,
@@ -2592,7 +2599,7 @@ export async function composeClaudeCliBridgedTools({
         agentDef.tools,
         undefined,
         finalCustomTools.map((tool) => tool.name),
-    );
+    ).filter((name) => name !== "codemode");
     const declared = new Set(declaredTools);
     /** @param {string} name */
     const hasTool = (name) => finalCustomTools.find((tool) => tool.name === name);
@@ -2813,7 +2820,7 @@ export async function buildExecutionSession(opts) {
         agentDef.tools,
         opts.toolNames,
         finalCustomTools.map((tool) => tool.name),
-    );
+    ).filter((name) => name !== "codemode");
     const {
         prompt: finalSystemPrompt,
         projection: contextProjection,
@@ -3816,6 +3823,7 @@ export function attachSessionEventSubscribers(
                 emitRuntimeEvent({
                     type: RuntimeEventTypes.TOOL_START,
                     toolCallId: event.toolCallId,
+                    ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
                     ...runtimeTool,
                     args: event.args,
                 });
@@ -3840,6 +3848,7 @@ export function attachSessionEventSubscribers(
                 emitRuntimeEvent({
                     type: RuntimeEventTypes.TOOL_UPDATE,
                     toolCallId: event.toolCallId,
+                    ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
                     ...(runtimeTools.get(event.toolCallId) || describeRuntimeTool(event.toolName, event.args)),
                     ...normalizeRuntimeToolResult(event.partialResult),
                 });
@@ -3877,6 +3886,7 @@ export function attachSessionEventSubscribers(
                 emitRuntimeEvent({
                     type: RuntimeEventTypes.TOOL_END,
                     toolCallId: event.toolCallId,
+                    ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
                     ...(runtimeTools.get(event.toolCallId) || describeRuntimeTool(event.toolName, undefined)),
                     isError: Boolean(event.isError),
                     ...normalizeRuntimeToolResult(event.result),

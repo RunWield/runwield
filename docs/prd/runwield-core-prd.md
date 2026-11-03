@@ -2085,6 +2085,28 @@ available. An unknown set name fails with source-specific guidance. `delegate_ag
 grant one delegation mode each. Guide saves ordinary Markdown documents on explicit request and generates
 [images](#image-generation) when configured; Plans, ADRs, and Work Records stay with their own workflows.
 
+**Requirement: Compose authorized tools with Codemode.** Pi-backed bundled root Agents expose codemode alongside
+ordinary tools across TUI, Workspace, and ACP. Custom Agents opt in or disable it through their effective tool lists.
+Delegated and isolated execution retains explicit ceilings and no inherited root MCP connection. Scripts discover only
+callable tools, preserve normal validation and guards, and cannot batch workflow decisions. Presentation settings use
+RunWield's existing project-over-global precedence. External CLI backends keep direct tools; Connect retains host-owned
+model/tool execution. Codemode parity for those backends is deferred.
+
+Successful script stores follow Session branches and resume. Failed scripts discard pending stores, retain partial
+output, and do not roll back completed effects. Cancellation and worker admission preserve capacity until actual exit.
+Non-chat model calls use configured credentials and retain model-attributed usage without double counting. Source and
+standalone packaged execution must both run the actual upstream worker and WASM.
+
+**Acceptance scenarios:**
+
+- Given authorized reads, one script combines parallel results and returns a filtered answer with nested activity.
+- Given a restricted Agent, scripts cannot discover or execute excluded writes, shell calls, or workflow decisions.
+- Given trusted MCP tools, root replacement and live discovery retain one connection and current authorization.
+- Given a successful store, resume reads it and a branch before the store does not; failed scripts add no store values.
+- Given cancellation or a queued deadline, no queued tool runs and later scripts can use released capacity.
+- Given an auxiliary model call, configured credentials are used and its actual model receives one usage record.
+- Given a relocated executable without checkout access, a script can invoke a local tool and return its result.
+
 **Requirement: Limit shell commands per Agent.** `bashAllowedCommands` limits the shell commands an Agent starts through
 RunWield; shell access itself comes from the Agent's tools. Lists add up across layers, `[]` allows no commands, and
 `null` resets a definition to unrestricted. A delegate's limit always includes its parent's restriction, and a
@@ -2227,10 +2249,16 @@ Updates keep personal and project settings, and bundled presets stay selectable 
 - Validation Repair Engineer uses Engineer's model and thinking level when it has none of its own.
 - Pi-authenticated providers, OpenAI-compatible discovery through `/models`, and local or custom providers through
   `models.json` are supported.
+- OpenAI subscription sign-in creates one private installation UUID in `~/.wld/device-id` on first use. Later sign-ins
+  reuse it across Sessions and launches. API-key login does not create it; existing Codex credentials stay unchanged.
 - Claude CLI is available as `claude-cli/sonnet`, `claude-cli/opus`, `claude-cli/haiku`, and `claude-cli/fable`.
 - Antigravity CLI offers its Flash and Pro families and thinking levels.
 - Vision fallback covers text-only models.
 - Prompt-cache warming stays off; a user-facing warming setting is deferred.
+
+**Acceptance scenario:** Given a fresh installation, OpenAI subscription sign-in reaches the browser authorization
+prompt with a valid agent host UUID. Repeating sign-in after a restart uses the same UUID; another installation uses
+its own UUID. An unreadable or invalid saved identity reports a storage error without replacing it or credentials.
 
 **Requirement: Recover from temporary model-service failures.** Pi-backed requests retry temporary connection,
 rate-limit, and server failures, including `Unexpected EOF`, under the [retry

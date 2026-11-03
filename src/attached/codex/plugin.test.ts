@@ -440,3 +440,15 @@ test("Codex can install and remove the repository package in an isolated configu
         await rm(temporary, { recursive: true, force: true });
     }
 });
+
+test("Codex guidance suppresses routine compatibility notices including older Core", async () => {
+    const text = await readFile(new URL("./plugin/skills/run/SKILL.md", import.meta.url), "utf8");
+    assert(
+        text.includes(
+            "Continue quietly on nonblocking compatibility assessments, including legacy notices from older Core.",
+        ),
+    );
+    assert(text.includes("`unsupported_host`"));
+    assert(text.includes("`incompatible_adapter`"));
+    assert(text.includes("`unsupported_host_version`"));
+});

@@ -29,7 +29,8 @@ import { __resetSettingsForTests, setCustomSetting } from "../shared/settings.js
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../shared/workflow/metrics.js";
 import { createRootSessionManager, resolveCreatedRootSessionPath } from "../shared/session/root-session.js";
 import { VERSION } from "../shared/version.js";
-import { mapRuntimeEventToAcpUpdate } from "./event-mapper.js";
+import { mapRuntimeEventToAcpUpdate } from "./event-mapper.ts";
+/** @typedef {import("@agentclientprotocol/sdk").ContentChunk} AcpContentChunk */
 import { createAcpInteractionAdapter } from "./interaction-mapper.js";
 import { assertAcpFrameSchema, assertAcpSchema } from "./schema-conformance.ts";
 import { AcpSessionMap } from "./session-map.ts";
@@ -2371,7 +2372,7 @@ test("ACP streams exact current context usage from a real Runtime turn", async (
         let latestInputTokens = 0;
         fixture.setModelResponseFactory((context) => {
             latestInputTokens = estimateFauxPromptTokens(context);
-            const outputTokens = 52_000 - latestInputTokens * 2;
+            const outputTokens = 52_000 - latestInputTokens;
             assert(outputTokens > 0, "fixture prompt must leave room for a 52k exact context total");
             return fauxAssistantMessage(fauxText("x".repeat(outputTokens * 4)));
         });
@@ -2639,10 +2640,10 @@ test("ACP agent notices suppress activation and same-Agent rebuilds", () => {
     };
     assertEquals(mapRuntimeEventToAcpUpdate(event), null);
     assertEquals(mapRuntimeEventToAcpUpdate({ ...event, rootHandoff: false }), null);
-    assertEquals(mapRuntimeEventToAcpUpdate({ ...event, rootHandoff: true })?.content, {
-        type: "text",
-        text: "Active agent: guide",
-    });
+    assertEquals(
+        /** @type {AcpContentChunk | null} */ (mapRuntimeEventToAcpUpdate({ ...event, rootHandoff: true }))?.content,
+        { type: "text", text: "Active agent: guide" },
+    );
 });
 
 test("ACP event mapper forwards canonical Runtime tool metadata", () => {

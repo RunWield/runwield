@@ -317,7 +317,7 @@ flowchart LR
 
 Core review logic lives in workflow modules and knows only the semantic request and response. Browser-aware plan/code
 review implementations live under `src/ui/review/`. The TUI maps interactions in
-`src/ui/tui/runtime-interaction-adapter.js`; ACP maps them in `src/acp/interaction-mapper.js`.
+`src/ui/tui/runtime-interaction-adapter.ts`; ACP maps them in `src/acp/interaction-mapper.js`.
 
 ## Root cause of the duplicated TUI blocks
 
@@ -666,7 +666,7 @@ The six routing intents have distinct ceremony:
   legacy classification value that normalizes to `PLANNED_CHANGE`.
 - `PROJECT` creates an Epic container. It is decomposed into child PLANNED_CHANGE Plans and is never executed directly.
 
-`workflow-results.js` extracts structured outcomes. `decisions.ts` converts them into semantic actions such as
+`workflow-results.ts` extracts structured outcomes. `decisions.ts` converts them into semantic actions such as
 `execute_plan`, `start_slicer`, `run_validation`, `stay_with_agent`, or `halt`. Callers retain responsibility for state
 mutation, user interaction, recovery, and agent switching.
 
@@ -958,7 +958,7 @@ flowchart LR
 
 The TUI creates one `SessionRuntime`, retains opaque Runtime session IDs, and never constructs or receives a
 `SessionHost`, `HostedSession`, Pi `SessionManager`, or Pi `AgentSession`. `runtime-adapter.js` renders semantic events
-into terminal blocks, while `runtime-interaction-adapter.js` implements selection, text, approval, and browser review
+into terminal blocks, while `runtime-interaction-adapter.ts` implements selection, text, approval, and browser review
 interactions.
 
 Natural-language turns and live-session slash commands call public `SessionRuntime` methods. Commands that operate on
@@ -1096,7 +1096,7 @@ The highest-value cross-boundary paths for later confidence analysis are visible
 | Agent switching                           | `src/shared/session/agent-switching.js`                                       |
 | Workflow-aware turn handling              | `src/shared/session/agent-handler.js`                                         |
 | Routing orchestration                     | `src/shared/workflow/orchestrator.js`                                         |
-| Workflow decisions and outcome parsing    | `src/shared/workflow/decisions.ts`, `src/shared/workflow/workflow-results.js` |
+| Workflow decisions and outcome parsing    | `src/shared/workflow/decisions.ts`, `src/shared/workflow/workflow-results.ts` |
 | Plan execution facade                     | `src/shared/workflow/workflow.ts`                                             |
 | Validation and repair                     | `src/shared/workflow/validation.ts`                                           |
 | Plan lifecycle                            | `src/shared/workflow/plan-lifecycle.js`                                       |

@@ -3,8 +3,8 @@ import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
-import { openOwnerCoordinationDatabase } from "./database.js";
-import type { OwnerCoordinationDatabase } from "./database.js";
+import { openOwnerCoordinationDatabase } from "./database.ts";
+import type { OwnerCoordinationDatabase } from "./database.ts";
 import { acknowledgeActivationProtocol, getActivationProtocolStatus } from "./activation-protocol.ts";
 import {
     acquireSessionActivation,

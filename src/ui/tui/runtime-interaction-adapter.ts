@@ -12,18 +12,34 @@ import { runCodeReview } from "../review/code-review.ts";
 import { submitPlanForReview } from "../review/plan-review.ts";
 import { startArtifactReadSurface } from "../review/review-launcher.ts";
 
-/**
- * @typedef {Object} TuiInteractionPorts
- * @property {import('../../shared/browser-port.ts').BrowserPort} browser
- */
+import type { BrowserPort } from "../../shared/browser-port.ts";
+import type {
+    RuntimeInteractionAdapter,
+    RuntimeInteractionRequest,
+} from "../../shared/session/session-runtime-interactions.js";
+import type { UiAPI } from "./types.js";
 
-/**
- * @param {import('./types.js').UiAPI} uiAPI
- * @param {AbortSignal | undefined} signal
- * @param {() => Promise<string | null>} openPrompt
- * @returns {Promise<string | null>}
- */
-async function waitForPrompt(uiAPI, signal, openPrompt) {
+export interface TuiInteractionPorts {
+    browser: BrowserPort;
+}
+
+type RuntimeInteractionMetadata = NonNullable<RuntimeInteractionRequest["_meta"]>;
+type ArtifactReadOptions = Parameters<typeof startArtifactReadSurface>[0];
+
+/** Metadata is supplied by the JavaScript SessionRuntime interaction broker. */
+export interface TuiArtifactReviewMetadata
+    extends RuntimeInteractionMetadata, Omit<ArtifactReadOptions, "browser" | "path"> {
+    artifactPath?: ArtifactReadOptions["path"];
+}
+
+export type TuiPlanReviewMetadata = Omit<Parameters<typeof submitPlanForReview>[0], "browser" | "signal">;
+export type TuiCodeReviewMetadata = Omit<Parameters<typeof runCodeReview>[0], "browser" | "signal">;
+
+async function waitForPrompt(
+    uiAPI: UiAPI,
+    signal: AbortSignal | undefined,
+    openPrompt: () => Promise<string | null>,
+): Promise<string | null> {
     if (signal?.aborted) return null;
     const abort = () => uiAPI.abortActivePrompt?.();
     signal?.addEventListener("abort", abort, { once: true });
@@ -34,12 +50,7 @@ async function waitForPrompt(uiAPI, signal, openPrompt) {
     }
 }
 
-/**
- * @param {import('./types.js').UiAPI} uiAPI
- * @param {TuiInteractionPorts} ports
- * @returns {import('../../shared/session/session-runtime-interactions.js').RuntimeInteractionAdapter}
- */
-export function createTuiInteractionAdapter(uiAPI, ports) {
+export function createTuiInteractionAdapter(uiAPI: UiAPI, ports: TuiInteractionPorts): RuntimeInteractionAdapter {
     return {
         supportsInteraction(type) {
             return (
@@ -93,7 +104,7 @@ export function createTuiInteractionAdapter(uiAPI, ports) {
                 return { outcome: RuntimeInteractionOutcomes.TEXT, value };
             }
             if (request.type === RuntimeInteractionTypes.ARTIFACT_REVIEW) {
-                const meta = /** @type {any} */ (request._meta || {});
+                const meta = (request._meta || {}) as TuiArtifactReviewMetadata;
                 const supportedKinds = new Set(["plan", "prd", "adr", "work-record", "epic-artifact", "report"]);
                 const artifactKind = supportedKinds.has(meta.artifactKind) ? meta.artifactKind : "report";
                 uiAPI.setBusy?.(false);
@@ -142,7 +153,7 @@ export function createTuiInteractionAdapter(uiAPI, ports) {
                 return { outcome: RuntimeInteractionOutcomes.ACCEPTED, value: true };
             }
             if (request.type === RuntimeInteractionTypes.PLAN_REVIEW) {
-                const meta = /** @type {any} */ (request._meta || {});
+                const meta = (request._meta || {}) as TuiPlanReviewMetadata;
                 uiAPI.setBusy?.(false);
                 try {
                     // Keep the editor available for immediate commands; ordinary input stays queued.
@@ -175,7 +186,7 @@ export function createTuiInteractionAdapter(uiAPI, ports) {
                 }
             }
             if (request.type === RuntimeInteractionTypes.CODE_REVIEW) {
-                const meta = /** @type {any} */ (request._meta || {});
+                const meta = (request._meta || {}) as TuiCodeReviewMetadata;
                 const block = uiAPI.startToolExecution?.(
                     `code-review:${request.id || crypto.randomUUID()}`,
                     "code_review",

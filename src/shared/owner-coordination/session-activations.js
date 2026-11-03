@@ -35,7 +35,7 @@ import { insertSessionTranscriptSegmentRow, sealSessionTranscriptSegmentRow } fr
 /** @param {unknown} value */
 function requireDatabase(value) {
     if (!value || typeof value !== "object" || !("handle" in value)) throw new Error("Owner database is required");
-    return /** @type {import('./database.js').OwnerCoordinationDatabase} */ (value);
+    return /** @type {import('./database.ts').OwnerCoordinationDatabase} */ (value);
 }
 
 /** @param {() => string} [now] */
@@ -119,7 +119,7 @@ function generationFromRow(row) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {string} runwieldSessionId
  */
 export function inspectSessionActivation(database, runwieldSessionId) {
@@ -167,7 +167,7 @@ function proofMatches(current, proof) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} ownerDb
+ * @param {import('./database.ts').OwnerCoordinationDatabase} ownerDb
  * @param {NonNullable<ReturnType<typeof activationFromRow>>} current
  * @param {ActivationProof} proof
  * @param {string} now
@@ -200,7 +200,7 @@ function assertActiveProofFresh(ownerDb, current, proof, now) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {ActivationProof} proof
  * @param {{ now?: () => string }} [options]
  */
@@ -283,7 +283,7 @@ function isDeadlineExpired(timestamp, now) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {{ runwieldSessionId: string, projectId: string, ownerInstanceId: string, ownerProcessKind: 'workspace' | 'tui' | 'acp' | 'test', operationId?: string, expectedGeneration?: number | null, expectedCurrentSegmentId?: string | null, phase?: SessionActivationPhase, idFactory?: () => string, now?: () => string }} options
  * @returns {ActivationProof}
  */
@@ -352,7 +352,7 @@ export function acquireSessionActivation(database, options) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {ActivationProof} proof
  * @param {SessionActivationPhase} nextPhase
  * @param {{ now?: () => string }} [options]
@@ -397,7 +397,7 @@ export function changeSessionActivationPhase(database, proof, nextPhase, options
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} ownerDb
+ * @param {import('./database.ts').OwnerCoordinationDatabase} ownerDb
  * @param {ActivationProof} proof
  */
 function loadActiveActivation(ownerDb, proof) {
@@ -411,7 +411,7 @@ function loadActiveActivation(ownerDb, proof) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} ownerDb
+ * @param {import('./database.ts').OwnerCoordinationDatabase} ownerDb
  * @param {NonNullable<ReturnType<typeof activationFromRow>>} current
  * @param {ActivationProof} proof
  * @param {string} now
@@ -432,7 +432,7 @@ function assertGenerationAdvances(current, evidence) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} ownerDb
+ * @param {import('./database.ts').OwnerCoordinationDatabase} ownerDb
  * @param {ActivationProof} proof
  * @param {GenerationEvidence} evidence
  * @param {string | null} currentSegmentId
@@ -460,7 +460,7 @@ function insertCommittedGenerationRow(ownerDb, proof, evidence, currentSegmentId
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} ownerDb
+ * @param {import('./database.ts').OwnerCoordinationDatabase} ownerDb
  * @param {ActivationProof} proof
  * @param {number} generation
  * @param {string} now
@@ -490,7 +490,7 @@ function releaseActivationAfterGeneration(ownerDb, proof, generation, now) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {ActivationProof} proof
  * @param {GenerationEvidence} evidence
  * @param {{ now?: () => string }} [options]
@@ -512,7 +512,7 @@ export function publishGenerationAndRelease(database, proof, evidence, options =
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {{ runwieldSessionId: string, projectId: string, expectedFence: number, expectedGeneration: number | null, expectedCurrentSegmentId?: string | null, ownerInstanceId: string, ownerProcessKind: 'workspace' | 'tui' | 'acp' | 'test', operationId?: string, transcriptEvidence: GenerationEvidence, now?: () => string, idFactory?: () => string }} options
  */
 export function recoverExpiredSessionControl(database, options) {
@@ -589,7 +589,7 @@ export function recoverExpiredSessionControl(database, options) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {ActivationProof} proof
  * @param {{ predecessorSegmentId: string, predecessorEvidence: { byteLength: number, digestHex: string, terminalEntryId: string | null }, successor: Parameters<typeof insertSessionTranscriptSegmentRow>[1], successorSafeLocator: Parameters<typeof insertSessionTranscriptSegmentRow>[2], generationEvidence: GenerationEvidence, now?: () => string }} options
  */
@@ -643,7 +643,7 @@ export function commitSegmentRolloverAndPublish(database, proof, options) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {ActivationProof} proof
  * @param {{ now?: () => string }} [options]
  */
@@ -688,7 +688,7 @@ export function releaseUnchangedActivation(database, proof, options = {}) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {ActivationProof | { runwieldSessionId: string, projectId: string }} proof
  * @param {{ reason?: string, now?: () => string }} [options]
  */
@@ -741,7 +741,7 @@ export function markSessionUncertain(database, proof, options = {}) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {{ runwieldSessionId: string, projectId: string }} session
  * @param {{ reason?: string, now?: () => string }} [options]
  */
@@ -760,7 +760,7 @@ export function markSessionReconcileRequired(database, session, options = {}) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {ActivationProof} proof
  * @param {{ reason?: string, now?: () => string }} [options]
  */
@@ -802,7 +802,7 @@ export function markSessionReconcileRequiredWithProof(database, proof, options =
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {{ deviceId?: string | null, requestId: string, requestHash: string, runwieldSessionId: string, projectId: string, expectedGeneration?: number | null, kind: 'bootstrap' | 'continuation' | 'plan_action', operationId?: string, idFactory?: () => string, now?: () => string }} options
  */
 export function createOrGetOperationReceipt(database, options) {
@@ -845,7 +845,7 @@ export function createOrGetOperationReceipt(database, options) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {{ deviceId?: string | null, requestId: string, requestHash: string, runwieldSessionId?: string, projectId?: string }} options
  */
 export function findOperationReceiptByRequest(database, options) {
@@ -868,7 +868,7 @@ export function findOperationReceiptByRequest(database, options) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {string} operationId
  * @param {{ status: 'accepted' | 'running' | 'completed' | 'failed' | 'conflict', resultGeneration?: number | null, resultHttpStatus?: number | null, resultBody?: unknown, errorCode?: string | null, errorMessage?: string | null, now?: () => string }} updates
  */
@@ -906,7 +906,7 @@ export function updateOperationReceipt(database, operationId, updates) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {string} operationId
  */
 export function getOperationReceipt(database, operationId) {

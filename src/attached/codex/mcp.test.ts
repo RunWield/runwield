@@ -157,7 +157,8 @@ for (const clientName of ["codex-mcp-client", "claude-code", "codex", "unrelated
                     return;
                 }
                 assert(result.ok && result.workflow && result.instructions);
-                equal(result.compatibility?.status, "untested_newer");
+                equal(result.compatibility, undefined);
+
                 assert(result.instructions.text.includes("RunWield in Codex"));
                 const record: AttachedWorkflowRecord = JSON.parse(
                     await readRecordBytes(root, result.workflow.workflowId),
@@ -166,6 +167,7 @@ for (const clientName of ["codex-mcp-client", "claude-code", "codex", "unrelated
                 equal(record.evidence.hostVersion, "0.164.0-alpha.11.1");
                 equal(record.evidence.adapterVersion, "9.7.5");
                 equal(record.evidence.adapterContract, 1);
+                equal(record.evidence.compatibility?.status, "compatible");
                 const status = await client.callTool({ name: "status", arguments: {} });
                 const restored: AttachedCarrierResult = JSON.parse(JSON.stringify(status.structuredContent));
                 assert(restored.ok && restored.workflow);

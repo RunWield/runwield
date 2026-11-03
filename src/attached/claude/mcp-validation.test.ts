@@ -66,7 +66,6 @@ test("MCP status is compact by default and workers fetch complete current instru
         assertEquals(compactPlan.workflow.originHost, EVIDENCE.host);
         assertEquals(compactPlan.workflow.requestSummary, "Add a dark mode toggle");
         assertEquals(Object.keys(JSON.parse(JSON.stringify(planPoll.structuredContent))).sort(), [
-            "compatibility",
             "ok",
             "operation",
             "review",
@@ -131,7 +130,6 @@ test("MCP status is compact by default and workers fetch complete current instru
         assertEquals(compact.workflow.nextAction.kind, "validation");
         assertEquals(compact.workflow.nextAction.chatPending, false);
         assertEquals(Object.keys(JSON.parse(JSON.stringify(compactResponse.structuredContent))).sort(), [
-            "compatibility",
             "ok",
             "operation",
             "workflow",
