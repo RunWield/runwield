@@ -1,8 +1,8 @@
 import type { APIContext } from "astro";
-import type { RemoteWorkspaceAdapter } from "./remote-adapter.js";
+import type { RemoteWorkspaceAdapter } from "./remote-adapter.ts";
 import process from "node:process";
 import { DEFAULT_REMOTE_MAX_REQUEST_BYTES, registerRemoteApiRoutes } from "../routes/remote-api.ts";
-import { openRemoteWorkspaceAdapter } from "./remote-adapter.js";
+import { openRemoteWorkspaceAdapter } from "./remote-adapter.ts";
 import { isRemoteDevelopmentModeEnabled } from "./remote-mode.ts";
 import { isAstroDevelopmentMode } from "./astro-dev-mode.ts";
 

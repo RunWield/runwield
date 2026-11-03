@@ -8,15 +8,121 @@ import {
 } from "../../../shared/collaboration/capabilities.ts";
 import { openRemoteDatabase } from "./remote-db.ts";
 
+import type { SQLInputValue, SQLOutputValue } from "node:sqlite";
+import type { DatabaseSync } from "../../../shared/sqlite.ts";
+import type { CapabilityScope } from "../../../shared/collaboration/capabilities.ts";
+import type {
+    CapabilityRecord,
+    SharedSpaceMetadata,
+    RevisionMetadata,
+    EncryptedCommentRecord,
+    CommentStateChangePayload,
+} from "../../../shared/collaboration/protocol.js";
+import type { RemoteDatabase, OpenRemoteDatabaseOptions } from "./remote-db.ts";
+
+export interface RemoteRetentionPolicy {
+    days?: number;
+}
+
+export interface RemoteWorkspaceClock {
+    now: () => Date;
+}
+
+export interface CreateRemoteWorkspaceAdapterOptions {
+    database: RemoteDatabase;
+    retention?: RemoteRetentionPolicy;
+    clock: RemoteWorkspaceClock;
+}
+
+export interface OpenRemoteWorkspaceAdapterOptions extends OpenRemoteDatabaseOptions {
+    retention?: RemoteRetentionPolicy;
+}
+
+export interface CreateRemoteSharedSpaceInput {
+    planId: SharedSpaceMetadata["planId"];
+    payloadCiphertext: RevisionMetadata["payloadCiphertext"];
+    capabilities: CapabilityRecord[];
+}
+
+export type RemoteRevisionMetadata = Omit<RevisionMetadata, "payloadCiphertext">;
+
+export interface RemoteRevision extends RemoteRevisionMetadata {
+    payloadCiphertext?: RevisionMetadata["payloadCiphertext"];
+}
+
+export interface RemoteSharedSpace extends SharedSpaceMetadata {
+    revisions: RemoteRevisionMetadata[];
+}
+
+export interface RemoteComment extends EncryptedCommentRecord {
+    revision: number;
+    updatedAt: string;
+}
+
+export interface RemoteWorkspaceReadiness {
+    ok: true;
+    mode: "remote";
+}
+
+export interface RemoteWorkspaceAdapter {
+    database: RemoteDatabase;
+    createSharedSpace(input: CreateRemoteSharedSpaceInput): RemoteSharedSpace;
+    verifyCapability(spaceId: string, capability: string, requiredScope: CapabilityScope): Promise<void>;
+    getSharedSpace(spaceId: string): RemoteSharedSpace;
+    listRevisions(spaceId: string): RemoteRevisionMetadata[];
+    getRevision(spaceId: string, revision: number): RevisionMetadata;
+    appendRevision(spaceId: string, payloadCiphertext: string, expectedRevision?: number): RevisionMetadata;
+    listComments(spaceId: string, revision: number): RemoteComment[];
+    appendComment(spaceId: string, revision: number, ciphertext: string): RemoteComment;
+    setCommentState(spaceId: string, commentId: string, action: CommentStateChangePayload["action"]): RemoteComment;
+    closeSharedSpace(spaceId: string): SharedSpaceMetadata;
+    deleteSharedSpace(spaceId: string): void;
+    ready(): RemoteWorkspaceReadiness;
+    cleanupExpiredSharedSpaces(): number;
+    reconcileRetentionPolicy(): void;
+    close(): void;
+}
+
+// node:sqlite does not infer selected columns; these views follow the remote schema.
+interface RemoteSpaceRow extends Record<string, SQLOutputValue> {
+    id: string;
+    plan_id: string;
+    status: NonNullable<SharedSpaceMetadata["status"]>;
+    latest_revision: number;
+    created_at: string;
+    updated_at: string;
+    closed_at: string | null;
+    expires_at: string | null;
+}
+
+interface RemoteRevisionRow extends Record<string, SQLOutputValue | undefined> {
+    payload_ciphertext?: string;
+    space_id: string;
+    revision: number;
+    created_at: string;
+}
+
+interface RemoteCommentRow extends Record<string, SQLOutputValue> {
+    id: string;
+    space_id: string;
+    revision: number;
+    ciphertext: string;
+    resolved: number;
+    created_at: string;
+    updated_at: string;
+}
+
 const EXPIRED_SPACE_CLEANUP_BATCH_SIZE = 100;
 
-export const SYSTEM_REMOTE_WORKSPACE_CLOCK = Object.freeze({
+export const SYSTEM_REMOTE_WORKSPACE_CLOCK: Readonly<RemoteWorkspaceClock> = Object.freeze({
     now: () => new Date(),
 });
 
 export class RemoteWorkspaceError extends Error {
-    /** @param {string} code @param {string} message @param {number} status */
-    constructor(code, message, status) {
+    declare code: string;
+    declare status: number;
+
+    constructor(code: string, message: string, status: number) {
         super(message);
         this.name = "RemoteWorkspaceError";
         this.code = code;
@@ -24,43 +130,13 @@ export class RemoteWorkspaceError extends Error {
     }
 }
 
-/**
- * @typedef {Object} RemoteRetentionPolicy
- * @property {number} [days]
- */
-
-/**
- * @typedef {Object} RemoteWorkspaceAdapter
- * @property {import("./remote-db.ts").RemoteDatabase} database
- * @property {(input: { planId: string, payloadCiphertext: string, capabilities: { scope: "reviewer" | "maintainer", capabilityHash: string }[] }) => any} createSharedSpace
- * @property {(spaceId: string, capability: string, requiredScope: "reviewer" | "maintainer") => Promise<void>} verifyCapability
- * @property {(spaceId: string) => any} getSharedSpace
- * @property {(spaceId: string) => any[]} listRevisions
- * @property {(spaceId: string, revision: number) => any} getRevision
- * @property {(spaceId: string, payloadCiphertext: string, expectedRevision?: number) => any} appendRevision
- * @property {(spaceId: string, revision: number) => any[]} listComments
- * @property {(spaceId: string, revision: number, ciphertext: string) => any} appendComment
- * @property {(spaceId: string, commentId: string, action: "resolve" | "reopen") => any} setCommentState
- * @property {(spaceId: string) => any} closeSharedSpace
- * @property {(spaceId: string) => void} deleteSharedSpace
- * @property {() => { ok: true, mode: "remote" }} ready
- * @property {() => number} cleanupExpiredSharedSpaces
- * @property {() => void} reconcileRetentionPolicy
- * @property {() => void} close
- */
-
-/**
- * @param {{ database: import("./remote-db.ts").RemoteDatabase, retention?: RemoteRetentionPolicy, clock: { now: () => Date } }} options
- * @returns {RemoteWorkspaceAdapter}
- */
-export function createRemoteWorkspaceAdapter(options) {
+export function createRemoteWorkspaceAdapter(options: CreateRemoteWorkspaceAdapterOptions): RemoteWorkspaceAdapter {
     const { database, clock } = options;
     const db = database.handle;
     const retentionDays = options.retention?.days;
     let closed = false;
 
-    /** @param {string} timestamp */
-    const expiryFor = (timestamp) => retentionDays ? addDaysIso(new Date(timestamp), retentionDays) : null;
+    const expiryFor = (timestamp: string) => (retentionDays ? addDaysIso(new Date(timestamp), retentionDays) : null);
     const currentIso = () => clock.now().toISOString();
 
     return {
@@ -90,15 +166,17 @@ export function createRemoteWorkspaceAdapter(options) {
             while (true) {
                 const cutoff = currentIso();
                 const changes = database.transaction(() => {
-                    const result = db.prepare(
-                        `DELETE FROM shared_spaces
+                    const result = db
+                        .prepare(
+                            `DELETE FROM shared_spaces
                          WHERE id IN (
                              SELECT id FROM shared_spaces
                              WHERE expires_at IS NOT NULL AND expires_at <= ?
                              ORDER BY expires_at, id
                              LIMIT ?
                          )`,
-                    ).run(cutoff, EXPIRED_SPACE_CLEANUP_BATCH_SIZE);
+                        )
+                        .run(cutoff, EXPIRED_SPACE_CLEANUP_BATCH_SIZE);
                     return Number(result.changes ?? 0);
                 });
                 deleted += changes;
@@ -122,8 +200,8 @@ export function createRemoteWorkspaceAdapter(options) {
                 for (const capability of input.capabilities) {
                     insertCapability.run(spaceId, capability.scope, capability.capabilityHash, nowIso);
                 }
-                /** @type {any} */
-                const space = {
+
+                const space: SharedSpaceMetadata = {
                     spaceId,
                     planId: input.planId,
                     status: "open",
@@ -148,11 +226,13 @@ export function createRemoteWorkspaceAdapter(options) {
         },
         getRevision(spaceId, revision) {
             getSpaceRow(db, spaceId);
-            const row = db.prepare(
-                "SELECT space_id, revision, payload_ciphertext, created_at FROM space_revisions WHERE space_id = ? AND revision = ?",
-            ).get(spaceId, revision);
+            const row = db
+                .prepare(
+                    "SELECT space_id, revision, payload_ciphertext, created_at FROM space_revisions WHERE space_id = ? AND revision = ?",
+                )
+                .get(spaceId, revision);
             if (!row) throw notFound("Revision not found.");
-            return mapRevision(row, true);
+            return mapRevision(row as RemoteRevisionRow, true);
         },
         appendRevision(spaceId, payloadCiphertext, expectedRevision) {
             return database.transaction(() => {
@@ -172,9 +252,13 @@ export function createRemoteWorkspaceAdapter(options) {
         },
         listComments(spaceId, revision) {
             getRevisionRow(db, spaceId, revision);
-            return db.prepare(
-                "SELECT id, space_id, revision, ciphertext, resolved, created_at, updated_at FROM space_comments WHERE space_id = ? AND revision = ? ORDER BY created_at, id",
-            ).all(spaceId, revision).map(mapComment);
+            return (
+                db
+                    .prepare(
+                        "SELECT id, space_id, revision, ciphertext, resolved, created_at, updated_at FROM space_comments WHERE space_id = ? AND revision = ? ORDER BY created_at, id",
+                    )
+                    .all(spaceId, revision) as RemoteCommentRow[]
+            ).map(mapComment);
         },
         appendComment(spaceId, revision, ciphertext) {
             return database.transaction(() => {
@@ -194,9 +278,11 @@ export function createRemoteWorkspaceAdapter(options) {
             return database.transaction(() => {
                 const space = getSpaceRow(db, spaceId);
                 assertOpen(space);
-                const row = db.prepare(
-                    "SELECT id, space_id, revision, ciphertext, resolved, created_at, updated_at FROM space_comments WHERE space_id = ? AND id = ?",
-                ).get(spaceId, commentId);
+                const row = db
+                    .prepare(
+                        "SELECT id, space_id, revision, ciphertext, resolved, created_at, updated_at FROM space_comments WHERE space_id = ? AND id = ?",
+                    )
+                    .get(spaceId, commentId) as RemoteCommentRow | undefined;
                 if (!row) throw notFound("Comment not found.");
                 const resolved = action === "resolve" ? 1 : 0;
                 const nowIso = currentIso();
@@ -238,13 +324,8 @@ export function createRemoteWorkspaceAdapter(options) {
     };
 }
 
-/**
- * Production composition for the remote Workspace adapter.
- *
- * @param {{ dbPath?: string, retention?: RemoteRetentionPolicy }} [options]
- * @returns {RemoteWorkspaceAdapter}
- */
-export function openRemoteWorkspaceAdapter(options = {}) {
+/** Production composition for the remote Workspace adapter. */
+export function openRemoteWorkspaceAdapter(options: OpenRemoteWorkspaceAdapterOptions = {}): RemoteWorkspaceAdapter {
     return createRemoteWorkspaceAdapter({
         database: openRemoteDatabase({ dbPath: options.dbPath }),
         retention: options.retention,
@@ -252,8 +333,7 @@ export function openRemoteWorkspaceAdapter(options = {}) {
     });
 }
 
-/** @param {import("../../../shared/sqlite.ts").DatabaseSync} db @param {string} spaceId @param {string} capability @param {"reviewer" | "maintainer"} requiredScope */
-async function verifyCapability(db, spaceId, capability, requiredScope) {
+async function verifyCapability(db: DatabaseSync, spaceId: string, capability: string, requiredScope: CapabilityScope) {
     getSpaceRow(db, spaceId);
     const presentedHash = await hashCapability(capability);
     const rows = db.prepare("SELECT scope, capability_hash FROM space_capabilities WHERE space_id = ?").all(spaceId);
@@ -268,40 +348,41 @@ async function verifyCapability(db, spaceId, capability, requiredScope) {
     throw new RemoteWorkspaceError("forbidden", "Capability is not authorized for this operation.", 403);
 }
 
-/** @param {import("../../../shared/sqlite.ts").DatabaseSync} db @param {string} spaceId */
-function getSpaceRow(db, spaceId) {
-    const row = db.prepare(
-        "SELECT id, plan_id, status, latest_revision, created_at, updated_at, closed_at, expires_at FROM shared_spaces WHERE id = ?",
-    ).get(spaceId);
+function getSpaceRow(db: DatabaseSync, spaceId: string): RemoteSpaceRow {
+    const row = db
+        .prepare(
+            "SELECT id, plan_id, status, latest_revision, created_at, updated_at, closed_at, expires_at FROM shared_spaces WHERE id = ?",
+        )
+        .get(spaceId) as RemoteSpaceRow | undefined;
     if (!row) throw notFound("Shared Space not found or deleted.");
     return row;
 }
 
-/** @param {import("../../../shared/sqlite.ts").DatabaseSync} db @param {string} spaceId @param {number} revision */
-function getRevisionRow(db, spaceId, revision) {
-    const row = db.prepare(
-        "SELECT space_id, revision, payload_ciphertext, created_at FROM space_revisions WHERE space_id = ? AND revision = ?",
-    ).get(spaceId, revision);
+function getRevisionRow(db: DatabaseSync, spaceId: string, revision: number) {
+    const row = db
+        .prepare(
+            "SELECT space_id, revision, payload_ciphertext, created_at FROM space_revisions WHERE space_id = ? AND revision = ?",
+        )
+        .get(spaceId, revision);
     if (!row) throw notFound("Revision not found.");
     return row;
 }
 
-/** @param {import("../../../shared/sqlite.ts").DatabaseSync} db @param {string} spaceId */
-function listRevisionMetadata(db, spaceId) {
-    return db.prepare(
-        "SELECT space_id, revision, created_at FROM space_revisions WHERE space_id = ? ORDER BY revision",
-    ).all(spaceId).map((row) => mapRevision(row, false));
+function listRevisionMetadata(db: DatabaseSync, spaceId: string): RemoteRevisionMetadata[] {
+    return db
+        .prepare("SELECT space_id, revision, created_at FROM space_revisions WHERE space_id = ? ORDER BY revision")
+        .all(spaceId)
+        .map((row) => mapRevision(row as RemoteRevisionRow, false));
 }
 
-/**
- * @param {import("../../../shared/sqlite.ts").DatabaseSync} db
- * @param {string} spaceId
- * @param {string} updatedAt
- * @param {string | null} expiresAt
- * @param {string} [extraSet]
- * @param {any[]} [extraValues]
- */
-function touchSpace(db, spaceId, updatedAt, expiresAt, extraSet = "", extraValues = []) {
+function touchSpace(
+    db: DatabaseSync,
+    spaceId: string,
+    updatedAt: string,
+    expiresAt: string | null,
+    extraSet = "",
+    extraValues: SQLInputValue[] = [],
+) {
     const prefix = extraSet ? `${extraSet}, ` : "";
     db.prepare(`UPDATE shared_spaces SET ${prefix}updated_at = ?, expires_at = ? WHERE id = ?`).run(
         ...extraValues,
@@ -311,18 +392,15 @@ function touchSpace(db, spaceId, updatedAt, expiresAt, extraSet = "", extraValue
     );
 }
 
-/** @param {any} space @param {any[]} revisions */
-function withRevisions(space, revisions) {
+function withRevisions(space: SharedSpaceMetadata, revisions: RemoteRevisionMetadata[]): RemoteSharedSpace {
     return { ...space, revisions };
 }
 
-/** @param {any} row */
-function mapSpace(row) {
-    /** @type {any} */
-    const space = {
+function mapSpace(row: RemoteSpaceRow): SharedSpaceMetadata {
+    const space: SharedSpaceMetadata = {
         spaceId: String(row.id),
         planId: String(row.plan_id),
-        status: String(row.status),
+        status: String(row.status) as RemoteSpaceRow["status"],
         latestRevision: Number(row.latest_revision),
         createdAt: String(row.created_at),
         updatedAt: String(row.updated_at),
@@ -332,10 +410,10 @@ function mapSpace(row) {
     return space;
 }
 
-/** @param {any} row @param {boolean} includePayload */
-function mapRevision(row, includePayload) {
-    /** @type {any} */
-    const revision = {
+function mapRevision(row: RemoteRevisionRow, includePayload: true): RevisionMetadata;
+function mapRevision(row: RemoteRevisionRow, includePayload: false): RemoteRevisionMetadata;
+function mapRevision(row: RemoteRevisionRow, includePayload: boolean): RemoteRevision {
+    const revision: RemoteRevision = {
         spaceId: String(row.space_id),
         revision: Number(row.revision),
         createdAt: String(row.created_at),
@@ -344,8 +422,7 @@ function mapRevision(row, includePayload) {
     return revision;
 }
 
-/** @param {any} row */
-function mapComment(row) {
+function mapComment(row: RemoteCommentRow): RemoteComment {
     return {
         id: String(row.id),
         spaceId: String(row.space_id),
@@ -357,22 +434,18 @@ function mapComment(row) {
     };
 }
 
-/** @param {any} space */
-function assertOpen(space) {
+function assertOpen(space: RemoteSpaceRow) {
     if (space.status === "closed") throw conflict("Shared Space is closed.");
 }
 
-/** @param {Date} start @param {number} days */
-function addDaysIso(start, days) {
+function addDaysIso(start: Date, days: number) {
     return new Date(start.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
 }
 
-/** @param {string} message */
-function notFound(message) {
+function notFound(message: string) {
     return new RemoteWorkspaceError("not_found", message, 404);
 }
 
-/** @param {string} message */
-function conflict(message) {
+function conflict(message: string) {
     return new RemoteWorkspaceError("conflict", message, 409);
 }
