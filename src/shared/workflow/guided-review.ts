@@ -6,6 +6,118 @@
 import { isPlannedChangeClassification } from "../../constants.js";
 import { parseDiffFiles, summarizeDiffForReview } from "./review-diff-tool.ts";
 
+import type { DiffReviewStats } from "./review-diff-tool.ts";
+import type { getGuidedReviewMode } from "../settings.js";
+
+export type GuidedReviewMode = ReturnType<typeof getGuidedReviewMode>;
+
+export interface GuidedReviewRecommendation {
+    recommended: boolean;
+    score: number;
+    reasons: string[];
+    stats: DiffReviewStats;
+}
+
+export interface GuidedReviewPolicy {
+    mode: GuidedReviewMode;
+    autoStart: boolean;
+    manualAvailable: boolean;
+    reasons: string[];
+    stats: DiffReviewStats;
+    score: number;
+}
+
+export interface GuidedReviewPlanAttributes extends Record<string, unknown> {
+    complexity?: unknown;
+    classification?: unknown;
+    type?: unknown;
+    dependencies?: unknown;
+    parentPlan?: unknown;
+    parent?: unknown;
+    epic?: unknown;
+    epicName?: unknown;
+}
+
+export interface GuidedReviewRecommendationOptions {
+    planAttrs?: unknown;
+    planContent?: string;
+    diffText: string;
+    usedLargeDiffPath?: boolean;
+}
+
+export interface FallbackGuidedReviewOptions {
+    diffText: string;
+    title?: string;
+    intent?: string;
+}
+
+export interface GuidedReviewPromptOptions {
+    diffText: string;
+    gitRef: string;
+    changedFiles: string[];
+    planContent?: string;
+    planAttrs?: GuidedReviewPlanAttributes;
+    reviewContext?: string;
+}
+
+export interface GuidedReviewValidationOptions {
+    changedFiles: string[];
+}
+
+interface RawGuidedReviewExplainer extends Record<string, unknown> {
+    schemaVersion?: unknown;
+    title?: unknown;
+    sections?: unknown;
+    everythingElse?: unknown;
+    widgetAssets?: unknown;
+}
+
+interface RawGuidedReviewSection {
+    title?: unknown;
+    role?: unknown;
+    blocks?: unknown;
+}
+
+interface RawGuidedReviewBlock {
+    type?: unknown;
+    file?: unknown;
+    source?: unknown;
+    id?: unknown;
+    entry?: unknown;
+    html?: unknown;
+    assets?: unknown;
+}
+
+interface RawGuidedReviewFileReference {
+    file?: unknown;
+}
+
+interface RawGuidedReviewWidgetAsset {
+    name?: unknown;
+    path?: unknown;
+    content?: unknown;
+    contentType?: unknown;
+}
+
+interface GuidedReviewValidationSuccess {
+    ok: true;
+    value: Record<string, unknown>;
+}
+
+interface GuidedReviewValidationFailure {
+    ok: false;
+    errors: string[];
+}
+
+export type GuidedReviewValidationResult = GuidedReviewValidationSuccess | GuidedReviewValidationFailure;
+
+interface GuideBlockValidationContext {
+    changed: Set<string>;
+    seen: Set<string>;
+    errors: string[];
+    path: string;
+}
+
 export const GUIDED_REVIEW_EXPLAINER_SCHEMA_VERSION = "1.0";
 export const GUIDED_REVIEW_SECTION_ROLES = [
     "core",
@@ -17,68 +129,42 @@ export const GUIDED_REVIEW_SECTION_ROLES = [
     "glue",
 ];
 
-/**
- * @typedef {{ ok: true, value: Record<string, unknown> } | { ok: false, errors: string[] }} GuidedReviewValidationResult
- */
-
-/**
- * @typedef {Object} GuidedReviewRecommendation
- * @property {boolean} recommended
- * @property {number} score
- * @property {string[]} reasons
- * @property {import("./review-diff-tool.ts").DiffReviewStats} stats
- */
-
-/**
- * @typedef {Object} GuidedReviewPolicy
- * @property {"none" | "ask" | "auto" | "always"} mode
- * @property {boolean} autoStart
- * @property {boolean} manualAvailable
- * @property {string[]} reasons
- * @property {import("./review-diff-tool.ts").DiffReviewStats} stats
- * @property {number} score
- */
-
-/**
- * @param {{ complexity?: unknown, classification?: unknown, type?: unknown, dependencies?: unknown, parentPlan?: unknown }} attrs
- * @returns {boolean}
- */
-function hasDeclaredDependencies(attrs) {
+function hasDeclaredDependencies(attrs: GuidedReviewPlanAttributes) {
     return Array.isArray(attrs.dependencies) ? attrs.dependencies.length > 0 : Boolean(attrs.dependencies);
 }
 
-/** @param {unknown} value */
-function normalizeComplexity(value) {
+function normalizeComplexity(value: unknown) {
     return typeof value === "string" ? value.trim().toUpperCase() : "";
 }
 
-/** @param {Record<string, unknown>} attrs */
-function isChildFeaturePlan(attrs) {
+function isChildFeaturePlan(attrs: GuidedReviewPlanAttributes) {
     const classification = normalizeComplexity(attrs.classification);
-    return isPlannedChangeClassification(classification) &&
-        Boolean(attrs.parentPlan || attrs.parent || attrs.epic || attrs.epicName);
+    return (
+        isPlannedChangeClassification(classification) &&
+        Boolean(attrs.parentPlan || attrs.parent || attrs.epic || attrs.epicName)
+    );
 }
 
-/** @param {string[]} paths */
-function hasVisualAffectedPath(paths) {
-    return paths.some((path) =>
-        /(^|\/)(ui|ux|frontend|workspace|react|components?|islands?|pages?|routes?|styles?|css|game|phaser|canvas|animation|diagram)s?(\/|\.|$)/i
-            .test(path) || /\.(astro|jsx|tsx|css|scss|sass|svg|canvas|png|jpg|jpeg|gif|webp)$/i.test(path)
+function hasVisualAffectedPath(paths: string[]) {
+    return paths.some(
+        (path) =>
+            /(^|\/)(ui|ux|frontend|workspace|react|components?|islands?|pages?|routes?|styles?|css|game|phaser|canvas|animation|diagram)s?(\/|\.|$)/i.test(
+                path,
+            ) || /\.(astro|jsx|tsx|css|scss|sass|svg|canvas|png|jpg|jpeg|gif|webp)$/i.test(path),
     );
 }
 
 /**
  * Build an explainable deterministic recommendation for Guided Review generation.
  *
- * @param {Object} opts
- * @param {unknown} [opts.planAttrs]
- * @param {string} [opts.planContent]
- * @param {string} opts.diffText
- * @param {boolean} [opts.usedLargeDiffPath]
- * @returns {GuidedReviewRecommendation}
  */
-export function recommendGuidedReview({ planAttrs, planContent = "", diffText, usedLargeDiffPath = false }) {
-    const attrs = planAttrs && typeof planAttrs === "object" ? /** @type {Record<string, unknown>} */ (planAttrs) : {};
+export function recommendGuidedReview({
+    planAttrs,
+    planContent = "",
+    diffText,
+    usedLargeDiffPath = false,
+}: GuidedReviewRecommendationOptions): GuidedReviewRecommendation {
+    const attrs = planAttrs && typeof planAttrs === "object" ? (planAttrs as GuidedReviewPlanAttributes) : {};
     const entries = parseDiffFiles(diffText);
     const stats = summarizeDiffForReview(entries);
     const changedPaths = entries.map((entry) => entry.path);
@@ -139,13 +225,11 @@ export function recommendGuidedReview({ planAttrs, planContent = "", diffText, u
     return { recommended: score >= 4, score, reasons, stats };
 }
 
-/**
- * @param {"none" | "ask" | "auto" | "always"} mode
- * @param {GuidedReviewRecommendation} recommendation
- * @param {boolean} [acceptedAsk]
- * @returns {GuidedReviewPolicy}
- */
-export function buildGuidedReviewPolicy(mode, recommendation, acceptedAsk = false) {
+export function buildGuidedReviewPolicy(
+    mode: GuidedReviewMode,
+    recommendation: GuidedReviewRecommendation,
+    acceptedAsk = false,
+): GuidedReviewPolicy {
     const always = mode === "always";
     const autoStart = always || (mode === "auto" && recommendation.recommended) || (mode === "ask" && acceptedAsk);
     return {
@@ -162,9 +246,12 @@ export function buildGuidedReviewPolicy(mode, recommendation, acceptedAsk = fals
  * Build a deterministic fallback explainer. Real guide providers can replace this
  * with LLM output, but this keeps the review surface useful and testable.
  *
- * @param {{ diffText: string, title?: string, intent?: string }} opts
  */
-export function buildFallbackGuidedReviewExplainer({ diffText, title = "Guided Review Explainer", intent }) {
+export function buildFallbackGuidedReviewExplainer({
+    diffText,
+    title = "Guided Review Explainer",
+    intent,
+}: FallbackGuidedReviewOptions) {
     const entries = parseDiffFiles(diffText);
     const stats = summarizeDiffForReview(entries);
     const placed = entries.slice(0, Math.min(entries.length, 6));
@@ -172,7 +259,8 @@ export function buildFallbackGuidedReviewExplainer({ diffText, title = "Guided R
     return {
         schemaVersion: GUIDED_REVIEW_EXPLAINER_SCHEMA_VERSION,
         title,
-        intent: intent ||
+        intent:
+            intent ||
             `This explainer organizes ${stats.changedFiles} changed file${
                 stats.changedFiles === 1 ? "" : "s"
             } by review flow instead of filesystem order.`,
@@ -195,8 +283,7 @@ export function buildFallbackGuidedReviewExplainer({ diffText, title = "Guided R
                     ...placed.map((entry) => ({
                         type: "diff",
                         file: entry.path,
-                        summary:
-                            `${entry.changeType} file with ${entry.hunkLines.added} added and ${entry.hunkLines.removed} removed lines.`,
+                        summary: `${entry.changeType} file with ${entry.hunkLines.added} added and ${entry.hunkLines.removed} removed lines.`,
                     })),
                 ],
             },
@@ -226,22 +313,26 @@ export function buildFallbackGuidedReviewExplainer({ diffText, title = "Guided R
 /**
  * Build the server-side LLM prompt for a structured Guided Review Explainer.
  *
- * @param {{ diffText: string, gitRef: string, changedFiles: string[], planContent?: string, planAttrs?: Record<string, unknown>, reviewContext?: string }} opts
  */
-export function buildGuidedReviewPrompt(
-    { diffText, gitRef, changedFiles, planContent = "", planAttrs = {}, reviewContext = "" },
-) {
+export function buildGuidedReviewPrompt({
+    diffText,
+    gitRef,
+    changedFiles,
+    planContent = "",
+    planAttrs = {},
+    reviewContext = "",
+}: GuidedReviewPromptOptions) {
     return `You are generating a RunWield Guided Review Explainer for ${
         planContent ? "validation-time human code review" : "standalone code review"
-    }.\n\nReturn ONLY JSON with this shape:\n{\n  "schemaVersion": "${GUIDED_REVIEW_EXPLAINER_SCHEMA_VERSION}",\n  "title": string,\n  "intent": string,\n  "sections": [{\n    "title": string,\n    "role": "core" | "consequence" | "data_flow" | "ui_behavior" | "edge_case" | "support" | "glue",\n    "blocks": [\n      { "type": "prose", "markdown": string } |\n      { "type": "callout", "tone": string, "title": string, "markdown": string } |\n      { "type": "mermaid", "title": string, "source": string } |\n      { "type": "diff", "file": one_of_changed_files, "summary": string } |\n      { "type": "reviewCheckpoint", "markdown": string } |\n      { "type": "widget", "id": string, "entry": "index.html", "title": string, "reason": string, "html": string }\n    ]\n  }],\n  "everythingElse": [{ "file": one_of_changed_files }]\n}\n\nRules:\n- The intent is a concise summary of the problem and resulting behavior (1-2 sentences), not a description of the guide format.\n- Organize the guide into conceptual chapters: the core behavior first, its consequences next, supporting changes and glue last. Group related files across directories; keep tests beside the implementation they verify.\n- Aim for 2-6 chapters (one for a small change, at most 10). Use descriptive chapter titles rather than filenames or role labels.\n- Begin each chapter with prose explaining what changed, why, and the implications for the reviewer. This prose appears beside the chapter file list and live diffs on wide screens, and above them on narrow screens.\n- Give every diff a concise semantic summary explaining its part in the chapter. Place every changed file exactly once across chapter diffs and everythingElse. Reserve everythingElse for incidental changes.\n- Callouts, diagrams, checkpoints, and optional widgets accompany the chapter overview; they should remain readable in a narrow column.\n- Section role MUST be one of: ${
-        GUIDED_REVIEW_SECTION_ROLES.join(", ")
-    }.\n${
+    }.\n\nReturn ONLY JSON with this shape:\n{\n  "schemaVersion": "${GUIDED_REVIEW_EXPLAINER_SCHEMA_VERSION}",\n  "title": string,\n  "intent": string,\n  "sections": [{\n    "title": string,\n    "role": "core" | "consequence" | "data_flow" | "ui_behavior" | "edge_case" | "support" | "glue",\n    "blocks": [\n      { "type": "prose", "markdown": string } |\n      { "type": "callout", "tone": string, "title": string, "markdown": string } |\n      { "type": "mermaid", "title": string, "source": string } |\n      { "type": "diff", "file": one_of_changed_files, "summary": string } |\n      { "type": "reviewCheckpoint", "markdown": string } |\n      { "type": "widget", "id": string, "entry": "index.html", "title": string, "reason": string, "html": string }\n    ]\n  }],\n  "everythingElse": [{ "file": one_of_changed_files }]\n}\n\nRules:\n- The intent is a concise summary of the problem and resulting behavior (1-2 sentences), not a description of the guide format.\n- Organize the guide into conceptual chapters: the core behavior first, its consequences next, supporting changes and glue last. Group related files across directories; keep tests beside the implementation they verify.\n- Aim for 2-6 chapters (one for a small change, at most 10). Use descriptive chapter titles rather than filenames or role labels.\n- Begin each chapter with prose explaining what changed, why, and the implications for the reviewer. This prose appears beside the chapter file list and live diffs on wide screens, and above them on narrow screens.\n- Give every diff a concise semantic summary explaining its part in the chapter. Place every changed file exactly once across chapter diffs and everythingElse. Reserve everythingElse for incidental changes.\n- Callouts, diagrams, checkpoints, and optional widgets accompany the chapter overview; they should remain readable in a narrow column.\n- Section role MUST be one of: ${GUIDED_REVIEW_SECTION_ROLES.join(
+        ", ",
+    )}.\n${
         planContent
             ? "- Ground the explainer in both the Plan and the diff. Explain why the change exists before explaining how the diff implements it."
             : "- Ground the explainer in the review context and diff. There is no Plan. " +
-                (gitRef.startsWith("Working tree")
-                    ? "Read the current checkout files directly; the diff includes uncommitted edits."
-                    : `Read head files with git show ${gitRef}:<path>.`)
+              (gitRef.startsWith("Working tree")
+                  ? "Read the current checkout files directly; the diff includes uncommitted edits."
+                  : `Read head files with git show ${gitRef}:<path>.`)
     }\n- Prefer prose, callouts, Mermaid, and diff blocks. Use widgets only when Mermaid/prose/diffs are insufficient.\n- Mermaid guidance: choose diagram families that fit the change, such as data flow, sequence, state machine, UI composition, game loop/timeline, or dependency graph diagrams.\n- Every diff.file and everythingElse.file MUST be one of the changed files below.\n- Widget HTML must be self-contained and may not reference external network resources.\n- Do not include Markdown fences or commentary outside JSON.\n\nReview target: ${gitRef}\n${
         planContent ? "Plan metadata:" : "Review metadata:"
     }\n${JSON.stringify(planAttrs, null, 2)}\n\n${planContent ? "Plan content:" : "Review context:"}\n${
@@ -252,16 +343,15 @@ export function buildGuidedReviewPrompt(
 /**
  * Validate and normalize a generated Guided Review Explainer.
  *
- * @param {unknown} value
- * @param {{ changedFiles: string[] }} opts
- * @returns {GuidedReviewValidationResult}
  */
-export function validateGuidedReviewExplainer(value, { changedFiles }) {
-    /** @type {string[]} */
-    const errors = [];
+export function validateGuidedReviewExplainer(
+    value: unknown,
+    { changedFiles }: GuidedReviewValidationOptions,
+): GuidedReviewValidationResult {
+    const errors: string[] = [];
     const changed = new Set(changedFiles);
     if (!value || typeof value !== "object") return { ok: false, errors: ["Guide output must be a JSON object."] };
-    const guide = /** @type {Record<string, unknown>} */ (value);
+    const guide = value as RawGuidedReviewExplainer;
     if (guide.schemaVersion !== GUIDED_REVIEW_EXPLAINER_SCHEMA_VERSION) {
         errors.push(`schemaVersion must be ${GUIDED_REVIEW_EXPLAINER_SCHEMA_VERSION}.`);
     }
@@ -269,24 +359,19 @@ export function validateGuidedReviewExplainer(value, { changedFiles }) {
     if (!Array.isArray(guide.sections) || guide.sections.length === 0) {
         errors.push("sections must be a non-empty array.");
     }
-    const seen = new Set();
-    const sections = Array.isArray(guide.sections) ? guide.sections : [];
+    const seen = new Set<string>();
+    const sections: unknown[] = Array.isArray(guide.sections) ? guide.sections : [];
     sections.forEach((section, sectionIndex) => {
         if (!section || typeof section !== "object") {
             errors.push(`sections[${sectionIndex}] must be an object.`);
             return;
         }
-        const sectionRecord = /** @type {Record<string, unknown>} */ (section);
+        const sectionRecord = section as RawGuidedReviewSection;
         if (typeof sectionRecord.title !== "string" || !sectionRecord.title.trim()) {
             errors.push(`sections[${sectionIndex}].title is required.`);
         }
-        if (
-            typeof sectionRecord.role !== "string" ||
-            !GUIDED_REVIEW_SECTION_ROLES.includes(sectionRecord.role)
-        ) {
-            errors.push(
-                `sections[${sectionIndex}].role must be one of: ${GUIDED_REVIEW_SECTION_ROLES.join(", ")}.`,
-            );
+        if (typeof sectionRecord.role !== "string" || !GUIDED_REVIEW_SECTION_ROLES.includes(sectionRecord.role)) {
+            errors.push(`sections[${sectionIndex}].role must be one of: ${GUIDED_REVIEW_SECTION_ROLES.join(", ")}.`);
         }
         if (!Array.isArray(sectionRecord.blocks) || sectionRecord.blocks.length === 0) {
             errors.push(`sections[${sectionIndex}].blocks must be a non-empty array.`);
@@ -301,9 +386,9 @@ export function validateGuidedReviewExplainer(value, { changedFiles }) {
             });
         });
     });
-    const everythingElse = Array.isArray(guide.everythingElse) ? guide.everythingElse : [];
+    const everythingElse: unknown[] = Array.isArray(guide.everythingElse) ? guide.everythingElse : [];
     everythingElse.forEach((ref, index) => {
-        const file = ref && typeof ref === "object" ? /** @type {Record<string, unknown>} */ (ref).file : null;
+        const file = ref && typeof ref === "object" ? (ref as RawGuidedReviewFileReference).file : null;
         if (typeof file !== "string" || !changed.has(file)) {
             errors.push(`everythingElse[${index}].file must reference a changed file.`);
         }
@@ -316,7 +401,7 @@ export function validateGuidedReviewExplainer(value, { changedFiles }) {
             seen.add(file);
         }
     }
-    const widgetAssets = Array.isArray(guide.widgetAssets) ? guide.widgetAssets : [];
+    const widgetAssets: unknown[] = Array.isArray(guide.widgetAssets) ? guide.widgetAssets : [];
     widgetAssets.forEach((asset, index) => validateWidgetAsset(asset, errors, `widgetAssets[${index}]`));
     const normalized = {
         ...guide,
@@ -326,16 +411,12 @@ export function validateGuidedReviewExplainer(value, { changedFiles }) {
     return errors.length ? { ok: false, errors } : { ok: true, value: normalized };
 }
 
-/**
- * @param {unknown} block
- * @param {{ changed: Set<string>, seen: Set<string>, errors: string[], path: string }} ctx
- */
-function validateGuideBlock(block, ctx) {
+function validateGuideBlock(block: unknown, ctx: GuideBlockValidationContext) {
     if (!block || typeof block !== "object") {
         ctx.errors.push(`${ctx.path} must be an object.`);
         return;
     }
-    const record = /** @type {Record<string, unknown>} */ (block);
+    const record = block as RawGuidedReviewBlock;
     if (typeof record.type !== "string") {
         ctx.errors.push(`${ctx.path}.type is required.`);
         return;
@@ -363,7 +444,7 @@ function validateGuideBlock(block, ctx) {
         }
         if (Array.isArray(record.assets)) {
             record.assets.forEach((asset, index) =>
-                validateWidgetAsset(asset, ctx.errors, `${ctx.path}.assets[${index}]`)
+                validateWidgetAsset(asset, ctx.errors, `${ctx.path}.assets[${index}]`),
             );
         }
     } else if (!["prose", "callout", "reviewCheckpoint"].includes(record.type)) {
@@ -371,13 +452,12 @@ function validateGuideBlock(block, ctx) {
     }
 }
 
-/** @param {unknown} asset @param {string[]} errors @param {string} path */
-function validateWidgetAsset(asset, errors, path) {
+function validateWidgetAsset(asset: unknown, errors: string[], path: string) {
     if (!asset || typeof asset !== "object") {
         errors.push(`${path} must be an object.`);
         return;
     }
-    const record = /** @type {Record<string, unknown>} */ (asset);
+    const record = asset as RawGuidedReviewWidgetAsset;
     const name = record.name || record.path;
     if (typeof name !== "string" || !/^[A-Za-z0-9._-]{1,120}$/.test(name) || name === "index.html") {
         errors.push(`${path}.name must be a safe local asset filename.`);
@@ -391,8 +471,7 @@ function validateWidgetAsset(asset, errors, path) {
     }
 }
 
-/** @param {string[]} paths */
-function buildChangedFilesMermaid(paths) {
+function buildChangedFilesMermaid(paths: string[]) {
     if (paths.length === 0) return "flowchart TD\n    A[No changed files detected]";
     const lines = ["flowchart TD", "    A[Review intent] --> B[Core changes]"];
     paths.slice(0, 6).forEach((path, index) => {
@@ -401,7 +480,6 @@ function buildChangedFilesMermaid(paths) {
     return lines.join("\n");
 }
 
-/** @param {string} value */
-function sanitizeMermaidLabel(value) {
+function sanitizeMermaidLabel(value: string) {
     return value.replace(/[\[\]{}<>]/g, " ").slice(0, 80);
 }
