@@ -23,7 +23,6 @@
     "src/shared/session/workflow-context-session.js",
     "src/shared/settings.js",
     "src/shared/types.js",
-    "src/shared/update-check.js",
     "src/shared/work-records/auto-generation.js",
     "src/shared/work-records/generation.js",
     "src/shared/workflow/execution-plan-file.js",

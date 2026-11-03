@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { __resetSettingsForTests, ONBOARDING_TUTORIAL_OFFER_HANDLED_SETTING_KEY } from "../../shared/settings.js";
 import { getModelRegistry } from "../../shared/models/model-registry.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { writeUpdateCheckCache } from "../../shared/update-check.js";
+import { writeUpdateCheckCache } from "../../shared/update-check.ts";
 import { initRunWieldTheme } from "../../ui/theme/theme.ts";
 import {
     assertWorkflowBinaryCallsSupported,

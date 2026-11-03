@@ -20,7 +20,7 @@ import {
     isNewerRunWieldVersion,
     normalizeRunWieldVersion,
     parseRunWieldReleaseVersion,
-} from "../../shared/update-check.js";
+} from "../../shared/update-check.ts";
 
 export interface UpdateNetworkPort {
     fetch: FetchRequest;

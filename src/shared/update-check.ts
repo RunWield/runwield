@@ -9,6 +9,70 @@ import { dirname, join } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { getSettingsDir } from "./settings.js";
 
+import type { FetchRequest } from "./fetch-request.ts";
+
+export interface UpdateCheckNetworkPort {
+    fetch: FetchRequest;
+}
+
+export interface UpdateCheckClockPort {
+    now: () => number;
+}
+
+export interface UpdateCheckPorts {
+    network: UpdateCheckNetworkPort;
+    clock: UpdateCheckClockPort;
+}
+
+export interface UpdateCheckCache {
+    latestVersion: string;
+    checkedAt: number;
+}
+
+export interface RunWieldReleaseMetadata {
+    tagName: string;
+    version: string;
+}
+
+export interface ParsedRunWieldVersion {
+    major: number;
+    minor: number;
+    patch: number;
+    rc: number | null;
+    stable: boolean;
+    normalized: string;
+}
+
+export interface ReadUpdateCheckCacheOptions {
+    ttlMs?: number;
+    cachePath?: string;
+}
+
+export interface WriteUpdateCheckCacheOptions extends UpdateCheckCache {
+    cachePath?: ReadUpdateCheckCacheOptions["cachePath"];
+}
+
+export interface UpdateAvailabilityOptions extends ReadUpdateCheckCacheOptions {
+    currentVersion: string;
+}
+
+export interface UpdateAvailability extends UpdateCheckCache {
+    available: boolean;
+}
+
+export type RefreshUpdateCheckCacheOptions = Pick<UpdateAvailabilityOptions, "currentVersion" | "cachePath">;
+
+interface RawUpdateCheckCache {
+    latestVersion?: unknown;
+    checkedAt?: unknown;
+}
+
+interface GitHubReleaseRecord {
+    tag_name?: string;
+    prerelease?: boolean;
+    draft?: boolean;
+}
+
 export const RUNWIELD_REPO = "gandazgul/runwield";
 export const LATEST_RELEASE_API_URL = `https://api.github.com/repos/${RUNWIELD_REPO}/releases/latest`;
 export const RELEASES_API_URL = `https://api.github.com/repos/${RUNWIELD_REPO}/releases`;
@@ -21,49 +85,18 @@ export const TAG_PINNED_INSTALLER_URL_TEMPLATE =
 export const TAG_PINNED_INSTALLER_WEB_URL_TEMPLATE =
     "https://github.com/gandazgul/runwield/raw/refs/tags/{tag}/install.sh";
 
-/** @typedef {{ fetch: import("./fetch-request.ts").FetchRequest }} UpdateCheckNetworkPort */
-/** @typedef {{ now: () => number }} UpdateCheckClockPort */
-/** @typedef {{ network: UpdateCheckNetworkPort, clock: UpdateCheckClockPort }} UpdateCheckPorts */
-
 export const SYSTEM_UPDATE_CHECK_PORTS = Object.freeze({
     network: { fetch: globalThis.fetch.bind(globalThis) },
     clock: { now: Date.now },
 });
 
-/**
- * @typedef {Object} UpdateCheckCache
- * @property {string} latestVersion
- * @property {number} checkedAt
- */
-
-/**
- * @typedef {Object} RunWieldReleaseMetadata
- * @property {string} tagName
- * @property {string} version
- */
-
-/**
- * @typedef {Object} ParsedRunWieldVersion
- * @property {number} major
- * @property {number} minor
- * @property {number} patch
- * @property {number | null} rc
- * @property {boolean} stable
- * @property {string} normalized
- */
-
-/** @param {string} version */
-export function normalizeRunWieldVersion(version) {
+export function normalizeRunWieldVersion(version: string) {
     const value = String(version || "").trim();
     if (!value) return "";
     return value.startsWith("v") ? value : `v${value}`;
 }
 
-/**
- * @param {string} version
- * @returns {ParsedRunWieldVersion | null}
- */
-export function parseRunWieldReleaseVersion(version) {
+export function parseRunWieldReleaseVersion(version: string): ParsedRunWieldVersion | null {
     const normalized = normalizeRunWieldVersion(version);
     const match = /^v(\d+)\.(\d+)\.(\d+)(?:-rc\.(\d+))?$/.exec(normalized);
     if (!match) return null;
@@ -78,11 +111,7 @@ export function parseRunWieldReleaseVersion(version) {
     };
 }
 
-/**
- * @param {ParsedRunWieldVersion} a
- * @param {ParsedRunWieldVersion} b
- */
-function compareParsedVersions(a, b) {
+function compareParsedVersions(a: ParsedRunWieldVersion, b: ParsedRunWieldVersion) {
     const majorDelta = a.major - b.major;
     if (majorDelta !== 0) return majorDelta;
     const minorDelta = a.minor - b.minor;
@@ -94,23 +123,14 @@ function compareParsedVersions(a, b) {
     return (a.rc ?? 0) - (b.rc ?? 0);
 }
 
-/**
- * @param {string} leftVersion
- * @param {string} rightVersion
- * @returns {number | null}
- */
-export function compareRunWieldVersions(leftVersion, rightVersion) {
+export function compareRunWieldVersions(leftVersion: string, rightVersion: string): number | null {
     const left = parseRunWieldReleaseVersion(leftVersion);
     const right = parseRunWieldReleaseVersion(rightVersion);
     if (!left || !right) return null;
     return compareParsedVersions(left, right);
 }
 
-/**
- * @param {string} latestVersion
- * @param {string} currentVersion
- */
-export function isNewerRunWieldVersion(latestVersion, currentVersion) {
+export function isNewerRunWieldVersion(latestVersion: string, currentVersion: string) {
     const comparison = compareRunWieldVersions(latestVersion, currentVersion);
     if (comparison !== null) return comparison > 0;
     const latest = parseRunWieldReleaseVersion(latestVersion);
@@ -122,25 +142,16 @@ export function getUpdateCheckCachePath() {
     return join(getSettingsDir("global"), UPDATE_CHECK_CACHE_FILENAME);
 }
 
-/**
- * @param {unknown} value
- * @returns {UpdateCheckCache | null}
- */
-function normalizeCacheRecord(value) {
+function normalizeCacheRecord(value: unknown): UpdateCheckCache | null {
     if (!value || typeof value !== "object") return null;
-    const record = /** @type {{ latestVersion?: unknown, checkedAt?: unknown }} */ (value);
+    const record = value as RawUpdateCheckCache;
     if (typeof record.latestVersion !== "string" || typeof record.checkedAt !== "number") return null;
     const latestVersion = normalizeRunWieldVersion(record.latestVersion);
     if (!parseRunWieldReleaseVersion(latestVersion) || !Number.isFinite(record.checkedAt)) return null;
     return { latestVersion, checkedAt: record.checkedAt };
 }
 
-/**
- * @param {string} text
- * @param {number} now
- * @param {number} ttlMs
- */
-function parseFreshCacheText(text, now, ttlMs) {
+function parseFreshCacheText(text: string, now: number, ttlMs: number) {
     const parsed = JSON.parse(text);
     const record = normalizeCacheRecord(parsed);
     if (!record) return null;
@@ -148,12 +159,10 @@ function parseFreshCacheText(text, now, ttlMs) {
     return record;
 }
 
-/**
- * @param {UpdateCheckClockPort} clock
- * @param {{ ttlMs?: number, cachePath?: string }} [options]
- * @returns {UpdateCheckCache | null}
- */
-export function readUpdateCheckCacheSync(clock, options = {}) {
+export function readUpdateCheckCacheSync(
+    clock: UpdateCheckClockPort,
+    options: ReadUpdateCheckCacheOptions = {},
+): UpdateCheckCache | null {
     const now = clock.now();
     const ttlMs = options.ttlMs ?? UPDATE_CHECK_CACHE_TTL_MS;
     const cachePath = options.cachePath || getUpdateCheckCachePath();
@@ -164,12 +173,10 @@ export function readUpdateCheckCacheSync(clock, options = {}) {
     }
 }
 
-/**
- * @param {UpdateCheckClockPort} clock
- * @param {{ ttlMs?: number, cachePath?: string }} [options]
- * @returns {Promise<UpdateCheckCache | null>}
- */
-export async function readUpdateCheckCache(clock, options = {}) {
+export async function readUpdateCheckCache(
+    clock: UpdateCheckClockPort,
+    options: ReadUpdateCheckCacheOptions = {},
+): Promise<UpdateCheckCache | null> {
     const now = clock.now();
     const ttlMs = options.ttlMs ?? UPDATE_CHECK_CACHE_TTL_MS;
     const cachePath = options.cachePath || getUpdateCheckCachePath();
@@ -180,10 +187,7 @@ export async function readUpdateCheckCache(clock, options = {}) {
     }
 }
 
-/**
- * @param {{ latestVersion: string, checkedAt: number, cachePath?: string }} options
- */
-export async function writeUpdateCheckCache(options) {
+export async function writeUpdateCheckCache(options: WriteUpdateCheckCacheOptions) {
     const cachePath = options.cachePath || getUpdateCheckCachePath();
     const latestVersion = normalizeRunWieldVersion(options.latestVersion);
     if (!parseRunWieldReleaseVersion(latestVersion)) {
@@ -194,11 +198,10 @@ export async function writeUpdateCheckCache(options) {
     await fsWriteFile(cachePath, `${JSON.stringify({ latestVersion, checkedAt }, null, 2)}\n`);
 }
 
-/**
- * @param {{ currentVersion: string, ttlMs?: number, cachePath?: string }} options
- * @param {UpdateCheckCache | null} cache
- */
-function updateAvailabilityFromCache(options, cache) {
+function updateAvailabilityFromCache(
+    options: UpdateAvailabilityOptions,
+    cache: UpdateCheckCache | null,
+): UpdateAvailability | null {
     if (!cache) return null;
     return {
         latestVersion: cache.latestVersion,
@@ -207,24 +210,15 @@ function updateAvailabilityFromCache(options, cache) {
     };
 }
 
-/**
- * @param {UpdateCheckClockPort} clock
- * @param {{ currentVersion: string, ttlMs?: number, cachePath?: string }} options
- */
-export function getCachedUpdateAvailabilitySync(clock, options) {
+export function getCachedUpdateAvailabilitySync(clock: UpdateCheckClockPort, options: UpdateAvailabilityOptions) {
     return updateAvailabilityFromCache(options, readUpdateCheckCacheSync(clock, options));
 }
 
-/**
- * @param {UpdateCheckClockPort} clock
- * @param {{ currentVersion: string, ttlMs?: number, cachePath?: string }} options
- */
-export async function getCachedUpdateAvailability(clock, options) {
+export async function getCachedUpdateAvailability(clock: UpdateCheckClockPort, options: UpdateAvailabilityOptions) {
     return updateAvailabilityFromCache(options, await readUpdateCheckCache(clock, options));
 }
 
-/** @param {string} url */
-function releaseTagFromGitHubReleaseUrl(url) {
+function releaseTagFromGitHubReleaseUrl(url: string) {
     const match = /\/releases\/tag\/([^/?#]+)/.exec(String(url || ""));
     if (!match) return null;
     try {
@@ -234,8 +228,7 @@ function releaseTagFromGitHubReleaseUrl(url) {
     }
 }
 
-/** @param {string} html */
-function releaseTagFromGitHubReleaseHtml(html) {
+function releaseTagFromGitHubReleaseHtml(html: string) {
     const match = /\/releases\/tag\/([^"'<>?#]+)/.exec(html);
     if (!match) return null;
     try {
@@ -245,32 +238,21 @@ function releaseTagFromGitHubReleaseHtml(html) {
     }
 }
 
-/** @param {string} tag */
-function releaseMetadataFromTag(tag) {
+function releaseMetadataFromTag(tag: string): RunWieldReleaseMetadata {
     const tagName = normalizeRunWieldVersion(tag);
     if (!parseRunWieldReleaseVersion(tagName)) throw new Error(`Invalid RunWield latest release tag: ${tag}`);
     return { tagName, version: tagName };
 }
 
-/** @typedef {{ tag_name?: string, prerelease?: boolean, draft?: boolean }} GitHubReleaseRecord */
-
-/**
- * @param {GitHubReleaseRecord} release
- * @returns {RunWieldReleaseMetadata | null}
- */
-function rcMetadataFromReleaseRecord(release) {
+function rcMetadataFromReleaseRecord(release: GitHubReleaseRecord): RunWieldReleaseMetadata | null {
     if (release.draft || !release.prerelease || typeof release.tag_name !== "string") return null;
     const parsed = parseRunWieldReleaseVersion(release.tag_name);
     if (!parsed || parsed.stable) return null;
     return { tagName: parsed.normalized, version: parsed.normalized };
 }
 
-/**
- * @param {string} html
- * @returns {RunWieldReleaseMetadata | null}
- */
-function latestRcMetadataFromReleaseHtml(html) {
-    let latest = null;
+function latestRcMetadataFromReleaseHtml(html: string): RunWieldReleaseMetadata | null {
+    let latest: RunWieldReleaseMetadata | null = null;
     for (const match of html.matchAll(/\/releases\/tag\/([^"'<>?#]+)/g)) {
         let tag = match[1];
         try {
@@ -287,12 +269,9 @@ function latestRcMetadataFromReleaseHtml(html) {
     return latest;
 }
 
-/**
- * @param {Response} response
- * @returns {Promise<RunWieldReleaseMetadata>}
- */
-async function releaseMetadataFromLatestWebResponse(response) {
-    const redirectedTag = releaseTagFromGitHubReleaseUrl(response.url) ||
+async function releaseMetadataFromLatestWebResponse(response: Response): Promise<RunWieldReleaseMetadata> {
+    const redirectedTag =
+        releaseTagFromGitHubReleaseUrl(response.url) ||
         releaseTagFromGitHubReleaseUrl(response.headers.get("location") || "");
     if (redirectedTag) return releaseMetadataFromTag(redirectedTag);
 
@@ -302,15 +281,11 @@ async function releaseMetadataFromLatestWebResponse(response) {
     throw new Error("GitHub latest release web response is missing a release tag redirect.");
 }
 
-/**
- * @param {UpdateCheckNetworkPort} network
- * @returns {Promise<RunWieldReleaseMetadata>}
- */
-export async function fetchLatestRunWieldRelease(network) {
+export async function fetchLatestRunWieldRelease(network: UpdateCheckNetworkPort): Promise<RunWieldReleaseMetadata> {
     const fetchImpl = network.fetch;
     const response = await fetchImpl(LATEST_RELEASE_API_URL);
     if (response.ok) {
-        const data = await response.json();
+        const data: GitHubReleaseRecord | null = await response.json();
         if (!data || typeof data.tag_name !== "string") {
             throw new Error("GitHub latest release response is missing tag_name.");
         }
@@ -331,20 +306,16 @@ export async function fetchLatestRunWieldRelease(network) {
     return await releaseMetadataFromLatestWebResponse(webResponse);
 }
 
-/**
- * @param {UpdateCheckNetworkPort} network
- * @returns {Promise<RunWieldReleaseMetadata>}
- */
-export async function fetchLatestRunWieldRcRelease(network) {
+export async function fetchLatestRunWieldRcRelease(network: UpdateCheckNetworkPort): Promise<RunWieldReleaseMetadata> {
     const response = await network.fetch(RELEASES_API_URL);
-    /** @type {RunWieldReleaseMetadata | null} */
-    let latest = null;
+
+    let latest: RunWieldReleaseMetadata | null = null;
 
     if (response.ok) {
-        const data = await response.json();
+        const data: GitHubReleaseRecord[] = await response.json();
         if (!Array.isArray(data)) throw new Error("GitHub releases response is not a release list.");
         for (const release of data) {
-            const candidate = rcMetadataFromReleaseRecord(/** @type {GitHubReleaseRecord} */ (release));
+            const candidate = rcMetadataFromReleaseRecord(release);
             if (!candidate) continue;
             const comparison = latest ? compareRunWieldVersions(candidate.version, latest.version) : 1;
             if (comparison !== null && comparison > 0) latest = candidate;
@@ -367,11 +338,7 @@ export async function fetchLatestRunWieldRcRelease(network) {
     return latest;
 }
 
-/**
- * @param {{ currentVersion: string, cachePath?: string }} options
- * @param {UpdateCheckPorts} ports
- */
-export async function refreshUpdateCheckCache(options, ports) {
+export async function refreshUpdateCheckCache(options: RefreshUpdateCheckCacheOptions, ports: UpdateCheckPorts) {
     const release = await fetchLatestRunWieldRelease(ports.network);
     const checkedAt = ports.clock.now();
     try {
@@ -386,8 +353,7 @@ export async function refreshUpdateCheckCache(options, ports) {
     };
 }
 
-/** @param {string} tag */
-export function getTagPinnedInstallerUrls(tag) {
+export function getTagPinnedInstallerUrls(tag: string) {
     const normalized = normalizeRunWieldVersion(tag);
     if (!parseRunWieldReleaseVersion(normalized)) throw new Error(`Invalid RunWield release tag: ${tag}`);
     return [
@@ -396,8 +362,7 @@ export function getTagPinnedInstallerUrls(tag) {
     ];
 }
 
-/** @param {string} execPath */
-export function getInstalledWldDirectoryFromExecPath(execPath) {
+export function getInstalledWldDirectoryFromExecPath(execPath: string) {
     const path = String(execPath || "");
     const name = path.startsWith("file:") ? fromFileUrl(path).split("/").at(-1) : path.split("/").at(-1);
     if (name !== "wld") return null;
