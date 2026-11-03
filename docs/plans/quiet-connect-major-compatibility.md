@@ -17,6 +17,11 @@ userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "main"
 status: "reviewed"
+validatedCommit: "79d6478cb19a1b3a52137c0f9844604b26ca552d"
+workRecord:
+    status: "failed"
+    lastAttemptAt: "2026-11-03T00:30:31.696Z"
+    error: "docs/work-records/2026-10-16-remote-mcp-transport-pilot.md: Invalid Work Record: front matter is required."
 ---
 
 # Quiet Connect Compatibility Across Qualified Release Families
