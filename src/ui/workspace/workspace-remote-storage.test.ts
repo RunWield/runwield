@@ -11,7 +11,7 @@ import { type RemoteWorkspaceApp, createWorkspaceApp } from "./server.js";
 
 import { hashCapability } from "../../shared/collaboration/capabilities.ts";
 import { openRemoteDatabase } from "./server/remote-db.ts";
-import { createRemoteWorkspaceAdapter } from "./server/remote-adapter.js";
+import { createRemoteWorkspaceAdapter } from "./server/remote-adapter.ts";
 import { REMOTE_SCHEMA_V1_SQL } from "./server/remote-schema.ts";
 
 import { jsonRequest, readJsonResponse } from "./workspace-test-helpers.ts";

@@ -30,7 +30,7 @@ import {
     reviewExitApi,
     reviewFeedbackApi,
 } from "./routes/api/review-handlers.ts";
-import { openRemoteWorkspaceAdapter } from "./server/remote-adapter.js";
+import { openRemoteWorkspaceAdapter } from "./server/remote-adapter.ts";
 import { escapeReviewPayloadJson } from "./server/review-payload-json.ts";
 import { withAccessLogger } from "./server-access-logger.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../../shared/work-records/mnemoteca-port.ts";
@@ -148,7 +148,7 @@ const WORKSPACE_PLAN_ADAPTER_URL_KEY = Symbol.for("runwield.workspace.plan-adapt
 ).href;
 
 /** @typedef {{ handler: () => (request: Request) => Promise<Response> }} WorkspaceApp */
-/** @typedef {WorkspaceApp & { adapter: import("./server/remote-adapter.js").RemoteWorkspaceAdapter }} RemoteWorkspaceApp */
+/** @typedef {WorkspaceApp & { adapter: import("./server/remote-adapter.ts").RemoteWorkspaceAdapter }} RemoteWorkspaceApp */
 const REVIEW_PAYLOAD_HEADER = "x-runwield-review-payload";
 const QUESTION_PAYLOAD_HEADER = "x-runwield-question-payload";
 
