@@ -37,7 +37,7 @@ import {
     getProjectSecretStoreLocation,
     getProjectSecretStorePath,
     readSecretStore,
-} from "../../shared/collaboration/secrets.js";
+} from "../../shared/collaboration/secrets.ts";
 import { parseCollaborationUrl } from "../../shared/collaboration/urls.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
