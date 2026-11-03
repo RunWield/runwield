@@ -34,7 +34,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { __resetSettingsForTests, setCustomSetting } from "../settings.js";
 import { SessionHost } from "./session-host.ts";
 import { captureTranscriptEvidence } from "./session-transcript-projection.js";
-import { switchActiveAgent } from "./agent-switching.js";
+import { switchActiveAgent } from "./agent-switching.ts";
 import { RuntimeEventTypes } from "./session-runtime-events.js";
 import { RuntimeInteractionTypes } from "./session-runtime-interactions.js";
 import { createSessionRuntime, SessionRuntime, SessionTurnInProgressError } from "./session-runtime.ts";

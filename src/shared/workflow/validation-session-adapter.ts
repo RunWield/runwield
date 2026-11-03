@@ -30,7 +30,7 @@ import { type ReviewInspection } from "./review-inspection.ts";
 import { createReviewCompletedTool } from "../../tools/review-complete.ts";
 import { createQaChecklistGeneratedTool } from "../../tools/qa-checklist-generated.ts";
 import { settleWorkflowToolEvent } from "./workflow-tool-events.ts";
-import { releaseActiveAgent, switchActiveAgent } from "../session/agent-switching.js";
+import { releaseActiveAgent, switchActiveAgent } from "../session/agent-switching.ts";
 import {
     type AgentTurnOutcome,
     type IndependentRepairTurnRequest,

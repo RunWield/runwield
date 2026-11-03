@@ -1093,7 +1093,7 @@ The highest-value cross-boundary paths for later confidence analysis are visible
 | Interaction contract                      | `src/shared/session/session-runtime-interactions.js`                          |
 | Pi session construction and prompt bridge | `src/shared/session/session.js`                                               |
 | Agent definition layering                 | `src/shared/session/agents.js`                                                |
-| Agent switching                           | `src/shared/session/agent-switching.js`                                       |
+| Agent switching                           | `src/shared/session/agent-switching.ts`                                       |
 | Workflow-aware turn handling              | `src/shared/session/agent-handler.js`                                         |
 | Routing orchestration                     | `src/shared/workflow/orchestrator.js`                                         |
 | Workflow decisions and outcome parsing    | `src/shared/workflow/decisions.ts`, `src/shared/workflow/workflow-results.ts` |

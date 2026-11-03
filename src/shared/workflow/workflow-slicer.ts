@@ -20,7 +20,7 @@ import {
     writePlanMarkdownWithRevision,
 } from "../../plan-store.js";
 import { emitSystemStatus } from "../session/session-runtime-events.js";
-import { runActiveAgentTurn, switchActiveAgent } from "../session/agent-switching.js";
+import { runActiveAgentTurn, switchActiveAgent } from "../session/agent-switching.ts";
 import { SUBAGENT_DEFINITIONS } from "../session/subagent-definitions.ts";
 import { buildSlicerRequest } from "./workflow-prompts.ts";
 import { recordPlanEvent } from "./plan-lifecycle.js";

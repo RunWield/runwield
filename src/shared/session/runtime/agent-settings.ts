@@ -3,7 +3,7 @@ import { AGENTS } from "../../../constants.js";
 import { recordManualModelSelection } from ".././active-agent-session.ts";
 import { resolveActiveWorkflowRuntimeAgent } from "../../workflow/execution-agent.ts";
 import { getAgentBusyLines, getAgentDisplayName } from ".././agents.js";
-import { switchActiveAgent } from ".././agent-switching.js";
+import { switchActiveAgent } from ".././agent-switching.ts";
 import {
     drainSessionCompactionMetrics,
     getConfiguredAgentModel,
@@ -587,7 +587,7 @@ export class RuntimeAgentSettings {
 
     async activateSessionAgent(
         hostedSession: import(".././hosted-session.js").HostedSession,
-        options: import(".././agent-switching.js").AgentSwitchOptions,
+        options: import(".././agent-switching.ts").AgentSwitchOptions,
     ) {
         let pendingCreation = this.managedOperations.getPendingCreationProof(hostedSession.id);
         if (!pendingCreation && this.lifecycle.hasPendingProject(hostedSession.id)) {
