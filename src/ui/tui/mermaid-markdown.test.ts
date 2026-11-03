@@ -8,8 +8,8 @@ import { initRunWieldTheme } from "../theme/theme.ts";
 initRunWieldTheme();
 
 import { getMarkdownTheme } from "../theme/theme.ts";
-import { MermaidMarkdown } from "./mermaid-markdown.js";
-import type { MermaidMarkdownOptions } from "./mermaid-markdown.js";
+import { MermaidMarkdown } from "./mermaid-markdown.ts";
+import type { MermaidMarkdownOptions } from "./mermaid-markdown.ts";
 
 type MermaidRenderer = NonNullable<MermaidMarkdownOptions["renderMermaid"]>;
 
