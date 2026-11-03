@@ -136,10 +136,11 @@ export const loadPlanEpicMenuOptionsScenario = {
                     String(entry.request?.prompt || "").includes("this Epic") && entry.interaction?.value === "view",
             );
             assert(viewed.length === 4, `Expected four Epic menu states; got ${viewed.length}`);
-            assertExactOptions(viewed[1], ["slicer", "user_verify", "hold", "view", "cancel"]);
+            assertExactOptions(viewed[1], ["architect_re_review", "slicer", "user_verify", "hold", "view", "cancel"]);
             assertExactOptions(viewed[2], [
                 "pick_child",
                 "direct_review",
+                "architect_re_review",
                 "slicer",
                 "done_enough",
                 "user_verify",
@@ -282,6 +283,7 @@ export const loadPlanEpicChildMenusScenario = {
             assertExactOptions(selectedInteraction(result, "this Epic", "pick_child"), [
                 "pick_child",
                 "direct_review",
+                "architect_re_review",
                 "slicer",
                 "done_enough",
                 "user_verify",
@@ -556,7 +558,122 @@ export const loadPlanEpicArchitectReviewScenario = {
     ],
 };
 
+export const loadPlanEpicArchitectReReviewScenario = {
+    name: "load-plan-epic-send-back-discuss-approve-later-and-reload",
+    composedTui: true,
+    initialAgentName: "guide",
+    terminal: { columns: 100, rows: 30 },
+    timeoutMs: 120000,
+    initialProjectFiles: [decompositionEpic],
+    reviewDecisions: [{ approved: true, feedback: "Architecture approved for later.", approvalAction: "later" }],
+    scriptedInteractions: [
+        { type: "select", promptIncludes: "What would you like to do with this Epic", value: "architect_re_review" },
+        { type: "select", promptIncludes: "What would you like to do with this Epic", value: "cancel" },
+    ],
+    script: [
+        {
+            id: "architect-discusses-sent-back-epic",
+            agent: "architect",
+            phase: "plan_review",
+            ordinal: 1,
+            text: "Architect is ready to discuss the sent-back Epic.",
+        },
+        {
+            id: "architect-submits-sent-back-epic",
+            agent: "architect",
+            phase: "plan_review",
+            ordinal: 2,
+            requiredTools: ["plan_written"],
+            toolCalls: [{ name: "plan_written", arguments: { planName: "decomposition-epic" } }],
+        },
+    ],
+    actions: [
+        { type: "type", text: "/load-plan decomposition-epic" },
+        { type: "enter" },
+        { type: "enter" },
+        { type: "waitForScreen", text: "Architect is ready to discuss the sent-back Epic.", timeoutMs: 60000 },
+        { type: "waitForPlanStatus", planName: "decomposition-epic", statuses: ["draft"], timeoutMs: 30000 },
+        { type: "waitForIdle", timeoutMs: 30000 },
+        { type: "type", text: "The architecture is clear. Submit the Epic for approval." },
+        { type: "enter" },
+        {
+            type: "waitForPlanStatus",
+            planName: "decomposition-epic",
+            statuses: ["ready_for_decomposition"],
+            timeoutMs: 60000,
+        },
+        { type: "waitForIdle", timeoutMs: 30000 },
+        { type: "type", text: "/load-plan decomposition-epic" },
+        { type: "enter" },
+        { type: "enter" },
+        { type: "waitForScriptedInteractions" },
+        { type: "waitForIdle", timeoutMs: 30000 },
+        { type: "captureProjectState", planNames: ["decomposition-epic"] },
+    ],
+    assertions: [
+        (result: EpicGoldenResult) => {
+            assertEventIncludes(result, "runtime:agent:architect");
+            assertEventIncludes(result, "runtime:tool:start:plan_written");
+            assertScreenIncludes(result, "Architect is ready to discuss the sent-back Epic.");
+            const reloaded = selectedInteraction(result, "this Epic", "cancel");
+            assert(optionValues(reloaded).has("slicer"), "Reapproved Epic must still offer Slicer.");
+            assert(
+                planStatus(result, "decomposition-epic") === "ready_for_decomposition",
+                "Expected renewed approval.",
+            );
+            assert(
+                !result.events.some((event) => event.includes("runtime:agent:slicer")),
+                "Later must not start Slicer.",
+            );
+            assert(!result.events.some((event) => event.includes("runtime:agent:engineer")), "Never execute the Epic.");
+        },
+    ],
+};
+
+export const loadPlanEpicChildrenArchitectReReviewScenario = {
+    ...loadPlanEpicArchitectReReviewScenario,
+    name: "load-plan-epic-with-children-send-back-and-reapprove",
+    initialProjectFiles: [readyEpic, readyChild],
+    script: loadPlanEpicArchitectReReviewScenario.script.map((turn) => ({
+        ...turn,
+        toolCalls: turn.toolCalls?.map((call) => ({ ...call, arguments: { planName: "ready-epic" } })),
+    })),
+    scriptedInteractions: [
+        { type: "select", promptIncludes: "What would you like to do with this Epic", value: "architect_re_review" },
+        { type: "select", promptIncludes: "What would you like to do with this Epic", value: "view" },
+        { type: "select", promptIncludes: "What would you like to do with this Epic", value: "cancel" },
+    ],
+    actions: loadPlanEpicArchitectReReviewScenario.actions.map((action) => ({
+        ...action,
+        ...(action.text ? { text: action.text.replaceAll("decomposition-epic", "ready-epic") } : {}),
+        ...(action.planName ? { planName: "ready-epic" } : {}),
+        ...(action.planNames ? { planNames: ["ready-epic", "ready-epic/01-child"] } : {}),
+    })),
+    assertions: [
+        (result: EpicGoldenResult) => {
+            assertEventIncludes(result, "runtime:agent:architect");
+            assertEventIncludes(result, "runtime:tool:start:plan_written");
+            assertScreenIncludes(result, "01-child [draft]");
+            assert(
+                planStatus(result, "ready-epic") === "ready_for_decomposition",
+                "Children must not restore readiness automatically.",
+            );
+            assert(planStatus(result, "ready-epic/01-child") === "draft", "Keep the child unchanged.");
+            assert(
+                optionValues(selectedInteraction(result, "this Epic", "view")).has("slicer"),
+                "Slicer remains available.",
+            );
+            assert(
+                !result.events.some((event) => event.includes("runtime:agent:slicer")),
+                "Later must not start Slicer.",
+            );
+        },
+    ],
+};
+
 export const loadPlanEpicWorkflowScenarios = [
+    loadPlanEpicArchitectReReviewScenario,
+    loadPlanEpicChildrenArchitectReReviewScenario,
     loadPlanEpicMenuOptionsScenario,
     loadPlanEpicDirectReviewScenario,
     loadPlanEpicDirectReviewFeedbackScenario,
