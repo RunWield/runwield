@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import { ok as assert } from "node:assert/strict";
 import { join } from "node:path";
 import { openOwnerCoordinationDatabase } from "../owner-coordination/database.ts";
-import { registerProject } from "../owner-coordination/projects.js";
+import { registerProject } from "../owner-coordination/projects.ts";
 import {
     appendSessionTranscriptSegment,
     ensureSessionCatalogRecord,

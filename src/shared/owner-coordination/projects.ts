@@ -8,75 +8,109 @@ import { readdirSync, realpathSync, statSync } from "node:fs";
 import { deleteProjectRegistration } from "./project-removal.ts";
 import { basename, isAbsolute, resolve } from "node:path";
 
-/**
- * @typedef {'enabled' | 'disabled' | 'removed'} ProjectLifecycle
- */
+import type { SQLOutputValue } from "node:sqlite";
+import type { DatabaseSync } from "../sqlite.ts";
+import type { OwnerCoordinationDatabase } from "./database.ts";
 
-/**
- * @typedef {'available' | 'missing' | 'not_directory' | 'unreadable' | 'canonical_mismatch'} ProjectHealthStatus
- */
+export type ProjectLifecycle = "enabled" | "disabled" | "removed";
+export type ProjectHealthStatus = "available" | "missing" | "not_directory" | "unreadable" | "canonical_mismatch";
 
-/**
- * @typedef {Object} RegisteredProject
- * @property {string} projectId
- * @property {string} displayName
- * @property {string} registeredRoot
- * @property {string} currentRoot
- * @property {ProjectLifecycle} lifecycle
- * @property {string} createdAt
- * @property {string} updatedAt
- * @property {string | null} disabledAt
- * @property {string | null} removedAt
- * @property {string | null} restoredAt
- * @property {string | null} relinkedAt
- */
-
-/**
- * @typedef {Object} ProjectHealth
- * @property {string} projectId
- * @property {ProjectHealthStatus} status
- * @property {ProjectLifecycle} lifecycle
- * @property {string} registeredRoot
- * @property {string} currentRoot
- * @property {string | null} observedRealRoot
- * @property {string[]} evidence
- */
-
-/** @param {unknown} value */
-function requireDatabase(value) {
-    if (!value || typeof value !== "object" || !("handle" in value)) throw new Error("Owner database is required");
-    return /** @type {import('./database.ts').OwnerCoordinationDatabase} */ (value);
+export interface RegisteredProject {
+    projectId: string;
+    displayName: string;
+    registeredRoot: string;
+    currentRoot: string;
+    lifecycle: ProjectLifecycle;
+    createdAt: string;
+    updatedAt: string;
+    disabledAt: string | null;
+    removedAt: string | null;
+    restoredAt: string | null;
+    relinkedAt: string | null;
 }
 
-/** @param {() => string} [now] */
-function isoNow(now) {
+export interface ProjectHealth {
+    projectId: string;
+    status: ProjectHealthStatus;
+    lifecycle: ProjectLifecycle;
+    registeredRoot: string;
+    currentRoot: string;
+    observedRealRoot: string | null;
+    evidence: string[];
+}
+
+export interface ProjectClockOptions {
+    now?: () => string;
+}
+
+export interface RegisterProjectOptions extends ProjectClockOptions {
+    root: string;
+    displayName?: string;
+    directoryConfirmation?: string;
+    idFactory?: () => string;
+}
+
+export interface RelinkProjectOptions extends Omit<RegisterProjectOptions, "root"> {
+    projectId: string;
+    newRoot: string;
+}
+
+export interface ProjectRootEvidence {
+    enteredRoot: string;
+    canonicalRoot: string;
+    rootState: string;
+}
+
+interface EnsureProjectRootEvidenceOptions {
+    projectId: string;
+    enteredRoot: string;
+    canonicalRoot: string;
+    rootState: "current" | "historical";
+    now: string;
+    idFactory?: RegisterProjectOptions["idFactory"];
+}
+
+// node:sqlite does not infer selected columns; this view follows the projects schema.
+interface ProjectRow extends Record<string, SQLOutputValue> {
+    id: string;
+    display_name: string;
+    registered_root: string;
+    current_root: string;
+    lifecycle: ProjectLifecycle;
+    created_at: string;
+    updated_at: string;
+    disabled_at: string | null;
+    removed_at: string | null;
+    restored_at: string | null;
+    relinked_at: string | null;
+}
+
+function requireDatabase(value: unknown): OwnerCoordinationDatabase {
+    if (!value || typeof value !== "object" || !("handle" in value)) throw new Error("Owner database is required");
+    return value as OwnerCoordinationDatabase;
+}
+
+function isoNow(now?: ProjectClockOptions["now"]) {
     return now ? now() : new Date().toISOString();
 }
 
-/** @param {() => string} [idFactory] */
-function newId(idFactory) {
+function newId(idFactory?: RegisterProjectOptions["idFactory"]) {
     return idFactory ? idFactory() : crypto.randomUUID();
 }
 
-/**
- * @param {unknown} root
- * @param {string} field
- * @returns {string}
- */
-function requireAbsoluteRoot(root, field) {
+function requireAbsoluteRoot(root: unknown, field: string): string {
     if (typeof root !== "string" || !root.trim()) throw new Error(`${field} is required`);
     const enteredRoot = root.trim();
     if (!isAbsolute(enteredRoot)) throw new Error(`${field} must be an absolute path`);
     return resolve(enteredRoot);
 }
 
-/**
- * @param {import('../sqlite.ts').DatabaseSync} db
- * @param {string} enteredRoot
- * @param {string} canonicalRoot
- * @param {string} [allowedProjectId]
- */
-function assertNoEnteredRootRetarget(db, enteredRoot, canonicalRoot, allowedProjectId) {
+function assertNoEnteredRootRetarget(
+    db: DatabaseSync,
+    enteredRoot: string,
+    canonicalRoot: string,
+    allowedProjectId?: string,
+) {
     const rows = db
         .prepare("SELECT project_id, canonical_root FROM project_roots WHERE entered_root = ?")
         .all(enteredRoot);
@@ -90,11 +124,7 @@ function assertNoEnteredRootRetarget(db, enteredRoot, canonicalRoot, allowedProj
     }
 }
 
-/**
- * @param {import('../sqlite.ts').DatabaseSync} db
- * @param {{ projectId: string, enteredRoot: string, canonicalRoot: string, rootState: 'current' | 'historical', now: string, idFactory?: () => string }} options
- */
-function ensureProjectRootEvidence(db, options) {
+function ensureProjectRootEvidence(db: DatabaseSync, options: EnsureProjectRootEvidenceOptions) {
     const existing = db
         .prepare("SELECT id, canonical_root FROM project_roots WHERE project_id = ? AND entered_root = ?")
         .get(options.projectId, options.enteredRoot);
@@ -122,8 +152,7 @@ function ensureProjectRootEvidence(db, options) {
     );
 }
 
-/** @param {any} row */
-function projectFromRow(row) {
+function projectFromRow(row: ProjectRow): RegisteredProject {
     return {
         projectId: row.id,
         displayName: row.display_name,
@@ -139,23 +168,16 @@ function projectFromRow(row) {
     };
 }
 
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {string} projectId
- * @returns {RegisteredProject | null}
- */
-export function getProjectById(database, projectId) {
+export function getProjectById(database: OwnerCoordinationDatabase, projectId: string): RegisteredProject | null {
     const db = requireDatabase(database).handle;
-    const row = db.prepare("SELECT * FROM projects WHERE id = ?").get(projectId);
+    const row = db.prepare("SELECT * FROM projects WHERE id = ?").get(projectId) as ProjectRow | undefined;
     return row ? projectFromRow(row) : null;
 }
 
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {{ root: string, displayName?: string, directoryConfirmation?: string, idFactory?: () => string, now?: () => string }} options
- * @returns {RegisteredProject}
- */
-export function registerProject(database, options) {
+export function registerProject(
+    database: OwnerCoordinationDatabase,
+    options: RegisterProjectOptions,
+): RegisteredProject {
     const ownerDb = requireDatabase(database);
     const enteredRoot = requireAbsoluteRoot(options?.root, "Project root");
     const directory = inspectProjectDirectory(enteredRoot);
@@ -181,7 +203,9 @@ export function registerProject(database, options) {
                 now,
                 idFactory: options.idFactory,
             });
-            return projectFromRow(db.prepare("SELECT * FROM projects WHERE id = ?").get(existingProjectId));
+            return projectFromRow(
+                db.prepare("SELECT * FROM projects WHERE id = ?").get(existingProjectId) as ProjectRow,
+            );
         }
 
         const projectId = newId(options.idFactory);
@@ -196,27 +220,23 @@ export function registerProject(database, options) {
             now,
             idFactory: options.idFactory,
         });
-        return projectFromRow(db.prepare("SELECT * FROM projects WHERE id = ?").get(projectId));
+        return projectFromRow(db.prepare("SELECT * FROM projects WHERE id = ?").get(projectId) as ProjectRow);
     });
 }
 
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @returns {RegisteredProject[]}
- */
-export function listProjects(database) {
+export function listProjects(database: OwnerCoordinationDatabase): RegisteredProject[] {
     const db = requireDatabase(database).handle;
-    return db.prepare("SELECT * FROM projects ORDER BY display_name, created_at").all().map(projectFromRow);
+    return (db.prepare("SELECT * FROM projects ORDER BY display_name, created_at").all() as ProjectRow[]).map(
+        projectFromRow,
+    );
 }
 
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {string} projectId
- * @param {boolean} enabled
- * @param {{ now?: () => string }} [options]
- * @returns {RegisteredProject}
- */
-export function setProjectEnabled(database, projectId, enabled, options = {}) {
+export function setProjectEnabled(
+    database: OwnerCoordinationDatabase,
+    projectId: string,
+    enabled: boolean,
+    options: ProjectClockOptions = {},
+): RegisteredProject {
     const ownerDb = requireDatabase(database);
     return ownerDb.transaction(() => {
         const project = getProjectById(ownerDb, projectId);
@@ -225,17 +245,14 @@ export function setProjectEnabled(database, projectId, enabled, options = {}) {
         ownerDb.handle
             .prepare("UPDATE projects SET lifecycle = ?, updated_at = ?, disabled_at = ? WHERE id = ?")
             .run(enabled ? "enabled" : "disabled", now, enabled ? null : now, projectId);
-        return /** @type {RegisteredProject} */ (getProjectById(ownerDb, projectId));
+        return getProjectById(ownerDb, projectId)!;
     });
 }
 
 /**
  * Delete Workspace database records only; repository and Session files are untouched.
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {string} projectId
- * @returns {void}
  */
-export function removeProject(database, projectId) {
+export function removeProject(database: OwnerCoordinationDatabase, projectId: string): void {
     const ownerDb = requireDatabase(database);
     ownerDb.transaction(() => {
         if (!getProjectById(ownerDb, projectId)) throw new Error(`Project not found: ${projectId}`);
@@ -243,12 +260,7 @@ export function removeProject(database, projectId) {
     });
 }
 
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {{ projectId: string, newRoot: string, displayName?: string, directoryConfirmation?: string, idFactory?: () => string, now?: () => string }} options
- * @returns {RegisteredProject}
- */
-export function relinkProject(database, options) {
+export function relinkProject(database: OwnerCoordinationDatabase, options: RelinkProjectOptions): RegisteredProject {
     const ownerDb = requireDatabase(database);
     const enteredRoot = requireAbsoluteRoot(options?.newRoot, "New Project root");
     const directory = inspectProjectDirectory(enteredRoot);
@@ -280,16 +292,11 @@ export function relinkProject(database, options) {
         db.prepare(
             "UPDATE projects SET registered_root = ?, current_root = ?, display_name = ?, updated_at = ?, relinked_at = ? WHERE id = ?",
         ).run(enteredRoot, canonicalRoot, options.displayName || project.displayName, now, now, options.projectId);
-        return /** @type {RegisteredProject} */ (getProjectById(ownerDb, options.projectId));
+        return getProjectById(ownerDb, options.projectId)!;
     });
 }
 
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {string} projectId
- * @returns {Array<{ enteredRoot: string, canonicalRoot: string, rootState: string }>}
- */
-export function listProjectRootEvidence(database, projectId) {
+export function listProjectRootEvidence(database: OwnerCoordinationDatabase, projectId: string): ProjectRootEvidence[] {
     const db = requireDatabase(database).handle;
     return db
         .prepare(
@@ -303,22 +310,17 @@ export function listProjectRootEvidence(database, projectId) {
         }));
 }
 
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {string} projectId
- * @returns {ProjectHealth}
- */
-export function getProjectHealth(database, projectId) {
+export function getProjectHealth(database: OwnerCoordinationDatabase, projectId: string): ProjectHealth {
     const project = getProjectById(database, projectId);
     if (!project) throw new Error(`Project not found: ${projectId}`);
-    const evidence = [];
-    /** @type {string | null} */
-    let observedRealRoot = null;
+    const evidence: string[] = [];
+
+    let observedRealRoot: string | null = null;
     if (project.lifecycle === "removed") evidence.push("Project is removed and unavailable to Workspace.");
     if (project.lifecycle === "disabled") {
         evidence.push("Project is disabled and unavailable for new Workspace activity.");
     }
-    let status = "available";
+    let status: ProjectHealthStatus = "available";
     try {
         const stat = statSync(project.registeredRoot);
         if (!stat.isDirectory()) {
@@ -353,7 +355,7 @@ export function getProjectHealth(database, projectId) {
     }
     return {
         projectId: project.projectId,
-        status: /** @type {ProjectHealthStatus} */ (status),
+        status,
         lifecycle: project.lifecycle,
         registeredRoot: project.registeredRoot,
         currentRoot: project.currentRoot,
@@ -362,12 +364,7 @@ export function getProjectHealth(database, projectId) {
     };
 }
 
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {string} projectId
- * @returns {string}
- */
-export function requireEnabledProjectRoot(database, projectId) {
+export function requireEnabledProjectRoot(database: OwnerCoordinationDatabase, projectId: string): string {
     const project = getProjectById(database, projectId);
     if (!project) throw new Error(`Project not found: ${projectId}`);
     if (project.lifecycle !== "enabled") throw new Error(`Project is not enabled: ${projectId}`);

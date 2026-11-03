@@ -7,7 +7,6 @@
     "src/plan-store.js",
     "src/shared/collaboration/protocol.js",
     "src/shared/collaboration/secrets.js",
-    "src/shared/owner-coordination/projects.js",
     "src/shared/owner-coordination/session-activations.js",
     "src/shared/owner-coordination/sessions.js",
     "src/shared/remote/runtime.js",

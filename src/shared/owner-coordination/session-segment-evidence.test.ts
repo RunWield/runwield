@@ -7,7 +7,7 @@ import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { getRunWieldSessionDir } from "../session/root-session.js";
 import { captureTranscriptEvidence } from "../session/session-transcript-projection.js";
 import { openOwnerCoordinationDatabase } from "./database.ts";
-import { registerProject } from "./projects.js";
+import { registerProject } from "./projects.ts";
 import {
     ensureSessionCatalogRecord,
     getCurrentSessionSegment,
