@@ -8,6 +8,7 @@ import {
     readFile as fsReadFile,
     rm as fsRm,
     stat as fsStat,
+    symlink as fsSymlink,
     utimes as fsUtimes,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
@@ -28,7 +29,11 @@ import { runPlansDoctor, runPlansDoctorCommand } from "./doctor.ts";
 import { runPlansCommand } from "./index.ts";
 import { defineGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
+import {
+    enterProjectRuntime,
+    inspectProjectRuntimeReadAccess,
+    withProjectRuntimeReadScope,
+} from "../../shared/project-runtime-layout.ts";
 import { getLockHostname } from "../../shared/process-liveness.ts";
 import { inspectTargetBranchPlansByParent } from "../../shared/workflow/planning-worktree.ts";
 import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
@@ -152,6 +157,66 @@ const ancestryRepo = defineGitFixture(async (repo) => {
     await git(repo, ["commit", "-am", "unpublished"]);
     await git(repo, ["checkout", "main"]);
 });
+
+for (const changedEvidence of ["symlink", "marker", "tracked_runtime"]) {
+    test(
+        `doctor rechecks ${changedEvidence} between passive scans inside a caller scope`,
+        {
+            skip: changedEvidence === "symlink" && process.platform === "win32",
+        },
+        async () => {
+            const root = await ancestryRepo.checkout();
+            try {
+                await savePlan(root, "scope", "# Scope\n", { planId: "scope", status: "draft" });
+                const layout = await enterProjectRuntime(root);
+                const marker = await fsReadFile(layout.primary.layoutMarkerPath, "utf8");
+                const path =
+                    changedEvidence === "tracked_runtime"
+                        ? join(root, ".wld/internal/scope-evidence")
+                        : join(layout.primary.internalRoot, "scope-evidence");
+                await withProjectRuntimeReadScope(async () => {
+                    const initial = await runPlansDoctor(root, false);
+                    assertEquals(initial, { issues: [], repaired: 0 });
+                    // Prime the caller after doctor returns: its cached authority must
+                    // not be inherited by the next independent doctor scan.
+                    assertEquals((await inspectProjectRuntimeReadAccess(root)).kind, "ready");
+                    if (changedEvidence === "symlink") await fsSymlink(join(root, "file.txt"), path);
+                    else if (changedEvidence === "marker") {
+                        await fsWriteFile(layout.primary.layoutMarkerPath, JSON.stringify({ version: 999 }));
+                    } else {
+                        await fsMkdir(dirname(path), { recursive: true });
+                        await fsWriteFile(path, "runtime state\n");
+                        await git(root, ["add", "-f", ".wld/internal/scope-evidence"]);
+                    }
+                    const beforeMarker = await fsReadFile(layout.primary.layoutMarkerPath, "utf8");
+                    const beforeIndex = await git(root, ["write-tree"]);
+                    const report = await runPlansDoctor(root, false);
+                    assertEquals(report.repaired, 0);
+                    assertEquals(report.issues.length, 1);
+                    assertEquals(report.issues[0].kind, "runtime_migration_blocked");
+                    assertEquals(
+                        report.issues[0].message.includes(
+                            changedEvidence === "marker" ? "newer_layout" : changedEvidence,
+                        ),
+                        true,
+                    );
+                    assertEquals(await fsReadFile(layout.primary.layoutMarkerPath, "utf8"), beforeMarker);
+                    assertEquals(await git(root, ["write-tree"]), beforeIndex);
+                    if (changedEvidence === "marker") await fsWriteFile(layout.primary.layoutMarkerPath, marker);
+                    else {
+                        if (changedEvidence === "tracked_runtime") {
+                            await git(root, ["reset", "--", ".wld/internal/scope-evidence"]);
+                        }
+                        await fsRm(path);
+                    }
+                    assertEquals(await runPlansDoctor(root, false), initial);
+                });
+            } finally {
+                await fsRm(root, { recursive: true });
+            }
+        },
+    );
+}
 
 test("plans doctor reports missing worktree paths without abandoning attempts automatically", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "runwield-plans-doctor-"));
