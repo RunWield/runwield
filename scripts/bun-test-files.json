@@ -452,7 +452,7 @@
     "src/shared/session/file-session-store-owner.test.ts",
     "src/shared/session/file-session-store.test.ts",
     "src/shared/session/hosted-session.test.js",
-    "src/shared/session/image-attachments.test.js",
+    "src/shared/session/image-attachments.test.ts",
     "src/shared/session/legacy-workflow-replay.test.ts",
     "src/shared/session/live-session-connection.test.ts",
     "src/shared/session/live-session-events.test.ts",
