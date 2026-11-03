@@ -57,7 +57,6 @@
     "src/ui/workspace/islands/SessionSurface.jsx",
 
     "src/ui/workspace/routes/api/review-agent-handlers.js",
-    "src/ui/workspace/routes/api/review-handlers.js",
     "src/ui/workspace/routes/owner-api.js",
     "src/ui/workspace/routes/owner-session-api.js",
     "src/ui/workspace/server.js",

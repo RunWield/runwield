@@ -5,113 +5,115 @@ import { normalizePlanClassification } from "../../../../constants.js";
 import { readPlanApprovalAction } from "../../../../shared/workflow/plan-approval.ts";
 import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../../plan-store.js";
 
-/**
- * @typedef {import("../../../../shared/workflow/sequence-review.ts").SequenceReviewDecision} SequenceReviewDecision
- * @typedef {import("../../../../shared/workflow/sequence-review.ts").SequenceReviewDocument} SequenceReviewDocument
- * @typedef {import("../../../../shared/workflow/review-feedback-images.ts").ReviewImageDecision} ReviewImageDecision
- * @typedef {import("../../../../shared/workflow/review-feedback-images.ts").ReviewImageInput} ReviewImageInput
- * @typedef {import("../../../../shared/workflow/review-feedback-images.ts").ReviewAnnotationInput} ReviewAnnotationInput
- *
- * @typedef {Object} ReviewExecutionPolicy
- * @property {"engineer" | "frontend-engineer"} [executionAgent]
- * @property {"autonomous" | "pair"} [collaborationRecommendation]
- *
- * @typedef {Object} ReviewDecisionFields
- * @property {string} [plan]
- * @property {import("../../../../shared/plan-questions.ts").PlanQuestionAnswer[]} [questionAnswers]
- * @property {string} [savedPath]
- * @property {string} [agentSwitch]
- * @property {string} [permissionMode]
- * @property {string} [reviewAction]
- * @property {boolean} [conversationTurn]
- * @property {boolean} [exit]
- * @property {boolean} [canceled]
- *
- * @typedef {SequenceReviewDecision & ReviewImageDecision & ReviewExecutionPolicy & ReviewDecisionFields} ReviewDecision
- *
- * @typedef {Object} ReviewPlanSave
- * @property {boolean} [enabled]
- * @property {string} [path]
- *
- * @typedef {Object} ReviewRequestFields
- * @property {string} [executionAgent]
- * @property {string} [collaborationRecommendation]
- * @property {number} [reviewRevision]
- * @property {string} [approvalAction]
- * @property {"plan" | "code"} [reviewType]
- * @property {ReviewPlanSave} [planSave]
- *
- * @typedef {Omit<ReviewDecision, "executionAgent" | "collaborationRecommendation" | "approvalAction"> & ReviewRequestFields} ReviewRequestBody
- *
- * @typedef {Object} ReviewPayload
- * @property {number} [reviewRevision]
- * @property {string} [classification]
- * @property {Pick<import("../../../../plan-store.js").PlanFrontMatter, "classification">} [frontmatter]
- * @property {SequenceReviewDocument[]} [sequenceDocuments]
- *
- * @typedef {Object} ReviewRequestState
- * @property {"plan" | "code"} [reviewType]
- * @property {string} cwd
- * @property {string} [reviewToken]
- * @property {ReviewPayload} [reviewPayload]
- * @property {ReviewDecisionSink} [onDecision]
- * @property {boolean} [keepConversationTurns]
- *
- * @typedef {Object} ReviewDecisionReceipt
- * @property {string} operationId Core-created durable operation identity.
- * @property {string} workflowId
- * @property {string} actionId
- * @property {string} attemptId
- * @property {string} generation
- * @property {string} decisionKey Candidate-bound validation decision identity.
- *
- * @callback ReviewDecisionSink
- * @param {ReviewDecision} decision
- * @returns {Promise<void | ReviewDecisionReceipt>}
- *
- * @typedef {Object} ReviewRequestContext
- * @property {Request} req
- * @property {Request} [request]
- * @property {ReviewRequestState} [state]
- *
- * @callback ReviewDecisionResolver
- * @param {ReviewDecision} decision
- * @returns {void}
- *
- * @callback ReviewDecisionFactory
- * @param {ReviewRequestBody} body
- * @returns {ReviewDecision | Response}
- *
- * @typedef {Object} ReviewDecisionPending
- * @property {ReviewDecisionResolver} resolve
- * @property {Promise<ReviewDecision>} promise
- */
+import type { SequenceReviewDecision, SequenceReviewDocument } from "../../../../shared/workflow/sequence-review.ts";
+import type {
+    ReviewImageDecision,
+    ReviewImageInput,
+    ReviewAnnotationInput,
+} from "../../../../shared/workflow/review-feedback-images.ts";
+import type { PlanQuestionAnswer } from "../../../../shared/plan-questions.ts";
+import type { PlanFrontMatter } from "../../../../plan-store.js";
 
-/** @type {Map<string, ReviewDecisionPending>} */
-const reviewDecisions = new Map();
+export interface ReviewExecutionPolicy {
+    executionAgent?: "engineer" | "frontend-engineer";
+    collaborationRecommendation?: "autonomous" | "pair";
+}
 
-/**
- * @param {string} token
- * @returns {ReviewDecisionPending}
- */
-export function registerReviewDecisionPromise(token) {
+export interface ReviewDecisionFields {
+    plan?: string;
+    questionAnswers?: PlanQuestionAnswer[];
+    savedPath?: string;
+    agentSwitch?: string;
+    permissionMode?: string;
+    reviewAction?: string;
+    conversationTurn?: boolean;
+    exit?: boolean;
+    canceled?: boolean;
+}
+
+export type ReviewDecision = SequenceReviewDecision &
+    ReviewImageDecision &
+    ReviewExecutionPolicy &
+    ReviewDecisionFields;
+
+export interface ReviewPlanSave {
+    enabled?: boolean;
+    path?: string;
+}
+
+export interface ReviewRequestFields {
+    executionAgent?: string;
+    collaborationRecommendation?: string;
+    reviewRevision?: number;
+    approvalAction?: string;
+    reviewType?: "plan" | "code";
+    planSave?: ReviewPlanSave;
+}
+
+export type ReviewRequestBody = Omit<
+    ReviewDecision,
+    "executionAgent" | "collaborationRecommendation" | "approvalAction"
+> &
+    ReviewRequestFields;
+
+export interface ReviewPayload {
+    reviewRevision?: number;
+    classification?: string;
+    frontmatter?: Pick<PlanFrontMatter, "classification">;
+    sequenceDocuments?: SequenceReviewDocument[];
+}
+
+export interface ReviewRequestState {
+    reviewType?: "plan" | "code";
+    cwd: string;
+    reviewToken?: string;
+    reviewPayload?: ReviewPayload;
+    onDecision?: ReviewDecisionSink;
+    keepConversationTurns?: boolean;
+}
+
+export interface ReviewDecisionReceipt {
+    /** Core-created durable operation identity. */
+    operationId: string;
+    workflowId: string;
+    actionId: string;
+    attemptId: string;
+    generation: string;
+    /** Candidate-bound validation decision identity. */
+    decisionKey: string;
+}
+
+export type ReviewDecisionSink = (decision: ReviewDecision) => Promise<void | ReviewDecisionReceipt>;
+
+export interface ReviewRequestContext {
+    req: Request;
+    request?: Request;
+    state?: ReviewRequestState;
+}
+
+export type ReviewDecisionResolver = (decision: ReviewDecision) => void;
+export type ReviewDecisionFactory = (body: ReviewRequestBody) => ReviewDecision | Response;
+
+export interface ReviewDecisionPending {
+    resolve: ReviewDecisionResolver;
+    promise: Promise<ReviewDecision>;
+}
+
+const reviewDecisions = new Map<string, ReviewDecisionPending>();
+
+export function registerReviewDecisionPromise(token: string): ReviewDecisionPending {
     unregisterReviewDecision(token);
-    /** @type {ReviewDecisionResolver} */
-    let resolveDecision = () => {};
-    /** @type {Promise<ReviewDecision>} */
-    const promise = new Promise((resolve) => {
+
+    let resolveDecision: ReviewDecisionResolver = () => {};
+
+    const promise = new Promise<ReviewDecision>((resolve) => {
         resolveDecision = resolve;
     });
     reviewDecisions.set(token, { resolve: resolveDecision, promise });
     return { resolve: resolveDecision, promise };
 }
 
-/**
- * @param {string} token
- * @param {ReviewDecision} decision
- * @returns {boolean}
- */
-export function resolveReviewDecision(token, decision) {
+export function resolveReviewDecision(token: string, decision: ReviewDecision): boolean {
     const entry = reviewDecisions.get(token);
     if (!entry) return false;
     reviewDecisions.delete(token);
@@ -119,15 +121,13 @@ export function resolveReviewDecision(token, decision) {
     return true;
 }
 
-/** @param {string} token */
-export function unregisterReviewDecision(token) {
+export function unregisterReviewDecision(token: string) {
     const entry = reviewDecisions.get(token);
     if (!entry) return;
     reviewDecisions.delete(token);
 }
 
-/** @param {ReviewRequestContext} ctx */
-export async function reviewDecisionApi(ctx) {
+export async function reviewDecisionApi(ctx: ReviewRequestContext) {
     return await resolveFromRequest(ctx, (body) => {
         const executionPolicy = ctx.state?.reviewPayload?.sequenceDocuments
             ? {}
@@ -156,8 +156,7 @@ export async function reviewDecisionApi(ctx) {
     });
 }
 
-/** @param {ReviewRequestContext} ctx */
-export async function reviewDenyApi(ctx) {
+export async function reviewDenyApi(ctx: ReviewRequestContext) {
     return await resolveFromRequest(ctx, (body) => ({
         approved: false,
         ...(body.conversationTurn === true && { conversationTurn: true }),
@@ -169,8 +168,7 @@ export async function reviewDenyApi(ctx) {
     }));
 }
 
-/** @param {ReviewRequestContext} ctx */
-export async function reviewFeedbackApi(ctx) {
+export async function reviewFeedbackApi(ctx: ReviewRequestContext) {
     return await resolveFromRequest(ctx, (body) => ({
         approved: body.approved === true,
         ...(["post_comments", "approve_pr", "approve_commit"].includes(String(body.reviewAction)) && {
@@ -183,8 +181,7 @@ export async function reviewFeedbackApi(ctx) {
     }));
 }
 
-/** @param {ReviewRequestBody} body */
-function reviewImageDecisionFields(body) {
+function reviewImageDecisionFields(body: ReviewRequestBody) {
     const globalAttachments = readImageAttachments(body.globalAttachments);
     const images = collectImageAttachments(body);
     return {
@@ -193,8 +190,7 @@ function reviewImageDecisionFields(body) {
     };
 }
 
-/** @param {ReviewRequestBody} body */
-function collectImageAttachments(body) {
+function collectImageAttachments(body: ReviewRequestBody) {
     const candidates = [
         ...readImageAttachments(body.globalAttachments),
         ...(Array.isArray(body.annotations) ? body.annotations.flatMap(readAnnotationImageAttachments) : []),
@@ -207,13 +203,11 @@ function collectImageAttachments(body) {
     });
 }
 
-/** @param {ReviewAnnotationInput} annotation */
-function readAnnotationImageAttachments(annotation) {
+function readAnnotationImageAttachments(annotation: ReviewAnnotationInput) {
     return readImageAttachments(annotation?.images);
 }
 
-/** @param {ReviewImageInput[]} [value] */
-function readImageAttachments(value) {
+function readImageAttachments(value?: ReviewImageInput[]) {
     if (!Array.isArray(value)) return [];
     return value.flatMap((image) => {
         const path = typeof image?.path === "string" ? image.path.trim() : "";
@@ -223,8 +217,7 @@ function readImageAttachments(value) {
     });
 }
 
-/** @param {ReviewRequestContext} ctx */
-export async function reviewExitApi(ctx) {
+export async function reviewExitApi(ctx: ReviewRequestContext) {
     return await resolveFromRequest(ctx, (body) => {
         if (body.reviewType === "plan") {
             return { approved: false, feedback: "", exit: true };
@@ -238,19 +231,14 @@ export async function reviewExitApi(ctx) {
     });
 }
 
-/**
- * @param {ReviewRequestContext} ctx
- * @param {ReviewDecisionFactory} createDecision
- */
-async function resolveFromRequest(ctx, createDecision) {
+async function resolveFromRequest(ctx: ReviewRequestContext, createDecision: ReviewDecisionFactory) {
     const token = reviewToken(ctx.request || ctx.req);
     if (!token) return jsonError("missing_token", "Review token required.", 401);
     const expectedToken = ctx.state?.reviewToken;
     if (expectedToken && token !== expectedToken) return jsonError("invalid_token", "Invalid review token.", 401);
     if (!reviewDecisions.has(token)) return jsonError("review_not_found", "Review expired or completed.", 404);
 
-    /** @type {ReviewRequestBody} */
-    let body = {};
+    let body: ReviewRequestBody = {};
     try {
         body = await (ctx.request || ctx.req).json();
     } catch {
@@ -275,8 +263,8 @@ async function resolveFromRequest(ctx, createDecision) {
             return jsonError("stale_sequence_review", error instanceof Error ? error.message : String(error), 409);
         }
     }
-    /** @type {void | ReviewDecisionReceipt} */
-    let receipt = undefined;
+
+    let receipt: void | ReviewDecisionReceipt = undefined;
     if (ctx.state?.onDecision) {
         try {
             receipt = await ctx.state.onDecision(decision);
@@ -290,12 +278,10 @@ async function resolveFromRequest(ctx, createDecision) {
     return Response.json({ ok: true, ...receipt }, { headers: { "cache-control": "no-store" } });
 }
 
-/**
- * @param {ReviewRequestBody} body
- * @param {ReviewPayload} [reviewPayload]
- * @returns {ReviewExecutionPolicy | Response}
- */
-function validateApprovedExecutionPolicy(body, reviewPayload) {
+function validateApprovedExecutionPolicy(
+    body: ReviewRequestBody,
+    reviewPayload?: ReviewPayload,
+): ReviewExecutionPolicy | Response {
     const hasAgent = Object.hasOwn(body, "executionAgent");
     const hasRecommendation = Object.hasOwn(body, "collaborationRecommendation");
     if (!hasAgent && !hasRecommendation) return {};
@@ -339,8 +325,7 @@ function validateApprovedExecutionPolicy(body, reviewPayload) {
     return { executionAgent, collaborationRecommendation };
 }
 
-/** @param {ReviewPayload} [reviewPayload] */
-function trustedReviewClassification(reviewPayload) {
+function trustedReviewClassification(reviewPayload?: ReviewPayload) {
     const classification =
         typeof reviewPayload?.classification === "string"
             ? reviewPayload.classification
@@ -350,20 +335,17 @@ function trustedReviewClassification(reviewPayload) {
     return normalizePlanClassification(classification);
 }
 
-/** @param {ReviewPlanSave} [planSave] */
-function readPlanSavePath(planSave) {
+function readPlanSavePath(planSave?: ReviewPlanSave) {
     if (!planSave || typeof planSave !== "object") return undefined;
     if (planSave.enabled === false) return undefined;
     return typeof planSave.path === "string" ? planSave.path : undefined;
 }
 
-/** @param {Request} request */
-function reviewToken(request) {
+function reviewToken(request: Request) {
     const url = new URL(request.url);
     return request.headers.get("x-runwield-review-token") || url.searchParams.get("token") || "";
 }
 
-/** @param {string} error @param {string} message @param {number} status */
-function jsonError(error, message, status) {
+function jsonError(error: string, message: string, status: number) {
     return Response.json({ error, message, status }, { status, headers: { "cache-control": "no-store" } });
 }

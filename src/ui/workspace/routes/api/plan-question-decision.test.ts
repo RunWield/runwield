@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { assertEquals } from "../../../../testing/assertions.ts";
-import { registerReviewDecisionPromise, reviewDecisionApi } from "./review-handlers.js";
+import { registerReviewDecisionPromise, reviewDecisionApi } from "./review-handlers.ts";
 
 test("approval transport keeps only question answers with a string id and boolean or string value", async () => {
     const token = "question-review";

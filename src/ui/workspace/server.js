@@ -29,7 +29,7 @@ import {
     reviewDenyApi,
     reviewExitApi,
     reviewFeedbackApi,
-} from "./routes/api/review-handlers.js";
+} from "./routes/api/review-handlers.ts";
 import { openRemoteWorkspaceAdapter } from "./server/remote-adapter.js";
 import { escapeReviewPayloadJson } from "./server/review-payload-json.ts";
 import { withAccessLogger } from "./server-access-logger.ts";
@@ -1553,7 +1553,7 @@ export function startSessionQuestionWorkspaceServer(options) {
  * @property {number} [port]
  * @property {AbortSignal} [signal]
  * @property {ReviewServerOutputListener} [onOutput]
- * @property {import("./routes/api/review-handlers.js").ReviewDecisionSink} [onDecision]
+ * @property {import("./routes/api/review-handlers.ts").ReviewDecisionSink} [onDecision]
  * @property {ReviewPageOpenListener} [onReviewOpen]
  */
 
