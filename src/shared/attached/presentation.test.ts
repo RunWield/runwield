@@ -46,7 +46,7 @@ for (const host of ["claude-code", "codex"] as const) {
                 const client = new Client({ name: host === "codex" ? "codex-mcp-client" : host, version });
                 try {
                     await client.connect(transport);
-                    async function call(name: string, args = {}, expectedOk = true) {
+                    const call = async (name: string, args = {}, expectedOk = true) => {
                         const called = await client.callTool({ name, arguments: args });
                         const result: AttachedCarrierResult = JSON.parse(JSON.stringify(called.structuredContent));
                         equal(result.ok, expectedOk, JSON.stringify(result));
@@ -57,7 +57,7 @@ for (const host of ["claude-code", "codex"] as const) {
                             if (block.type === "text") equal(JSON.parse(block.text), result);
                         }
                         return result;
-                    }
+                    };
                     const empty = await call("status", { inspectOnly: true }, false);
                     equal(empty.workflow, undefined);
                     const active = await call("activate", activateInput());
