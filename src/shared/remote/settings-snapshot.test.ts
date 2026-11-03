@@ -60,6 +60,7 @@ test("remote synchronous settings refresh after a lost acknowledgement and an un
         const address = `http://127.0.0.1:${connection.port}`;
         const headers = { Authorization: `Bearer ${connection.credential}` };
         let dropped = 0;
+        let laptopWrite = Promise.resolve();
         const writeOnLaptop = async () => {
             const result = await captureForegroundProcess(process.execPath, {
                 cwd: getCwd(),
@@ -75,10 +76,16 @@ test("remote synchronous settings refresh after a lost acknowledgement and an un
                 headers: request.headers,
                 body: request.body,
             });
-            if (path === "/settings/update" && dropped++ < 2) {
-                await response.arrayBuffer(); // Laptop committed the update, but its acknowledgement was lost.
-                if (dropped === 1) await writeOnLaptop(); // Concurrent laptop writer before replay.
-                return new Response(null, { status: 503 });
+            if (path === "/settings/update") {
+                const attempt = dropped++;
+                if (attempt < 2) {
+                    await response.arrayBuffer(); // Laptop committed the update, but its acknowledgement was lost.
+                    if (attempt === 0) {
+                        laptopWrite = writeOnLaptop(); // The proxy request can time out before this writer finishes.
+                        await laptopWrite;
+                    }
+                    return new Response(null, { status: 503 });
+                }
             }
             return response;
         });
@@ -112,6 +119,8 @@ test("remote synchronous settings refresh after a lost acknowledgement and an un
             await setCustomSetting("marker", "remote", "global", project);
             assertEquals(getCustomSetting("marker", "global", project), "remote");
             assertEquals(manager.getTheme(), "dark");
+            // Wait for the independent writer even if the lost acknowledgement request timed out.
+            await laptopWrite;
             // The receipt is older than the laptop's independent write; the mount catches up.
             await copyFile(laptopPath, mountedPath);
             assertEquals(getCustomSetting("marker", "global", project), "remote");
