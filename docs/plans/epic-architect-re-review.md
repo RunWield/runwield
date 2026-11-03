@@ -19,7 +19,7 @@ userVerifiedAt: null
 routingIntent: "PLANNED_CHANGE"
 targetBranch: "main"
 deliveryBranch: "main"
-status: "implemented"
+status: "reviewed"
 ---
 
 # Send Epics Back to Architect for Re-review
