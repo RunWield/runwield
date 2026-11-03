@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { rm } from "node:fs/promises";
-import { getUpdateCheckCachePath, SYSTEM_UPDATE_CHECK_PORTS } from "../../shared/update-check.js";
+import { getUpdateCheckCachePath, SYSTEM_UPDATE_CHECK_PORTS } from "../../shared/update-check.ts";
 import { TuiAltScreen } from "@earendil-works/pi-tui";
 import { join } from "node:path";
 import { getHomeDir } from "../../constants.js";

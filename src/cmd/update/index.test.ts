@@ -18,7 +18,7 @@ import process, { platform } from "node:process";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import { VERSION } from "../../shared/version.js";
-import { parseRunWieldReleaseVersion } from "../../shared/update-check.js";
+import { parseRunWieldReleaseVersion } from "../../shared/update-check.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { type InstallerProcessPort, type ProcessExitPort, runUpdateCommand, type UpdateNetworkPort } from "./index.ts";
 
