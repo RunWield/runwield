@@ -8,7 +8,7 @@ import { mergeFrontMatterText, parsePlanFrontMatter } from "../plan-store.js";
 import { listWorkRecords } from "./work-records/store.ts";
 import { syncWorkRecordToIndex } from "./work-records/index-adapter.ts";
 import type { WorkRecordMnemotecaPort } from "./work-records/mnemoteca-port.ts";
-import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "./work-records/markdown.js";
+import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "./work-records/markdown.ts";
 
 async function sealedDocument(cwd: string, commit: string, path: string): Promise<string | null> {
     const result = await captureForegroundProcess("git", { cwd, args: ["show", `${commit}:${path}`] });

@@ -28,7 +28,6 @@
     "src/shared/update-check.js",
     "src/shared/work-records/auto-generation.js",
     "src/shared/work-records/generation.js",
-    "src/shared/work-records/markdown.js",
     "src/shared/workflow/execution-plan-file.js",
     "src/shared/workflow/guided-review.js",
     "src/shared/workflow/metrics.js",
