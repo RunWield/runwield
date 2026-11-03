@@ -25,7 +25,7 @@ import {
     removeProject,
     requireEnabledProjectRoot,
     setProjectEnabled,
-} from "./projects.js";
+} from "./projects.ts";
 
 type RegisteredProject = ReturnType<typeof registerProject>;
 

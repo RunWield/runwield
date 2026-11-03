@@ -19,7 +19,7 @@ import {
     PENDING_SEGMENT_CONTINUATION_CUSTOM_TYPE,
     SEGMENT_LINEAGE_CUSTOM_TYPE,
 } from "../session/workflow-context-session.js";
-import { getProjectById, listProjectRootEvidence } from "./projects.js";
+import { getProjectById, listProjectRootEvidence } from "./projects.ts";
 
 /**
  * @typedef {Object} CatalogedSession

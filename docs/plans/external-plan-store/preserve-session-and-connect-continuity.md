@@ -7,7 +7,7 @@ affectedPaths:
     - "src/shared/session/file-session-store-local.ts"
     - "src/shared/session/file-session-control.ts"
     - "src/shared/attached/record-store.ts"
-    - "src/shared/owner-coordination/projects.js"
+    - "src/shared/owner-coordination/projects.ts"
     - "docs/prd/runwield-core-prd.md"
     - "docs/prd/runwield-connect-prd.md"
 executionAgent: "engineer"
@@ -56,7 +56,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/shared/session/file-session-store-local.ts` — resolve current and legacy bundles through one binding
 - `src/shared/session/file-session-control.ts` — preserve operation-scoped native writer authority
 - `src/shared/attached/record-store.ts` — stable lookup of existing Attached Workflow records
-- `src/shared/owner-coordination/projects.js` — reconcile registration identity and roots
+- `src/shared/owner-coordination/projects.ts` — reconcile registration identity and roots
 - `docs/prd/runwield-core-prd.md` — Session continuity
 - `docs/prd/runwield-connect-prd.md` — continuation and lazy setup
 

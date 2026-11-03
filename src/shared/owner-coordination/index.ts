@@ -29,7 +29,7 @@ import {
     removeProject,
     requireEnabledProjectRoot,
     setProjectEnabled,
-} from "./projects.js";
+} from "./projects.ts";
 import { listDevices, revokeDevice, verifyDeviceCredential, verifyDeviceCsrf } from "./devices.ts";
 import {
     approvePairingRequest,
@@ -331,3 +331,14 @@ export type {
 } from "./pairing.ts";
 
 export type { OwnerCoordinationDatabase, OpenOwnerDatabaseOptions } from "./database.ts";
+
+export type {
+    ProjectLifecycle,
+    ProjectHealthStatus,
+    RegisteredProject,
+    ProjectHealth,
+    ProjectClockOptions,
+    RegisterProjectOptions,
+    RelinkProjectOptions,
+    ProjectRootEvidence,
+} from "./projects.ts";
