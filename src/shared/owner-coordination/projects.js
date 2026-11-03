@@ -45,7 +45,7 @@ import { basename, isAbsolute, resolve } from "node:path";
 /** @param {unknown} value */
 function requireDatabase(value) {
     if (!value || typeof value !== "object" || !("handle" in value)) throw new Error("Owner database is required");
-    return /** @type {import('./database.js').OwnerCoordinationDatabase} */ (value);
+    return /** @type {import('./database.ts').OwnerCoordinationDatabase} */ (value);
 }
 
 /** @param {() => string} [now] */
@@ -140,7 +140,7 @@ function projectFromRow(row) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {string} projectId
  * @returns {RegisteredProject | null}
  */
@@ -151,7 +151,7 @@ export function getProjectById(database, projectId) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {{ root: string, displayName?: string, directoryConfirmation?: string, idFactory?: () => string, now?: () => string }} options
  * @returns {RegisteredProject}
  */
@@ -201,7 +201,7 @@ export function registerProject(database, options) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @returns {RegisteredProject[]}
  */
 export function listProjects(database) {
@@ -210,7 +210,7 @@ export function listProjects(database) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {string} projectId
  * @param {boolean} enabled
  * @param {{ now?: () => string }} [options]
@@ -231,7 +231,7 @@ export function setProjectEnabled(database, projectId, enabled, options = {}) {
 
 /**
  * Delete Workspace database records only; repository and Session files are untouched.
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {string} projectId
  * @returns {void}
  */
@@ -244,7 +244,7 @@ export function removeProject(database, projectId) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {{ projectId: string, newRoot: string, displayName?: string, directoryConfirmation?: string, idFactory?: () => string, now?: () => string }} options
  * @returns {RegisteredProject}
  */
@@ -285,7 +285,7 @@ export function relinkProject(database, options) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {string} projectId
  * @returns {Array<{ enteredRoot: string, canonicalRoot: string, rootState: string }>}
  */
@@ -304,7 +304,7 @@ export function listProjectRootEvidence(database, projectId) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {string} projectId
  * @returns {ProjectHealth}
  */
@@ -363,7 +363,7 @@ export function getProjectHealth(database, projectId) {
 }
 
 /**
- * @param {import('./database.js').OwnerCoordinationDatabase} database
+ * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {string} projectId
  * @returns {string}
  */

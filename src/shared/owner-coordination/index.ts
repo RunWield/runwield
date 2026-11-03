@@ -15,7 +15,7 @@ import {
     getOwnerCoordinationDatabaseEpoch,
     openOwnerCoordinationDatabase,
     type OpenOwnerDatabaseOptions,
-} from "./database.js";
+} from "./database.ts";
 import { openFileSessionStore, type FileSessionStore } from "../session/file-session-store.ts";
 import { getOwnerCoordinationDatabasePath, OWNER_COORDINATION_DB_FILENAME } from "./paths.ts";
 import { OWNER_COORDINATION_SCHEMA_VERSION } from "./schema.ts";
@@ -329,3 +329,5 @@ export type {
     ClaimPairingRequestOptions,
     ClaimedPairingRequest,
 } from "./pairing.ts";
+
+export type { OwnerCoordinationDatabase, OpenOwnerDatabaseOptions } from "./database.ts";

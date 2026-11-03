@@ -4,7 +4,7 @@
  */
 
 import type { SQLOutputValue } from "node:sqlite";
-import type { OwnerCoordinationDatabase } from "./database.js";
+import type { OwnerCoordinationDatabase } from "./database.ts";
 import { hashSecret, randomBase64Url, timingSafeSecretEqual } from "./crypto.ts";
 
 export interface PairedDevice {

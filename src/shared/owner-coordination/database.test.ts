@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { assertEquals, assertFalse, assertThrows } from "../../testing/assertions.ts";
 import { DatabaseSync } from "../sqlite.ts";
-import { getLatestOwnerCoordinationSchemaVersion, openOwnerCoordinationDatabase } from "./database.js";
+import { getLatestOwnerCoordinationSchemaVersion, openOwnerCoordinationDatabase } from "./database.ts";
 import { OWNER_COORDINATION_SCHEMA_V1_SQL, OWNER_COORDINATION_SCHEMA_VERSION } from "./schema.ts";
 
 async function exists(path: string) {

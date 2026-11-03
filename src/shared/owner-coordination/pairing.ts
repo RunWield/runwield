@@ -7,7 +7,7 @@ import { createPairedDevice } from "./devices.ts";
 import { hashSecret, normalizePairingCode, randomBase64Url, randomHumanCode, timingSafeSecretEqual } from "./crypto.ts";
 
 import type { SQLOutputValue } from "node:sqlite";
-import type { OwnerCoordinationDatabase } from "./database.js";
+import type { OwnerCoordinationDatabase } from "./database.ts";
 import type { CreatedPairedDevice, CreatePairedDeviceOptions } from "./devices.ts";
 
 export type PairingRequestState = "pending" | "approved" | "claimed" | "expired";

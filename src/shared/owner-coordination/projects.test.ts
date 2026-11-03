@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
-import { openOwnerCoordinationDatabase } from "./database.js";
+import { openOwnerCoordinationDatabase } from "./database.ts";
 import {
     getProjectById,
     getProjectHealth,

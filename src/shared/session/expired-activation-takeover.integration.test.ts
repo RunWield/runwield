@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
-import { openOwnerCoordinationDatabase } from "../owner-coordination/database.js";
+import { openOwnerCoordinationDatabase } from "../owner-coordination/database.ts";
 import {
     acquireSessionActivation,
     changeSessionActivationPhase,
