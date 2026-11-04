@@ -874,7 +874,7 @@ export class WorkspaceSessionContinuationService {
             provider: committedFacts.provider,
             thinkingLevel: committedFacts.thinkingLevel,
             workflowContext:
-                /** @type {import('../../../shared/session/workflow-context-session.js').WorkflowContext | null} */ (
+                /** @type {import('../../../shared/session/workflow-context-session.ts').WorkflowContext | null} */ (
                     committedFacts.workflowContext || null
                 ),
         });
@@ -1891,7 +1891,7 @@ export class WorkspaceSessionContinuationService {
                                   provider: committedFacts.provider,
                                   thinkingLevel: committedFacts.thinkingLevel,
                                   workflowContext:
-                                      /** @type {import('../../../shared/session/workflow-context-session.js').WorkflowContext | null} */ (
+                                      /** @type {import('../../../shared/session/workflow-context-session.ts').WorkflowContext | null} */ (
                                           committedFacts.workflowContext || null
                                       ),
                               });
@@ -1996,7 +1996,7 @@ export class WorkspaceSessionContinuationService {
                           provider: committedFacts.provider,
                           thinkingLevel: committedFacts.thinkingLevel,
                           workflowContext:
-                              /** @type {import('../../../shared/session/workflow-context-session.js').WorkflowContext | null} */ (
+                              /** @type {import('../../../shared/session/workflow-context-session.ts').WorkflowContext | null} */ (
                                   committedFacts.workflowContext || null
                               ),
                       }));

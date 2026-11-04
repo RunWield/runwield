@@ -14,7 +14,7 @@ import type {
 import type { RemoteArtifactOptions, RemotePlanReview } from "../remote/session-protocol.ts";
 import { readExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
 import { readPersistedTutorialContext } from "./tutorial-context-session.ts";
-import { readPersistedWorkflowContext } from "./workflow-context-session.js";
+import { readPersistedWorkflowContext } from "./workflow-context-session.ts";
 import { findProject, sessionDirForProject } from "./file-session-storage.ts";
 import type { ManagedSessionMetadata } from "./hosted-session.js";
 import type { RemoteRolloverOptions, RemoteRolloverReceipt } from "../remote/session-protocol.ts";

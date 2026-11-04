@@ -18,7 +18,7 @@ import {
     normalizeSegmentLineageEvidence,
     PENDING_SEGMENT_CONTINUATION_CUSTOM_TYPE,
     SEGMENT_LINEAGE_CUSTOM_TYPE,
-} from "../session/workflow-context-session.js";
+} from "../session/workflow-context-session.ts";
 import { getProjectById, listProjectRootEvidence } from "./projects.ts";
 
 /**

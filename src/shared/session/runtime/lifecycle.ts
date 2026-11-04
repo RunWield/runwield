@@ -9,7 +9,7 @@ import {
 } from ".././root-session.js";
 import { RuntimeEventTypes } from ".././session-runtime-events.js";
 import { captureTranscriptEvidence, syncTranscriptFileAndParent } from ".././session-transcript-projection.js";
-import { recordSegmentLineageEvidence } from ".././workflow-context-session.js";
+import { recordSegmentLineageEvidence } from ".././workflow-context-session.ts";
 import { isAbsolute } from "node:path";
 import type { PromptReadySessionOptions } from "./types.ts";
 
@@ -290,7 +290,7 @@ export class RuntimeLifecycle {
         model?: string | null;
         provider?: string | null;
         thinkingLevel?: string | null;
-        workflowContext?: import(".././workflow-context-session.js").WorkflowContext | null;
+        workflowContext?: import(".././workflow-context-session.ts").WorkflowContext | null;
         tutorialContext?: import("../tutorial-context-session.ts").TutorialContext | null;
     }) {
         const cataloged = options?.session;

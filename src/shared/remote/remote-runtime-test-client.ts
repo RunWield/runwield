@@ -25,7 +25,7 @@ import { SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-a
 import { buildAgentSession } from "../session/session.js";
 import { createRemoteRootSessionManager, getRemoteSessionSaveBridge } from "../session/root-session.js";
 import { readImageRef } from "../session/image-attachments.ts";
-import { recordNormalizedWorkflowContext } from "../session/workflow-context-session.js";
+import { recordNormalizedWorkflowContext } from "../session/workflow-context-session.ts";
 import { recordTutorialContext } from "../session/tutorial-context-session.ts";
 import { appendExecutionWorkflowSnapshot } from "../session/execution-workflow-session.ts";
 import { runResumeCommand } from "../../cmd/resume/index.ts";
@@ -134,7 +134,7 @@ export interface RuntimeClientReport {
     reviewKind?: string;
     canReopen?: boolean;
     rollover?: import("../session/segment-rollover.ts").SegmentRolloverResult;
-    workflowContext?: import("../session/workflow-context-session.js").WorkflowContext | null;
+    workflowContext?: import("../session/workflow-context-session.ts").WorkflowContext | null;
     tutorialContext?: import("../session/tutorial-context-session.ts").TutorialContext | null;
     activeWorkflow?: import("../types.js").ActiveExecutionWorkflow | null;
     piSessionId?: string;

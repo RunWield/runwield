@@ -6,7 +6,7 @@ import { parseProviderModel } from "../../models/model-validation.ts";
 import { getSettingsManager } from "../../settings.js";
 import { isGitRepository } from "../../git.ts";
 import { preparePlanController } from "../../workflow/plan-preparation.ts";
-import { readPersistedWorkflowContext } from ".././workflow-context-session.js";
+import { readPersistedWorkflowContext } from ".././workflow-context-session.ts";
 import { createPairCheckpointTool } from "../../../tools/pair-checkpoint.ts";
 import { formatPairCheckpointContext, restorePairExecutionState } from ".././pair-checkpoint-session.ts";
 import { loadPlan } from "../../../plan-store.js";
