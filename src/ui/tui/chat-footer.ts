@@ -3,7 +3,7 @@ import { RuntimeUsageTotals } from "../../shared/session/runtime-usage-totals.ts
 import type { RuntimeUsage } from "../../shared/session/session-runtime-events.js";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { theme } from "../theme/theme.js";
+import { theme } from "../theme/theme.ts";
 import { AGENTS, getCwd, getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.js";
 import { getSettingsManager } from "../../shared/settings.js";
 import { getAgentDisplayName } from "../../shared/session/agents.js";

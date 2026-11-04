@@ -230,23 +230,34 @@ test("board clean coverage detects authorization from a conflicting display hint
     });
 });
 
-test("command clean coverage detects a public result published before group settlement", async () => {
-    await withFixtureCopy("RV-D07", async (root) => {
-        const path = join(root, "variants/clean.patch");
-        const patch = await readFile(path, "utf8");
-        const gate = "if (this.settlement) this.settlement.then(() => resolve(result), reject);";
-        assert.ok(patch.includes(gate));
-        await writeFile(
-            path,
-            patch.replace(gate, "if (false && this.settlement) this.settlement.then(() => resolve(result), reject);"),
-        );
-        await assert.rejects(
-            admitFixtures([await loadFixture(root)]),
-            /B public suite.*expected pass[\s\S]*Public result must wait for group settlement/,
-        );
+for (const delayedKill of [false, true]) {
+    test(`command clean coverage detects a public result published before group settlement${delayedKill ? " with delayed SIGKILL" : ""}`, async () => {
+        await withFixtureCopy("RV-D07", async (root) => {
+            const path = join(root, "variants/clean.patch");
+            let patch = await readFile(path, "utf8");
+            if (delayedKill) {
+                // Delay the real OS signal so close follows the settlement-loop handshake.
+                // A missing close observer must not turn this into an unrelated rejection failure.
+                const send = "const sent = kill(pid, signal);";
+                assert.ok(patch.includes(send));
+                patch = patch.replace(send, "setTimeout(() => kill(pid, signal), 50); const sent = true;");
+            }
+            const gate = "if (this.settlement) this.settlement.then(() => resolve(result), reject);";
+            assert.ok(patch.includes(gate));
+            await writeFile(
+                path,
+                patch.replace(
+                    gate,
+                    "if (false && this.settlement) this.settlement.then(() => resolve(result), reject);",
+                ),
+            );
+            await assert.rejects(
+                admitFixtures([await loadFixture(root)]),
+                /B public suite.*expected pass[\s\S]*Public result must wait for group settlement/,
+            );
+        });
     });
-});
-
+}
 for (const scenario of ["recorded", "live", "recovery", "owner"]) {
     test(`repair public coverage detects incorrect ${scenario} consumption`, async () => {
         const fixture = await loadFixture(join(corpusPath, "RV-D08"));

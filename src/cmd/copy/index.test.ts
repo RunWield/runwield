@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { runCopyCommand } from "./index.ts";
 import type { UiAPI } from "../../ui/tui/types.js";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
-import { initRunWieldTheme } from "../../ui/theme/theme.js";
+import { initRunWieldTheme } from "../../ui/theme/theme.ts";
 
 type AssistantTextReader = (() => null) | SessionRuntime["getLastAssistantText"];
 

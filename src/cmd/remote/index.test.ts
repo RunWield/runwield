@@ -42,15 +42,21 @@ interface OpenStdinCliResult extends CliResult {
 const lossNotice = "Remote connection lost. Closing this connection.";
 
 interface RemoteFixture {
+    artifact: string;
     local: string;
     remote: string;
     sshLog: string;
     run: (args: string[], proof?: string) => Promise<CliResult>;
     runWithOpenStdin: () => Promise<OpenStdinCliResult>;
+    runWithTerminal: () => Promise<CliResult>;
 }
 
 /** Real CLI with disposable homes: POSIX runs remote Python; Windows uses a native SSH protocol boundary. */
-async function withRemoteFixture(test: (fixture: RemoteFixture) => Promise<void>, connected = false): Promise<void> {
+async function withRemoteFixture(
+    test: (fixture: RemoteFixture) => Promise<void>,
+    connected = false,
+    tagged = connected,
+): Promise<void> {
     const root = await fsRealpath(await fsMkdtemp(join(tmpdir(), "runwield-fixture-")));
     try {
         const local = join(root, "local");
@@ -75,7 +81,7 @@ async function withRemoteFixture(test: (fixture: RemoteFixture) => Promise<void>
                     protocol: 1,
                     buildId: "a".repeat(64),
                     target: "x86_64-unknown-linux-gnu",
-                    version: "development",
+                    version: "v1.2.3-rc.1",
                     sha256: createHash("sha256").update(bytes).digest("hex"),
                 }),
             );
@@ -86,6 +92,7 @@ async function withRemoteFixture(test: (fixture: RemoteFixture) => Promise<void>
                 `
 import { existsSync, readFileSync, appendFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
+import { execFileSync } from "node:child_process";
 const args = process.argv.slice(2);
 const readyFile = process.env.SSH_LOG + ".ready";
 if (args[0] === "-G") {
@@ -110,6 +117,16 @@ if (args[0] === "-tt") {
         await new Promise(resolve => setTimeout(resolve, 10));
     }
     process.stdout.write("REMOTE_CONNECTED\\n");
+    if (process.env.SSH_TERMINAL_TEST === "1") {
+        const size = () => execFileSync("stty", ["size"], { stdio: [0, "pipe", "pipe"] }).toString().trim();
+        writeFileSync(process.env.SSH_LOG + ".initial-size", process.stdin.isTTY ? size() : "not a terminal");
+        process.on("SIGWINCH", () => {
+            writeFileSync(process.env.SSH_LOG + ".resized", size());
+            process.exit(0);
+        });
+        setInterval(() => {}, 1000);
+        await new Promise(() => {});
+    }
     const lines = createInterface({ input: process.stdin });
     for await (const line of lines) {
         if (line !== "terminal-input") throw new Error("Unexpected terminal input");
@@ -247,7 +264,10 @@ tee "$SSH_LOG.json" | /bin/sh -c "$4"
         );
         // A development launcher requires a local Linux artifact, regardless of the release build version.
         const version = join(root, "version.js");
-        await fsWriteFile(version, 'export const VERSION = "development";\n');
+        await fsWriteFile(
+            version,
+            `export const VERSION = ${JSON.stringify(tagged ? "v1.2.3-rc.1" : "development")};\n`,
+        );
         const preload = join(root, "build-boundary.ts");
         const helperArtifacts = connected ? await writeRemoteHelperArtifacts(join(root, "helper-artifacts")) : null;
         if (helperArtifacts) await seedLaptopHelpers(join(root, "helper-artifacts"), local, helperArtifacts.pins);
@@ -267,6 +287,10 @@ tee "$SSH_LOG.json" | /bin/sh -c "$4"
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 const replacements = ${JSON.stringify(replacements)};
+const realFetch = globalThis.fetch;
+globalThis.fetch = (input, init) => String(input).startsWith("https://github.com/gandazgul/runwield/releases/download/")
+    ? Promise.resolve(new Response("Unpublished release", { status: 404 }))
+    : realFetch(input, init);
 plugin({ name: "fixture-build-boundary", setup(build) {
     build.onResolve({ filter: /(?:build-identity|version)\\.js$|tested-dependencies\\.json$/ }, ({ path, importer }) => {
         const target = resolve(dirname(importer), path);
@@ -294,6 +318,7 @@ plugin({ name: "fixture-build-boundary", setup(build) {
             ...(proof === undefined ? {} : { WLD_REMOTE_MODEL_PROOF: proof }),
         });
         await test({
+            artifact: join(root, "wld-x86_64-unknown-linux-gnu"),
             local,
             remote,
             sshLog,
@@ -302,6 +327,46 @@ plugin({ name: "fixture-build-boundary", setup(build) {
                     args: cliArgs(args),
                     cwd: local,
                     env: cliEnv(proof),
+                });
+                return {
+                    code: output.code,
+                    stdout: decoder.decode(output.stdout),
+                    stderr: decoder.decode(output.stderr),
+                };
+            },
+            runWithTerminal: async () => {
+                const program = String.raw`import fcntl, json, os, pty, select, signal, struct, subprocess, sys, termios, time
+master, slave = pty.openpty()
+fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 54, 180, 0, 0))
+child = subprocess.Popen(json.loads(sys.argv[1]), stdin=slave, stdout=slave, stderr=slave, start_new_session=True)
+os.close(slave)
+output = b''
+try:
+    deadline = time.monotonic() + 20
+    while not os.path.exists(os.environ['SSH_LOG'] + '.initial-size'):
+        if time.monotonic() > deadline: raise RuntimeError('initial size timeout: ' + repr(output))
+        if select.select([master], [], [], .05)[0]: output += os.read(master, 65536)
+    fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack('HHHH', 62, 212, 0, 0))
+    os.kill(child.pid, signal.SIGWINCH)
+    deadline = time.monotonic() + 3
+    while not os.path.exists(os.environ['SSH_LOG'] + '.resized'):
+        if time.monotonic() > deadline: break
+        time.sleep(.02)
+    initial = open(os.environ['SSH_LOG'] + '.initial-size').read()
+    resized = open(os.environ['SSH_LOG'] + '.resized').read() if os.path.exists(os.environ['SSH_LOG'] + '.resized') else 'no resize'
+    print(json.dumps([initial, resized]))
+finally:
+    if child.poll() is None: child.terminate()
+    try: child.wait(timeout=8)
+    except subprocess.TimeoutExpired:
+        child.kill()
+        child.wait()
+    os.close(master)
+`;
+                const output = await captureForegroundProcess("python3", {
+                    args: ["-c", program, JSON.stringify([executable, ...cliArgs(["remote-alias"])])],
+                    cwd: local,
+                    env: { ...cliEnv(), SSH_TERMINAL_TEST: "1" },
                 });
                 return {
                     code: output.code,
@@ -546,7 +611,7 @@ async function exists(path: string): Promise<boolean> {
     );
 }
 
-test("remote CLI exits after authenticated SSH closes while terminal stdin remains open", async () => {
+test("remote CLI uses a local bundle for an unpublished release and exits with terminal stdin open", async () => {
     await withRemoteFixture(async ({ runWithOpenStdin, sshLog }) => {
         const result = await runWithOpenStdin();
         assertEquals(result.code, 0, result.stderr);
@@ -638,3 +703,46 @@ test("a host alias named sessions remains reachable with a colon", async () => {
         assertStringIncludes(await fsReadFile(sshLog, "utf8"), "sessions");
     });
 });
+test("remote CLI without a local bundle downloads only its exact release tag", async () => {
+    await withRemoteFixture(
+        async ({ run }) => {
+            const result = await run(["remote-alias"]);
+            assertEquals(result.code, 1);
+            assertStringIncludes(result.stderr, "releases/download/v1.2.3-rc.1/wld-v1.2.3-rc.1-linux-x64.tar.gz");
+            assertStringIncludes(result.stderr, "HTTP 404");
+        },
+        false,
+        true,
+    );
+});
+
+test("remote CLI rejects a local release bundle with a different build identity", async () => {
+    await withRemoteFixture(async ({ run, artifact }) => {
+        const metadata = JSON.parse(await fsReadFile(`${artifact}.build.json`, "utf8"));
+        await fsWriteFile(`${artifact}.build.json`, JSON.stringify({ ...metadata, buildId: "b".repeat(64) }));
+        const result = await run(["remote-alias"]);
+        assertEquals(result.code, 1);
+        assertStringIncludes(result.stderr, "Remote artifact does not match launcher build");
+    }, true);
+});
+
+test("remote CLI rejects a local release bundle with changed executable bytes", async () => {
+    await withRemoteFixture(async ({ run, artifact }) => {
+        await fsWriteFile(artifact, "changed runtime");
+        const result = await run(["remote-alias"]);
+        assertEquals(result.code, 1);
+        assertStringIncludes(result.stderr, "checksum");
+    }, true);
+});
+
+test(
+    "remote SSH uses the full terminal size at startup and after resize",
+    { skip: process.platform === "win32" },
+    async () => {
+        await withRemoteFixture(async ({ runWithTerminal }) => {
+            const result = await runWithTerminal();
+            assertEquals(result.code, 0, result.stderr);
+            assertEquals(JSON.parse(result.stdout), ["54 180", "62 212"]);
+        }, true);
+    },
+);

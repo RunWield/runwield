@@ -6,7 +6,11 @@ import { setInterval } from "node:timers";
 import { dirname, join } from "node:path";
 import { getRunWieldRuntimeDir } from "../../constants.js";
 import { getLockHostname } from "../process-liveness.ts";
-import { migrateLegacyProjectRuntimeState, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import {
+    inspectProjectRuntimeReadAccess,
+    migrateLegacyProjectRuntimeState,
+    resolveProjectRuntimeLayout,
+} from "../project-runtime-layout.ts";
 import { withWorktreeRegistryLockAtPath } from "../worktree-registry.js";
 
 interface LegacyPlanLockRecord {
@@ -41,6 +45,8 @@ const [command, checkoutRoot, extra] = process.argv.slice(2);
 if (command === "migrate") {
     const result = await migrateLegacyProjectRuntimeState(checkoutRoot);
     console.log(JSON.stringify(result));
+} else if (command === "inspect") {
+    console.log(JSON.stringify(await inspectProjectRuntimeReadAccess(checkoutRoot)));
 } else if (command === "migrate-exit-after-effect") {
     installExitAfterEffect(checkoutRoot, parseMigrationExitEffect(extra));
     const result = await migrateLegacyProjectRuntimeState(checkoutRoot);
@@ -106,10 +112,12 @@ async function holdLegacyPlanLock(checkoutRoot: string, planName: string): Promi
     const token = crypto.randomUUID();
     await writePlanLockFile(file, { token, pid: process.pid, hostname: getLockHostname(), updatedAtMs: Date.now() });
     const heartbeat = setInterval(() => {
-        writePlanLockFile(file, { token, pid: process.pid, hostname: getLockHostname(), updatedAtMs: Date.now() })
-            .catch(
-                () => {},
-            );
+        writePlanLockFile(file, {
+            token,
+            pid: process.pid,
+            hostname: getLockHostname(),
+            updatedAtMs: Date.now(),
+        }).catch(() => {});
     }, 1_000);
     // Keep the lock holder alive until the parent terminates it.
     heartbeat.ref();
@@ -135,7 +143,11 @@ async function holdLegacyWorkRecordLock(checkoutRoot: string, lockName: string):
 }
 
 function lockSafeSegment(value: string): string {
-    return String(value || "plan").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "plan";
+    return (
+        String(value || "plan")
+            .replace(/[^a-zA-Z0-9._-]+/g, "-")
+            .replace(/^-+|-+$/g, "") || "plan"
+    );
 }
 
 async function writePlanLockFile(file: NativeFileLock, record: LegacyPlanLockRecord): Promise<void> {
@@ -152,12 +164,20 @@ function writeJsonFile(file: NativeFileLock, text: string): void {
 
 function parseMigrationExitEffect(value: string | undefined): MigrationExitEffect {
     if (
-        value === "journal-commit" || value === "primary-rename" || value === "secret-rename" ||
+        value === "journal-commit" ||
+        value === "primary-rename" ||
+        value === "secret-rename" ||
         value === "selected-rename" ||
-        value === "stale-lock-retirement" || value === "marker-replacement" || value === "journal-cleanup" ||
-        value === "recovery-backup" || value === "recovery-controller" || value === "recovery-retirement" ||
-        value === "recovery-registry" || value === "recovery-registry-retirement"
-    ) return value;
+        value === "stale-lock-retirement" ||
+        value === "marker-replacement" ||
+        value === "journal-cleanup" ||
+        value === "recovery-backup" ||
+        value === "recovery-controller" ||
+        value === "recovery-retirement" ||
+        value === "recovery-registry" ||
+        value === "recovery-registry-retirement"
+    )
+        return value;
     console.error(`Unknown migration exit effect: ${value || ""}`);
     process.exit(2);
 }
@@ -203,7 +223,8 @@ function shouldExitAfterRename(
     to: string,
     layout: ReturnType<typeof resolveProjectRuntimeLayout>,
 ): boolean {
-    if (effect === "recovery-backup") return to.replaceAll("\\", "/").includes("/legacy-recovery/") && to.replaceAll("\\", "/").endsWith("/contents");
+    if (effect === "recovery-backup")
+        return to.replaceAll("\\", "/").includes("/legacy-recovery/") && to.replaceAll("\\", "/").endsWith("/contents");
     if (effect === "recovery-controller") return to === join(layout.primary.controllerPlansDir, "plan.json");
     if (effect === "recovery-registry") return to === layout.primary.worktreeRegistryPath;
     if (effect === "journal-commit") return to === layout.primary.layoutMigrationJournalPath;

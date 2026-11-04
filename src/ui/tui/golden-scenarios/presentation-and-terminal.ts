@@ -7,7 +7,7 @@ import type { GoldenScenario, GoldenScenarioResult } from "../testing/scenario-r
 
 import { ok as assert } from "node:assert/strict";
 import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.js";
-import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-assertions.js";
+import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-assertions.ts";
 
 /**
  * Assert against the screen captured while the presentation blocks were up.

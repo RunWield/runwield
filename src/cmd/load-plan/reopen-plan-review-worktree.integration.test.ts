@@ -24,8 +24,8 @@ import {
     validateSequenceReviewDecision,
 } from "../../shared/workflow/sequence-review.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
-import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
+import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { reopenSavedPlanReview } from "./reopen-plan-review.ts";
 
@@ -184,7 +184,7 @@ test("Workspace accepts a live Sequence group decision from a registered plannin
         const fixture = await makeManagedSessionFixture({ home: homeDir, projectRoot: repo });
         const store = fixture.openStore();
         const service = new WorkspaceSessionContinuationService({ store });
-        const storeUrl = new URL("../../shared/owner-coordination/index.js", import.meta.url).href;
+        const storeUrl = new URL("../../shared/owner-coordination/index.ts", import.meta.url).href;
         const runtimeUrl = new URL("../../shared/session/session-runtime.ts", import.meta.url).href;
         const code = `
             import { openOwnerCoordinationStore } from ${JSON.stringify(storeUrl)};

@@ -5,7 +5,7 @@ import {
     projectPlanReviewScenario,
     projectWorkflowScenarios,
     twoChildProjectContinuationScenario,
-} from "./project-workflow.js";
+} from "./project-workflow.ts";
 
 type ProjectWorkflowScenario = (typeof projectWorkflowScenarios)[number] &
     Partial<Pick<typeof twoChildProjectContinuationScenario, "timeoutMs">>;
@@ -22,7 +22,7 @@ for (const scenario of scenarios) {
     test(`golden PROJECT workflow: ${scenario.name}`, async () => {
         const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
         const result = await runGoldenScenarioChildProcess({
-            scenarioModule: "src/ui/tui/golden-scenarios/project-workflow.js",
+            scenarioModule: "src/ui/tui/golden-scenarios/project-workflow.ts",
             exportName: scenarioExportNames.get(scenario) || "",
             timeoutMs: scenario.timeoutMs || 30000,
         });

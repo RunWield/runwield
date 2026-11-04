@@ -5,13 +5,13 @@ import { RunWieldModelSelectorComponent } from "./model-selector.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { getSettingsManager } from "../../shared/settings.js";
 import { AgyCliMcpSetupApprovalError } from "../../shared/session/backends/agy-cli/mcp-setup.ts";
-import { getEditorTheme, initRunWieldTheme } from "../theme/theme.js";
+import { getEditorTheme, initRunWieldTheme } from "../theme/theme.ts";
 import { createUiApi } from "./api.js";
 import { SpinnerBlock, ToolExecutionGroupBlock } from "./blocks.js";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { installUiApiOverrides } from "./ui-api-overrides.ts";
 
-import { createTuiInteractionAdapter } from "./runtime-interaction-adapter.js";
+import { createTuiInteractionAdapter } from "./runtime-interaction-adapter.ts";
 import { createScriptedReviewBrowser } from "../review/review-test-fixture.ts";
 import { getStoredPlanPath, savePlan } from "../../plan-store.js";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
@@ -173,6 +173,7 @@ for (const type of ["plan_review", "code_review"] as const) {
                 let surfaceReady = false;
                 try {
                     await savePlan(projectRoot, "feature", "# Feature\n\nDo the work.\n", {
+                        planId: "tui-input-review-plan",
                         classification: "PLANNED_CHANGE",
                         status: "draft",
                     });

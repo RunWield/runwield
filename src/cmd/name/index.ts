@@ -4,7 +4,7 @@
  */
 
 import { sanitizeSessionName, setTerminalTitleForName } from "../../ui/tui/terminal-title.ts";
-import { theme } from "../../ui/theme/theme.js";
+import { theme } from "../../ui/theme/theme.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 
 interface NameCommandUi {

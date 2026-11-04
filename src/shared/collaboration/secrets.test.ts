@@ -39,7 +39,7 @@ import {
     resolvePullSecretRecord,
     SECRET_STORE_SCHEMA_VERSION,
     writeSecretStore,
-} from "./secrets.js";
+} from "./secrets.ts";
 
 const gitFixture = defineCommittedGitFixture({ "README.md": "# Collaboration secrets fixture\n" });
 

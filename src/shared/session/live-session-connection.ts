@@ -7,7 +7,7 @@ import { createServer, request as httpRequest, type ServerResponse } from "node:
 import { getHomeDir } from "../../constants.js";
 
 import type { ImageAttachment } from "./types.js";
-import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "./session-runtime-interactions.js";
+import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "./session-runtime-interactions.ts";
 import type {
     NotificationSurface,
     RuntimeAttentionRequestedEvent,

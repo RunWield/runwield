@@ -1,5 +1,11 @@
 /** Astro renders requests; RunWield owns HTTP serving and static-asset policy. */
 import type { AstroIntegration } from "astro";
+import type { InlineConfig } from "vite";
+
+interface WorkspaceBuildSetupOptions {
+    target: "client" | "server";
+    updateConfig: (config: InlineConfig) => void;
+}
 
 interface WorkspaceAssetManifest {
     assets: string[];
@@ -13,6 +19,13 @@ export default function bunAdapter() {
     return {
         name: "runwield/bun-workspace",
         hooks: {
+            "astro:build:setup": ({ target, updateConfig }: WorkspaceBuildSetupOptions) => {
+                if (target !== "server") return;
+                // Server imports also defer initialization; they need not create separate chunks.
+                updateConfig({
+                    build: { rolldownOptions: { checks: { ineffectiveDynamicImport: false } } },
+                });
+            },
             "astro:build:ssr": ({ manifest }: WorkspaceManifestOptions) => {
                 // Astro discovers static files concurrently; their membership order has no meaning.
                 // Canonical ordering keeps independently built release payloads byte-identical.

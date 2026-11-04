@@ -3,7 +3,7 @@ import { resolvePlanExecutionPolicy } from "../../plan-store.js";
 import { decidePostExecution } from "../../shared/workflow/decisions.ts";
 import { validatePostExecutionDecision } from "./plan-execution.ts";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
-import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";
+import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
 import type { LastPlanReviewReference } from "../../shared/session/file-session-store-types.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import type { UiAPI } from "../../ui/tui/types.js";

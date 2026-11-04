@@ -5,7 +5,7 @@ disable-model-invocation: true
 
 Continue the project's open RunWield workflow. Do not activate a new request.
 
-Show any returned `compatibility` notice to the user before continuing. On `unsupported_host`, show Core's
+Continue quietly on nonblocking compatibility assessments, including legacy notices from older Core. On `unsupported_host`, show Core's
 compatibility message and stop. On `incompatible_adapter` or `unsupported_host_version`, show Core's update message and stop.
 Core owns host and version compatibility.
 
@@ -18,6 +18,8 @@ Core owns host and version compatibility.
    confirmation. Preserve its Plan, action, revision, and execution directory; do not import the other host's transcript.
    Only after showing this summary, call ordinary `status` with that `workflowId` to continue. Do not fetch role
    instructions, start checks, or dispatch a worker before the summary. Status is compact by default.
+   For `validation_running`, wait for the active call. Inspect-only status supplies the operation identity, start time,
+   and available checkpoint progress without advancing validation. Do not restart an active operation because it is slow.
    For `implemented` or `validation_recovery`, call `start_validation` with a new operation ID, the current workflow
    ID and revision, and `payload: {}`. Core runs the configured checks. Do not run the complete command yourself. Keep
    waiting while Core sends progress.
@@ -38,9 +40,11 @@ Core owns host and version compatibility.
    structured outcome unchanged. Keep stable finding IDs. Do not map or reinterpret fields. If Core requests a correction,
    dispatch another fresh reviewer with the new action ID and revision; it fetches its own complete instructions. Core
    alone accepts coverage and candidate freshness.
-5. For `repair`, dispatch a fresh repair subagent with the action ID and request cwd. Tell it to fetch complete current
+5. For `repair`, dispatch a fresh repair subagent with the workflow ID, revision, action ID, and request cwd. Tell it to fetch complete current
    instructions with `get_instructions`. Do not enable host worktree isolation. Use only Core's handed-off checkout. The
-   worker makes no RunWield lifecycle calls and returns its per-item Markdown bullet report. Submit completed repair with
+   worker calls MCP `review_diff` directly with `scope: "full"`, following every truncated page before editing and using
+   each returned revision for its next call. Repair reads do not count as reviewer coverage. The worker makes no
+   RunWield lifecycle calls and returns its per-item Markdown bullet report and latest revision. Submit completed repair with
    `task_completed`, the current action ID and revision, and `payload.message`. A blocker is not completion: show it to
    the user and leave the workflow open.
 6. For `decision`, call `get_instructions` with the workflow and action IDs to fetch the exact Core prompt and options.
@@ -62,8 +66,9 @@ Core owns host and version compatibility.
    the current action ID and revision. On validation errors, send the errors to a fresh Recorder with the new action ID;
    it fetches its own complete instructions for the one retry. After the second invalid submission, Core records failure
    and continues publication.
-9. Follow each returned next action, including on a rejected call. After process loss or rejection, call `status`, then
-   `start_validation` to recover. Never bypass a stale action or candidate rejection. Do not claim Verified until
+9. Follow each returned next action, including on a rejected call. After process loss or rejection, call `status`.
+   Wait for `validation_running`; call `start_validation` for `validation_recovery`. Never bypass a stale action or
+   candidate rejection. Do not claim Verified until
    `delivered`. Do not commit, push or merge; Core owns publication.
 10. For `delivered`, report Core's proven delivery and Work Record outcome. Supersession proposals are deferred; name
     `wld wr supersede` for later use. Suggest manual checks from the Plan in this Claude conversation. Do not save the

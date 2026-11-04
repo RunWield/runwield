@@ -357,7 +357,7 @@ test("active and isolated Agents have exactly one production lifecycle boundary 
     const activeMutationModules = new Set([
         "src/shared/session/hosted-session.js",
         "src/shared/session/session.js",
-        "src/shared/session/agent-switching.js",
+        "src/shared/session/agent-switching.ts",
         // Test-only workflow driver exercises the real validation machinery.
         "src/testing/usage-export-journey-workflows.ts",
     ]);
@@ -365,7 +365,7 @@ test("active and isolated Agents have exactly one production lifecycle boundary 
         "src/shared/session/session.js",
         "src/shared/session/agent-handler.js",
         "src/shared/session/agent-handler.ts",
-        "src/shared/session/agent-switching.js",
+        "src/shared/session/agent-switching.ts",
         "src/shared/session/root-workflow-turn.ts",
         "src/shared/workflow/orchestrator.ts",
     ]);

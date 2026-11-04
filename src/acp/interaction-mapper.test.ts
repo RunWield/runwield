@@ -6,7 +6,7 @@ import { test } from "node:test";
  */
 
 import { createAcpInteractionAdapter } from "./interaction-mapper.js";
-import type { RuntimeInteractionRequest } from "../shared/session/session-runtime-interactions.js";
+import type { RuntimeInteractionRequest } from "../shared/session/session-runtime-interactions.ts";
 
 interface QuestionNotification {
     update: {

@@ -1,5 +1,5 @@
 /** Browser-safe interaction values shared with the Hosted Session broker. */
-import type { RuntimeInteractionRequest } from "./session-runtime-interactions.js";
+import type { RuntimeInteractionRequest } from "./session-runtime-interactions.ts";
 export const RuntimeInteractionTypes = Object.freeze({
     SELECT: "select",
     TEXT: "text",

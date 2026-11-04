@@ -63,7 +63,7 @@ interface ExistingPackageManifest extends Partial<ExistingRunWieldPackage> {
 
 function usage() {
     return [
-        "Usage: package-homebrew.js [--wld-tag <stable-tag>] [--mnemoteca-tag <stable-tag>] --output <dir>",
+        "Usage: package-homebrew.ts [--wld-tag <tag>] [--mnemoteca-tag <stable-tag>] --output <dir>",
         "       [--inputs <path>] [--wld-base-url <url>] [--mnemoteca-base-url <url>] [--test-only]",
         "       Supply at least one tag. A single tag refreshes only that package in an existing tap tree.",
     ].join("\n");
@@ -289,6 +289,7 @@ RunWield v0.14.0 and later use MIT metadata. Recovery of earlier releases preser
 
 Refresh one package from this repository while preserving the other. Mnemoteca refresh requires matching verified
 preparation inputs. Supplying both tags explicitly prepares both packages in a separate output directory.
+Use a separate disposable copy for package checks: the checker stages and commits its input tree.
 Publish only after full macOS qualification from the same tap revision; a concurrent update requires a fresh check.
 
 Use a copy of the current tap:

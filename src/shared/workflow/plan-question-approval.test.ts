@@ -25,6 +25,7 @@ async function withQuestionPlan(verify: (fixture: QuestionPlanFixture) => Promis
             "questions",
             body,
             {
+                planId: initial.attrs.planId,
                 classification: "PLANNED_CHANGE",
                 status: "draft",
                 affectedPaths: [],

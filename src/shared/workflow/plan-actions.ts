@@ -331,7 +331,15 @@ export async function executePlanAction(projectRoot: string, request: PlanAction
         if (!selected) return { kind: "invalid_action", message: "Plan not found." };
         await preparePlanWorkflow(projectRoot, selected.planName);
     } catch (error) {
-        const registry = await readPlanActionWorktreeEvidence(projectRoot, request.planId);
+        let registry;
+        try {
+            registry = await readPlanActionWorktreeEvidence(projectRoot, request.planId);
+        } catch {
+            return {
+                kind: "invalid_action",
+                message: sanitizeMessage(error instanceof Error ? error.message : String(error)),
+            };
+        }
         if (
             error instanceof WorktreeRegistryAmbiguityError ||
             error instanceof RegisteredPlanDocumentUnavailableError ||

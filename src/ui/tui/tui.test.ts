@@ -1,4 +1,8 @@
 import { test } from "node:test";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { delimiter, join } from "node:path";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { strictEqual as assertStrictEquals } from "node:assert/strict";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { type TUI, TuiMainScreen } from "@earendil-works/pi-tui";
@@ -191,3 +195,48 @@ test("RunWield TUI routes artifact clicks to the Session without opening a custo
         tui.stop();
     }
 });
+
+for (const failCopy of [false, true]) {
+    test(
+        `RunWield selection copy ${failCopy ? "reports native clipboard failure" : "writes to the native clipboard"}`,
+        {
+            skip: process.platform !== "darwin",
+        },
+        async () => {
+            await withProcessGlobalTestLock(async () => {
+                const root = await mkdtemp(join(tmpdir(), "wld-copy-"));
+                const previousPath = process.env.PATH;
+                const capturedPath = join(root, "copied");
+                const terminal = new CompatibleVirtualTerminal({ columns: 100, rows: 30 });
+                const tui = new RunWieldTui(terminal);
+                try {
+                    await writeFile(
+                        join(root, "pbcopy"),
+                        failCopy
+                            ? "#!/bin/sh\nexit 1\n"
+                            : `#!/bin/sh\n/bin/cat > '${capturedPath.replaceAll("'", "'\\''")}'\n`,
+                        { mode: 0o755 },
+                    );
+                    process.env.PATH = `${root}${delimiter}${previousPath || ""}`;
+                    tui.setCopyOnSelect(false);
+                    tui.setLayoutRoot({ render: () => ["copy me"], invalidate() {} });
+                    tui.start();
+                    tui.renderNow();
+                    await terminal.flush();
+                    terminal.input("\x1b[<0;1;1M");
+                    terminal.input("\x1b[<32;8;1M");
+                    terminal.input("\x1b[<0;8;1m");
+                    assertEquals(tui.hasActiveSelection(), true);
+                    assertEquals(await tui.copyActiveSelectionToClipboard(), !failCopy);
+                    assertEquals(terminal.writes.includes("\x1b]52;"), false);
+                    if (!failCopy) assertEquals(await readFile(capturedPath, "utf8"), "copy me");
+                } finally {
+                    tui.stop();
+                    if (previousPath === undefined) delete process.env.PATH;
+                    else process.env.PATH = previousPath;
+                    await rm(root, { recursive: true, force: true });
+                }
+            });
+        },
+    );
+}

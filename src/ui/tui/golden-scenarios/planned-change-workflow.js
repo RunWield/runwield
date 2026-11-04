@@ -7,7 +7,7 @@ import process from "node:process";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../../testing/assertions.ts";
 import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.js";
-import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-assertions.js";
+import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-assertions.ts";
 
 /** @typedef {import('../testing/scenario-runner.js').GoldenScenarioResult} GoldenScenarioResult */
 /** @typedef {{ shownExplanationIds?: string[], recapShown?: boolean }} TutorialContextSnapshot */

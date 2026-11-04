@@ -120,6 +120,7 @@ export async function savePublicationEvidence(
         join(directory(root, publication.planName, publication.attemptId), "publication.md"),
     ).replaceAll("\\", "/");
     try {
+        await enterProjectRuntime(root);
         await fsMkdir(directory(root, publication.planName, publication.attemptId), { recursive: true });
         await fsWriteFile(
             join(root, path),

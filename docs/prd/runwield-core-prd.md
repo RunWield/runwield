@@ -151,6 +151,13 @@ keep their labels and Work Record notices; other Markdown uses **Document**.
 **Requirement: Identify the Session in the terminal title.** Named Sessions use `W. <session title>` with no hyphen.
 Unnamed Sessions use `W.`. Session names are sanitized before display.
 
+**Requirement: Copy selected TUI text on macOS.** Selecting text in the fullscreen TUI copies it through the native
+clipboard command, shared with `/copy`. RunWield reports copy failure when the command fails. Copying does not depend
+on the terminal accepting OSC 52 clipboard writes.
+
+**Acceptance scenario:** Given selected TUI text on macOS, copying writes that text to the native clipboard. If the
+clipboard command fails, the TUI reports failure instead of “Copied!”.
+
 **Requirement: Keep the terminal responsive.**
 
 - Returning focus to the terminal or pressing Ctrl+L repaints the screen and keeps the draft, scroll position, active
@@ -304,6 +311,15 @@ user sends a message.
 a valid execution policy offers direct Plan Review. Users inspect and annotate the saved Plan, and the decision follows
 the normal review flow.
 
+**Requirement: Send a ready Plan back for re-review.** The load-plan menu offers **Send back to Planner for re-review**
+for a ready-for-work Planned Change. A non-Sequence Epic at `ready_for_decomposition` or `ready_for_work` offers
+**Send back to Architect for re-review**, with or without children. This explicit action returns the authoritative
+Plan document to `draft` before starting its planning Agent. It opens no review page first and requires no submitted
+feedback. A reply, error, or interrupted Agent turn leaves a resumable draft; new approval is required. Child documents,
+statuses, IDs, order, dependencies, worktree records, and existing Epic branch history stay intact. Approve for Later
+returns an Epic to `ready_for_decomposition`, even when children exist. Approve & Slice starts Slicer. Neither action
+executes the Epic. Viewing or canceling the menu does not send the Plan back or reset approval.
+
 **Requirement: Return to the most recent Plan review.** `/plan-review` returns the link to the Session's live review.
 When the Session is idle, it opens the Session's most recently presented Plan for a new decision after checking its
 identity and review eligibility. A Session with no earlier review, a busy Session, or a changed Plan receives an
@@ -337,6 +353,15 @@ stays light, terminal animations pause during human input, and the decision cont
   code, links, or execution policy requires a new decision.
 - Given a ready-for-work Plan, when the user loads it and chooses **Review plan**, the saved Plan opens for review
   directly.
+- Given a `ready_for_decomposition` Epic with no children, selecting **Send back to Architect for re-review** starts
+  Architect with the saved parent already draft, before any review page opens. A reply-only turn keeps Architect active
+  and the parent draft.
+- Given a `ready_for_work` Epic with started and unfinished children, sending it back starts Architect on the draft
+  parent and preserves child documents, statuses, IDs, order, dependencies, worktrees, and Epic branch history.
+- Given a sent-back Epic, Architect submits it with `plan_written`. Approve for Later returns it to
+  `ready_for_decomposition` and leaves Slicer available without starting it; Approve & Slice starts Slicer. Existing
+  children remain visible after reapproval. Neither choice executes the parent.
+- Given a ready Epic menu, viewing or canceling leaves approval intact. Sequences do not offer Architect send-back.
 - Given an earlier review and an idle Session, `/plan-review` opens the current saved Plan for a new decision.
 - Given a Sequence saved in its planning worktree, reopening its review checks the group against that worktree.
 - Given Plan Review open in a browser for a long time, returning to submit a decision continues the same Session.
@@ -364,6 +389,10 @@ fetch or clone Git data, change refs or worktrees, take writer locks, or schedul
 documents without creating runtime storage. Ready reads retain registered document-worktree authority and locally
 available target snapshots; they do not replace current workflow facts with a stale primary copy. A registered
 document must belong to an attached Git worktree of the same Project before its bytes can supply authority.
+Doctor does not require a target branch for a draft Epic with no children, saved attempts, or execution evidence.
+A missing target for an approved Epic or one with children or attempt history remains a diagnostic, as does unreadable
+target evidence. If a cached child snapshot has no ID, Doctor retains the ID already assigned to the current document
+with the same name and parent. An explicit target ID remains authoritative.
 
 When adoption, controller preparation, or required local target evidence is missing, safe documents remain browseable
 with workflow details pending. Read availability is separate from Plan status and Front Matter. Unsafe or unreadable
@@ -410,6 +439,12 @@ conditions for reconsideration. Routine choices receive brief treatment; individ
 - Given missing local target evidence, browsing reports pending workflow details rather than claiming no children or
   fetching the target, including missing promised objects in a partial clone. Available target-only documents are read
   directly from local Git objects without temporary files.
+- Given an unstarted draft Epic with no children or saved attempts, Doctor accepts a missing target without creating
+  it. An approved Epic, an Epic with children or attempt history, an invalid target, or unreadable target evidence still
+  produces a target diagnostic.
+- Given a cached child snapshot without an ID and a current document with an assigned ID, Doctor retains that identity
+  without rewriting either document. A target-only child without an ID still produces a missing-ID diagnostic; an
+  explicit target ID is not replaced by a different local ID.
 - Given a registered document worktree, ready reads use its current document and controller facts; missing or unsafe
   authority never authorizes fallback to stale primary workflow facts. An unattached directory or another repository
   cannot authorize a document or action. Other healthy Plans remain available.
@@ -506,7 +541,8 @@ own review and approval. The conversation can pause and resume. `load-plan` offe
 child selection, execution, or recovery action and explains unfinished dependencies. `wld plans` shows Epic progress and
 child status separately from standalone Plans. While a child's publication is pending, loading the parent Epic shows
 that state and offers the child's publication continuation. Changed child scope after an Epic revision needs the user's
-review.
+review. Ready Epics also offer the explicit Architect send-back action defined in
+[Plan review](#plan-review); it preserves child work and requires new parent approval.
 
 **Requirement: Every Epic starts and ends on its own branch.** Architect names an Epic branch, by default
 `epic/<epic-name>`. Children deliver to it, so the primary branch receives the Epic only when it is ready. When the Epic
@@ -722,8 +758,11 @@ availability does not abandon the workflow or require a separate Doctor ceremony
 
 **Requirement: Separate saved delivery evidence from fresh publication proof.** Passive progress reads show applicable
 saved evidence without remote verification. A valid controller publication receipt can preserve established delivery
-after attempt cleanup. A receipt for another candidate, target, or live execution remains historical evidence, not
-current completion proof. Missing or inapplicable proof leaves publication unconfirmed; neither absence of an attempt nor
+after attempt cleanup. Doctor uses the same controller evidence for Epic children read from cached target snapshots
+as it does for ordinary Plan files. Deleting a delivered Epic branch does not invalidate an applicable saved receipt. Cached target snapshots do not
+reactivate committed archived children that have no active document or unfinished attempt.
+A receipt for another candidate, target, or live execution remains historical evidence, not current completion proof.
+Missing or inapplicable proof leaves publication unconfirmed; neither absence of an attempt nor
 a stale tracking ref proves completion. Reopening or a new execution invalidates prior completion evidence. Publication
 and recovery actions still obtain the fresh target proof required by
 [ADR-016](../adr/016-proof-bearing-publication-state-machine.md) before reporting new success or cleaning up work.
@@ -762,6 +801,10 @@ point. Commands are copy-ready with real values. Waiting for the user's action s
 
 - Given passive progress reads and an unreachable upstream, no fetch or clone starts. Applicable saved completion
   remains visible after attempt cleanup; absent or invalidated proof stays unconfirmed.
+- Given an Epic child with an applicable controller receipt, Doctor accepts that saved delivery when it reads a cached
+  target snapshot and after the delivered target branch is deleted. Ordinary Plans follow the same receipt rules.
+- Given a committed archived child and an old active copy in a cached Epic target, Doctor does not report a duplicate
+  or request publication again. A real active document or unfinished attempt still requires inspection.
 - Given an action after a successful read, the action repeats runtime admission and current evidence checks. Read
   availability cannot authorize execution, publication, or a lifecycle change.
 - Given two Plans and a missing execution document for one, catalog reads and validation identity preparation for the
@@ -949,9 +992,23 @@ repair. Diagnosis and explicit user requests can call for earlier full runs. Sta
 validation. Reports separate completed focused checks from pending full validation. Only the runtime gate permits
 publication.
 
+**Requirement: Fresh, focused repair verification.** Validation Repair Engineer instructions require rerunning every
+previously failing test file identified in the repair context, plus focused checks for the repairs, after the final
+edit using the project's supported runner. Non-test failures require the relevant failing checks. Later edits require
+rerunning those checks before task completion. Reports give exact commands and results, identify unverified items, and
+leave full validation pending. Repair guidance distinguishes assertion/build failures, timeouts or suspected hangs,
+and interrupted/unstarted checks. Timeouts prompt wait and contention diagnosis rather than automatic deadline
+increases; they do not alone prove deadlock. Missing reports after a timeout remain incomplete evidence. This is Agent
+guidance, not an additional runtime admission gate; existing validation commands and repair limits remain unchanged.
+
 **Requirement: Required checks fail closed.** A required check returns failure when its checker or prerequisites cannot
 load, as well as when diagnostics fail. Workspace checking resolves its project root consistently under the pinned Bun
 runtime and cannot report success without running the Astro checker.
+
+**Requirement: Repair the latest observed CI failure.** After repair exhaustion, Engineer follow-up retains the latest
+failed run's diagnostics alongside the user's additional instructions. Host repair packets identify that run and its
+Git candidate when available. Older Plan failure text must not replace that evidence. Follow-up completion still
+requires the complete configured validation command.
 
 **Requirement: Validation progress is accurate.** Interrupted validation shows as paused and keeps its continuation.
 Passed checks are recorded, so a restart resumes at the next phase; a code repair runs the checks again. The final
@@ -965,10 +1022,16 @@ progress display comes from the confirmed validation and publication results of 
   project keeps it after worktree removal.
 - Given a managed repair, after the Agent's focused checks, RunWield runs the full command against the repair checkout;
   a failure keeps the workflow in repair.
+- Given edits after passing focused repair checks, the Repair Engineer is instructed to rerun every supplied failing
+  test file and repair-focused check before task completion and report the fresh results.
+- Given a timeout with no test report, repair guidance treats the report as incomplete evidence, investigates the
+  waiting operation, and does not assume an assertion defect or increase the timeout automatically.
 - Given passed checks and a process restart, the Plan stays implemented and resumes semantic review.
 - Given a Session that shows failed checks from an earlier attempt, a resumed delivery that publishes successfully
   reports completion with current results.
 - Given failed checks or review, the user sees repair progress or a concrete recovery choice.
+- Given successive CI failures with different diagnostics, Engineer follow-up includes the latest run and candidate
+  plus custom user text, and does not substitute a previously repaired failure.
 
 #### Manual QA checklist
 
@@ -2041,6 +2104,28 @@ available. An unknown set name fails with source-specific guidance. `delegate_ag
 grant one delegation mode each. Guide saves ordinary Markdown documents on explicit request and generates
 [images](#image-generation) when configured; Plans, ADRs, and Work Records stay with their own workflows.
 
+**Requirement: Compose authorized tools with Codemode.** Pi-backed bundled root Agents expose codemode alongside
+ordinary tools across TUI, Workspace, and ACP. Custom Agents opt in or disable it through their effective tool lists.
+Delegated and isolated execution retains explicit ceilings and no inherited root MCP connection. Scripts discover only
+callable tools, preserve normal validation and guards, and cannot batch workflow decisions. Presentation settings use
+RunWield's existing project-over-global precedence. External CLI backends keep direct tools; Connect retains host-owned
+model/tool execution. Codemode parity for those backends is deferred.
+
+Successful script stores follow Session branches and resume. Failed scripts discard pending stores, retain partial
+output, and do not roll back completed effects. Cancellation and worker admission preserve capacity until actual exit.
+Non-chat model calls use configured credentials and retain model-attributed usage without double counting. Source and
+standalone packaged execution must both run the actual upstream worker and WASM.
+
+**Acceptance scenarios:**
+
+- Given authorized reads, one script combines parallel results and returns a filtered answer with nested activity.
+- Given a restricted Agent, scripts cannot discover or execute excluded writes, shell calls, or workflow decisions.
+- Given trusted MCP tools, root replacement and live discovery retain one connection and current authorization.
+- Given a successful store, resume reads it and a branch before the store does not; failed scripts add no store values.
+- Given cancellation or a queued deadline, no queued tool runs and later scripts can use released capacity.
+- Given an auxiliary model call, configured credentials are used and its actual model receives one usage record.
+- Given a relocated executable without checkout access, a script can invoke a local tool and return its result.
+
 **Requirement: Limit shell commands per Agent.** `bashAllowedCommands` limits the shell commands an Agent starts through
 RunWield; shell access itself comes from the Agent's tools. Lists add up across layers, `[]` allows no commands, and
 `null` resets a definition to unrestricted. A delegate's limit always includes its parent's restriction, and a
@@ -2063,6 +2148,29 @@ left out of the catalog. With external skills
 disabled, the catalog uses project `.wld`, home `.wld`, and bundled skills. The bundled `review` Skill reviews a
 user-selected PR or change against project standards, the requested behavior, and test strength; it complements the
 workflow Reviewer.
+
+**Requirement: Test authoring earns its coverage.** The bundled
+[write-tests Skill](../../src/skills/write-tests/SKILL.md) guides Agents to establish expectations from requirements,
+journeys, bugs, or contracts independently of implementation, then test meaningful module interfaces, Golden journeys,
+and robustness with real internal machinery. The guidance applies to any target repository, using that repository's
+terminology, test stack, fixtures, and validation workflow without requiring RunWield-specific infrastructure.
+Agents may skip a new test that adds no meaningful protection, briefly
+explaining why and identifying existing coverage when relied upon. This does not waive required validation or an
+explicit user request. During requested pruning, important behavior retains protection through an appropriate
+interface before its sole existing test is removed. Debugging establishes a failing reproduction before the fix and
+verifies that the fix makes it pass; an existing test can supply that reproduction. These are authoring instructions,
+not an automated quality gate or a claim that the existing test portfolio has been audited.
+
+**Acceptance scenarios: Test contribution.**
+
+- Given a trivial delegation change already covered by a meaningful contract test, the Agent adds no duplicate test
+  and explains the existing protection.
+- Given an uncovered recovery requirement, the Agent uses a deliberately broken fixture, runs real recovery machinery,
+  and checks preservation and the observable recovery outcome against that requirement.
+- Given a confirmed bug, the Agent reproduces it with a failing existing, extended, or new test before fixing it, then
+  verifies the same expectation passes. An infeasible automated reproduction is reported as a coverage gap.
+- Given a pruning request and a weak test that alone protects an important behavior, the Agent replaces that protection
+  through a meaningful interface before removing the weak test.
 
 **Requirement: Portable skills install independently.** Guide, Ideator, and Review are available from
 [RunWield/skills](https://github.com/RunWield/skills) without downloading Core. They work in other coding agents and
@@ -2183,10 +2291,16 @@ Updates keep personal and project settings, and bundled presets stay selectable 
 - Validation Repair Engineer uses Engineer's model and thinking level when it has none of its own.
 - Pi-authenticated providers, OpenAI-compatible discovery through `/models`, and local or custom providers through
   `models.json` are supported.
+- OpenAI subscription sign-in creates one private installation UUID in `~/.wld/device-id` on first use. Later sign-ins
+  reuse it across Sessions and launches. API-key login does not create it; existing Codex credentials stay unchanged.
 - Claude CLI is available as `claude-cli/sonnet`, `claude-cli/opus`, `claude-cli/haiku`, and `claude-cli/fable`.
 - Antigravity CLI offers its Flash and Pro families and thinking levels.
 - Vision fallback covers text-only models.
 - Prompt-cache warming stays off; a user-facing warming setting is deferred.
+
+**Acceptance scenario:** Given a fresh installation, OpenAI subscription sign-in reaches the browser authorization
+prompt with a valid agent host UUID. Repeating sign-in after a restart uses the same UUID; another installation uses
+its own UUID. An unreadable or invalid saved identity reports a storage error without replacing it or credentials.
 
 **Requirement: Recover from temporary model-service failures.** Pi-backed requests retry temporary connection,
 rate-limit, and server failures, including `Unexpected EOF`, under the [retry
@@ -2262,18 +2376,18 @@ provider support documented in terms of current configuration.
 
 ### Installation and updates
 
-**Scope and maturity:** Current Linux/macOS shell installation, public macOS Homebrew packages, and Candidate release
-baseline. Windows releases and checks, including WinGet manifest
-preparation and submission, are paused by owner decision. Existing Windows assets and runtime code remain available. Runtime layout changes during upgrades follow
-[Work protection](#work-protection).
+**Scope and maturity:** Current Linux/macOS shell installation and Candidate release baseline. The public macOS tap
+provides RunWield and Mnemoteca packages. Windows releases and checks, including WinGet manifest preparation and
+submission, are paused by owner decision. Existing Windows assets and runtime code remain available. Runtime layout
+changes during upgrades follow [Work protection](#work-protection).
 
 Remote runtime preparation follows the [qualified matrix and scope](#remote-connection).
 
 **Requirement: Install through a shell installer or a package manager.** Users install RunWield as a standalone binary
-with the shell installer or through the public `gandazgul/tap` macOS tap hosted at `RunWield/homebrew-tap`. The
-`Gandazgul.RunWield` WinGet package for Windows x64 remains paused. `wld update` and `wld upgrade` update shell installs and print the
-package-manager command for package-managed installs. Public docs mark package availability as pending until each
-listing is public.
+with the shell installer or through the public `gandazgul/tap/wld` macOS formula. The retained packaging capability
+includes the `Gandazgul.RunWield` WinGet package for Windows x64. `wld update` and `wld upgrade` update shell installs and print the
+package-manager command for package-managed installs. Public docs distinguish available packages from paused or pending
+listings.
 
 For a `wld remote` development bundle, build the launcher and Linux artifacts explicitly from the same unchanged
 checkout and compiler (Bun 1.4.3). A connection never compiles on demand or substitutes a released binary for
@@ -2300,10 +2414,12 @@ WinGet (retained packaging capability; publication and checks paused):
 - Stable manifests only. Automatic submission to `microsoft/winget-pkgs` is paused until the owner resumes it; while
   paused, releases prepare manifest artifacts.
 
-**Requirement: Preserve independently released Homebrew packages.** A RunWield release updates only its own formula
-and owned package metadata. It qualifies with the Mnemoteca version already in the tap and does not replace another
-package's formula, version, or metadata. A concurrent tap change blocks publication until a fresh snapshot passes
-qualification. Recovery preserves published product tags and asset bytes.
+**Requirement: Preserve independent Homebrew packages.** A RunWield release changes only its own formula and package
+metadata. It qualifies against the tap's existing Mnemoteca formula, verifies the installed dependency version against
+the manifest, and preserves independently owned formula bytes and manifest values. Publication uses the same tap base
+that passed qualification. A concurrent update rejects the ordinary push; recovery takes a fresh snapshot and repeats
+qualification without changing released asset bytes. Candidate checks use disposable copies and never update the Stable
+tap. Source prevention and a repair of previously published dependency metadata are separate outcomes.
 
 **Requirement: Honor the displayed Candidate update default.** For shell installs, `wld update --rc` and
 `wld upgrade --rc` accept Enter at `[Y/n]` as Yes, and `y` or `yes` in any case. Any other answer, including
@@ -2333,10 +2449,13 @@ or incorrect notice while recovery preserves already published bytes.
 - Given a loose Windows executable, `wld update` gives Windows package guidance.
 - Given missing helpers in a package install, RunWield tells the user to repair the package.
 - Given a new Homebrew install, Ketch comes from Homebrew Core.
-- Given a newer Mnemoteca formula in the tap than the local preparation inputs, a RunWield release preserves that formula,
-  version, and dependency metadata while updating wld.
-- Given a tap update after package qualification, stale publication is rejected; a fresh-snapshot retry preserves the
-  independent update and qualifies it before publishing wld.
+- Given a tap with an independently updated Mnemoteca package and stale or absent local dependency inputs, a RunWield
+  release updates only wld and its owned metadata; Mnemoteca and unrelated content remain unchanged.
+- Given an installed Mnemoteca version that differs from the qualified manifest, the package check fails.
+- Given a tap update after qualification, publication rejects the stale attempt without overwriting remote content.
+  A retry qualifies a fresh snapshot and preserves the independent update.
+- Given a source fix for dependency ownership, public repair remains pending until the separate verified tap change
+  reaches its remote branch.
 - Given a release while Windows publication is paused, it publishes only Linux/macOS assets, runs no Windows jobs,
   and prepares no WinGet manifests. Existing Windows releases remain unchanged.
 - Given an available Candidate, Enter or Yes starts the update; No or Ctrl-D cancels it.
@@ -2352,7 +2471,8 @@ or incorrect notice while recovery preserves already published bytes.
 - Given Stable assets published and a failed tap publication, recovery reuses the verified assets and the tag.
 - Given a native Windows package check, the packaged Agent creates a Git branch and the Dashboard stream completes.
 
-**Requirement: Prepare RunWield automatically.** Supply the remote runtime and helpers privately. Released launchers
+**Requirement: Prepare RunWield automatically.** Supply the remote runtime and helpers privately. A matching local Linux
+artifact beside the launcher takes priority, including for release-tagged launchers. Otherwise, released launchers
 obtain their exact VERSION-tagged Linux archive. Development launchers use `bin/remote-build/wld-launcher` with adjacent matching GNU target files and
 `.build.json` files. Both supply pinned `cymbal` and `ketch` binaries and MIT notices privately; no system helper
 installation or remote personal installer is required. Mnemoteca runs on the laptop.
@@ -2387,6 +2507,7 @@ The tested platform/provider matrix is defined in [Remote connection](#remote-co
 - Given a missing or mismatched artifact, incompatible executable, or missing remote prerequisite, connection fails with
   the cause rather than compiling, using another version, or starting a Session. A later attempt can repair an
   interrupted private staging file without overwriting a package-managed install.
+- Given an unpublished release tag and a matching local bundle, connection uses that bundle without a release download.
 - Given a damaged private helper at runtime startup, startup stops with reconnect guidance. Reconnect repairs it
   without a system installation.
 
@@ -2430,6 +2551,12 @@ home. Relative paths and `~` refer to that account. Paths are data, not shell co
 canonical directory. Git is optional; a symlink or worktree resolves canonically. An invalid or inaccessible target
 fails clearly without creating it or silently using another directory. Project identity follows the
 [remote project locator](#project-context-and-initialization), separate from execution cwd.
+
+**Requirement: Use the connected terminal size.** The remote TUI uses the laptop terminal's full width and height at
+startup. Resizing the terminal updates the remote layout without reconnecting.
+
+**Acceptance scenario:** Given a 180-column, 54-row terminal, the remote TUI uses that size. When the terminal changes
+to 212 columns and 62 rows, the connected TUI updates to that size.
 
 **Connection prerequisites:** Follow [automatic private runtime preparation](#installation-and-updates), which owns
 exact version/build/protocol/checksum checks, prerequisites, caches, and staging repair. A release uses its exact
@@ -2504,6 +2631,9 @@ removal as completed cleanup.
   guidance applies. RunWield neither invents a repository nor validates on the laptop.
 - Given an active Agent, a long-running owned subprocess, and an Agent-started server, normal exit stops them and
   retains saved work. No background Agent or server remains active.
+- Given normal exit during a healthy personal-mount storage check, shutdown lets the bounded check settle before
+  unmounting and removes the private mount root without reporting cleanup uncertainty. A timed-out kernel request
+  still keeps the sealed root and reports cleanup uncertainty.
 - Given abrupt laptop or network loss, detected loss stops owned work without a final client message, including
   detached descendants and orphans of a force-killed TUI. Unrelated server processes remain running. Unconfirmed
   termination is reported honestly within the cleanup limits above.
@@ -2563,6 +2693,8 @@ Open product questions:
   the journal. The owning action resumes guarded migration.
 - Given adoption completed by another writer during entry, Core rechecks authority under the migration lock before
   refusing a conflict; valid current locks remain intact, and genuine authority conflicts still block entry.
+- Given adoption completes during passive inspection, Core rechecks changed marker evidence without writes or lock
+  probes; valid current locks remain intact, and unmatched authorities still produce a conflict.
 - Given adopted state with returning legacy files, passive reads keep current authority without recovery; selecting a
   Plan performs required recovery and preserves current decisions.
 - Given a symlink escape, newer marker, identity conflict, or unreadable registry, passive reads keep the specific
@@ -2751,6 +2883,14 @@ of the latest accepted user input: a message, steering, a queued follow-up, or a
 reconnecting an observer, rejected input, and automated continuation keep the current destination. Workspace-originated
 turns always send an Agent-stop event at settlement. Delivery follows the destination's permission and notification
 settings. ACP reports turn completion through its protocol, and only the destination surface alerts.
+
+**Requirement: Attempt native terminal notifications.** For enabled attention events, the TUI uses Kitty OSC 99,
+iTerm2 OSC 9, or titled OSC 777 for all other terminals, including Warp and unidentified terminals. Focus suppression
+and the optional terminal bell apply to each protocol. Terminal and OS notification permissions still apply. A
+successful write confirms only that RunWield sent the request, not that a desktop alert appeared.
+
+**Acceptance scenario:** Given a Warp or unidentified TUI terminal that is not known to have focus, an enabled
+Agent-stop event sends an OSC 777 notification with the Session name, plus a bell when enabled.
 
 #### Bounded model and tool loops
 

@@ -1,5 +1,5 @@
 export * from "./schema.ts";
-export * from "./markdown.js";
+export * from "./markdown.ts";
 export * from "./store.ts";
 export * from "./lifecycle.ts";
 export * from "./list.ts";
@@ -7,4 +7,4 @@ export * from "./supersession.ts";
 export * from "./generation.js";
 export * from "./auto-generation.ts";
 export * from "./index-adapter.ts";
-export * from "./search.js";
+export * from "./search.ts";

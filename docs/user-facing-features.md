@@ -236,7 +236,8 @@ Continue the same work in the terminal or browser, find what needs attention, an
 - Receive a notification when manual compaction finishes.
 - Automatically compact large mid-run tool results when configured.
 - Reload settings, instructions, prompts, skills, models, themes, and memories with `/reload`.
-- Copy the last assistant message to the clipboard with `/copy`.
+- Copy the last assistant message to the clipboard with `/copy`. On macOS, selecting TUI text also copies it through
+  the native clipboard, without requiring terminal OSC 52 access.
 - Exit with `/quit` or `/exit`.
 - Persist session history under `~/.wld/sessions/`.
 - Automatically name sessions and terminal titles from Router triage when no manual name exists.

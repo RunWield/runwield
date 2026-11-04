@@ -5,7 +5,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { openOwnerCoordinationStore } from "../owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
 import { type SessionManagerExtensions, HostedSession } from "./hosted-session.js";
 import { createRootSessionManager, openPersistedRootSession, resolveCreatedRootSessionPath } from "./root-session.js";
 import { rollSessionTranscriptSegment } from "./segment-rollover.ts";
@@ -15,7 +15,7 @@ import {
     readPersistedPendingSegmentContinuation,
     recordPendingSegmentContinuation,
     recordSegmentLineageEvidence,
-} from "./workflow-context-session.js";
+} from "./workflow-context-session.ts";
 import { readExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
 import type { ActiveExecutionWorkflow } from "../types.js";
 import { type TutorialContext, readPersistedTutorialContext } from "./tutorial-context-session.ts";

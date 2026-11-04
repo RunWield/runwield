@@ -1,11 +1,11 @@
-diffstat only, patch not produced. Full patch: git show -p <rev>
 ---
-
 planId: "159c72dd-aa8d-4909-9d99-084d907bf499"
 classification: "PLANNED_CHANGE"
 workKind: "DOCUMENTATION"
 complexity: "LOW"
-affectedPaths: - "brand/logo.svg" - "docs/user-documentation/customization.md"
+affectedPaths:
+    - "brand/logo.svg"
+    - "docs/user-documentation/customization.md"
 executionAgent: "engineer"
 collaborationRecommendation: "pair"
 createdAt: "2026-10-28"
@@ -16,10 +16,10 @@ targetBranch: "main"
 deliveryBranch: "main"
 validatedCommit: "1e1e148ddb2defbca4f93f23e71d5836f54f4873"
 workRecord:
-status: "generated"
-recordId: "b5931345-126c-4cea-8328-4e0b4985fe1f"
-path: "docs/work-records/2026-10-28-runwield-agent-skills-showcase-contribution.md"
-lastAttemptAt: "2026-10-28T17:40:56.802Z"
+    status: "generated"
+    recordId: "b5931345-126c-4cea-8328-4e0b4985fe1f"
+    path: "docs/work-records/2026-10-28-runwield-agent-skills-showcase-contribution.md"
+    lastAttemptAt: "2026-10-28T17:40:56.802Z"
 status: "verified"
 ---
 

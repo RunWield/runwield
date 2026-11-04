@@ -23,7 +23,7 @@ async function missingExecutionPlan() {
         branch: "worktree/broken",
         baseBranch: "main",
         baseRef: "HEAD",
-        baseCommit: "abc123",
+        baseCommit: await git(cwd, ["rev-parse", "HEAD"]),
         status: "active",
         createdAt: "2026-10-12T00:00:00.000Z",
         updatedAt: "2026-10-12T00:00:00.000Z",

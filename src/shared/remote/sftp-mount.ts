@@ -405,6 +405,7 @@ export async function mountLaptopHome(home: string, config: MountHeader): Promis
     const created: string[] = [];
     let uncertain = false;
     let probePending = false;
+    let storageCheck: Promise<void> | undefined;
     let monitorStopped = false;
     let monitorTimer: ReturnType<typeof setInterval> | undefined;
     let storageLost: (() => void) | undefined;
@@ -430,9 +431,9 @@ export async function mountLaptopHome(home: string, config: MountHeader): Promis
     const close = async () => {
         monitorStopped = true;
         if (monitorTimer !== undefined) clearInterval(monitorTimer);
-        // A timed-out or still-running kernel lookup cannot be cancelled by Promise.race.
-        // Keep the sealed mountpoint and report uncertainty even if mountinfo changes.
-        if (probePending) uncertain = true;
+        // Let the current bounded check settle before unmounting. A healthy lookup
+        // is not uncertainty; a timed-out kernel request still retains the sealed root.
+        await storageCheck;
         let failure: Error | undefined;
         // A failed ordinary unmount can leave a live FUSE mount after the connection exits.
         // Each command is bounded. Check the visible mount identity again before every attempt;
@@ -640,6 +641,7 @@ export async function mountLaptopHome(home: string, config: MountHeader): Promis
                     for (const { path, mountId } of active) {
                         if (monitorStopped) return;
                         const before = await mountAt(path);
+                        if (monitorStopped) return;
                         if (before?.id !== mountId || before?.type !== "fuse.sshfs") {
                             throw new Error(`SSHFS mount identity changed: ${path}`);
                         }
@@ -676,7 +678,7 @@ export async function mountLaptopHome(home: string, config: MountHeader): Promis
             }
         };
         monitorTimer = setInterval(() => {
-            void checkStorage();
+            if (!probePending) storageCheck = checkStorage();
         }, 5_000);
         return {
             globalRoot: join(privateDir, "global"),

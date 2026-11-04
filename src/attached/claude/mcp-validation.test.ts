@@ -9,6 +9,10 @@ import { getHomeDir } from "../../constants.js";
 import { Client } from "@modelcontextprotocol/sdk/client";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio";
 import { attachedValidationFixture } from "../../shared/attached/validation-test-fixture.ts";
+import { inspectSemantic } from "../../shared/attached/delivery-test-fixture.ts";
+import { getWorktreeReviewDiff } from "../../shared/workflow/git-snapshot.ts";
+import { parseDiffFiles, readReviewDiff } from "../../shared/workflow/review-diff.ts";
+import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "../../shared/attached/record-store.ts";
 import {
     CLI_PATH,
     DENO_CONFIG_PATH,
@@ -20,6 +24,127 @@ import {
 import { type AttachedJsonObject, type AttachedOperationResult } from "../../shared/attached/operations.ts";
 
 import process from "node:process";
+
+for (const host of [
+    { id: "claude-code", name: EVIDENCE.host, version: EVIDENCE.hostVersion },
+    { id: "codex", name: "codex-mcp-client", version: "0.164.0-alpha.11.1" },
+]) {
+    test(`${host.name} repair worker reads full diff through MCP without satisfying independent review coverage`, async () => {
+        const fixture = await attachedValidationFixture();
+        const transport = new StdioClientTransport({
+            command: process.execPath,
+            args: runtimeSourceArgs(["run", CLI_PATH, "attached", "mcp", ...(host.id === "codex" ? ["codex"] : [])]),
+            cwd: fixture.root,
+            env: Object.fromEntries(
+                Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+            ),
+            stderr: "pipe",
+        });
+        const worker = new Client(host);
+        try {
+            await fsWriteFile(join(fixture.cwd, "marker"), "pass");
+            const started = await fixture.call("start_validation", await fixture.status());
+            assert(started.ok);
+            const inspected = await inspectSemantic(fixture, started.workflow);
+            const rejected = await fixture.call("review_complete", inspected.workflow, {
+                actionId: inspected.actionId,
+                approved: false,
+                findings: [
+                    { title: "Wrong value", requirement: "Implement value", evidence: "value is 1", status: "new" },
+                ],
+            });
+            assert(rejected.ok && rejected.workflow.nextAction.kind === "validation");
+            const action = rejected.workflow.nextAction;
+            assert(action.request.kind === "repair");
+            assertStringIncludes(action.request.prompt, "review_diff");
+
+            // A separate host process restores the already-pending repair; no new request fields are required.
+            await worker.connect(transport);
+            const status = await worker.callTool({ name: "status", arguments: { workflowId: fixture.workflowId } });
+            assertStringIncludes(JSON.stringify(status.structuredContent), '"diffTool":"review_diff"');
+            const instructions = await worker.callTool({
+                name: "get_instructions",
+                arguments: { workflowId: fixture.workflowId, actionId: action.actionId },
+            });
+            const text = JSON.stringify(instructions.structuredContent);
+            assertStringIncludes(text, "get_instructions, get_artifact, and review_diff are allowed");
+            assertStringIncludes(text, "latest workflow revision");
+            assertEquals(text.includes("Only the reviewer may call"), false);
+
+            let workflow = await fixture.status();
+            const read = async (payload: AttachedJsonObject) => {
+                const response = await worker.callTool({
+                    name: "review_diff",
+                    arguments: {
+                        workflowId: workflow.workflowId,
+                        expectedRevision: workflow.revision,
+                        operationId: crypto.randomUUID(),
+                        payload: { actionId: action.actionId, ...payload },
+                    },
+                });
+                const result: AttachedOperationResult = JSON.parse(JSON.stringify(response.structuredContent));
+                assert(result.ok && result.diff, JSON.stringify(result));
+                assertEquals(result.workflow.revision, workflow.revision + 1);
+                assertEquals(result.diff.coverage, undefined);
+                workflow = result.workflow;
+                return result.diff;
+            };
+            const full = await getWorktreeReviewDiff(fixture.cwd, "main");
+            const listed = await read({ command: "list", scope: "full" });
+            assertEquals(listed, readReviewDiff({ full }, { command: "list", scope: "full" }));
+            let pages = 0;
+            for (const file of parseDiffFiles(full)) {
+                let offsetBytes = 0;
+                while (offsetBytes < file.byteLength) {
+                    const params = { command: "show", scope: "full", path: file.path, offsetBytes, maxBytes: 128 };
+                    const page = await read(params);
+                    const expected = readReviewDiff({ full }, params);
+                    delete expected.coverage;
+                    assertEquals(page, expected);
+                    assert(page.details.nextOffsetBytes! > offsetBytes);
+                    offsetBytes = page.details.nextOffsetBytes!;
+                    pages++;
+                }
+            }
+            assert(pages > parseDiffFiles(full).length, "The worker must exercise truncated diff pages.");
+            const saved = await loadAttachedWorkflowRecord(locateAttachedWorkflows(fixture.root), fixture.workflowId);
+            assert(saved.status === "found");
+            assertEquals(saved.record.validation?.coverage, []);
+
+            const wrongRole = await fixture.call("review_complete", workflow, {
+                actionId: action.actionId,
+                approved: true,
+            });
+            assert(!wrongRole.ok && wrongRole.rejection.code === "action_superseded");
+            await fsWriteFile(join(fixture.cwd, "implementation.ts"), "export const value = 2;\n");
+            const changed = await read({ command: "show", path: "implementation.ts" });
+            assertStringIncludes(changed.text, "+export const value = 2;");
+            const repaired = await fixture.call("task_completed", workflow, {
+                actionId: action.actionId,
+                message: "- Fixed the value finding and checked the implementation.",
+            });
+            assert(repaired.ok && repaired.workflow.nextAction.kind === "validation");
+            const next = repaired.workflow.nextAction;
+            assert(next.request.kind === "reviewer");
+            const stale = await fixture.call("review_diff", repaired.workflow, {
+                actionId: action.actionId,
+                command: "list",
+            });
+            assert(!stale.ok && stale.rejection.code === "action_superseded");
+            const unread = await fixture.call("review_complete", repaired.workflow, {
+                actionId: next.actionId,
+                approved: true,
+            });
+            assert(unread.ok && unread.workflow.nextAction.kind === "validation");
+            assert(unread.workflow.nextAction.request.kind === "reviewer");
+            assertEquals(unread.workflow.nextAction.request.identity.correctionCount, 1);
+        } finally {
+            await worker.close().catch(() => {});
+            await transport.close().catch(() => {});
+            await fixture.close();
+        }
+    });
+}
 
 test("MCP status is compact by default and workers fetch complete current instructions", async () => {
     const fixture = await attachedValidationFixture();
@@ -66,7 +191,6 @@ test("MCP status is compact by default and workers fetch complete current instru
         assertEquals(compactPlan.workflow.originHost, EVIDENCE.host);
         assertEquals(compactPlan.workflow.requestSummary, "Add a dark mode toggle");
         assertEquals(Object.keys(JSON.parse(JSON.stringify(planPoll.structuredContent))).sort(), [
-            "compatibility",
             "ok",
             "operation",
             "review",
@@ -131,7 +255,6 @@ test("MCP status is compact by default and workers fetch complete current instru
         assertEquals(compact.workflow.nextAction.kind, "validation");
         assertEquals(compact.workflow.nextAction.chatPending, false);
         assertEquals(Object.keys(JSON.parse(JSON.stringify(compactResponse.structuredContent))).sort(), [
-            "compatibility",
             "ok",
             "operation",
             "workflow",

@@ -14,8 +14,8 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { getRunWieldSessionDir } from "../session/root-session.js";
-import { openOwnerCoordinationDatabase } from "./database.js";
-import { registerProject, relinkProject } from "./projects.js";
+import { openOwnerCoordinationDatabase } from "./database.ts";
+import { registerProject, relinkProject } from "./projects.ts";
 import {
     catalogProjectSessions,
     ensureSessionCatalogRecord,

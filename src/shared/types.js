@@ -85,7 +85,7 @@
  * @property {boolean} busy
  * @property {string | null} activeTurnId
  * @property {import('./session/session-runtime-events.js').RuntimeQueuedMessage[]} queuedMessages
- * @property {import('./session/workflow-context-session.js').WorkflowContext | null} workflowContext
+ * @property {import('./session/workflow-context-session.ts').WorkflowContext | null} workflowContext
  * @property {import('./session/tutorial-context-session.ts').TutorialContext | null} tutorialContext
  * @property {import('./session/plan-association.ts').PlanAssociation[]} [planAssociations]
  * @property {import('./session/file-session-store-types.ts').SessionArtifactReference[]} artifacts

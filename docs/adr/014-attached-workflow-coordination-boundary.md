@@ -64,8 +64,13 @@ the project folder moves, the coordinator reports a recovery case and never matc
 
 Attached Workflow Records are not Project Runtime State under ADR-017. Like a Session, a record describes one host
 request, not Plan controller state. Keeping it in home means that activation and Triage write nothing to the repository:
-no `.wld/internal/` directory and no managed `.gitignore` block. The first repository write happens when an Attached
-Workflow submits a Plan. That step records the Plan reference on the Attached Workflow Record and previews the
+no `.wld/internal/` directory and no managed `.gitignore` block. Existing-Plan activation validates and binds an explicit
+Plan name and ID without preparing a workspace. Before Planner dispatch, `start_planning` uses the shared Core session
+planning preparation boundary; continuation can bind the same explicit selection to an older unbound workflow. It
+serializes with the Attached record, preserves the pending action, and reuses preparation on retry. The record marks
+the prepared action but does not own document paths: current-action reads resolve the authoritative cwd and Plan path
+through Core. Passive inspection never prepares isolation. For a new Plan, the first repository write happens when the
+workflow submits it; for an existing target-backed Plan, explicit planning preparation can write first. Submission previews the
 repository setup it needs. The record does not claim exclusive ownership of the Plan: a Plan written in an Attached
 Workflow is an ordinary Plan, and the user can later run it with `wld`. A later Plan Store change moves these records
 together with Sessions.

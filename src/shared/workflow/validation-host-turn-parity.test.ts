@@ -135,7 +135,7 @@ for (const scenario of cases) {
                     });
                 }
             }
-            assertEquals(result.kind, scenario.options?.planOnly ? "failed" : "host_request");
+            assertEquals(result.kind, scenario.options?.planOnly ? "failed" : "host_request", JSON.stringify(result));
             assertEquals(session.result.kind, scenario.options?.planOnly ? "failed" : "paused");
             assertEquals(await observable(host), await observable(core));
             if (scenario.options?.attrs?.parentPlan) {

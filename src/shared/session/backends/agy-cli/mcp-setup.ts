@@ -22,7 +22,7 @@ import {
     RuntimeInteractionOutcomes,
     RuntimeInteractionTypes,
     supportsHostedSessionInteraction,
-} from "../../session-runtime-interactions.js";
+} from "../../session-runtime-interactions.ts";
 
 const WLD_EXECUTABLE = process.platform === "win32" ? `${CLI_BIN}.exe` : CLI_BIN;
 

@@ -164,7 +164,7 @@ Forbidden edges are as important as the shown edges:
 ## Public Runtime boundary
 
 The public boundary lives in `src/shared/session/session-runtime.ts`, `src/shared/session/session-runtime-events.js`,
-and `src/shared/session/session-runtime-interactions.js`.
+and `src/shared/session/session-runtime-interactions.ts`.
 
 | Surface                 | Consumer-visible contract                                                                      |
 | ----------------------- | ---------------------------------------------------------------------------------------------- |
@@ -249,7 +249,7 @@ timestamp, and turn context before fanout. No core producer receives a consumer 
 | Agent tool                          | Pi tool start/update/end                                                     | same subscriber bridge                                                                                                                               | `tool_start`, `tool_update`, `tool_end` keyed by tool-call ID                                                                                  | TUI owns one tool block; ACP sends one protocol tool lifecycle                             |
 | Local `!` shell tool                | `runLocalShellCommand(id, options)`                                          | Runtime spawns, tracks cancellation, optionally records transcript                                                                                   | one `tool_start`/updates/`tool_end`; optional `user_message`                                                                                   | Same listeners as every other tool; TUI does not publish events                            |
 | Protected workflow tools            | Pi invokes RunWield tool                                                     | tool returns structured details and may emit semantic status/message                                                                                 | tool lifecycle plus structured message-stream result                                                                                           | Consumers render/map only the events                                                       |
-| Synthetic completion/review message | workflow calls helpers in `workflow-messages.js`                             | Core emits a complete assistant delta with metadata                                                                                                  | `assistant_text_delta`                                                                                                                         | TUI may style review result; ACP sends normal agent message                                |
+| Synthetic completion/review message | workflow calls helpers in `workflow-messages.ts`                             | Core emits a complete assistant delta with metadata                                                                                                  | `assistant_text_delta`                                                                                                                         | TUI may style review result; ACP sends normal agent message                                |
 | System status                       | Core calls `emitSystemStatus()`                                              | hosted event sink                                                                                                                                    | `system_status` with level and metadata                                                                                                        | TUI shows status; ACP sends a status message chunk                                         |
 | Runtime or model error              | subscriber or Runtime catch                                                  | error normalized inside Core                                                                                                                         | `terminal_error`; Runtime still closes turn with `turn_end` and `busy_changed(false)`                                                          | TUI shows error; ACP reports protocol message/update                                       |
 | Cancellation                        | `cancelSession(id)`                                                          | abort root, sub-agents, compaction, queued input, interactions, and local processes                                                                  | one `cancellation` event with semantic scope/message; affected tools/interactions also terminate                                               | Consumers render/map the event and clear local presentation state                          |
@@ -317,7 +317,7 @@ flowchart LR
 
 Core review logic lives in workflow modules and knows only the semantic request and response. Browser-aware plan/code
 review implementations live under `src/ui/review/`. The TUI maps interactions in
-`src/ui/tui/runtime-interaction-adapter.js`; ACP maps them in `src/acp/interaction-mapper.js`.
+`src/ui/tui/runtime-interaction-adapter.ts`; ACP maps them in `src/acp/interaction-mapper.js`.
 
 ## Root cause of the duplicated TUI blocks
 
@@ -339,7 +339,7 @@ flowchart LR
 
 The former `attachUiSubscribers()` implementation in `src/shared/session/session.js` subscribed directly to Pi and
 called presentation methods such as `appendThinkingStart()`, `appendAgentMessageStart()`, and `startToolExecution()`. At
-the same time it emitted semantic Runtime events. The TUI had also attached `runtime-adapter.js`, so that adapter
+the same time it emitted semantic Runtime events. The TUI had also attached `runtime-adapter.ts`, so that adapter
 rendered the same semantic update again.
 
 The former `session-runtime-ui.js` did not remove the second route. It translated legacy presentation calls back into
@@ -666,7 +666,7 @@ The six routing intents have distinct ceremony:
   legacy classification value that normalizes to `PLANNED_CHANGE`.
 - `PROJECT` creates an Epic container. It is decomposed into child PLANNED_CHANGE Plans and is never executed directly.
 
-`workflow-results.js` extracts structured outcomes. `decisions.ts` converts them into semantic actions such as
+`workflow-results.ts` extracts structured outcomes. `decisions.ts` converts them into semantic actions such as
 `execute_plan`, `start_slicer`, `run_validation`, `stay_with_agent`, or `halt`. Callers retain responsibility for state
 mutation, user interaction, recovery, and agent switching.
 
@@ -957,8 +957,8 @@ flowchart LR
 ### TUI adapter
 
 The TUI creates one `SessionRuntime`, retains opaque Runtime session IDs, and never constructs or receives a
-`SessionHost`, `HostedSession`, Pi `SessionManager`, or Pi `AgentSession`. `runtime-adapter.js` renders semantic events
-into terminal blocks, while `runtime-interaction-adapter.js` implements selection, text, approval, and browser review
+`SessionHost`, `HostedSession`, Pi `SessionManager`, or Pi `AgentSession`. `runtime-adapter.ts` renders semantic events
+into terminal blocks, while `runtime-interaction-adapter.ts` implements selection, text, approval, and browser review
 interactions.
 
 Natural-language turns and live-session slash commands call public `SessionRuntime` methods. Commands that operate on
@@ -1064,7 +1064,7 @@ Git behavior.
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | Hosted state and registry    | `hosted-session.test.js`, `session-host.test.ts`                                                                                      | Ownership, isolation, disposal, active turn and interaction state                               |
 | Runtime lifecycle            | `session-runtime.test.js`, `root-session.test.ts`, `active-agent-session.test.js`, `workflow-context-session.test.js`                 | Create/load/replay, prompt serialization, handoffs, close/cancel, persisted markers             |
-| Agent/Pi bridge              | `session-prompt.test.js`, `session-subscribers.test.js`, `agent-switching.test.js`, `session-catalog.test.js`                         | Root reuse/rebuild, event translation, prompt assembly, project-root catalog isolation          |
+| Agent/Pi bridge              | `session-prompt.test.js`, `session-subscribers.test.js`, `agent-switching.test.ts`, `session-catalog.test.js`                         | Root reuse/rebuild, event translation, prompt assembly, project-root catalog isolation          |
 | Agent workflow handler       | `agent-handler.test.js`, `orchestrator.test.js`, `decisions.test.js`, `workflow-results` coverage inside workflow tests               | Current-turn outcome extraction, routing, dispatch, completion gates, semantic decisions        |
 | Plan persistence and state   | `plan-store.test.js`, `plan-lifecycle.test.js`, `src/ui/review/plan-review.test.js`, `plan-written.test.js`                           | Front matter, hierarchy, identity, locks, transition matrix, readiness and submission outcomes  |
 | Execution and validation     | `workflow.test.js`, `validation.test.js`, `git-snapshot.test.ts`                                                                      | Worktree setup, completion gate, CI/review/repair/merge paths, lifecycle evidence               |
@@ -1090,13 +1090,13 @@ The highest-value cross-boundary paths for later confidence analysis are visible
 | Per-session state                         | `src/shared/session/hosted-session.js`                                        |
 | Session registry                          | `src/shared/session/session-host.ts`                                          |
 | Runtime event contract                    | `src/shared/session/session-runtime-events.js`                                |
-| Interaction contract                      | `src/shared/session/session-runtime-interactions.js`                          |
+| Interaction contract                      | `src/shared/session/session-runtime-interactions.ts`                          |
 | Pi session construction and prompt bridge | `src/shared/session/session.js`                                               |
 | Agent definition layering                 | `src/shared/session/agents.js`                                                |
-| Agent switching                           | `src/shared/session/agent-switching.js`                                       |
+| Agent switching                           | `src/shared/session/agent-switching.ts`                                       |
 | Workflow-aware turn handling              | `src/shared/session/agent-handler.js`                                         |
 | Routing orchestration                     | `src/shared/workflow/orchestrator.js`                                         |
-| Workflow decisions and outcome parsing    | `src/shared/workflow/decisions.ts`, `src/shared/workflow/workflow-results.js` |
+| Workflow decisions and outcome parsing    | `src/shared/workflow/decisions.ts`, `src/shared/workflow/workflow-results.ts` |
 | Plan execution facade                     | `src/shared/workflow/workflow.ts`                                             |
 | Validation and repair                     | `src/shared/workflow/validation.ts`                                           |
 | Plan lifecycle                            | `src/shared/workflow/plan-lifecycle.js`                                       |
@@ -1104,7 +1104,7 @@ The highest-value cross-boundary paths for later confidence analysis are visible
 | Worktree operations and registry          | `src/shared/worktree.js`, `src/shared/worktree-registry.js`                   |
 | Settings and models                       | `src/shared/settings.js`, `src/shared/models/`                                |
 | Tool policy                               | `src/tools/registry.ts`, agent front matter in `src/agent-definitions/`       |
-| TUI adapter                               | `src/ui/tui/chat-session.js`, `src/ui/tui/runtime-adapter.js`                 |
+| TUI adapter                               | `src/ui/tui/chat-session.js`, `src/ui/tui/runtime-adapter.ts`                 |
 | ACP adapter                               | `src/acp/server.js`, `src/acp/session-map.ts`, mapper modules in `src/acp/`   |
 | Workspace Plan adapter                    | `src/ui/workspace/server/plan-adapter.js`                                     |
 | Review consumer surface                   | `src/ui/review/review-launcher.js`, `src/review-workspace-server.ts`          |

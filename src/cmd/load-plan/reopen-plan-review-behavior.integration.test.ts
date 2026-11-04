@@ -10,8 +10,8 @@ import {
 } from "@earendil-works/pi-ai";
 import { ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.js";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
-import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
+import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
 import { applySharedPlanReviewDecision } from "../../shared/workflow/plan-review-actions.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import type { SequenceReviewDocument } from "../../shared/workflow/sequence-review.ts";

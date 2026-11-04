@@ -16,7 +16,7 @@ import { DocumentLinkHost } from "../review/document-link-host.ts";
 import { initTUI } from "./tui.ts";
 import { setTerminalTitleForName } from "./terminal-title.ts";
 import { SYSTEM_BROWSER_PORT } from "../../shared/browser-port.ts";
-import { attachTuiRuntimeAdapter } from "./runtime-adapter.js";
+import { attachTuiRuntimeAdapter } from "./runtime-adapter.ts";
 import { notifyRunWieldEventQuietly } from "./system-notifications.ts";
 import { createManagedSessionSyncController, SYSTEM_MANAGED_SESSION_TIMER } from "./managed-session-sync.ts";
 import { ensureCymbalBinary, ensureKetchBinary, ensureMnemotecaBinary } from "../../shared/runtime-preflight.ts";

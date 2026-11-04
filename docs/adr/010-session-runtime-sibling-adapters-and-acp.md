@@ -20,8 +20,11 @@ Introduce a `SessionRuntime` layer above `SessionHost`/`HostedSession` and below
 `src/shared/session/runtime/` divide events, queues, managed operations, lifecycle, turns, reads, settings, workflow,
 image, and local-shell behavior without exposing those implementations to consumers. `SessionRuntime` owns
 adapter-neutral session operations such as create, load, prompt, cancel, close/dispose, event emission, and interaction
-requests. The TUI and ACP stdio server are sibling adapters over `SessionRuntime`; future WebUI, Takopi, Slack/Discord,
-or other clients should be additional siblings rather than children of the TUI or ACP adapter.
+requests. The TUI and ACP stdio server are sibling adapters over `SessionRuntime`. Workspace's selected direction is an
+ACP client of a separate `wld` process, not another runtime inside its UI host. External clients such as IDEs or chat
+bridges also reach the runtime through ACP. These clients are never children of the TUI. The existing in-process
+Workspace adapter is a migration baseline; the [desktop Epic](../plans/local-workspace-desktop.md) tracks its removal,
+and [proposed ADR-0021](0021-electron-workspace-acp-client.md) details the client/process design.
 
 Session-scoped capabilities must attach to a specific `HostedSession`. Shared agent switching and pending root-swap
 application are session-layer behavior, not TUI behavior, so core workflow modules and tools should use a session-layer
@@ -58,8 +61,9 @@ transport-facing ACP session ids, so loading the same persisted conversation nev
 Adapters consume ordered semantic events and install a typed interaction adapter. They do not pass a rendering object to
 `createPromptReadySession()`, `loadSession()`, or `promptSession()`. During the remaining workflow migration,
 `SessionRuntime` owns a private compatibility presentation port that translates legacy engine output calls into the same
-event stream; this port is not an adapter extension API. New UIs should use `getSessionSnapshot()`, runtime events,
-runtime actions, and interaction requests only.
+event stream; this port is not an adapter extension API. Runtime adapters use `getSessionSnapshot()`, runtime events,
+runtime actions, and interaction requests only. Workspace clients consume their negotiated ACP representations,
+including workbench extensions, without importing the runtime implementation.
 
 ## Consequences
 

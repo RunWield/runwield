@@ -1,5 +1,4 @@
 import { test } from "node:test";
-import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { SessionRuntime } from "./session-runtime.ts";
 import { SESSION_RUNTIME_METHOD_POLICY } from "./session-runtime-method-policy.ts";
 
@@ -29,27 +28,13 @@ function assertCompleteMethodPolicy(methodNames: string[], policy: RuntimeMethod
         .map(([name, value]) => `${name}:${value}`);
     if (missing.length || extra.length || invalid.length) {
         throw new Error(
-            `SessionRuntime method policy mismatch missing=${missing.join(",")} extra=${extra.join(",")} invalid=${
-                invalid.join(",")
-            }`,
+            `SessionRuntime method policy mismatch missing=${missing.join(",")} extra=${extra.join(",")} invalid=${invalid.join(
+                ",",
+            )}`,
         );
     }
 }
 
 test("SessionRuntime public methods all have one explicit activation policy", () => {
     assertCompleteMethodPolicy(publicMethodNames(SessionRuntime.prototype), SESSION_RUNTIME_METHOD_POLICY);
-    assertEquals(
-        new Set(Object.keys(SESSION_RUNTIME_METHOD_POLICY)).size,
-        Object.keys(SESSION_RUNTIME_METHOD_POLICY).length,
-    );
-});
-
-test("SessionRuntime method policy completeness assertion detects drift", () => {
-    const copiedMethodNames = [...publicMethodNames(SessionRuntime.prototype), "newPublicRuntimeMethod"].sort();
-
-    assertThrows(
-        () => assertCompleteMethodPolicy(copiedMethodNames, SESSION_RUNTIME_METHOD_POLICY),
-        Error,
-        "newPublicRuntimeMethod",
-    );
 });

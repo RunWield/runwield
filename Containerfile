@@ -7,6 +7,7 @@ COPY .bun-version bunfig.toml package.json bun.lock runtime-root.js tsconfig*.js
 COPY scripts ./scripts
 COPY src ./src
 COPY third_party ./third_party
+COPY packaging/remote ./packaging/remote
 COPY brand/logo.svg ./brand/logo.svg
 
 RUN bun scripts/check-bun-runtime.ts && bun install --frozen-lockfile --ignore-scripts

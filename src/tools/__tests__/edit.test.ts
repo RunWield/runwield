@@ -12,8 +12,9 @@ import { match as assertMatch, doesNotMatch as assertNotMatch, fail } from "node
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import type { ExtensionToolContext, EditToolDetails } from "@earendil-works/pi-coding-agent";
-import type { TextContent, TSchema } from "@earendil-works/pi-ai";
-import { createSingleEditToolDefinition } from "../edit.js";
+import type { TextContent } from "@earendil-works/pi-ai";
+import type { TSchema } from "typebox";
+import { createSingleEditToolDefinition } from "../edit.ts";
 
 type EditTool = ReturnType<typeof createSingleEditToolDefinition>;
 

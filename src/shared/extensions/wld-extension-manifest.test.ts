@@ -9,7 +9,7 @@ import {
     findPackageRootForExtensionResource,
     getWldExtensionPaths,
     isWldCompatibleExtensionManifest,
-} from "./wld-extension-manifest.js";
+} from "./wld-extension-manifest.ts";
 
 test("isWldCompatibleExtensionManifest recognizes the WLD code-extension marker", () => {
     assertEquals(

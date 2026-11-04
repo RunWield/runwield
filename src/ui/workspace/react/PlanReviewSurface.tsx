@@ -384,14 +384,23 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                         : { codeFile: false, error: `File not found in project: ${filePath}` };
                 return `data:application/json;charset=utf-8,${encodeURIComponent(JSON.stringify(body))}`;
             }
-            const params = new URLSearchParams({ path: requestedPath, base: "docs/plans" });
+            const planDirectory = initialPayload.planPath
+                ? initialPayload.planPath.replaceAll("\\", "/").split("/").slice(0, -1).join("/") || "."
+                : "docs/plans";
+            const params = new URLSearchParams({ path: requestedPath, base: planDirectory });
             if (initialPayload.mode === "workspace" && initialPayload.projectId) {
                 return `/api/owner/projects/${encodeURIComponent(initialPayload.projectId)}/files/content?${params}`;
             }
             params.set("token", initialPayload.token);
             return `/api/file-content?${params}`;
         },
-        [initialPayload.linkedFiles, initialPayload.mode, initialPayload.projectId, initialPayload.token],
+        [
+            initialPayload.linkedFiles,
+            initialPayload.mode,
+            initialPayload.planPath,
+            initialPayload.projectId,
+            initialPayload.token,
+        ],
     );
     const codeFilePopout = useCodeFilePopout({ buildUrl: buildFileContentUrl });
     const trustedPolicy = readPlanReviewExecutionPolicy(initialPayload, parsed.frontmatter);

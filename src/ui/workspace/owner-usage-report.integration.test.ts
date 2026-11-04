@@ -15,7 +15,7 @@ import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { queryUsageReport } from "../../shared/workflow/usage-reporting.ts";
 import { getWorkflowMetricsFilePath } from "../../shared/workflow/metrics.js";
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";

@@ -1,3 +1,4 @@
+import { isBlockingCompatibility } from "./compatibility.ts";
 import type { AttachedCarrierResult } from "./coordinator.ts";
 import type { AttachedNextAction, AttachedWorkflowView } from "./operations.ts";
 
@@ -21,6 +22,14 @@ function compactAction(action: AttachedNextAction, workflow: AttachedWorkflowVie
             contractVersion: action.contractVersion,
             contextAvailable: true,
             instructionsAvailable: true,
+            ...(action.kind === "plan" && {
+                planningRequired: action.planningRequired,
+                projectSetup: action.projectSetup,
+                ...(action.planningCwd && { planningCwd: action.planningCwd }),
+                ...(action.planPath && { planPath: action.planPath }),
+                ...(action.planName && { planName: action.planName }),
+                ...(action.planId && { planId: action.planId }),
+            }),
         };
     }
     if (action.kind === "implementation") {
@@ -55,6 +64,16 @@ function compactAction(action: AttachedNextAction, workflow: AttachedWorkflowVie
         };
     }
     if (action.kind === "return_to_host") return { ...summary, reason: action.reason, message: action.message };
+    if (action.kind === "validation_running") {
+        return {
+            ...summary,
+            operationId: action.operationId,
+            operation: action.operation,
+            startedAt: action.startedAt,
+            progress: action.progress,
+            guidance: action.guidance,
+        };
+    }
     if (action.kind === "validation_recovery") {
         return { ...summary, guidance: action.guidance, resultKind: action.resultKind, recovery: action.recovery };
     }
@@ -86,6 +105,7 @@ function compactAction(action: AttachedNextAction, workflow: AttachedWorkflowVie
                 repairGeneration: request.repairGeneration,
                 artifacts: {
                     planPath,
+                    diffTool: "review_diff",
                     readTool: "get_artifact",
                     names: ["prompt", "execution_report", "repair_report"],
                 },
@@ -126,11 +146,16 @@ function compactWorkflow(workflow: AttachedWorkflowView) {
 }
 
 export function compactStatus(result: AttachedCarrierResult, review: { url: string } | null) {
-    if (!result.workflow) return result;
+    const { compatibility, ...quiet } = {
+        ...result,
+        compatibility: "compatibility" in result ? result.compatibility : undefined,
+    };
+    const projected = compatibility && isBlockingCompatibility(compatibility) ? { ...quiet, compatibility } : quiet;
+    if (!result.workflow) return projected;
     return {
         ok: result.ok,
         operation: "status" as const,
-        ...(result.ok && result.compatibility && { compatibility: result.compatibility }),
+        ...(compatibility && isBlockingCompatibility(compatibility) && { compatibility }),
         ...(!result.ok && { rejection: result.rejection }),
         workflow: compactWorkflow(result.workflow),
         ...(review && { review }),
@@ -138,9 +163,14 @@ export function compactStatus(result: AttachedCarrierResult, review: { url: stri
 }
 
 export function compactResult(result: AttachedCarrierResult) {
-    if (!result.workflow) return result;
-    return {
+    const { compatibility, ...quiet } = {
         ...result,
+        compatibility: "compatibility" in result ? result.compatibility : undefined,
+    };
+    const projected = compatibility && isBlockingCompatibility(compatibility) ? { ...quiet, compatibility } : quiet;
+    if (!result.workflow) return projected;
+    return {
+        ...projected,
         workflow: compactWorkflow(result.workflow),
         ...((result.workflow.nextAction.kind === "validation" || result.workflow.nextAction.kind === "recorder") && {
             instructions: undefined,

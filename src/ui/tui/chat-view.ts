@@ -25,13 +25,13 @@ import {
     initRunWieldTheme,
     onThemeChange,
     theme,
-} from "../theme/theme.js";
+} from "../theme/theme.ts";
 import { VERSION } from "../../shared/version.js";
 import {
     getCachedUpdateAvailabilitySync,
     refreshUpdateCheckCache,
     SYSTEM_UPDATE_CHECK_PORTS,
-} from "../../shared/update-check.js";
+} from "../../shared/update-check.ts";
 import { endBlink, renderBootLogo } from "./boot-logo.ts";
 import { createUiApi } from "./api.js";
 import { SpinnerBlock, ToolExecutionBlock, ToolExecutionGroupBlock } from "./blocks.js";

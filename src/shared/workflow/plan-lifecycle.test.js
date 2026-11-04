@@ -607,6 +607,7 @@ test("recordPlanEvent verifies parent Epic when the final child feature is verif
     const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "epic", "# Epic", {
+            planId: "fixture-epic",
             classification: "PROJECT",
             complexity: "HIGH",
             summary: "Epic",
@@ -614,6 +615,7 @@ test("recordPlanEvent verifies parent Epic when the final child feature is verif
             status: "ready_for_work",
         });
         await savePlan(cwd, "epic/01-first", "# First", {
+            planId: "fixture-epic/01-first",
             classification: "FEATURE",
             complexity: "MEDIUM",
             summary: "First",
@@ -624,6 +626,7 @@ test("recordPlanEvent verifies parent Epic when the final child feature is verif
             order: 1,
         });
         await savePlan(cwd, "epic/02-last", "# Last", {
+            planId: "fixture-epic/02-last",
             classification: "FEATURE",
             complexity: "MEDIUM",
             summary: "Last",
@@ -661,6 +664,7 @@ test("recordPlanEvent keeps parent Epic open while child features remain unverif
     const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "epic", "# Epic", {
+            planId: "fixture-epic",
             classification: "PROJECT",
             complexity: "HIGH",
             summary: "Epic",
@@ -668,6 +672,7 @@ test("recordPlanEvent keeps parent Epic open while child features remain unverif
             status: "ready_for_work",
         });
         await savePlan(cwd, "epic/01-first", "# First", {
+            planId: "fixture-epic/01-first",
             classification: "FEATURE",
             complexity: "MEDIUM",
             summary: "First",
@@ -677,6 +682,7 @@ test("recordPlanEvent keeps parent Epic open while child features remain unverif
             order: 1,
         });
         await savePlan(cwd, "epic/02-last", "# Last", {
+            planId: "fixture-epic/02-last",
             classification: "FEATURE",
             complexity: "MEDIUM",
             summary: "Last",
@@ -763,6 +769,7 @@ test("stageValidationPassedInExecutionWorktree validates only the execution Plan
             ),
         );
         await savePlan(executionCwd, "feature", "# Execution Feature", {
+            planId: "fixture-feature",
             status: "reviewed",
             implementedAt: "2026-01-01T00:00:00.000Z",
             customFlag: true,
@@ -811,8 +818,13 @@ test("stageValidationPassedInExecutionWorktree keeps reviewed evidence immutable
     const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
     const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
-        await savePlan(projectRoot, "feature", "# Feature", { status: "implemented", classification: "FEATURE" });
+        await savePlan(projectRoot, "feature", "# Feature", {
+            planId: "fixture-feature",
+            status: "implemented",
+            classification: "FEATURE",
+        });
         await savePlan(executionCwd, "feature", "# Feature", {
+            planId: "fixture-feature",
             status: "reviewed",
             validatedAt: "2026-01-03T00:00:00.000Z",
             classification: "FEATURE",
@@ -852,12 +864,14 @@ test("stageValidationPassedInExecutionWorktree preserves execution Plan human re
     const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(projectRoot, "feature", "# Feature", {
+            planId: "fixture-feature",
             status: "implemented",
             humanReviewMode: "always",
             humanReviewDecision: "approved",
             humanReviewedAt: "2026-01-02T00:00:00.000Z",
         });
         await savePlan(executionCwd, "feature", "# Execution Feature", {
+            planId: "fixture-feature",
             status: "reviewed",
             humanReviewMode: "always",
             humanReviewDecision: "approved",
@@ -877,12 +891,14 @@ test("stageValidationPassedInExecutionWorktree preserves execution Plan human re
         assertEquals(result.attrs.humanReviewedAt, "2026-01-02T00:00:00.000Z");
 
         await savePlan(projectRoot, "staged-retry", "# Staged Retry", {
+            planId: "fixture-staged-retry",
             status: "implemented",
             humanReviewMode: "always",
             humanReviewDecision: "approved",
             humanReviewedAt: "2026-01-02T00:00:00.000Z",
         });
         await savePlan(executionCwd, "staged-retry", "# Staged Retry", {
+            planId: "fixture-staged-retry",
             status: "reviewed",
             executionMode: "worktree",
             deliveryEvidence: TEST_DELIVERY_DETAILS.deliveryEvidence,
@@ -912,29 +928,34 @@ test("stageValidationPassedInExecutionWorktree advances the execution-worktree p
     const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         const epicAttrs = /** @type {any} */ ({
+            planId: "fixture-epic",
             status: "ready_for_work",
             classification: "PROJECT",
         });
         await savePlan(projectRoot, "epic", "# Epic", epicAttrs);
         await savePlan(projectRoot, "child-a", "# Child A", {
+            planId: "fixture-child-a",
             status: "verified",
             classification: "FEATURE",
             ...TEST_DELIVERY_DETAILS,
             parentPlan: "epic",
         });
         await savePlan(projectRoot, "child-b", "# Child B", {
+            planId: "fixture-child-b",
             status: "implemented",
             classification: "FEATURE",
             parentPlan: "epic",
         });
         await savePlan(executionCwd, "epic", "# Stale Epic", epicAttrs);
         await savePlan(executionCwd, "child-a", "# Stale Child A", {
+            planId: "fixture-child-a",
             status: "verified",
             classification: "FEATURE",
             parentPlan: "epic",
             ...TEST_DELIVERY_DETAILS,
         });
         await savePlan(executionCwd, "child-b", "# Stale Child B", {
+            planId: "fixture-child-b",
             status: "reviewed",
             classification: "FEATURE",
             parentPlan: "epic",
@@ -973,16 +994,19 @@ test("stageValidationPassedInExecutionWorktree idempotent retry does not reread 
     const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         const epicAttrs = /** @type {any} */ ({
+            planId: "fixture-epic",
             status: "ready_for_work",
             classification: "PROJECT",
         });
         await savePlan(projectRoot, "epic", "# Epic", epicAttrs);
         await savePlan(projectRoot, "child-a", "# Child A", {
+            planId: "fixture-child-a",
             status: "implemented",
             classification: "FEATURE",
             parentPlan: "epic",
         });
         await savePlan(projectRoot, "child-b", "# Child B", {
+            planId: "fixture-child-b",
             status: "in_progress",
             classification: "FEATURE",
             parentPlan: "epic",
@@ -990,6 +1014,7 @@ test("stageValidationPassedInExecutionWorktree idempotent retry does not reread 
         await savePlan(executionCwd, "epic", "# Epic", epicAttrs);
         for (const name of ["child-a", "child-b"]) {
             await savePlan(executionCwd, name, `# ${name}`, {
+                planId: `fixture-${name}`,
                 status: name === "child-a" ? "reviewed" : "in_progress",
                 classification: "FEATURE",
                 parentPlan: "epic",
@@ -1031,16 +1056,19 @@ test("stageValidationPassedInExecutionWorktree ignores a sibling reopened only i
     const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         const epicAttrs = /** @type {any} */ ({
+            planId: "fixture-epic",
             status: "ready_for_work",
             classification: "PROJECT",
         });
         await savePlan(projectRoot, "epic", "# Epic", epicAttrs);
         await savePlan(projectRoot, "child-a", "# Child A", {
+            planId: "fixture-child-a",
             status: "implemented",
             classification: "FEATURE",
             parentPlan: "epic",
         });
         await savePlan(projectRoot, "child-b", "# Child B", {
+            planId: "fixture-child-b",
             status: "verified",
             classification: "FEATURE",
             ...TEST_DELIVERY_DETAILS,
@@ -1049,6 +1077,7 @@ test("stageValidationPassedInExecutionWorktree ignores a sibling reopened only i
         await savePlan(executionCwd, "epic", "# Epic", epicAttrs);
         for (const name of ["child-a", "child-b"]) {
             await savePlan(executionCwd, name, `# ${name}`, {
+                planId: `fixture-${name}`,
                 status: name === "child-a" ? "reviewed" : "verified",
                 classification: "FEATURE",
                 parentPlan: "epic",
@@ -1090,16 +1119,19 @@ test("stageValidationPassedInExecutionWorktree does not import a newer primary p
     const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         const epicAttrs = /** @type {any} */ ({
+            planId: "fixture-epic",
             status: "ready_for_work",
             classification: "PROJECT",
         });
         await savePlan(projectRoot, "epic", "# Epic", epicAttrs);
         await savePlan(projectRoot, "child-a", "# Child A", {
+            planId: "fixture-child-a",
             status: "implemented",
             classification: "FEATURE",
             parentPlan: "epic",
         });
         await savePlan(projectRoot, "child-b", "# Child B", {
+            planId: "fixture-child-b",
             status: "verified",
             classification: "FEATURE",
             ...TEST_DELIVERY_DETAILS,
@@ -1107,12 +1139,14 @@ test("stageValidationPassedInExecutionWorktree does not import a newer primary p
         });
         await savePlan(executionCwd, "epic", "# Epic", epicAttrs);
         await savePlan(executionCwd, "child-a", "# Child A", {
+            planId: "fixture-child-a",
             status: "reviewed",
             classification: "FEATURE",
             parentPlan: "epic",
             ...TEST_DELIVERY_DETAILS,
         });
         await savePlan(executionCwd, "child-b", "# Child B", {
+            planId: "fixture-child-b",
             status: "verified",
             classification: "FEATURE",
             parentPlan: "epic",
@@ -1155,8 +1189,11 @@ test("stageValidationPassedInExecutionWorktree rejects a Plan outside Workflow V
         // guard rejects statuses outside validation rather than one exact status. It
         // used to demand `implemented`, which refused every publication once the Plan
         // reached `reviewed` before merge.
-        await savePlan(projectRoot, "feature", "# Feature", { status: "in_progress" });
-        await savePlan(executionCwd, "feature", "# Execution Feature", { status: "in_progress" });
+        await savePlan(projectRoot, "feature", "# Feature", { planId: "fixture-feature", status: "in_progress" });
+        await savePlan(executionCwd, "feature", "# Execution Feature", {
+            planId: "fixture-feature",
+            status: "in_progress",
+        });
         await assertRejects(
             () => stageValidationPassedInExecutionWorktree({ projectRoot, executionCwd, planName: "feature" }),
             Error,
@@ -1173,6 +1210,7 @@ test("recordPlanEvent enforces FEATURE Delivery Evidence without supplied triage
     const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(projectRoot, "feature", "# Feature", {
+            planId: "fixture-feature",
             status: "reviewed",
             classification: "FEATURE",
         });
@@ -1215,7 +1253,7 @@ test("recordPlanEvent rejects invalid transitions before writing", async () => {
 test("recordPlanEvent explains stale Plan status with a validation action", async () => {
     const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
-        await savePlan(projectRoot, "feature", "# Feature", { status: "implemented" });
+        await savePlan(projectRoot, "feature", "# Feature", { planId: "fixture-feature", status: "implemented" });
 
         const error = await assertRejects(
             () =>
@@ -1266,12 +1304,16 @@ testWithFsPermissions("recordPlanEvent blocks shared Plan lifecycle writes witho
     const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         const lockedPath = await savePlan(cwd, "locked", "# Locked", {
+            planId: "fixture-locked",
             status: "approved",
             collaborationState: COLLABORATION_STATE_REMOTE_CANONICAL,
             collaborationServerUrl: "https://plans.example.test",
             collaborationSpaceId: "space-1",
         });
-        const siblingPath = await savePlan(cwd, "sibling", "# Sibling", { status: "approved" });
+        const siblingPath = await savePlan(cwd, "sibling", "# Sibling", {
+            planId: "fixture-sibling",
+            status: "approved",
+        });
         const lockedBefore = await fsReadFile(lockedPath, "utf8");
         const siblingBefore = await fsReadFile(siblingPath, "utf8");
 
@@ -1327,6 +1369,7 @@ test("passing CI retains durable semantic review state across a fresh Plan load"
     };
     try {
         await savePlan(root, "review", "# Review", {
+            planId: "fixture-review",
             status: "implemented",
             validationSemanticRounds: 2,
             validationCheckpoint: checkpoint,

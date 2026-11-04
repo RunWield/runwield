@@ -10,9 +10,9 @@ import {
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { join } from "node:path";
 import { AGENTS } from "../constants.js";
-import { WORKFLOW_CONTEXT_CUSTOM_TYPE, type WorkflowContext } from "../shared/session/workflow-context-session.js";
-import { ACTIVE_AGENT_CUSTOM_TYPE } from "../shared/session/active-agent-session.js";
-import { openOwnerCoordinationStore } from "../shared/owner-coordination/index.js";
+import { WORKFLOW_CONTEXT_CUSTOM_TYPE, type WorkflowContext } from "../shared/session/workflow-context-session.ts";
+import { ACTIVE_AGENT_CUSTOM_TYPE } from "../shared/session/active-agent-session.ts";
+import { openOwnerCoordinationStore } from "../shared/owner-coordination/index.ts";
 import { encodeCwdForSessionDir } from "../shared/project-directory-key.ts";
 import { createSessionRuntime } from "../shared/session/session-runtime.ts";
 

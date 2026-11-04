@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { strictEqual as assertStrictEquals } from "node:assert/strict";
 import { HostedSession } from "./hosted-session.js";
-import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "./session-runtime-interactions.js";
+import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "./session-runtime-interactions.ts";
 import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "./session-runtime-events.js";
 
 test("Plan review captures only the selected Architect and keeps the same conversation through dehydration", async () => {
@@ -52,7 +52,7 @@ test("Plan review keeps the planning reply after final feedback and grouped Sequ
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     const session = new HostedSession({ id: crypto.randomUUID(), cwd });
     try {
-        const answers: Array<import("./session-runtime-interactions.js").RuntimeInteractionResponse> = [
+        const answers: Array<import("./session-runtime-interactions.ts").RuntimeInteractionResponse> = [
             { outcome: "selected", _meta: { approved: false, feedback: "Revise the Epic." } },
             { outcome: "accepted", _meta: { approved: false, sequenceDecision: {}, feedback: "Revise the group." } },
             { outcome: "accepted", _meta: { sequenceDecision: {}, conversationTurn: true } },

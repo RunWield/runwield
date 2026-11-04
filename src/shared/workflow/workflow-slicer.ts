@@ -7,7 +7,7 @@ import { readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "no
 
 import { dirname } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { AGENTS, isPlannedChangeClassification, SUBAGENTS } from "../../constants.js";
 import {
@@ -20,7 +20,7 @@ import {
     writePlanMarkdownWithRevision,
 } from "../../plan-store.js";
 import { emitSystemStatus } from "../session/session-runtime-events.js";
-import { runActiveAgentTurn, switchActiveAgent } from "../session/agent-switching.js";
+import { runActiveAgentTurn, switchActiveAgent } from "../session/agent-switching.ts";
 import { SUBAGENT_DEFINITIONS } from "../session/subagent-definitions.ts";
 import { buildSlicerRequest } from "./workflow-prompts.ts";
 import { recordPlanEvent } from "./plan-lifecycle.js";
@@ -225,6 +225,7 @@ export function createSlicerFinalizeTool({ planName, cwd }) {
     if (!cwd) throw new Error("createSlicerFinalizeTool: cwd is required");
     return defineTool({
         name: "slicer_finalize_decomposition",
+        exposure: "model-only",
         label: "Finalize Epic Decomposition",
         description:
             "Materialize child planned change draft plans and finalize the current Epic decomposition after explicit user confirmation.",

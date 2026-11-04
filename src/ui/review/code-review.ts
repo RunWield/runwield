@@ -12,7 +12,7 @@ import {
 } from "./review-launcher.ts";
 import { isAbsolute, resolve } from "node:path";
 import { mimeTypeForImagePath } from "../../shared/session/image-attachments.ts";
-import type { GuidedReviewPolicy } from "../../shared/workflow/guided-review.js";
+import type { GuidedReviewPolicy } from "../../shared/workflow/guided-review.ts";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 
 const MAX_CODE_REVIEW_IMAGE_BYTES = 20 * 1024 * 1024;

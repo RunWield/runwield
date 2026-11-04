@@ -12,6 +12,7 @@ sharedPractice:
     - show-the-work
     - work-record-retrieval
 tools:
+    - codemode
     - read
     - grep
     - find

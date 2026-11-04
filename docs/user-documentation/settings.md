@@ -877,12 +877,18 @@ Defaults:
 
 The TUI uses your terminal's own notifications where it supports them:
 
-| Terminal                               | Notification                              |
-| -------------------------------------- | ----------------------------------------- |
-| Kitty                                  | Native notification (OSC 99)              |
-| WezTerm, Ghostty                       | Native notification (OSC 777)             |
-| iTerm2                                 | Native notification (OSC 9)               |
-| Terminal.app, VS Code, other terminals | Bell only, when `terminalBell` is enabled |
+| Terminal                        | Notification                              |
+| ------------------------------- | ----------------------------------------- |
+| Kitty                           | Native notification (OSC 99)              |
+| WezTerm, Ghostty, Warp          | Native notification (OSC 777)             |
+| iTerm2                          | Native notification (OSC 9)               |
+| Other or unidentified terminals | Try OSC 777; bell if `terminalBell` is on |
+
+Warp needs notifications enabled in both Warp and the operating system. Use a current Warp release and switch to
+another app to check delivery. See [Warp notification settings](https://docs.warp.dev/terminal/more-features/notifications).
+
+RunWield tries OSC 777 even when it cannot identify the terminal. A terminal can ignore the request or block it through
+notification settings. Sending the request does not confirm that a desktop alert appeared.
 
 Inside tmux, screen, or zellij, native notifications need passthrough enabled in the multiplexer. Without it, you get
 the bell only.
@@ -1183,3 +1189,22 @@ RunWield and Pi migrate a few older key shapes while loading settings:
 - `websockets: true` becomes `transport: "websocket"`; `websockets: false` becomes `transport: "sse"`.
 - Old object-shaped `skills` settings become `enableSkillCommands` and/or a `skills` path array.
 - `retry.maxDelayMs` becomes `retry.provider.maxRetryDelayMs` when the provider field is not already set.
+
+## codemode
+
+Pi-backed Agents read `codemode` through the usual RunWield settings files; project fields override global fields.
+There is no separate codemode `.pi` configuration. Availability is controlled by the Agent's tool list, as described
+under [customization](customization.md#codemode).
+
+```jsonc
+{
+    "codemode": {
+        "mode": "on",
+        "inlineBudget": 3000,
+    },
+}
+```
+
+`mode: "on"` keeps ordinary tool declarations alongside codemode. `"only"` presents callable tools through codemode,
+while workflow decisions remain directly declared. `inlineBudget` is the nonnegative estimated-token budget for inline
+tool declarations; `0` relies on script discovery. Neither setting expands tool authority.

@@ -181,6 +181,7 @@ export async function main(args = process.argv.slice(2)) {
     await run("brew", ["test", "gandazgul/tap/wld"], tap);
     await assertInstalledMnemotecaVersion(tap, manifest.mnemotecaTag);
     await run("brew", ["upgrade", "gandazgul/tap/mnemoteca", "gandazgul/tap/wld"], tap);
+    await assertInstalledMnemotecaVersion(tap, manifest.mnemotecaTag);
     const upgradedExecutable = await assertInstalledRunWieldPackage(tap, manifest.wldTag);
     if ((await fileSha256(upgradedExecutable)) !== installedHash) {
         throw new Error("brew upgrade changed the installed package bytes.");
@@ -195,6 +196,7 @@ export async function main(args = process.argv.slice(2)) {
     if (!removed) throw new Error("brew uninstall left the verified wld executable installed.");
     await run("brew", ["uninstall", "gandazgul/tap/mnemoteca"], tap);
     await run("brew", ["install", "gandazgul/tap/wld"], tap);
+    await assertInstalledMnemotecaVersion(tap, manifest.mnemotecaTag);
     const reinstalledExecutable = await assertInstalledRunWieldPackage(tap, manifest.wldTag);
     if ((await fileSha256(reinstalledExecutable)) !== installedHash) {
         throw new Error("brew reinstall did not restore the same package bytes.");

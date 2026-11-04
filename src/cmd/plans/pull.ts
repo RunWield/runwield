@@ -14,7 +14,7 @@ import {
     updatePlanCollaborationMetadata,
 } from "../../plan-store.js";
 import { MAINTAINER_SCOPE, redactSecrets } from "../../shared/collaboration/capabilities.ts";
-import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../../shared/collaboration/client.js";
+import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../../shared/collaboration/client.ts";
 import { decryptJsonPayload, importContentKey } from "../../shared/collaboration/crypto.ts";
 import { COLLABORATION_LOCK_BYPASS, COLLABORATION_STATE_REMOTE_CANONICAL } from "../../shared/collaboration/lock.ts";
 import {
@@ -32,7 +32,7 @@ import {
     putCompatibleSecretRecord,
     resolvePullSecretRecord,
     secretRecordKey,
-} from "../../shared/collaboration/secrets.js";
+} from "../../shared/collaboration/secrets.ts";
 import { parseCollaborationUrl, redactCollaborationUrl } from "../../shared/collaboration/urls.ts";
 import { normalizePlanServerUrl } from "../../shared/collaboration/urls.ts";
 import { SessionRuntime } from "../../shared/session/session-runtime.ts";

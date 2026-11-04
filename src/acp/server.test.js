@@ -29,8 +29,8 @@ import { __resetSettingsForTests, setCustomSetting } from "../shared/settings.js
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../shared/workflow/metrics.js";
 import { createRootSessionManager, resolveCreatedRootSessionPath } from "../shared/session/root-session.js";
 import { VERSION } from "../shared/version.js";
-import { mapRuntimeEventToAcpUpdate } from "./event-mapper.js";
-import { createAcpInteractionAdapter } from "./interaction-mapper.js";
+import { mapRuntimeEventToAcpUpdate } from "./event-mapper.ts";
+/** @typedef {import("@agentclientprotocol/sdk").ContentChunk} AcpContentChunk */
 import { assertAcpFrameSchema, assertAcpSchema } from "./schema-conformance.ts";
 import { AcpSessionMap } from "./session-map.ts";
 import {
@@ -2371,7 +2371,7 @@ test("ACP streams exact current context usage from a real Runtime turn", async (
         let latestInputTokens = 0;
         fixture.setModelResponseFactory((context) => {
             latestInputTokens = estimateFauxPromptTokens(context);
-            const outputTokens = 52_000 - latestInputTokens * 2;
+            const outputTokens = 52_000 - latestInputTokens;
             assert(outputTokens > 0, "fixture prompt must leave room for a 52k exact context total");
             return fauxAssistantMessage(fauxText("x".repeat(outputTokens * 4)));
         });
@@ -2639,10 +2639,10 @@ test("ACP agent notices suppress activation and same-Agent rebuilds", () => {
     };
     assertEquals(mapRuntimeEventToAcpUpdate(event), null);
     assertEquals(mapRuntimeEventToAcpUpdate({ ...event, rootHandoff: false }), null);
-    assertEquals(mapRuntimeEventToAcpUpdate({ ...event, rootHandoff: true })?.content, {
-        type: "text",
-        text: "Active agent: guide",
-    });
+    assertEquals(
+        /** @type {AcpContentChunk | null} */ (mapRuntimeEventToAcpUpdate({ ...event, rootHandoff: true }))?.content,
+        { type: "text", text: "Active agent: guide" },
+    );
 });
 
 test("ACP event mapper forwards canonical Runtime tool metadata", () => {
@@ -2710,122 +2710,6 @@ test("ACP production modules do not import TUI adapter code", async () => {
         if (/import\(["'][^"']*(?:\/ui\/|shared\/interactive)/.test(source)) violations.push(path);
     }
     assertEquals(violations, []);
-});
-
-test("ACP interaction adapter does not expose the obsolete Pair form", async () => {
-    /** @type {unknown[]} */
-    const requests = [];
-    const adapter = createAcpInteractionAdapter({
-        acpSessionId: "acp-1",
-        clientCapabilities: { elicitation: { form: {} } },
-        context: {
-            request: (/** @type {unknown} */ request) => {
-                requests.push(request);
-                return Promise.resolve({ action: "accept", content: { answer: "continue" } });
-            },
-        },
-    });
-    assertEquals(adapter.supportsInteraction?.("pair_checkpoint"), false);
-    assertEquals(
-        await adapter.requestInteraction({
-            id: "interaction-pair",
-            type: "pair_checkpoint",
-            prompt: "Review the increment",
-        }),
-        {
-            outcome: "unsupported",
-            message: "Pair checkpoints use ordinary ACP prompts, not structured interactions.",
-        },
-    );
-    assertEquals(requests, []);
-});
-
-test("ACP interaction adapter maps valid selections and rejects invalid ones", async () => {
-    const accepted = createAcpInteractionAdapter({
-        acpSessionId: "acp-1",
-        clientCapabilities: { elicitation: { form: {} } },
-        context: { request: () => Promise.resolve({ action: "accept", content: { answer: "yes" } }) },
-    });
-    assertEquals(
-        await accepted.requestInteraction({
-            id: "interaction-1",
-            type: "select",
-            prompt: "Proceed?",
-            options: [
-                { value: "yes", label: "Yes" },
-                { value: "no", label: "No" },
-            ],
-        }),
-        { outcome: "selected", value: "yes", valueLabel: "Yes" },
-    );
-
-    const invalid = createAcpInteractionAdapter({
-        acpSessionId: "acp-1",
-        clientCapabilities: { elicitation: { form: {} } },
-        context: { request: () => Promise.resolve({ action: "accept", content: { answer: "invalid" } }) },
-    });
-    const response = await invalid.requestInteraction({
-        id: "interaction-2",
-        type: "select",
-        prompt: "Proceed?",
-        options: [{ value: "yes", label: "Yes" }],
-    });
-    assertEquals(response.outcome, "unsupported");
-    assertEquals(response.message, "ACP elicitation returned invalid option: invalid");
-});
-
-test("ACP interaction adapter distinguishes approval acceptance from decline", async () => {
-    const makeAdapter = (/** @type {string} */ answer) =>
-        createAcpInteractionAdapter({
-            acpSessionId: "acp-1",
-            clientCapabilities: { elicitation: { form: {} } },
-            context: { request: () => Promise.resolve({ action: "accept", content: { answer } }) },
-        });
-    const request = {
-        id: "interaction-1",
-        type: /** @type {'approval'} */ ("approval"),
-        prompt: "Approve?",
-        options: [
-            { value: "approve", label: "Approve" },
-            { value: "deny", label: "Deny" },
-        ],
-    };
-    assertEquals(await makeAdapter("approve").requestInteraction(request), {
-        outcome: "accepted",
-        value: true,
-    });
-    assertEquals(await makeAdapter("deny").requestInteraction(request), {
-        outcome: "canceled",
-        value: false,
-        valueLabel: "Deny",
-        message: "Approval was not accepted.",
-    });
-});
-
-test("ACP interaction adapter presents a chat selection without form capabilities", async () => {
-    const adapter = createAcpInteractionAdapter({
-        acpSessionId: "acp-1",
-        clientCapabilities: {},
-        context: {
-            notify: () => {
-                throw new Error("No browser question should open");
-            },
-        },
-        presentChatQuestion: (interaction) =>
-            Promise.resolve({
-                outcome: "selected",
-                value: interaction.options?.[0].value,
-                valueLabel: interaction.options?.[0].label,
-            }),
-    });
-    assertEquals(
-        await adapter.requestInteraction({
-            type: "select",
-            prompt: "Choose Agent",
-            options: [{ value: "guide", label: "Guide" }],
-        }),
-        { outcome: "selected", value: "guide", valueLabel: "Guide" },
-    );
 });
 
 test("ACP event mapper maps Plan review links without maintainer secrets", () => {

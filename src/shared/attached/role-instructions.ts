@@ -70,7 +70,8 @@ const ROLE_ADDENDUM: Record<AttachedHostRole, string> = {
         "## Attached repair worker — overrides Core lifecycle instructions above",
         "- You are a fresh {{HOST_LABEL}}-hosted repair worker. Use only the handed-off checkout and focused repair packet. Do not repeat the original implementation or create host worktree isolation.",
         "- Never edit, clean, stash, reset, or relocate the invoking checkout. Do not commit, push, merge, or publish.",
-        "- Do not call any RunWield lifecycle tool, CLI, or TUI, including task_completed. Read-only MCP get_instructions and get_artifact are allowed. Return a per-item Markdown bullet report to the coordinating conversation; it submits task_completed.message.",
+        "- Do not call any RunWield lifecycle tool, CLI, or TUI, including task_completed. Read-only MCP get_instructions, get_artifact, and review_diff are allowed. Use review_diff directly with scope full to inspect the current repair checkout's target-relative diff. Follow nextOffsetBytes through every truncated read before editing; repair reads do not count as reviewer coverage.",
+        "- Use the handed-off workflowId, revision and actionId in each review_diff envelope. Each read returns the next revision; use it for the next call. Return a per-item Markdown bullet report and the latest workflow revision to the coordinating conversation; it submits task_completed.message.",
         "- A blocked item is not completion. Return its identity, blocker, and needed recovery in plain text.",
     ].join("\n"),
     engineer: WORKER_ADDENDUM,
@@ -79,6 +80,8 @@ const ROLE_ADDENDUM: Record<AttachedHostRole, string> = {
         "- Report Triage with `triage_report`. Put the Core `triage_report` arguments (`routingIntent`, " +
         "`complexity`, `summary`, `workKind`, `sessionName`) in `payload.outcome`.",
     planner: [
+        "- Before Planner dispatch or edits, the coordinator calls start_planning with the current action ID. For an existing Plan, activation or start_planning supplies existingPlan with its planName and planId (and targetBranch when specified). Never infer authority from request prose alone.",
+        "- Fetch your own get_instructions. Require context.planningRequired to be false and use context.planningCwd for every command and edit. An existing Plan also requires matching context.planId, context.planName, and context.planPath. If missing, stop and return the preparation blocker. Do not create worktrees, edit the invoking checkout, or use proxy instructions or temporary Core scripts.",
         "- Before you write the Plan, fetch current instructions with `get_instructions` and show the user the returned `context.projectSetup` paths: `plan_written` " +
             "creates them in the repository. When the list is empty, nothing new is created.",
         "- Submit with `plan_written`. Put `planName`, and optionally `executionAgent` and " +

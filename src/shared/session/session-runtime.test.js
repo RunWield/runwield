@@ -34,15 +34,15 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { __resetSettingsForTests, setCustomSetting } from "../settings.js";
 import { SessionHost } from "./session-host.ts";
 import { captureTranscriptEvidence } from "./session-transcript-projection.js";
-import { switchActiveAgent } from "./agent-switching.js";
+import { switchActiveAgent } from "./agent-switching.ts";
 import { RuntimeEventTypes } from "./session-runtime-events.js";
-import { RuntimeInteractionTypes } from "./session-runtime-interactions.js";
+import { RuntimeInteractionTypes } from "./session-runtime-interactions.ts";
 import { createSessionRuntime, SessionRuntime, SessionTurnInProgressError } from "./session-runtime.ts";
 import { getRootSessionRebuildOptions } from "./session.js";
 import { createRootSessionManager, getRunWieldSessionDir, resolveCreatedRootSessionPath } from "./root-session.js";
 import { openFileSessionStore } from "./file-session-store.ts";
 import { sessionDirForRoot } from "./file-session-storage.ts";
-import { openOwnerCoordinationStore } from "../owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { getPlanRevisionForText, savePlan } from "../../plan-store.js";
 import { rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
@@ -2438,6 +2438,19 @@ test("SessionRuntime emits one keyboard-help event for the requested session", a
     assertEquals(typeof events[0].timestamp, "string");
     assertEquals(events[0].title, "Keyboard shortcuts");
     assertEquals(events[0].items[0], { key: "esc", description: "to interrupt" });
+
+    // A consumer can edit its payload without changing help delivered on a later request.
+    events[0].title = "consumer title";
+    events[0].items[0].key = "consumer key";
+    events[0].items.push({ key: "consumer shortcut", description: "consumer description" });
+    assertEquals(runtime.requestSessionHelp(sessionId), { ok: true });
+    assertEquals(events.length, 2);
+    assertEquals(events[1].title, "Keyboard shortcuts");
+    assertEquals(events[1].items[0], { key: "esc", description: "to interrupt" });
+    assertEquals(
+        events[1].items.some((item) => item.key === "consumer shortcut"),
+        false,
+    );
 });
 
 test("SessionRuntime emits one ordered lifecycle for one prompt", async () => {

@@ -4,12 +4,12 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { getCapabilities, Markdown, setCapabilities, visibleWidth } from "@earendil-works/pi-tui";
 import stripAnsi from "strip-ansi";
 
-import { initRunWieldTheme } from "../theme/theme.js";
+import { initRunWieldTheme } from "../theme/theme.ts";
 initRunWieldTheme();
 
-import { getMarkdownTheme } from "../theme/theme.js";
-import { MermaidMarkdown } from "./mermaid-markdown.js";
-import type { MermaidMarkdownOptions } from "./mermaid-markdown.js";
+import { getMarkdownTheme } from "../theme/theme.ts";
+import { MermaidMarkdown } from "./mermaid-markdown.ts";
+import type { MermaidMarkdownOptions } from "./mermaid-markdown.ts";
 
 type MermaidRenderer = NonNullable<MermaidMarkdownOptions["renderMermaid"]>;
 

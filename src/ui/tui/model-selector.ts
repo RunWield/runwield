@@ -1,7 +1,7 @@
 import { Container, fuzzyFilter, getKeybindings, Input, Spacer, Text } from "@earendil-works/pi-tui";
 import type { Focusable, TUI } from "@earendil-works/pi-tui";
 import type { RunWieldModel, RunWieldModelRegistry } from "../../shared/models/model-registry.ts";
-import { theme } from "../theme/theme.js";
+import { theme } from "../theme/theme.ts";
 
 interface ModelItem {
     provider: string;

@@ -7,7 +7,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { getCapabilities, setCapabilities, visibleWidth } from "@earendil-works/pi-tui";
 import stripAnsi from "strip-ansi";
 import { DocumentLinkHost } from "../review/document-link-host.ts";
-import { initRunWieldTheme } from "../theme/theme.js";
+import { initRunWieldTheme } from "../theme/theme.ts";
 import { AgentMessageBlock, SystemMessageBlock, ToolExecutionBlock, UserPromptBlock } from "./blocks.js";
 
 initRunWieldTheme();

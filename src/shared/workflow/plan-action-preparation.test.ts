@@ -95,3 +95,25 @@ for (const argument of ["demo", planId]) {
         }
     });
 }
+
+test("blocked runtime preparation returns an action result without changing authority evidence", async () => {
+    const root = await fixture.checkout();
+    try {
+        const directory = resolveProjectRuntimeLayout(root).primary.deliveryEvidenceRoot;
+        await mkdir(directory, { recursive: true });
+        const receipt = join(directory, "unadopted.json");
+        await writeFile(receipt, "Retain existing evidence\n");
+        const result = await executePlanAction(root, {
+            planId,
+            expectedRevision: await getPlanRevisionForText(markdown),
+            expectedStatus: "draft",
+            expectedWorktree: { kind: "none" },
+            action: "put_on_hold",
+        });
+        strictEqual(result.kind, "invalid_action");
+        strictEqual(await readFile(join(root, "docs/plans/demo.md"), "utf8"), markdown);
+        strictEqual(await readFile(receipt, "utf8"), "Retain existing evidence\n");
+    } finally {
+        await rm(root, { recursive: true, force: true });
+    }
+});

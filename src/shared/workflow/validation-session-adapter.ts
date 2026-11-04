@@ -5,7 +5,7 @@ import { type HostedSession } from "../session/hosted-session.js";
 import { runIsolatedAgentSession } from "../session/session.js";
 import { readRequestAttemptEntries } from "../session/request-dispatch.ts";
 import { emitAssistantMessage, type RuntimeValidationProgress } from "../session/session-runtime-events.js";
-import { requestHostedSessionInteraction } from "../session/session-runtime-interactions.js";
+import { requestHostedSessionInteraction } from "../session/session-runtime-interactions.ts";
 import { getAgentDisplayName as getSessionAgentDisplayName } from "../session/agents.js";
 import { ClaudeCliBackendError } from "../session/backends/claude-cli/failure.ts";
 import { INTEGRATION_REVIEWER_SUBAGENT_TOOLS, REVIEWER_SUBAGENT_TOOLS } from "../session/subagent-definitions.ts";
@@ -30,7 +30,7 @@ import { type ReviewInspection } from "./review-inspection.ts";
 import { createReviewCompletedTool } from "../../tools/review-complete.ts";
 import { createQaChecklistGeneratedTool } from "../../tools/qa-checklist-generated.ts";
 import { settleWorkflowToolEvent } from "./workflow-tool-events.ts";
-import { releaseActiveAgent, switchActiveAgent } from "../session/agent-switching.js";
+import { releaseActiveAgent, switchActiveAgent } from "../session/agent-switching.ts";
 import {
     type AgentTurnOutcome,
     type IndependentRepairTurnRequest,

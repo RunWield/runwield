@@ -3,7 +3,7 @@ import { AGENTS } from "../../constants.js";
 import { getAgentDisplayName } from "../session/agents.js";
 import { emitSystemStatus } from "../session/session-runtime-events.js";
 import { AgyCliBackendError } from "../session/backends/agy-cli/failure.ts";
-import { runActiveAgentTurn } from "../session/agent-switching.js";
+import { runActiveAgentTurn } from "../session/agent-switching.ts";
 import { createPairCheckpointTool } from "../../tools/pair-checkpoint.ts";
 import { buildEngineerRequest } from "./workflow-prompts.ts";
 import { acknowledgeTaskCompletion, claimPendingTaskCompletion } from "../session/task-completion-session.ts";

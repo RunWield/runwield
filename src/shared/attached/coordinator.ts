@@ -13,6 +13,7 @@
  */
 
 import { getHomeDir } from "../../constants.js";
+import { prepareAttachedPlanning, resolvePlanningSelection } from "./planning.ts";
 import { resolveCodexRoleSettings } from "./codex-role-settings.ts";
 import { readTextPage } from "../text-page.ts";
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
@@ -51,7 +52,7 @@ import { withOrderedTransitionResources } from "../workflow/state-transition.ts"
 import { isAnsweredPlanReview } from "../workflow/plan-review-recovery.js";
 import { applySharedPlanReviewDecision } from "../workflow/plan-review-actions.ts";
 import { loadReviewFeedbackImagePaths } from "../workflow/review-feedback-images.ts";
-import { type ReviewDecision } from "../../ui/workspace/routes/api/review-handlers.js";
+import { type ReviewDecision } from "../../ui/workspace/routes/api/review-handlers.ts";
 import { resolveWorkflowPlanLocation } from "../workflow/plan-location.ts";
 import { normalizeTriageOutcome, type TriageOutcome } from "../workflow/triage-outcome.ts";
 import {
@@ -80,6 +81,8 @@ import {
     type AttachedWorkflowView,
     MAX_ATTACHED_INPUT_BYTES,
     parseActivateInput,
+    parseStartPlanningInput,
+    type StartPlanningEnvelope,
     parsePlanWrittenInput,
     parseStartExecutionInput,
     parseStatusInput,
@@ -117,7 +120,8 @@ import {
     ValidationHostRejected,
     type ValidationHostResume,
 } from "../workflow/validation-host-contract.ts";
-import { readReviewDiff } from "../workflow/review-diff.ts";
+import { readReviewDiff, type ReviewDiffTexts } from "../workflow/review-diff.ts";
+import { getWorktreeReviewDiff } from "../workflow/git-snapshot.ts";
 import { resolveAttachedRoleInstructions } from "./role-instructions.ts";
 import { attachedHost, type AttachedHostId } from "./hosts.ts";
 import { loadReviewerPrompt } from "../workflow/validation-prompts.ts";
@@ -161,10 +165,45 @@ async function projectSetupFor(projectRoot: string): Promise<string[]> {
     return setup;
 }
 
+/** Status and admission use the same durable ownership evidence, without reclaiming it. */
+async function validationOperationIsActive(record: AttachedWorkflowRecord): Promise<boolean> {
+    const holder = record.validation?.holder;
+    return Boolean(
+        holder &&
+        !(await attachedValidationHolderSettled(locateAttachedWorkflows(record.projectRoot), holder)) &&
+        !(await isLockHolderGone(JSON.stringify(holder))),
+    );
+}
+
 async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNextAction> {
     const pending = record.pendingAction;
     if (record.state === "validating") {
-        if (record.validation?.request && record.validation.actionId && !record.validation.resume) {
+        if (await validationOperationIsActive(record)) {
+            const source = record.plan
+                ? await resolveWorkflowPlanLocation(record.projectRoot, record.plan.planName, { readOnly: true })
+                : null;
+            const checkpoint = source?.plan?.attrs.validationCheckpoint;
+            return {
+                kind: "validation_running",
+                operationId: record.validation?.operationId,
+                operation: record.validation?.operation,
+                startedAt: record.validation?.holder?.startedAt,
+                ...(checkpoint && {
+                    progress: {
+                        phase: checkpoint.nextPhase,
+                        checkpointState: checkpoint.state,
+                        updatedAt: checkpoint.updatedAt,
+                    },
+                }),
+                guidance: "Core validation is active. Wait for the current call; inspect status for progress.",
+            };
+        }
+        if (
+            record.validation?.request &&
+            record.validation.actionId &&
+            !record.validation.resume &&
+            !record.validation.operationId
+        ) {
             const request = record.validation.request;
             if (request.kind === "recorder") return { kind: "recorder", actionId: record.validation.actionId, request };
             if (request.kind === "decision" && request.interaction.type === "code_review") {
@@ -194,7 +233,24 @@ async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNe
     }
     if (record.state === "triaging" && pending) return { kind: "triage", ...pending };
     if (record.state === "awaiting_planning" && pending) {
-        return { kind: "plan", ...pending, projectSetup: await projectSetupFor(record.projectRoot) };
+        const location = record.plan
+            ? await resolveWorkflowPlanLocation(record.projectRoot, record.plan.planName, { readOnly: true })
+            : null;
+        const planningRequired = record.planningActionId !== pending.actionId || Boolean(location?.planningNotStarted);
+        const ready = !planningRequired && (!record.plan || location?.plan?.attrs.planId === record.plan.planId);
+        return {
+            kind: "plan",
+            ...pending,
+            projectSetup: await projectSetupFor(record.projectRoot),
+            planningRequired: !ready,
+            ...(record.plan && { planName: record.plan.planName, planId: record.plan.planId }),
+            ...(ready && {
+                planningCwd: location?.documentRoot || record.projectRoot,
+                ...(record.plan && {
+                    planPath: join(location!.documentRoot, "docs/plans", `${record.plan.planName}.md`),
+                }),
+            }),
+        };
     }
     if (record.state === "awaiting_review" && record.plan && record.review) {
         return {
@@ -631,6 +687,18 @@ export async function activate(envelope: ActivateEnvelope): Promise<AttachedOper
     const loaded = await loadAttachedWorkflowRecord(location, workflowId);
     if (loaded.status !== "missing") return (await replay(loaded.record)).result;
 
+    let selectedPlan: AttachedPlanReference | null = null;
+    if (envelope.payload.existingPlan) {
+        try {
+            selectedPlan = (await resolvePlanningSelection(location.projectRoot, envelope.payload.existingPlan)).plan;
+        } catch (error) {
+            return await rejected(
+                "activate",
+                rejection("invalid_input", error instanceof Error ? error.message : String(error)),
+            );
+        }
+    }
+
     const now = new Date().toISOString();
     const compatibility = assessCompatibility(envelope.evidence);
     const evidence = { ...envelope.evidence, coreVersion: VERSION, compatibility };
@@ -650,7 +718,7 @@ export async function activate(envelope: ActivateEnvelope): Promise<AttachedOper
         },
         acceptedOperations: {},
         triageOutcome: null,
-        plan: null,
+        plan: selectedPlan,
         review: null,
         execution: null,
         pendingConsent: null,
@@ -710,6 +778,72 @@ export async function triageReport(envelope: TriageReportEnvelope): Promise<Atta
     return await commit(location, "triage_report", loaded.record.revision, await decide(loaded.record), decide);
 }
 
+/** Explicit planning entry, including continuation of an older unbound workflow. */
+export async function startPlanning(envelope: StartPlanningEnvelope): Promise<AttachedOperationResult> {
+    const location = locateAttachedWorkflows(envelope.projectRoot);
+    const transaction = await transactAttachedWorkflowRecord<AttachedOperationResult>(
+        location,
+        envelope.workflowId,
+        async (current): Promise<Decision> => {
+            if (!current)
+                return {
+                    result: await rejected(
+                        "start_planning",
+                        rejection("workflow_not_found", "The workflow no longer exists."),
+                    ),
+                };
+            if (current.projectRoot !== location.projectRoot)
+                return {
+                    result: await rejected(
+                        "start_planning",
+                        rejection("project_moved", "The project location changed."),
+                    ),
+                };
+            const checked = await checkWorkflowOperation("start_planning", envelope, current, "awaiting_planning");
+            if (checked) return checked;
+            try {
+                const selection = envelope.payload.existingPlan || current.plan;
+                if (
+                    current.plan &&
+                    selection &&
+                    (current.plan.planId !== selection.planId ||
+                        current.plan.planName !== canonicalizeStoredPlanName(selection.planName).name)
+                ) {
+                    throw new Error("This workflow is already bound to a different Plan.");
+                }
+                let plan = current.plan;
+                if (selection) {
+                    const selected = await resolvePlanningSelection(location.projectRoot, selection);
+                    plan =
+                        current.planningActionId === envelope.payload.actionId && !selected.location.planningNotStarted
+                            ? selected.plan
+                            : await prepareAttachedPlanning(location.projectRoot, selection);
+                }
+                return await accept("start_planning", envelope, current, {
+                    state: current.state,
+                    pendingAction: current.pendingAction,
+                    plan,
+                    planningActionId: envelope.payload.actionId,
+                });
+            } catch (error) {
+                return {
+                    result: await rejected(
+                        "start_planning",
+                        rejection("invalid_input", error instanceof Error ? error.message : String(error)),
+                        current,
+                    ),
+                };
+            }
+        },
+    );
+    return transaction.status === "busy"
+        ? await rejected(
+              "start_planning",
+              rejection("workflow_busy", "Another RunWield process holds this workflow. Retry."),
+          )
+        : transaction.result;
+}
+
 type PlanSubmission =
     | { ok: true; plan: AttachedPlanReference; revision: string; controllerRevision: number }
     | { ok: false; message: string };
@@ -723,14 +857,18 @@ async function submitPlanDocument(
     projectRoot: string,
     payload: PlanWrittenPayload,
     triage: TriageOutcome,
+    expectedPlan: AttachedPlanReference | null,
 ): Promise<PlanSubmission> {
     let planName;
     let location;
     try {
         planName = canonicalizeStoredPlanName(payload.planName).name;
+        if (expectedPlan && planName !== expectedPlan.planName) {
+            return { ok: false, message: "Submit only the Plan bound to this workflow." };
+        }
         assertNotReservedEpicArtifactPlanName(planName);
         if (isHiddenPlanName(planName)) throw new Error(`Plan is archived or hidden: ${planName}`);
-        location = await resolveWorkflowPlanLocation(projectRoot, planName, { readOnly: true });
+        location = await resolveWorkflowPlanLocation(projectRoot, planName);
     } catch (error) {
         return { ok: false, message: error instanceof Error ? error.message : String(error) };
     }
@@ -739,6 +877,9 @@ async function submitPlanDocument(
             ok: false,
             message: `docs/plans/${planName}.md not found. Write the Plan first, then call plan_written again.`,
         };
+    }
+    if (expectedPlan && location.plan.attrs.planId !== expectedPlan.planId) {
+        return { ok: false, message: "The bound Plan identity changed. Nothing was submitted." };
     }
 
     const updates: Partial<PlanFrontMatter> = { classification: triage.classification, complexity: triage.complexity };
@@ -806,7 +947,12 @@ export async function planWritten(envelope: PlanWrittenEnvelope): Promise<Attach
                     ),
                 };
             }
-            const submitted = await submitPlanDocument(envelope.projectRoot, envelope.payload, current.triageOutcome);
+            const submitted = await submitPlanDocument(
+                envelope.projectRoot,
+                envelope.payload,
+                current.triageOutcome,
+                current.plan,
+            );
             if (!submitted.ok) {
                 return {
                     result: await rejected("plan_written", rejection("invalid_outcome", submitted.message), current),
@@ -1682,6 +1828,10 @@ async function runParsedOperation(
         const parsed = parseActivateInput(projectRoot, input);
         return parsed.ok ? await activate(parsed.envelope) : await rejected(name, parsed.rejection);
     }
+    if (name === "start_planning") {
+        const parsed = parseStartPlanningInput(projectRoot, input);
+        return parsed.ok ? await startPlanning(parsed.envelope) : await rejected(name, parsed.rejection);
+    }
     if (name === "triage_report") {
         const parsed = parseTriageReportInput(projectRoot, input);
         return parsed.ok ? await triageReport(parsed.envelope) : await rejected(name, parsed.rejection);
@@ -1758,12 +1908,13 @@ async function withRoleInstructions(
                 role,
                 ...(action.dispatch && { dispatch: action.dispatch }),
                 contractVersion: "runwield.attached.validation/1",
-                text: `${text}\n\n${action.request.prompt}${action.request.kind === "recorder" && action.request.validationError ? `\n\nValidation error:\n${action.request.validationError}` : ""}\n\nAttached worker override: Return your report or structured review outcome to the coordinating conversation. Do not call completion or lifecycle tools. Only the reviewer may call MCP review_diff directly.`,
+                text: `${text}\n\n${action.request.prompt}${action.request.kind === "recorder" && action.request.validationError ? `\n\nValidation error:\n${action.request.validationError}` : ""}\n\nAttached worker override: Return your report or structured review outcome to the coordinating conversation. Do not call completion or lifecycle tools. Reviewers and repair workers may call MCP review_diff directly for their current action.`,
             },
         };
     }
     if (action?.kind !== "triage" && action?.kind !== "plan" && action?.kind !== "implementation") return result;
-    const text = await resolveAttachedRoleInstructions(projectRoot, action.role, hostId);
+    const instructionRoot = action.kind === "plan" ? action.planningCwd || projectRoot : projectRoot;
+    const text = await resolveAttachedRoleInstructions(instructionRoot, action.role, hostId);
     return {
         ...result,
         instructions: {
@@ -2048,11 +2199,7 @@ export async function runValidationOperation(
         return await rejected(operation, rejection("action_superseded", "No validation action is pending."), current);
     }
     const checkpoint = current.validation ?? { coverage: [] };
-    if (
-        checkpoint.holder &&
-        !(await attachedValidationHolderSettled(location, checkpoint.holder)) &&
-        !(await isLockHolderGone(JSON.stringify(checkpoint.holder)))
-    ) {
+    if (await validationOperationIsActive(current)) {
         return await rejected(
             operation,
             rejection("workflow_busy", "Core validation is running. Retry after the active call returns."),
@@ -2096,14 +2243,24 @@ export async function runValidationOperation(
             );
         }
         const request = checkpoint.request;
-        if (operation === "review_diff" && request.kind === "reviewer" && "command" in envelope.payload) {
+        if (
+            operation === "review_diff" &&
+            (request.kind === "reviewer" || request.kind === "repair") &&
+            "command" in envelope.payload
+        ) {
+            let diffs: ReviewDiffTexts;
             try {
-                await validateAttachedReviewerCandidate(current, {
-                    kind: "reviewer",
-                    identity: request.identity,
-                    outcome: null,
-                    coverage: [],
-                });
+                if (request.kind === "reviewer") {
+                    await validateAttachedReviewerCandidate(current, {
+                        kind: "reviewer",
+                        identity: request.identity,
+                        outcome: null,
+                        coverage: [],
+                    });
+                    diffs = { full: request.fullDiff, repair: request.repairDiff };
+                } else {
+                    diffs = { full: await readAttachedRepairDiff(current, request) };
+                }
             } catch (error) {
                 return await rejected(
                     operation,
@@ -2111,17 +2268,16 @@ export async function runValidationOperation(
                     current,
                 );
             }
-            const diff = readReviewDiff(
-                { full: request.fullDiff, repair: request.repairDiff },
-                {
-                    command: envelope.payload.command || "list",
-                    scope: envelope.payload.scope,
-                    path: envelope.payload.path,
-                    offsetBytes: envelope.payload.offsetBytes,
-                    maxBytes: envelope.payload.maxBytes,
-                },
-            );
+            const diff = readReviewDiff(diffs, {
+                command: envelope.payload.command || "list",
+                scope: envelope.payload.scope,
+                path: envelope.payload.path,
+                offsetBytes: envelope.payload.offsetBytes,
+                maxBytes: envelope.payload.maxBytes,
+            });
             if (diff.isError) return await rejected(operation, rejection("invalid_input", diff.text), current);
+            // Repair context is not evidence of an independent reviewer's inspection.
+            if (request.kind === "repair") delete diff.coverage;
             const decision = await accept(operation, envelope, current, {
                 state: "validating",
                 pendingAction: null,
@@ -2216,7 +2372,12 @@ export async function runValidationOperation(
             operationId: checkpoint.operationId ?? envelope.operationId,
             operation: checkpoint.operationId ? checkpoint.operation : operation,
             evidence: checkpoint.operationId ? checkpoint.evidence : { ...envelope.evidence, coreVersion: VERSION },
-            holder: { pid: process.pid, hostname: getLockHostname(), token: crypto.randomUUID() },
+            holder: {
+                pid: process.pid,
+                hostname: getLockHostname(),
+                token: crypto.randomUUID(),
+                startedAt: new Date().toISOString(),
+            },
         },
     };
     const claim = await writeAttachedWorkflowRecord(location, claimed, current.revision);
@@ -2350,6 +2511,21 @@ export async function runValidationOperation(
             });
         });
     }
+}
+
+async function readAttachedRepairDiff(
+    record: AttachedWorkflowRecord,
+    request: Extract<import("../workflow/validation-host-contract.ts").ValidationHostRequest, { kind: "repair" }>,
+): Promise<string> {
+    if (!record.plan) throw new Error("The Plan is missing.");
+    const source = await resolveWorkflowPlanLocation(record.projectRoot, record.plan.planName, { readOnly: true });
+    const pending = source.plan?.attrs.validationCheckpoint?.pendingRepair;
+    if (!source.plan || !pending || !sameHostIdentity(pending.identity, request.identity)) {
+        throw new Error("This repair action is no longer pending.");
+    }
+    const entry = await findActiveByPlanName(record.projectRoot, record.plan.planName);
+    // Repairs may edit the checkout. Read its current target-relative patch, including on restored actions.
+    return await getWorktreeReviewDiff(request.cwd, source.plan.attrs.worktreeBaseBranch || "", entry?.baseRef);
 }
 
 async function validateAttachedReviewerCandidate(

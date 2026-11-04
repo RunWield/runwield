@@ -8,57 +8,57 @@ The independent task inventory in `scripts/task-compatibility.test.ts` prevents 
 fixtures check nested task dispatch, argument boundaries (including spaces), and failed prerequisite propagation;
 compiler, isolated-runner and release tests separately cover the product behavior behind those commands.
 
-| Original task | Bun contract |
-| --- | --- |
-| `ci` | Same `--fail-fast`; `--source-only` remains available for a separate Golden gate. |
-| `cli` | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable. |
-| `submodules:check` | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable. |
-| `submodules:check:remote` | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable. |
-| `snip:check` | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable. |
-| `language-policy:check` | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable. |
-| `seams:check` | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable. |
-| `doc-links:check` | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable. |
-| `docs:stage` | Same staging entrypoint and arguments. |
-| `docs:dev` | Same staged docs watcher and fixed loopback port 4322; no extra CLI options before or after migration. |
-| `docs:build` | Same staging/build order and trailing Astro build arguments. |
-| `docs:check` | Same staging/check/build/link-check order; trailing arguments still reach the final docs checker. |
-| `skills:sync:check` | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable. |
-| `skills:sync:update` | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable. |
-| `seams:update` | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable. |
-| `test` | Same suite scope and preparation; preserves paths, `--isolated`, exclusions, fail-fast, shard/report/timing options. Restores `--filter` substring or `/regex/`; runtime flags below. |
-| `test:suite` | Same suite scope and preparation; preserves paths, `--isolated`, exclusions, fail-fast, shard/report/timing options. Restores `--filter` substring or `/regex/`; runtime flags below. |
-| `test:all` | Same suite scope and preparation; preserves paths, `--isolated`, exclusions, fail-fast, shard/report/timing options. Restores `--filter` substring or `/regex/`; runtime flags below. |
-| `test:all:suite` | Same suite scope and preparation; preserves paths, `--isolated`, exclusions, fail-fast, shard/report/timing options. Restores `--filter` substring or `/regex/`; runtime flags below. |
-| `pr:check` | Forwards arguments to `ci`. |
-| `lint` | Same repository-wide file inventory; neither old nor new wrapper accepts file-selection arguments. |
-| `githooks:install` | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable. |
-| `githooks:uninstall` | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable. |
-| `check` | Same version preparation and source/test type scope; neither old nor new wrapper accepts file-selection arguments. |
-| `workspace:dev` | Same loopback host, port 5173 and `/dev`; forwards Astro arguments. Environment-loading exception below. |
-| `workspace:remote` | Same server configuration/environment; now runs Bun. |
-| `workspace:remote:build` | Builds Workspace and both runtime bundles in order. |
-| `workspace:remote:image:check` | Same optional image argument and Podman filesystem inspection; image security status below. |
-| `workspace:react:check` | Forwards to `workspace:check`. |
-| `workspace:test` | Same suite scope and preparation; preserves paths, `--isolated`, exclusions, fail-fast, shard/report/timing options. Restores `--filter` substring or `/regex/`; runtime flags below. |
-| `workspace:build` | Pinned Astro build; forwards trailing Astro arguments. Environment-loading exception below. |
-| `workspace:check` | Same Astro check root/tsconfig and trailing Astro arguments. |
-| `compile` | Preserves `--output`, `--target` (all six legacy target triples), and `--expect-build-id`, with separate or `=` values. `--reload` exception below. |
-| `ux:new-user` | Same Podman build/run arguments and explicit provider environment forwarding. |
-| `ux:new-user:current` | Same architecture selection and build/run order; invokes named `compile --target`. |
-| `release:check` | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable. |
-| `release:metadata` | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable. |
-| `release:candidate` | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable. |
-| `release:promote` | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable. |
-| `release:stable` | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable. |
-| `package:homebrew` | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable. |
-| `package:homebrew:check` | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable. |
-| `package:windows` | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable. |
-| `package:windows:check` | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable. |
-| `package:winget` | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable. |
-| `compile:watch` | Same watchexec extensions and ignores; invokes `compile`. |
-| `prototype` | Same slug and forwarded dev arguments; project dev task now comes from package.json. |
-| `test:golden-tui` | Same suite scope and preparation; preserves paths, `--isolated`, exclusions, fail-fast, shard/report/timing options. Restores `--filter` substring or `/regex/`; runtime flags below. |
-| `test:golden-tui:extensive` | Same suite scope and preparation; preserves paths, `--isolated`, exclusions, fail-fast, shard/report/timing options. Restores `--filter` substring or `/regex/`; runtime flags below. |
+| Original task                  | Bun contract                                                                                                                                                                                                        |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ci`                           | Same `--fail-fast`; `--source-only` remains available for a separate Golden gate.                                                                                                                                   |
+| `cli`                          | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
+| `submodules:check`             | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
+| `submodules:check:remote`      | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
+| `snip:check`                   | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
+| `language-policy:check`        | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
+| `seams:check`                  | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
+| `doc-links:check`              | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
+| `docs:stage`                   | Same staging entrypoint and arguments.                                                                                                                                                                              |
+| `docs:dev`                     | Same staged docs watcher and fixed loopback port 4322; no extra CLI options before or after migration.                                                                                                              |
+| `docs:build`                   | Same staging/build order and trailing Astro build arguments.                                                                                                                                                        |
+| `docs:check`                   | Same staging/check/build/link-check order; trailing arguments still reach the final docs checker.                                                                                                                   |
+| `skills:sync:check`            | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
+| `skills:sync:update`           | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
+| `seams:update`                 | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
+| `test`                         | Same suite scope and preparation; preserves paths, `--isolated`, exclusions, fail-fast, shard/report/timing options. Restores `--filter` substring or `/regex/`; runtime flags below.                               |
+| `test:suite`                   | Same suite scope and preparation; preserves paths, `--isolated`, exclusions, fail-fast, shard/report/timing options. Restores `--filter` substring or `/regex/`; runtime flags below.                               |
+| `test:all`                     | Same suite scope and preparation; preserves paths, `--isolated`, exclusions, fail-fast, shard/report/timing options. Restores `--filter` substring or `/regex/`; runtime flags below.                               |
+| `test:all:suite`               | Same suite scope and preparation; preserves paths, `--isolated`, exclusions, fail-fast, shard/report/timing options. Restores `--filter` substring or `/regex/`; runtime flags below.                               |
+| `pr:check`                     | Forwards arguments to `ci`.                                                                                                                                                                                         |
+| `lint`                         | Same repository-wide file inventory; neither old nor new wrapper accepts file-selection arguments.                                                                                                                  |
+| `githooks:install`             | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
+| `githooks:uninstall`           | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
+| `check`                        | Same version preparation and source/test type scope; neither old nor new wrapper accepts file-selection arguments.                                                                                                  |
+| `workspace:dev`                | Same loopback host, port 5173 and `/dev`; forwards Astro arguments. Environment-loading exception below.                                                                                                            |
+| `workspace:remote`             | Same server configuration/environment; now runs Bun.                                                                                                                                                                |
+| `workspace:remote:build`       | Builds Workspace and both runtime bundles in order.                                                                                                                                                                 |
+| `workspace:remote:image:check` | Same optional image argument and Podman filesystem inspection; image security status below.                                                                                                                         |
+| `workspace:react:check`        | Forwards to `workspace:check`.                                                                                                                                                                                      |
+| `workspace:test`               | Same suite scope and preparation; preserves paths, `--isolated`, exclusions, fail-fast, shard/report/timing options. Restores `--filter` substring or `/regex/`; runtime flags below.                               |
+| `workspace:build`              | Pinned Astro build; forwards trailing Astro arguments. Environment-loading exception below.                                                                                                                         |
+| `workspace:check`              | Same Astro check root/tsconfig and trailing Astro arguments.                                                                                                                                                        |
+| `compile`                      | Preserves `--output`, `--target` (all six legacy target triples), and `--expect-build-id`, with separate or `=` values. Adds `--remote` for a matched launcher and both Linux runtimes. `--reload` exception below. |
+| `ux:new-user`                  | Same Podman build/run arguments and explicit provider environment forwarding.                                                                                                                                       |
+| `ux:new-user:current`          | Same architecture selection and build/run order; invokes named `compile --target`.                                                                                                                                  |
+| `release:check`                | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
+| `release:metadata`             | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
+| `release:candidate`            | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
+| `release:promote`              | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
+| `release:stable`               | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
+| `package:homebrew`             | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
+| `package:homebrew:check`       | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
+| `package:windows`              | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
+| `package:windows:check`        | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
+| `package:winget`               | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
+| `compile:watch`                | Queues changes during a build; ignores generated build files and staging; invokes `compile --remote` to rebuild the launcher and both Linux runtimes together.                                                      |
+| `prototype`                    | Same slug and forwarded dev arguments; project dev task now comes from package.json.                                                                                                                                |
+| `test:golden-tui`              | Same suite scope and preparation; preserves paths, `--isolated`, exclusions, fail-fast, shard/report/timing options. Restores `--filter` substring or `/regex/`; runtime flags below.                               |
+| `test:golden-tui:extensive`    | Same suite scope and preparation; preserves paths, `--isolated`, exclusions, fail-fast, shard/report/timing options. Restores `--filter` substring or `/regex/`; runtime flags below.                               |
 
 ## Explicit compatibility limits and decisions
 

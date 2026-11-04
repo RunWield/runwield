@@ -51,6 +51,7 @@ import { isEpicArtifactPlanName } from "../../shared/epic-artifacts.ts";
 import {
     inspectTargetBranchPlansByParent,
     prepareTargetBranchPlansByParent,
+    TargetBranchSnapshotUnavailableError,
 } from "../../shared/workflow/planning-worktree.ts";
 import { prepareControllerView, readControllerRecordAtPath } from "../../shared/workflow/controller-registry.ts";
 import { verifyRecordedPublication } from "../../shared/workflow/validation-merge-verification.ts";
@@ -903,7 +904,26 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
             children = repair
                 ? await prepareTargetBranchPlansByParent(projectRoot, targetBranch, parent.name)
                 : await inspectTargetBranchPlansByParent(projectRoot, targetBranch, parent.name);
-        } catch {
+        } catch (error) {
+            if (
+                error instanceof TargetBranchSnapshotUnavailableError &&
+                error.reason === "missing_ref" &&
+                parent.attrs.status === "draft" &&
+                !parent.attrs.worktreeId &&
+                !parent.attrs.validationCheckpoint &&
+                !parent.attrs.implementedAt &&
+                !parent.attrs.deliveryEvidence &&
+                !inspection.readError &&
+                inspection.integrityIssues.length === 0 &&
+                !identityDocuments.some((plan) => plan.attrs.parentPlan === parent.name) &&
+                !entries.some(
+                    (entry) =>
+                        entry.planName === parent.name ||
+                        entry.planName.startsWith(`${parent.name}/`) ||
+                        Boolean(parent.attrs.planId && entry.planId === parent.attrs.planId),
+                )
+            )
+                continue;
             issues.push({
                 kind: "target_branch_inspection_error",
                 planName: parent.name,
@@ -916,12 +936,37 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
             continue;
         }
         for (const child of children) {
+            const archived = archivedPlans.find(
+                (plan) => plan.name === child.name && plan.attrs.planId && plan.attrs.planId === child.attrs.planId,
+            );
+            const activeCopy = identityDocuments.some((plan) => plan.attrs.planId === child.attrs.planId);
+            const liveAttempt = entries.some(
+                (entry) => entry.status !== "abandoned" && entry.planId === child.attrs.planId,
+            );
+            if (
+                archived &&
+                !activeCopy &&
+                !liveAttempt &&
+                !inspection.readError &&
+                inspection.integrityIssues.length === 0 &&
+                (await isCommittedArchive(projectRoot, `archived/${archived.name}`, archived.path).catch(() => false))
+            )
+                continue;
             const existing = identityDocuments.findIndex(
                 (plan) =>
                     plan.name === child.name || Boolean(child.attrs.planId && plan.attrs.planId === child.attrs.planId),
             );
-            if (existing >= 0) identityDocuments.splice(existing, 1, child);
-            else identityDocuments.push(child);
+            if (existing >= 0) {
+                const current = identityDocuments[existing];
+                if (
+                    !child.attrs.planId &&
+                    current.attrs.planId &&
+                    current.attrs.parentPlan === child.attrs.parentPlan
+                ) {
+                    child.attrs.planId = current.attrs.planId;
+                }
+                identityDocuments.splice(existing, 1, child);
+            } else identityDocuments.push(child);
         }
     }
     if (repair) {

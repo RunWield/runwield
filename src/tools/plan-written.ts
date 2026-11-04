@@ -21,7 +21,7 @@ import type { SequenceReviewDecision, SequenceReviewDocument } from "../shared/w
 import { rememberPlannedVerificationCommand } from "../shared/workflow/planned-verification-command.ts";
 import { join } from "node:path";
 import { pathToFileURL as toFileUrl } from "node:url";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
 import { CLI_BIN, normalizePlanClassification, normalizeWorkKind, PLANS_DIR_NAME } from "../constants.js";
 import {
@@ -46,7 +46,7 @@ import {
     requestHostedSessionInteraction,
     RuntimeInteractionOutcomes,
     RuntimeInteractionTypes,
-} from "../shared/session/session-runtime-interactions.js";
+} from "../shared/session/session-runtime-interactions.ts";
 import {
     appendSessionCompleteGuidance,
     requestPlanReviewRetryConfirmation,
@@ -348,6 +348,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
     const reviewPlanVersions = new Map<string, PlanReviewVersion[]>();
     return defineTool({
         name: "plan_written",
+        exposure: "model-only",
         label: "Plan Written",
         description:
             "Declare the plan filename you created in docs/plans/ and submit it for user review. " +

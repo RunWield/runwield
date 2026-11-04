@@ -904,7 +904,10 @@ test("finalizePlanImplementation checkpoints worktree changes before lifecycle c
         projectRoot,
         await createWorktreeGitArtifacts({ projectRoot, planName: "feature-plan", planId: PLAN_UNDER_TEST }),
     );
-    await savePlan(worktree.path, "feature-plan", "# feature-plan", { status: "in_progress" });
+    await savePlan(worktree.path, "feature-plan", "# feature-plan", {
+        planId: PLAN_UNDER_TEST,
+        status: "in_progress",
+    });
     const branchHeadBefore = await git(projectRoot, ["rev-parse", `${worktree.branch}^{commit}`]);
     await fsWriteFile(`${worktree.path}/implemented.txt`, "the Agent's work\n");
 

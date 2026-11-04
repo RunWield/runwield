@@ -7,7 +7,7 @@ import process from "node:process";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { runResumeCommand } from "../../cmd/resume/index.ts";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { getRunWieldSessionsBaseDir } from "../../shared/session/root-session.js";
 import {
     getCustomSetting,

@@ -67,7 +67,7 @@ function estimateFirstFauxUsage(context: TranscriptContext, output: string) {
     const parts = context.messages.map((message) => `${message.role}:${messageToText(message)}`);
     const inputTokens = estimateFauxTokens(parts.join("\n\n"));
     return {
-        inputTokens,
+        inputTokens: 0,
         outputTokens: estimateFauxTokens(output),
         cacheReadTokens: 0,
         cacheWriteTokens: inputTokens,

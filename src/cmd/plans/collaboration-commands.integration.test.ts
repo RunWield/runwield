@@ -28,7 +28,7 @@ import { PlanningNotStartedError } from "../../shared/workflow/plan-location.ts"
 import { listEntries } from "../../shared/worktree-registry.js";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
 import { generateBearerCapability, hashCapability, MAINTAINER_SCOPE } from "../../shared/collaboration/capabilities.ts";
-import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../../shared/collaboration/client.js";
+import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../../shared/collaboration/client.ts";
 import { encryptJsonPayload, generateContentKeyString, importContentKey } from "../../shared/collaboration/crypto.ts";
 import { COLLABORATION_LOCK_BYPASS } from "../../shared/collaboration/lock.ts";
 import {
@@ -37,7 +37,7 @@ import {
     getProjectSecretStoreLocation,
     getProjectSecretStorePath,
     readSecretStore,
-} from "../../shared/collaboration/secrets.js";
+} from "../../shared/collaboration/secrets.ts";
 import { parseCollaborationUrl } from "../../shared/collaboration/urls.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";

@@ -10,13 +10,13 @@ import {
     truncateToWidth,
     visibleWidth,
 } from "@earendil-works/pi-tui";
-import { getMarkdownTheme, getSelectListTheme, imageTheme, theme } from "../theme/theme.js";
+import { getMarkdownTheme, getSelectListTheme, imageTheme, theme } from "../theme/theme.ts";
 import { buildActiveConversationStatusMessage } from "../../shared/session/session-user-messages.ts";
 import {
     validationProgressCheckSummary,
     validationProgressHeading,
 } from "../../shared/workflow/validation-progress-presentation.ts";
-import { MermaidMarkdown } from "./mermaid-markdown.js";
+import { MermaidMarkdown } from "./mermaid-markdown.ts";
 import stripAnsi from "strip-ansi";
 
 /**

@@ -57,8 +57,9 @@ Choose a bundled model preset in `/settings` → **Model Presets**: `codex`, `ag
 `claude-opus`, or `codex-claude`. See the [preset reference](https://docs.runwield.dev/settings/#modelpresets) for model
 assignments and customization.
 
-We recommend Gemma4 31B through Ollama Cloud for Router; it is available on Ollama's free plan, whose allowance has been
-ample for our Router-only usage.
+We recommend Gemma4 31B through Ollama Cloud for Router. Starting November 9, 2026, Ollama's Free plan switches to
+pay-as-you-go billing, and this model requires prepaid usage credits. See [Ollama pricing](https://ollama.com/pricing)
+for current rates. Local models remain free to run through Ollama.
 
 > **I'm looking for five developers to try RunWield on one real, non-trivial change.** I'll personally help you get
 > running, fix anything that blocks you within a day, and give you a direct say in the roadmap.

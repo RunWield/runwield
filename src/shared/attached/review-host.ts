@@ -9,7 +9,7 @@ import {
     startCodeReviewSurface,
     startPlanReviewSurface,
 } from "../../ui/review/review-launcher.ts";
-import type { ReviewDecision } from "../../ui/workspace/routes/api/review-handlers.js";
+import type { ReviewDecision } from "../../ui/workspace/routes/api/review-handlers.ts";
 import { readStatus, applyAttachedReviewDecision, openAttachedReviewRound } from "./coordinator.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
 import type { AttachedChatReply, AttachedWorkflowView } from "./operations.ts";

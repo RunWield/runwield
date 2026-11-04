@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { ok as assert, strictEqual as assertStrictEquals } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { runInNewContext } from "node:vm";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { createOwnerWorkspaceApp } from "./server.js";
 import { WORKSPACE_MANIFEST, workspaceConnectionPage, workspaceWorkerSource } from "./server/workspace-pwa.ts";
 

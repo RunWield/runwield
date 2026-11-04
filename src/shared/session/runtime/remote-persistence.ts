@@ -5,7 +5,7 @@ import { reasonForCandidate } from "../plan-session-lookup.ts";
 import { restoreExecutionWorkflow } from "../execution-workflow-recovery.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { readPersistedTutorialContext } from "../tutorial-context-session.ts";
-import { readPersistedWorkflowContext } from "../workflow-context-session.js";
+import { readPersistedWorkflowContext } from "../workflow-context-session.ts";
 import type {
     RemotePlanSessionQuery,
     RemoteRolloverOptions,

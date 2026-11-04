@@ -18,7 +18,7 @@ import {
     RELEASES_API_URL,
     RELEASES_WEB_URL,
     writeUpdateCheckCache,
-} from "./update-check.js";
+} from "./update-check.ts";
 
 import type { FetchRequest } from "./fetch-request.ts";
 

@@ -853,3 +853,27 @@ test("package:homebrew wld-only retains a test-only base only in test mode", asy
         await fsRm(output, { recursive: true });
     }
 });
+
+test("package:homebrew wld-only rejects a missing wld asset without writes", async () => {
+    const fixture = await makeReleaseFixture();
+    const output = await tapFixture.checkout();
+    try {
+        await seedMnemoteca(output);
+        await fsRm(join(fixture.root, "wld-v1.2.3-darwin-x64.tar.gz"));
+        const before = await snapshotTree(output);
+        await assertRejects(() =>
+            packageHomebrew({
+                wldTag: "v1.2.3",
+                mnemotecaTag: "",
+                output,
+                inputsPath: fixture.inputsPath,
+                testOnly: true,
+                wldBaseUrl: fixture.baseUrl,
+            }),
+        );
+        assertEquals(await snapshotTree(output), before);
+    } finally {
+        await fixture.close();
+        await fsRm(output, { recursive: true });
+    }
+});

@@ -6,7 +6,7 @@ import {
     buildGuidedReviewPrompt,
     recommendGuidedReview,
     validateGuidedReviewExplainer,
-} from "./guided-review.js";
+} from "./guided-review.ts";
 
 const DIFF = `diff --git a/src/a.js b/src/a.js
 index 1111111..2222222 100644

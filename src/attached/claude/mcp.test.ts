@@ -137,6 +137,7 @@ test("the CLI and MCP return equal lifecycle results for the same mutation input
         assertEquals(
             tools.tools.map((tool) => tool.name),
             [
+                "start_planning",
                 "activate",
                 "triage_report",
                 "review_reply",
@@ -337,7 +338,7 @@ for (const hostVersion of [EVIDENCE.hostVersion, "2.1.302"]) {
             assert(result.ok);
             assertEquals(
                 result.compatibility?.status,
-                hostVersion === EVIDENCE.hostVersion ? "compatible" : "unsupported_host_version",
+                hostVersion === EVIDENCE.hostVersion ? undefined : "unsupported_host_version",
             );
             assertEquals(await readRecordBytes(root, ids.workflowId), before);
         } finally {

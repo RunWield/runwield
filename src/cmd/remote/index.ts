@@ -3,7 +3,7 @@ import { serveHttp } from "../../shared/http-server.ts";
 import { getCwd } from "../../constants.js";
 import { type NativeProcess, spawnNativeProcess } from "../../shared/foreground-process.ts";
 import { readableStdin } from "../../shared/stdin-stream.ts";
-import { readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
+import { readFile as fsReadFile, rm as fsRm, stat as fsStat } from "node:fs/promises";
 /* CLI-only remote connection. SSH supplies authentication, host verification and
  * terminal transport. Saved remote Sessions remain on the laptop. */
 import { dirname, join } from "node:path";
@@ -23,7 +23,7 @@ export const REMOTE_USAGE =
     "Personal resources and saved Session history stay on the laptop.\n" +
     "Use sessions to read saved remote history offline; connect to the target and use /resume to continue.\n" +
     "A host alias named sessions is reachable as sessions: or sessions:<remote-directory>.\n" +
-    "Released launchers use their exact VERSION-tagged GNU/Linux asset; development builds require a matching local artifact.";
+    "Use a matching local Linux artifact when present; otherwise released launchers use their exact VERSION-tagged GNU/Linux asset.";
 
 export function parseRemoteDestination(value: string): { host: string; path: string | null } {
     if (!value || value.startsWith("-") || value.includes("\0")) {
@@ -204,7 +204,7 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
         }
         const { showRemoteHistory } = await import("../../ui/tui/remote-history.ts");
         const { initTUI, stopTUI } = await import("../../ui/tui/tui.ts");
-        const { initRunWieldTheme } = await import("../../ui/theme/theme.js");
+        const { initRunWieldTheme } = await import("../../ui/theme/theme.ts");
         initRunWieldTheme();
         try {
             await showRemoteHistory(initTUI(), saved);
@@ -245,20 +245,30 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
         assertRemoteHostReady(target);
         triple = linuxTarget(target);
         const suffix = triple === "x86_64-unknown-linux-gnu" ? "linux-x64" : "linux-arm64";
-        // Released launchers never substitute a development or latest asset.
-        const release = VERSION.startsWith("v")
-            ? await obtainReleaseRuntime(
-                  VERSION,
-                  suffix,
-                  {
-                      buildId: BUILD_ID,
-                      protocol: REMOTE_PROTOCOL_VERSION,
-                      version: VERSION,
-                  },
-                  setupAbort.signal,
-              )
-            : null;
-        const artifact = release?.artifact ?? join(dirname(process.execPath), `wld-${triple}`);
+        const localArtifact = join(dirname(process.execPath), `wld-${triple}`);
+        const hasLocalArtifact = await fsStat(localArtifact).then(
+            () => true,
+            (error: NodeJS.ErrnoException) => {
+                if (error.code === "ENOENT") return false;
+                throw error;
+            },
+        );
+        // Local bundles still pass the same build, protocol, version and checksum checks.
+        // Without one, download only the exact release, never latest or an older version.
+        const release =
+            !hasLocalArtifact && VERSION.startsWith("v")
+                ? await obtainReleaseRuntime(
+                      VERSION,
+                      suffix,
+                      {
+                          buildId: BUILD_ID,
+                          protocol: REMOTE_PROTOCOL_VERSION,
+                          version: VERSION,
+                      },
+                      setupAbort.signal,
+                  )
+                : null;
+        const artifact = release?.artifact ?? localArtifact;
         try {
             await verifyRemoteRuntimeArtifact(artifact, target);
             const helpers = await obtainRemoteHelpers(target, setupAbort.signal);
@@ -304,7 +314,6 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
     }
     let child: NativeProcess | undefined;
     let exited = false;
-    let raw = false;
     let inputReader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     let interrupted = false;
     const connectionAbort = new AbortController();
@@ -320,6 +329,16 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
     };
     process.on("SIGINT", onInterrupt);
     process.on("SIGTERM", onInterrupt);
+    const onResize = () => {
+        if (child && !exited) {
+            try {
+                process.kill(child.pid, "SIGWINCH");
+            } catch {
+                /* SSH exited before the resize. */
+            }
+        }
+    };
+    if (process.platform !== "win32") process.on("SIGWINCH", onResize);
     try {
         const command = `exec ${remoteExecutable(
             BUILD_ID,
@@ -342,7 +361,9 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
                 host,
                 command,
             ],
-            stdin: "piped",
+            // OpenSSH reads the initial window size from stdin. Keep the tty
+            // intact so its native terminal setup and resize handling work.
+            stdin: process.stdin.isTTY ? "inherit" : "piped",
             stdout: "piped",
             stderr: "piped",
             ...(process.platform === "win32" ? {} : { detached: true }),
@@ -382,7 +403,6 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
                 readiness: "Conversation turns ready; history is saved on the laptop.",
             },
         });
-        const writer = ssh.stdin.getWriter();
         while (!exited && !interrupted && !service.status().ready && !service.status().shutdown) {
             await Promise.race([status, new Promise((resolve) => setTimeout(resolve, 100))]);
         }
@@ -401,29 +421,27 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
                 .replaceAll(sftp.header.sftpSecret, "[redacted]");
             throw new Error(`Remote connection did not become ready: ${detail || "remote supervisor exited"}`);
         }
-        // Only terminal bytes ever enter the interactive SSH channel.
-        if (process.stdin.isTTY) {
-            process.stdin.setRawMode(true);
-            raw = true;
-        }
-        const terminalInput = readableStdin().getReader();
-        inputReader = terminalInput;
-        const input = (async () => {
-            try {
-                while (!exited && !interrupted) {
-                    const { done, value } = await terminalInput.read();
-                    if (done) break;
-                    await writer.write(value);
+        if (!process.stdin.isTTY) {
+            const writer = ssh.stdin.getWriter();
+            const terminalInput = readableStdin().getReader();
+            inputReader = terminalInput;
+            const input = (async () => {
+                try {
+                    while (!exited && !interrupted) {
+                        const { done, value } = await terminalInput.read();
+                        if (done) break;
+                        await writer.write(value);
+                    }
+                } catch {
+                    /* Terminal or SSH closed. */
                 }
-            } catch {
-                /* Terminal or SSH closed. */
-            }
-            if (!exited) {
-                interrupted = true;
-                service.requestShutdown();
-            }
-        })();
-        void input.catch(() => undefined);
+                if (!exited) {
+                    interrupted = true;
+                    service.requestShutdown();
+                }
+            })();
+            void input.catch(() => undefined);
+        }
         const terminalOutput = (async () => {
             try {
                 if (ready.remainder.length) await writeTerminal(ready.remainder);
@@ -458,6 +476,7 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
     } finally {
         process.off("SIGINT", onInterrupt);
         process.off("SIGTERM", onInterrupt);
+        if (process.platform !== "win32") process.off("SIGWINCH", onResize);
         service.requestShutdown();
         if (child) {
             await stopOwnedSsh(child, () => exited).catch(() =>
@@ -469,7 +488,8 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
         } finally {
             await sftp.close();
         }
-        if (raw) process.stdin.setRawMode(false);
+        // SSH normally restores its tty; forced termination can skip that step.
+        if (process.stdin.isTTY) process.stdin.setRawMode(false);
         // A pending terminal read otherwise keeps the launcher alive after
         // SSH and the remote TUI have both exited.
         if (inputReader) {

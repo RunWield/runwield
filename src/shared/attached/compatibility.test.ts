@@ -20,21 +20,27 @@ test("Codex prereleases are recognized without claiming uncollected live accepta
     assertEquals(CODEX_COMPATIBILITY_MATRIX.testedVersions, []);
     assertEquals(CODEX_COMPATIBILITY_MATRIX.oldestTestedVersion, null);
     await withProject(async (root) => {
-        for (const hostVersion of ["0.164.0-alpha.11.1", "0.164.0", "0.164.0+build.1"]) {
+        for (const hostVersion of [
+            "0.164.0-alpha.11.1",
+            "0.164.0",
+            "0.164.0+build.1",
+            "0.164.1",
+            "0.164.9-rc.1+build.2",
+        ]) {
             const result = await runOperation("activate", root, {
                 ...activateInput(`codex-${hostVersion.replaceAll("+", "-")}`),
                 evidence: { ...EVIDENCE, host: "codex", hostVersion },
             });
             assert(result.ok);
-            assertEquals(result.compatibility?.status, "untested_newer");
-            assertStringIncludes(result.compatibility?.message ?? "", "not yet tested");
+            assertEquals(result.compatibility?.status, "compatible");
+            assertStringIncludes(result.compatibility?.message ?? "", "qualified release-family policy");
         }
     });
 });
 
 test("a prerelease of the Claude floor is older than its tested stable release", () => {
     assertEquals(assessCompatibility({ ...EVIDENCE, hostVersion: "2.1.303-rc.1" }).status, "unsupported_host_version");
-    assertEquals(assessCompatibility({ ...EVIDENCE, hostVersion: "2.1.304-rc.1" }).status, "untested_newer");
+    assertEquals(assessCompatibility({ ...EVIDENCE, hostVersion: "2.1.304-rc.1" }).status, "compatible");
 });
 
 for (const adapterContract of [0, 2]) {
@@ -61,7 +67,7 @@ for (const adapterContract of [0, 2]) {
 }
 
 for (const hostVersion of ["999.0.0", "2.1.304", "2.1.1000", "not-reported", "unparseable"]) {
-    test(`activation discloses host version ${hostVersion} and saves its assessment`, async () => {
+    test(`activation assesses host version ${hostVersion} and saves its assessment`, async () => {
         await withProject(async (root) => {
             const result = await runOperation("activate", root, {
                 ...activateInput(),
@@ -70,9 +76,12 @@ for (const hostVersion of ["999.0.0", "2.1.304", "2.1.1000", "not-reported", "un
             assert(result.ok);
             assertEquals(
                 result.compatibility?.status,
-                ["not-reported", "unparseable"].includes(hostVersion) ? "version_not_reported" : "untested_newer",
+                ["not-reported", "unparseable"].includes(hostVersion)
+                    ? "version_not_reported"
+                    : hostVersion.startsWith("2.")
+                      ? "compatible"
+                      : "untested_newer",
             );
-            assertStringIncludes(result.compatibility?.message ?? "", "not yet tested");
             const loaded = await loadAttachedWorkflowRecord(locateAttachedWorkflows(root), result.workflow.workflowId);
             assert(loaded.status === "found");
             assertEquals(loaded.record.evidence.compatibility, result.compatibility);
@@ -103,8 +112,8 @@ for (const hostVersion of ["2.1.302", "2.1.99"]) {
         });
     });
 }
-for (const hostVersion of ["2.1.303", "2.1.303.0"]) {
-    test(`tested host ${hostVersion} activates with its compatible assessment saved`, async () => {
+for (const hostVersion of ["2.1.303", "2.1.303.0", "2.1.304", "2.99.0", "2.99.0-rc.1+build.1"]) {
+    test(`qualified host ${hostVersion} activates with its compatible assessment saved`, async () => {
         await withProject(async (root) => {
             const result = await runOperation("activate", root, {
                 ...activateInput(),
@@ -140,6 +149,7 @@ const payloads: Record<AttachedLifecycleOperationName, AttachedJsonObject> = {
         outcome: { routingIntent: "PLANNED_CHANGE", complexity: "LOW", summary: "Add value", workKind: "FEATURE" },
     },
     plan_written: { actionId: "pending", planName: "p" },
+    start_planning: { actionId: "pending" },
     start_execution: {},
     task_completed: { actionId: "pending", message: "- Implemented the requested value and checked the result." },
     start_validation: {},
@@ -311,4 +321,15 @@ for (const hostVersion of ["2.1.303", "999.0.0", "not-reported", undefined]) {
             await fixture.close();
         }
     });
+}
+
+for (const [host, versions] of [
+    ["codex", ["0.163.9", "0.165.0", "0.999.0", "1.0.0"]],
+    ["claude-code", ["3.0.0"]],
+] as const) {
+    for (const hostVersion of versions) {
+        test(`${host} ${hostVersion} requires separate family qualification`, () => {
+            assertEquals(assessCompatibility({ ...EVIDENCE, host, hostVersion }).status, "untested_newer");
+        });
+    }
 }

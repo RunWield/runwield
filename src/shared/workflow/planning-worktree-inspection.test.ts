@@ -124,7 +124,8 @@ for (const remote of [false, true]) {
                             path: `${ref}:docs/plans/${childName(index)}.md`,
                             attrs: parsePlanFrontMatter(childMarkdown(index)).attrs,
                         }));
-                    assertEquals(large.children, expected);
+                    // Hydration omits absent runtime fields; compare the stored values, not undefined keys.
+                    assertEquals(JSON.parse(JSON.stringify(large.children)), JSON.parse(JSON.stringify(expected)));
                     assertEquals(
                         await projectSnapshot(repo),
                         before,

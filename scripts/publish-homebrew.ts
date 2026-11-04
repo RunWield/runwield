@@ -1,5 +1,5 @@
 import { copyFile, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import process from "node:process";
 import { captureScriptProcess } from "./script-process.ts";
@@ -32,6 +32,7 @@ async function git(tap: string, args: string[]) {
 /** Publish only the checked RunWield update, from the exact tap revision qualified on macOS. */
 export async function publishHomebrew(options: HomebrewPublication) {
     const { tap, checked, base, tag } = options;
+    if (resolve(tap) === resolve(checked)) throw new Error("Qualification requires a separate disposable copy.");
     if (!/^[0-9a-f]{40}$/.test(base) || (await git(tap, ["rev-parse", "HEAD"])) !== base) {
         throw new Error("Publication checkout does not match the qualified tap revision.");
     }
@@ -55,7 +56,13 @@ export async function publishHomebrew(options: HomebrewPublication) {
         !/^v\d+\.\d+\.\d+$/.test(tag) ||
         formula.includes("test-only artifact") ||
         urls.length !== 2 ||
-        urls.some((match) => !match[1].startsWith(`https://github.com/RunWield/runwield/releases/download/${tag}/`))
+        !["darwin-arm64", "darwin-x64"].every((arch) =>
+            urls.some(
+                (match) =>
+                    match[1] ===
+                    `https://github.com/RunWield/runwield/releases/download/${tag}/wld-${tag}-${arch}.tar.gz`,
+            ),
+        )
     ) {
         throw new Error("Checked RunWield formula must use the requested Stable release assets.");
     }

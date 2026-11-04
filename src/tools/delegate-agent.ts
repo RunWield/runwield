@@ -6,7 +6,7 @@ import { captureForegroundProcess } from "../shared/captured-process.ts";
  */
 
 import { join } from "node:path";
-import { StringEnum, Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
@@ -28,7 +28,7 @@ import type {
 import type { HostedSession } from "../shared/session/hosted-session.js";
 import type { AgentDefinition } from "../shared/session/types.js";
 import type { BashAllowedCommands } from "../shared/bash-command-policy.ts";
-import { extractAssistantOutput } from "../shared/workflow/workflow-results.js";
+import { extractAssistantOutput } from "../shared/workflow/workflow-results.ts";
 
 export type DelegationMode = "read" | "write";
 
@@ -48,11 +48,11 @@ const MODE_DESCRIPTIONS: Readonly<Record<DelegationMode, string>> = Object.freez
 function createParameters(modes: readonly DelegationMode[]) {
     return Type.Object(
         {
-            mode: StringEnum(modes, {
+            mode: Type.Enum(modes, {
                 description: `Delegation authority. Use ${modes.map((mode) => MODE_DESCRIPTIONS[mode]).join(" and ")}.`,
             }),
             role: Type.Optional(
-                StringEnum([...DELEGATED_ROLE_IDS], {
+                Type.Enum([...DELEGATED_ROLE_IDS], {
                     description:
                         "Optional Delegated Agent Role. Omit (or use 'general') for an unspecialized delegate. Use 'verification-adversary' to have a read-only delegate attack a draft Plan's outcomes, steps, and verification claims with the cheapest counterfeit implementation; a role's authority ceiling can reduce the requested mode.",
                 }),
@@ -123,7 +123,7 @@ interface PorcelainStatusEntry {
     path: string;
 }
 
-interface DelegateAgentDetails {
+export interface DelegateAgentDetails {
     ok: boolean;
     mode: DelegationMode;
     role: string;

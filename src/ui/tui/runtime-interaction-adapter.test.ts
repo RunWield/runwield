@@ -4,15 +4,15 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
-import { createTuiInteractionAdapter as createAdapterImplementation } from "./runtime-interaction-adapter.js";
+import { createTuiInteractionAdapter as createAdapterImplementation } from "./runtime-interaction-adapter.ts";
 import { getStoredPlanPath, savePlan } from "../../plan-store.js";
 import { createScriptedReviewBrowser } from "../review/review-test-fixture.ts";
-import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";
+import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
 import { ToolExecutionBlock } from "./blocks.js";
-import { initRunWieldTheme } from "../theme/theme.js";
+import { initRunWieldTheme } from "../theme/theme.ts";
 
 import type { SelectOption, UiAPI } from "./types.js";
-import type { RuntimeInteractionRequest } from "../../shared/session/session-runtime-interactions.js";
+import type { RuntimeInteractionRequest } from "../../shared/session/session-runtime-interactions.ts";
 import type { ReviewSurface } from "../review/review-launcher.ts";
 
 interface ReviewUiState {
@@ -59,6 +59,7 @@ test("TUI Plan review resumes progress after feedback and review failures", asyn
     const adapter = createAdapter(makeUi(null, { busyValues }), { browser: scripted.browser });
     try {
         await savePlan(cwd, "plan", "# Plan\n\nDo the work.\n", {
+            planId: "tui-review-plan",
             classification: "PLANNED_CHANGE",
             status: "draft",
         });

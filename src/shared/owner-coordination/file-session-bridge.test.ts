@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "../sqlite.ts";
 import { openFileSessionStore } from "../session/file-session-store.ts";
 import { encodeCwdForSessionDir } from "../project-directory-key.ts";
-import { openOwnerCoordinationStore } from "./index.js";
+import { openOwnerCoordinationStore } from "./index.ts";
 
 function countRows(database: DatabaseSync, table: string) {
     const row = database.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get();

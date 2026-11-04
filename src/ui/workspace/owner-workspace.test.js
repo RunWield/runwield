@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import { getPlanRevisionForText, injectFrontMatter, loadPlan, savePlan } from "../../plan-store.js";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { createOwnerWorkspaceApp, startWorkspaceServer } from "./server.js";
 
 /** @param {string} credential @param {string} [csrf] */

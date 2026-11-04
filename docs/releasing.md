@@ -124,7 +124,8 @@ bun run release:promote --candidate vX.Y.Z-rc.N [--dry-run]
 bun run release:stable --tag vX.Y.Z [--dry-run]
 bun run release:metadata --tag vX.Y.Z[-rc.N]
 bun run release:check --build-version vX.Y.Z[-rc.N]
-bun run package:homebrew --wld-tag vX.Y.Z --mnemoteca-tag vA.B.C --output <dir>
+git clone https://github.com/RunWield/homebrew-tap.git <dir>
+bun run package:homebrew --wld-tag vX.Y.Z --output <dir>
 bun run package:homebrew:check --tap <dir>
 bun run package:windows --tag vX.Y.Z --binary <path-to-wld.exe> --output <dir>
 bun run package:windows:check --package <dir>/wld-vX.Y.Z-windows-x64.zip
@@ -201,28 +202,48 @@ build files such as `package.json` are not release assets.
 
 After Stable asset publication succeeds, the release workflow:
 
-1. Records the current `RunWield/homebrew-tap` revision and copies its package files to a disposable check directory.
-2. Refreshes only `wld` from the published release assets. Mnemoteca remains the version in that tap snapshot.
-3. Runs the complete package check on macOS, including the installed Mnemoteca version against the manifest.
-4. Uploads the verified `runwield-homebrew-tap-<tag>` recovery artifact.
-5. Publishes only `Formula/wld.rb` and the wld-owned manifest fields from the recorded base revision.
-
-RunWield releases do not rewrite Mnemoteca, README, or dependency metadata. A normal push rejects a concurrent tap
-update. Recovery takes a fresh snapshot and repeats qualification; it does not force-push or resolve a manifest
-conflict with an old generated file. Repository concurrency groups do not serialize Mnemoteca's separate release workflow.
+1. Checks out `RunWield/homebrew-tap` and records its revision.
+2. Copies package files to a separate disposable check tree, then refreshes only `wld` from published release assets.
+3. Runs the complete package check on macOS, including the installed Mnemoteca version against `mnemotecaTag`.
+4. Uploads the verified `runwield-homebrew-tap-<tag>` recovery artifact without Git metadata or credentials.
+5. Applies only `Formula/wld.rb` and the manifest's `wldTag`, `testOnly`, and `generatedAt` changes to the original
+   publication checkout. It verifies that Mnemoteca formula bytes and all other manifest values match the checked base.
+6. Pushes normally. A concurrent tap update rejects publication; no force-push, rebase, or automatic conflict resolution
+   replaces the independently released package.
 
 The `HOMEBREW_TAP_TOKEN` repository secret must contain a GitHub token with write access to `RunWield/homebrew-tap`.
 Publication stops if the credential is absent or any package check fails. To reproduce the check on disposable macOS
 infrastructure, use the following commands. Do not replace your working Homebrew tap or installed packages to run this check:
 
 ```bash
-git clone https://github.com/RunWield/homebrew-tap.git /tmp/runwield-tap
-bun run package:homebrew --wld-tag vX.Y.Z --output /tmp/runwield-tap
-bun run package:homebrew:check --tap /tmp/runwield-tap
+git clone https://github.com/RunWield/homebrew-tap.git /tmp/runwield-tap-base
+mkdir /tmp/runwield-tap-check
+cp -R /tmp/runwield-tap-base/Formula /tmp/runwield-tap-base/README.md \
+  /tmp/runwield-tap-base/runwield-homebrew-package.json /tmp/runwield-tap-check/
+bun run package:homebrew --wld-tag vX.Y.Z --output /tmp/runwield-tap-check
+bun run package:homebrew:check --tap /tmp/runwield-tap-check
 ```
 
 The checked formula installs metadata beside `libexec/wld`; a Homebrew-owned `wld update` prints
 `brew upgrade gandazgul/tap/wld` and must not run `install.sh`.
+
+Normal RunWield releases never read the local Mnemoteca input pin or download dependency assets during formula
+rendering. Single-package refresh preserves the other package and unrelated tap files. The checker stages and commits
+its input tree, so never run it on the publication checkout or the owner's installed tap.
+
+A concurrent tap update requires a fresh snapshot and full qualification against the immutable released assets.
+Repository concurrency groups do not serialize Mnemoteca's separate release workflow. A recovery artifact is evidence,
+not permission to copy an old whole manifest onto a newer tap. Source prevention and the issue #466 public dependency
+repair are separate outcomes; never downgrade a dependency that is already newer.
+
+Explicit two-package preparation remains available for an intentional replacement tree:
+
+```bash
+bun run package:homebrew --wld-tag vX.Y.Z --mnemoteca-tag vA.B.C --output /tmp/new-runwield-tap
+```
+
+The manual preparation workflow requires either tag or both, with no default dependency tag. Single-package preparation
+clones the existing tap. Its archives contain package files only, not `.git` or checkout credentials.
 
 `mnemoteca` can be refreshed independently by omitting `--wld-tag` and passing a new `--mnemoteca-tag` against an
 existing tap tree. Supplying both tags explicitly rebuilds both packages for preparation, not ordinary RunWield releases.

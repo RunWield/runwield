@@ -7,14 +7,14 @@ import { stat as fsStat } from "node:fs/promises";
  */
 
 import { dirname, resolve } from "node:path";
-import { ACTIVE_AGENT_CUSTOM_TYPE, readActiveAgentFromEntry } from "./active-agent-session.js";
-import { readPersistedWorkflowContext } from "./workflow-context-session.js";
+import { ACTIVE_AGENT_CUSTOM_TYPE, readActiveAgentFromEntry } from "./active-agent-session.ts";
+import { readPersistedWorkflowContext } from "./workflow-context-session.ts";
 import { readPersistedTutorialContext } from "./tutorial-context-session.ts";
 import { readPlanAssociations } from "./plan-association.ts";
 import { normalizeRuntimeToolResult, normalizeRuntimeUsage, RuntimeEventTypes } from "./session-runtime-events.js";
 import { describeRuntimeTool } from "./tool-event-title.ts";
 import { formatProviderError } from "./provider-errors.ts";
-import { formatTaskCompletedMarkdown, readManualQaChecklistMessage } from "./workflow-messages.js";
+import { formatTaskCompletedMarkdown, readManualQaChecklistMessage } from "./workflow-messages.ts";
 import { isPathInside, readCatalogSafeRootSessionLocator } from "./root-session.js";
 import {
     namedInvocationCompactText,

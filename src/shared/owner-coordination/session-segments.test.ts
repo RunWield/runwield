@@ -14,8 +14,8 @@ import { assertEquals, assertRejects, assertThrows } from "../../testing/asserti
 import { DatabaseSync } from "../sqlite.ts";
 import { getRunWieldSessionDir } from "../session/root-session.js";
 import { captureTranscriptEvidence } from "../session/session-transcript-projection.js";
-import { openOwnerCoordinationDatabase } from "./database.js";
-import { registerProject } from "./projects.js";
+import { openOwnerCoordinationDatabase } from "./database.ts";
+import { registerProject } from "./projects.ts";
 import {
     OWNER_COORDINATION_SCHEMA_V1_SQL,
     OWNER_COORDINATION_SCHEMA_V2_SQL,

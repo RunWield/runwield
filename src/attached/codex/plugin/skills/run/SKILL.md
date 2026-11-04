@@ -17,6 +17,10 @@ Use the user's intent to choose:
   `payload: { requestText, hostRequestId }`. Put only this request in `requestText`. Use a request identifier supplied
   by Codex when available, otherwise generate a UUID. Keep those IDs when retrying an activation that returned no
   result. The installed MCP server supplies host and adapter evidence; do not construct or override it.
+- **Start planning an existing Plan or Epic child:** use `activate` with the explicit request and
+  `payload.existingPlan: { planName, planId, targetBranch? }`. Use the selected Plan's name relative to `docs/plans/`
+  without `.md`, and its actual Plan ID. Select only the child the user named. Do not encode the selection solely in
+  request prose or choose another child. If a workflow already exists for that request, continue it instead.
 - **Continue existing work**, such as `$runwield:run resume` or `$runwield:run implement the saved Plan`: first call `status`
   with `inspectOnly: true` and the known `workflowId`, or only `{ inspectOnly: true }` to inspect the most recent open
   workflow in this repository without continuing it. Do not activate a new
@@ -33,7 +37,7 @@ start checks, or dispatch a worker before showing this summary. A workflow start
 in Codex with the same Plan, action, revision, and execution directory. The explicit resume already authorizes that
 handoff; no additional host-switch confirmation is needed. Do not import the other host's conversation.
 
-Show any returned `compatibility` notice before continuing. For `unsupported_host`, `incompatible_adapter`, or
+Continue quietly on nonblocking compatibility assessments, including legacy notices from older Core. For `unsupported_host`, `incompatible_adapter`, or
 `unsupported_host_version`, show Core's explanation and update guidance and stop. Never claim a host version is tested
 when Core describes it as untested.
 
@@ -42,11 +46,11 @@ when Core describes it as untested.
 After every tool result, follow `workflow.nextAction`, including a result that rejects a stale call. Read the relevant
 reference before handling its actions; move to another reference when the returned action changes.
 
-| Current action                                                                             | Reference                                           |
-| ------------------------------------------------------------------------------------------ | --------------------------------------------------- |
-| `triage`, `plan`, `review`                                                                 | [Planning and Plan review](references/planning.md)  |
-| `plan_ready`, `plan_saved`, `consent`, `implementation`                                    | [Implementation](references/implementation.md)      |
-| `implemented`, `validation_recovery`, `validation`, `code_review`, `recorder`, `delivered` | [Validation and delivery](references/validation.md) |
+| Current action                                                                                                   | Reference                                           |
+| ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `triage`, `plan`, `review`                                                                                       | [Planning and Plan review](references/planning.md)  |
+| `plan_ready`, `plan_saved`, `consent`, `implementation`                                                          | [Implementation](references/implementation.md)      |
+| `implemented`, `validation_running`, `validation_recovery`, `validation`, `code_review`, `recorder`, `delivered` | [Validation and delivery](references/validation.md) |
 
 For `return_to_host`, report Core's outcome and return to ordinary Codex work. Unsupported request types do not become
 FEATURE workflows by changing their classification. An unrecognized action or role contract is a recoverable
@@ -99,3 +103,8 @@ Use Core's supplied execution directory for every worker command and edit. Do no
 isolation, create another worktree, or move the invoking checkout. If the host cannot provide a fresh worker, or a
 reviewer cannot access RunWield MCP directly, report the missing capability and keep the workflow resumable. Do not
 substitute a review in this coordinating conversation.
+
+For planning, use Core's `planningCwd` and `planPath`. Follow the planning reference's `start_planning` step before
+dispatch. If preparation fails or authority is missing, stop dependent work, repair the integration, and retry the same
+workflow. Do not use temporary Core scripts, manual HTTP approvals, coordinator-proxied worker instructions, or manually
+created planning worktrees to bypass the native handoff.

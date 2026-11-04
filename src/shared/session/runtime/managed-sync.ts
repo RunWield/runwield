@@ -3,7 +3,7 @@ import { captureTranscriptEvidence, toProjectionFailure } from ".././session-tra
 import { projectAggregateTranscript } from ".././session-transcript-manifest.ts";
 import { dirname } from "node:path";
 import { normalizeTutorialContext } from "../tutorial-context-session.ts";
-import { normalizeWorkflowContext } from "../workflow-context-session.js";
+import { normalizeWorkflowContext } from "../workflow-context-session.ts";
 import { reconcileLegacyCompletion } from "../workflow-context-recovery.ts";
 
 import { isSameManagedSyncState, restorePublishedSessionProjectRoot } from "./support.ts";

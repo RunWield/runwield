@@ -1,5 +1,5 @@
 import type { ActiveExecutionWorkflow } from "../../../shared/types.js";
-import type { WorkflowContext } from "../../../shared/session/workflow-context-session.js";
+import type { WorkflowContext } from "../../../shared/session/workflow-context-session.ts";
 
 export interface SessionAvailabilitySnapshot {
     activeAgent?: string | null;

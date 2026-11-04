@@ -18,7 +18,7 @@ import type { ContextEvent, ExtensionAPI, SessionCompactEvent } from "@earendil-
 import { buildReAnchorMessage, type ReAnchorContext } from "../../shared/workflow/workflow-prompts.ts";
 import { projectEngineerPlanBody } from "../../shared/workflow/engineer-plan-projection.ts";
 import { getStoredPlanPath } from "../../plan-store.js";
-import { normalizeWorkflowPlanName } from "../../shared/session/workflow-context-session.js";
+import { normalizeWorkflowPlanName } from "../../shared/session/workflow-context-session.ts";
 import { normalizeLedger, renderOpenItems } from "../../shared/workflow/review-ledger.ts";
 import type { HostedSession } from "../../shared/session/hosted-session.js";
 

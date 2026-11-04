@@ -729,9 +729,9 @@ test("runValidationPhase dispatches semantic review feedback to Reviewer-Feedbac
     assertExists(approvedPlanBody);
     const sessions = /** @type {any[]} */ ([]);
     const reviewerWorkflowContexts =
-        /** @type {Array<import('../session/workflow-context-session.js').WorkflowContext | null>} */ ([]);
+        /** @type {Array<import('../session/workflow-context-session.ts').WorkflowContext | null>} */ ([]);
     const repairWorkflowContexts =
-        /** @type {Array<import('../session/workflow-context-session.js').WorkflowContext | null>} */ ([]);
+        /** @type {Array<import('../session/workflow-context-session.ts').WorkflowContext | null>} */ ([]);
     const repairActiveOwners = /** @type {Array<string | undefined>} */ ([]);
     const repairActivePlanNames = /** @type {Array<string | null>} */ ([]);
 

@@ -166,3 +166,42 @@ test("extractRouterDecisionsFromEntries ignores sessions without active-agent ro
 
     assertEquals(extractRouterDecisionsFromEntries(entries).length, 0);
 });
+
+for (const details of [
+    { routingIntent: "FEATURE", complexity: "MEDIUM", summary: "Build it", affectedPaths: ["src/a.js"] },
+    { classification: "QUICK_FIX", complexity: "LOW", summary: "Fix it", affectedPaths: ["src/a.js"] },
+]) {
+    test(`persisted routing extraction preserves ${"routingIntent" in details ? "canonical" : "legacy"} intent and tool evidence`, () => {
+        const rows = extractRouterDecisionsFromEntries(
+            [
+                { type: "session", id: "session" },
+                { type: "custom", customType: "runwield.active_agent", data: { agentName: "router" } },
+                { type: "message", id: "user", message: { role: "user", content: "Make the change" } },
+                {
+                    type: "message",
+                    message: {
+                        role: "assistant",
+                        content: [
+                            { type: "toolCall", name: "grep" },
+                            { type: "tool_use", name: "read" },
+                            { type: "text", text: "ignore" },
+                            { type: "tool_use", name: "triage_report" },
+                        ],
+                    },
+                },
+                { type: "message", id: "result", message: { role: "toolResult", toolName: "triage_report", details } },
+            ],
+            { sessionFile: "session.jsonl" },
+        );
+        assertEquals(rows.length, 1);
+        assertEquals(rows[0].requestText, "Make the change");
+        assertEquals(rows[0].routingIntent, details.routingIntent ?? details.classification);
+        assertEquals(rows[0].intentSource, "routingIntent" in details ? "routingIntent" : "classification");
+        assertEquals(rows[0].classification, "routingIntent" in details ? "FEATURE" : undefined);
+        assertEquals(rows[0].complexity, details.complexity);
+        assertEquals(rows[0].summary, details.summary);
+        assertEquals(rows[0].affectedPaths, ["src/a.js"]);
+        assertEquals(rows[0].discoveryTools, ["grep", "read"]);
+        assertEquals(rows[0].discoveryToolCount, 2);
+    });
+}

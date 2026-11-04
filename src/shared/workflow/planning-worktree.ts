@@ -39,7 +39,11 @@ import {
     listControllerDocumentWorktrees,
     writeControllerState,
 } from "./controller-registry.ts";
-import { enterProjectRuntime, ProjectRuntimeReadPendingError } from "../project-runtime-layout.ts";
+import {
+    enterProjectRuntime,
+    ProjectRuntimeReadPendingError,
+    withProjectRuntimeReadScope,
+} from "../project-runtime-layout.ts";
 import { refreshPlanningWorktree } from "./planning-worktree-refresh.ts";
 
 type LoadedPlan = NonNullable<Awaited<ReturnType<typeof loadPlan>>>;
@@ -65,7 +69,10 @@ interface PlanningPlanAttributes {
 }
 
 export class TargetBranchSnapshotUnavailableError extends Error {
-    constructor(targetBranch: string) {
+    constructor(
+        targetBranch: string,
+        readonly reason: "missing_ref" | "unreadable" = "unreadable",
+    ) {
         super(`Local target branch evidence is unavailable: ${targetBranch}.`);
         this.name = "TargetBranchSnapshotUnavailableError";
     }
@@ -114,7 +121,9 @@ async function gitRefExists(projectRoot: string, ref: string): Promise<boolean> 
         env: { GIT_NO_LAZY_FETCH: "1" },
         args: ["rev-parse", "--verify", "--quiet", ref],
     });
-    return result.success;
+    if (result.success) return true;
+    if (result.code === 1) return false;
+    throw new TargetBranchSnapshotUnavailableError(ref);
 }
 
 /** Preserve cached origin history for read-only lookups without overriding an explicit local remote. */
@@ -144,7 +153,7 @@ async function resolveExistingTargetSnapshot(projectRoot: string, targetBranch: 
             : (await gitRefExists(projectRoot, `refs/heads/${branch}`))
               ? `refs/heads/${branch}`
               : "";
-    if (!baseRef) throw new TargetBranchSnapshotUnavailableError(targetBranch);
+    if (!baseRef) throw new TargetBranchSnapshotUnavailableError(targetBranch, "missing_ref");
     const commit = (await runGit(projectRoot, ["rev-parse", `${baseRef}^{commit}`])).trim();
     return { baseRef: commit, baseBranch: branch, targetRef: baseRef };
 }
@@ -169,7 +178,7 @@ async function prepareExistingTargetSnapshot(projectRoot: string, targetBranch: 
         if (!fetched.success) {
             // A removed remote branch must not leave a stale remote-tracking ref authoritative.
             if (!(await gitRefExists(projectRoot, `refs/heads/${branch}`))) {
-                throw new TargetBranchSnapshotUnavailableError(targetBranch);
+                throw new TargetBranchSnapshotUnavailableError(targetBranch, "missing_ref");
             }
             const commit = (await runGit(projectRoot, ["rev-parse", `refs/heads/${branch}^{commit}`])).trim();
             return { baseRef: commit, baseBranch: branch, targetRef: `refs/heads/${branch}` };
@@ -177,7 +186,8 @@ async function prepareExistingTargetSnapshot(projectRoot: string, targetBranch: 
         return await resolveExistingTargetSnapshot(projectRoot, targetBranch);
     }
     const localRef = `refs/heads/${branch}`;
-    if (!(await gitRefExists(projectRoot, localRef))) throw new TargetBranchSnapshotUnavailableError(targetBranch);
+    if (!(await gitRefExists(projectRoot, localRef)))
+        throw new TargetBranchSnapshotUnavailableError(targetBranch, "missing_ref");
     const commit = (await runGit(projectRoot, ["rev-parse", `${localRef}^{commit}`])).trim();
     return { baseRef: commit, baseBranch: branch, targetRef: localRef };
 }
@@ -294,9 +304,11 @@ export async function findTargetBranchPlan(cwd: string, targetBranch: string, pl
 
 /** Inspect committed target children using local evidence only. */
 export async function inspectTargetBranchPlansByParent(cwd: string, targetBranch: string, parentPlanName: string) {
-    const projectRoot = resolvePrimaryCheckoutRoot(cwd);
-    const target = await resolveExistingTargetSnapshot(projectRoot, targetBranch);
-    return await readTargetChildren(projectRoot, target.baseRef, parentPlanName);
+    return await withProjectRuntimeReadScope(async () => {
+        const projectRoot = resolvePrimaryCheckoutRoot(cwd);
+        const target = await resolveExistingTargetSnapshot(projectRoot, targetBranch);
+        return await readTargetChildren(projectRoot, target.baseRef, parentPlanName);
+    });
 }
 
 function isActivePlanPath(path: string): boolean {
@@ -315,7 +327,10 @@ async function readTargetChildren(projectRoot: string, ref: string, parentPlanNa
         const planName = relativePath.slice("docs/plans/".length, -".md".length);
         const parsed = parsePlanFrontMatter(markdown);
         if (parsed.attrs.parentPlan !== parentName) continue;
-        children.push({ name: planName, path: `${ref}:${relativePath}`, attrs: parsed.attrs });
+        const path = `${ref}:${relativePath}`;
+        const inspected = await inspectPlanTextStrict(markdown, path, getStoredPlanPath(projectRoot, planName));
+        if (inspected.kind === "malformed") throw inspected.error;
+        children.push({ name: planName, path, attrs: inspected.attrs });
     }
     return children;
 }

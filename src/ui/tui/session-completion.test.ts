@@ -8,7 +8,7 @@ import { TuiAltScreen } from "@earendil-works/pi-tui";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
 import { createChatView } from "./chat-view.ts";
 import { createChatInputController } from "./chat-input-controller.ts";
-import { attachTuiRuntimeAdapter } from "./runtime-adapter.js";
+import { attachTuiRuntimeAdapter } from "./runtime-adapter.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";
@@ -221,7 +221,7 @@ for (const choice of ["skip", "open", "dismiss"]) {
                 suppressStartupHeader: true,
                 setActiveModel: () => Promise.resolve({ status: "active" }),
             });
-            const { createTuiInteractionAdapter } = await import("./runtime-interaction-adapter.js");
+            const { createTuiInteractionAdapter } = await import("./runtime-interaction-adapter.ts");
             const adapter = createTuiInteractionAdapter(view.uiAPI, { browser: NO_OPEN_BROWSER_PORT });
             tui.start();
             try {

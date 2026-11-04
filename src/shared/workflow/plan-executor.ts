@@ -9,7 +9,7 @@ import {
     requestHostedSessionInteraction,
     RuntimeInteractionOutcomes,
     RuntimeInteractionTypes,
-} from "../session/session-runtime-interactions.js";
+} from "../session/session-runtime-interactions.ts";
 import { isExecutablePlanStatus, isProjectPlan, recordPlanEvent } from "./plan-lifecycle.js";
 import { normalizePlanApprovalAction, PLAN_APPROVAL_ACTIONS } from "./plan-approval.ts";
 import {

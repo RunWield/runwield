@@ -27,12 +27,12 @@ affectedPaths:
     - "src/shared/session/request-dispatch.ts"
     - "src/shared/session/background-tasks.ts"
     - "src/tools/delegate-agent.ts"
-    - "src/tools/__tests__/delegate-agent.test.js"
+    - "src/tools/__tests__/delegate-agent.test.ts"
     - "src/cmd/compact/index.ts"
     - "src/cmd/compact/index.test.js"
-    - "src/ui/tui/runtime-adapter.js"
+    - "src/ui/tui/runtime-adapter.ts"
     - "src/ui/tui/runtime-adapter.test.js"
-    - "src/acp/event-mapper.js"
+    - "src/acp/event-mapper.ts"
     - "src/acp/server.test.js"
     - "src/ui/workspace/components/SessionTimeline.jsx"
     - "src/shared/session/session-transcript-projection.js"
@@ -334,16 +334,16 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/tools/delegate-agent.ts`, `src/shared/session/background-tasks.ts`, and background task tests — map foreground
   and background pause outcomes through their different existing settlement paths. Do not present partial output as
   successful work.
-- `src/tools/__tests__/delegate-agent.test.js` — verify delegated Agent cancellation and context pause preserve tool
+- `src/tools/__tests__/delegate-agent.test.ts` — verify delegated Agent cancellation and context pause preserve tool
   settlement, report `context_resilience_paused` deterministically, and respect Hosted Session compaction serialization.
 - `src/cmd/compact/index.ts` — handle Runtime's `compaction_in_progress` result without reading success-only compaction
   fields and display one concise retry-later message.
 - `src/cmd/compact/index.test.js` — cover shared-arbiter acquisition, immediate `compaction_in_progress` behavior,
   manual-compaction re-arm, and non-duplicated manual/automatic status.
-- `src/ui/tui/runtime-adapter.js` — render canonical context-resilience messages without implementing policy or
+- `src/ui/tui/runtime-adapter.ts` — render canonical context-resilience messages without implementing policy or
   normalization in the TUI.
 - `src/ui/tui/runtime-adapter.test.js` — verify each user-visible context outcome renders once.
-- `src/acp/event-mapper.js` — map the same semantic event to ACP text plus structured `_meta` status/reason fields.
+- `src/acp/event-mapper.ts` — map the same semantic event to ACP text plus structured `_meta` status/reason fields.
 - `src/acp/server.test.js` — verify ACP receives equivalent outcomes without Session content or TUI-specific semantics.
 - `src/ui/workspace/components/SessionTimeline.jsx` and Session history/event projection tests — render the new event
   once with the existing system-event row, in both live and saved history. Reuse `docs/design-system.md` patterns and
@@ -461,8 +461,8 @@ unless the complete public AgentSession contract has been verified; a partial ga
   src/shared/session/session-runtime-events.test.js src/shared/session/session-runtime.test.js
   src/shared/session/agent-handler.test.ts src/shared/session/request-dispatch.test.ts
   src/shared/session/background-tasks.test.ts src/shared/session/background-tasks-extra.test.ts
-  src/shared/session/segment-rollover.test.js src/shared/session/session-transcript-projection.test.js
-  src/tools/__tests__/delegate-agent.test.js src/cmd/compact/index.test.js
+  src/shared/session/segment-rollover.test.js src/shared/session/session-transcript-projection.test.ts
+  src/tools/__tests__/delegate-agent.test.ts src/cmd/compact/index.test.js
   src/ui/tui/runtime-adapter.test.js src/acp/server.test.js src/ui/workspace/workspace-session-ux.test.tsx`.
   Include new focused integration suites through the same runner. Never use direct `deno test`.
 - Existing coverage: preserve manual/resume compaction, automatic-disabled behavior, image and Named Invocation context,

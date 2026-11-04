@@ -14,7 +14,7 @@ import { resetTuiState as resetTuiStateFn } from "../command-helpers.ts";
 import {
     RuntimeInteractionOutcomes,
     RuntimeInteractionTypes,
-} from "../../shared/session/session-runtime-interactions.js";
+} from "../../shared/session/session-runtime-interactions.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import type { UiAPI } from "../../ui/tui/types.js";
 import type { PlanFrontMatter } from "../../plan-store.js";

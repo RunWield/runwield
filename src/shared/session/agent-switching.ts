@@ -1,0 +1,388 @@
+/**
+ * @module shared/session/agent-switching
+ * Adapter-neutral active Agent switch transaction.
+ */
+
+import { createAgentHandler } from "./agent-handler.js";
+import { readPersistedActiveAgentName, readPersistedManualModelState } from "./active-agent-session.ts";
+import { getAgentBusyLines, normalizeAgentInternalName } from "./agents.js";
+import {
+    appendDebugLog,
+    ensureRootAgentSession,
+    getConfiguredAgentModel,
+    getRootSessionSwitchState,
+    markRootAgentSwitch,
+    runRootTurn,
+    shouldReuseExistingRootSession,
+} from "./session.js";
+import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "./session-runtime-events.js";
+
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { SessionManager, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { HostedSession, ThinkingLevel } from "./hosted-session.js";
+import type { ImageAttachment } from "./types.js";
+import type { TriageMeta } from "../../tools/plan-written.ts";
+import type { McpIntegration } from "../mcp/integration.ts";
+import type { McpServerDefinition } from "../mcp/config.ts";
+import type { ManagedOperationCapability } from "./managed-operation.ts";
+import type { RequestDispatchKind } from "./request-dispatch.ts";
+
+export interface AgentSwitchOptions {
+    agentName: string;
+    model?: string;
+    thinkingLevelOverride?: ThinkingLevel;
+    cwd?: string;
+    images?: ImageAttachment[];
+    forceRebuild?: boolean;
+    reloadMcpTools?: boolean;
+    sessionManager?: SessionManager;
+    triageMeta?: TriageMeta;
+    subAgentDefinition?: Parameters<typeof ensureRootAgentSession>[0]["subAgentDefinition"];
+    customTools?: ToolDefinition[];
+    mcpRootTools?: ToolDefinition[];
+    mcpIntegration?: McpIntegration;
+    toolNames?: string[];
+    projectStateContext?: string;
+    includeEditFallback?: boolean;
+    debugLogPath?: string;
+    releaseActiveWorkflow?: boolean;
+    managedOperationCapability?: ManagedOperationCapability;
+    mcpServers?: McpServerDefinition[];
+}
+
+export interface AgentSwitchResult {
+    ok: true;
+    agentName: string;
+    model?: string;
+    changed: boolean;
+}
+
+export interface ActiveAgentTurnOptions extends Omit<
+    AgentSwitchOptions,
+    | "thinkingLevelOverride"
+    | "reloadMcpTools"
+    | "mcpRootTools"
+    | "mcpIntegration"
+    | "releaseActiveWorkflow"
+    | "managedOperationCapability"
+    | "mcpServers"
+> {
+    hostedSession: HostedSession;
+    userRequest: string;
+    dispatchKind?: RequestDispatchKind;
+    /** True when continuing the preceding failed or interrupted request. */
+    resumePreviousRequest?: boolean;
+    /** Stable identity for the controller-owned task being continued. */
+    taskId?: string;
+    signal?: AbortSignal;
+}
+
+interface AgentSwitchMetadata {
+    agentName: string;
+    model?: string;
+    cwd?: string;
+}
+
+interface AgentHandlerMetadata {
+    agentName: string;
+}
+
+type ActiveAgentHandler = NonNullable<ReturnType<HostedSession["getActiveOnMessage"]>>;
+
+const switchMetadata = new WeakMap<HostedSession, AgentSwitchMetadata>();
+
+const handlerMetadata = new WeakMap<ActiveAgentHandler, AgentHandlerMetadata>();
+
+function releaseActiveWorkflowAfterUserSwitch(hostedSession: HostedSession, agentName: string) {
+    const workflow = hostedSession.getActiveExecutionWorkflow?.() || null;
+    if (!workflow) return;
+    const planName = typeof workflow.planName === "string" && workflow.planName ? workflow.planName : "quick-fix";
+    hostedSession.clearActiveExecutionWorkflow();
+    const target = agentName || hostedSession.getRootAgentName() || "the selected Agent";
+    const message =
+        planName === "quick-fix"
+            ? `User switched to ${target}; QUICK_FIX workflow ownership was released. There is no resumable Plan, and working-tree edits remain in place.`
+            : `User switched to ${target}; planned workflow ownership for ${planName} was released. Plan and worktree recovery evidence remain available through /load-plan.`;
+    emitHostedSessionRuntimeEvent(hostedSession, {
+        type: RuntimeEventTypes.SYSTEM_STATUS,
+        level: "info",
+        message,
+    });
+}
+
+/**
+ * Release the selected Agent for RunWield-owned work without disposing its context.
+ *
+ */
+export function releaseActiveAgent(hostedSession: HostedSession) {
+    hostedSession.assertActive();
+    hostedSession.setRootAgentName(null);
+    while (hostedSession.getActiveAgentInfo()) hostedSession.popAgentInfo();
+    emitHostedSessionRuntimeEvent(hostedSession, {
+        type: RuntimeEventTypes.AGENT_CHANGED,
+        agentName: "",
+        busyLines: [],
+    });
+}
+
+/**
+ * Switch a HostedSession's root Agent as one completed transaction.
+ * The target root Agent Session is built before the active handler is replaced,
+ * so construction failures leave the previous root/handler pair intact.
+ *
+ */
+export async function switchActiveAgent(
+    hostedSession: HostedSession,
+    options: AgentSwitchOptions,
+): Promise<AgentSwitchResult> {
+    if (!hostedSession) throw new Error("switchActiveAgent requires a HostedSession");
+    hostedSession.assertActive();
+    const managedOperationCapability =
+        options.managedOperationCapability || hostedSession.getManagedOperationCapability?.() || undefined;
+    const agentName = String(options?.agentName || "").trim();
+    if (!agentName) throw new Error("switchActiveAgent requires an agentName");
+    const activeTransitionId = hostedSession.getAgentTransitionId?.() || null;
+    const ownsTransition = !activeTransitionId;
+    const transitionId = activeTransitionId || hostedSession.beginAgentTransition();
+    const completeOwnedTransition = () => {
+        if (ownsTransition) hostedSession.completeAgentTransition(transitionId);
+    };
+
+    const previousAgentName = hostedSession.getRootAgentName();
+    const previousHandler = hostedSession.getActiveOnMessage();
+    const previousRootSession = hostedSession.getRootAgentSession();
+    const activeModelState = hostedSession.getActiveModelState?.() || { model: "" };
+    const rootSwitchState = getRootSessionSwitchState(hostedSession);
+    const previousSwitch = switchMetadata.get(hostedSession);
+    const effectiveModel = rootSwitchState?.model ?? previousSwitch?.model ?? activeModelState.model;
+    const sessionManager = options.sessionManager || hostedSession.getRootSessionManager?.() || undefined;
+    const persistedAgentName = readPersistedActiveAgentName(sessionManager);
+    const selectionAgent = previousAgentName || persistedAgentName || hostedSession.getActiveAgentInfo?.()?.agentName;
+    const changesAgent =
+        !!selectionAgent && normalizeAgentInternalName(selectionAgent) !== normalizeAgentInternalName(agentName);
+    const inheritedManualModel = (() => {
+        if (!changesAgent && hostedSession.isUserModelOverride?.()) {
+            return activeModelState.provider && !activeModelState.model.startsWith(`${activeModelState.provider}/`)
+                ? `${activeModelState.provider}/${activeModelState.model}`
+                : activeModelState.model;
+        }
+        const persisted = readPersistedManualModelState(sessionManager, agentName);
+        if (!persisted) return undefined;
+        return persisted.provider ? `${persisted.provider}/${persisted.model}` : persisted.model;
+    })();
+    const modelOverride = options.model ?? inheritedManualModel;
+    const cwdProvided = Object.hasOwn(options, "cwd") && typeof options.cwd === "string" && options.cwd.length > 0;
+    const requestedCwd = cwdProvided ? String(options.cwd) : "";
+    const configuredModel =
+        modelOverride === undefined ? getConfiguredAgentModel(agentName, requestedCwd || hostedSession.cwd) : undefined;
+    const requestedModel = modelOverride ?? configuredModel;
+    const modelChanged = requestedModel !== undefined && requestedModel !== effectiveModel;
+    const effectiveCwd = rootSwitchState?.cwd ?? previousSwitch?.cwd ?? hostedSession.cwd;
+    const cwdChanged = cwdProvided && options.cwd !== effectiveCwd;
+    const customRootConfigurationProvided = Boolean(
+        options.subAgentDefinition ||
+        options.customTools ||
+        options.mcpRootTools ||
+        options.toolNames ||
+        options.triageMeta ||
+        options.projectStateContext !== undefined ||
+        options.includeEditFallback !== undefined ||
+        options.debugLogPath,
+    );
+    const rootOptions = {
+        agentName,
+        modelOverride,
+        thinkingLevelOverride: options.thinkingLevelOverride,
+        cwd: requestedCwd || effectiveCwd,
+        sessionManager: options.sessionManager,
+        images: options.images,
+        triageMeta: options.triageMeta,
+        subAgentDefinition: options.subAgentDefinition,
+        customTools: options.customTools,
+        mcpRootTools: options.mcpRootTools,
+        mcpIntegration: options.mcpIntegration,
+        toolNames: options.toolNames,
+        projectStateContext: options.projectStateContext,
+        includeEditFallback: options.includeEditFallback,
+        debugLogPath: options.debugLogPath,
+        managedOperationCapability,
+    };
+    const canReuseRoot =
+        previousRootSession &&
+        !options.forceRebuild &&
+        !modelChanged &&
+        !cwdChanged &&
+        !customRootConfigurationProvided &&
+        shouldReuseExistingRootSession({ agentName }, previousAgentName);
+    const shouldRebuildRoot = !canReuseRoot;
+    const nextMetadata = {
+        agentName,
+        model: requestedModel ?? effectiveModel,
+        cwd: requestedCwd || effectiveCwd,
+    };
+    const previousHandlerMetadata = typeof previousHandler === "function" ? handlerMetadata.get(previousHandler) : null;
+    const canReuseHandler = Boolean(
+        previousHandler &&
+        previousHandlerMetadata &&
+        previousHandlerMetadata.agentName === agentName &&
+        !customRootConfigurationProvided,
+    );
+
+    if (!shouldRebuildRoot && canReuseHandler) {
+        completeOwnedTransition();
+        if (options.releaseActiveWorkflow) releaseActiveWorkflowAfterUserSwitch(hostedSession, agentName);
+        return { ok: true, agentName, model: options.model, changed: false };
+    }
+
+    // Stage the matching handler before the root builder can commit a
+    // replacement. A handler-factory failure therefore leaves the previous
+    // root/handler pair untouched.
+    let handler;
+    try {
+        handler = createAgentHandler(agentName, {
+            hostedSession,
+            customTools: options.customTools,
+        });
+    } catch (error) {
+        completeOwnedTransition();
+        throw error;
+    }
+    handlerMetadata.set(handler, {
+        agentName,
+    });
+
+    if (shouldRebuildRoot) {
+        try {
+            await ensureRootAgentSession({
+                hostedSession,
+                ...rootOptions,
+                activeHandler: handler,
+            });
+        } catch (error) {
+            completeOwnedTransition();
+            throw error;
+        }
+        if (hostedSession.getActiveOnMessage() !== handler) {
+            completeOwnedTransition();
+            throw new Error("switchActiveAgent: root builder did not atomically commit the staged Agent handler");
+        }
+    } else {
+        hostedSession.setActiveOnMessage(handler);
+    }
+    completeOwnedTransition();
+    hostedSession.assertActive();
+    if (requestedCwd) hostedSession.rebindProjectRoot(requestedCwd);
+    // Clear only after a successful switch; a failed build must preserve the
+    // previous Agent and its manual model selection.
+    if (changesAgent) {
+        hostedSession.clearUserModelOverride();
+        if (hostedSession.getPendingManagedTurnIntent().manualModel) {
+            hostedSession.mergePendingManagedTurnIntent({ model: "", provider: "", manualModel: false });
+        }
+    }
+    switchMetadata.set(hostedSession, nextMetadata);
+    const changed = shouldRebuildRoot || previousAgentName !== agentName || !canReuseHandler;
+    if (changed) {
+        appendDebugLog(
+            options.debugLogPath,
+            [
+                "",
+                "========================================",
+                "Event: AGENT SWITCH",
+                `Timestamp: ${new Date().toISOString()}`,
+                `From Agent: ${previousAgentName || "(none)"}`,
+                `To Agent: ${agentName}`,
+                `Root Session: ${shouldRebuildRoot ? "REBUILT" : "REUSED"}`,
+                `Handler: ${canReuseHandler ? "REUSED" : "REPLACED"}`,
+                "The next user turn is the first turn after this switch.",
+                "========================================",
+                "",
+            ].join("\n"),
+        );
+        markRootAgentSwitch(hostedSession, {
+            agentName,
+            debugLogPath: options.debugLogPath,
+        });
+        const committedAgentName = hostedSession.getRootAgentName() || agentName;
+        const committedDisplayName = hostedSession.getActiveAgentInfo?.()?.displayName || committedAgentName;
+        // An explicit /agent request can switch away from a prompt-ready shell
+        // before it has a durable root. Ordinary first activation stays silent
+        // because there is no selected Agent identity yet.
+        const previousRootIdentity = previousAgentName || persistedAgentName || selectionAgent || "";
+        const rootHandoff =
+            Boolean(previousRootIdentity) &&
+            normalizeAgentInternalName(previousRootIdentity) !== normalizeAgentInternalName(committedAgentName);
+        const committedBusyLines = getAgentBusyLines(committedAgentName, hostedSession.cwd);
+        emitHostedSessionRuntimeEvent(hostedSession, {
+            type: RuntimeEventTypes.AGENT_CHANGED,
+            agentName: committedAgentName,
+            displayName: committedDisplayName,
+            model: options.model,
+            ...(rootHandoff ? { rootHandoff: true } : {}),
+            ...(committedBusyLines ? { busyLines: committedBusyLines } : {}),
+        });
+    }
+    if (options.releaseActiveWorkflow) releaseActiveWorkflowAfterUserSwitch(hostedSession, agentName);
+    return { ok: true, agentName, model: options.model, changed };
+}
+
+/**
+ * Activate an Agent and run its root turn without exposing a state where the
+ * root session and interactive handler belong to different Agents.
+ *
+ */
+export async function runActiveAgentTurn(options: ActiveAgentTurnOptions): Promise<AgentMessage[]> {
+    const {
+        hostedSession,
+        agentName,
+        userRequest,
+        images,
+        sessionManager,
+        triageMeta,
+        model,
+        cwd,
+        forceRebuild,
+        subAgentDefinition,
+        customTools,
+        toolNames,
+        projectStateContext,
+        includeEditFallback,
+        debugLogPath,
+        dispatchKind,
+        resumePreviousRequest,
+        taskId,
+        signal,
+    } = options;
+
+    const switchOptions = {
+        agentName,
+        ...(model !== undefined ? { model } : {}),
+        ...(cwd ? { cwd } : {}),
+        ...(forceRebuild ? { forceRebuild } : {}),
+        ...(sessionManager ? { sessionManager } : {}),
+        ...(images ? { images } : {}),
+        ...(triageMeta ? { triageMeta } : {}),
+        ...(subAgentDefinition ? { subAgentDefinition } : {}),
+        ...(customTools ? { customTools } : {}),
+        ...(toolNames ? { toolNames } : {}),
+        ...(projectStateContext !== undefined ? { projectStateContext } : {}),
+        ...(includeEditFallback !== undefined ? { includeEditFallback } : {}),
+        ...(debugLogPath ? { debugLogPath } : {}),
+    };
+    signal?.throwIfAborted();
+    await switchActiveAgent(hostedSession, switchOptions);
+    signal?.throwIfAborted();
+    return await runRootTurn({
+        hostedSession,
+        agentName,
+        userRequest,
+        images,
+        dispatchKind,
+        resumePreviousRequest,
+        taskId,
+        signal,
+    });
+}
+
+// Keep the legacy module export on the same implementation as planning and interactive turns.
+export { runRootTurnUntilRootWorkflowEvent } from "./root-workflow-turn.ts";

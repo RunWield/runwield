@@ -220,7 +220,7 @@ export async function ownerProjectSessionsApi(ctx) {
  * @typedef {Object} SessionArchiveRouteContext
  * @property {Request} req
  * @property {{ projectId: string, runwieldSessionId: string }} params
- * @property {{ store: import('../../../shared/owner-coordination/index.js').OwnerCoordinationStore, sessionContinuation: import('../server/session-continuation.js').WorkspaceSessionContinuationService }} state
+ * @property {{ store: import('../../../shared/owner-coordination/index.ts').OwnerCoordinationStore, sessionContinuation: import('../server/session-continuation.js').WorkspaceSessionContinuationService }} state
  */
 /** @param {SessionArchiveRouteContext} ctx */
 export async function ownerSessionArchiveApi(ctx) {
@@ -278,7 +278,7 @@ export async function ownerSessionTimelineApi(ctx) {
 /**
  * @typedef {Object} LiveSessionRouteContext
  * @property {{ projectId: string, runwieldSessionId: string }} params
- * @property {{ store: import('../../../shared/owner-coordination/index.js').OwnerCoordinationStore, sessionContinuation: import('../server/session-continuation.js').WorkspaceSessionContinuationService }} state
+ * @property {{ store: import('../../../shared/owner-coordination/index.ts').OwnerCoordinationStore, sessionContinuation: import('../server/session-continuation.js').WorkspaceSessionContinuationService }} state
  */
 /** @param {LiveSessionRouteContext} ctx */
 export async function ownerSessionLiveApi(ctx) {
@@ -520,7 +520,7 @@ export async function ownerSessionInteractionAnswerApi(ctx) {
  * @typedef {Object} SessionSteerRouteContext
  * @property {Request} req
  * @property {{ projectId: string, operationId: string }} params
- * @property {{ store: import('../../../shared/owner-coordination/index.js').OwnerCoordinationStore, sessionContinuation: import('../server/session-continuation.js').WorkspaceSessionContinuationService }} state
+ * @property {{ store: import('../../../shared/owner-coordination/index.ts').OwnerCoordinationStore, sessionContinuation: import('../server/session-continuation.js').WorkspaceSessionContinuationService }} state
  */
 /** @param {SessionSteerRouteContext} ctx */
 export async function ownerSessionSteerApi(ctx) {
@@ -688,7 +688,7 @@ export function ownerNotificationsStreamApi(ctx) {
  * @typedef {Object} OwnerCommandMetricsContext
  * @property {Request} req
  * @property {{ projectId: string }} params
- * @property {{ store: import('../../../shared/owner-coordination/index.js').OwnerCoordinationStore }} state
+ * @property {{ store: import('../../../shared/owner-coordination/index.ts').OwnerCoordinationStore }} state
  */
 
 /**

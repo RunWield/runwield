@@ -1,11 +1,15 @@
-diffstat only, patch not produced. Full patch: git show -p <rev>
 ---
-
 planId: "e3db158c-4efc-4368-9545-3b3409ef367e"
 classification: "PLANNED_CHANGE"
 workKind: "BUG_FIX"
 complexity: "MEDIUM"
-affectedPaths: - "src/shared/workflow/git-snapshot.ts" - "src/shared/workflow/review-diff-tool.js" - "src/shared/workflow/validation-semantic.ts" - "src/shared/workflow/epic-integration.ts" - "src/shared/worktree.js" - "docs/prd/runwield-core-prd.md"
+affectedPaths:
+    - "src/shared/workflow/git-snapshot.ts"
+    - "src/shared/workflow/review-diff-tool.js"
+    - "src/shared/workflow/validation-semantic.ts"
+    - "src/shared/workflow/epic-integration.ts"
+    - "src/shared/worktree.js"
+    - "docs/prd/runwield-core-prd.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-10-25"
@@ -16,10 +20,10 @@ targetBranch: "main"
 deliveryBranch: "main"
 validatedCommit: "1c96d22d44af1fce2b004a43ca8dc5f104de9316"
 workRecord:
-status: "generated"
-recordId: "8ba6e378-6e59-41f9-a43f-e245b5450e8b"
-path: "docs/work-records/2026-10-26-stable-review-diffs-and-unreadable-patch-rejection.md"
-lastAttemptAt: "2026-10-26T03:41:11.572Z"
+    status: "generated"
+    recordId: "8ba6e378-6e59-41f9-a43f-e245b5450e8b"
+    path: "docs/work-records/2026-10-26-stable-review-diffs-and-unreadable-patch-rejection.md"
+    lastAttemptAt: "2026-10-26T03:41:11.572Z"
 status: "verified"
 ---
 

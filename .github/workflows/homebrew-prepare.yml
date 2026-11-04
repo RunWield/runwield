@@ -35,11 +35,18 @@ jobs:
             - name: Install frozen dependencies
               run: bun run install:locked
 
-            - name: Checkout current tap for a single-package refresh
+            - name: Require explicit package selection
+              env:
+                  WLD_TAG: ${{ inputs.wld_tag }}
+                  MNEMOTECA_TAG: ${{ inputs.mnemoteca_tag }}
+              run: test -n "$WLD_TAG$MNEMOTECA_TAG"
+
+            - name: Snapshot tap for single-package refresh
               if: inputs.wld_tag == '' || inputs.mnemoteca_tag == ''
               uses: actions/checkout@v5
               with:
                   repository: RunWield/homebrew-tap
+                  ref: main
                   path: homebrew-tap
                   persist-credentials: false
 
