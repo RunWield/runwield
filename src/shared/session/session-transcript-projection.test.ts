@@ -16,8 +16,7 @@ import {
     summarizeProjectedEntries,
 } from "./session-transcript-projection.js";
 
-/** @param {string} path */
-async function removeTempDir(path) {
+async function removeTempDir(path: string) {
     let lastError;
     for (let attempt = 0; attempt < 5; attempt += 1) {
         try {
@@ -32,8 +31,7 @@ async function removeTempDir(path) {
     throw lastError;
 }
 
-/** @param {(home: string) => Promise<void>} callback */
-async function withHome(callback) {
+async function withHome(callback: (home: string) => Promise<void>) {
     return await withProcessGlobalTestLock(async () => {
         const previousHome = process.env["HOME"];
         const home = await fsMkdtemp(join(tmpdir(), "runwield-projection-home-"));

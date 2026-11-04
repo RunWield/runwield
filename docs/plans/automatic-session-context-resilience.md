@@ -461,7 +461,7 @@ unless the complete public AgentSession contract has been verified; a partial ga
   src/shared/session/session-runtime-events.test.js src/shared/session/session-runtime.test.js
   src/shared/session/agent-handler.test.ts src/shared/session/request-dispatch.test.ts
   src/shared/session/background-tasks.test.ts src/shared/session/background-tasks-extra.test.ts
-  src/shared/session/segment-rollover.test.js src/shared/session/session-transcript-projection.test.js
+  src/shared/session/segment-rollover.test.js src/shared/session/session-transcript-projection.test.ts
   src/tools/__tests__/delegate-agent.test.ts src/cmd/compact/index.test.js
   src/ui/tui/runtime-adapter.test.js src/acp/server.test.js src/ui/workspace/workspace-session-ux.test.tsx`.
   Include new focused integration suites through the same runner. Never use direct `deno test`.
