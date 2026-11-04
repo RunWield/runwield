@@ -72,10 +72,10 @@ export interface EngineerRequestOptions {
  */
 export function buildTriageReport(triage: TriageReportContext, options: TriageReportOptions = {}): string {
     const inferredPlannedClassification = triage.classification === "PROJECT" ? "PROJECT" : "PLANNED_CHANGE";
-    const routingIntent = triage.routingIntent ||
-        (options.plannedExecution ? inferredPlannedClassification : undefined);
-    const classification = triage.classification ||
-        (options.plannedExecution ? inferredPlannedClassification : undefined);
+    const routingIntent =
+        triage.routingIntent || (options.plannedExecution ? inferredPlannedClassification : undefined);
+    const classification =
+        triage.classification || (options.plannedExecution ? inferredPlannedClassification : undefined);
     const lines = ["## Triage Report"];
 
     if (routingIntent) lines.push(`- Routing Intent: ${routingIntent}`);
@@ -92,26 +92,11 @@ export function buildTriageReport(triage: TriageReportContext, options: TriageRe
 }
 
 /**
- * Build the first user message after Router dispatch. A single persisted
- * transcript can contain assistant reasoning from several RunWield Agents, so
- * name the newly active Agent explicitly instead of asking the model to infer
- * its role from the conversation history.
+ * Carry the user's request and routing facts after Router dispatch.
+ * Agent identity belongs to the selected Agent's system prompt.
  */
-export function buildAgentHandoffRequest(
-    agentDisplayName: string,
-    userRequest: string,
-    triage: TriageReportContext,
-): string {
-    return [
-        "## Active RunWield Agent",
-        `You are now ${agentDisplayName}. Follow the ${agentDisplayName} instructions in the system prompt.`,
-        "Earlier assistant messages and tool results may belong to a previous RunWield Agent; they are context, not your current role.",
-        "",
-        "## User Request",
-        userRequest,
-        "",
-        buildTriageReport(triage),
-    ].join("\n");
+export function buildPostTriageRequest(userRequest: string, triage: TriageReportContext): string {
+    return ["## User Request", userRequest, "", buildTriageReport(triage)].join("\n");
 }
 
 /**
@@ -256,7 +241,8 @@ export function buildReAnchorMessage(context: ReAnchorContext = {}): string | nu
     const planName = typeof context.planName === "string" ? context.planName.trim() : "";
     if (!planName) return null;
 
-    const executionAgent = agentName === AGENTS.PLAN_ENGINEER ||
+    const executionAgent =
+        agentName === AGENTS.PLAN_ENGINEER ||
         agentName === AGENTS.FRONTEND_ENGINEER ||
         agentName === AGENTS.REVIEWER_FEEDBACK_ENGINEER;
     const planBody = typeof context.planBody === "string" ? projectEngineerPlanBody(context.planBody) : "";
@@ -267,17 +253,17 @@ export function buildReAnchorMessage(context: ReAnchorContext = {}): string | nu
         "",
         ...(executionAgent
             ? [
-                `Context was compacted. Continue from the approved ${artifact.label} body below.`,
-                `Focus on ${artifact.sections}. Do not reread the raw Plan file; its Front Matter is orchestration metadata.`,
-                "",
-                "## Approved Plan Body",
-                "",
-                planBody,
-            ]
+                  `Context was compacted. Continue from the approved ${artifact.label} body below.`,
+                  `Focus on ${artifact.sections}. Do not reread the raw Plan file; its Front Matter is orchestration metadata.`,
+                  "",
+                  "## Approved Plan Body",
+                  "",
+                  planBody,
+              ]
             : [
-                `Context was compacted. Your ${artifact.label} is \`docs/plans/${planName}.md\`.`,
-                `Reread it before continuing: ${artifact.sections}.`,
-            ]),
+                  `Context was compacted. Your ${artifact.label} is \`docs/plans/${planName}.md\`.`,
+                  `Reread it before continuing: ${artifact.sections}.`,
+              ]),
     ];
 
     if (agentName === AGENTS.REVIEWER_FEEDBACK_ENGINEER) {
@@ -299,11 +285,7 @@ export function buildEngineerRequest(
     const lines = [`## Approved Plan: ${planName}`, ""];
 
     if (options.routerMessage) {
-        lines.push(
-            "## Router Handoff Message",
-            options.routerMessage,
-            "",
-        );
+        lines.push("## Router Handoff Message", options.routerMessage, "");
     }
 
     if (options.collaborationStyle === "pair") {
@@ -313,11 +295,7 @@ export function buildEngineerRequest(
             "",
         );
     } else if (options.collaborationStyle === "autonomous") {
-        lines.push(
-            "## Runtime Collaboration Style",
-            "Autonomous execution is active.",
-            "",
-        );
+        lines.push("## Runtime Collaboration Style", "Autonomous execution is active.", "");
     }
 
     lines.push("## Approved Plan Body", "", projectEngineerPlanBody(planBody));

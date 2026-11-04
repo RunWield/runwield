@@ -44,7 +44,7 @@ import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../ses
 import { decidePostExecution, decidePostPlanning, summarizeWorkflowDecision } from "./decisions.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { recordWorkflowMetric } from "./metrics.js";
-import { buildAgentHandoffRequest } from "./workflow-prompts.ts";
+import { buildPostTriageRequest } from "./workflow-prompts.ts";
 import {
     executePlan,
     extractAssistantOutput,
@@ -332,11 +332,7 @@ export async function dispatchPostTriage({
                   : isPlannedChangeClassification(normalizedTriage.routingIntent)
                     ? AGENTS.PLANNER
                     : AGENTS.ARCHITECT;
-    const decoratedRequest = buildAgentHandoffRequest(
-        getAgentDisplayName(dispatchTarget, projectRoot),
-        userRequest,
-        normalizedTriage,
-    );
+    const decoratedRequest = buildPostTriageRequest(userRequest, normalizedTriage);
     await recordMetric({
         category: "routing",
         event: "dispatch_selected",

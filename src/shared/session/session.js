@@ -27,6 +27,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { createAssistantMessageEventStream, getCurrentSystemMessage } from "@earendil-works/pi-ai";
 import { formatProviderError, formatProviderRetryExhaustion, normalizeProviderStream } from "./provider-errors.ts";
+import { projectProviderSystemPrompt } from "./provider-system-prompt.ts";
 import { completeSimple } from "@earendil-works/pi-ai/compat";
 import { getRemoteSessionSaveBridge } from "./root-session.js";
 import { createRunWieldCodemodeExtension } from "./codemode.ts";
@@ -2462,6 +2463,13 @@ export async function buildAgentSession({
     installPairCheckpointAutoCompactionPreservation(session, targetHostedSession);
 
     const agent = session.agent;
+    const convertToLlm = agent.convertToLlm.bind(agent);
+    agent.convertToLlm = async (messages) => {
+        // Enforce the active prompt after context extensions and before provider
+        // normalization. Compaction calls streamFunction directly with its own
+        // summarization prompt and must not receive the Agent's task instructions.
+        return projectProviderSystemPrompt(await convertToLlm(messages), session.systemPrompt);
+    };
     const providerStream = agent.streamFunction;
     agent.streamFunction = (model, context, options) => {
         // Extensions can register new handlers during lifecycle events after construction.
