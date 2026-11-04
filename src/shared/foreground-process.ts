@@ -35,6 +35,8 @@ export interface NativeSpawnOptions {
     args: string[];
     cwd: string;
     env?: Record<string, string>;
+    /** Replace the inherited environment instead of extending it. */
+    clearEnv?: boolean;
     stdin: "null" | "piped" | "inherit";
     stdout: "piped" | "null" | "inherit";
     stderr: "piped" | "null" | "inherit";
@@ -76,7 +78,7 @@ export function spawnNativeProcess(command: string, options: NativeSpawnOptions)
     const child = bun.spawn({
         cmd: [command, ...options.args],
         cwd: options.cwd,
-        env: { ...inheritedEnv, ...options.env },
+        env: options.clearEnv ? { ...options.env } : { ...inheritedEnv, ...options.env },
         stdin: options.stdin === "piped" ? "pipe" : options.stdin === "inherit" ? "inherit" : "ignore",
         stdout: options.stdout === "piped" ? "pipe" : options.stdout === "inherit" ? "inherit" : "ignore",
         stderr: options.stderr === "piped" ? "pipe" : options.stderr === "inherit" ? "inherit" : "ignore",
