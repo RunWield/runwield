@@ -23,7 +23,7 @@ import {
     runtimeInteractionContractScenario,
     startupNoProvidersOpensLoginScenario,
     startupProviderWithoutModelsOpensModelScenario,
-} from "./initial-scenarios.js";
+} from "./initial-scenarios.ts";
 import { GoldenScenarioActor, runGoldenScenario } from "../testing/mod.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../../shared/browser-port.ts";
 
@@ -72,7 +72,7 @@ for (const scenario of initialGoldenScenarios.filter((candidate) => candidate !=
     test(`golden scenario: ${scenario.name}`, async () => {
         const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
         const result = await runGoldenScenarioChildProcess({
-            scenarioModule: "src/ui/tui/golden-scenarios/initial-scenarios.js",
+            scenarioModule: "src/ui/tui/golden-scenarios/initial-scenarios.ts",
             exportName: scenarioExportNames.get(scenario) || "",
             timeoutMs: "timeoutMs" in scenario && typeof scenario.timeoutMs === "number" ? scenario.timeoutMs : 30000,
         });
@@ -147,7 +147,7 @@ test("golden actor fails when required tools are unavailable", () => {
 test("golden scenario child process runs with isolated environment before scenario import", async () => {
     const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
     const result = await runGoldenScenarioChildProcess({
-        scenarioModule: "src/ui/tui/golden-scenarios/initial-scenarios.js",
+        scenarioModule: "src/ui/tui/golden-scenarios/initial-scenarios.ts",
         exportName: "helpSlashCommandScenario",
         timeoutMs: 30000,
     });
@@ -206,7 +206,7 @@ test("golden scenario child process failure reports retained diagnostics artifac
     const error = await assertRejects(
         () =>
             runGoldenScenarioChildProcess({
-                scenarioModule: "src/ui/tui/golden-scenarios/initial-scenarios.js",
+                scenarioModule: "src/ui/tui/golden-scenarios/initial-scenarios.ts",
                 exportName: "missingGoldenScenario",
                 timeoutMs: 3000,
             }),
@@ -229,7 +229,7 @@ test("golden scenario timeout retains child heartbeat diagnostics", async () => 
     const error = await assertRejects(
         () =>
             runGoldenScenarioChildProcess({
-                scenarioModule: "src/ui/tui/golden-scenarios/initial-scenarios.js",
+                scenarioModule: "src/ui/tui/golden-scenarios/initial-scenarios.ts",
                 exportName: "timeoutDiagnosticScenario",
                 timeoutMs: 2000,
             }),
@@ -263,7 +263,7 @@ test("golden scenario child crash surfaces substantive scenario diagnostics", as
     const error = await assertRejects(
         () =>
             runGoldenScenarioChildProcess({
-                scenarioModule: "src/ui/tui/golden-scenarios/initial-scenarios.js",
+                scenarioModule: "src/ui/tui/golden-scenarios/initial-scenarios.ts",
                 exportName: "diagnosticArtifactFailureScenario",
                 timeoutMs: 10000,
             }),

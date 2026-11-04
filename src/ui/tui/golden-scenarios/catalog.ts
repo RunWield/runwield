@@ -4,7 +4,7 @@
  */
 
 import { concurrentWorkflowScenarios } from "./concurrent-workflow.ts";
-import { initialGoldenScenarios } from "./initial-scenarios.js";
+import { initialGoldenScenarios } from "./initial-scenarios.ts";
 import { loadPlanWorkflowScenarios } from "./load-plan-workflow.ts";
 import { loadPlanEpicWorkflowScenarios } from "./load-plan-epic-workflow.ts";
 import { plannedChangeWorkflowScenarios } from "./planned-change-workflow.js";
