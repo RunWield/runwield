@@ -228,7 +228,7 @@ explicit request for those.
 
 - Use Bun 1.4.3 and run `bun run install:locked` before checks. Do not install the legacy Deno dependency graph.
 - Run focused cases with `bun scripts/run-tests.js <changed-test-paths>`. Include existing
-  `src/shared/session/__tests__/session-tools-policy.test.js`, `src/shared/session/agent-switching.test.js`, relevant MCP
+  `src/shared/session/__tests__/session-tools-policy.test.js`, `src/shared/session/agent-switching.test.ts`, relevant MCP
   integration tests, new codemode behavioral tests, and `scripts/compile-bun.test.ts` when packaging changes.
 - Run `bun run seams:check` and `bun run fmt:check <changed-files>` with explicit paths. Core owns the full CI gate.
 - **Upgrade compatibility:** inspect the resolved Pi graph for aligned 1.5.0 pins, then exercise real
