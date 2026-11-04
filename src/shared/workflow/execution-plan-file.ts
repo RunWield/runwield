@@ -16,32 +16,84 @@ import {
 } from "../../plan-store.js";
 
 /**
- * @typedef {Object} ExecutionPlanFileResult
- * @property {"present"|"restored"|"reconciled"|"absent"|"unreadable"|"malformed"|"symlink"|"non_regular"|"restore_failed"} kind
- * @property {string} relativePath
- * @property {string} [path]
- * @property {string} [reason]
- * @property {{ from: string|undefined, to: string }} [healedPlanId] - Set when a diverged execution-copy Plan ID was reconciled to the canonical one.
+ * /*
  */
+import type { Stats } from "node:fs";
+import type { PlanFrontMatter } from "../../plan-store.js";
 
-/** @param {import('../../plan-store.js').PlanFrontMatter[keyof import('../../plan-store.js').PlanFrontMatter]} value */
-function isPlanId(value) {
+export interface ReconciledPlanIdentity {
+    from: string | undefined;
+    to: string;
+}
+export interface ExecutionPlanFileResult {
+    kind:
+        | "present"
+        | "restored"
+        | "reconciled"
+        | "absent"
+        | "unreadable"
+        | "malformed"
+        | "symlink"
+        | "non_regular"
+        | "restore_failed";
+    relativePath: string;
+    path?: string;
+    reason?: string;
+    /** Set when a diverged execution-copy Plan ID was reconciled to the canonical one. */
+    healedPlanId?: ReconciledPlanIdentity;
+}
+export interface LoadedCanonicalExecutionPlanSource {
+    kind: "loaded";
+    path: string;
+    relativePath: string;
+    markdown: string;
+    attrs: PlanFrontMatter;
+}
+export type CanonicalExecutionPlanSource = LoadedCanonicalExecutionPlanSource | ExecutionPlanFileResult;
+interface VerifiedParentChain {
+    ok: true;
+}
+interface CanonicalParentFailure {
+    ok: false;
+    kind: "absent" | "unreadable" | "symlink" | "non_regular";
+    reason: string;
+}
+type CanonicalParentInspection = VerifiedParentChain | CanonicalParentFailure;
+interface ExecutionParentFailure {
+    ok: false;
+    kind: "symlink" | "non_regular" | "restore_failed";
+    path: string;
+    reason: string;
+}
+type ExecutionParentInspection = VerifiedParentChain | ExecutionParentFailure;
+export interface EnsureExecutionPlanFileOptions {
+    executionCwd: string;
+    planName: string;
+    canonicalSource: LoadedCanonicalExecutionPlanSource;
+    reconcileFromCanonical?: boolean;
+    replaceFromCanonical?: boolean;
+}
+export interface PrepareExecutionPlanFileOptions {
+    projectRoot: string;
+    executionCwd: string;
+    planName: string;
+    executionAuthoritative?: boolean;
+}
+export interface RestoreExecutionPlanFromBaselineOptions {
+    executionCwd: string;
+    planName: string;
+    baselineTree: string;
+}
+
+function isPlanId(value: PlanFrontMatter[keyof PlanFrontMatter]): value is string {
     return typeof value === "string" && value.trim().length > 0;
 }
 
-/**
- * @param {import('../../plan-store.js').PlanFrontMatter["planId"]} canonicalPlanId
- * @param {import('../../plan-store.js').PlanFrontMatter["planId"]} executionPlanId
- */
-function mustReconcilePlanId(canonicalPlanId, executionPlanId) {
+function mustReconcilePlanId(canonicalPlanId: PlanFrontMatter["planId"], executionPlanId: PlanFrontMatter["planId"]) {
     return isPlanId(canonicalPlanId) && canonicalPlanId !== executionPlanId;
 }
 
-/**
- * @param {import('../../plan-store.js').PlanFrontMatter["planId"]} canonicalPlanId
- * @param {import('../../plan-store.js').PlanFrontMatter["planId"]} executionPlanId
- */
-function hasPlanIdConflict(canonicalPlanId, executionPlanId) {
+function hasPlanIdConflict(canonicalPlanId: PlanFrontMatter["planId"], executionPlanId: PlanFrontMatter["planId"]) {
     return isPlanId(canonicalPlanId) && isPlanId(executionPlanId) && canonicalPlanId !== executionPlanId;
 }
 
@@ -50,13 +102,9 @@ function hasPlanIdConflict(canonicalPlanId, executionPlanId) {
  * The worktree can contain an older committed copy when readiness was recorded
  * only in the primary checkout. Reconcile only those RunWield-owned fields; the
  * execution copy's user-owned body and unrelated Front Matter remain untouched.
- *
- * @param {import('../../plan-store.js').PlanFrontMatter} canonicalAttrs
- * @param {import('../../plan-store.js').PlanFrontMatter} executionAttrs
  */
-function executionMetadataOverrides(canonicalAttrs, executionAttrs) {
-    /** @type {Partial<import('../../plan-store.js').PlanFrontMatter>} */
-    const overrides = {};
+function executionMetadataOverrides(canonicalAttrs: PlanFrontMatter, executionAttrs: PlanFrontMatter) {
+    const overrides: Partial<PlanFrontMatter> = {};
     if (executionAttrs.classification !== canonicalAttrs.classification) {
         overrides.classification = canonicalAttrs.classification;
     }
@@ -68,8 +116,8 @@ function executionMetadataOverrides(canonicalAttrs, executionAttrs) {
     if (mustReconcilePlanId(canonicalAttrs.planId, executionAttrs.planId)) {
         overrides.planId = canonicalAttrs.planId;
     }
-    /** @type {(keyof import('../../plan-store.js').PlanFrontMatter)[]} */
-    const documentKeys = [
+
+    const documentKeys: (keyof PlanFrontMatter)[] = [
         "executionAgent",
         "collaborationRecommendation",
         "targetBranch",
@@ -105,35 +153,24 @@ function executionMetadataOverrides(canonicalAttrs, executionAttrs) {
     return overrides;
 }
 
-/**
- * @param {import('node:fs').Stats} info
- */
-function classifyNonRegular(info) {
+function classifyNonRegular(info: Stats): "symlink" | "non_regular" | null {
     if (info.isSymbolicLink()) return "symlink";
     if (!info.isFile()) return "non_regular";
     return null;
 }
 
-/**
- * @param {string} projectRoot
- * @param {string} absolutePath
- */
-function projectRelativePath(projectRoot, absolutePath) {
+function projectRelativePath(projectRoot: string, absolutePath: string) {
     return relative(projectRoot, absolutePath).split(SEPARATOR).join("/");
 }
 
 /**
  * Inspect an existing canonical-source parent chain without following symlinked ancestors.
- *
- * @param {string} projectRoot
- * @param {string[]} segments
- * @param {string} sourceRelativePath
- * @returns {Promise<
- *   { ok: true } |
- *   { ok: false, kind: "absent"|"unreadable"|"symlink"|"non_regular", reason: string }
- * >}
  */
-async function inspectCanonicalParentChain(projectRoot, segments, sourceRelativePath) {
+async function inspectCanonicalParentChain(
+    projectRoot: string,
+    segments: string[],
+    sourceRelativePath: string,
+): Promise<CanonicalParentInspection> {
     let current = projectRoot;
     for (const segment of segments) {
         current = join(current, segment);
@@ -145,44 +182,38 @@ async function inspectCanonicalParentChain(projectRoot, segments, sourceRelative
             return {
                 ok: false,
                 kind: "unreadable",
-                reason:
-                    `Canonical Plan source parent is unreadable at ${currentRelativePath}; source: ${sourceRelativePath}.`,
+                reason: `Canonical Plan source parent is unreadable at ${currentRelativePath}; source: ${sourceRelativePath}.`,
             };
         }
         if (!info) {
             return {
                 ok: false,
                 kind: "absent",
-                reason:
-                    `Canonical Plan source is absent: ${sourceRelativePath} (missing parent ${currentRelativePath}).`,
+                reason: `Canonical Plan source is absent: ${sourceRelativePath} (missing parent ${currentRelativePath}).`,
             };
         }
         if (info.isSymbolicLink()) {
             return {
                 ok: false,
                 kind: "symlink",
-                reason:
-                    `Canonical Plan source parent is a symlink at ${currentRelativePath}; source: ${sourceRelativePath}.`,
+                reason: `Canonical Plan source parent is a symlink at ${currentRelativePath}; source: ${sourceRelativePath}.`,
             };
         }
         if (!info.isDirectory()) {
             return {
                 ok: false,
                 kind: "non_regular",
-                reason:
-                    `Canonical Plan source parent is not a directory at ${currentRelativePath}; source: ${sourceRelativePath}.`,
+                reason: `Canonical Plan source parent is not a directory at ${currentRelativePath}; source: ${sourceRelativePath}.`,
             };
         }
     }
     return { ok: true };
 }
 
-/**
- * @param {string} projectRoot
- * @param {string} planName
- * @returns {Promise<{ kind: "loaded", path: string, relativePath: string, markdown: string, attrs: import('../../plan-store.js').PlanFrontMatter } | ExecutionPlanFileResult>}
- */
-export async function loadCanonicalExecutionPlanSource(projectRoot, planName) {
+export async function loadCanonicalExecutionPlanSource(
+    projectRoot: string,
+    planName: string,
+): Promise<CanonicalExecutionPlanSource> {
     const path = getStoredPlanPath(projectRoot, planName);
     const relativePath = projectRelativePath(projectRoot, path);
     const parentRelativePath = dirname(relativePath);
@@ -244,10 +275,7 @@ export async function loadCanonicalExecutionPlanSource(projectRoot, planName) {
     }
 }
 
-/**
- * @param {string} path
- */
-async function lstatOrNull(path) {
+async function lstatOrNull(path: string) {
     try {
         return await fsLstat(path);
     } catch (error) {
@@ -258,12 +286,12 @@ async function lstatOrNull(path) {
 
 /**
  * Inspect or create the directory chain one segment at a time without following symlinks.
- * @param {string} root
- * @param {string[]} segments
- * @param {boolean} createMissing
- * @returns {Promise<{ ok: true } | { ok: false, kind: "symlink"|"non_regular"|"restore_failed", path: string, reason: string }>}
  */
-async function verifyParentChain(root, segments, createMissing) {
+async function verifyParentChain(
+    root: string,
+    segments: string[],
+    createMissing: boolean,
+): Promise<ExecutionParentInspection> {
     let current = root;
     for (const segment of segments) {
         current = join(current, segment);
@@ -330,17 +358,13 @@ async function verifyParentChain(root, segments, createMissing) {
     return { ok: true };
 }
 
-/**
- * @param {{ executionCwd: string, planName: string, canonicalSource: Extract<Awaited<ReturnType<typeof loadCanonicalExecutionPlanSource>>, {kind:"loaded"}>, reconcileFromCanonical?: boolean, replaceFromCanonical?: boolean }} opts
- * @returns {Promise<ExecutionPlanFileResult>}
- */
 export async function ensureExecutionPlanFile({
     executionCwd,
     planName,
     canonicalSource,
     reconcileFromCanonical = true,
     replaceFromCanonical = false,
-}) {
+}: EnsureExecutionPlanFileOptions): Promise<ExecutionPlanFileResult> {
     const targetPath = getStoredPlanPath(executionCwd, planName);
     const relativePath = projectRelativePath(executionCwd, targetPath);
     const targetDir = dirname(targetPath);
@@ -358,9 +382,9 @@ export async function ensureExecutionPlanFile({
             kind: "unreadable",
             path: targetPath,
             relativePath,
-            reason: `Cannot inspect execution Plan path ${relativePath}: ${
-                String(error)
-            }. Existing evidence was preserved.`,
+            reason: `Cannot inspect execution Plan path ${relativePath}: ${String(
+                error,
+            )}. Existing evidence was preserved.`,
         };
     }
     if (targetInfo) {
@@ -383,15 +407,16 @@ export async function ensureExecutionPlanFile({
                 kind: "unreadable",
                 path: targetPath,
                 relativePath,
-                reason: `Execution Plan path ${relativePath} is unreadable: ${
-                    String(error)
-                }. Existing evidence was preserved.`,
+                reason: `Execution Plan path ${relativePath} is unreadable: ${String(
+                    error,
+                )}. Existing evidence was preserved.`,
             };
         }
         try {
             const { attrs } = parsePlanFrontMatter(markdown);
             if (
-                !replaceFromCanonical && !reconcileFromCanonical &&
+                !replaceFromCanonical &&
+                !reconcileFromCanonical &&
                 hasPlanIdConflict(canonicalSource.attrs.planId, attrs.planId)
             ) {
                 return {
@@ -415,11 +440,10 @@ export async function ensureExecutionPlanFile({
                         kind: "restore_failed",
                         path: targetPath,
                         relativePath,
-                        reason:
-                            `Could not materialize the latest execution Plan at ${relativePath}. Existing evidence was preserved.`,
+                        reason: `Could not materialize the latest execution Plan at ${relativePath}. Existing evidence was preserved.`,
                     };
                 }
-                if (await fsReadFile(targetPath, "utf8") !== planDocumentMarkdown(canonicalSource.markdown)) {
+                if ((await fsReadFile(targetPath, "utf8")) !== planDocumentMarkdown(canonicalSource.markdown)) {
                     return {
                         kind: "restore_failed",
                         path: targetPath,
@@ -449,7 +473,7 @@ export async function ensureExecutionPlanFile({
                             if (
                                 !hasPlanIdConflict(canonicalSource.attrs.planId, concurrent.attrs.planId) &&
                                 Object.keys(executionMetadataOverrides(canonicalSource.attrs, concurrent.attrs))
-                                        .length === 0
+                                    .length === 0
                             ) {
                                 return { kind: "present", path: targetPath, relativePath };
                             }
@@ -461,8 +485,7 @@ export async function ensureExecutionPlanFile({
                         kind: "restore_failed",
                         path: targetPath,
                         relativePath,
-                        reason:
-                            `Could not synchronize execution Plan metadata at ${relativePath}. Existing evidence was preserved.`,
+                        reason: `Could not synchronize execution Plan metadata at ${relativePath}. Existing evidence was preserved.`,
                     };
                 }
                 const verifiedMarkdown = await fsReadFile(targetPath, "utf8");
@@ -475,8 +498,7 @@ export async function ensureExecutionPlanFile({
                         kind: "restore_failed",
                         path: targetPath,
                         relativePath,
-                        reason:
-                            `Could not verify synchronized execution Plan metadata at ${relativePath}. Existing evidence was preserved.`,
+                        reason: `Could not verify synchronized execution Plan metadata at ${relativePath}. Existing evidence was preserved.`,
                     };
                 }
                 return {
@@ -492,9 +514,9 @@ export async function ensureExecutionPlanFile({
                 kind: "malformed",
                 path: targetPath,
                 relativePath,
-                reason: `Execution Plan path ${relativePath} is malformed: ${
-                    String(error)
-                }. Existing evidence was preserved.`,
+                reason: `Execution Plan path ${relativePath} is malformed: ${String(
+                    error,
+                )}. Existing evidence was preserved.`,
             };
         }
     }
@@ -506,8 +528,7 @@ export async function ensureExecutionPlanFile({
                 kind: "restore_failed",
                 path: targetPath,
                 relativePath,
-                reason:
-                    `Canonical execution Plan validation failed for ${relativePath}. Existing evidence was preserved.`,
+                reason: `Canonical execution Plan validation failed for ${relativePath}. Existing evidence was preserved.`,
             };
         }
         const recheckedParents = await verifyParentChain(executionCwd, parentSegments, false);
@@ -550,19 +571,17 @@ export async function ensureExecutionPlanFile({
             kind: "restore_failed",
             path: targetPath,
             relativePath,
-            reason:
-                `Failed to restore execution Plan path ${relativePath}: ${reason}. Existing evidence was preserved.`,
+            reason: `Failed to restore execution Plan path ${relativePath}: ${reason}. Existing evidence was preserved.`,
         };
     }
 }
 
-/**
- * @param {{ projectRoot: string, executionCwd: string, planName: string, executionAuthoritative?: boolean }} opts
- * @returns {Promise<ExecutionPlanFileResult>}
- */
-export async function prepareExecutionPlanFile(
-    { projectRoot, executionCwd, planName, executionAuthoritative = false },
-) {
+export async function prepareExecutionPlanFile({
+    projectRoot,
+    executionCwd,
+    planName,
+    executionAuthoritative = false,
+}: PrepareExecutionPlanFileOptions): Promise<ExecutionPlanFileResult> {
     if (executionAuthoritative) {
         const executionSource = await loadCanonicalExecutionPlanSource(executionCwd, planName);
         if (executionSource.kind === "loaded") {
@@ -583,11 +602,12 @@ export async function prepareExecutionPlanFile(
 /**
  * Restore a deleted execution Plan from the immutable pre-implementation tree.
  * Existing files are classified and preserved; only an absent path is restored.
- *
- * @param {{ executionCwd: string, planName: string, baselineTree: string }} opts
- * @returns {Promise<ExecutionPlanFileResult>}
  */
-export async function restoreExecutionPlanFromBaseline({ executionCwd, planName, baselineTree }) {
+export async function restoreExecutionPlanFromBaseline({
+    executionCwd,
+    planName,
+    baselineTree,
+}: RestoreExecutionPlanFromBaselineOptions): Promise<ExecutionPlanFileResult> {
     const existing = await loadCanonicalExecutionPlanSource(executionCwd, planName);
     if (existing.kind === "loaded") {
         return await ensureExecutionPlanFile({

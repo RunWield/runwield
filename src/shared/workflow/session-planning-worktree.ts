@@ -5,7 +5,7 @@ import { findActiveByPlanName } from "../worktree-registry.js";
 import { executionWorktreePathExists, recoverMissingExecutionWorktree } from "./execution-worktree-rescue.ts";
 import { isPublicationCleanupPending } from "./publication-attempt.ts";
 import { isGitRepository } from "../git.ts";
-import { ensureExecutionPlanFile } from "./execution-plan-file.js";
+import { ensureExecutionPlanFile } from "./execution-plan-file.ts";
 import { ensureEpicBranch } from "./epic-branch.ts";
 import { needsSessionPlanningWorktree, resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { preparePlanningWorktreeForPlan } from "./planning-worktree.ts";

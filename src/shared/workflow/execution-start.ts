@@ -52,7 +52,7 @@ import {
     updateEntry as updateWorktreeRegistryEntry,
 } from "../worktree-registry.js";
 import { captureWorktreeTree } from "./git-snapshot.ts";
-import { ensureExecutionPlanFile, loadCanonicalExecutionPlanSource } from "./execution-plan-file.js";
+import { ensureExecutionPlanFile, loadCanonicalExecutionPlanSource } from "./execution-plan-file.ts";
 import {
     emitCreatedExecutionWorktree,
     emitCreatingExecutionWorktree,
