@@ -24,25 +24,25 @@ import { linuxTarget } from "./runtime.js";
 const BUILD_ID = "a".repeat(64);
 const PROTOCOL = 1;
 
-/**
- * @typedef {Object} RuntimeFixture
- * @property {string} root
- * @property {string} ssh
- * @property {string} artifact
- * @property {typeof import('./runtime.js')} module
- * @property {FixtureMetadata} metadata
- */
-/**
- * @typedef {Object} FixtureMetadata
- * @property {number} schema
- * @property {number} protocol
- * @property {string} buildId
- * @property {string} target
- * @property {string} version
- * @property {string} sha256
- */
-/** @param {(fixture: RuntimeFixture) => Promise<void>} fn */
-async function fixture(fn) {
+import type { ArtifactMetadata } from "../../../scripts/build-metadata.ts";
+
+type RuntimeModule = typeof import("./runtime.js");
+interface RuntimeFixture {
+    root: string;
+    ssh: string;
+    artifact: string;
+    module: RuntimeModule;
+    metadata: ArtifactMetadata;
+}
+interface RuntimeTransferHeader extends ArtifactMetadata {
+    size: number;
+}
+interface SshRequestLog {
+    args: string[];
+    header: RuntimeTransferHeader;
+}
+
+async function fixture(fn: (fixture: RuntimeFixture) => Promise<void>) {
     const root = await fsRealpath(await fsMkdtemp(join(tmpdir(), "portable-fixture-")));
     try {
         const shared = join(root, "src/shared");
@@ -70,7 +70,7 @@ async function fixture(fn) {
             `export const BUILD_ID = '${BUILD_ID}'; export const REMOTE_PROTOCOL_VERSION = ${PROTOCOL};`,
         );
         await fsWriteFile(join(shared, "version.js"), 'export const VERSION = "test-build";');
-        const module = await import(toFileUrl(join(remote, "runtime.js")).href);
+        const module: RuntimeModule = await import(toFileUrl(join(remote, "runtime.js")).href);
         const ssh = join(root, "ssh");
         await fsWriteFile(
             ssh,
@@ -83,7 +83,7 @@ async function fixture(fn) {
         const content = `#!/bin/sh\n[ "$1" = --remote-preflight ] || exit 2\necho '{"buildId":"${BUILD_ID}","protocol":${PROTOCOL},"version":"test-build"}'\n`;
         await fsWriteFile(artifact, content);
         const checksum = await sha256Bytes(new TextEncoder().encode(content));
-        const metadata = {
+        const metadata: ArtifactMetadata = {
             schema: 1,
             protocol: PROTOCOL,
             buildId: BUILD_ID,
@@ -371,7 +371,7 @@ if (config.mode !== "reuse") console.log(JSON.stringify({ ok: true, path: "/remo
                 path: "/remote/cache/wld",
                 reused: mode === "reuse",
             });
-            const request = JSON.parse(await fsReadFile(log, "utf8"));
+            const request: SshRequestLog = JSON.parse(await fsReadFile(log, "utf8"));
             assertEquals(request.args, ["-T", "--", "example", module.REMOTE_PREPARE_COMMAND]);
             assertEquals(request.header, { ...metadata, sha256, size: bytes.length });
             assertEquals(new Uint8Array(await fsReadFile(transfer)), mode === "reuse" ? new Uint8Array() : bytes);

@@ -246,7 +246,7 @@ sha256>/` on the server through the existing preparation protocol. The server ve
 - Helper module: the manifest parses, has both CPUs for both helpers, and every entry has a 64-hex SHA-256. The laptop
   path and remote path come from the same function. A cached helper archive with a wrong checksum is rejected.
 - Remote helper installation: run the preparation protocol's Python source locally against a disposable HOME, as the
-  existing `runtime.test.js` does. A first run installs the helper, and a second run reuses it without reading bytes.
+  existing `runtime.test.ts` does. A first run installs the helper, and a second run reuses it without reading bytes.
   An abandoned stage is repaired. A checksum mismatch leaves no installed file.
 - Supervisor `PATH`: a test starts the supervisor entry with a disposable HOME that contains the private helpers. It
   fails unless the started view's environment has them first on `PATH`, and unless a missing helper stops startup with

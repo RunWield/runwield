@@ -379,7 +379,7 @@
     "src/shared/remote/remote-runtime-workflows-records-reads.test.ts",
     "src/shared/remote/remote-runtime-workflows-records.test.ts",
     "src/shared/remote/remote-runtime-workflows-rollover.test.ts",
-    "src/shared/remote/runtime.test.js",
+    "src/shared/remote/runtime.test.ts",
     "src/shared/remote/see-image-usage.test.ts",
     "src/shared/remote/session-attachment-read.test.ts",
     "src/shared/remote/session-control.test.ts",
