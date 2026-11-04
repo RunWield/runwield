@@ -123,7 +123,7 @@ interface PorcelainStatusEntry {
     path: string;
 }
 
-interface DelegateAgentDetails {
+export interface DelegateAgentDetails {
     ok: boolean;
     mode: DelegationMode;
     role: string;

@@ -27,7 +27,7 @@ affectedPaths:
     - "src/shared/session/request-dispatch.ts"
     - "src/shared/session/background-tasks.ts"
     - "src/tools/delegate-agent.ts"
-    - "src/tools/__tests__/delegate-agent.test.js"
+    - "src/tools/__tests__/delegate-agent.test.ts"
     - "src/cmd/compact/index.ts"
     - "src/cmd/compact/index.test.js"
     - "src/ui/tui/runtime-adapter.ts"
@@ -334,7 +334,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/tools/delegate-agent.ts`, `src/shared/session/background-tasks.ts`, and background task tests — map foreground
   and background pause outcomes through their different existing settlement paths. Do not present partial output as
   successful work.
-- `src/tools/__tests__/delegate-agent.test.js` — verify delegated Agent cancellation and context pause preserve tool
+- `src/tools/__tests__/delegate-agent.test.ts` — verify delegated Agent cancellation and context pause preserve tool
   settlement, report `context_resilience_paused` deterministically, and respect Hosted Session compaction serialization.
 - `src/cmd/compact/index.ts` — handle Runtime's `compaction_in_progress` result without reading success-only compaction
   fields and display one concise retry-later message.
@@ -462,7 +462,7 @@ unless the complete public AgentSession contract has been verified; a partial ga
   src/shared/session/agent-handler.test.ts src/shared/session/request-dispatch.test.ts
   src/shared/session/background-tasks.test.ts src/shared/session/background-tasks-extra.test.ts
   src/shared/session/segment-rollover.test.js src/shared/session/session-transcript-projection.test.js
-  src/tools/__tests__/delegate-agent.test.js src/cmd/compact/index.test.js
+  src/tools/__tests__/delegate-agent.test.ts src/cmd/compact/index.test.js
   src/ui/tui/runtime-adapter.test.js src/acp/server.test.js src/ui/workspace/workspace-session-ux.test.tsx`.
   Include new focused integration suites through the same runner. Never use direct `deno test`.
 - Existing coverage: preserve manual/resume compaction, automatic-disabled behavior, image and Named Invocation context,
