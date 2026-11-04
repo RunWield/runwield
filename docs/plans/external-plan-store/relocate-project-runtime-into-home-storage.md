@@ -28,6 +28,7 @@ dependencies:
 targetBranch: "epic/external-plan-store"
 userVerifiedAt: null
 status: "reviewed"
+validatedCommit: "b167f43ba1c251ecd4d5b668e6d2fffb5d940b30"
 ---
 
 # Relocate Project Runtime into Home Storage
