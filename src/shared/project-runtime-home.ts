@@ -1,14 +1,20 @@
 /** Home-owned ordinary runtime. A durable inventory separates copying, publication, and retirement. */
-import { gitWorktreeListEvidence, observeGitEvidence, reusedGitRead, rememberGitRead } from "./git-evidence-cache.ts";
+import {
+    gitWorktreeListEvidence,
+    gitIndexEvidence,
+    observeGitEvidence,
+    reusedGitRead,
+    rememberGitRead,
+} from "./git-evidence-cache.ts";
 import { readLockFileSnapshot, lockFileSnapshotMatches, type LockFileSnapshot } from "./lock-file-snapshot.ts";
 import { DatabaseSync } from "./sqlite.ts";
 import { isLockHolderGone } from "./process-liveness.ts";
 import { getRunWieldRuntimeDir } from "../constants.js";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
-import { dirname, join, relative, isAbsolute } from "node:path";
+import { basename, dirname, join, relative, isAbsolute } from "node:path";
 import { spawnSync } from "node:child_process";
-import { type Stats } from "node:fs";
+import { realpathSync, type Stats } from "node:fs";
 import { admitProjectIdentity, inspectProjectIdentity, type ProjectIdentity } from "./project-identity.ts";
 import { resolvePrimaryCheckoutRoot } from "./primary-checkout.ts";
 import { openNativeFileLock, type NativeFileLock } from "./native-file-lock.ts";
@@ -108,18 +114,6 @@ function git(root: string, args: string[]): string {
         throw new Error(result.error?.message || result.stderr || "Git evidence unavailable");
     return result.stdout.trim();
 }
-function identityAt(root: string, identity: ProjectIdentity): ProjectIdentity {
-    const result = inspectProjectIdentity(root, {
-        context: { personalOwner: identity.personalOwner, executionAccountHome: identity.executionAccountHome },
-    });
-    if (
-        result.kind !== "existing" ||
-        result.identity.projectId !== identity.projectId ||
-        result.identity.repositoryId !== identity.repositoryId
-    )
-        refuse("invalid_registered_checkout", [root], "Checkout identity does not match the repository runtime owner.");
-    return result.identity;
-}
 export function homeProjectRuntimeLayout(identity: ProjectIdentity): ProjectRuntimeLayout {
     const primaryRoot = resolvePrimaryCheckoutRoot(identity.checkoutRoot);
     const home = projectHome(identity);
@@ -172,7 +166,7 @@ async function checkoutRoots(identity: ProjectIdentity): Promise<string[]> {
         }
         await rememberGitRead(evidence, records);
     }
-    return [
+    const roots = [
         ...new Set([
             primary,
             identity.checkoutRoot,
@@ -182,6 +176,14 @@ async function checkoutRoots(identity: ProjectIdentity): Promise<string[]> {
                 .map((s) => s.slice(9)),
         ]),
     ].sort();
+    // Git retains prunable registrations after a checkout disappears. Recovery owns
+    // those attempts; absence supplies no source tree to admit or migrate.
+    const present: string[] = [];
+    for (const root of roots) {
+        const stat = await info(root);
+        if (stat) present.push(await fs.realpath(root));
+    }
+    return present;
 }
 async function assertSafePath(path: string, stop: string): Promise<void> {
     for (let current = path; ; current = dirname(current)) {
@@ -190,10 +192,25 @@ async function assertSafePath(path: string, stop: string): Promise<void> {
         if (current === stop || !inside(stop, current)) break;
     }
 }
-async function validateHomeAuthorities(identity: ProjectIdentity, layout: ProjectRuntimeLayout): Promise<void> {
+async function validateHomeAuthorities(
+    identity: ProjectIdentity,
+    layout: ProjectRuntimeLayout,
+    transfer: RuntimeTransfer | null,
+): Promise<void> {
+    const payloadLinks = new Map(
+        transfer?.files.filter((file) => file.link !== undefined).map((file) => [file.destination, file]),
+    );
+    if (transfer?.phase === "copying") {
+        for (const file of transfer.files.filter((file) => file.link !== undefined)) {
+            const stage = `${file.destination}.runtime-copy`;
+            if (!payloadLinks.has(stage)) payloadLinks.set(stage, file);
+        }
+    }
     async function walk(path: string, repositories = false): Promise<void> {
-        await assertSafePath(path, projectHome(identity));
+        const payload = payloadLinks.get(path);
+        await assertSafePath(payload ? dirname(path) : path, projectHome(identity));
         const stat = await info(path);
+        if (stat?.isSymbolicLink() && payload && (await fileDigest(path, payload.link)) === payload.digest) return;
         if (!stat) return;
         if (stat.isDirectory()) {
             if (repositories && (await info(join(path, ".git")))) return;
@@ -210,7 +227,13 @@ async function validateHomeAuthorities(identity: ProjectIdentity, layout: Projec
 async function assertUntracked(roots: string[]): Promise<void> {
     for (const root of roots) {
         if (!(await info(join(root, ".git")))) continue;
-        const paths = git(root, ["ls-files", "-z", "--", ".wld"]).split("\0").filter(isRunWieldOwnedRuntimePath);
+        const evidence = await observeGitEvidence(`home-runtime-index\0${root}`, await gitIndexEvidence(root));
+        let tracked = reusedGitRead<string>(evidence);
+        if (tracked === undefined) {
+            tracked = git(root, ["ls-files", "-z", "--", ".wld"]);
+            await rememberGitRead(evidence, tracked);
+        }
+        const paths = tracked.split("\0").filter(isRunWieldOwnedRuntimePath);
         if (paths.length) {
             const secret = paths.some((path) => path.includes("collaboration-secrets.json"));
             refuse(
@@ -223,11 +246,20 @@ async function assertUntracked(roots: string[]): Promise<void> {
         }
     }
 }
-async function sourceMappings(identity: ProjectIdentity, roots: string[]): Promise<RuntimeMapping[]> {
+async function sourceMappings(identity: ProjectIdentity, identities: ProjectIdentity[]): Promise<RuntimeMapping[]> {
     const mappings: RuntimeMapping[] = [];
     const primary = homeProjectRuntimeLayout(identity).primary;
-    for (const root of roots) {
-        const selectedIdentity = identityAt(root, identity);
+    for (const selectedIdentity of identities) {
+        const root = selectedIdentity.checkoutRoot;
+        if (
+            selectedIdentity.projectId !== identity.projectId ||
+            selectedIdentity.repositoryId !== identity.repositoryId
+        )
+            refuse(
+                "invalid_registered_checkout",
+                [root],
+                "Checkout identity does not match the repository runtime owner.",
+            );
         const selected = homeProjectRuntimeLayout(selectedIdentity).selected;
         const named: Record<string, string> = {
             controller: dirname(primary.controllerPlansDir),
@@ -282,6 +314,7 @@ async function sourceMappings(identity: ProjectIdentity, roots: string[]): Promi
     return mappings;
 }
 async function readMarker(layout: ProjectRuntimeLayout, identity: ProjectIdentity): Promise<HomeMarker | null> {
+    await assertSafePath(layout.primary.layoutMarkerPath, projectHome(identity));
     if (!(await info(layout.primary.layoutMarkerPath))) return null;
     let marker: HomeMarker;
     try {
@@ -310,7 +343,11 @@ async function readMarker(layout: ProjectRuntimeLayout, identity: ProjectIdentit
         );
     return marker;
 }
-async function validateLegacyEvidence(mappings: RuntimeMapping[], roots: string[]): Promise<void> {
+async function validateLegacyEvidence(
+    mappings: RuntimeMapping[],
+    roots: string[],
+    transfer: RuntimeTransfer | null,
+): Promise<void> {
     for (const mapping of mappings) {
         const name = mapping.source.split(/[\\/]/).at(-1);
         if (name === "worktrees.json") {
@@ -324,7 +361,14 @@ async function validateLegacyEvidence(mappings: RuntimeMapping[], roots: string[
             for (const entry of registry.entries) {
                 await assertSafePath(entry.path, entry.path);
                 const existing = await info(entry.path);
-                if (existing && !roots.includes(await fs.realpath(entry.path)))
+                const original = existing ? await fs.realpath(entry.path) : entry.path;
+                const moved =
+                    transfer && transfer.roots.includes(original) ? relocated(original, transfer.mappings) : original;
+                if (
+                    existing &&
+                    !roots.includes(original) &&
+                    !(moved !== original && roots.includes(canonicalRuntimeReference(moved)))
+                )
                     refuse(
                         "invalid_registered_checkout",
                         [entry.path],
@@ -387,6 +431,23 @@ async function validateLegacyEvidence(mappings: RuntimeMapping[], roots: string[
         }
     }
 }
+
+function isRuntimeLock(mapping: RuntimeMapping, path: string): boolean {
+    if (mapping.repository || !path.endsWith(".lock")) return false;
+    const name = basename(mapping.source);
+    if (name === "controller") return inside(join(mapping.source, "plans"), path) && path.endsWith(".json.lock");
+    if (name === "plan-locks") return path !== mapping.source;
+    return (
+        path === mapping.source &&
+        [
+            "worktrees.lock",
+            "layout-migration.lock",
+            "work-record-supersession.lock",
+            "work-record-supersession-recovery.lock",
+            "local-publication.lock",
+        ].includes(name)
+    );
+}
 async function inventory(
     mapping: RuntimeMapping,
     result: RuntimeFile[],
@@ -406,10 +467,10 @@ async function inventory(
             mode: stat.mode & 0o777,
             link,
             retired: false,
-            lock: !repository && path.endsWith(".lock"),
+            lock: isRuntimeLock(mapping, path),
         });
     } else if (stat.isDirectory()) {
-        if (!repository && path.endsWith(".lock") && Date.now() - stat.mtimeMs < 30_000)
+        if (isRuntimeLock(mapping, path) && Date.now() - stat.mtimeMs < 30_000)
             refuse("active_legacy_writer", [path], "A legacy publication writer is active. Retry after it settles.");
         const inRepository = repository || (mapping.repository && Boolean(await info(join(path, ".git"))));
         for (const entry of await fs.readdir(path)) {
@@ -429,7 +490,7 @@ async function inventory(
             digest: hash(await fs.readFile(path)),
             mode: repository ? stat.mode & 0o777 : 0o600,
             retired: false,
-            lock: !repository && path.endsWith(".lock"),
+            lock: isRuntimeLock(mapping, path),
         });
     } else refuse("malformed_migration_evidence", [path], "Runtime contains an unsupported filesystem object.");
 }
@@ -458,6 +519,7 @@ async function readTransfer(
     mappings: RuntimeMapping[],
 ): Promise<RuntimeTransfer | null> {
     const path = layout.primary.layoutMigrationJournalPath;
+    await assertSafePath(path, projectHome(identity));
     if (!(await info(path))) return null;
     const journal: RuntimeTransfer = JSON.parse(await fs.readFile(path, "utf8"));
     if (
@@ -475,10 +537,8 @@ async function readTransfer(
     for (const root of journal.roots) {
         if (typeof root !== "string" || !isAbsolute(root))
             refuse("malformed_migration_evidence", [path], "Transfer contains a noncanonical checkout root.");
-        const oldFallback = ["worktrees", "plan-staging"].some(
-            (name) =>
-                inside(join(getRunWieldRuntimeDir(layout.primary.checkoutRoot), name), root) ||
-                inside(join(getRunWieldRuntimeDir(layout.primary.checkoutRoot), "internal", name), root),
+        const oldFallback = mappings.some(
+            (mapping) => mapping.repository && inside(canonicalRuntimeReference(mapping.source), root),
         );
         if (!actualRoots.includes(root) && !oldFallback)
             refuse("malformed_migration_evidence", [root], "Transfer root is no longer a registered checkout.");
@@ -506,10 +566,13 @@ async function readTransfer(
             );
     }
     for (const file of journal.files) {
-        const mapping = journal.mappings.find((candidate) => inside(candidate.source, file.source));
+        const mapping = journal.mappings
+            .filter((candidate) => inside(candidate.source, file.source))
+            .sort((a, b) => b.source.length - a.source.length)[0];
         if (
             !mapping ||
             file.destination !== join(mapping.destination, relative(mapping.source, file.source)) ||
+            (file.link !== undefined && (typeof file.link !== "string" || !mapping.repository)) ||
             !/^[a-f0-9]{64}$/.test(file.digest) ||
             !Number.isInteger(file.mode) ||
             typeof file.retired !== "boolean"
@@ -526,18 +589,26 @@ export async function inspectHomeProjectRuntime(identity: ProjectIdentity): Prom
         await assertSafePath(projectHome(identity), identity.executionAccountHome);
         const roots = await checkoutRoots(identity);
         await assertUntracked(roots);
-        await validateHomeAuthorities(identity, layout);
         const marker = await readMarker(layout, identity);
         // An unbound linked checkout is pending until deliberate entry admits it.
+        const identities: ProjectIdentity[] = [];
         for (const root of roots) {
-            const known = inspectProjectIdentity(root, {
-                context: { personalOwner: identity.personalOwner, executionAccountHome: identity.executionAccountHome },
-            });
+            const known =
+                root === identity.checkoutRoot
+                    ? { kind: "existing" as const, identity }
+                    : inspectProjectIdentity(root, {
+                          context: {
+                              personalOwner: identity.personalOwner,
+                              executionAccountHome: identity.executionAccountHome,
+                          },
+                      });
             if (known.kind !== "existing") return { kind: "pending", layout };
+            identities.push(known.identity);
         }
-        const mappings = await sourceMappings(identity, roots);
-        await validateLegacyEvidence(mappings, roots);
+        const mappings = await sourceMappings(identity, identities);
         const journal = await readTransfer(layout, identity, mappings);
+        await validateHomeAuthorities(identity, layout, journal);
+        await validateLegacyEvidence(mappings, roots, journal);
         const files: RuntimeFile[] = [];
         for (const mapping of mappings) await inventory(mapping, files);
         const currentRegistry = await inspectWorktreeRegistryAtPath(layout.primary.worktreeRegistryPath);
@@ -575,8 +646,7 @@ async function holdSourceLocks(files: RuntimeFile[]): Promise<NativeFileLock[]> 
             if (!(await info(file.source))) continue;
             if (file.source.endsWith("worktrees.lock") || file.source.endsWith("layout-migration.lock")) {
                 const snapshot = await fs.readFile(file.source, "utf8");
-                const stat = await fs.stat(file.source);
-                if (!(await isLockHolderGone(snapshot)) && Date.now() - stat.mtimeMs < 30_000)
+                if (!(await isLockHolderGone(snapshot)))
                     refuse(
                         "active_legacy_writer",
                         [file.source],
@@ -600,7 +670,7 @@ async function holdSourceLocks(files: RuntimeFile[]): Promise<NativeFileLock[]> 
 }
 async function copyFile(file: RuntimeFile, home: string): Promise<void> {
     if (file.lock) return; // Native ownership is acquired afresh; lock bytes never transfer.
-    await assertSafePath(file.destination, home);
+    await assertSafePath(file.link === undefined ? file.destination : dirname(file.destination), home);
     const source = await info(file.source);
     const destination = await info(file.destination);
     if (!source && destination && (await fileDigest(file.destination, file.link)) === file.digest) return;
@@ -649,11 +719,29 @@ async function copyFile(file: RuntimeFile, home: string): Promise<void> {
     await fs.rename(stage, file.destination);
     syncParentDirectory(file.destination);
 }
+function canonicalRuntimeReference(path: string): string {
+    let ancestor = path;
+    const suffix: string[] = [];
+    while (true) {
+        try {
+            return join(realpathSync(ancestor), ...suffix);
+        } catch (error) {
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+            const parent = dirname(ancestor);
+            if (parent === ancestor) throw error;
+            suffix.unshift(basename(ancestor));
+            ancestor = parent;
+        }
+    }
+}
 function relocated(path: string, mappings: RuntimeMapping[]): string {
+    const canonical = canonicalRuntimeReference(path);
     const mapping = mappings
-        .filter((entry) => entry.repository && inside(entry.source, path))
+        .filter((entry) => entry.repository)
+        .map((entry) => ({ ...entry, source: canonicalRuntimeReference(entry.source) }))
+        .filter((entry) => inside(entry.source, canonical))
         .sort((a, b) => b.source.length - a.source.length)[0];
-    return mapping ? join(mapping.destination, relative(mapping.source, path)) : path;
+    return mapping ? join(mapping.destination, relative(mapping.source, canonical)) : path;
 }
 async function repairRepositories(journal: RuntimeTransfer, primary: string): Promise<void> {
     for (const mapping of journal.mappings.filter((entry) => entry.repository)) {
@@ -670,7 +758,14 @@ async function repairRepositories(journal: RuntimeTransfer, primary: string): Pr
 async function relocateRegistry(layout: ProjectRuntimeLayout, journal: RuntimeTransfer): Promise<void> {
     if (!(await info(layout.primary.worktreeRegistryPath))) return;
     const registry = await inspectWorktreeRegistryAtPath(layout.primary.worktreeRegistryPath);
-    if (registry.readError || registry.integrityIssues.length)
+    // Existing home authority may need registry recovery. Mapping paths preserves
+    // every attempt; uniqueness remains the registry action boundary's decision.
+    if (
+        registry.readError ||
+        registry.integrityIssues.some(
+            (issue) => !["duplicate_worktree_id", "duplicate_live_attempt"].includes(issue.kind),
+        )
+    )
         refuse("malformed_registry", [layout.primary.worktreeRegistryPath], "Copied registry could not be validated.");
     let changed = false;
     for (const entry of registry.entries) {
@@ -691,9 +786,14 @@ async function relocateRegistry(layout: ProjectRuntimeLayout, journal: RuntimeTr
     }
     if (changed) {
         const path = layout.primary.worktreeRegistryPath;
+        const contents = `${JSON.stringify({ version: 2, entries: registry.entries }, null, 2)}\n`;
+        // Persist the exact authorized rewrite before changing destination bytes.
+        for (const file of journal.files.filter((file) => file.destination === path))
+            file.publishedDigest = hash(contents);
+        await save(layout.primary.layoutMigrationJournalPath, journal);
         const fd = await fs.open(`${path}.runtime-mapping`, "w", 0o600);
         try {
-            await fd.writeFile(`${JSON.stringify({ version: 2, entries: registry.entries }, null, 2)}\n`);
+            await fd.writeFile(contents);
             await fd.sync();
         } finally {
             await fd.close();
@@ -725,17 +825,17 @@ export async function enterHomeProjectRuntime(identity: ProjectIdentity): Promis
     const indexes: DatabaseSync[] = [];
     try {
         const roots = await checkoutRoots(identity);
+        const identities: ProjectIdentity[] = [];
         for (const root of roots) {
             const admission = await admitProjectIdentity(root, {
                 context: { personalOwner: identity.personalOwner, executionAccountHome: identity.executionAccountHome },
             });
             if (admission.kind !== "existing")
                 refuse("invalid_registered_checkout", [root], "Linked checkout identity could not be admitted.");
+            identities.push(admission.identity);
         }
         await assertUntracked(roots);
-        await validateHomeAuthorities(identity, layout);
-        ensurePrivateDir(dirname(layout.primary.worktreeRegistryPath));
-        let mappings = await sourceMappings(identity, roots);
+        let mappings = await sourceMappings(identity, identities);
         for (const mapping of mappings.filter((entry) => entry.source.endsWith("work-records.sqlite3"))) {
             const database = new DatabaseSync(mapping.source);
             indexes.push(database);
@@ -747,10 +847,12 @@ export async function enterHomeProjectRuntime(identity: ProjectIdentity): Promis
                 refuse("active_legacy_writer", [mapping.source], `Work Record index is in use: ${String(error)}`);
             }
         }
-        mappings = await sourceMappings(identity, roots);
-        await validateLegacyEvidence(mappings, roots);
+        mappings = await sourceMappings(identity, identities);
         const marker = await readMarker(layout, identity);
         let journal = await readTransfer(layout, identity, mappings);
+        await validateHomeAuthorities(identity, layout, journal);
+        ensurePrivateDir(dirname(layout.primary.worktreeRegistryPath));
+        await validateLegacyEvidence(mappings, roots, journal);
         if (!journal) {
             const files: RuntimeFile[] = [];
             for (const mapping of mappings) await inventory(mapping, files);
@@ -791,7 +893,7 @@ export async function enterHomeProjectRuntime(identity: ProjectIdentity): Promis
                 ])
                 .filter((path): path is string => Boolean(path));
             const relocating = references.some((path) => relocated(path, mappings) !== path);
-            if (!files.length && !relocating && marker?.roots.includes(identity.checkoutRoot)) {
+            if (!files.length && !relocating && marker && roots.every((root) => marker.roots.includes(root))) {
                 for (const root of roots) await removeEmptyTree(join(getRunWieldRuntimeDir(root), "internal"));
                 return { kind: "ready", layout, migrated: false, adoptedSelectedCheckoutRoots: marker.roots };
             }
@@ -817,11 +919,25 @@ export async function enterHomeProjectRuntime(identity: ProjectIdentity): Promis
             await save(layout.primary.layoutMigrationJournalPath, journal);
         }
         if (journal.phase === "verified") {
+            for (const file of journal.files.filter((file) => !file.lock)) {
+                await assertSafePath(
+                    file.link === undefined ? file.destination : dirname(file.destination),
+                    projectHome(identity),
+                );
+                const digest = await fileDigest(file.destination, file.link);
+                // A journaled registry rewrite may have stopped on either side of its atomic rename.
+                const originalRegistry =
+                    file.destination === layout.primary.worktreeRegistryPath && digest === file.digest;
+                if (digest !== (file.publishedDigest ?? file.digest) && !originalRegistry)
+                    refuse(
+                        "authority_conflict",
+                        [file.source, file.destination],
+                        "Runtime destination changed after verification. Both copies were retained.",
+                    );
+                file.publishedDigest ??= file.digest;
+            }
             await repairRepositories(journal, layout.primary.checkoutRoot);
             await relocateRegistry(layout, journal);
-            for (const file of journal.files.filter((file) => !file.lock)) {
-                file.publishedDigest = await fileDigest(file.destination, file.link);
-            }
             journal.phase = "published";
             await save(layout.primary.layoutMigrationJournalPath, journal);
         }
@@ -833,7 +949,10 @@ export async function enterHomeProjectRuntime(identity: ProjectIdentity): Promis
         for (const file of journal.files) {
             if (file.retired) continue;
             if (!file.lock) {
-                await assertSafePath(file.destination, projectHome(identity));
+                await assertSafePath(
+                    file.link === undefined ? file.destination : dirname(file.destination),
+                    projectHome(identity),
+                );
                 const destination = await info(file.destination);
                 if (
                     !destination ||

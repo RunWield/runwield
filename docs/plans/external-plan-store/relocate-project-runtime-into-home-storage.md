@@ -27,7 +27,7 @@ dependencies:
     - "external-plan-store/establish-stable-project-identity"
 targetBranch: "epic/external-plan-store"
 userVerifiedAt: null
-status: "implemented"
+status: "reviewed"
 ---
 
 # Relocate Project Runtime into Home Storage

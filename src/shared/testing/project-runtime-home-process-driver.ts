@@ -5,6 +5,15 @@ import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { openNativeFileLock } from "../native-file-lock.ts";
 import { getRunWieldRuntimeDir } from "../../constants.js";
 
+interface TransferCheckpointFile {
+    digest: string;
+    publishedDigest?: string;
+}
+interface TransferCheckpoint {
+    phase: string;
+    files: TransferCheckpointFile[];
+}
+
 const [command, root, boundary] = process.argv.slice(2);
 if (command === "hold-registry") {
     const path = join(getRunWieldRuntimeDir(root), "internal", "worktrees.lock");
@@ -42,9 +51,17 @@ if (command === "hold-registry") {
             // Source-to-home rename is a cross-device operation in this environment.
             if (String(args[0]).startsWith(getRunWieldRuntimeDir(root)))
                 throw Object.assign(new Error("cross device"), { code: "EXDEV" });
+            if (String(args[0]).endsWith("/!link.runtime-copy")) exit("staged-payload-link");
             await originalRename(...args);
+            if (String(args[1]).endsWith("/payload-link")) exit("payload-link");
+            if (String(args[1]).endsWith("/!link")) exit("early-payload-link");
             if (String(args[1]).endsWith("layout-migration.json")) {
-                const journal = JSON.parse(await fs.readFile(args[1], "utf8"));
+                const journal: TransferCheckpoint = JSON.parse(await fs.readFile(args[1], "utf8"));
+                if (
+                    journal.phase === "verified" &&
+                    journal.files.some((file) => file.publishedDigest && file.publishedDigest !== file.digest)
+                )
+                    exit("mapping-intent");
                 exit(journal.phase);
             }
             if (String(args[0]).endsWith(".runtime-mapping")) exit("mapping");

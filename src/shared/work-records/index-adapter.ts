@@ -5,7 +5,9 @@ import { captureForegroundProcess } from "../captured-process.ts";
  * Derived Mnemoteca index for canonical Work Records.
  */
 
-import { enterProjectRuntime } from "../project-runtime-layout.ts";
+import { checkedProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { inspectProjectIdentity } from "../project-identity.ts";
+import { remoteProjectOwner } from "../remote/personal-resources.ts";
 import { basename, dirname } from "node:path";
 import { listWorkRecords } from "./store.ts";
 import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
@@ -123,12 +125,17 @@ export async function runMnemotecaWorkRecordCommand(cwd: string, args: string[],
     const mnemotecaPort = options.mnemotecaPort;
     let result;
     try {
-        const layout = (await enterProjectRuntime(cwd)).primary;
-        await fsMkdir(dirname(layout.workRecordIndexDatabasePath), { recursive: true, mode: 0o700 });
-        result = await mnemotecaPort.run(args, {
-            cwd,
-            env: { MNEMOTECA_DB_PATH: layout.workRecordIndexDatabasePath },
-        });
+        const layout = (await checkedProjectRuntimeLayout(cwd)).primary;
+        if (remoteProjectOwner()?.kind === "managed-remote" || inspectProjectIdentity(cwd).kind === "existing") {
+            await fsMkdir(dirname(layout.workRecordIndexDatabasePath), { recursive: true, mode: 0o700 });
+            result = await mnemotecaPort.run(args, {
+                cwd,
+                env: { MNEMOTECA_DB_PATH: layout.workRecordIndexDatabasePath },
+            });
+        } else {
+            // An identity-free Project retains its existing derived collection until deliberate admission.
+            result = await mnemotecaPort.run(args, { cwd });
+        }
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         throw new Error(`mnemoteca ${args[0] || ""} failed: ${message}`);

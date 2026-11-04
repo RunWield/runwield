@@ -1,5 +1,5 @@
 import { assertEquals } from "../../testing/assertions.ts";
-import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
+import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { dirname } from "node:path";
@@ -331,6 +331,7 @@ test("rejects ambiguous registry integrity issues before lifecycle mutation", as
         },
     ]);
 
+    const registryBefore = await fsReadFile(getWorktreeRegistryPath(root), "utf8");
     const result = await executePlanAction(root, {
         planId: "plan-demo",
         expectedRevision: evidence.evidence.revision,
@@ -340,6 +341,9 @@ test("rejects ambiguous registry integrity issues before lifecycle mutation", as
     });
 
     assertEquals(result.kind, "recovery_required");
+    if (result.kind === "recovery_required") assertEquals(result.entryIds, ["duplicate"]);
+    assertEquals(await fsReadFile(getWorktreeRegistryPath(root), "utf8"), registryBefore);
+    assertEquals((await loadPlanActionEvidence(root, "plan-demo")).kind, "recovery_required");
     const current = await loadPlan(root, "demo");
     assertEquals(current?.attrs.status, "draft");
 });

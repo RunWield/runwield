@@ -1,3 +1,4 @@
+import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { makeTempFile } from "../../testing/temp-file.ts";
@@ -112,7 +113,10 @@ test("remote publication invoked from a linked checkout stages below the primary
         const publicationRoot = attempt?.publication?.publicationRoot;
         assert(publicationRoot);
         assertEquals(publicationRoot, publicationRootForAttempt(linkedRoot, "attempt-1"));
-        assert(publicationRoot.includes(join(".wld", "internal", "plan-staging", "attempt-1")));
+        assertEquals(
+            publicationRoot,
+            join(resolveProjectRuntimeLayout(projectRoot).primary.publicationStagingRoot, "attempt-1"),
+        );
         assertEquals(publicationRoot.includes(linkedRoot), false);
         assertEquals(await fsStat(publicationRoot).then((stat) => stat.isDirectory()), true);
         assertEquals(await git(publicationRoot, ["show", "HEAD:implementation.txt"]), "linked publication");

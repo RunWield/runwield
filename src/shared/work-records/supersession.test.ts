@@ -30,11 +30,11 @@ import {
     writeWorkRecord,
 } from "./index.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "../../constants.js";
+import { getRunWieldRuntimeDir } from "../../constants.js";
 import { savePlan } from "../../plan-store.js";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
-import { enterProjectRuntime } from "../project-runtime-layout.ts";
+import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 
 const linkedCheckoutFixture = defineCommittedGitFixture({ ".gitignore": ".wld/\n", "README.md": "# Fixture\n" });
 
@@ -45,7 +45,7 @@ const SUCCESSOR_ID = "33333333-3333-4333-8333-333333333333";
 type WorkRecordLockAcquire = (cwd: string) => Promise<() => Promise<void>>;
 
 function selectedInternalPath(cwd: string, fileName: string): string {
-    return join(getRunWieldRuntimeDir(realpathSync(cwd)), PROJECT_INTERNAL_RUNTIME_DIR_NAME, fileName);
+    return join(resolveProjectRuntimeLayout(cwd).selected.internalRoot, fileName);
 }
 
 async function assertMissing(path: string): Promise<void> {
@@ -233,7 +233,7 @@ test("supersession recovers malformed locks only after their file mtimes are sta
     try {
         await seed(cwd, false);
         await enterProjectRuntime(cwd);
-        const runtimeDir = join(getRunWieldRuntimeDir(realpathSync(cwd)), PROJECT_INTERNAL_RUNTIME_DIR_NAME);
+        const runtimeDir = resolveProjectRuntimeLayout(cwd).selected.internalRoot;
         const lockPath = join(runtimeDir, "work-record-supersession.lock");
         const recoveryLockPath = join(runtimeDir, "work-record-supersession-recovery.lock");
         await fsMkdir(runtimeDir, { recursive: true });

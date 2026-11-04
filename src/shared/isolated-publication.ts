@@ -327,6 +327,7 @@ export async function publishExecutionWorktreeIsolated(
         args.onProgress?.("using_local_target");
         // The primary index and setup recovery record belong to one publication at a time.
         const internalRoot = resolveProjectRuntimeLayout(args.projectRoot).selected.internalRoot;
+        await fsMkdir(internalRoot, { recursive: true, mode: 0o700 });
         const release = await lockfile.lock(args.projectRoot, {
             lockfilePath: join(internalRoot, "local-publication.lock"),
             retries: { retries: 60, factor: 1, minTimeout: 500, maxTimeout: 500 },

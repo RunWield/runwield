@@ -379,3 +379,18 @@ test("returning legacy controller input cannot revert adopted home decisions", a
         await rm(root, { recursive: true, force: true });
     }
 });
+
+test("primary entry makes a newly attached checkout readable without another admission", async () => {
+    const root = await realpath(await fixture.checkout());
+    const linked = await realpath(await mkdtemp(join(tmpdir(), "runtime-new-linked-")));
+    try {
+        await writeControllerState(root, { planId: "new-linked", planName: "demo" }, { validationCiAttempts: 2 });
+        await git(root, ["worktree", "add", "-b", "new-linked", linked]);
+        await enterProjectRuntime(root);
+        equal((await inspectProjectRuntimeReadAccess(linked)).kind, "ready");
+        equal((await readControllerRecord(linked, { planId: "new-linked", planName: "demo" }))?.revision, 1);
+    } finally {
+        await rm(linked, { recursive: true, force: true });
+        await rm(root, { recursive: true, force: true });
+    }
+});

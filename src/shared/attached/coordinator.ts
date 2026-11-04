@@ -343,6 +343,14 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
               readOnly: true,
           });
     const { plan, archived } = location;
+    if (!plan && executionRoot) {
+        const directory = await fsStat(executionRoot).catch((error) => {
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
+            throw error;
+        });
+        // Completion owns missing-checkout recovery; projection must retain its issued authority.
+        if (!directory) return record;
+    }
     const archivedPlan =
         !plan && !archived
             ? await loadArchivedPlan(executionRoot || currentAttachedProjectRoot(record), record.plan.planId)
