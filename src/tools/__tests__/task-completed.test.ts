@@ -1,3 +1,7 @@
+import { throws as assertThrows } from "node:assert/strict";
+import { join } from "node:path";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { validateToolArguments, fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
@@ -7,7 +11,6 @@ import { readCurrentPairCheckpoint } from "../../shared/session/pair-checkpoint-
 import { createTaskCompletedTool } from "../task-completed.ts";
 import { makeToolProjectFixture, withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 
-import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { TextContent } from "@earendil-works/pi-ai";
 import type { ActiveExecutionWorkflow } from "../../shared/session/hosted-session.js";
 import type { RequestDispatchKind } from "../../shared/session/request-dispatch.ts";
@@ -19,18 +22,6 @@ import type { PairCheckpointDecision } from "../../shared/session/pair-checkpoin
 import type { PairCheckpointDetails, PairCheckpointParameters } from "../pair-checkpoint.ts";
 import type { BrowserPreflightOutcome, TaskCompletedDetails } from "../task-completed.ts";
 
-interface TestSessionEntry {
-    type: "custom";
-    customType: string;
-    data: Parameters<SessionManager["appendCustomEntry"]>[1];
-}
-interface TestSessionManager {
-    getSessionId(): string;
-    getCwd(): string;
-    getBranch(): TestSessionEntry[];
-    getEntries(): TestSessionEntry[];
-    appendCustomEntry(customType: string, data: TestSessionEntry["data"]): number;
-}
 interface ObservedCompletionEvent extends Partial<Omit<RuntimeAssistantTextDeltaEvent, "type">> {
     type: SessionRuntimeEvent["type"];
 }
@@ -54,26 +45,19 @@ interface CompletionTestResult {
 }
 // Existing direct-handler tests omit the unused SDK signal, update callback, and context arguments.
 type CompletionTestExecute = (toolCallId: string, params: CompletionTestParameters) => Promise<CompletionTestResult>;
-interface ConstSchema {
-    const: string;
-}
 
 const TASK_PROJECT_ROOT = makeToolProjectFixture("runwield-task-completed-");
 
-function makeSessionManager(projectRoot: string): TestSessionManager {
-    const entries: TestSessionEntry[] = [];
-    return {
-        getSessionId: () => `task-session-${crypto.randomUUID()}`,
-        getCwd: () => projectRoot,
-        getBranch: () => entries,
-        getEntries: () => entries,
-        appendCustomEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
-    };
+function makeSessionManager(projectRoot: string): SessionManager {
+    const manager = SessionManager.create(projectRoot, join(projectRoot, ".test-sessions", crypto.randomUUID()));
+    manager.appendMessage({ role: "user", content: "Begin the task.", timestamp: Date.now() });
+    manager.appendMessage(fauxAssistantMessage(fauxText("Ready for the task.")));
+    return manager;
 }
 
 function beginRequest(
     hostedSession: HostedSession,
-    sessionManager: TestSessionManager,
+    sessionManager: SessionManager,
     dispatchKind: RequestDispatchKind = "interactive",
 ) {
     const activeTurnId = hostedSession.getActiveTurnId();
@@ -303,14 +287,6 @@ test("task_completed suppresses a finished undelivered result and allows new wor
     } finally {
         await session.dispose();
     }
-});
-
-test("task_completed description uses planned-change workflow terminology", () => {
-    const hostedSession = new HostedSession({ id: "task-completed-description", cwd: TASK_PROJECT_ROOT });
-    const tool = createTaskCompletedTool({ hostedSession, agentName: "engineer" });
-
-    assertStringIncludes(tool.description || "", "For PLANNED_CHANGE and PROJECT workflows");
-    assertEquals((tool.description || "").includes("For FEATURE and PROJECT workflows"), false);
 });
 
 test("task_completed records accepted completion on hosted session only after ownership checks", async () => {
@@ -569,65 +545,6 @@ test("final Pair assent cannot authorize a different execution attempt", async (
     assertEquals(readCurrentPairCheckpoint(hostedSession)?.report.workflow.executionAttemptStartedAtMs, 2000);
 });
 
-test("task_completed message schema owns Engineer report format and accepts runtime display name", () => {
-    const hostedSession = new HostedSession({ id: "task-completed-schema", cwd: TASK_PROJECT_ROOT });
-    const engineerTool = createTaskCompletedTool({ hostedSession, agentName: "Engineer" });
-    const frontendEngineerTool = createTaskCompletedTool({ hostedSession, agentName: "Frontend Engineer" });
-    const operatorTool = createTaskCompletedTool({ hostedSession, agentName: "operator" });
-
-    assertStringIncludes(
-        engineerTool.parameters.properties.message.description,
-        "Concise Markdown bullet-point report of the work you completed",
-    );
-    assertStringIncludes(
-        frontendEngineerTool.parameters.properties.message.description,
-        "Concise Markdown bullet-point report of the work you completed",
-    );
-    assertStringIncludes(
-        engineerTool.parameters.properties.message.description,
-        "directly state each feedback item's disposition",
-    );
-    assertEquals(engineerTool.parameters.required, ["message"]);
-    assertEquals(engineerTool.parameters.properties.message.minLength, 1);
-    assertEquals(engineerTool.description.includes("Markdown bullet-point"), false);
-    assertEquals(operatorTool.parameters.properties.message.description.includes("Markdown bullet-point"), false);
-});
-
-test("task_completed tells every agent to stop in prose instead of reporting a blocker", () => {
-    const hostedSession = new HostedSession({ id: "task-completed-blocker-contract", cwd: TASK_PROJECT_ROOT });
-
-    for (const agentName of [
-        "Engineer",
-        "plan-engineer",
-        "Frontend Engineer",
-        "operator",
-        "tester",
-        "reviewer-feedback-engineer",
-    ]) {
-        const tool = createTaskCompletedTool({ hostedSession, agentName });
-        assertStringIncludes(tool.description, "DO NOT call this tool when you are blocked");
-        assertStringIncludes(tool.description, "A blocker ends your turn in plain text");
-        assertEquals(tool.description.includes("or is blocked"), false);
-    }
-});
-
-test("task_completed requires Frontend Engineer preflight outcome only", () => {
-    const hostedSession = new HostedSession({ id: "task-completed-preflight-schema", cwd: TASK_PROJECT_ROOT });
-    const frontendEngineerTool = createTaskCompletedTool({ hostedSession, agentName: "Frontend Engineer" });
-    const engineerTool = createTaskCompletedTool({ hostedSession, agentName: "Engineer" });
-
-    assertEquals(frontendEngineerTool.parameters.required, ["message", "browserPreflightOutcome"]);
-    assertEquals(
-        frontendEngineerTool.parameters.properties.browserPreflightOutcome.anyOf.map((item: ConstSchema) => item.const),
-        ["succeeded", "failed", "externally_blocked"],
-    );
-    assertStringIncludes(
-        frontendEngineerTool.parameters.properties.message.description,
-        "checkpoint acceptance is not verification evidence",
-    );
-    assertEquals(engineerTool.parameters.properties.browserPreflightOutcome, undefined);
-});
-
 for (const outcome of ["succeeded", "failed", "externally_blocked"] satisfies BrowserPreflightOutcome[]) {
     test(`task_completed records Frontend Engineer completion preflight outcome ${outcome}`, async () => {
         await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
@@ -815,4 +732,20 @@ test("a QUICK_FIX is completed by the Quick Fix Engineer, not by Plan Engineer",
 
     assertEquals(accepted.details, { outcome: "task_completed", message: "- Done." });
     assertEquals(hostedSession.consumePendingTaskCompletion(null)?.agentName, "engineer");
+});
+
+test("Frontend completion requires a report and a recognized preflight outcome at the agent tool boundary", () => {
+    const hostedSession = new HostedSession({ id: "preflight-contract", cwd: TASK_PROJECT_ROOT });
+    const tool = createTaskCompletedTool({ hostedSession, agentName: "Frontend Engineer" });
+    const inputs: Record<string, string>[] = [
+        { message: "Done" },
+        { message: "", browserPreflightOutcome: "succeeded" },
+        { message: "Done", browserPreflightOutcome: "invented" },
+    ];
+    for (const args of inputs) {
+        assertThrows(
+            () => validateToolArguments(tool, { type: "toolCall", id: "call", name: tool.name, arguments: args }),
+            /Validation failed/,
+        );
+    }
 });

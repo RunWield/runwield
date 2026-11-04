@@ -1,15 +1,8 @@
-import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
-import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import {
-    buildNativeNotificationSequence,
     createSystemNotificationNotifier,
-    detectTerminalIdentity,
-    resolveNotificationSettings,
     type RunWieldEventNotifier,
-    selectNativeNotificationProtocol,
-    shouldSuppressAttentionNotification,
     type SystemNotificationPort,
 } from "./system-notifications.ts";
 import { installTerminalFocusState, type TerminalFocusStateOwner } from "./terminal-focus-state.ts";
@@ -75,118 +68,6 @@ function makeNotificationFixture(options: NotificationFixtureOptions = {}): Noti
     return { notify, terminal };
 }
 
-test("resolveNotificationSettings defaults on and normalizes malformed values", () => {
-    assertEquals(resolveNotificationSettings(undefined), {
-        enabled: true,
-        activation: "tab",
-        events: {
-            agentStopped: true,
-            planWritten: true,
-            userInterview: true,
-            compactionFinished: true,
-        },
-        terminalBell: true,
-        suppressWhenFocused: true,
-    });
-
-    assertEquals(
-        resolveNotificationSettings({ enabled: false, activation: "invalid", events: { planWritten: false } }),
-        {
-            enabled: false,
-            activation: "tab",
-            events: {
-                agentStopped: true,
-                planWritten: false,
-                userInterview: true,
-                compactionFinished: true,
-            },
-            terminalBell: true,
-            suppressWhenFocused: true,
-        },
-    );
-
-    assertEquals(resolveNotificationSettings({ terminalBell: false, suppressWhenFocused: false }).terminalBell, false);
-    assertEquals(
-        resolveNotificationSettings({ terminalBell: false, suppressWhenFocused: false }).suppressWhenFocused,
-        false,
-    );
-});
-
-test("detectTerminalIdentity captures terminal environment without subprocess tty lookup", () => {
-    const identity = detectTerminalIdentity("demo", {
-        env: {
-            TERM_PROGRAM: "iTerm.app",
-            TERM: "xterm-256color",
-            ITERM_SESSION_ID: "w0t0p0",
-        },
-        pid: 42,
-    });
-
-    assertEquals(identity.sessionLabel, "demo");
-    assertEquals(identity.terminalTitle, "W. demo");
-    assertEquals(identity.termProgram, "iTerm.app");
-    assertEquals(identity.itermSessionId, "w0t0p0");
-    assertEquals(identity.pid, 42);
-});
-
-test("selectNativeNotificationProtocol keeps terminal-specific protocols and defaults to OSC 777", () => {
-    assertEquals(
-        selectNativeNotificationProtocol({ sessionLabel: "s", terminalTitle: "W. s", term: "xterm-kitty" }),
-        "osc99",
-    );
-    assertEquals(
-        selectNativeNotificationProtocol({ sessionLabel: "s", terminalTitle: "W. s", termProgram: "WezTerm" }),
-        "osc777",
-    );
-    assertEquals(
-        selectNativeNotificationProtocol({ sessionLabel: "s", terminalTitle: "W. s", termProgram: "Ghostty" }),
-        "osc777",
-    );
-    assertEquals(
-        selectNativeNotificationProtocol({ sessionLabel: "s", terminalTitle: "W. s", termProgram: "iTerm.app" }),
-        "osc9",
-    );
-    assertEquals(
-        selectNativeNotificationProtocol({
-            sessionLabel: "s",
-            terminalTitle: "W. s",
-            termProgram: "Apple_Terminal",
-        }),
-        "osc777",
-    );
-    assertEquals(selectNativeNotificationProtocol({ sessionLabel: "s", terminalTitle: "W. s" }), "osc777");
-});
-
-test("shouldSuppressAttentionNotification suppresses only known focused terminals by default", () => {
-    assertEquals(shouldSuppressAttentionNotification({ suppressWhenFocused: true }, "focused"), true);
-    assertEquals(shouldSuppressAttentionNotification({ suppressWhenFocused: true }, "unfocused"), false);
-    assertEquals(shouldSuppressAttentionNotification({ suppressWhenFocused: true }, "unknown"), false);
-    assertEquals(shouldSuppressAttentionNotification({ suppressWhenFocused: false }, "focused"), false);
-});
-
-test("buildNativeNotificationSequence emits iTerm2 OSC 9 safely", () => {
-    const sequence = buildNativeNotificationSequence("osc9", "Hello\x1b]bad\x07;title", "Line\nmessage");
-    assert(sequence);
-    assertStringIncludes(sequence, "\x1b]9;");
-    assertStringIncludes(sequence, "Hello");
-    assertEquals(sequence.includes("\x1b]bad"), false);
-    assertEquals(sequence.includes(";title"), false);
-});
-
-test("buildNativeNotificationSequence emits WezTerm and Ghostty OSC 777 safely", () => {
-    const sequence = buildNativeNotificationSequence("osc777", "Title;part", "Message\x07part");
-    assertEquals(sequence, "\x1b]777;notify;Title part;Message part\x07");
-});
-
-test("buildNativeNotificationSequence emits Kitty OSC 99 with unfocused option and encoded text", () => {
-    const sequence = buildNativeNotificationSequence("osc99", "Title;\x1b", "Message\x07\x1b\\done");
-    assertEquals(
-        sequence,
-        "\x1b]99;i=runwield:d=0:e=1:o=unfocused:p=title;VGl0bGU7Gw==\x1b\\" +
-            "\x1b]99;i=runwield:d=1:e=1:o=unfocused:p=body;TWVzc2FnZQcbXGRvbmU=\x1b\\",
-    );
-});
-
 test("notifyRunWieldEvent never reaches notifications from a Golden TUI run", async () => {
     const { notify, terminal } = makeNotificationFixture({
         env: { WLD_GOLDEN_TUI: "1", TERM_PROGRAM: "iTerm.app" },
@@ -209,7 +90,9 @@ test("notifyRunWieldEvent sends Warp a titled desktop notification", async () =>
 
     assertEquals(result.sent, true);
     assertEquals(result.protocol, "osc777");
-    assertEquals(terminal.strings, ["\x07", buildNativeNotificationSequence("osc777", result.title, result.message)]);
+    assertEquals(terminal.strings[0], "\x07");
+    assertEquals(terminal.strings.length, 2);
+    assertStringIncludes(terminal.strings[1], "\x1b]777;notify;Agent stopped");
     assertStringIncludes(terminal.strings[1], "Warp session");
 });
 
@@ -227,7 +110,9 @@ test("notifyRunWieldEvent tries native notification delivery for an unrecognized
     assertEquals(result.protocol, "osc777");
     assertEquals(result.terminal.pid, 0);
     assertEquals(result.terminalBellEmitted, true);
-    assertEquals(terminal.strings, ["\x07", buildNativeNotificationSequence("osc777", result.title, result.message)]);
+    assertEquals(terminal.strings[0], "\x07");
+    assertEquals(terminal.strings.length, 2);
+    assertStringIncludes(terminal.strings[1], "\x1b]777;notify;Agent stopped");
 });
 
 test("notifyRunWieldEvent respects terminalBell false while preserving OSC delivery", async () => {
@@ -350,23 +235,35 @@ test("notifyRunWieldEvent isolates terminal write failures", async () => {
     assertEquals(result.terminalBellEmitted, false);
 });
 
-test("command-based notification helpers are removed from active source", async () => {
-    const source = await fsReadFile(new URL("./system-notifications.ts", import.meta.url), "utf8");
-    const removedTerms = [
-        "CommandSpec",
-        "run" + "Command",
-        "command" + "Exists",
-        "build" + "Notification" + "Command",
-        "build" + "Osascript" + "Notification" + "Command",
-        "build" + "Activation" + "Command",
-        "terminal" + "-" + "notifier",
-        "display" + " notification",
-    ];
-    for (const term of removedTerms) {
-        assertEquals(source.includes(term), false);
-    }
-    assertStringIncludes(source, "getNotificationBaseMessage");
-    assertStringIncludes(source, "normalizeNotificationPolicy");
-    assertEquals(source.includes("const EVENT_LABELS"), false);
-    assertEquals(source.includes("const EVENT_MESSAGES"), false);
-});
+for (const [termProgram, term, protocol, prefix] of [
+    ["iTerm.app", "xterm-256color", "osc9", "\x1b]9;"],
+    ["WezTerm", "xterm-256color", "osc777", "\x1b]777;notify;"],
+    ["Ghostty", "xterm-256color", "osc777", "\x1b]777;notify;"],
+    ["kitty", "xterm-kitty", "osc99", "\x1b]99;"],
+]) {
+    test(`attention delivery selects ${termProgram}'s protocol and prevents terminal-control injection`, async () => {
+        const { notify, terminal } = makeNotificationFixture({
+            env: { TERM_PROGRAM: termProgram, TERM: term },
+            setting: { terminalBell: false },
+        });
+        const result = await notify("agentStopped", { sessionName: "demo\x1b]bad\x07;title\n" });
+        assertEquals(result.sent, true);
+        assertEquals(result.protocol, protocol);
+        assertEquals(terminal.strings.length, 1);
+        const sequence = terminal.strings[0];
+        assertEquals(sequence.startsWith(prefix), true);
+        assertEquals(sequence.includes("\x1b]bad"), false);
+        if (protocol === "osc99") {
+            const parts = [...sequence.matchAll(/p=(title|body);([^\x1b]+)/g)];
+            assertEquals(parts.length, 2);
+            assertStringIncludes(atob(parts[0][2]), "Agent stopped");
+            assertStringIncludes(atob(parts[1][2]), "The agent has stopped");
+            assertStringIncludes(sequence, "o=unfocused");
+        } else {
+            assertStringIncludes(sequence, "Agent stopped");
+            assertEquals(sequence.endsWith("\x07"), true);
+            assertEquals(sequence.slice(0, -1).includes("\x07"), false);
+            assertEquals(sequence.includes(";title"), false);
+        }
+    });
+}

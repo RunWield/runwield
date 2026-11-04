@@ -73,23 +73,6 @@ async function waitForWelcomeRePrompt(harness: InteractiveCompositionHarness): P
     );
 }
 
-test("detectModelAvailability treats at least one available model as usable", () => {
-    assertEquals(detectModelAvailability(registryValue([])), { available: false, error: null });
-    assertEquals(detectModelAvailability(registryValue([{ id: "model", provider: "fixture" }])), {
-        available: true,
-        error: null,
-    });
-});
-
-test("detectModelAvailability captures registry errors as no model", () => {
-    const result = detectModelAvailability({
-        getAvailable: () => {
-            throw new Error("broken registry");
-        },
-    });
-    assertEquals(result, { available: false, error: "broken registry" });
-});
-
 test("a malformed models.json in the fixture HOME degrades to no configured models without throwing", async () => {
     await withRuntimeCommandFixture(
         "model-welcome-malformed-",

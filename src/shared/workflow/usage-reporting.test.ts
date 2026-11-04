@@ -477,19 +477,6 @@ test("invalid calendar ranges and time zones fail explicitly", () => {
     assertThrows(() => reporter.query([], { start: "2026-01-02", end: "2026-01-01" }, zone));
 });
 
-test("reporting and retention glossary requirements exist in owning documents", async () => {
-    const prd = await fsReadFile(new URL("../../../docs/prd/runwield-core-prd.md", import.meta.url), "utf8");
-    const glossary = await fsReadFile(new URL("../../../docs/domain-language.md", import.meta.url), "utf8");
-    for (const text of [
-        "usage-measurement-and-export",
-        "Report collected usage",
-        "Keep and clear measurement history",
-        "Usage gap",
-    ])
-        assert(prd.includes(text), text);
-    for (const text of ["**Active day**", "**Usage gap**"]) assert(glossary.includes(text), text);
-});
-
 test("cache observes another reporter's clear and missing classification is excluded", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         await journal(projectRoot, [

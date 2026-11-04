@@ -1,3 +1,4 @@
+import { getRuntimeRootAgentSession } from "./runtime/support.ts";
 import { delimiter } from "node:path";
 import {
     writeWorkflowBinaryFixtures,
@@ -38,7 +39,7 @@ import { switchActiveAgent } from "./agent-switching.ts";
 import { RuntimeEventTypes } from "./session-runtime-events.js";
 import { RuntimeInteractionTypes } from "./session-runtime-interactions.ts";
 import { createSessionRuntime, SessionRuntime, SessionTurnInProgressError } from "./session-runtime.ts";
-import { getRootSessionRebuildOptions } from "./session.js";
+import { buildAgentSession, getRootSessionRebuildOptions } from "./session.js";
 import { createRootSessionManager, getRunWieldSessionDir, resolveCreatedRootSessionPath } from "./root-session.js";
 import { openFileSessionStore } from "./file-session-store.ts";
 import { sessionDirForRoot } from "./file-session-storage.ts";
@@ -546,97 +547,6 @@ test("SessionRuntime blocks Pi-backed create and load when owner coordination is
         Error,
         "session_store_unavailable",
     );
-});
-
-test("SessionRuntime keeps dormant managed image persistence read-only but allows live manager paste", async () => {
-    await withProcessGlobalTestLock(async () => {
-        const previousHome = getHomeDir();
-        const home = await fsMkdtemp(join(tmpdir(), "runwield-runtime-managed-image-"));
-        process.env["HOME"] = home;
-        const cwd = `${home}/project`;
-        await fsMkdir(cwd, { recursive: true });
-        ensureRuntimeModelFixture();
-        const sessionHost = new SessionHost();
-        const store = openOwnerCoordinationStore();
-        const runtime = new SessionRuntime({
-            sessionHost,
-            sessionStore: store,
-            ownerProcessKind: "test",
-            ownerInstanceId: crypto.randomUUID(),
-        });
-        try {
-            const session = sessionHost.createSession({
-                id: "managed-image-runtime",
-                cwd,
-                sessionManager: null,
-                managed: {
-                    runwieldSessionId: "rw-managed-image",
-                    projectId: "project-managed-image",
-                    piSessionId: "pi-managed-image",
-                    transcriptPath: `${cwd}/transcript.jsonl`,
-                    generation: 1,
-                    name: "Managed image",
-                    activeAgent: "Router",
-                    model: RUNTIME_TEST_MODEL,
-                    provider: RUNTIME_TEST_PROVIDER,
-                    workflowContext: null,
-                },
-            });
-            assertEquals(session.getRootSessionManager(), null);
-
-            const dormantResult = await runtime.persistSessionImage(session.id, {
-                base64: btoa("img"),
-                mimeType: "image/png",
-            });
-            assertEquals(dormantResult.error, "refresh_required");
-
-            const sessionDir = getRunWieldSessionDir(cwd);
-            await fsMkdir(sessionDir, { recursive: true });
-            const sessionManager = SessionManager.create(cwd, sessionDir, { id: "pi-managed-image" });
-            /** @type {import('./managed-operation.ts').ManagedOperationCapability} */
-            const capability = {
-                runtimeSessionId: session.id,
-                runwieldSessionId: "rw-managed-image",
-                operationId: "op-managed-image",
-                settled: false,
-                registerArtifact: () => ({
-                    artifactId: "artifact-managed-image",
-                    kind: "report",
-                    path: "artifact.md",
-                    title: "Artifact",
-                    registeredAt: "2026-01-01T00:00:00.000Z",
-                    registeredBy: "test",
-                    sourceSegmentId: null,
-                }),
-                assertLive: () => {},
-                settle: () => {},
-            };
-            session.setManagedOperationCapability(capability);
-            session.setRootSessionManager(/** @type {any} */ (sessionManager), capability);
-            const persisted = await runtime.persistSessionImage(session.id, {
-                base64: btoa("img"),
-                mimeType: "image/png",
-            });
-            if (!("base64" in persisted)) throw new Error(persisted.error);
-
-            const persistedPath = persisted.path || "";
-            assertEquals(persisted.ref?.startsWith("attachment:"), true);
-            assertEquals(
-                persistedPath.startsWith(
-                    join(getRunWieldSessionDir(cwd), "pi-managed-image_images") +
-                        (process.platform === "win32" ? "\\" : "/"),
-                ),
-                true,
-            );
-            assertEquals(new TextDecoder().decode(await fsReadFile(persistedPath)), "img");
-            assertEquals(await runtime.preflightSessionImages(session.id, [persisted]), { ok: true, mode: "direct" });
-        } finally {
-            await runtime.closeAllSessionsWhenIdle();
-            store.close();
-            process.env["HOME"] = previousHome;
-            await removeTempDir(home);
-        }
-    });
 });
 
 test("SessionRuntime uses the model selected by image preflight for submission", async () => {
@@ -1999,48 +1909,6 @@ test("SessionRuntime managed operation prefers persisted active agent over stale
     );
 });
 
-test("SessionRuntime managed prompt acquires activation before writable hydration and publication", async () => {
-    const source = await fsReadFile(new URL("./runtime/managed-operations.ts", import.meta.url), "utf8");
-    const promptManagedIndex = source.indexOf("async runManagedOperation<T>(");
-    const promptManagedBody = source.slice(promptManagedIndex);
-    const inspectIndex = promptManagedBody.indexOf("inspectSessionActivation(managed.runwieldSessionId)");
-    const acquireIndex = promptManagedBody.indexOf("acquireSessionActivation({", inspectIndex);
-    const userMessageIndex = promptManagedBody.indexOf("type: RuntimeEventTypes.USER_MESSAGE", acquireIndex);
-    const hydratedIndex = promptManagedBody.indexOf(
-        'changeSessionActivationPhase(activeProof, "hydrated")',
-        acquireIndex,
-    );
-    const openIndex = promptManagedBody.indexOf("await openPersistedRootSession({", hydratedIndex);
-    const resumeAgentIndex = promptManagedBody.indexOf("await resolveResumeAgentName(sessionManager)", openIndex);
-    const activateIndex = promptManagedBody.indexOf(
-        "await this.settings.activateSessionAgent(hostedSession, {",
-        resumeAgentIndex,
-    );
-    const promptIndex = promptManagedBody.indexOf(
-        "async () => await body({ acceptedTurnId, hasPendingImages, capability }),",
-        activateIndex,
-    );
-    const checkpointIndex = promptManagedBody.indexOf(
-        'changeSessionActivationPhase(activeProof, "checkpointing")',
-        promptIndex,
-    );
-    const publishIndex = promptManagedBody.indexOf("publishGenerationAndRelease(activeProof", checkpointIndex);
-    const recoveryIndex = promptManagedBody.indexOf("markSessionUncertain(activeProof", publishIndex);
-
-    assertEquals(promptManagedIndex >= 0, true);
-    assertEquals(inspectIndex >= 0, true);
-    assertEquals(acquireIndex > inspectIndex, true);
-    assertEquals(userMessageIndex > acquireIndex, true);
-    assertEquals(hydratedIndex > userMessageIndex, true);
-    assertEquals(openIndex > hydratedIndex, true);
-    assertEquals(resumeAgentIndex > openIndex, true);
-    assertEquals(activateIndex > resumeAgentIndex, true);
-    assertEquals(promptIndex > activateIndex, true);
-    assertEquals(checkpointIndex > promptIndex, true);
-    assertEquals(publishIndex > checkpointIndex, true);
-    assertEquals(recoveryIndex > publishIndex, true);
-});
-
 /**
  * @typedef {Object} ManagedActivationSample
  * @property {string | undefined} state
@@ -2448,7 +2316,7 @@ test("SessionRuntime emits one keyboard-help event for the requested session", a
     assertEquals(events[1].title, "Keyboard shortcuts");
     assertEquals(events[1].items[0], { key: "esc", description: "to interrupt" });
     assertEquals(
-        events[1].items.some((item) => item.key === "consumer shortcut"),
+        events[1].items.some((/** @type {{key: string}} */ item) => item.key === "consumer shortcut"),
         false,
     );
 });
@@ -2483,48 +2351,6 @@ test("SessionRuntime emits one ordered lifecycle for one prompt", async () => {
         events.every((event) => event.sessionId === sessionId),
         true,
     );
-});
-
-test("SessionRuntime persists pending prompt images once a live manager exists", async () => {
-    await withProcessGlobalTestLock(async () => {
-        const previousHome = getHomeDir();
-        const home = await fsMkdtemp(join(tmpdir(), "runwield-runtime-pending-image-"));
-        process.env["HOME"] = home;
-        const cwd = `${home}/project`;
-        await fsMkdir(cwd, { recursive: true });
-        ensureRuntimeModelFixture();
-        const store = openOwnerCoordinationStore();
-        const runtime = new SessionRuntime({
-            sessionHost: new SessionHost(),
-            sessionStore: store,
-            ownerProcessKind: "test",
-            ownerInstanceId: crypto.randomUUID(),
-        });
-        try {
-            const sessionId = await runtime.createPromptReadySession({ cwd });
-            /** @type {any[]} */
-            const events = [];
-            runtime.subscribeSessionEvents(sessionId, (event) => {
-                events.push(event);
-            });
-
-            const result = await runtime.promptSession(sessionId, {
-                initialRequest: "look",
-                initialImages: [{ base64: btoa("img"), mimeType: "image/png" }],
-            });
-
-            assertEquals(result.ok, true);
-            const userEvent = events.find((event) => event.type === RuntimeEventTypes.USER_MESSAGE);
-            const eventImage = userEvent?.images?.[0];
-            assertEquals(eventImage?.ref?.startsWith("attachment:"), true);
-            assertEquals(new TextDecoder().decode(await fsReadFile(eventImage.path)), "img");
-        } finally {
-            await runtime.closeAllSessionsWhenIdle();
-            store.close();
-            process.env["HOME"] = previousHome;
-            await removeTempDir(home);
-        }
-    });
 });
 
 test("SessionRuntime keeps executePlan workflow operations busy while preparation runs", async () => {
@@ -3464,113 +3290,6 @@ test("SessionRuntime cancellation during Planner activation prevents replacement
     await runtime.closeAllSessionsWhenIdle();
 });
 
-test("SessionRuntime owns steering and deferred queue transitions", async () => {
-    const sessionHost = new SessionHost();
-    const agentSession = makeSteeringAgentSession();
-    const runtime = makeRuntime({ sessionHost });
-    const sessionId = await attachExternalAgentSession(runtime, sessionHost, agentSession);
-    /** @type {string[]} */
-    const statuses = [];
-    runtime.subscribeSessionEvents(sessionId, (event) => {
-        if (event.type === RuntimeEventTypes.QUEUED_MESSAGE_CHANGED) statuses.push(event.status);
-    });
-
-    const steered = await runtime.steerSession(sessionId, "change direction", []);
-    const deferred = runtime.queueNextTurnMessage(sessionId, "later", []);
-    agentSession.consumeNextSteering();
-    const taken = runtime.takeNextTurnMessage(sessionId);
-
-    assertEquals(steered.queued, true);
-    assertEquals(taken.message?.id, deferred.message?.id);
-    assertEquals(statuses, ["queued", "queued", "consumed", "consumed"]);
-    assertEquals(runtime.getQueuedMessages(sessionId), []);
-});
-
-/** Create a managed turn with a real Session manager and a scripted Agent boundary.
- * @param {SessionHost} sessionHost
- */
-function createScriptedManagedTurn(sessionHost) {
-    const cwd = runtimeProjectRoot();
-    const sessionManager = SessionManager.create(cwd, getRunWieldSessionDir(cwd));
-    const agentSession = makeSteeringAgentSession();
-    const hostedSession = sessionHost.createSession({
-        id: crypto.randomUUID(),
-        cwd,
-        sessionManager,
-        managed: {
-            runwieldSessionId: "direct-turn",
-            projectId: "direct-turn-project",
-            piSessionId: sessionManager.getSessionId(),
-            transcriptPath: join(getRunWieldSessionDir(cwd), `${sessionManager.getSessionId()}.jsonl`),
-            currentSegmentId: "direct-turn-segment",
-            generation: 0,
-            acknowledgedGeneration: 0,
-            acknowledgedEventId: null,
-            name: null,
-            activeAgent: "router",
-            workflowContext: null,
-            syncState: null,
-        },
-    });
-    /** @type {import('./managed-operation.ts').ManagedOperationCapability} */
-    const capability = {
-        runtimeSessionId: hostedSession.id,
-        runwieldSessionId: "direct-turn",
-        operationId: "direct-turn-operation",
-        settled: false,
-        registerArtifact: () => ({
-            artifactId: "direct-turn-artifact",
-            kind: "report",
-            path: "artifact.md",
-            title: "Artifact",
-            registeredAt: "2026-01-01T00:00:00.000Z",
-            registeredBy: "test",
-            sourceSegmentId: null,
-        }),
-        assertLive: () => {},
-        settle: () => {},
-    };
-    hostedSession.setManagedOperationCapability(capability);
-    hostedSession.setRootAgentName("router", capability);
-    hostedSession.setRootAgentSession(agentSession, capability);
-    return { hostedSession, agentSession, capability };
-}
-
-test("SessionRuntime reconciles consumed steering at turn end when the backend emits no queue update", async () => {
-    const sessionHost = new SessionHost();
-    const runtime = makeRuntime({ sessionHost });
-    const { hostedSession, agentSession, capability } = createScriptedManagedTurn(sessionHost);
-    /** @type {Array<{ ok: boolean, queued: boolean, error?: string, reason?: string }>} */
-    const steeredResults = [];
-    hostedSession.setActiveOnMessage(async () => {
-        steeredResults.push(await runtime.steerSession(hostedSession.id, "silent steering", []));
-        agentSession.consumeNextSteeringSilently();
-        return { kind: "complete" };
-    });
-    /** @type {Array<{ type: string, status?: string, text?: string }>} */
-    const events = [];
-    runtime.subscribeSessionEvents(hostedSession.id, (event) => {
-        if (event.type === RuntimeEventTypes.QUEUED_MESSAGE_CHANGED) {
-            events.push({ type: event.type, status: event.status, text: event.message.text });
-        }
-        if (event.type === RuntimeEventTypes.USER_MESSAGE) {
-            events.push({ type: event.type, text: event.text });
-        }
-    });
-
-    await runtime.promptSession(hostedSession.id, { initialRequest: "start", initialImages: [] }, capability);
-
-    assertEquals(steeredResults[0]?.ok, true);
-    assertEquals(steeredResults[0]?.queued, true);
-    assertEquals(events, [
-        { type: RuntimeEventTypes.USER_MESSAGE, text: "start" },
-        { type: RuntimeEventTypes.QUEUED_MESSAGE_CHANGED, status: "queued", text: "silent steering" },
-        { type: RuntimeEventTypes.QUEUED_MESSAGE_CHANGED, status: "consumed", text: "silent steering" },
-        { type: RuntimeEventTypes.USER_MESSAGE, text: "silent steering" },
-    ]);
-    assertEquals(runtime.getQueuedMessages(hostedSession.id), []);
-});
-
 test("SessionRuntime lets dormant managed sessions consume deferred user follow-up messages", async () => {
     const runtime = makeRuntime();
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot(), agentName: "router" });
@@ -3772,24 +3491,6 @@ test("SessionRuntime dequeue restores remaining steering onto original source wh
         ["keep on child"],
     );
     hostedSession.popSteeringTargetSession(otherTargetId);
-});
-
-test("SessionRuntime tracks steering before preparation and preserves submission order", async () => {
-    const sessionHost = new SessionHost();
-    const agentSession = makeSteeringAgentSession();
-    const runtime = makeRuntime({ sessionHost });
-    const sessionId = await attachExternalAgentSession(runtime, sessionHost, agentSession);
-
-    const first = runtime.steerSession(sessionId, "first steering", []);
-    const second = runtime.steerSession(sessionId, "second steering", []);
-
-    assertEquals(
-        runtime.getQueuedMessages(sessionId).map((message) => message.text),
-        ["first steering", "second steering"],
-    );
-    assertEquals((await first).queued, true);
-    assertEquals((await second).queued, true);
-    assertEquals(agentSession.getSteeringMessages(), ["first steering", "second steering"]);
 });
 
 test("SessionRuntime keeps pending steering ahead of newer transition steering", async () => {
@@ -4447,7 +4148,12 @@ test("SessionRuntime close settles cleanup when MCP pool close fails", async () 
         events.push(event.type);
     });
     const pool = new McpIntegration();
-    pool.close = () => Promise.reject(new Error("fixture MCP close failed"));
+    // Failure comes from the external Pi SDK; retain the real integration close path.
+    const { session: sdk } = await buildAgentSession({ cwd: runtimeProjectRoot(), agentName: "guide" });
+    const runner = sdk.extensionRunner;
+    if (!runner) throw new Error("Real Pi extension runner was not initialized");
+    runner.emit = () => Promise.reject(new Error("fixture SDK shutdown failed"));
+    pool.setSession(sdk);
     await hostedSession.setMcpIntegration(pool);
 
     assertEquals(await runtime.closeSession(sessionId), { ok: true, closed: true });
@@ -4673,6 +4379,105 @@ test("managed Plan review requests persist the container before the adapter star
             await runtime.closeAllSessionsWhenIdle();
             fileStore.close();
             ownerStore.close();
+        }
+    });
+});
+
+test("managed image paste acquires dormant ownership and pending prompt images survive submission", async () => {
+    await withRuntimeCommandFixture("runtime-real-image-", async ({ projectRoot, setModelResponseFactory }) => {
+        const runtime = createSessionRuntime();
+        const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const image = { base64: RUNTIME_TEST_PNG, mimeType: "image/png" };
+        /** @type {import('./session-runtime-events.js').SessionRuntimeEvent[]} */
+        const events = [];
+        runtime.subscribeSessionEvents(created.sessionId, (event) => {
+            events.push(event);
+        });
+        setModelResponseFactory(async () => {
+            const persisted = await runtime.persistSessionImage(created.sessionId, image);
+            if (!("base64" in persisted)) throw new Error(persisted.error);
+            if (!persisted.path) throw new Error("Image was not persisted");
+            assertEquals(persisted.ref?.startsWith("attachment:"), true);
+            assertEquals(Buffer.from(await fsReadFile(persisted.path)).toString("base64"), RUNTIME_TEST_PNG);
+            return fauxAssistantMessage(fauxText("Image received."));
+        });
+        try {
+            const pasted = await runtime.persistSessionImage(created.sessionId, image);
+            if (!("base64" in pasted)) throw new Error(pasted.error);
+            if (!pasted.path) throw new Error("Pasted image was not persisted");
+            assertEquals(Buffer.from(await fsReadFile(pasted.path)).toString("base64"), RUNTIME_TEST_PNG);
+            assertEquals(runtime.getSessionSnapshot(created.sessionId)?.managed?.dormant, true);
+            assertEquals(
+                (
+                    await runtime.promptUserTurn(created.sessionId, {
+                        initialRequest: "Inspect.",
+                        initialImages: [image],
+                    })
+                ).ok,
+                true,
+            );
+            const message = events.find((event) => event.type === RuntimeEventTypes.USER_MESSAGE);
+            assertEquals(message?.images?.[0]?.ref?.startsWith("attachment:"), true);
+            if (!message?.images?.[0]?.path) throw new Error("Prompt image was not persisted");
+            assertEquals(Buffer.from(await fsReadFile(message.images[0].path)).toString("base64"), RUNTIME_TEST_PNG);
+            assertEquals(runtime.getSessionSnapshot(created.sessionId)?.managed?.dormant, true);
+        } finally {
+            await runtime.closeAllSessionsWhenIdle();
+        }
+    });
+});
+
+test("managed turn reconciles steering when the external SDK omits queue notifications", async () => {
+    await withRuntimeCommandFixture("runtime-silent-sdk-", async ({ projectRoot, setModelResponseFactories }) => {
+        const host = new SessionHost();
+        const runtime = new SessionRuntime({
+            sessionHost: host,
+            sessionStore: openFileSessionStore(),
+            ownsSessionStore: true,
+            ownerProcessKind: "test",
+            ownerInstanceId: crypto.randomUUID(),
+        });
+        const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        await runtime.switchAgent(created.sessionId, { agentName: "guide" });
+        /** @type {import('./session-runtime-events.js').SessionRuntimeEvent[]} */
+        const events = [];
+        runtime.subscribeSessionEvents(created.sessionId, (event) => {
+            events.push(event);
+        });
+        let followup = "";
+        setModelResponseFactories([
+            async () => {
+                const sdk = getRuntimeRootAgentSession(host.requireSession(created.sessionId));
+                // The fault belongs to the external Pi SDK; owned runtime, queue,
+                // manager, activation, and handler all execute normally.
+                if (!sdk) throw new Error("Active Pi SDK session is missing");
+                Reflect.set(sdk, "_emitQueueUpdate", () => {});
+                assertEquals((await runtime.steerSession(created.sessionId, "silent steering")).queued, true);
+                return fauxAssistantMessage(fauxText("First reply."));
+            },
+            (context) => {
+                followup = JSON.stringify(context.messages);
+                return fauxAssistantMessage(fauxText("Steering handled."));
+            },
+        ]);
+        try {
+            assertEquals((await runtime.promptUserTurn(created.sessionId, { initialRequest: "start" })).ok, true);
+            assertStringIncludes(followup, "silent steering");
+            assertEquals(
+                events
+                    .filter((event) => event.type === RuntimeEventTypes.QUEUED_MESSAGE_CHANGED)
+                    .map((event) => event.status),
+                ["queued", "consumed"],
+            );
+            assertEquals(
+                events.filter(
+                    (event) => event.type === RuntimeEventTypes.USER_MESSAGE && event.text === "silent steering",
+                ).length,
+                1,
+            );
+            assertEquals(runtime.getQueuedMessages(created.sessionId), []);
+        } finally {
+            await runtime.closeAllSessionsWhenIdle();
         }
     });
 });

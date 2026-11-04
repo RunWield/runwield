@@ -23,15 +23,6 @@ interface FakeSession extends DisposableLike {
     readonly _clearQueueCalls: number;
 }
 
-interface WrappedFakeSession extends DisposableLike {
-    kind: "claude-cli" | "agy-cli";
-    session: FakeSession;
-}
-
-type FixtureRootSessionSetter = (
-    session: DisposableLike | WrappedFakeSession | null,
-) => ReturnType<HostedSession["setRootAgentSession"]>;
-
 function makeHostedSession(id: string) {
     return new HostedSession({ id, cwd: getCwd() });
 }
@@ -111,10 +102,6 @@ test("abortActiveSession scopes transient sub-agents to the target HostedSession
     assertEquals(otherSub._abortCalls, 0, "other HostedSession sub-agent must not be aborted");
 });
 
-test("abortActiveSession returns false when target HostedSession has no sessions", () => {
-    assertEquals(abortActiveSession(makeHostedSession("abort-empty")), false);
-});
-
 test("abortActiveSession swallows errors thrown by abort() and still reports true", () => {
     const hostedSession = makeHostedSession("abort-error");
     const root = makeFakeSession({
@@ -126,24 +113,4 @@ test("abortActiveSession swallows errors thrown by abort() and still reports tru
     hostedSession.setRootAgentSession(root);
 
     assertEquals(abortActiveSession(hostedSession), true);
-});
-
-test("^abortActiveSession unwraps claude-cli execution-session wrapper and aborts the inner session$", () => {
-    const hostedSession = makeHostedSession("abort-claude-wrapper");
-    const inner = makeFakeSession({ isStreaming: true });
-    (hostedSession.setRootAgentSession as FixtureRootSessionSetter)({ kind: "claude-cli", session: inner });
-
-    assertEquals(abortActiveSession(hostedSession), true);
-    assertEquals(inner._abortCalls, 1);
-    assertEquals(inner._clearQueueCalls, 1);
-});
-
-test("abortActiveSession unwraps agy-cli execution-session wrapper and aborts the inner session", () => {
-    const hostedSession = makeHostedSession("abort-agy-wrapper");
-    const inner = makeFakeSession({ isStreaming: true });
-    (hostedSession.setRootAgentSession as FixtureRootSessionSetter)({ kind: "agy-cli", session: inner });
-
-    assertEquals(abortActiveSession(hostedSession), true);
-    assertEquals(inner._abortCalls, 1);
-    assertEquals(inner._clearQueueCalls, 1);
 });

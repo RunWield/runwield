@@ -1,15 +1,19 @@
+import { readFileSync } from "node:fs";
+import { createThemeFromJson } from "./theme-json.ts";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { createThemeRegistry } from "./theme-registry.ts";
 
-function fakeTheme(name: string): Theme {
-    // Registry tests only read the name; preserve the existing minimal SDK theme fixture.
-    return { name } as Theme;
+function fixtureTheme(name: string): Theme {
+    return createThemeFromJson(
+        { ...JSON.parse(readFileSync(new URL("./catppuccin-mocha.json", import.meta.url), "utf8")), name },
+        { colorMode: "truecolor" },
+    );
 }
 
 test("createThemeRegistry always keeps the default theme available", () => {
-    const defaultTheme = fakeTheme("catppuccin-mocha");
+    const defaultTheme = fixtureTheme("catppuccin-mocha");
     const registry = createThemeRegistry({
         defaultTheme,
         setGlobalTheme: () => {},
@@ -20,8 +24,8 @@ test("createThemeRegistry always keeps the default theme available", () => {
 });
 
 test("createThemeRegistry does not allow external themes to override the built-in default", () => {
-    const defaultTheme = fakeTheme("catppuccin-mocha");
-    const externalDefault = fakeTheme("catppuccin-mocha");
+    const defaultTheme = fixtureTheme("catppuccin-mocha");
+    const externalDefault = fixtureTheme("catppuccin-mocha");
     let current: Theme | null = null;
     const registry = createThemeRegistry({
         defaultTheme,
@@ -30,7 +34,7 @@ test("createThemeRegistry does not allow external themes to override the built-i
         },
     });
 
-    registry.setRegisteredThemes([externalDefault, fakeTheme("custom")]);
+    registry.setRegisteredThemes([externalDefault, fixtureTheme("custom")]);
     const result = registry.setTheme("catppuccin-mocha");
 
     assertEquals(result, { success: true });
@@ -39,8 +43,8 @@ test("createThemeRegistry does not allow external themes to override the built-i
 });
 
 test("createThemeRegistry warns and keeps current theme when persisted theme is unavailable", () => {
-    const defaultTheme = fakeTheme("catppuccin-mocha");
-    const customTheme = fakeTheme("custom");
+    const defaultTheme = fixtureTheme("catppuccin-mocha");
+    const customTheme = fixtureTheme("custom");
     let current = defaultTheme;
     const warnings: string[] = [];
     const registry = createThemeRegistry({
@@ -61,8 +65,8 @@ test("createThemeRegistry warns and keeps current theme when persisted theme is 
 });
 
 test("createThemeRegistry notifies subscribers on successful swaps and isolates throwing listeners", () => {
-    const defaultTheme = fakeTheme("catppuccin-mocha");
-    const customTheme = fakeTheme("custom");
+    const defaultTheme = fixtureTheme("catppuccin-mocha");
+    const customTheme = fixtureTheme("custom");
     const events: string[] = [];
     const warnings: string[] = [];
     const registry = createThemeRegistry({

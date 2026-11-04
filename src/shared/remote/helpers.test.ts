@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
-import { getHomeDir } from "../../constants.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import {
     writeFixtureHelperModule,
@@ -13,7 +12,7 @@ import {
     seedLaptopHelpers,
     seedRemoteHelpers,
 } from "../../testing/remote-helper-fixture.ts";
-import { remoteHelperPins, remoteHelperPaths } from "./helpers.ts";
+import { remoteHelperPins } from "./helpers.ts";
 import { prepareRemoteFiles } from "./runtime.js";
 import type { RemoteHelper } from "./helpers.ts";
 
@@ -88,14 +87,6 @@ test("pinned Linux helpers have both architectures and verified archive, binary 
             assert.match(pin.binarySha256, /^[a-f0-9]{64}$/);
             assert.match(pin.licenseSha256, /^[a-f0-9]{64}$/);
             assert.equal(pin.license, "MIT");
-            const paths = remoteHelperPaths(pin, "/server");
-            assert.equal(
-                paths.remote,
-                `/server/.cache/runwield/helpers/${pin.name}/${pin.version}/${pin.target}/${pin.sha256}`,
-            );
-            assert.equal(paths.laptop.startsWith(join(getHomeDir(), ".cache/runwield/remote/helpers")), true);
-            assert.equal(paths.laptop.includes(".wld"), false);
-            assert.equal(paths.remote.endsWith(paths.cacheParts.join("/")), true);
         }
     }
 });

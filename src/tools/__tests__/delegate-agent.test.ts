@@ -12,9 +12,7 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { HostedSession } from "../../shared/session/hosted-session.js";
-import { createDelegateAgentTool, diffDelegatedChangeSnapshot, resolveDelegatedToolNames } from "../delegate-agent.ts";
-import { loadSubAgentDefinition } from "../../shared/session/subagent-definitions.ts";
-import { SUBAGENTS } from "../../constants.js";
+import { createDelegateAgentTool } from "../delegate-agent.ts";
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage, TextContent } from "@earendil-works/pi-ai";
@@ -89,103 +87,6 @@ async function makeDelegateGitRepo() {
     await git(cwd, ["commit", "-m", "initial"]);
     return cwd;
 }
-
-test("resolveDelegatedToolNames intersects parent tools with mode policy", () => {
-    const parentTools = [
-        "read",
-        "bash",
-        "edit",
-        "create_image",
-        "web_search",
-        "web_fetch",
-        "web_code_search",
-        "web_docs_search",
-        "write_docs",
-        "edit_docs",
-        "task_completed",
-        "review_complete",
-        "triage_report",
-        "user_interview",
-        "memory",
-        "delegate_agent",
-    ];
-
-    assertEquals(resolveDelegatedToolNames(parentTools, "read"), [
-        "read",
-        "bash",
-        "web_search",
-        "web_fetch",
-        "web_code_search",
-        "web_docs_search",
-    ]);
-    assertEquals(resolveDelegatedToolNames(parentTools, "write"), [
-        "read",
-        "bash",
-        "edit",
-        "create_image",
-        "web_search",
-        "web_fetch",
-        "web_code_search",
-        "web_docs_search",
-    ]);
-});
-
-test("diffDelegatedChangeSnapshot compares the full pre/post workspace baseline", () => {
-    assertEquals(
-        diffDelegatedChangeSnapshot(
-            [
-                { path: "src/deleted-untracked.js", status: "??", contentHash: "gone" },
-                { path: "src/pre-existing.js", status: " M", contentHash: "same" },
-                { path: "src/modified.js", status: " M", contentHash: "before" },
-            ],
-            [
-                { path: "src/modified.js", status: " M", contentHash: "after" },
-                { path: "src/new.js", status: "??", contentHash: "new" },
-                { path: "src/pre-existing.js", status: " M", contentHash: "same" },
-            ],
-        ),
-        ["src/deleted-untracked.js", "src/modified.js", "src/new.js"],
-    );
-});
-
-test("diffDelegatedChangeSnapshot refuses attribution when HEAD changes", () => {
-    assertEquals(diffDelegatedChangeSnapshot({ head: "before", entries: [] }, { head: "after", entries: [] }), null);
-});
-
-test("delegated agent prompt includes inherited repository context placeholders", async () => {
-    const promptPath = join(
-        import.meta.dirname ?? getCwd(),
-        "..",
-        "..",
-        "..",
-        "src",
-        "agent-definitions",
-        "subagent-definitions",
-        "delegated-agent-prompt.md",
-    );
-    const prompt = await fsReadFile(promptPath, "utf8");
-    const delegated = await loadSubAgentDefinition(SUBAGENTS.DELEGATED);
-    const readDelegate = await loadSubAgentDefinition(SUBAGENTS.DELEGATED_READ);
-
-    assertStringIncludes(delegated.systemPrompt, "{{GLOBAL_AGENTSMD}}");
-    assertStringIncludes(delegated.systemPrompt, "{{PROJECT_AGENTSMD}}");
-    assertStringIncludes(delegated.systemPrompt, "{{PROJECT_STATE_CONTEXT}}");
-    assertStringIncludes(delegated.systemPrompt, "{{MEMORIES}}");
-    assertStringIncludes(readDelegate.systemPrompt, "Treat core memories as strong guidance");
-    assertStringIncludes(readDelegate.systemPrompt, "Leave all changes uncommitted");
-    // The prompt must not declare `tools:` at all. barePrompt subagents take their
-    // ceiling from the allowedTools registry entry, so a field here would be ignored
-    // while reading as authoritative — this file once claimed `tools: []` while the
-    // delegate actually received write access.
-    assertEquals(/^tools:/m.test(prompt), false);
-    assertEquals(delegated.tools.includes("write"), true);
-    assertEquals(readDelegate.tools.includes("bash"), true);
-    assertEquals(readDelegate.tools.includes("write"), false);
-    assertEquals(delegated.tools.includes("web_search"), true);
-    assertEquals(delegated.tools.includes("web_fetch"), true);
-    assertEquals(delegated.tools.includes("web_code_search"), true);
-    assertEquals(delegated.tools.includes("web_docs_search"), true);
-});
 
 test("delegate_agent returns child output without inheriting workflow tools", async () => {
     const calls: DelegatedAgentSessionOptions[] = [];
@@ -380,7 +281,9 @@ test("delegate_agent preserves failed writer changes and releases lease", async 
     const executionCwd = await makeDelegateGitRepo();
     try {
         await fsWriteFile(join(executionCwd, "src", "pre-existing.js"), "modified\n");
-        const hostedSession = new HostedSession({ id: "delegate-write-fail", cwd: getCwd() });
+        await fsWriteFile(join(executionCwd, "src", "deleted-untracked.js"), "gone\n");
+        await fsWriteFile(join(executionCwd, "src", "modified.js"), "before\n");
+        const hostedSession = new HostedSession({ id: "delegate-write-fail", cwd: executionCwd });
         const calls: DelegatedAgentSessionOptions[] = [];
         const tool = createDelegateAgentTool({
             hostedSession,
@@ -389,6 +292,8 @@ test("delegate_agent preserves failed writer changes and releases lease", async 
             runIsolatedAgentSession: async (opts) => {
                 calls.push(opts);
                 await fsWriteFile(join(executionCwd, "src", "changed.js"), "new\n");
+                await fsWriteFile(join(executionCwd, "src", "modified.js"), "after\n");
+                await fsRm(join(executionCwd, "src", "deleted-untracked.js"));
                 return Promise.reject(new Error("boom"));
             },
         });
@@ -397,7 +302,9 @@ test("delegate_agent preserves failed writer changes and releases lease", async 
 
         assertEquals(result.isError, true);
         assertEquals(result.details.ok, false);
-        assertEquals(result.details.changedPaths, ["src/changed.js"]);
+        assertEquals(result.details.changedPaths, ["src/changed.js", "src/deleted-untracked.js", "src/modified.js"]);
+        assertEquals(await fsReadFile(join(executionCwd, "src", "pre-existing.js"), "utf8"), "modified\n");
+        assertEquals(await fsReadFile(join(executionCwd, "src", "changed.js"), "utf8"), "new\n");
         assertEquals(result.details.changeAttributionComplete, true);
         assertEquals(calls[0].cwd, executionCwd);
         assertEquals(calls[0].toolNames, ["read", "write", "bash"]);

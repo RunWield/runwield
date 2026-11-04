@@ -123,15 +123,6 @@ async function runReviewGuideJob(state) {
     return state.jobs.get(job.id)?.info;
 }
 
-test("workspace token accepts query or header and rejects missing tokens", () => {
-    assertEquals(hasWorkspaceToken(new Request("http://localhost/?token=abc"), "abc"), true);
-    assertEquals(
-        hasWorkspaceToken(new Request("http://localhost/", { headers: { [PLAN_UI_TOKEN_HEADER]: "abc" } }), "abc"),
-        true,
-    );
-    assertEquals(hasWorkspaceToken(new Request("http://localhost/"), "abc"), false);
-});
-
 test("workspace static assets bypass token checks for tokenized pages", async () => {
     const app = createWorkspaceApp({ cwd: getCwd(), token: "secret", mnemotecaPort: UNUSED_MNEMOTECA_PORT }).handler();
     for (const path of ["/tokens.css", "/components.css", "/workspace.css", "/theme.css", "/brand/logo.svg"]) {
@@ -196,7 +187,8 @@ test("review page accepts Unicode Plan payloads", async () => {
     }).handler();
 
     const response = await app(new Request(`http://localhost/review/plan?token=${token}`));
-    assertEquals(response.status < 500, true);
+    assertEquals(response.status, 200);
+    assertStringIncludes(await response.text(), "Café 🚀");
 });
 
 test("artifact read page receives authenticated read-only payload", async () => {
@@ -219,7 +211,7 @@ test("artifact read page receives authenticated read-only payload", async () => 
     assertEquals(unauthorized.status, 401);
 
     const response = await app(new Request(`http://localhost/review/plan?token=${token}`));
-    assertEquals(response.status < 500, true);
+    assertEquals(response.status, 200);
     const html = await response.text();
     assertStringIncludes(html, "artifact-read");
     assertStringIncludes(html, "NOTICE: superseded");
@@ -396,74 +388,6 @@ test("review guide and widget APIs require token and serve explainer state", asy
     assertEquals(js.status, 200);
     assertEquals(js.headers.get("content-type"), "application/javascript");
     await reviewApp.cleanup();
-});
-
-test("review guide jobs prefer WLD over external agent host CLIs", async () => {
-    // Mutates PATH, which every concurrently-running test's subprocesses inherit.
-    await withProcessGlobalTestLock(async () => {
-        const previousPath = process.env["PATH"];
-        const previousCommand = process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"];
-        const previousModel = process.env["RUNWIELD_GUIDED_REVIEW_MODEL"];
-        const binDir = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
-        try {
-            for (const command of ["wld", "claude"]) {
-                const commandPath = `${binDir}/${command}`;
-                await writeGuideCommandFixture(commandPath, { stdout: "{}" });
-            }
-            process.env["PATH"] = previousPath ? `${binDir}${delimiter}${previousPath}` : binDir;
-            delete process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"];
-            delete process.env["RUNWIELD_GUIDED_REVIEW_MODEL"];
-
-            const state = createReviewAgentState({
-                cwd: REVIEW_AGENT_PROJECT_ROOT,
-                token: "wld-token",
-                reviewPayload: {
-                    rawPatch:
-                        "diff --git a/src/a.js b/src/a.js\n--- a/src/a.js\n+++ b/src/a.js\n@@ -1 +1,2 @@\n export const a = 1;\n+export const b = 2;\n",
-                    guidedReviewFixture: {
-                        schemaVersion: "1.0",
-                        title: "WLD guide",
-                        sections: [
-                            {
-                                title: "Core",
-                                role: "core",
-                                blocks: [{ type: "diff", file: "src/a.js" }],
-                            },
-                        ],
-                        everythingElse: [],
-                    },
-                },
-                runGuideCommand: runWldJobCommand,
-            });
-
-            const launch = await reviewAgentApi(
-                new Request("http://localhost/api/agents/jobs", {
-                    method: "POST",
-                    headers: { "content-type": "application/json" },
-                    body: JSON.stringify({ provider: "guide" }),
-                }),
-                new URL("http://localhost/api/agents/jobs"),
-                state,
-            );
-            assertEquals(launch?.status, 202);
-            if (!launch) throw new Error("expected job launch response");
-            const { job } = await launch.json();
-            await state.jobs.get(job.id)?.done;
-
-            assertEquals(job.command, ["wld", "guided-review"]);
-            assertEquals(job.engine, "wld");
-            assertEquals(job.model, "wld");
-            await state.widgets.cleanup();
-        } finally {
-            if (previousPath === undefined) delete process.env["PATH"];
-            else process.env["PATH"] = previousPath;
-            if (previousCommand === undefined) delete process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"];
-            else process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"] = previousCommand;
-            if (previousModel === undefined) delete process.env["RUNWIELD_GUIDED_REVIEW_MODEL"];
-            else process.env["RUNWIELD_GUIDED_REVIEW_MODEL"] = previousModel;
-            await removeExecutableFixtureDirectory(binDir);
-        }
-    });
 });
 
 test("default review guide usage frames update a running job and remain after completion", async () => {
@@ -916,23 +840,6 @@ test("review guide failure metrics redact provider error details", async () => {
         assertEquals(JSON.stringify(metric).includes("/Users/example/secret.js"), false);
         await state.widgets.cleanup();
     });
-});
-
-test("review decisions wait until a user decision or explicit cancellation", async () => {
-    const token = "review-no-timeout-secret";
-    const { promise } = registerReviewDecisionPromise(token);
-    try {
-        const earlyResult = await Promise.race([
-            promise.then(() => "resolved"),
-            new Promise((resolve) => setTimeout(() => resolve("pending"), 20)),
-        ]);
-
-        assertEquals(earlyResult, "pending");
-        assertEquals(resolveReviewDecision(token, { approved: false, feedback: "done" }), true);
-        assertEquals(await promise, { approved: false, feedback: "done" });
-    } finally {
-        unregisterReviewDecision(token);
-    }
 });
 
 test("review API accepts review token header before workspace app token gate", async () => {

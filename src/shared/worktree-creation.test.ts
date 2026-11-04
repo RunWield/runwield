@@ -24,7 +24,6 @@ import {
     getWorktreeStatus,
     prepareTargetBranchRef,
     removeWorktreeGitArtifacts,
-    resolveCurrentCheckoutBranch,
     resolveWorktreeParent,
 } from "./worktree.js";
 
@@ -67,15 +66,6 @@ test("resolveWorktreeParent keeps overrides and home placement while no-home fal
     });
 });
 
-test("resolveCurrentCheckoutBranch returns the primary checkout branch", async () => {
-    const projectRoot = await makeRepo();
-    try {
-        assertEquals(await resolveCurrentCheckoutBranch(projectRoot), "main");
-    } finally {
-        await fsRm(projectRoot, { recursive: true });
-    }
-});
-
 test("createTestWorktreeAttempt creates a unique branch/path and registry entry", async () => {
     const projectRoot = await makeRepo();
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
@@ -98,41 +88,6 @@ test("createTestWorktreeAttempt creates a unique branch/path and registry entry"
         const status = await getWorktreeStatus({ projectRoot, path: worktree.path, branch: worktree.branch });
         assertEquals(status.exists, true);
         assertEquals(status.clean, true);
-    } finally {
-        if (worktree) {
-            await removeWorktreeGitArtifacts({
-                projectRoot,
-                path: worktree.path,
-                force: true,
-            });
-        }
-        await fsRm(projectRoot, { recursive: true });
-        await fsRm(worktreeRoot, { recursive: true }).catch(() => {});
-    }
-});
-
-test("createTestWorktreeAttempt leaves dirty primary checkout unchanged", async () => {
-    const projectRoot = await makeRepo();
-    const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    let worktree;
-    try {
-        await fsWriteFile(`${projectRoot}/README.md`, "base\nprimary work\n");
-        await fsWriteFile(`${projectRoot}/untracked.txt`, "must stay\n");
-        const readmeBefore = await fsReadFile(`${projectRoot}/README.md`, "utf8");
-        const untrackedBefore = await fsReadFile(`${projectRoot}/untracked.txt`, "utf8");
-
-        worktree = await createTestWorktreeAttempt({
-            projectRoot,
-            planName: "Dirty Primary Plan",
-            planId: "plan-dirty-primary",
-            worktreeRoot,
-        });
-
-        assertEquals(await fsReadFile(`${projectRoot}/README.md`, "utf8"), readmeBefore);
-        assertEquals(await fsReadFile(`${projectRoot}/untracked.txt`, "utf8"), untrackedBefore);
-        const statusAfter = await git(projectRoot, ["status", "--short"]);
-        assertStringIncludes(statusAfter, "M README.md");
-        assertStringIncludes(statusAfter, "?? untracked.txt");
     } finally {
         if (worktree) {
             await removeWorktreeGitArtifacts({

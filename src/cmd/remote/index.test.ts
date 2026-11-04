@@ -20,7 +20,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { fileURLToPath as fromFileUrl, pathToFileURL as toFileUrl } from "node:url";
 import { join } from "node:path";
 import { parseRemoteDestination } from "./index.ts";
@@ -456,12 +456,6 @@ test("remote destination separates a directory from an SSH host without changing
     assertEquals(parseRemoteDestination("alias:"), { host: "alias", path: null });
 });
 
-test("remote destination rejects option-like and malformed hosts", () => {
-    for (const destination of ["", "-oProxyCommand=bad", "-oBad:/repo", ":/repo", "alias name", "[unfinished"]) {
-        assertThrows(() => parseRemoteDestination(destination), Error, "Invalid SSH destination");
-    }
-});
-
 test("remote CLI help and invalid arity do not contact SSH", async () => {
     await withRemoteFixture(async ({ run, sshLog }) => {
         const help = await run(["--help"]);
@@ -551,12 +545,14 @@ test("remote CLI refuses malformed LIVE proof before contacting SSH", async () =
     });
 });
 
-test("remote CLI rejects an option-like host before invoking SSH", async () => {
+test("remote CLI rejects malformed and option-like hosts before invoking SSH", async () => {
     await withRemoteFixture(async ({ run, sshLog }) => {
-        const result = await run(["-oProxyCommand=bad"]);
-        assertEquals(result.code, 1);
-        assertStringIncludes(result.stderr, "Invalid SSH destination");
-        assertEquals(await exists(sshLog), false);
+        for (const destination of ["", "-oProxyCommand=bad", "-oBad:/repo", ":/repo", "alias name", "[unfinished"]) {
+            const result = await run([destination]);
+            assertEquals(result.code, 1);
+            assertStringIncludes(result.stderr, "Invalid SSH destination");
+            assertEquals(await exists(sshLog), false);
+        }
     });
 });
 

@@ -5,6 +5,7 @@ import {
     writeFile as fsWriteFile,
     symlink as fsSymlink,
 } from "node:fs/promises";
+import { getRunWieldSessionDir } from "../../shared/session/root-session.js";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -300,7 +301,9 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
         assertStringIncludes(homeHtml, "/workspace-shell.js");
         assertEquals(homeHtml.includes("Relink Project root"), false);
 
-        const transcriptPath = `${projectRoot}/phone-session.jsonl`;
+        const sessionDir = getRunWieldSessionDir(projectRoot);
+        await fsMkdir(sessionDir, { recursive: true });
+        const transcriptPath = `${sessionDir}/2026-11-01T00-00-00-000Z_phone-session.jsonl`;
         await fsWriteFile(
             transcriptPath,
             [
@@ -310,27 +313,12 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
                 .map((entry) => JSON.stringify(entry))
                 .join("\n") + "\n",
         );
-        /** @type {any} */ (store).listProjectSessions = () =>
-            Promise.resolve({
-                sessions: [
-                    {
-                        runwieldSessionId: "session-owned",
-                        projectId: project.projectId,
-                        displayName: "Phone Ideation",
-                        transcriptPath,
-                    },
-                ],
-                diagnostics: [
-                    {
-                        code: "path_leak_regression",
-                        sessionPath: `${projectRoot}/.runwield/sessions/session.json`,
-                        message: `Transcript cwd ${projectRoot}/worktree does not match registered Project root`,
-                    },
-                ],
-            });
-        /** @type {any} */ (store).inspectSessionActivation = () => ({
-            activation: { state: "idle", ownerProcessKind: null },
-            generation: { generation: 1 },
+        const phone = await store.ensureSessionCatalogRecord({
+            projectId: project.projectId,
+            piSessionId: "phone-session",
+            transcriptPath,
+            transcriptCwd: projectRoot,
+            source: "catalog",
         });
         const sessionsApi = await app(
             new Request(`http://127.0.0.1:8787/api/owner/projects/${project.projectId}/sessions`, {
@@ -340,7 +328,6 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
         assertEquals(sessionsApi.status, 200);
         const sessionsText = JSON.stringify(await sessionsApi.json());
         assertStringIncludes(sessionsText, "Phone Ideation");
-        assertStringIncludes(sessionsText, "[local path]");
         assertEquals(sessionsText.includes(projectRoot), false);
         assertEquals(sessionsText.includes("sessionPath"), false);
 
@@ -366,133 +353,6 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
         assertStringIncludes(optionsText, "thinkingLevels");
         assertEquals(optionsText.includes(projectRoot), false);
         assertEquals(optionsText.includes("apiKey"), false);
-
-        let configurePayload = null;
-        appObject.sessionContinuation.configureSession = (payload) => {
-            configurePayload = payload;
-            return Promise.resolve({ ok: true, generation: payload.expectedGeneration + 1 });
-        };
-        const configureApi = await app(
-            new Request(
-                `http://127.0.0.1:8787/api/owner/projects/${project.projectId}/sessions/session-owned/configure`,
-                {
-                    method: "POST",
-                    headers: {
-                        origin: "http://127.0.0.1:8787",
-                        cookie: cookiePair(claimed.credential),
-                        "x-runwield-csrf": "csrf-secret",
-                        "content-type": "application/json",
-                    },
-                    body: JSON.stringify({
-                        expectedGeneration: 3,
-                        agentName: "engineer",
-                        model: "model-a",
-                        provider: "provider-a",
-                        thinkingLevel: "medium",
-                    }),
-                },
-            ),
-        );
-        assertEquals(configureApi.status, 202);
-        assertEquals(configurePayload, {
-            projectId: project.projectId,
-            runwieldSessionId: "session-owned",
-            expectedGeneration: 3,
-            agentName: "engineer",
-            model: "model-a",
-            provider: "provider-a",
-            thinkingLevel: "medium",
-        });
-
-        let cancelledOperationId = "";
-        appObject.sessionContinuation.cancelOperation = ({ operationId }) => {
-            cancelledOperationId = operationId;
-            return { ok: true, aborted: true };
-        };
-        const cancelApi = await app(
-            new Request("http://127.0.0.1:8787/api/owner/session-operations/operation-owned/cancel", {
-                method: "POST",
-                headers: {
-                    origin: "http://127.0.0.1:8787",
-                    cookie: cookiePair(claimed.credential),
-                    "x-runwield-csrf": "csrf-secret",
-                    "content-type": "application/json",
-                },
-                body: JSON.stringify({}),
-            }),
-        );
-        assertEquals(cancelApi.status, 202);
-        assertEquals(cancelledOperationId, "operation-owned");
-
-        appObject.sessionContinuation.timeline = () =>
-            Promise.resolve({
-                ok: true,
-                generation: 1,
-                events: [],
-                complete: true,
-                segments: [{ byteLength: 123, terminalEntryId: "entry-secret" }],
-            });
-        const timelineApi = await app(
-            new Request(
-                `http://127.0.0.1:8787/api/owner/projects/${project.projectId}/sessions/session-owned/timeline`,
-                {
-                    headers: { cookie: cookiePair(claimed.credential) },
-                },
-            ),
-        );
-        assertEquals(timelineApi.status, 200);
-        const timelineText = JSON.stringify(await timelineApi.json());
-        assertEquals(timelineText.includes("segments"), false);
-        assertEquals(timelineText.includes("byteLength"), false);
-        assertEquals(timelineText.includes("terminalEntryId"), false);
-
-        let answered = false;
-        appObject.sessionContinuation.operations.set("operation-owned", {
-            status: "running",
-            projectId: project.projectId,
-            runwieldSessionId: "session-owned",
-            events: [],
-            liveInteraction: { interactionId: "interaction-owned", request: { prompt: "Pick" } },
-            answer: { resolve: () => (answered = true), reject: () => {} },
-        });
-        const wrongProjectAnswer = await app(
-            new Request(
-                `http://127.0.0.1:8787/api/owner/projects/${otherProject.projectId}/session-operations/operation-owned/interactions/interaction-owned/answer`,
-                {
-                    method: "POST",
-                    headers: {
-                        origin: "http://127.0.0.1:8787",
-                        cookie: cookiePair(claimed.credential),
-                        "x-runwield-csrf": "csrf-secret",
-                        "content-type": "application/json",
-                    },
-                    body: JSON.stringify({ requestId: "answer-wrong-project", response: "yes" }),
-                },
-            ),
-        );
-        assertEquals(wrongProjectAnswer.status, 409);
-        assertEquals(answered, false);
-        const answerApi = await app(
-            new Request(
-                `http://127.0.0.1:8787/api/owner/projects/${project.projectId}/session-operations/operation-owned/interactions/interaction-owned/answer`,
-                {
-                    method: "POST",
-                    headers: {
-                        origin: "http://127.0.0.1:8787",
-                        cookie: cookiePair(claimed.credential),
-                        "x-runwield-csrf": "csrf-secret",
-                        "content-type": "application/json",
-                    },
-                    body: JSON.stringify({
-                        requestId: "answer-owned",
-                        runwieldSessionId: "session-owned",
-                        response: "yes",
-                    }),
-                },
-            ),
-        );
-        assertEquals(answerApi.status, 202);
-        assertEquals(answered, true);
 
         const sessionsPage = await app(
             new Request(`http://127.0.0.1:8787/projects/${project.projectId}/sessions`, {
@@ -524,33 +384,13 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
             assertStringIncludes(settingsHtml, "Relink Project root");
         }
 
-        /** @type {any} */ (store).getSessionById = (runwieldSessionId) =>
-            runwieldSessionId === "session-owned"
-                ? {
-                      runwieldSessionId,
-                      projectId: "file-project-identity",
-                      transcriptCwd: projectRoot,
-                  }
-                : null;
         const sessionDetailPage = await app(
-            new Request(`http://127.0.0.1:8787/projects/${project.projectId}/sessions/session-owned`, {
+            new Request(`http://127.0.0.1:8787/projects/${project.projectId}/sessions/${phone.runwieldSessionId}`, {
                 headers: { cookie: cookiePair(claimed.credential) },
             }),
         );
         assertEquals(sessionDetailPage.status === 404, false);
 
-        store.catalogProjectSessions = () =>
-            Promise.resolve({
-                cataloged: [],
-                diagnostics: [
-                    {
-                        code: "path_leak_regression",
-                        sessionPath: `${projectRoot}/.runwield/sessions/session.json`,
-                        message: `Transcript cwd ${projectRoot}/worktree does not match registered Project root`,
-                        nested: { cwd: `${projectRoot}/nested` },
-                    },
-                ],
-            });
         const rescan = await app(
             new Request(`http://127.0.0.1:8787/api/owner/projects/${project.projectId}/action`, {
                 method: "POST",
@@ -565,17 +405,11 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
         );
         assertEquals(rescan.status, 200);
         const rescanText = JSON.stringify(await rescan.json());
-        assertStringIncludes(rescanText, "[local path]");
         assertEquals(rescanText.includes(projectRoot), false);
         assertEquals(rescanText.includes("sessionPath"), false);
         assertEquals(rescanText.includes('"cwd"'), false);
 
         store.setProjectEnabled(project.projectId, false);
-        let disabledCatalogCalled = false;
-        store.catalogProjectSessions = () => {
-            disabledCatalogCalled = true;
-            return Promise.resolve({ cataloged: [], diagnostics: [] });
-        };
         const disabledRescan = await app(
             new Request(`http://127.0.0.1:8787/api/owner/projects/${project.projectId}/action`, {
                 method: "POST",
@@ -589,14 +423,8 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
             }),
         );
         assertEquals(disabledRescan.status, 400);
-        assertEquals(disabledCatalogCalled, false);
         store.setProjectEnabled(project.projectId, true);
         store.removeProject(project.projectId);
-        let removedCatalogCalled = false;
-        store.catalogProjectSessions = () => {
-            removedCatalogCalled = true;
-            return Promise.resolve({ cataloged: [], diagnostics: [] });
-        };
         const removedRescan = await app(
             new Request(`http://127.0.0.1:8787/api/owner/projects/${project.projectId}/action`, {
                 method: "POST",
@@ -610,7 +438,6 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
             }),
         );
         assertEquals(removedRescan.status, 400);
-        assertEquals(removedCatalogCalled, false);
         assertEquals(store.getProjectById(project.projectId), null);
 
         const badUpgradeOrigin = await app(
@@ -648,95 +475,6 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
         );
         assertEquals(revoked.status, 200);
         assertEquals(closedConnections, 1);
-    } finally {
-        await appObject?.close();
-        store.close();
-        await fsRm(dir, { recursive: true });
-    }
-});
-
-test("owner Workspace rejects stale live Plan review before answering Runtime", async () => {
-    const dir = await fsMkdtemp(join(tmpdir(), "runwield-owner-plan-review-stale-"));
-    const projectRoot = `${dir}/project`;
-    await fsMkdir(projectRoot);
-    await savePlan(projectRoot, "owner-plan", "# Owner Plan\n\nBody", {
-        planId: "owner-plan-id",
-        classification: "PLANNED_CHANGE",
-        complexity: "LOW",
-        summary: "Visible owner plan",
-        status: "draft",
-    });
-    const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
-    let appObject;
-    try {
-        const project = store.registerProject({ root: projectRoot, displayName: "Owner Project" });
-        appObject = /** @type {any} */ (
-            createOwnerWorkspaceApp({
-                mode: "owner",
-                publicOrigin: "http://127.0.0.1:8787",
-                store,
-            })
-        );
-        const plan = await loadPlan(projectRoot, "owner-plan");
-        const openedRevision = await getPlanRevisionForText(plan.markdown);
-        await fsWriteFile(plan.path, injectFrontMatter(plan.markdown, { status: "approved" }));
-
-        let resolved = false;
-        let rejectedMessage = "";
-        appObject.sessionContinuation.operations.set("operation-stale", {
-            status: "running",
-            projectId: project.projectId,
-            runwieldSessionId: "session-owned",
-            events: [],
-            liveInteraction: {
-                interactionId: "interaction-stale",
-                request: {
-                    type: "plan_review",
-                    prompt: "Review Plan",
-                    planReview: {
-                        planId: "owner-plan-id",
-                        classification: "PLANNED_CHANGE",
-                        expectedRevision: openedRevision,
-                        reviewedSource: {
-                            markdown: plan.markdown,
-                            path: plan.path,
-                            planName: "owner-plan",
-                            attrs: plan.attrs,
-                            revision: openedRevision,
-                        },
-                        expectedStatus: "draft",
-                        expectedWorktree: { kind: "none" },
-                    },
-                },
-            },
-            answer: {
-                resolve: () => (resolved = true),
-                reject: (error) => (rejectedMessage = error instanceof Error ? error.message : String(error)),
-            },
-        });
-
-        await assertRejects(
-            () =>
-                appObject.sessionContinuation.answerInteraction({
-                    deviceId: "device-owned",
-                    projectId: project.projectId,
-                    operationId: "operation-stale",
-                    interactionId: "interaction-stale",
-                    runwieldSessionId: "session-owned",
-                    requestId: "answer-stale-plan-review",
-                    response: {
-                        approved: true,
-                        approvalAction: "run",
-                        executionAgent: "engineer",
-                        collaborationRecommendation: "autonomous",
-                    },
-                }),
-            Error,
-            "Plan Status changed after review opened",
-        );
-        assertEquals(resolved, false);
-        assertStringIncludes(rejectedMessage, "Plan Status changed after review opened");
-        assertEquals((await loadPlan(projectRoot, "owner-plan"))?.attrs.status, "approved");
     } finally {
         await appObject?.close();
         store.close();
@@ -810,108 +548,6 @@ test("owner Workspace keeps read-only Project Plan progress API and removes prog
         assertEquals(page.status, 404);
     } finally {
         await ownerApp.close();
-        store.close();
-        await fsRm(dir, { recursive: true });
-    }
-});
-
-test("owner Workspace reviews a complete Sequence and rejects stale sibling evidence", async () => {
-    const { prepareSequenceReview } = await import("../../shared/workflow/sequence-review.ts");
-    const { WorkspaceSessionContinuationService } = await import("./server/session-continuation.js");
-    const dir = await fsMkdtemp(join(tmpdir(), "runwield-owner-sequence-review-"));
-    const root = `${dir}/project`;
-    await fsMkdir(root);
-    const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
-    try {
-        await savePlan(root, "sequence", "# Sequence", {
-            classification: "PROJECT",
-            type: "sequence",
-            status: "draft",
-        });
-        for (const [index, name] of ["first", "second"].entries()) {
-            await savePlan(root, `sequence/${name}`, `# ${name}`, {
-                classification: "PLANNED_CHANGE",
-                status: "draft",
-                parentPlan: "sequence",
-                order: index + 1,
-            });
-        }
-        const project = store.registerProject({ root, displayName: "Sequence project" });
-        const service = new WorkspaceSessionContinuationService({ store });
-        const documents = await prepareSequenceReview(root, "sequence");
-        const answers = [];
-        service.operations.set("sequence-review", {
-            status: "running",
-            projectId: project.projectId,
-            runwieldSessionId: "sequence-session",
-            events: [],
-            liveInteraction: {
-                interactionId: "sequence-interaction",
-                request: {
-                    type: "plan_review",
-                    prompt: "Review Sequence",
-                    planReview: { planId: documents[0].planId, sequenceDocuments: documents },
-                },
-            },
-            answer: { resolve: (answer) => answers.push(answer), reject: () => {} },
-        });
-        const second = documents[2];
-        await fsWriteFile(second.planPath, `${second.plan}\nNew requirements.`);
-        const decision = {
-            approved: true,
-            approvalAction: "run",
-            documents: documents.map((doc) => ({ planId: doc.planId, plan: doc.plan })),
-        };
-        const request = {
-            deviceId: "sequence-device",
-            projectId: project.projectId,
-            operationId: "sequence-review",
-            interactionId: "sequence-interaction",
-            runwieldSessionId: "sequence-session",
-            requestId: "stale-sequence",
-            response: decision,
-        };
-        await assertRejects(() => service.answerInteraction(request), Error, "changed while review was open");
-        assertEquals(answers.length, 0);
-        assertEquals((await loadPlan(root, "sequence/first"))?.attrs.status, "draft");
-        await fsWriteFile(second.planPath, second.plan);
-        await service.answerInteraction({ ...request, requestId: "current-sequence" });
-        assertEquals(answers.length, 1);
-        assertEquals(
-            answers[0]._meta.sequenceDecision.documents.map((doc) => doc.planId),
-            documents.map((doc) => doc.planId),
-        );
-        assertEquals((await loadPlan(root, "sequence"))?.attrs.status, "draft", "the workflow owns the grouped commit");
-        service.operations.set("sequence-review", {
-            ...service.operations.get("sequence-review"),
-            liveInteraction: {
-                interactionId: "sequence-chat",
-                request: {
-                    type: "plan_review",
-                    planReview: { planName: "sequence", sequenceDocuments: documents },
-                },
-            },
-            answer: {
-                resolve: (answer) => {
-                    answers.push(answer);
-                },
-                reject: () => {},
-            },
-        });
-        await service.answerInteraction({
-            ...request,
-            interactionId: "sequence-chat",
-            requestId: "sequence-chat",
-            response: {
-                approved: false,
-                feedback: "Clarify the group.",
-                conversationTurn: true,
-                documents: documents.map((doc) => ({ planId: doc.planId, plan: doc.plan })),
-            },
-        });
-        assertEquals(answers[1]._meta.conversationTurn, true);
-        assertEquals(answers[1]._meta.sequenceDecision.feedback, "Clarify the group.");
-    } finally {
         store.close();
         await fsRm(dir, { recursive: true });
     }

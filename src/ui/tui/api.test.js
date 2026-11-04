@@ -1,12 +1,13 @@
 import { test } from "node:test";
 import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { assertEquals, assertInstanceOf } from "../../testing/assertions.ts";
-import { Spacer } from "@earendil-works/pi-tui";
+import { Container, Editor, Spacer, TuiMainScreen } from "@earendil-works/pi-tui";
 import { createFooterOnlyUiApi, createSilentUiApi, createUiApi } from "./api.js";
 import {
     KeyboardHelpBlock,
     ManagedSyncStatusBlock,
     PromptSelectBlock,
+    PromptTextBlock,
     SpinnerBlock,
     SystemMessageBlock,
     ThinkingBlock,
@@ -16,102 +17,27 @@ import {
     ValidationHandoffBlock,
 } from "./blocks.js";
 import stripAnsi from "strip-ansi";
-import { initRunWieldTheme } from "../theme/theme.ts";
+import { VirtualTerminal } from "./testing/virtual-terminal.ts";
+import { getEditorTheme, initRunWieldTheme } from "../theme/theme.ts";
 
 initRunWieldTheme();
 
-/**
- * @returns {{ children: any[], addChild: (child: any) => void, removeChild: (child: any) => void, clear: () => void }}
- */
 function makeContainer() {
-    return {
-        children: /** @type {any[]} */ ([]),
-        /** @param {any} child */
-        addChild(child) {
-            this.children.push(child);
-        },
-        /** @param {any} child */
-        removeChild(child) {
-            const index = this.children.indexOf(child);
-            if (index >= 0) this.children.splice(index, 1);
-        },
-        clear() {
-            this.children = [];
-        },
-    };
+    return new Container();
 }
 
-/**
- * @returns {{ tui: any, messageList: ReturnType<typeof makeContainer>, renders: () => number, focus: () => any }}
- */
 function makeTuiHarness() {
+    const tui = new TuiMainScreen(new VirtualTerminal({ columns: 120, rows: 40 }));
+    const messageList = new Container();
+    tui.addChild(messageList);
     let renderCount = 0;
-    let focused = /** @type {any} */ (null);
-    const messageList = makeContainer();
-    const tui = /** @type {any} */ ({
-        focusedComponent: null,
-        requestRender() {
-            renderCount++;
-        },
-        /** @param {any} block */
-        setFocus(block) {
-            if (this.focusedComponent && "focused" in this.focusedComponent) {
-                this.focusedComponent.focused = false;
-            }
-            focused = block;
-            this.focusedComponent = block;
-            if (block && "focused" in block) {
-                block.focused = true;
-            }
-        },
-    });
-    return { tui, messageList, renders: () => renderCount, focus: () => focused };
+    const requestRender = tui.requestRender.bind(tui);
+    tui.requestRender = (...args) => {
+        renderCount++;
+        return requestRender(...args);
+    };
+    return { tui, messageList, renders: () => renderCount, focus: () => tui.getFocusedComponent() };
 }
-
-test("createSilentUiApi implements the full no-op surface", async () => {
-    const ui = /** @type {any} */ (createSilentUiApi());
-    ui.appendThinkingStart().appendDelta("ignored");
-    ui.appendThinkingStart().end();
-    ui.appendUserMessage("ignored");
-    ui.appendAgentMessageStart("Agent").appendText("ignored");
-    ui.appendImage("abc", "image/png");
-    ui.appendQueuedMessage("queued-1", "ignored");
-    ui.removeQueuedMessage("queued-1");
-    ui.appendSystemMessage("ignored");
-    const tool = ui.startToolExecution("1", "bash", "$ echo hi");
-    tool.setOutput("ignored");
-    tool.endExecution(false, 1);
-    ui.toggleToolOutputsExpanded();
-    ui.showKeyboardHelp({ title: "Keyboard shortcuts", items: [{ key: "?", description: "show help" }] });
-    ui.hideKeyboardHelp();
-    ui.requestRender();
-    ui.advanceSpinner();
-    ui.setBusy(true);
-    ui.setRunningTasks([{ task: 1, assignee: "Tester", description: "Check" }]);
-    ui.clearMessages();
-    ui.showModelSelector();
-    ui.disableInput();
-    ui.enableInput();
-    ui.suppressOutput();
-    ui.abortActivePrompt();
-
-    assertEquals(ui.getActiveToolBlock("1"), undefined);
-    assertEquals(await ui.promptSelect("Pick", []), null);
-    assertEquals(await ui.promptText("Text"), null);
-    assertEquals(ui.isOutputSuppressed(), true);
-});
-
-test("createFooterOnlyUiApi suppresses message bodies but forwards footer renders", () => {
-    let renders = 0;
-    const ui = createFooterOnlyUiApi({ requestRender: () => renders++ });
-
-    ui.appendSystemMessage("hidden");
-    ui.appendAgentMessageStart("Agent").appendText("hidden");
-    ui.requestRender();
-
-    assertEquals(ui.isOutputSuppressed?.(), false);
-    assertEquals(renders, 1);
-});
 
 test("ThinkingBlock hides markdown comments and unwraps emphasis markers", () => {
     const block = new ThinkingBlock();
@@ -119,7 +45,11 @@ test("ThinkingBlock hides markdown comments and unwraps emphasis markers", () =>
         "**Planning page layout and token guard**\n\n<!-- -->\n\n**Inspecting server for static theme assets**",
     );
 
-    const rendered = block.render(120).map((line) => stripAnsi(line).trimEnd()).join("\n").trimEnd();
+    const rendered = block
+        .render(120)
+        .map((line) => stripAnsi(line).trimEnd())
+        .join("\n")
+        .trimEnd();
 
     assertEquals(rendered, "Planning page layout and token guard\n\nInspecting server for static theme assets");
 });
@@ -142,49 +72,6 @@ test("thinking ends with one blank row before the next thinking block or tool ca
     const toolLine = lines.findIndex((line) => line.includes("echo done"));
     assertEquals(secondLine - firstLine, 2);
     assertEquals(toolLine - secondLine, 2);
-});
-
-test("createUiApi appends visible blocks, merges compatible system messages, and controls tools", () => {
-    const { tui, messageList, renders } = makeTuiHarness();
-    const spinner = new SpinnerBlock();
-    const ui = /** @type {any} */ (createUiApi(null, tui, messageList, spinner));
-
-    const thinking = ui.appendThinkingStart();
-    thinking.appendDelta("thinking");
-    thinking.end();
-    ui.appendUserMessage("hello");
-    const agent = ui.appendAgentMessageStart("Tester");
-    agent.appendText("hi");
-    ui.appendSystemMessage("one");
-    ui.appendSystemMessage("two");
-    messageList.addChild(new Spacer(1));
-    ui.appendSystemMessage("three");
-    assertEquals(messageList.children.filter((child) => child instanceof SystemMessageBlock).length, 1);
-    assertEquals(messageList.children.at(-1) instanceof Spacer, true);
-    assertEquals(messageList.children.at(-2) instanceof SystemMessageBlock, true);
-    let trailingSpacers = 0;
-    for (const child of messageList.children.toReversed()) {
-        if (!(child instanceof Spacer)) break;
-        trailingSpacers += 1;
-    }
-    assertEquals(trailingSpacers, 1);
-
-    const tool = ui.startToolExecution("tool-1", "bash", "$ echo hi");
-    assertEquals(ui.getActiveToolBlock("tool-1"), tool);
-    tool.setOutput("output");
-    tool.endExecution(false, 1);
-    assertEquals(ui.getActiveToolBlock("tool-1"), undefined);
-    ui.toggleToolOutputsExpanded();
-    ui.toggleToolOutputsExpanded();
-    ui.advanceSpinner();
-    ui.setRunningTasks([{ task: 1, assignee: "Tester", description: "Do work" }]);
-
-    assertEquals(messageList.children.some((/** @type {any} */ child) => child instanceof Spacer), true);
-    assertEquals(messageList.children.length > 0, true);
-    assertEquals(renders() > 0, true);
-
-    ui.clearMessages();
-    assertEquals(messageList.children, []);
 });
 
 test("createUiApi opens local commands by default and falls back to toggling the latest block", () => {
@@ -239,31 +126,21 @@ test("createUiApi keeps workflow tools as single custom blocks", () => {
 
     const groups = messageList.children.filter((/** @type {any} */ child) => child instanceof ToolExecutionGroupBlock);
     assertEquals(groups.length, 2);
-    assertEquals(groups[0].children.map((/** @type {any} */ child) => child.toolName), ["bash"]);
-    assertEquals(groups[1].children.map((/** @type {any} */ child) => child.toolName), ["read", "review_diff"]);
+    assertEquals(
+        groups[0].children.map((/** @type {any} */ child) => child.toolName),
+        ["bash"],
+    );
+    assertEquals(
+        groups[1].children.map((/** @type {any} */ child) => child.toolName),
+        ["read", "review_diff"],
+    );
     assertEquals(groups[1].expanded, false);
     assertEquals(
-        messageList.children.filter((/** @type {any} */ child) => child instanceof ToolExecutionBlock).map(
-            (/** @type {any} */ child) => child.toolName,
-        ),
+        messageList.children
+            .filter((/** @type {any} */ child) => child instanceof ToolExecutionBlock)
+            .map((/** @type {any} */ child) => child.toolName),
         ["plan_written", "triage_report"],
     );
-});
-
-test("createUiApi groups contiguous tool calls and closes the group at conversation boundaries", () => {
-    const { tui, messageList } = makeTuiHarness();
-    const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock()));
-
-    ui.startToolExecution("tool-1", "bash", "$ false");
-    ui.startToolExecution("tool-2", "read", "read README.md");
-    ui.appendAgentMessageStart("Agent").appendText("done");
-    ui.startToolExecution("tool-3", "code_search", "code_search ToolExecution");
-
-    const groups = messageList.children.filter((/** @type {any} */ child) => child instanceof ToolExecutionGroupBlock);
-    assertEquals(groups.length, 2);
-    assertEquals(groups[0].children.length, 2);
-    assertEquals(groups[1].children.length, 1);
-    assertEquals(messageList.children.filter((/** @type {any} */ child) => child instanceof Spacer).length, 3);
 });
 
 test("createUiApi toggles only visible tool groups", () => {
@@ -293,11 +170,15 @@ test("createUiApi toggles only visible tool groups", () => {
     const groups = messageList.children.filter((/** @type {any} */ child) => child instanceof ToolExecutionGroupBlock);
     visibleToolBlocks = [groups[1]];
     ui.toggleToolOutputsExpanded();
-    assertEquals(groups.map((/** @type {any} */ group) => group.expanded), [false, true]);
+    assertEquals(
+        groups.map((/** @type {any} */ group) => group.expanded),
+        [false, true],
+    );
 
     ui.appendSystemMessage("boundary");
     const inherited = ui.startToolExecution("tool-3", "grep", "grep pattern");
-    const newGroup = messageList.children.filter((/** @type {any} */ child) => child instanceof ToolExecutionGroupBlock)
+    const newGroup = messageList.children
+        .filter((/** @type {any} */ child) => child instanceof ToolExecutionGroupBlock)
         .at(-1);
     if (!newGroup) throw new Error("Expected a tool execution group");
     assertEquals(newGroup.expanded, false);
@@ -307,9 +188,9 @@ test("createUiApi toggles only visible tool groups", () => {
     visibleToolBlocks = [groups[1], newGroup];
     ui.toggleToolOutputsExpanded();
     assertEquals(
-        messageList.children.filter((/** @type {any} */ child) => child instanceof ToolExecutionGroupBlock).map(
-            (/** @type {any} */ group) => group.expanded,
-        ),
+        messageList.children
+            .filter((/** @type {any} */ child) => child instanceof ToolExecutionGroupBlock)
+            .map((/** @type {any} */ group) => group.expanded),
         [false, false, false],
     );
 });
@@ -347,40 +228,6 @@ test("createUiApi bounds completed children in a long contiguous tool group", ()
     if (!group) throw new Error("Expected a tool execution group");
     assertEquals(group.children.length, 1000);
     assertEquals(group.children[0].headerText, "$ echo 5");
-});
-
-test("createUiApi releases old message blocks during long-running TUI sessions", () => {
-    const { tui, messageList } = makeTuiHarness();
-    const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock()));
-
-    for (let index = 0; index < 700; index++) {
-        ui.appendUserMessage(`message ${index}`);
-    }
-
-    assertEquals(messageList.children.length <= 1000, true);
-    assertEquals(messageList.children[0] instanceof UserPromptBlock, true);
-});
-
-test("createUiApi toggles one transient keyboard-help block outside the message list", () => {
-    const { tui, messageList, renders } = makeTuiHarness();
-    const inputAccessory = makeContainer();
-    const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock(), inputAccessory));
-    const help = { title: "Keyboard shortcuts", items: [{ key: "?", description: "show help" }] };
-
-    ui.showKeyboardHelp(help);
-    assertEquals(inputAccessory.children.length, 2);
-    assertEquals(inputAccessory.children[0] instanceof KeyboardHelpBlock, true);
-    assertEquals(messageList.children.length, 0);
-
-    ui.showKeyboardHelp(help);
-    assertEquals(inputAccessory.children.length, 0);
-
-    inputAccessory.addChild("unrelated");
-    ui.showKeyboardHelp(help);
-    assertEquals(inputAccessory.children.length, 3);
-    ui.hideKeyboardHelp();
-    assertEquals(inputAccessory.children, ["unrelated"]);
-    assertEquals(renders() > 0, true);
 });
 
 test("createUiApi does not flash a managed sync block for benign syncing", () => {
@@ -445,7 +292,10 @@ test("createUiApi clearMessages removes input accessory resources", () => {
 
     ui.showKeyboardHelp({ title: "Keyboard shortcuts", items: [{ key: "?", description: "show help" }] });
     ui.setManagedSyncStatus({ status: "behind", owningSurfaceKind: "workspace", owningSurfaceLabel: "Workspace" });
-    assertEquals(inputAccessory.children.some((/** @type {any} */ child) => child instanceof KeyboardHelpBlock), true);
+    assertEquals(
+        inputAccessory.children.some((/** @type {any} */ child) => child instanceof KeyboardHelpBlock),
+        true,
+    );
     assertEquals(
         inputAccessory.children.some((/** @type {any} */ child) => child instanceof ManagedSyncStatusBlock),
         true,
@@ -483,13 +333,19 @@ test("createUiApi renders live elapsed tool time immediately and stops after com
         timedUi.startToolExecution("tool-timer", "bash", "$ sleep 1")
     );
 
-    const initialPlain = tool.render(100).map((line) => stripAnsi(line)).join("\n");
+    const initialPlain = tool
+        .render(100)
+        .map((line) => stripAnsi(line))
+        .join("\n");
     assertEquals(initialPlain.includes("Elapsed time: 0.0s"), true);
     const initialRenders = harness.renders();
 
     await new Promise((resolve) => setTimeout(resolve, 250));
 
-    const plain = tool.render(100).map((line) => stripAnsi(line)).join("\n");
+    const plain = tool
+        .render(100)
+        .map((line) => stripAnsi(line))
+        .join("\n");
     assertEquals(plain.includes("Elapsed time:"), true);
     assertEquals(harness.renders() > initialRenders, true);
 
@@ -498,7 +354,10 @@ test("createUiApi renders live elapsed tool time immediately and stops after com
     const afterEndRenders = harness.renders();
     await new Promise((resolve) => setTimeout(resolve, 250));
 
-    const endedPlain = tool.render(100).map((line) => stripAnsi(line)).join("\n");
+    const endedPlain = tool
+        .render(100)
+        .map((line) => stripAnsi(line))
+        .join("\n");
     assertEquals(endedPlain.includes("Elapsed time:"), false);
     assertEquals(endedPlain.includes("Took 0.7s"), true);
     assertEquals(afterEndRenders, beforeEndRenders + 1);
@@ -576,7 +435,7 @@ test("createUiApi pauses tool timers for terminal prompts, including tools start
         await new Promise((resolve) => setTimeout(resolve, 250));
         assertEquals(renders(), waitingRenders);
         tool.endExecution(false, 100);
-        focus().input.onSubmit("Revise the Plan");
+        textPrompt(focus()).input.onSubmit("Revise the Plan");
         assertEquals(await prompt, "Revise the Plan");
         spinner.setBusy(false);
         const resumedRenders = renders();
@@ -615,17 +474,17 @@ test("createUiApi suppresses focused cursor while busy animation repaints", () =
     const { tui, messageList } = makeTuiHarness();
     const spinner = new SpinnerBlock();
     const ui = /** @type {any} */ (createUiApi(null, tui, messageList, spinner));
-    const editor = { focused: false, invalidate() {}, render: () => [] };
+    const editor = new Editor(tui, getEditorTheme());
 
     tui.setFocus(editor);
     assertEquals(editor.focused, true);
 
     ui.setBusy(true);
-    assertEquals(tui.focusedComponent, editor);
+    assertEquals(tui.getFocusedComponent(), editor);
     assertEquals(editor.focused, false);
 
     ui.setBusy(false);
-    assertEquals(tui.focusedComponent, editor);
+    assertEquals(tui.getFocusedComponent(), editor);
     assertEquals(editor.focused, true);
 });
 
@@ -639,7 +498,7 @@ test("createUiApi pauses the busy animation while waiting for prompt input", asy
 
     const prompt = ui.promptText("What should the Engineer try next?");
     assertEquals(spinner.isBusy, false);
-    focus().input.onSubmit("Merge main first.");
+    textPrompt(focus()).input.onSubmit("Merge main first.");
 
     assertEquals(await prompt, "Merge main first.");
     assertEquals(spinner.isBusy, true);
@@ -675,7 +534,7 @@ test("createUiApi renders validation panel separately from active prompt placeme
     assertEquals(activeInteractionContainer.children[0] instanceof PromptSelectBlock, true);
     assertEquals(messageList.children, []);
 
-    focus().list.onSelect({ value: "yes" });
+    selectPrompt(focus()).list.onSelect({ value: "yes" });
     assertEquals(await promptPromise, "yes");
     assertEquals(activeInteractionContainer.children, []);
     assertEquals(messageList.children[0] instanceof PromptSelectBlock, true);
@@ -716,13 +575,17 @@ test("createUiApi promptSelect resolves selection, cancellation, and selection-c
     /** @type {string[]} */
     const previews = [];
 
-    const selectionPromise = ui.promptSelect("Pick one", [
-        { value: "one", label: "One" },
-        { value: "two", label: "Two" },
-    ], {
-        onSelectionChange: (/** @type {string} */ value) => previews.push(value),
-    });
-    const selectBlock = focus();
+    const selectionPromise = ui.promptSelect(
+        "Pick one",
+        [
+            { value: "one", label: "One" },
+            { value: "two", label: "Two" },
+        ],
+        {
+            onSelectionChange: (/** @type {string} */ value) => previews.push(value),
+        },
+    );
+    const selectBlock = selectPrompt(focus());
     assertEquals(messageList.children[1] instanceof Spacer, true);
     selectBlock.list.onSelectionChange({ value: "two" });
     selectBlock.list.onSelect({ value: "two" });
@@ -732,19 +595,19 @@ test("createUiApi promptSelect resolves selection, cancellation, and selection-c
 
     const cancelPromise = ui.promptSelect("Cancel", [{ value: "one", label: "One" }]);
     assertEquals(messageList.children[3] instanceof Spacer, true);
-    focus().list.onCancel();
+    selectPrompt(focus()).list.onCancel();
     assertEquals(await cancelPromise, null);
 
     const childCountBeforeTransient = messageList.children.length;
     const transientPromise = ui.promptSelect("Transient", [{ value: "router", label: "router" }], {
         persistResult: false,
     });
-    focus().list.onSelect({ value: "router" });
+    selectPrompt(focus()).list.onSelect({ value: "router" });
     assertEquals(await transientPromise, "router");
     assertEquals(messageList.children.length, childCountBeforeTransient);
 
     const agentPromptPromise = ui.promptSelect("Switch agent:", [{ value: "engineer", label: "engineer" }]);
-    focus().list.onSelect({ value: "engineer" });
+    selectPrompt(focus()).list.onSelect({ value: "engineer" });
     assertEquals(await agentPromptPromise, "engineer");
     assertEquals(messageList.children.length, childCountBeforeTransient);
 });
@@ -754,13 +617,13 @@ test("createUiApi promptText resolves submit, rejects empty required submit, and
     const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock()));
 
     const textPromise = ui.promptText("Name", { defaultValue: "Ada", allowEmpty: false });
-    const textBlock = focus();
+    const textBlock = textPrompt(focus());
     assertEquals(messageList.children[1] instanceof Spacer, true);
     textBlock.input.onSubmit("");
     assertEquals(await textPromise, "Ada");
 
     const requiredPromise = ui.promptText("Required", { allowEmpty: false });
-    const requiredBlock = focus();
+    const requiredBlock = textPrompt(focus());
     requiredBlock.input.onSubmit("   ");
     let settled = false;
     requiredPromise.then(() => {
@@ -773,7 +636,7 @@ test("createUiApi promptText resolves submit, rejects empty required submit, and
 
     const privatePromptChildCount = messageList.children.length;
     const privatePromise = ui.promptText("API key", { allowEmpty: false, persistResult: false });
-    focus().input.onSubmit("secret-key");
+    textPrompt(focus()).input.onSubmit("secret-key");
     assertEquals(await privatePromise, "secret-key");
     assertEquals(messageList.children.length, privatePromptChildCount);
 
@@ -890,3 +753,14 @@ test("createUiApi dispose clears prompts, timers, focus, and validation containe
     assertEquals(inputAccessoryContainer.children, []);
     assertEquals(ui.getActiveToolBlock?.("tool-1"), undefined);
 });
+
+/** @param {import('@earendil-works/pi-tui').Component | null} component */
+function textPrompt(component) {
+    if (!(component instanceof PromptTextBlock)) throw new Error("Expected the active text prompt");
+    return component;
+}
+/** @param {import('@earendil-works/pi-tui').Component | null} component */
+function selectPrompt(component) {
+    if (!(component instanceof PromptSelectBlock)) throw new Error("Expected the active select prompt");
+    return component;
+}

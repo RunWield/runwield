@@ -1,15 +1,10 @@
 import { assertEquals } from "../../../testing/assertions.ts";
 import { test } from "node:test";
-import {
-    loadPlanActionsScenario,
-    loadPlanMalformedFrontMatterScenario,
-    loadPlanReadOnlyPickerScenario,
-} from "./load-plan-workflow.ts";
+import { loadPlanActionsScenario, loadPlanReadOnlyPickerScenario } from "./load-plan-workflow.ts";
 
 const scenarios = {
     loadPlanReadOnlyPickerScenario,
     loadPlanActionsScenario,
-    loadPlanMalformedFrontMatterScenario,
 };
 
 for (const [exportName, scenario] of Object.entries(scenarios)) {

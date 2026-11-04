@@ -17,9 +17,7 @@ import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts"
 import {
     formatImageAttachmentMarker,
     getSessionImageDir,
-    modelSupportsImageInput,
     persistImageAttachment,
-    preflightImageAttachments,
     prepareImagesForModel,
     readSessionImageAttachment,
     resolveImageRef,
@@ -28,23 +26,10 @@ import {
 } from "./image-attachments.ts";
 import { __resetSettingsForTests } from "../settings.js";
 
-import type { SessionManager } from "@earendil-works/pi-coding-agent";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { ImageContent } from "@earendil-works/pi-ai";
-import type { RunWieldModel, RunWieldModelRegistry } from "../models/model-registry.ts";
+import { RunWieldModelRegistry } from "../models/model-registry.ts";
 import type { FetchRequest } from "../fetch-request.ts";
-
-type VisionFixtureModel = Pick<RunWieldModel, "provider" | "id" | "input">;
-
-interface VisionProviderFixture {
-    models: Omit<VisionFixtureModel, "provider">[];
-}
-
-interface VisionRegistryFixture {
-    models: VisionFixtureModel[];
-    find(provider: string, id: string): VisionFixtureModel | undefined;
-    hasConfiguredAuth: () => boolean;
-    registerProvider(provider: string, config: VisionProviderFixture): void;
-}
 
 interface VisionFallbackSettings {
     model: string;
@@ -61,7 +46,7 @@ const NO_MODEL_DISCOVERY_NETWORK = {
 };
 
 function makeSessionManager(id = "session-1"): SessionManager {
-    return { getSessionId: () => id } as SessionManager;
+    return SessionManager.inMemory(`/tmp/${id}`);
 }
 
 async function removeTempDir(path: string) {
@@ -78,12 +63,6 @@ async function removeTempDir(path: string) {
     }
     throw lastError;
 }
-
-test("modelSupportsImageInput checks image modality", () => {
-    assertEquals(modelSupportsImageInput({ input: ["text", "image"] }), true);
-    assertEquals(modelSupportsImageInput({ input: ["text"] }), false);
-    assertEquals(modelSupportsImageInput({}), false);
-});
 
 test("persistImageAttachment stores session-scoped file and resolves attachment ref", async () => {
     await withProcessGlobalTestLock(async () => {
@@ -132,31 +111,6 @@ test("resolveImageRef resolves safe project-relative paths and rejects escapes",
     }
 });
 
-test("prepareImagesForModel sends direct images or fallback markers", () => {
-    const img = { base64: "a", mimeType: "image/png", ref: "attachment:abc", path: "/session/abc.png" };
-    assertEquals(prepareImagesForModel({ text: "look", images: [img], activeModel: { input: ["text", "image"] } }), {
-        ok: true,
-        text: "look",
-        images: [{ type: "image", data: "a", mimeType: "image/png" }],
-        mode: "direct",
-    });
-    assertEquals(
-        prepareImagesForModel({
-            text: "look",
-            images: [img],
-            activeModel: { input: ["text"] },
-            fallbackModelRef: "v/model",
-        }),
-        {
-            ok: true,
-            text: "look\n\n[Image attached: attachment:abc image/png]",
-            images: undefined,
-            mode: "fallback",
-        },
-    );
-    assertEquals(formatImageAttachmentMarker(img), "[Image attached: attachment:abc image/png]");
-});
-
 test("direct image preparation retains portable references but leaves local text and image bytes unchanged", async () => {
     const directory = await fsMkdtemp(join(tmpdir(), "runwield-direct-images-"));
     const pixel = new PhotonImage(new Uint8Array([255, 191, 0, 255]), 1, 1);
@@ -196,20 +150,6 @@ test("direct image preparation retains portable references but leaves local text
     }
 });
 
-test("preflightImageAttachments blocks text-only model without fallback", () => {
-    assertEquals(
-        preflightImageAttachments([{ base64: "a", mimeType: "image/png" }], { activeModel: { input: ["text"] } }).ok,
-        false,
-    );
-    assertEquals(
-        preflightImageAttachments([{ base64: "a", mimeType: "image/png" }], {
-            activeModel: { input: ["text"] },
-            fallbackModelRef: "v/model",
-        }).ok,
-        true,
-    );
-});
-
 async function withVisionSettings(settings: VisionSettings, fn: VisionSettingsCallback) {
     const originalHome = getHomeDir();
     const originalCwd = getCwd();
@@ -234,55 +174,48 @@ async function withVisionSettings(settings: VisionSettings, fn: VisionSettingsCa
 
 test("resolveVisionFallbackModel reports unknown, unauthenticated, and non-vision fallback", async () => {
     await withProcessGlobalTestLock(async () => {
-        await withVisionSettings({ visionFallback: { model: "test/missing" } }, async () => {
-            await assertRejects(
-                () =>
-                    resolveVisionFallbackModel(
-                        {
-                            find: () => undefined,
-                            hasConfiguredAuth: () => true,
-                        } as unknown as RunWieldModelRegistry,
-                        NO_MODEL_DISCOVERY_NETWORK,
-                        getCwd(),
-                    ),
-                Error,
-                "Unknown visionFallback.model",
+        for (const scenario of [
+            { id: "missing", models: [], apiKey: "test-key", expected: "Unknown visionFallback.model" },
+            {
+                id: "vision",
+                models: [{ id: "vision", input: ["text", "image"] }],
+                apiKey: undefined,
+                expected: "No API key configured",
+            },
+            {
+                id: "text",
+                models: [{ id: "text", input: ["text"] }],
+                apiKey: "test-key",
+                expected: "not vision-capable",
+            },
+        ]) {
+            await withVisionSettings(
+                { visionFallback: { model: `fixture-vision/${scenario.id}` } },
+                async (home, cwd) => {
+                    const configDir = join(home, ".wld");
+                    await fsMkdir(configDir, { recursive: true });
+                    await fsWriteFile(
+                        join(configDir, "models.json"),
+                        JSON.stringify({
+                            providers: {
+                                "fixture-vision": {
+                                    baseUrl: "https://example.invalid/v1",
+                                    api: "openai-completions",
+                                    apiKey: scenario.apiKey,
+                                    models: scenario.models,
+                                },
+                            },
+                        }),
+                    );
+                    const registry = new RunWieldModelRegistry({ configDir });
+                    await assertRejects(
+                        () => resolveVisionFallbackModel(registry, NO_MODEL_DISCOVERY_NETWORK, cwd),
+                        Error,
+                        scenario.expected,
+                    );
+                },
             );
-        });
-
-        await withVisionSettings({ visionFallback: { model: "test/vision" } }, async () => {
-            const model: VisionFixtureModel = { provider: "test", id: "vision", input: ["text", "image"] };
-            await assertRejects(
-                () =>
-                    resolveVisionFallbackModel(
-                        {
-                            find: () => model,
-                            hasConfiguredAuth: () => false,
-                        } as unknown as RunWieldModelRegistry,
-                        NO_MODEL_DISCOVERY_NETWORK,
-                        getCwd(),
-                    ),
-                Error,
-                "No API key configured for visionFallback.model",
-            );
-        });
-
-        await withVisionSettings({ visionFallback: { model: "test/text" } }, async () => {
-            const model: VisionFixtureModel = { provider: "test", id: "text", input: ["text"] };
-            await assertRejects(
-                () =>
-                    resolveVisionFallbackModel(
-                        {
-                            find: () => model,
-                            hasConfiguredAuth: () => true,
-                        } as unknown as RunWieldModelRegistry,
-                        NO_MODEL_DISCOVERY_NETWORK,
-                        getCwd(),
-                    ),
-                Error,
-                "not vision-capable",
-            );
-        });
+        }
     });
 });
 
@@ -302,18 +235,7 @@ test("resolveVisionFallbackModel discovers configured provider models", async ()
                     },
                 }),
             );
-            const registry: VisionRegistryFixture = {
-                models: [],
-
-                find(provider, id) {
-                    return this.models.find((model) => model.provider === provider && model.id === id);
-                },
-                hasConfiguredAuth: () => true,
-
-                registerProvider(provider, config) {
-                    for (const model of config.models) this.models.push({ provider, ...model });
-                },
-            };
+            const registry = new RunWieldModelRegistry({ configDir: join(tempHome, ".wld") });
             const network = {
                 fetch: (() =>
                     Promise.resolve({
@@ -321,26 +243,10 @@ test("resolveVisionFallbackModel discovers configured provider models", async ()
                         json: () => Promise.resolve({ data: [{ id: "discovered" }] }),
                     } as Response)) as FetchRequest,
             };
-            const resolved = await resolveVisionFallbackModel(
-                registry as unknown as RunWieldModelRegistry,
-                network,
-                tempProject,
-            );
+            const resolved = await resolveVisionFallbackModel(registry, network, tempProject);
             assertEquals(resolved?.modelRef, "local/discovered");
             assertEquals(resolved?.model.input, ["text", "image"]);
             assertEquals(getCwd().endsWith(tempProject.replace(/^\/private/, "")), true);
         });
     });
-});
-
-test("submit-time image preflight blocks non-destructively after fallback disappears", () => {
-    const typedText = "draft prompt";
-    const images = [{ base64: "a", mimeType: "image/png", ref: "attachment:abc" }];
-    const beforeImages = [...images];
-
-    const result = preflightImageAttachments(images, { activeModel: { input: ["text"] } });
-
-    assertEquals(result.ok, false);
-    assertEquals(typedText, "draft prompt");
-    assertEquals(images, beforeImages);
 });

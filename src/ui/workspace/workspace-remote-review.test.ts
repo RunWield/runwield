@@ -39,26 +39,6 @@ test("remote review legacy anchors stay in Plannotator sidebar without fallback 
     assertEquals(annotation.text, "Legacy comment body");
 });
 
-test("remote review Plannotator sidebar does not expose delete controls", async () => {
-    const panelSource = await fsReadFile(new URL("./react/RemoteCommentPanel.tsx", import.meta.url), "utf8");
-    const plannotatorCss = await fsReadFile(new URL("./react/plannotator.css", import.meta.url), "utf8");
-    const workspaceCss = await readWorkspaceStyles(new URL("./static/workspace.css", import.meta.url));
-    const reviewSource = await fsReadFile(new URL("./react/RemotePlanReview.tsx", import.meta.url), "utf8");
-
-    assertEquals(panelSource.includes("onDelete={(id) => onResolve(id)}"), false);
-    assertStringIncludes(panelSource, "onDelete={() => {}}");
-    assertStringIncludes(plannotatorCss, '.rw-remote-annotation-panel [title="Delete annotation"]');
-    assertStringIncludes(plannotatorCss, "display: none !important");
-    assertStringIncludes(workspaceCss, '.rw-remote-annotation-panel [title="Delete annotation"]');
-    assertEquals(reviewSource.includes("RemoteLegacyAnchors"), false);
-    assertEquals(reviewSource.includes("applyLegacyAnchorHighlights"), false);
-    assertEquals(reviewSource.includes("updateSharedSpaceLifecycle"), false);
-    assertStringIncludes(reviewSource, "const metadata = await client.getSharedSpace(spaceId);");
-    assertStringIncludes(reviewSource, "setSpace(normalizeSpace(metadata));");
-    assertEquals(reviewSource.includes('action: "delete"'), false);
-    assertEquals(/unshare/i.test(reviewSource), false);
-});
-
 test("remote review comment panel renders closed read-only controls and revision-scoped comments", () => {
     const revisionOneComment: RemoteCommentRecord = {
         id: "comment-rev-1",

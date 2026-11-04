@@ -422,7 +422,9 @@ test("chat input controller runs local commands while a real Runtime turn is act
     await withRuntimeCommandFixture("chat-input-real-bash-", async ({ setModelResponseFactory }) => {
         const releaseModel = deferredSignal();
         let modelStarted = false;
-        setModelResponseFactory(async () => {
+        const requests: string[] = [];
+        setModelResponseFactory(async (context) => {
+            requests.push(JSON.stringify(context.messages));
             modelStarted = true;
             await releaseModel.promise;
             return fauxAssistantMessage(fauxText("Delayed response."));
@@ -437,6 +439,14 @@ test("chat input controller runs local commands while a real Runtime turn is act
             assertEquals(composition.runtime.getQueuedMessages(composition.sessionId).length, 0);
             releaseModel.resolve();
             await composition.waitForIdle();
+            setModelResponseFactory((context) => {
+                requests.push(JSON.stringify(context.messages));
+                return fauxAssistantMessage(fauxText("Follow-up complete."));
+            });
+            await submitText(terminal, "Continue without transient command output");
+            await composition.waitForIdle();
+            assertEquals(requests.length, 2);
+            assertEquals(requests[1].includes("local-output"), false);
         } finally {
             releaseModel.resolve();
             await composition.dispose();
@@ -880,55 +890,6 @@ function createControllerHarness(runtimeOverrides: ControllerRuntimeOverrides = 
     return { controller, editor, pastedImages, previewImages, messages, busyStates, runtime };
 }
 
-test("chat input steers a generated background turn and keeps runtime busy", async () => {
-    let steered = "";
-    let promptCalls = 0;
-    const { controller, editor, busyStates } = createControllerHarness({
-        getSessionSnapshot: () => ({ busy: true }) as ReturnType<ChatInputRuntime["getSessionSnapshot"]>,
-        steerSession: (_sessionId, text) => {
-            steered = text;
-            return Promise.resolve({ ok: true, queued: true });
-        },
-        promptUserTurn: () => {
-            promptCalls++;
-            return Promise.resolve({ ok: true, turns: 1, managed: false, submittedRequest: "", restoreDraft: false });
-        },
-    });
-    editor.setText("Use the result and keep working.");
-    await editor.submitValue();
-    assertEquals(steered, "Use the result and keep working.");
-    assertEquals(promptCalls, 0);
-    controller.forceResetUI();
-    assertEquals(busyStates.at(-1), true);
-});
-
-test("chat input controller submits tutorial discovery as a normal Planner turn", async () => {
-    let submitted: Parameters<ChatInputRuntime["promptUserTurn"]>[1] | null = null;
-    const { controller } = createControllerHarness({
-        promptUserTurn: (_sessionId, options) => {
-            submitted = options;
-            return Promise.resolve({ ok: true, turns: 1, managed: false, submittedRequest: "", restoreDraft: false });
-        },
-    });
-    const context = {
-        version: 1 as const,
-        guidanceEnabled: true,
-        shownExplanationIds: ["choose-improvement"],
-        recapShown: false,
-        planId: null,
-    };
-
-    await controller.submitTutorialRequest("Choose one small change.", context);
-
-    assertEquals(submitted, {
-        initialRequest: "Choose one small change.",
-        initialImages: [],
-        preparedModelOverride: undefined,
-        agentName: "planner",
-        initialTutorialContext: context,
-    });
-});
-
 test("chat input explains resource limits and restores the draft without replaying it", async () => {
     let submissions = 0;
     const { controller, editor, messages } = createControllerHarness({
@@ -947,119 +908,6 @@ test("chat input explains resource limits and restores the draft without replayi
     } finally {
         await controller.dispose();
     }
-});
-
-test("chat input controller restores exact draft and previews after image preflight rejection", async () => {
-    let promptCalled = false;
-    const { editor, pastedImages, previewImages, messages } = createControllerHarness({
-        preflightUserTurnImages: () => Promise.resolve({ ok: false, message: "Cannot attach image." }),
-        promptUserTurn: () => {
-            promptCalled = true;
-            return Promise.resolve({ ok: true, turns: 1, managed: false, submittedRequest: "", restoreDraft: false });
-        },
-    });
-    pastedImages.push({ base64: btoa("img"), mimeType: "image/png" });
-    previewImages.children.push({});
-
-    editor.setText("  keep exact draft  ");
-    await editor.submitValue();
-
-    assertEquals(promptCalled, false);
-    assertEquals(editor.getText(), "  keep exact draft  ");
-    assertEquals(pastedImages.length, 1);
-    assertEquals(previewImages.children.length, 1);
-    assertEquals(messages, ["Cannot attach image."]);
-});
-
-test("chat input controller restores an empty draft after an image-only preflight rejection", async () => {
-    const { editor, pastedImages, previewImages } = createControllerHarness({
-        preflightUserTurnImages: () => Promise.resolve({ ok: false, message: "Cannot attach image." }),
-    });
-    editor.setText("stale draft");
-    editor.setText("");
-    await Promise.resolve();
-    pastedImages.push({ base64: btoa("img"), mimeType: "image/png" });
-    previewImages.children.push({});
-
-    await editor.submitValue();
-
-    assertEquals(editor.getText(), "");
-    assertEquals(pastedImages.length, 1);
-});
-
-test("chat input controller restores expanded pasted content after image preflight rejection", async () => {
-    const { editor, pastedImages } = createControllerHarness({
-        preflightUserTurnImages: () => Promise.resolve({ ok: false, message: "Cannot attach image." }),
-    });
-    pastedImages.push({ base64: btoa("img"), mimeType: "image/png" });
-
-    editor.setExpandedText("before [[paste:1]] after", "before pasted content after");
-    await editor.submitValue();
-
-    assertEquals(editor.getText(), "before pasted content after");
-});
-
-test("chat input controller restores a whitespace-only image draft after Pi clears the editor", async () => {
-    const { editor, pastedImages } = createControllerHarness({
-        preflightUserTurnImages: () => Promise.resolve({ ok: false, message: "Cannot attach image." }),
-    });
-    pastedImages.push({ base64: btoa("img"), mimeType: "image/png" });
-
-    editor.setText("   \t  ");
-    await editor.submitValue();
-
-    assertEquals(editor.getText(), "   \t  ");
-});
-
-test("chat input controller sends the model prepared by image preflight", async () => {
-    let submittedModel = "";
-    const { editor, pastedImages } = createControllerHarness({
-        preflightUserTurnImages: () =>
-            Promise.resolve({
-                ok: true,
-                mode: "direct",
-                preparedModelOverride: "runtime-command-fixture/fixture-model",
-            }),
-        promptUserTurn: (_sessionId, options) => {
-            submittedModel = options.preparedModelOverride || "";
-            return Promise.resolve({ ok: true, turns: 1, managed: false, submittedRequest: "", restoreDraft: false });
-        },
-    });
-    pastedImages.push({ base64: btoa("img"), mimeType: "image/png" });
-
-    editor.setText("describe image");
-    await editor.submitValue();
-
-    assertEquals(submittedModel, "runtime-command-fixture/fixture-model");
-});
-
-test("chat input controller sends one corrected image draft after a rejection", async () => {
-    let preflightCalls = 0;
-    let promptCalls = 0;
-    let submittedImage = "";
-    const { editor, pastedImages } = createControllerHarness({
-        preflightUserTurnImages: () => {
-            preflightCalls += 1;
-            return Promise.resolve(
-                preflightCalls === 1 ? { ok: false, message: "Cannot attach image." } : { ok: true, mode: "direct" },
-            );
-        },
-        promptUserTurn: (_sessionId, options) => {
-            promptCalls += 1;
-            submittedImage = options.initialImages?.[0]?.base64 || "";
-            return Promise.resolve({ ok: true, turns: 1, managed: false, submittedRequest: "", restoreDraft: false });
-        },
-    });
-    pastedImages.push({ base64: btoa("bad"), mimeType: "image/png" });
-    editor.setText("describe image");
-    await editor.submitValue();
-    pastedImages.length = 0;
-    pastedImages.push({ base64: btoa("good"), mimeType: "image/png" });
-    editor.setText("describe corrected image");
-    await editor.submitValue();
-
-    assertEquals(promptCalls, 1);
-    assertEquals(submittedImage, btoa("good"));
 });
 
 test("chat input controller does not queue image steering that runtime rejects", async () => {
@@ -1120,6 +968,32 @@ test("composed TUI reports an explicit paste with no image until the next input"
         } finally {
             await composition.dispose();
             clipboard.restore();
+        }
+    });
+});
+
+test("single-bang commands survive into the next turn while double-bang output stays local", async () => {
+    await withRuntimeCommandFixture("chat-input-shell-context-", async ({ setModelResponseFactory }) => {
+        const requests: string[] = [];
+        setModelResponseFactory((context) => {
+            requests.push(JSON.stringify(context.messages));
+            return fauxAssistantMessage(fauxText("Shell context inspected."));
+        });
+        const { composition, terminal } = await startComposition();
+        try {
+            await submitText(terminal, "!printf persistent-shell-marker");
+            await composition.waitForIdle();
+            assertStringIncludes(terminal.getScrollbackText(), "persistent-shell-marker");
+            await submitText(terminal, "!!printf ephemeral-shell-marker");
+            await composition.waitForIdle();
+            assertStringIncludes(terminal.getScrollbackText(), "ephemeral-shell-marker");
+            await submitText(terminal, "Use the saved shell result");
+            await composition.waitForIdle();
+            assertEquals(requests.length, 1);
+            assertStringIncludes(requests[0], "persistent-shell-marker");
+            assertEquals(requests[0].includes("ephemeral-shell-marker"), false);
+        } finally {
+            await composition.dispose();
         }
     });
 });

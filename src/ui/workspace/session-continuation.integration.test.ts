@@ -997,21 +997,34 @@ test("a new Workspace Session is discoverable before its first response finishes
                 release = resolve;
             });
             const requestedThinking: (string | undefined)[] = [];
+            const imageRequests: string[] = [];
             try {
                 setModelResponseFactory(async (context, options) => {
                     requestedThinking.push(options?.reasoning);
+                    imageRequests.push(JSON.stringify(context.messages));
                     await held;
                     return fixture.recordedModelResponse("Your new Session is ready.")(context);
                 });
                 const notifications = [];
                 service.subscribeNotifications((event) => notifications.push(event));
-                const started = await service.createSession({
+                const request = {
                     projectId: fixture.project.projectId,
                     requestId: "first-message",
                     text: "Start here.",
                     agentName: AGENTS.IDEATOR,
                     thinkingLevel: "low",
-                });
+                    images: [
+                        {
+                            base64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+                            mimeType: "image/png",
+                        },
+                    ],
+                };
+                const [started, duplicate] = await Promise.all([
+                    service.createSession(request),
+                    service.createSession(request),
+                ]);
+                assertEquals(duplicate.operationId, started.operationId);
                 let operation;
                 for (let index = 0; index < 400; index++) {
                     operation = service.getOperation(started.operationId);
@@ -1047,9 +1060,15 @@ test("a new Workspace Session is discoverable before its first response finishes
                 const timeline = await service.timeline(operation.runwieldSessionId, {
                     projectId: fixture.project.projectId,
                 });
-                assert(timeline.events.some((event) => event.type === "user_message" && event.text === "Start here."));
+                assert(
+                    timeline.events.some(
+                        (event) => event.type === "user_message" && event.text.includes("Start here."),
+                    ),
+                );
                 assertEquals(timeline.snapshot.thinkingLevel, "low");
                 assertEquals(requestedThinking, ["low"]);
+                assertEquals(imageRequests.length, 1);
+                assert(imageRequests[0].includes("image/png"));
                 assertEquals(notifications.filter((item) => item.event.reason === "agentStopped").length, 1);
                 assertEquals(notifications[0].event.notificationSurface, "workspace");
                 assertEquals(
@@ -1118,70 +1137,6 @@ test("Workspace opens an interrupted Session directly from its saved conversatio
             await fixture.cleanup();
         }
     });
-});
-
-test("Workspace new image Session deduplicates concurrent prepared requests", async () => {
-    let releasePreflight = () => {};
-    const preflightStarted = new Promise((resolve) => {
-        releasePreflight = resolve;
-    });
-    let shellCount = 0;
-    const submittedModels = [];
-    const service = new WorkspaceSessionContinuationService({
-        store: {
-            getProjectById: () => ({ id: "project-1", lifecycle: "enabled", currentRoot: "/tmp/project" }),
-            requireEnabledProjectRoot: () => "/tmp/project",
-        },
-    });
-    service.listSessionOptions = () =>
-        Promise.resolve({
-            agents: [{ name: AGENTS.ROUTER }],
-            models: [],
-            thinkingLevels: ["off"],
-        });
-    service.runtime = {
-        createInteractiveSession: () => {
-            shellCount += 1;
-            return Promise.resolve({ sessionId: `shell-${shellCount}` });
-        },
-        preflightUserTurnImages: async () => {
-            await preflightStarted;
-            return { ok: true, mode: "direct", preparedModelOverride: "runtime-command-fixture/fixture-model" };
-        },
-        closeSessionWhenIdle: () => {},
-        getSessionSnapshot: () => ({ managed: { runwieldSessionId: "rw-1" } }),
-        getSessionBackgroundTaskState: () => null,
-        setInteractionAdapter: () => {},
-        subscribeSessionEvents: () => () => {},
-        promptUserTurn: (_sessionId, options) => {
-            submittedModels.push(options.preparedModelOverride || "");
-            return Promise.resolve({ ok: true });
-        },
-    };
-
-    const first = service.createSession({
-        projectId: "project-1",
-        requestId: "request-1",
-        deviceId: "device-1",
-        text: "look",
-        images: [{ base64: btoa("img"), mimeType: "image/png" }],
-    });
-    const second = service.createSession({
-        projectId: "project-1",
-        requestId: "request-1",
-        deviceId: "device-1",
-        text: "look",
-        images: [{ base64: btoa("img"), mimeType: "image/png" }],
-    });
-    releasePreflight();
-    const [firstResult, secondResult] = await Promise.all([first, second]);
-
-    for (let index = 0; index < 20 && submittedModels.length === 0; index += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-    assertEquals(firstResult.operationId, secondResult.operationId);
-    assertEquals(shellCount, 1);
-    assertEquals(submittedModels, ["runtime-command-fixture/fixture-model"]);
 });
 
 test("Workspace receives the final stop from TUI and ACP turns after steering, without polling", async () => {
@@ -1519,6 +1474,29 @@ test("sidebar expansion reads only five unseen matching Session names plus looka
             reads.some((path) => path.endsWith("expand-15.jsonl")),
             false,
         );
+        for (const suffix of [
+            "excludeAssociated=true&pageSize=20",
+            "excludeAssociated=true&nestedPlan=another-plan&pageSize=20",
+        ]) {
+            const expanded = await ownerProjectSessionsApi({
+                params: { projectId: fixture.project.projectId },
+                url: new URL(`http://workspace.local/sessions?${suffix}`),
+                state: { store, sessionContinuation: service },
+            });
+            const body = await expanded.json();
+            assert(body.sessions.some((session) => session.runwieldSessionId === ids.get(15)));
+        }
+        const filtered = await ownerProjectSessionsApi({
+            params: { projectId: fixture.project.projectId },
+            url: new URL("http://workspace.local/sessions?plan=nested-plan&page=0&pageSize=1"),
+            state: { store, sessionContinuation: service },
+        });
+        const filteredBody = await filtered.json();
+        assertEquals(
+            filteredBody.sessions.map((session) => session.runwieldSessionId),
+            [ids.get(15)],
+        );
+        assertEquals(filteredBody.total, 1);
     } finally {
         fs.readFile = readFile;
         service.close();

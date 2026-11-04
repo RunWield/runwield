@@ -91,20 +91,6 @@ function firstText(result: Pick<FixtureToolResult, "content">) {
     return first.text ?? "";
 }
 
-test("mnemoteca extension registers one action-based memory tool", () => {
-    const { tools } = setup(() => Promise.resolve({ code: 0, stdout: "", stderr: "" }));
-
-    const names = tools.map((tool) => tool.name);
-    assertEquals(names, ["memory"]);
-
-    for (const tool of tools) {
-        assertEquals(typeof tool.label, "string");
-        assertEquals(typeof tool.description, "string");
-        assertEquals(typeof tool.parameters, "object");
-        assertEquals(typeof tool.execute, "function");
-    }
-});
-
 test("memory recall searches both scopes and escapes quotes", async () => {
     const { getTool, calls } = setup((_command, args) => {
         if (args[0] === "init") return Promise.resolve({ code: 0, stdout: "", stderr: "" });

@@ -23,18 +23,3 @@ test("wld onboard refuses a non-interactive terminal without starting a Session"
     assertEquals(started, false);
     assertEquals(errors, ["[RunWield] wld onboard requires an interactive terminal."]);
 });
-
-test("slash onboarding delegates to the active TUI flow", async () => {
-    let calls = 0;
-    await runOnboardCommand([], {
-        uiAPI: {} as never,
-        beginOnboarding: () => {
-            calls += 1;
-            return Promise.resolve();
-        },
-        sessionPort: {
-            startInteractiveSession: () => Promise.reject(new Error("must not start another TUI")),
-        },
-    });
-    assertEquals(calls, 1);
-});

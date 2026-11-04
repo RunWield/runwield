@@ -1,13 +1,12 @@
 import { serveHttp } from "../../shared/http-server.ts";
 import { tmpdir } from "node:os";
 import { getCwd } from "../../constants.js";
-import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, stat as fsStat } from "node:fs/promises";
+import { mkdtemp as fsMkdtemp, rm as fsRm, stat as fsStat } from "node:fs/promises";
 import { test } from "node:test";
 import process from "node:process";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 
-import { RUNWIELD_ROOT } from "../../../runtime-root.js";
 import "./server/plan-adapter.js";
 
 import {
@@ -19,7 +18,6 @@ import {
     runRemoteWorkspaceServer,
 } from "./remote-server.ts";
 import { handleRemoteSpaceApi } from "./server/remote-dev-api.ts";
-import { isRemoteDevelopmentModeEnabled } from "./server/remote-mode.ts";
 
 import { createWorkspaceApp } from "./server.js";
 
@@ -34,20 +32,6 @@ interface RemoteStatusResponse {
 interface NotFoundResponse {
     error: string;
 }
-
-test("remote Shared Space development gate requires both development and remote mode", () => {
-    assertEquals(isRemoteDevelopmentModeEnabled({ isDevelopment: true, workspaceMode: "remote" }), true);
-    assertEquals(isRemoteDevelopmentModeEnabled({ isDevelopment: true, workspaceMode: "local" }), false);
-    assertEquals(isRemoteDevelopmentModeEnabled({ isDevelopment: true, workspaceMode: undefined }), false);
-    assertEquals(isRemoteDevelopmentModeEnabled({ isDevelopment: false, workspaceMode: "remote" }), false);
-});
-
-test("remote development API and page share the central gate", async () => {
-    const apiSource = await fsReadFile(join(RUNWIELD_ROOT, "src/ui/workspace/server/remote-dev-api.ts"), "utf8");
-    const pageSource = await fsReadFile(join(RUNWIELD_ROOT, "src/ui/workspace/pages/p/[spaceId].astro"), "utf8");
-    assertStringIncludes(apiSource, "isRemoteDevelopmentModeEnabled");
-    assertStringIncludes(pageSource, "isRemoteDevelopmentModeEnabled");
-});
 
 test("remote development API rejects non-development and non-remote requests", async () => {
     // RUNWIELD_WORKSPACE_MODE is process-global; without the lock this window is

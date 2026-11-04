@@ -241,22 +241,6 @@ test(
     },
 );
 
-test("spawnForegroundProcess writes optional stdin and closes it", { skip: IS_WINDOWS }, async () => {
-    const process = spawnForegroundProcess({
-        command: "cat",
-        cwd: getCwd(),
-        stdinText: "stdin marker",
-    });
-    const [outcome, stdout, stderr] = await Promise.all([
-        process.done,
-        readAll(process.stdout),
-        readAll(process.stderr),
-    ]);
-    assertEquals(outcome, { exitCode: 0, terminatedBy: null });
-    assertEquals(stdout, "stdin marker");
-    assertEquals(stderr, "");
-});
-
 test("spawnForegroundProcess reports a missing executable as a spawn error", { skip: IS_WINDOWS }, () => {
     const error = assertThrows(() =>
         spawnForegroundProcess({

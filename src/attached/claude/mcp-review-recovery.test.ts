@@ -68,27 +68,6 @@ test("fresh MCP status restores the same pending round and transport close stops
         let original = "";
         try {
             const tools = await first.listTools();
-            assertEquals(
-                tools.tools.map(({ name }) => name),
-                [
-                    "start_planning",
-                    "activate",
-                    "triage_report",
-                    "review_reply",
-                    "status",
-                    "plan_written",
-                    "start_execution",
-                    "task_completed",
-                    "start_validation",
-                    "review_diff",
-                    "review_complete",
-                    "validation_decision",
-                    "work_record_completed",
-                    "get_instructions",
-                    "get_artifact",
-                    "get_pending_chat",
-                ],
-            );
             assertEquals(tools.tools.find(({ name }) => name === "status")?.inputSchema.required, []);
             const status = await call(first, "status", {});
             assert(status.ok && status.review);

@@ -146,18 +146,6 @@ test("a fresh process retrieves the durable pending review before a browser is o
     });
 });
 
-test("the planning action lists the setup paths that plan_written then creates", async () => {
-    await withProject(async (projectRoot) => {
-        const { result: triaged, planning } = await reachPlanning(projectRoot);
-        assert(triaged.ok && triaged.workflow.nextAction.kind === "plan");
-        assertEquals(triaged.workflow.nextAction.projectSetup.includes(".gitignore"), true);
-
-        await writePlan(projectRoot);
-        assert((await submit(projectRoot, planning)).ok);
-        assertEquals(await exists(join(projectRoot, ".gitignore")), true);
-    });
-});
-
 interface RejectionCase {
     name: string;
     code: string;

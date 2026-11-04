@@ -504,12 +504,7 @@ test("a repeated tool call and result stops before another model request", async
                         agentName: "guide",
                         userRequest: "Use the synthetic tool",
                         finalSystemPrompt: built.promptState.text,
-                        subscriberState: {
-                            resetTurn() {},
-                            drainInvokedToolNames: () => [],
-                            endThinking() {},
-                            unsubscribe() {},
-                        },
+                        subscriberState: attachSessionEventSubscribers(built.session, built.agentDef),
                         requestId: "synthetic-repeat-request",
                     }),
                 RunawayLoopGuardStoppedError,
@@ -612,12 +607,7 @@ test("different tool calls with shared or changing results do not stop the reque
                     agentName: "guide",
                     userRequest: `Exercise ${scenario.name}`,
                     finalSystemPrompt: built.promptState.text,
-                    subscriberState: {
-                        resetTurn() {},
-                        drainInvokedToolNames: () => [],
-                        endThinking() {},
-                        unsubscribe() {},
-                    },
+                    subscriberState: attachSessionEventSubscribers(built.session, built.agentDef),
                     requestId: `synthetic-distinct-call-${scenarioIndex}`,
                 });
                 assertEquals(executions, 3, scenario.name);
@@ -720,12 +710,7 @@ test("a repeated two-tool cycle stops after three cycles", async () => {
                         agentName: "guide",
                         userRequest: "Use the synthetic tools",
                         finalSystemPrompt: built.promptState.text,
-                        subscriberState: {
-                            resetTurn() {},
-                            drainInvokedToolNames: () => [],
-                            endThinking() {},
-                            unsubscribe() {},
-                        },
+                        subscriberState: attachSessionEventSubscribers(built.session, built.agentDef),
                         requestId: "synthetic-cycle-request",
                     }),
                 RunawayLoopGuardStoppedError,
@@ -794,12 +779,7 @@ test("a repeated three-tool cycle stops after three cycles", async () => {
                         agentName: "guide",
                         userRequest: "Use the three synthetic tools in a cycle",
                         finalSystemPrompt: built.promptState.text,
-                        subscriberState: {
-                            resetTurn() {},
-                            drainInvokedToolNames: () => [],
-                            endThinking() {},
-                            unsubscribe() {},
-                        },
+                        subscriberState: attachSessionEventSubscribers(built.session, built.agentDef),
                         requestId: "synthetic-three-tool-cycle-request",
                     }),
                 RunawayLoopGuardStoppedError,
@@ -873,12 +853,7 @@ test("the model-turn budget survives a Session reopen for the same request", asy
                 agentName: "guide",
                 userRequest: "Use the synthetic counter, first segment",
                 finalSystemPrompt: firstBuilt.promptState.text,
-                subscriberState: {
-                    resetTurn() {},
-                    drainInvokedToolNames: () => [],
-                    endThinking() {},
-                    unsubscribe() {},
-                },
+                subscriberState: attachSessionEventSubscribers(firstBuilt.session, firstBuilt.agentDef),
                 requestId: "synthetic-budget-request",
             });
         } finally {
@@ -915,12 +890,7 @@ test("the model-turn budget survives a Session reopen for the same request", asy
                         agentName: "guide",
                         userRequest: "Continue the synthetic counter request",
                         finalSystemPrompt: secondBuilt.promptState.text,
-                        subscriberState: {
-                            resetTurn() {},
-                            drainInvokedToolNames: () => [],
-                            endThinking() {},
-                            unsubscribe() {},
-                        },
+                        subscriberState: attachSessionEventSubscribers(secondBuilt.session, secondBuilt.agentDef),
                         requestId: "synthetic-budget-request",
                     }),
                 RunawayLoopGuardStoppedError,
@@ -976,12 +946,7 @@ test("the model-turn budget survives a Session reopen for the same request", asy
                         agentName: "guide",
                         userRequest: "Continue the stopped synthetic request",
                         finalSystemPrompt: stoppedBuilt.promptState.text,
-                        subscriberState: {
-                            resetTurn() {},
-                            drainInvokedToolNames: () => [],
-                            endThinking() {},
-                            unsubscribe() {},
-                        },
+                        subscriberState: attachSessionEventSubscribers(stoppedBuilt.session, stoppedBuilt.agentDef),
                         requestId: "synthetic-budget-request",
                     }),
                 RunawayLoopGuardStoppedError,
@@ -1012,12 +977,7 @@ test("the model-turn budget survives a Session reopen for the same request", asy
                 agentName: "guide",
                 userRequest: "Start a new synthetic request",
                 finalSystemPrompt: freshBuilt.promptState.text,
-                subscriberState: {
-                    resetTurn() {},
-                    drainInvokedToolNames: () => [],
-                    endThinking() {},
-                    unsubscribe() {},
-                },
+                subscriberState: attachSessionEventSubscribers(freshBuilt.session, freshBuilt.agentDef),
                 requestId: "synthetic-fresh-request",
             });
             assertStringIncludes(JSON.stringify(freshBuilt.session.messages.at(-1)), "New instruction answered");

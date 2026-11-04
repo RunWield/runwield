@@ -16,6 +16,7 @@ import type { BrowserPort } from "../../shared/browser-port.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
+import { createUiApiFixture } from "../tui/ui-api-test-fixture.ts";
 import { createTuiInteractionAdapter } from "../tui/runtime-interaction-adapter.ts";
 import { getWorktreeReviewDiff } from "../../shared/workflow/git-snapshot.ts";
 import {
@@ -431,6 +432,7 @@ reviewLauncherTest("reloading Code Review recomputes the proposed branch patch",
 
 reviewLauncherTest("TUI Code Review interaction keeps planTitle through the real Workspace payload", async () => {
     const projectRoot = await codeReviewGitFixture.checkout({ prefix: "runwield-code-review-" });
+    const ui = createUiApiFixture();
     try {
         await fsWriteFile(`${projectRoot}/change.ts`, "export const changed = true;\n");
         const abort = new AbortController();
@@ -464,18 +466,7 @@ reviewLauncherTest("TUI Code Review interaction keeps planTitle through the real
                 return Promise.resolve(false);
             },
         };
-        const adapter = createTuiInteractionAdapter(
-            {
-                appendSystemMessage: () => {},
-                appendAgentMessageStart: () => ({ appendText: () => {} }),
-                requestRender: () => {},
-                promptSelect: () => Promise.resolve(null),
-                promptText: () => Promise.resolve(null),
-                showModelSelector: () => {},
-                abortActivePrompt: () => {},
-            },
-            { browser },
-        );
+        const adapter = createTuiInteractionAdapter(ui.uiAPI, { browser });
         const response = await adapter.requestInteraction(
             {
                 type: "code_review",
@@ -512,6 +503,7 @@ reviewLauncherTest("TUI Code Review interaction keeps planTitle through the real
             _meta: { approved: false, feedback: "Not yet.", annotations: [], canceled: false, exit: false },
         });
     } finally {
+        ui.close();
         await fsRm(projectRoot, { recursive: true }).catch(() => {});
     }
 });

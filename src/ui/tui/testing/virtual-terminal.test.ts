@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../../testing/assertions.ts";
-import { normalizeScreenText, VirtualTerminal } from "./virtual-terminal.ts";
+import { VirtualTerminal } from "./virtual-terminal.ts";
 import type { IDisposable } from "@xterm/headless";
 
 type TerminalResizeCallback = NonNullable<Parameters<VirtualTerminal["start"]>[1]>;
@@ -14,8 +14,9 @@ interface AsyncOscParser {
 
 test("VirtualTerminal captures writes in normalized viewport text", async () => {
     const terminal = new VirtualTerminal({ columns: 20, rows: 4 });
-    terminal.write("hello\nworld");
+    terminal.write("\x1b[31mhello   \x1b[0m\r\nworld");
     await terminal.flush();
+    assertEquals(terminal.getScreenText().includes("\x1b[31m"), false);
     assert(terminal.getScreenText().includes("hello"));
     assert(terminal.getScreenText().includes("world"));
 });
@@ -77,8 +78,4 @@ test("VirtualTerminal sends input and resize through terminal callbacks", () => 
     terminal.resize(40, 10);
     assertEquals(input.join(""), "/help\r\x1b");
     assertEquals(sizes, [{ columns: 40, rows: 10 }]);
-});
-
-test("normalizeScreenText removes ansi control sequences and trailing space", () => {
-    assertEquals(normalizeScreenText("\x1b[31mhello   \x1b[0m\n\n"), "hello");
 });

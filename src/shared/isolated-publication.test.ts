@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import {
     chmod as fsChmod,
@@ -565,9 +566,19 @@ test("force-with-lease rejection is typed as a target race", async () => {
         await git(worktree.path, ["add", "implementation.txt"]);
         await git(worktree.path, ["commit", "-m", "Validated candidate"]);
         const sealedCommit = await git(worktree.path, ["rev-parse", "HEAD"]);
-        const hookPath = `${remoteRoot}/hooks/pre-receive`;
-        await fsWriteFile(hookPath, "#!/bin/sh\necho 'stale info: target moved' >&2\nexit 1\n");
-        await fsChmod(hookPath, 0o755);
+        const originalRemoteHead = await git(remoteRoot, ["rev-parse", "main"]);
+        const nextRemoteHead = await git(remoteRoot, [
+            "-c",
+            "user.name=Other developer",
+            "-c",
+            "user.email=other@example.com",
+            "commit-tree",
+            `${originalRemoteHead}^{tree}`,
+            "-p",
+            originalRemoteHead,
+            "-m",
+            "Concurrent publication",
+        ]);
 
         const failure = await assertRejects(() =>
             publishExecutionWorktreeIsolated({
@@ -578,12 +589,23 @@ test("force-with-lease rejection is typed as a target race", async () => {
                 planName: "lease-race",
                 sealedExecutionCommit: sealedCommit,
                 allowedPlanPaths: [],
+                onProgress: (step) => {
+                    if (step !== "publishing") return;
+                    const moved = spawnSync(
+                        "git",
+                        ["-C", remoteRoot, "update-ref", "refs/heads/main", nextRemoteHead, originalRemoteHead],
+                        { encoding: "utf8" },
+                    );
+                    assertEquals(moved.status, 0, moved.stderr);
+                },
             }),
         );
 
         assert(failure instanceof IsolatedPublicationError);
         assertEquals(failure.mergeFailureKind, "target_reference_race");
         assertStringIncludes(failure.message, "force-with-lease");
+        assertEquals(await git(remoteRoot, ["rev-parse", "main"]), nextRemoteHead);
+        assertEquals(await git(worktree.path, ["rev-parse", "HEAD"]), sealedCommit);
     } finally {
         if (worktree) {
             await removeWorktreeGitArtifacts({ projectRoot, path: worktree.path, force: true }).catch(() => {});

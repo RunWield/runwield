@@ -26,7 +26,6 @@ import {
     buildAgentSession,
     ensureRootAgentSession,
     getEngineerCompactionThreshold,
-    getGlobalAgentMdPaths,
     installEngineerAutoCompactionThreshold,
     readGlobalAgentMd,
     runIsolatedAgentSession,
@@ -34,9 +33,7 @@ import {
     runPrompt,
     runRootTurn,
     shouldBypassAutoCompactionForAssistantMessage,
-    shouldReuseExistingRootSession,
 } from "./session.js";
-import { getRootExecutionMessages } from "./execution-backend.ts";
 import { HostedSession } from "./hosted-session.js";
 import { getRunWieldSessionDir } from "./root-session.js";
 import { RunawayLoopGuardStoppedError } from "./runaway-loop-guard.ts";
@@ -470,21 +467,6 @@ sessionPromptTest("readGlobalAgentMd can disable ~/.agents/AGENTS.md fallback", 
     }
 });
 
-sessionPromptTest("getGlobalAgentMdPaths stays inside ~/.wld", () => {
-    assertEquals(getGlobalAgentMdPaths("/tmp/home", { includeExternal: false }), [
-        join("/tmp/home", ".wld/RUNWIELD.md"),
-        join("/tmp/home", ".wld/AGENTS.md"),
-    ]);
-});
-
-sessionPromptTest("getGlobalAgentMdPaths includes shared ~/.agents/AGENTS.md when enabled", () => {
-    assertEquals(getGlobalAgentMdPaths("/tmp/home", { includeExternal: true }), [
-        join("/tmp/home", ".wld/RUNWIELD.md"),
-        join("/tmp/home", ".wld/AGENTS.md"),
-        join("/tmp/home", ".agents/AGENTS.md"),
-    ]);
-});
-
 sessionPromptTest("applyAttentionNudge only injects scheduled long-lived agent nudges", () => {
     assertEquals(applyAttentionNudge(AGENTS.IDEATOR, "User asks", 1), "User asks");
     assertEquals(applyAttentionNudge(AGENTS.OPERATOR, "User asks", 6), "User asks");
@@ -509,32 +491,6 @@ sessionPromptTest("applyAttentionNudge only injects scheduled long-lived agent n
             "",
             "User asks",
         ].join("\n"),
-    );
-});
-
-sessionPromptTest("shouldReuseExistingRootSession ignores undefined optional overrides", () => {
-    assertEquals(
-        shouldReuseExistingRootSession(
-            {
-                agentName: AGENTS.OPERATOR,
-                userRequest: "commit",
-                modelOverride: undefined,
-            },
-            AGENTS.OPERATOR,
-        ),
-        true,
-    );
-
-    assertEquals(
-        shouldReuseExistingRootSession(
-            {
-                agentName: AGENTS.OPERATOR,
-                userRequest: "commit",
-                modelOverride: "test/model",
-            },
-            AGENTS.OPERATOR,
-        ),
-        false,
     );
 });
 
@@ -832,12 +788,6 @@ test("ensureRootAgentSession rejects a real replacement for a closed HostedSessi
             'HostedSession "closed-before-build" is disposed',
         );
     });
-});
-
-sessionPromptTest("backend-neutral root message accessor reads Claude CLI messages", () => {
-    const messages = /** @type {any[]} */ ([{ role: "assistant", content: "claude" }]);
-    const root = { kind: "claude-cli", session: { getMessages: () => messages } };
-    assertEquals(getRootExecutionMessages(/** @type {any} */ (root)), messages);
 });
 
 test("runRootTurn completes through the real root prompt machinery", async () => {

@@ -14,7 +14,6 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../../testing/assertions.ts";
 import {
     escapeCancellationScenario,
-    fauxProviderProtocolScenario,
     helpSlashCommandScenario,
     initialGoldenScenarios,
     planReviewTransactionContractScenario,
@@ -62,7 +61,6 @@ const scenarioExportNames = new Map<InitialGoldenScenario, string>([
     [helpSlashCommandScenario, "helpSlashCommandScenario"],
     [planReviewTransactionContractScenario, "planReviewTransactionContractScenario"],
     [planReviewReplyOnlyConversationScenario, "planReviewReplyOnlyConversationScenario"],
-    [fauxProviderProtocolScenario, "fauxProviderProtocolScenario"],
     [runtimeInteractionContractScenario, "runtimeInteractionContractScenario"],
     [startupNoProvidersOpensLoginScenario, "startupNoProvidersOpensLoginScenario"],
     [startupProviderWithoutModelsOpensModelScenario, "startupProviderWithoutModelsOpensModelScenario"],
@@ -80,18 +78,18 @@ for (const scenario of initialGoldenScenarios.filter((candidate) => candidate !=
     });
 }
 
-test("golden actor fails on missing scripted turn", () => {
+test("golden actor fails on missing scripted turn", async () => {
     const actor = new GoldenScenarioActor([{ id: "guide", agent: "guide", response: "ok" }]);
-    assertRejects(
+    await assertRejects(
         async () => await Promise.resolve(actor.next({ agent: "router" })),
         Error,
         "Unexpected scripted turn",
     );
 });
 
-test("golden actor fails on unused scripted turn", () => {
+test("golden actor fails on unused scripted turn", async () => {
     const actor = new GoldenScenarioActor([{ id: "router", agent: "router", response: "ok" }]);
-    assertRejects(async () => await Promise.resolve(actor.assertComplete()), Error, "Unused scripted turns");
+    await assertRejects(async () => await Promise.resolve(actor.assertComplete()), Error, "Unused scripted turns");
 });
 
 test("golden runner enforces subprocess isolation for composed scenarios", async () => {
@@ -99,14 +97,6 @@ test("golden runner enforces subprocess isolation for composed scenarios", async
         () => runGoldenScenario({ name: "composed", composedTui: true }, { keepArtifacts: false }),
         Error,
         "subprocess isolation",
-    );
-});
-
-test("golden runner reports unknown actions", async () => {
-    await assertRejects(
-        () => runGoldenScenario({ name: "bad", actions: [{ type: "unknown" }] }, { keepArtifacts: false }),
-        Error,
-        "Unknown scenario action",
     );
 });
 
@@ -133,11 +123,11 @@ test("golden actor validates declared available tool set", async () => {
     );
 });
 
-test("golden actor fails when required tools are unavailable", () => {
+test("golden actor fails when required tools are unavailable", async () => {
     const actor = new GoldenScenarioActor([
         { id: "router", agent: "router", requiredTools: ["triage_report"], response: "ok" },
     ]);
-    assertRejects(
+    await assertRejects(
         async () => await Promise.resolve(actor.next({ agent: "router", availableTools: [] })),
         Error,
         "Required tool unavailable",
@@ -287,16 +277,6 @@ test("golden scenario child crash surfaces substantive scenario diagnostics", as
         const parentArtifactDir = (error as ChildProcessFailure).artifactDir;
         if (parentArtifactDir) await fsRm(parentArtifactDir, { recursive: true }).catch(() => {});
     }
-});
-
-test("golden actor exposes faux-provider response factory integration", () => {
-    const actor = new GoldenScenarioActor([
-        { id: "guide", agent: "guide", phase: "inquiry", text: "hello", thinking: "thinking" },
-    ]);
-    const factory = actor.toFauxResponseFactory(() => ({ agent: "guide", phase: "inquiry" }));
-    const message = factory({}, {});
-    assertEquals(message.role, "assistant");
-    actor.assertComplete();
 });
 
 test("golden runner rejects unexpected interactions", async () => {

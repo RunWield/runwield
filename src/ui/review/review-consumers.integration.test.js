@@ -3,7 +3,8 @@ import { writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
+import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
+import { withExistingRuntimeInteraction } from "../workspace/testing/live-interaction-fixture.ts";
 import {
     captureWorktreeTree,
     diffTrees,
@@ -18,7 +19,6 @@ import {
     makeValidationProjectRoot,
     runValidationPhase,
 } from "../../shared/workflow/validation-test-helpers.js";
-import { WorkspaceSessionContinuationService } from "../workspace/server/session-continuation.js";
 import { startCodeReviewSurface } from "./review-launcher.ts";
 import { reviewFileContentApi } from "../workspace/routes/api/review-file-handlers.ts";
 
@@ -73,7 +73,7 @@ function reviewPort(runIsolatedAgentSession) {
 
 for (const mode of ["local", "remote"]) {
     test(`AI, repair, and both human review surfaces receive the same ${mode} target patch`, () =>
-        withProcessGlobalTestLock(async () => {
+        withRuntimeCommandFixture("review-consumers-", async (runtimeFixture) => {
             const projectRoot = await makeValidationProjectRoot("p", {
                 classification: "QUICK_FIX",
                 status: "validated_ci",
@@ -221,87 +221,62 @@ for (const mode of ["local", "remote"]) {
                 else process.env["WLD_WORKSPACE_DISABLE_BUILT_SERVER"] = previousDisableBuiltServer;
             }
 
-            const workspace = new WorkspaceSessionContinuationService({ store: /** @type {any} */ ({}) });
-            try {
-                workspace.operations.set("operation-review", {
-                    status: "running",
-                    projectId: "project-1",
-                    runwieldSessionId: "session-1",
-                    events: [],
-                });
-                const interaction = workspace
-                    .createInteractionAdapter({ operationId: "operation-review" })
-                    .requestInteraction({
-                        id: "interaction-review",
-                        type: "code_review",
-                        prompt: "Review the code changes.",
-                        _meta: {
-                            diffText: "stale patch",
-                            planName: "p",
-                            executionCwd: projectRoot,
-                            targetBranch: "target",
-                            targetBaseRef,
-                        },
-                    });
-                const liveReview = await workspace.getLiveCodeReview({
-                    projectId: "project-1",
-                    runwieldSessionId: "session-1",
-                    operationId: "operation-review",
-                    interactionId: "interaction-review",
-                });
-                const workspacePatch = liveReview?.request?.codeReview?.rawPatch;
-                const checkout = await workspace.getLiveCodeReviewCheckout({
-                    projectId: "project-1",
-                    runwieldSessionId: "session-1",
-                    operationId: "operation-review",
-                    interactionId: "interaction-review",
-                });
-                assertEquals(checkout, { cwd: projectRoot, targetBranch: "target", targetBaseRef });
-                const workspaceFile = await (
-                    await reviewFileContentApi(
-                        new Request("http://localhost/api/file-content?path=shared.md"),
-                        checkout || {},
-                    )
-                ).json();
-                assertEquals(workspaceFile.oldContent, expectedBefore);
-                assertEquals(workspaceFile.newContent, "current review proposal\n");
-                if (mode === "remote") {
-                    await git(projectRoot, ["remote", "remove", "origin"]);
-                    await assertRejects(
-                        () =>
-                            workspace.getLiveCodeReview({
-                                projectId: "project-1",
-                                runwieldSessionId: "session-1",
-                                operationId: "operation-review",
-                                interactionId: "interaction-review",
-                            }),
-                        WorktreeReviewComparisonError,
-                    );
-                    const missingBase = await (
+            await withExistingRuntimeInteraction(
+                runtimeFixture,
+                {
+                    id: "interaction-review",
+                    type: "code_review",
+                    prompt: "Review the code changes.",
+                    _meta: {
+                        diffText: "stale patch",
+                        planName: "p",
+                        executionCwd: projectRoot,
+                        targetBranch: "target",
+                        targetBaseRef,
+                    },
+                },
+                async ({ service: workspace, reference }) => {
+                    const liveReview = await workspace.getLiveCodeReview(reference);
+                    const workspacePatch = liveReview?.request?.codeReview?.rawPatch;
+                    const checkout = await workspace.getLiveCodeReviewCheckout(reference);
+                    assertEquals(checkout, { cwd: projectRoot, targetBranch: "target", targetBaseRef });
+                    const workspaceFile = await (
                         await reviewFileContentApi(
                             new Request("http://localhost/api/file-content?path=shared.md"),
                             checkout || {},
                         )
                     ).json();
-                    assertEquals(missingBase.oldContent, null);
-                    assertEquals(missingBase.newContent, "current review proposal\n");
-                }
-                workspace.operations.get("operation-review")?.answer?.resolve({ outcome: "canceled" });
-                await interaction;
+                    assertEquals(workspaceFile.oldContent, expectedBefore);
+                    assertEquals(workspaceFile.newContent, "current review proposal\n");
+                    if (mode === "remote") {
+                        await git(projectRoot, ["remote", "remove", "origin"]);
+                        await assertRejects(
+                            () => workspace.getLiveCodeReview(reference),
+                            WorktreeReviewComparisonError,
+                        );
+                        const missingBase = await (
+                            await reviewFileContentApi(
+                                new Request("http://localhost/api/file-content?path=shared.md"),
+                                checkout || {},
+                            )
+                        ).json();
+                        assertEquals(missingBase.oldContent, null);
+                        assertEquals(missingBase.newContent, "current review proposal\n");
+                    }
 
-                assertEquals(aiPatch, expectedPatch);
-                assertEquals(repairPatch, expectedPatch);
-                assertEquals(standalonePatch, expectedPatch);
-                assertEquals(workspacePatch, expectedPatch);
-                assertStringIncludes(expectedPatch, "plan-change.js");
-                assertEquals(expectedPatch.includes("target-only.js"), false);
-                assertStringIncludes(expectedPatch, `-${expectedBefore.trim()}`);
-                if (mode === "remote") {
-                    assertEquals(expectedPatch.includes("delivered.ts"), false);
-                    assertStringIncludes(expectedPatch, "retained.md");
-                }
-            } finally {
-                workspace.close();
-            }
+                    assertEquals(aiPatch, expectedPatch);
+                    assertEquals(repairPatch, expectedPatch);
+                    assertEquals(standalonePatch, expectedPatch);
+                    assertEquals(workspacePatch, expectedPatch);
+                    assertStringIncludes(expectedPatch, "plan-change.js");
+                    assertEquals(expectedPatch.includes("target-only.js"), false);
+                    assertStringIncludes(expectedPatch, `-${expectedBefore.trim()}`);
+                    if (mode === "remote") {
+                        assertEquals(expectedPatch.includes("delivered.ts"), false);
+                        assertStringIncludes(expectedPatch, "retained.md");
+                    }
+                },
+                projectRoot,
+            );
         }));
 }

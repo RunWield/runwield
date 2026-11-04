@@ -23,33 +23,6 @@ type FixtureExecute = (toolCallId: string, params: TriageParameters) => Promise<
 
 const TRIAGE_PROJECT_ROOT = makeToolProjectFixture("runwield-triage-report-");
 
-test("createTriageReportTool exposes expected metadata", () => {
-    const tool = createTriageReportTool();
-    assertEquals(tool.name, "triage_report");
-    assertEquals(tool.label, "Routing Intent Report");
-    assertMatch(tool.description, /MUST call this tool exactly once/i);
-    assertMatch(tool.description, /Routing Intent/i);
-    assertEquals(typeof tool.execute, "function");
-    assertEquals(typeof tool.parameters, "object");
-    assert("classification" in tool.parameters.properties);
-    assert(!tool.parameters.required.includes("routingIntent"));
-    assert(!tool.parameters.required.includes("sessionName"));
-});
-
-test("createTriageReportTool called with no opts produces valid tool shape", () => {
-    const tool = createTriageReportTool({});
-    assertEquals(tool.name, "triage_report");
-    assertEquals(typeof tool.execute, "function");
-});
-
-test("createTriageReportTool instances are independent", () => {
-    const t1 = createTriageReportTool();
-    const t2 = createTriageReportTool();
-    assertEquals(t1.name, t2.name);
-    // Different closures — same shape
-    assertEquals(typeof t1.execute, typeof t2.execute);
-});
-
 test("triage_report execute returns canonical routingIntent details for INQUIRY", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const events: FixtureTriageEvent[] = [];

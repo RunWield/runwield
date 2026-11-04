@@ -1,7 +1,6 @@
 // @ts-nocheck: Astro workspace check uses browser tsconfig without Deno/JSR test globals.
-import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes } from "../../../testing/assertions.ts";
+import { assertEquals } from "../../../testing/assertions.ts";
 import {
     buildPlanReviewExecutionPolicyPayload,
     readPlanReviewExecutionPolicy,
@@ -9,22 +8,28 @@ import {
 } from "./plan-review-policy.ts";
 
 test("workflow-supplied Engineer Pair policy survives review", () => {
-    const policy = readPlanReviewExecutionPolicy({
-        executionPolicy: { executionAgent: "engineer", collaborationRecommendation: "pair", source: "canonical" },
-    }, null);
+    const policy = readPlanReviewExecutionPolicy(
+        {
+            executionPolicy: { executionAgent: "engineer", collaborationRecommendation: "pair", source: "canonical" },
+        },
+        null,
+    );
 
     assertEquals(policy.executionAgent, "engineer");
     assertEquals(policy.collaborationRecommendation, "pair");
 });
 
 test("workflow-supplied Frontend Engineer Pair policy survives review", () => {
-    const policy = readPlanReviewExecutionPolicy({
-        executionPolicy: {
-            executionAgent: "frontend-engineer",
-            collaborationRecommendation: "pair",
-            source: "canonical",
+    const policy = readPlanReviewExecutionPolicy(
+        {
+            executionPolicy: {
+                executionAgent: "frontend-engineer",
+                collaborationRecommendation: "pair",
+                source: "canonical",
+            },
         },
-    }, null);
+        null,
+    );
 
     assertEquals(policy.executionAgent, "frontend-engineer");
     assertEquals(policy.collaborationRecommendation, "pair");
@@ -42,45 +47,60 @@ test("Engineer Pair written only in Plan Front Matter survives review", () => {
 });
 
 test("a Plan without a collaboration recommendation defaults to autonomous", () => {
-    const policy = readPlanReviewExecutionPolicy({
-        executionPolicy: { executionAgent: "frontend-engineer" },
-    }, null);
+    const policy = readPlanReviewExecutionPolicy(
+        {
+            executionPolicy: { executionAgent: "frontend-engineer" },
+        },
+        null,
+    );
 
     assertEquals(policy.executionAgent, "frontend-engineer");
     assertEquals(policy.collaborationRecommendation, "autonomous");
 });
 
 test("an unrecognized collaboration recommendation falls back to autonomous", () => {
-    const policy = readPlanReviewExecutionPolicy({
-        executionPolicy: { executionAgent: "engineer", collaborationRecommendation: "duet" },
-    }, null);
+    const policy = readPlanReviewExecutionPolicy(
+        {
+            executionPolicy: { executionAgent: "engineer", collaborationRecommendation: "duet" },
+        },
+        null,
+    );
 
     assertEquals(policy.collaborationRecommendation, "autonomous");
 });
 
 test("an unrecognized execution agent falls back to Engineer", () => {
-    const policy = readPlanReviewExecutionPolicy({
-        executionPolicy: { executionAgent: "architect", collaborationRecommendation: "pair" },
-    }, null);
+    const policy = readPlanReviewExecutionPolicy(
+        {
+            executionPolicy: { executionAgent: "architect", collaborationRecommendation: "pair" },
+        },
+        null,
+    );
 
     assertEquals(policy.executionAgent, "engineer");
     assertEquals(policy.collaborationRecommendation, "pair");
 });
 
 test("a legacy frontend Plan resolves to autonomous Frontend Engineer", () => {
-    const policy = readPlanReviewExecutionPolicy({
-        frontmatter: { classification: "PLANNED_CHANGE", frontend: true },
-    }, null);
+    const policy = readPlanReviewExecutionPolicy(
+        {
+            frontmatter: { classification: "PLANNED_CHANGE", frontend: true },
+        },
+        null,
+    );
 
     assertEquals(policy.executionAgent, "frontend-engineer");
     assertEquals(policy.collaborationRecommendation, "autonomous");
 });
 
 test("the workflow-resolved policy wins over Plan Front Matter", () => {
-    const policy = readPlanReviewExecutionPolicy({
-        executionPolicy: { executionAgent: "engineer", collaborationRecommendation: "pair" },
-        frontmatter: { executionAgent: "frontend-engineer", collaborationRecommendation: "autonomous" },
-    }, null);
+    const policy = readPlanReviewExecutionPolicy(
+        {
+            executionPolicy: { executionAgent: "engineer", collaborationRecommendation: "pair" },
+            frontmatter: { executionAgent: "frontend-engineer", collaborationRecommendation: "autonomous" },
+        },
+        null,
+    );
 
     assertEquals(policy.executionAgent, "engineer");
     assertEquals(policy.collaborationRecommendation, "pair");
@@ -113,9 +133,12 @@ test("choosing Pair for an Engineer-owned Plan is kept, not coerced back to auto
 });
 
 test("switching owner in either direction leaves the chosen style alone", () => {
-    const enginerPair = readPlanReviewExecutionPolicy({
-        executionPolicy: { executionAgent: "engineer", collaborationRecommendation: "pair" },
-    }, null);
+    const enginerPair = readPlanReviewExecutionPolicy(
+        {
+            executionPolicy: { executionAgent: "engineer", collaborationRecommendation: "pair" },
+        },
+        null,
+    );
 
     const toFrontend = updatePlanReviewExecutionPolicy(enginerPair, {
         field: "executionAgent",
@@ -131,9 +154,12 @@ test("switching owner in either direction leaves the chosen style alone", () => 
 });
 
 test("an unrecognized control value leaves the current policy unchanged", () => {
-    const current = readPlanReviewExecutionPolicy({
-        executionPolicy: { executionAgent: "frontend-engineer", collaborationRecommendation: "pair" },
-    }, null);
+    const current = readPlanReviewExecutionPolicy(
+        {
+            executionPolicy: { executionAgent: "frontend-engineer", collaborationRecommendation: "pair" },
+        },
+        null,
+    );
 
     assertEquals(updatePlanReviewExecutionPolicy(current, { field: "executionAgent", value: "architect" }), current);
     assertEquals(
@@ -158,18 +184,6 @@ test("a PROJECT Epic sends no execution policy with its approval", () => {
     const epic = readPlanReviewExecutionPolicy({ classification: "PROJECT" }, null);
 
     assertEquals(buildPlanReviewExecutionPolicyPayload(epic), {});
-});
-
-test("the review surface delegates execution policy to this module", async () => {
-    // The contradiction this Plan removed lived in the surface, so the surface
-    // must hold no second copy of the rules: if it imports the module but also
-    // sets policy state itself, the two can disagree again.
-    const surface = await fsReadFile(new URL("./PlanReviewSurface.tsx", import.meta.url), "utf8");
-
-    assertStringIncludes(surface, 'from "./plan-review-policy.ts"');
-    assertStringIncludes(surface, "updatePlanReviewExecutionPolicy(");
-    assertStringIncludes(surface, "buildPlanReviewExecutionPolicyPayload(");
-    assertEquals(/setExecutionAgent|setCollaborationRecommendation/.test(surface), false);
 });
 
 test("a legacy FEATURE Plan keeps its execution policy controls through an owner change", () => {

@@ -22,37 +22,18 @@ interface TranscriptEntry {
 }
 
 function executionSeedCount(transcript: string): number {
-    const entries: TranscriptEntry[] = transcript.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
-    return entries.filter((entry) =>
-        entry.type === "message" &&
-        entry.message?.role === "user" &&
-        JSON.stringify(entry.message.content).includes("Execution owner: plan-engineer.")
+    const entries: TranscriptEntry[] = transcript
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line));
+    return entries.filter(
+        (entry) =>
+            entry.type === "message" &&
+            entry.message?.role === "user" &&
+            JSON.stringify(entry.message.content).includes("Execution owner: plan-engineer."),
     ).length;
 }
-
-test("preparation failure leaves the planning segment current", async () => {
-    const source = await fsReadFile(new URL("./runtime/workflows.ts", import.meta.url), "utf8");
-    assertStringIncludes(source, "prepareSegmentHandoff: !interrupted");
-    assertStringIncludes(source, "await this.turns.rollManagedSessionSegment");
-    assert(
-        source.indexOf("prepareSegmentHandoff: !interrupted") <
-            source.indexOf("await this.turns.rollManagedSessionSegment"),
-    );
-});
-
-test("execution handoff revalidates the approved Plan snapshot before preparation", async () => {
-    const source = await fsReadFile(new URL("../workflow/plan-executor.ts", import.meta.url), "utf8");
-    assertStringIncludes(source, "validateApprovedPlanSnapshotForHandoff");
-    assertStringIncludes(source, "Plan revision changed after approval");
-    assertStringIncludes(source, "Plan status changed after approval");
-    assertStringIncludes(source, "Managed execution handoff requires complete approval-time Plan action evidence");
-    assertStringIncludes(source, "normalizeApprovalSnapshotForHandoff(approvalTriageMeta)");
-    assert(!source.includes("approvalTriageMeta: _triageMeta || effectiveMeta"));
-    assert(
-        source.indexOf("const approvalValidation") <
-            source.indexOf("executionContext = await startActiveExecutionWorkflow"),
-    );
-});
 
 test("managed execution rollover writes one fresh successor and rejects stale Plan evidence before another roll", async () => {
     await withRuntimeCommandFixture(
@@ -126,8 +107,8 @@ test("managed execution rollover writes one fresh successor and rejects stale Pl
                     kind: "execution",
                     continuation,
                     expectedGeneration:
-                        runtimeHandle.runtime.getSessionSnapshot(runtimeHandle.adoptedSessionId)?.managed
-                            ?.generation ?? null,
+                        runtimeHandle.runtime.getSessionSnapshot(runtimeHandle.adoptedSessionId)?.managed?.generation ??
+                        null,
                 });
                 const after = runtimeHandle.store.listSessionTranscriptSegments(fixture.session.runwieldSessionId);
                 assertEquals(after.length, 2);
@@ -194,6 +175,11 @@ test("committed execution continuation reloads in one successor and writes one s
                 if (!plan) throw new Error("Expected saved Plan");
                 const evidence = await loadPlanActionEvidence(fixture.projectRoot, "plan-execution-resume");
                 if (evidence.kind !== "success") throw new Error(evidence.message);
+                const approvalImage = {
+                    base64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+                    mimeType: "image/png",
+                };
+                let resumedRequest = "";
                 const continuation = buildExecutionSegmentContinuation({
                     runwieldSessionId: fixture.session.runwieldSessionId,
                     planId: "plan-execution-resume",
@@ -201,6 +187,8 @@ test("committed execution continuation reloads in one successor and writes one s
                     approvedRevision: evidence.evidence.revision,
                     approvedStatus: evidence.evidence.status,
                     approvedMarkdown: plan.markdown,
+                    approvalFeedback: "Match this approved visual reference.",
+                    approvalImages: [approvalImage],
                     preparedEvidence: evidence.evidence,
                     activeWorkflow: {
                         planName: "execution-resume",
@@ -218,7 +206,10 @@ test("committed execution continuation reloads in one successor and writes one s
                     collaborationRecommendation: "autonomous",
                 });
                 setModelResponseFactories([
-                    () => fauxAssistantMessage(fauxToolCall("bash", { command: "sleep 0.2" })),
+                    (context) => {
+                        resumedRequest = JSON.stringify(context.messages);
+                        return fauxAssistantMessage(fauxToolCall("bash", { command: "sleep 0.2" }));
+                    },
                     () =>
                         fauxAssistantMessage(
                             fauxToolCall("write", { path: "implemented.txt", content: "implemented\n" }),
@@ -257,6 +248,8 @@ test("committed execution continuation reloads in one successor and writes one s
                 await new Promise((resolve) => setTimeout(resolve, 20));
                 assertEquals(closeSettled, false);
                 assertEquals((await execution).executionComplete, true);
+                assertStringIncludes(resumedRequest, "Match this approved visual reference.");
+                assertStringIncludes(resumedRequest, approvalImage.base64);
                 assertEquals(await close, { ok: true, closed: true });
                 const resumedSegments = handle.store.listSessionTranscriptSegments(fixture.session.runwieldSessionId);
                 assertEquals(resumedSegments.length, 2);
@@ -277,42 +270,5 @@ test("committed execution continuation reloads in one successor and writes one s
                 await fixture.cleanup();
             }
         },
-    );
-});
-
-test("legacy Session load acquires its writer lock before opening Pi", async () => {
-    const source = await fsReadFile(new URL("./runtime/lifecycle-loading.ts", import.meta.url), "utf8");
-    const loadStart = source.indexOf("async loadSession(");
-    const loadSource = source.slice(loadStart);
-    assert(loadStart >= 0);
-    assert(
-        loadSource.indexOf("ownerCoordinationStore.acquireSessionActivation") <
-            loadSource.indexOf("await openPersistedRootSession"),
-    );
-});
-
-test("managed operations rely on the OS lock without a heartbeat timer", async () => {
-    const source = await fsReadFile(new URL("./runtime/managed-operations.ts", import.meta.url), "utf8");
-    assert(!source.includes("setInterval(heartbeat"));
-    assert(!source.includes("heartbeatFailureReason"));
-});
-
-test("semantic repair rolls managed Sessions and continues uncataloged Sessions", async () => {
-    const source = await fsReadFile(new URL("./runtime/workflows.ts", import.meta.url), "utf8");
-    assert(!source.includes("if (!managed) return validationResult"));
-    assertStringIncludes(source, "runwieldSessionId: managed?.runwieldSessionId || session.id");
-    assertStringIncludes(source, "if (managed) {");
-    assert(!source.includes("Semantic repair handoff requires a segmented Session."));
-    assertStringIncludes(source, 'kind: "semantic_repair"');
-    assertStringIncludes(source, "return await this.runSemanticRepairContinuation");
-});
-
-test("execution seed excludes Planner history and carries approval images", async () => {
-    const runner = await fsReadFile(new URL("../workflow/engineer-runner.ts", import.meta.url), "utf8");
-    assertStringIncludes(runner, "runEngineerWithSegmentHandoff");
-    assertStringIncludes(runner, "images: continuation.approval?.images");
-    assert(
-        !runner.includes("routerMessage") ||
-            runner.indexOf("runEngineerWithSegmentHandoff") > runner.lastIndexOf("routerMessage"),
     );
 });

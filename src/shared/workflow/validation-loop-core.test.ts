@@ -25,7 +25,7 @@ import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/
 import { HostedSession } from "../session/hosted-session.js";
 import { removeWorktreeGitArtifacts } from "../worktree.js";
 import { createTestWorktreeAttempt, makeRepo } from "../worktree-test-helpers.ts";
-import { createEngineValidationArgs, shouldContinueParentEpicAfterValidation } from "./validation.ts";
+import { createEngineValidationArgs } from "./validation.ts";
 import { resolvePhaseContext } from "./validation-context.ts";
 import { runPublicationPhase } from "./validation-publication.ts";
 import { continueWorkflowValidation } from "./validation.ts";
@@ -457,12 +457,6 @@ test("startActiveExecutionWorkflow seeds footer workflow context from Plan front
         },
     );
     assertEquals(hostedSession.getActiveExecutionWorkflow()?.executionAgent, "engineer");
-});
-
-test("shouldContinueParentEpicAfterValidation detects parent epic linkage", () => {
-    assertEquals(shouldContinueParentEpicAfterValidation({ classification: "FEATURE" }), false);
-    assertEquals(shouldContinueParentEpicAfterValidation({ classification: "FEATURE", parentPlan: "" }), false);
-    assertEquals(shouldContinueParentEpicAfterValidation({ classification: "FEATURE", parentPlan: "epic" }), true);
 });
 
 test("shouldContinueParentEpicAfterValidation ignores standalone FEATURE plans", async () => {

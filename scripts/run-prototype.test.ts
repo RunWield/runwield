@@ -1,6 +1,5 @@
 import { fileURLToPath } from "node:url";
 import { captureScriptProcess } from "./script-process.ts";
-import type { ScriptProcessOptions } from "./script-process.ts";
 import { runtimeSourceArgs } from "../src/testing/runtime-source-args.ts";
 import { getCwd } from "../src/constants.js";
 import { test } from "node:test";
@@ -15,17 +14,7 @@ import { tmpdir } from "node:os";
 import process from "node:process";
 import { assertEquals, assertRejects } from "../src/testing/assertions.ts";
 import { join } from "node:path";
-import {
-    findTrackedPrototypeArtifacts,
-    isSafePrototypeSlug,
-    runPrototype,
-    validatePrototypeSetup,
-} from "./run-prototype.ts";
-
-interface PrototypeSpawnCall {
-    command: string;
-    options: ScriptProcessOptions;
-}
+import { findTrackedPrototypeArtifacts, validatePrototypeSetup } from "./run-prototype.ts";
 
 async function makeGitFixture(): Promise<string> {
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
@@ -42,13 +31,22 @@ async function makePrototype(dir: string, slug: string, task = "bun -e 'console.
     return root;
 }
 
-test("prototype launcher accepts safe kebab-case slugs only", () => {
-    assertEquals(isSafePrototypeSlug("plan-review-toolbar"), true);
-    assertEquals(isSafePrototypeSlug("plan2-review"), true);
-    assertEquals(isSafePrototypeSlug("PlanReview"), false);
-    assertEquals(isSafePrototypeSlug("../escape"), false);
-    assertEquals(isSafePrototypeSlug("plan--review"), false);
-    assertEquals(isSafePrototypeSlug("plan_review"), false);
+test("prototype setup admits safe names and refuses ambiguous or escaping paths", async () => {
+    const dir = await makeGitFixture();
+    try {
+        for (const slug of ["plan-review-toolbar", "plan2-review"]) {
+            await makePrototype(dir, slug);
+            assertEquals(
+                (await validatePrototypeSetup(dir, slug)).relativeConfigPath,
+                `prototypes/${slug}/package.json`,
+            );
+        }
+        for (const slug of ["PlanReview", "../escape", "plan--review", "plan_review"]) {
+            await assertRejects(() => validatePrototypeSetup(dir, slug), Error, "kebab-case");
+        }
+    } finally {
+        await fsRm(dir, { recursive: true });
+    }
 });
 
 test("prototype setup requires ignored prototypes root, local Bun config, and dev task", async () => {
@@ -81,35 +79,6 @@ test("prototype setup fails when the root is not ignored", async () => {
     }
 });
 
-test("prototype runner constructs a local Bun dev task command with inherited I/O", async () => {
-    const dir = await makeGitFixture();
-    try {
-        await makePrototype(dir, "command-check");
-        const calls: PrototypeSpawnCall[] = [];
-        const code = await runPrototype(
-            {
-                cwd: dir,
-                slug: "command-check",
-            },
-            {
-                spawn: (command, options) => {
-                    calls.push({ command, options });
-                    return { status: Promise.resolve({ success: true, code: 0, signal: null }) };
-                },
-            },
-        );
-        assertEquals(code, 0);
-        assertEquals(calls.length, 1);
-        assertEquals(calls[0].command, process.execPath);
-        assertEquals(calls[0].options.args, ["run", "--cwd", join(dir, "prototypes", "command-check"), "dev"]);
-        assertEquals(calls[0].options.stdin, "inherit");
-        assertEquals(calls[0].options.stdout, "inherit");
-        assertEquals(calls[0].options.stderr, "inherit");
-    } finally {
-        await fsRm(dir, { recursive: true });
-    }
-});
-
 test("repository has no tracked executable prototype artifacts", async () => {
     assertEquals(await findTrackedPrototypeArtifacts({ cwd: getCwd() }), []);
 });
@@ -120,7 +89,7 @@ test("prototype launcher executes the configured Bun script and preserves its ex
         const root = await makePrototype(dir, "real-launch", "bun dev.js");
         await fsWriteFile(
             join(root, "dev.js"),
-            'import {writeFile} from "node:fs/promises"; await writeFile("ran.txt", "configured dev task"); process.exit(7);',
+            'import {writeFile} from "node:fs/promises"; await writeFile("ran.txt", "configured dev task"); const input = await Bun.stdin.text(); console.log("received:" + input.trim()); console.error("diagnostic"); process.exit(7);',
         );
         const result = await captureScriptProcess(process.execPath, {
             args: runtimeSourceArgs([
@@ -130,11 +99,14 @@ test("prototype launcher executes the configured Bun script and preserves its ex
                 "real-launch",
             ]),
             cwd: dir,
+            input: "owner input\n",
             stdout: "piped",
             stderr: "piped",
         });
         assertEquals(await fsReadFile(join(root, "ran.txt"), "utf8"), "configured dev task");
         assertEquals(result.code, 7);
+        assertEquals(new TextDecoder().decode(result.stdout).trim(), "received:owner input");
+        assertEquals(new TextDecoder().decode(result.stderr).includes("diagnostic"), true);
     } finally {
         await fsRm(dir, { recursive: true });
     }

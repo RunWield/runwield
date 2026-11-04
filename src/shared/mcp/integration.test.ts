@@ -16,10 +16,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { getCwd } from "../../constants.js";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
+import { openFileSessionStore } from "../session/file-session-store.ts";
 import { SessionHost } from "../session/session-host.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { buildAgentSession, runIsolatedAgentSession } from "../session/session.js";
-import { createSessionRuntime } from "../session/session-runtime.ts";
+import { SessionRuntime, createSessionRuntime } from "../session/session-runtime.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { startMcpIntegration } from "./integration.ts";
 import { getModelRegistry } from "../models/model-registry.ts";
@@ -33,11 +34,7 @@ interface McpResultDetails {
 
 const fixtureServer = join(dirname(fromFileUrl(import.meta.url)), "fixture-server.ts");
 
-function callFixtureTool(
-    tool: ToolDefinition,
-    marker: string,
-    onUpdate?: Parameters<ToolDefinition["execute"]>[3],
-) {
+function callFixtureTool(tool: ToolDefinition, marker: string, onUpdate?: Parameters<ToolDefinition["execute"]>[3]) {
     const context = {} as Parameters<ToolDefinition["execute"]>[4];
     return tool.execute(`call-${marker}`, { marker }, undefined, onUpdate, context);
 }
@@ -46,7 +43,7 @@ async function readLog(path: string): Promise<string[]> {
     try {
         return (await fsReadFile(path, "utf8")).trim().split("\n").filter(Boolean);
     } catch (error) {
-        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return [];
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
         throw error;
     }
 }
@@ -55,34 +52,18 @@ async function startFixtureIntegration(env: Record<string, string> = {}) {
     const logPath = await makeTempFile({ prefix: "runwield-mcp-log-" });
     const integrationResult = await startMcpIntegration({
         cwd: getCwd(),
-        servers: [{
-            name: "fixture",
-            command: process.execPath,
-            args: runtimeSourceArgs(["run", "-A", fixtureServer]),
-            env: { RUNWIELD_MCP_FIXTURE_LOG: logPath, ...env },
-            source: "request",
-        }],
+        servers: [
+            {
+                name: "fixture",
+                command: process.execPath,
+                args: runtimeSourceArgs(["run", "-A", fixtureServer]),
+                env: { RUNWIELD_MCP_FIXTURE_LOG: logPath, ...env },
+                source: "request",
+            },
+        ],
     });
     return { ...integrationResult, logPath };
 }
-
-test("MCP integration exposes a real stdio tool and forwards arguments", async () => {
-    const integrationResult = await startFixtureIntegration();
-    try {
-        assertEquals(integrationResult.warnings, []);
-        const tools = integrationResult.integration.getTools();
-        assertEquals(tools.map((tool) => tool.name), ["mcp__fixture__fixture_echo"]);
-        const context = {} as Parameters<typeof tools[0]["execute"]>[4];
-        const result = await tools[0].execute("call-1", { marker: "real-call" }, undefined, undefined, context);
-        assertEquals(result.content, [{ type: "text", text: "fixture-result:real-call" }]);
-        const logLines = await readLog(integrationResult.logPath);
-        assertStringIncludes(logLines.join("\n"), '"event":"call"');
-        assertStringIncludes(logLines.join("\n"), '"marker":"real-call"');
-    } finally {
-        await integrationResult.integration.close();
-        await fsRm(integrationResult.logPath).catch(() => {});
-    }
-});
 
 test("root Pi turns can call a real MCP fixture tool", async () => {
     await withRuntimeCommandFixture("runwield-root-mcp-call-", async (fixture) => {
@@ -99,9 +80,11 @@ test("root Pi turns can call a real MCP fixture tool", async () => {
             },
             (context) => {
                 sawToolResultInTurn = JSON.stringify(context.messages).includes("fixture-result:root-pi");
-                sawErrorResultInTurn = context.messages.some((message) =>
-                    message.role === "toolResult" && message.toolName === "mcp__fixture__fixture_echo" &&
-                    message.isError === true
+                sawErrorResultInTurn = context.messages.some(
+                    (message) =>
+                        message.role === "toolResult" &&
+                        message.toolName === "mcp__fixture__fixture_echo" &&
+                        message.isError === true,
                 );
                 return fauxAssistantMessage(fauxText("Root MCP turn complete."));
             },
@@ -109,13 +92,15 @@ test("root Pi turns can call a real MCP fixture tool", async () => {
         try {
             const sessionId = await runtime.createPromptReadySession({
                 cwd: fixture.projectRoot,
-                mcpServers: [{
-                    name: "fixture",
-                    command: process.execPath,
-                    args: runtimeSourceArgs(["run", "-A", fixtureServer]),
-                    env: { RUNWIELD_MCP_FIXTURE_LOG: logPath },
-                    source: "request",
-                }],
+                mcpServers: [
+                    {
+                        name: "fixture",
+                        command: process.execPath,
+                        args: runtimeSourceArgs(["run", "-A", fixtureServer]),
+                        env: { RUNWIELD_MCP_FIXTURE_LOG: logPath },
+                        source: "request",
+                    },
+                ],
             });
             const result = await runtime.promptSession(sessionId, { initialRequest: "Call the MCP fixture." });
             assertEquals(result.ok, true);
@@ -137,8 +122,14 @@ test("Pi MCP client follows paginated tool lists and retains tool annotations", 
     });
     try {
         const tools = integrationResult.integration.getTools();
-        assertEquals(tools.map((tool) => tool.name), ["mcp__fixture__first", "mcp__fixture__second"]);
-        assertEquals(tools.map((tool) => tool.annotations), [{ readOnlyHint: true }, { readOnlyHint: true }]);
+        assertEquals(
+            tools.map((tool) => tool.name),
+            ["mcp__fixture__first", "mcp__fixture__second"],
+        );
+        assertEquals(
+            tools.map((tool) => tool.annotations),
+            [{ readOnlyHint: true }, { readOnlyHint: true }],
+        );
         assertStringIncludes((await readLog(integrationResult.logPath)).join("\n"), '"cursor":"second-page"');
         const result = await callFixtureTool(tools[1], "paginated");
         assertEquals(result.content, [{ type: "text", text: "fixture-result:paginated" }]);
@@ -153,10 +144,12 @@ test("Pi MCP content conversion preserves structured results, errors, and embedd
     try {
         const [tool] = integrationResult.integration.getTools();
         const structured = await callFixtureTool(tool, "structured");
-        assertEquals(structured.content, [{
-            type: "text",
-            text: JSON.stringify({ marker: "structured", count: 2 }, null, 2),
-        }]);
+        assertEquals(structured.content, [
+            {
+                type: "text",
+                text: JSON.stringify({ marker: "structured", count: 2 }, null, 2),
+            },
+        ]);
         assertEquals(structured.details, {
             server: "fixture",
             tool: "fixture_echo",
@@ -204,10 +197,12 @@ test("Pi MCP transport inherits only RunWield's minimal environment and configur
             try {
                 const [tool] = integrationResult.integration.getTools();
                 const result = await callFixtureTool(tool, "environment");
-                assertEquals(result.content, [{
-                    type: "text",
-                    text: JSON.stringify({ inherited: null, configured: "configured-secret" }),
-                }]);
+                assertEquals(result.content, [
+                    {
+                        type: "text",
+                        text: JSON.stringify({ inherited: null, configured: "configured-secret" }),
+                    },
+                ]);
             } finally {
                 await integrationResult.integration.close();
                 await fsRm(integrationResult.logPath).catch(() => {});
@@ -234,13 +229,15 @@ test("root Agent handoff keeps the MCP fixture tool available", async () => {
         try {
             const sessionId = await runtime.createPromptReadySession({
                 cwd: fixture.projectRoot,
-                mcpServers: [{
-                    name: "fixture",
-                    command: process.execPath,
-                    args: runtimeSourceArgs(["run", "-A", fixtureServer]),
-                    env: { RUNWIELD_MCP_FIXTURE_LOG: logPath },
-                    source: "request",
-                }],
+                mcpServers: [
+                    {
+                        name: "fixture",
+                        command: process.execPath,
+                        args: runtimeSourceArgs(["run", "-A", fixtureServer]),
+                        env: { RUNWIELD_MCP_FIXTURE_LOG: logPath },
+                        source: "request",
+                    },
+                ],
             });
             const switched = await runtime.switchAgent(sessionId, { agentName: "planner" });
             assertEquals(switched.ok, true);
@@ -297,74 +294,51 @@ test("two Runtime Sessions own and close their MCP integrations independently", 
     });
 });
 
-test("HostedSession dehydration keeps MCP ownership and direct disposal closes only its integration", async () => {
-    const host = new SessionHost();
-    const first = await startFixtureIntegration();
-    const second = await startFixtureIntegration();
-    const firstSession = host.createSession({
-        id: "first-mcp-owner",
-        cwd: getCwd(),
-        managed: {
-            runwieldSessionId: "runwield-first",
-            projectId: "project",
-            piSessionId: "pi-first",
-            transcriptPath: first.logPath,
-            currentSegmentId: "segment-first",
-            generation: 0,
-            name: null,
-            activeAgent: null,
-            workflowContext: null,
-        },
+test("managed Runtime dehydration retains MCP ownership until disposal without closing its sibling", async () => {
+    await withRuntimeCommandFixture("mcp-dehydration-", async (fixture) => {
+        const host = new SessionHost();
+        const store = openFileSessionStore();
+        const runtime = new SessionRuntime({
+            sessionHost: host,
+            sessionStore: store,
+            ownsSessionStore: true,
+            ownerProcessKind: "test",
+            ownerInstanceId: crypto.randomUUID(),
+        });
+        const first = await startFixtureIntegration();
+        const second = await startFixtureIntegration();
+        try {
+            const firstId = await runtime.createPromptReadySession({ cwd: fixture.projectRoot });
+            const secondId = await runtime.createPromptReadySession({ cwd: fixture.projectRoot });
+            const firstSession = host.requireSession(firstId);
+            const secondSession = host.requireSession(secondId);
+            assert(firstSession.getManagedMetadata()?.transcriptPath);
+            await firstSession.setMcpIntegration(first.integration);
+            await secondSession.setMcpIntegration(second.integration);
+            fixture.setModelMessages([fauxAssistantMessage(fauxText("Settled managed turn."))]);
+            assertEquals((await runtime.promptSession(firstId, { initialRequest: "Finish this turn." })).ok, true);
+            assertEquals(
+                firstSession.getRootSessionManager(),
+                null,
+                "settled managed turn releases its hydrated manager",
+            );
+            assertEquals((await callFixtureTool(firstSession.getMcpRootTools()[0], "dehydrated-owner")).content, [
+                { type: "text", text: "fixture-result:dehydrated-owner" },
+            ]);
+            await runtime.closeSession(firstId);
+            assertStringIncludes((await readLog(first.logPath)).join("\n"), '"event":"shutdown"');
+            assertEquals((await readLog(second.logPath)).join("\n").includes('"event":"shutdown"'), false);
+            assertEquals((await callFixtureTool(secondSession.getMcpRootTools()[0], "second-owned")).content, [
+                { type: "text", text: "fixture-result:second-owned" },
+            ]);
+        } finally {
+            await runtime.closeAllSessionsWhenIdle();
+            await first.integration.close();
+            await second.integration.close();
+            await fsRm(first.logPath).catch(() => {});
+            await fsRm(second.logPath).catch(() => {});
+        }
     });
-    const secondSession = host.createSession({
-        id: "second-mcp-owner",
-        cwd: getCwd(),
-        managed: {
-            runwieldSessionId: "runwield-second",
-            projectId: "project",
-            piSessionId: "pi-second",
-            transcriptPath: second.logPath,
-            currentSegmentId: "segment-second",
-            generation: 0,
-            name: null,
-            activeAgent: null,
-            workflowContext: null,
-        },
-    });
-    try {
-        await firstSession.setMcpIntegration(first.integration);
-        await secondSession.setMcpIntegration(second.integration);
-        firstSession.dehydrateManagedSession();
-        const [firstTool] = firstSession.getMcpRootTools();
-        const context = {} as Parameters<typeof firstTool["execute"]>[4];
-        const dehydratedResult = await firstTool.execute(
-            "call-dehydrated",
-            { marker: "dehydrated-owner" },
-            undefined,
-            undefined,
-            context,
-        );
-        assertEquals(dehydratedResult.content, [{ type: "text", text: "fixture-result:dehydrated-owner" }]);
-
-        await host.disposeSession(firstSession.id);
-        assertStringIncludes((await readLog(first.logPath)).join("\n"), '"event":"shutdown"');
-        assertEquals((await readLog(second.logPath)).join("\n").includes('"event":"shutdown"'), false);
-
-        const [secondTool] = secondSession.getMcpRootTools();
-        const secondContext = {} as Parameters<typeof secondTool["execute"]>[4];
-        const liveResult = await secondTool.execute(
-            "call-second-live",
-            { marker: "second-owned" },
-            undefined,
-            undefined,
-            secondContext,
-        );
-        assertEquals(liveResult.content, [{ type: "text", text: "fixture-result:second-owned" }]);
-    } finally {
-        await host.dispose();
-        await fsRm(first.logPath).catch(() => {});
-        await fsRm(second.logPath).catch(() => {});
-    }
 });
 
 test("Runtime replacement carries MCP ownership to the new Session", async () => {
@@ -378,13 +352,15 @@ test("Runtime replacement carries MCP ownership to the new Session", async () =>
         try {
             const sessionId = await runtime.createPromptReadySession({
                 cwd: fixture.projectRoot,
-                mcpServers: [{
-                    name: "fixture",
-                    command: process.execPath,
-                    args: runtimeSourceArgs(["run", "-A", fixtureServer]),
-                    env: { RUNWIELD_MCP_FIXTURE_LOG: logPath },
-                    source: "request",
-                }],
+                mcpServers: [
+                    {
+                        name: "fixture",
+                        command: process.execPath,
+                        args: runtimeSourceArgs(["run", "-A", fixtureServer]),
+                        env: { RUNWIELD_MCP_FIXTURE_LOG: logPath },
+                        source: "request",
+                    },
+                ],
             });
             const replacementId = await runtime.replaceSessionForExecutionFollowUp(sessionId, {
                 planName: "mcp-replacement",
@@ -462,7 +438,7 @@ test("Pi MCP preserves embedded text and saves full oversized output", async () 
     const integrationResult = await startFixtureIntegration();
     try {
         const [tool] = integrationResult.integration.getTools();
-        const context = {} as Parameters<typeof tool["execute"]>[4];
+        const context = {} as Parameters<(typeof tool)["execute"]>[4];
         const resource = await tool.execute("call-resource", { marker: "resource" }, undefined, undefined, context);
         assertEquals(resource.content[0].type, "text");
         assert((resource.content[0] as { type: "text"; text: string }).text.length === 20_000);
@@ -513,7 +489,10 @@ test("Pi MCP updates root declarations and withdraws tools without reconnecting"
     try {
         await session.bindExtensions({});
         assertEquals(session.getActiveToolNames(), ["mcp__fixture__fixture_echo"]);
-        assertEquals(session.getAllTools().some((tool) => tool.name === "codemode"), false);
+        assertEquals(
+            session.getAllTools().some((tool) => tool.name === "codemode"),
+            false,
+        );
         const [tool] = integration.getTools();
         await callFixtureTool(tool, "change-tools");
         const deadline = Date.now() + 5_000;
@@ -521,7 +500,10 @@ test("Pi MCP updates root declarations and withdraws tools without reconnecting"
             await new Promise((resolve) => setTimeout(resolve, 10));
         }
         assertEquals(session.getActiveToolNames(), ["mcp__fixture__replacement"]);
-        assertEquals(integration.getTools().map((tool) => tool.name), ["mcp__fixture__replacement"]);
+        assertEquals(
+            integration.getTools().map((tool) => tool.name),
+            ["mcp__fixture__replacement"],
+        );
         binding.dispose();
         session.dispose();
         await callFixtureTool(integration.getTools()[0], "after-dispose");
@@ -566,7 +548,10 @@ test("RunWield root MCP updates preserve a narrowed Agent's other tool restricti
             const otherTools = session.getActiveToolNames().filter((name) => !name.startsWith("mcp__"));
             assertEquals(otherTools.includes("write"), false);
             assertEquals(otherTools.includes("bash"), false);
-            assertEquals(session.getAllTools().some((tool) => tool.name === "codemode"), false);
+            assertEquals(
+                session.getAllTools().some((tool) => tool.name === "codemode"),
+                false,
+            );
             const blocked = await session.extensionRunner?.emitToolCall({
                 type: "tool_call",
                 toolName: "mcp__unconfigured__write",
@@ -581,7 +566,10 @@ test("RunWield root MCP updates preserve a narrowed Agent's other tool restricti
             }
             assert(session.getActiveToolNames().includes("mcp__fixture__replacement"));
             assertEquals(session.getActiveToolNames().includes("mcp__fixture__fixture_echo"), false);
-            assertEquals(session.getActiveToolNames().filter((name) => !name.startsWith("mcp__")), otherTools);
+            assertEquals(
+                session.getActiveToolNames().filter((name) => !name.startsWith("mcp__")),
+                otherTools,
+            );
         } finally {
             session.dispose();
             await hosted.dispose();
@@ -596,13 +584,15 @@ test("an initially empty MCP inventory updates its root while isolated calls sta
         await fsWriteFile(toolsPath, "");
         const { integration } = await startMcpIntegration({
             cwd: fixture.projectRoot,
-            servers: [{
-                name: "fixture",
-                command: process.execPath,
-                args: runtimeSourceArgs(["run", "-A", fixtureServer]),
-                env: { RUNWIELD_MCP_FIXTURE_TOOLS_PATH: toolsPath },
-                source: "request",
-            }],
+            servers: [
+                {
+                    name: "fixture",
+                    command: process.execPath,
+                    args: runtimeSourceArgs(["run", "-A", fixtureServer]),
+                    env: { RUNWIELD_MCP_FIXTURE_TOOLS_PATH: toolsPath },
+                    source: "request",
+                },
+            ],
         });
         const hosted = new HostedSession({ id: crypto.randomUUID(), cwd: fixture.projectRoot });
         await hosted.setMcpIntegration(integration);
@@ -632,7 +622,10 @@ test("an initially empty MCP inventory updates its root while isolated calls sta
                 mcpIntegration: integration,
                 onExecutionSessionBuilt: (built) => {
                     inspected = true;
-                    assertEquals(built.tools.some((name) => name.startsWith("mcp__")), false);
+                    assertEquals(
+                        built.tools.some((name) => name.startsWith("mcp__")),
+                        false,
+                    );
                     assertEquals(
                         built.session?.getAllTools().some((tool: ToolDefinition) => tool.name.startsWith("mcp__")),
                         false,
@@ -653,13 +646,15 @@ test("a root with failed initial discovery receives tools after official MCP rec
         await fsWriteFile(failurePath, "1");
         const { integration, warnings } = await startMcpIntegration({
             cwd: fixture.projectRoot,
-            servers: [{
-                name: "fixture",
-                command: process.execPath,
-                args: runtimeSourceArgs(["run", "-A", fixtureServer]),
-                env: { RUNWIELD_MCP_FIXTURE_INIT_ERROR_PATH: failurePath },
-                source: "request",
-            }],
+            servers: [
+                {
+                    name: "fixture",
+                    command: process.execPath,
+                    args: runtimeSourceArgs(["run", "-A", fixtureServer]),
+                    env: { RUNWIELD_MCP_FIXTURE_INIT_ERROR_PATH: failurePath },
+                    source: "request",
+                },
+            ],
         });
         const hosted = new HostedSession({ id: crypto.randomUUID(), cwd: fixture.projectRoot });
         await hosted.setMcpIntegration(integration);
@@ -675,10 +670,12 @@ test("a root with failed initial discovery receives tools after official MCP rec
             await fsWriteFile(failurePath, "0");
             await integration.runCommand("reconnect fixture");
             assert(session.getActiveToolNames().includes("mcp__fixture__fixture_echo"));
-            assertEquals((await callFixtureTool(integration.getTools()[0], "recovered")).content, [{
-                type: "text",
-                text: "fixture-result:recovered",
-            }]);
+            assertEquals((await callFixtureTool(integration.getTools()[0], "recovered")).content, [
+                {
+                    type: "text",
+                    text: "fixture-result:recovered",
+                },
+            ]);
         } finally {
             session.dispose();
             await hosted.dispose();
@@ -702,19 +699,11 @@ test("Pi MCP status and reconnect commands work without a model turn", async () 
     }
 });
 
-test("MCP integration close waits for fixture server shutdown", async () => {
-    const integrationResult = await startFixtureIntegration();
-    await integrationResult.integration.close();
-    const logLines = await readLog(integrationResult.logPath);
-    assertStringIncludes(logLines.join("\n"), '"event":"shutdown"');
-    await fsRm(integrationResult.logPath).catch(() => {});
-});
-
 test("MCP tool calls honor cancellation signals and shut down cleanly", async () => {
     const integrationResult = await startFixtureIntegration();
     try {
         const [tool] = integrationResult.integration.getTools();
-        const context = {} as Parameters<typeof tool["execute"]>[4];
+        const context = {} as Parameters<(typeof tool)["execute"]>[4];
         const controller = new AbortController();
         const pending = tool.execute("call-slow", { marker: "slow" }, controller.signal, undefined, context);
         controller.abort();

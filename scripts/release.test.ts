@@ -10,40 +10,22 @@ import {
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
-import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../src/testing/assertions.ts";
+import { assertEquals, assertRejects, assertStringIncludes } from "../src/testing/assertions.ts";
 import { defineCommittedGitFixture } from "../src/shared/git-test-fixture.ts";
 
 import {
     type CommandResult,
     type CommandRunner,
+    main as runReleaseCommand,
     createCandidate,
     createStable,
     expectedReleaseAssetNames,
-    nextCandidateTag,
-    parseReleaseArgs,
-    parseReleaseTag,
-    previousStableTag,
     promoteCandidate,
     releaseMetadataForTag,
-    resolveRemoteTagCommit,
     stableTagForCandidate,
 } from "./release.js";
 
-test("parseReleaseTag accepts WLD stable and candidate tags", () => {
-    assertEquals(parseReleaseTag("v1.2.3"), {
-        tag: "v1.2.3",
-        major: 1,
-        minor: 2,
-        patch: 3,
-        rc: undefined,
-        kind: "stable",
-        stableTag: "v1.2.3",
-    });
-    assertEquals(parseReleaseTag("v1.2.3-rc.10").rc, 10);
-    assertEquals(stableTagForCandidate("v1.2.3-rc.1"), "v1.2.3");
-});
-
-test("parseReleaseTag rejects unsafe or unsupported tags", () => {
+test("release command rejects unsafe or unsupported tags before external operations", async () => {
     for (const tag of [
         "1.2.3",
         "v1.2.3-beta.1",
@@ -54,15 +36,12 @@ test("parseReleaseTag rejects unsafe or unsupported tags", () => {
         "v1.2.3-rc.01",
         "v1.2.3/bad",
         "v1.2.3\n",
+        "v1.2.3-rc.1\n",
     ]) {
-        assertThrows(() => parseReleaseTag(tag), Error);
+        const { deps, calls } = depsForCommands({});
+        await assertRejects(() => runReleaseCommand(["candidate", "--tag", tag], deps), Error);
+        assertEquals(calls, []);
     }
-});
-
-test("candidate progression and previous stable ignore Candidate tags", () => {
-    const tags = ["v0.8.9", "v0.8.10", "v0.8.11-rc.1", "v0.8.11-rc.10", "v0.8.11"];
-    assertEquals(previousStableTag(tags), "v0.8.11");
-    assertEquals(nextCandidateTag(tags), "v0.8.12-rc.1");
 });
 
 test("releaseMetadataForTag emits GitHub channel metadata", () => {
@@ -79,30 +58,6 @@ test("releaseMetadataForTag emits GitHub channel metadata", () => {
         buildVersion: "v1.2.3",
         prerelease: false,
         makeLatest: true,
-    });
-});
-
-test("expectedReleaseAssetNames covers all WLD release assets", () => {
-    const names = expectedReleaseAssetNames("v1.2.3-rc.1");
-    assertEquals(names.includes("wld-v1.2.3-rc.1-linux-x64.tar.gz"), true);
-    assertEquals(
-        names.some((name) => name.includes("windows")),
-        false,
-    );
-    assertEquals(names.includes("SHA256SUMS"), true);
-    assertEquals(names.includes("config.schema.json"), true);
-});
-
-test("parseReleaseArgs keeps command contracts explicit", () => {
-    assertEquals(parseReleaseArgs(["candidate", "--tag", "v1.2.3-rc.1", "--dry-run"]), {
-        command: "candidate",
-        tag: "v1.2.3-rc.1",
-        dryRun: true,
-    });
-    assertEquals(parseReleaseArgs(["promote", "--candidate", "v1.2.3-rc.1"]), {
-        command: "promote",
-        candidate: "v1.2.3-rc.1",
-        dryRun: false,
     });
 });
 
@@ -218,76 +173,6 @@ function repoDeps(repo: string) {
     };
 }
 
-test("resolveRemoteTagCommit peels annotated remote tags to the source commit", async () => {
-    const fixture = await createReleaseRepo();
-    try {
-        const sourceCommit = (await runCommand("git", ["rev-parse", "HEAD"], { cwd: fixture.repo })).trim();
-        await runCommand("git", ["tag", "-a", "v1.2.3-rc.1", "-m", "candidate"], { cwd: fixture.repo });
-        const tagObject = (await runCommand("git", ["rev-parse", "v1.2.3-rc.1"], { cwd: fixture.repo })).trim();
-        await runCommand("git", ["push", "origin", "refs/tags/v1.2.3-rc.1"], { cwd: fixture.repo });
-        const { deps } = repoDeps(fixture.repo);
-
-        assertEquals(await resolveRemoteTagCommit(deps, "v1.2.3-rc.1"), sourceCommit);
-        assertEquals(sourceCommit === tagObject, false);
-    } finally {
-        await fsRm(fixture.root, { recursive: true });
-    }
-});
-
-test("createCandidate dry-run reports a new release branch without publication side effects", async () => {
-    const { deps, calls, logs } = depsForCommands({
-        "git branch --show-current": { stdout: "main\n" },
-        "git status --porcelain": { stdout: "" },
-        "git rev-parse HEAD": { stdout: "abc123\n" },
-        "git rev-parse @{u}": { stdout: "abc123\n" },
-        "git tag --list v*": { stdout: "v1.2.2\n" },
-        "git ls-remote --tags origin refs/tags/v*": { stdout: "" },
-        "git rev-parse v1.2.3-rc.1^{commit}": { success: false, code: 1 },
-        "git ls-remote --tags origin refs/tags/v1.2.3-rc.1": { stdout: "" },
-        "git rev-parse v1.2.3^{commit}": { success: false, code: 1 },
-        "git ls-remote --tags origin refs/tags/v1.2.3": { stdout: "" },
-    });
-
-    await createCandidate(deps, "v1.2.3-rc.1", true);
-
-    assertEquals(
-        calls.some((call) => call.command === "git" && call.args.join(" ") === "rev-parse HEAD"),
-        true,
-    );
-    assertEquals(
-        logs.some((line) => line.includes("release/v1.2.3") && line.includes("abc123")),
-        true,
-    );
-    assertEquals(
-        logs.some((line) => line.includes("atomically push")),
-        true,
-    );
-    assertEquals(
-        calls.some((call) => call.command === "deno"),
-        false,
-    );
-    assertEquals(
-        calls.some((call) => call.command === "git" && call.args[0] === "tag" && call.args.includes("-a")),
-        false,
-    );
-    assertEquals(
-        calls.some((call) => call.command === "git" && call.args[0] === "push"),
-        false,
-    );
-    assertEquals(
-        calls.some((call) => call.command === "gh" && call.args.includes("create")),
-        false,
-    );
-    assertEquals(
-        calls.some((call) => call.command === "gh" && call.args.includes("edit")),
-        false,
-    );
-    assertEquals(
-        calls.some((call) => call.command === "glab"),
-        false,
-    );
-});
-
 test("Candidate dry-run preserves real checkout files, index, and refs", async () => {
     const fixture = await createReleaseRepo();
     try {
@@ -303,7 +188,7 @@ test("Candidate dry-run preserves real checkout files, index, and refs", async (
         const beforeRefs = await runCommand("git", ["show-ref"], { cwd: fixture.repo });
         const { deps, logs } = repoDeps(fixture.repo);
 
-        await createCandidate(deps, "v1.2.3-rc.1", true);
+        await runReleaseCommand(["candidate", "--tag", "v1.2.3-rc.1", "--dry-run"], deps);
 
         assertEquals(await runCommand("git", ["rev-parse", "HEAD"], { cwd: fixture.repo }), beforeHead);
         assertEquals(await runCommand("git", ["branch", "--show-current"], { cwd: fixture.repo }), beforeBranch);
@@ -348,35 +233,6 @@ test("later Candidate dry-run fetches remote source without moving local refs", 
     } finally {
         await fsRm(fixture.root, { recursive: true });
     }
-});
-
-test("createCandidate atomically publishes RC1 branch and tag without checkout checks", async () => {
-    const { deps, calls } = depsForCommands({
-        "git rev-parse HEAD": { stdout: "abc123\n" },
-        "git tag --list v*": { stdout: "v1.2.2\n" },
-        "git ls-remote --tags origin refs/tags/v*": { stdout: "" },
-        "git rev-parse v1.2.3-rc.1^{commit}": { success: false, code: 1 },
-        "git ls-remote --tags origin refs/tags/v1.2.3-rc.1": { stdout: "" },
-        "git rev-parse v1.2.3^{commit}": { success: false, code: 1 },
-        "git ls-remote --tags origin refs/tags/v1.2.3": { stdout: "" },
-    });
-
-    await createCandidate(deps, "v1.2.3-rc.1", false);
-
-    const tagCall = calls.find((call) => call.command === "git" && call.args[0] === "tag" && call.args.includes("-a"));
-    assertEquals(tagCall?.args.includes("abc123"), true);
-    const pushCall = calls.find((call) => call.command === "git" && call.args[0] === "push");
-    assertEquals(pushCall?.args.includes("--atomic"), true);
-    assertEquals(pushCall?.args.includes("abc123:refs/heads/release/v1.2.3"), true);
-    assertEquals(pushCall?.args.includes("refs/tags/v1.2.3-rc.1"), true);
-    assertEquals(
-        calls.some((call) => call.command === "deno"),
-        false,
-    );
-    assertEquals(
-        calls.some((call) => call.args[0] === "branch" || call.args[0] === "status"),
-        false,
-    );
 });
 
 test("createCandidate rejects duplicate GitHub release before creating a tag", async () => {
@@ -920,11 +776,22 @@ test("promoteCandidate tags the Candidate peeled commit instead of HEAD in a rea
         await runCommand("git", ["commit", "-am", "after candidate"], { cwd: fixture.repo });
         const headCommit = (await runCommand("git", ["rev-parse", "HEAD"], { cwd: fixture.repo })).trim();
         await runCommand("git", ["push", "origin", "HEAD:refs/heads/release/v1.2.3"], { cwd: fixture.repo });
-        const { deps } = repoDeps(fixture.repo);
-        await promoteCandidate(deps, "v1.2.3-rc.1", false);
+        const { deps, calls } = repoDeps(fixture.repo);
+        await runReleaseCommand(["promote", "--candidate", "v1.2.3-rc.1"], deps);
         const stableCommit = (await runCommand("git", ["rev-parse", "v1.2.3^{commit}"], { cwd: fixture.repo })).trim();
         assertEquals(stableCommit, candidateCommit);
         assertEquals(stableCommit === headCommit, false);
+        const annotation = await runCommand("git", ["for-each-ref", "--format=%(contents)", "refs/tags/v1.2.3"], {
+            cwd: fixture.repo,
+        });
+        assertStringIncludes(annotation, "Promoted-From: v1.2.3-rc.1");
+        assertEquals(annotation.includes(candidateCommit), false);
+        assertEquals(
+            calls
+                .filter((call) => call.command === "gh")
+                .every((call) => call.args[0] === "release" && call.args[1] === "view"),
+            true,
+        );
     } finally {
         await fsRm(fixture.root, { recursive: true });
     }
@@ -1019,7 +886,7 @@ test("promoteCandidate rejects stale local Candidate tags instead of promoting l
     );
 });
 
-test("promoteCandidate records only Candidate tag provenance and never edits host releases", async () => {
+test("Candidate promotion dry-run creates no tag and never edits host releases", async () => {
     const assets = expectedReleaseAssetNames("v1.2.3-rc.1").map((name) => ({ name }));
     const { deps, calls } = depsForCommands({
         "git rev-parse v1.2.3^{commit}": { success: false, code: 1 },
@@ -1063,40 +930,6 @@ test("promoteCandidate rejects incomplete Candidate assets before tag creation",
     await assertRejects(() => promoteCandidate(deps, "v1.2.3-rc.1", true), Error, "missing asset");
     assertEquals(
         calls.some((call) => (call.args[0] === "tag" && call.args.includes("-a")) || call.args[0] === "push"),
-        false,
-    );
-});
-
-test("non-dry-run promotion annotation contains Candidate tag without a source SHA field", async () => {
-    const assets = expectedReleaseAssetNames("v1.2.3-rc.1").map((name) => ({ name }));
-    const { deps, calls } = depsForCommands({
-        "git rev-parse v1.2.3^{commit}": { success: false, code: 1 },
-        "git ls-remote --tags origin refs/tags/v1.2.3": { stdout: "" },
-        "git rev-parse v1.2.3-rc.1^{commit}": { stdout: "candidate-sha\n" },
-        "git ls-remote --tags origin refs/tags/v1.2.3-rc.1*": {
-            stdout: "tag-object\trefs/tags/v1.2.3-rc.1\ncandidate-sha\trefs/tags/v1.2.3-rc.1^{}\n",
-        },
-        "gh release view v1.2.3-rc.1 --json isPrerelease,isDraft,assets": {
-            stdout: JSON.stringify({ isPrerelease: true, isDraft: false, assets }),
-        },
-    });
-
-    await promoteCandidate(deps, "v1.2.3-rc.1", false);
-
-    const tagCall = calls.find((call) => call.command === "git" && call.args[0] === "tag" && call.args.includes("-a"));
-    assertStringIncludes(tagCall?.args.join("\n") || "", "Promoted-From: v1.2.3-rc.1");
-    assertEquals((tagCall?.args.join("\n") || "").includes("candidate-sha"), true, "tag target may be the commit");
-    assertEquals(
-        (tagCall?.args.at(-1) || "").includes("candidate-sha"),
-        false,
-        "annotation must not persist source SHA",
-    );
-    assertEquals(
-        calls.some((call) => call.command === "deno"),
-        false,
-    );
-    assertEquals(
-        calls.some((call) => call.args[0] === "worktree"),
         false,
     );
 });

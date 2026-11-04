@@ -1,10 +1,42 @@
 import { test } from "node:test";
 import { readFile as fsReadFile } from "node:fs/promises";
 import { match as assertMatch } from "node:assert/strict";
+import { load } from "js-yaml";
 import { assertEquals, assertStringIncludes } from "../src/testing/assertions.ts";
 
-interface PackageScriptConfig {
-    scripts: Record<string, string>;
+interface ReleaseStep {
+    name?: string;
+    id?: string;
+    uses?: string;
+    if?: string;
+    run?: string;
+    with?: Record<string, string | boolean | number>;
+    env?: Record<string, string>;
+}
+interface ReleaseJob {
+    needs?: string | string[];
+    if?: string;
+    "runs-on"?: string;
+    "timeout-minutes"?: number;
+    steps: ReleaseStep[];
+}
+interface ReleaseWorkflow {
+    on: {
+        push?: { branches?: string[]; tags?: string[] };
+        workflow_dispatch?: { inputs: Record<string, { required?: boolean; default?: string | boolean }> };
+    };
+    jobs: Record<string, ReleaseJob>;
+}
+async function workflow(name = "release"): Promise<ReleaseWorkflow> {
+    return load(await fsReadFile(`.github/workflows/${name}.yml`, "utf8")) as ReleaseWorkflow;
+}
+function script(job: ReleaseJob): string {
+    return job.steps.map((step) => step.run || "").join("\n");
+}
+function checkout(job: ReleaseJob): ReleaseStep {
+    const step = job.steps.find((step) => step.uses?.startsWith("actions/checkout@"));
+    if (!step) throw new Error("Release job has no checkout");
+    return step;
 }
 
 test("release prompt starts with the three release choices before policy discovery", async () => {
@@ -17,11 +49,8 @@ test("release prompt starts with the three release choices before policy discove
     assertStringIncludes(prompt, "Create Candidate");
     assertStringIncludes(prompt, "Promote Candidate");
     assertStringIncludes(prompt, "Create Stable Directly");
-    assertStringIncludes(prompt, "agent: engineer");
-    assertStringIncludes(prompt, "You are running inside the RunWield harness");
     assertStringIncludes(prompt, "Follow repository-specific policy first");
     assertMatch(prompt, /If no repository-specific release-note scope is\s+documented/);
-    assertStringIncludes(prompt, "RunWield fallback format");
     assertStringIncludes(prompt, "make notes cumulative from the previous Stable");
     assertStringIncludes(prompt, "validation-relevant changes since the prior Candidate");
     assertStringIncludes(prompt, "shared Candidate source commit");
@@ -33,129 +62,11 @@ test("release prompt starts with the three release choices before policy discove
     assertEquals(prompt.includes("tools:"), false);
 });
 
-test("wld release policy distinguishes repository-specific policy from generic wld usage", async () => {
-    const policy = await fsReadFile(new URL("../docs/releasing.md", import.meta.url), "utf8");
-
-    assertStringIncludes(policy, "This document is wld's release policy");
-    assertStringIncludes(policy, "wld users releasing other repositories");
-    assertMatch(policy, /repository's\s+release policy and automation/);
-    assertStringIncludes(policy, "The Candidate tag is the canonical source reference");
-    assertStringIncludes(policy, "Do not store a duplicate source commit hash");
-    assertStringIncludes(policy, "Promoted-From: <candidate-tag>");
-    assertStringIncludes(
-        policy.replace(/\s+/g, " "),
-        "must not call `gh release create`, `gh release edit`, `glab release create`, or `glab release edit`",
-    );
-    assertStringIncludes(policy, "bash install.sh vX.Y.Z-rc.N");
-    assertStringIncludes(policy, "gh auth status");
-    assertStringIncludes(policy, "permission to read releases before tagging");
-    assertStringIncludes(policy, "`release/vMAJOR.MINOR.PATCH` as its Release Branch");
-    assertStringIncludes(policy, "Later Candidates resolve the live pushed Release Branch from `origin`");
-    assertStringIncludes(policy, "Never merge `main` into an active Release Branch");
-    assertStringIncludes(policy.replace(/\s+/g, " "), "explicitly forward-port the fix to `main`");
-    assertStringIncludes(policy, "This fixed list does not grow automatically");
-});
-
-test("release workflow keeps tag publication and manual recovery channel-safe", async () => {
-    const workflow = await fsReadFile(".github/workflows/release.yml", "utf8");
-
-    assertStringIncludes(workflow, 'git fetch --no-recurse-submodules --no-tags origin "refs/tags/$RELEASE_TAG"');
-    assertStringIncludes(workflow, "workflow_dispatch:");
-    assertMatch(workflow, /workflow_dispatch:[\s\S]*tag:[\s\S]*required: false/);
-    assertStringIncludes(workflow, "RELEASE_TAG: ${{ inputs.tag || github.ref_name }}");
-    assertStringIncludes(
-        workflow.slice(workflow.indexOf("    metadata:"), workflow.indexOf("    ci-shards:")),
-        "ref: ${{ github.sha }}",
-    );
-    assertMatch(workflow, /release-check:[\s\S]*ref: \$\{\{ needs\.metadata\.outputs\.source_sha \}\}/);
-    assertMatch(workflow, /build:[\s\S]*ref: \$\{\{ needs\.metadata\.outputs\.source_sha \}\}/);
-    assertMatch(workflow, /release:[\s\S]*ref: \$\{\{ needs\.metadata\.outputs\.source_sha \}\}/);
-    assertStringIncludes(workflow, "bun run release:metadata --tag");
-    assertStringIncludes(workflow, "WLD_BUILD_VERSION");
-    assertStringIncludes(workflow, "prerelease: ${{ needs.metadata.outputs.prerelease }}");
-    assertStringIncludes(workflow, "make_latest: ${{ needs.metadata.outputs.make_latest }}");
-    assertStringIncludes(workflow, "preserve_order: true");
-    assertStringIncludes(workflow, "overwrite_files: false");
-    assertStringIncludes(workflow, "config.schema.json");
-    assertStringIncludes(workflow, "release-upload/*");
-    assertStringIncludes(workflow, "scripts/release-assets.ts");
-    assertStringIncludes(workflow, "wld-${VERSION}-${{ matrix.asset_suffix }}");
-
-    const policy = await fsReadFile("docs/releasing.md", "utf8");
-    assertStringIncludes(policy, "required-tag manual dispatch solely for recovery");
-    assertStringIncludes(
-        policy.replace(/\s+/g, " "),
-        "Never use manual recovery to bypass a genuine failure in tagged product source",
-    );
-});
-
-for (const jobName of ["metadata", "docs-artifact", "assets", "homebrew-check", "homebrew-package"]) {
-    test(`${jobName} checks out local dependencies before frozen installation`, async () => {
-        const workflow = await fsReadFile(".github/workflows/release.yml", "utf8");
-        const job = workflow.slice(workflow.indexOf(`    ${jobName}:`)).split(/\n {4}[a-z][a-z-]+:/)[0];
-        const checkout = job.split("uses: actions/checkout@v5")[1].split(/\n {12}- /)[0];
-
-        assertStringIncludes(checkout, "submodules: recursive");
-        assertStringIncludes(job, "bun run install:locked");
-    });
-}
-
-test("Windows release builds, checks, and WinGet publication stay paused", async () => {
-    const workflow = await fsReadFile(".github/workflows/release.yml", "utf8");
-    assertEquals(/windows|winget/i.test(workflow), false);
-    for (const file of ["release-windows.yml", "windows-package-diagnostic.yml"]) {
-        const paused = await fsReadFile(`.github/workflows/${file}`, "utf8");
-        assertMatch(paused, /jobs:\n {4}[a-z-]+:\n[^]*?if: \$\{\{ false \}\}/);
-    }
-});
-
-test("Stable releases validate on macOS before publishing the Homebrew tap", async () => {
-    const workflow = await fsReadFile(".github/workflows/release.yml", "utf8");
-    const jobStart = workflow.indexOf("    homebrew-package:");
-    const job = workflow.slice(jobStart);
-    const dependencyTapIndex = job.indexOf("brew tap 1broseidon/tap");
-    const checkIndex = job.indexOf("bun run package:homebrew:check --tap homebrew-tap");
-    const pushIndex = job.indexOf("bun scripts/publish-homebrew.ts");
-
-    assertEquals(jobStart >= 0, true);
-    assertStringIncludes(job, "runs-on: macos-15");
-    assertStringIncludes(job, "needs.metadata.outputs.kind == 'stable'");
-    assertStringIncludes(job, "repository: RunWield/homebrew-tap");
-    assertStringIncludes(workflow, "gh api repos/RunWield/homebrew-tap --jq '.permissions.push' | grep -Fx true");
-    assertStringIncludes(job, "token: ${{ secrets.HOMEBREW_TAP_TOKEN }}");
-    assertStringIncludes(job, "HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}");
-    assertEquals(dependencyTapIndex >= 0, true);
-    assertEquals(checkIndex > dependencyTapIndex, true);
-    assertEquals(pushIndex > checkIndex, true);
-});
-
-test("release-tier Golden TUI alias does not run TODO goldens", async () => {
-    const config: PackageScriptConfig = JSON.parse(await fsReadFile("package.json", "utf8"));
-    const normalTest = String(config.scripts?.test || "");
-    const extensiveGoldenTest = String(config.scripts?.["test:golden-tui:extensive"] || "");
-
-    assertEquals(normalTest.includes("RUNWIELD_RUN_TODO_GOLDENS"), false);
-    assertEquals(extensiveGoldenTest.includes("RUNWIELD_RUN_TODO_GOLDENS"), false);
-    assertStringIncludes(extensiveGoldenTest, "src/ui/tui/golden-scenarios");
-});
-
-test("release workflow runs source, Golden, and binary qualification in parallel", async () => {
-    const releaseCheck = await fsReadFile(new URL("./release-check.js", import.meta.url), "utf8");
-    const workflow = await fsReadFile(".github/workflows/release.yml", "utf8");
-
-    assertStringIncludes(releaseCheck, '["run", "test:golden-tui:extensive"]');
-    assertStringIncludes(workflow, "bun scripts/release-check.js --runtime bun --binary-only --build-version");
-    assertStringIncludes(
-        workflow,
-        "bun scripts/run-tests.js --isolated src/ui/tui/testing src/ui/tui/golden-scenarios --fail-fast --timings-file",
-    );
-    assertMatch(workflow, /golden-shards:\n[\s\S]*?needs: metadata/);
-    assertMatch(workflow, /release-check:\n[\s\S]*?needs: metadata/);
-    const build = workflow.slice(workflow.indexOf("    build:"), workflow.indexOf("    assets:"));
-    assertStringIncludes(build, "needs: metadata");
-    const assets = workflow.slice(workflow.indexOf("    assets:"), workflow.indexOf("    native-package-check:"));
-    assertStringIncludes(assets, "needs: [metadata, build, docs-artifact]");
-    const release = workflow.slice(workflow.indexOf("    release:"), workflow.indexOf("    homebrew-package:"));
+// Workflow YAML is a deployed interface to GitHub Actions. Check the parsed
+// graph and action inputs, rather than finding tokens anywhere in source text.
+test("publication requires all qualification gates and preserves release channel and immutable bytes", async () => {
+    const jobs = (await workflow()).jobs;
+    const release = jobs.release;
     for (const gate of [
         "ci",
         "golden",
@@ -166,173 +77,126 @@ test("release workflow runs source, Golden, and binary qualification in parallel
         "unix-checks",
         "containers-checks",
     ]) {
-        assertStringIncludes(release, `- ${gate}\n`);
-        assertStringIncludes(release, `needs.${gate}.result == 'success'`);
+        assertEquals(release.needs?.includes(gate), true, `Publication must depend on ${gate}`);
+        assertStringIncludes(release.if || "", `needs.${gate}.result == 'success'`);
     }
+    const publish = release.steps.find((step) => step.uses?.startsWith("softprops/action-gh-release@"));
+    assertEquals(publish?.if, "needs.metadata.outputs.published != 'true'");
+    assertEquals(publish?.with?.tag_name, "${{ needs.metadata.outputs.tag }}");
+    assertEquals(publish?.with?.prerelease, "${{ needs.metadata.outputs.prerelease }}");
+    assertEquals(publish?.with?.make_latest, "${{ needs.metadata.outputs.make_latest }}");
+    assertEquals(publish?.with?.overwrite_files, false);
+    assertEquals(publish?.with?.fail_on_unmatched_files, true);
+    assertEquals(publish?.with?.files, "release-upload/*");
+    assertEquals(jobs.assets.needs, ["metadata", "build", "docs-artifact"]);
+    assertEquals(jobs.build.if, "needs.metadata.outputs.published != 'true'");
+    const recover = jobs.assets.steps.find((step) => step.if === "needs.metadata.outputs.published == 'true'");
+    assertStringIncludes(recover?.run || "", 'gh release download "$RELEASE_TAG"');
+    assertStringIncludes(recover?.run || "", 'release-upload "$RELEASE_TAG" published published-release.json');
 });
 
-test("Golden workflow covers direct main and release branch pushes with measured concurrency", async () => {
-    const workflow = await fsReadFile(".github/workflows/golden.yml", "utf8");
-
-    assertMatch(workflow, /push:\n\s+branches:\n\s+- main\n\s+- "release\/\*\*"/);
-    assertStringIncludes(workflow, "WLD_TEST_CONCURRENCY: ${{ inputs.concurrency || '3' }}");
-    assertStringIncludes(workflow, '                    - "4"');
-    assertStringIncludes(workflow, "--timings-file .ci-cache/golden-timings.json");
-});
-
-test("release CLI publishes tags without owning qualification or host release mutation", async () => {
-    const script = await fsReadFile(new URL("./release.js", import.meta.url), "utf8");
-
-    assertEquals(script.includes("release create"), false);
-    assertEquals(script.includes("release edit"), false);
-    assertStringIncludes(script, '"gh", [');
-    assertStringIncludes(script, '"release",');
-    assertStringIncludes(script, '"view",');
-    assertEquals(script.includes('"release:check"'), false);
-    assertEquals(script.includes('"submodules:check:remote"'), false);
-    assertEquals(script.includes('"branch", "--show-current"'), false);
-    assertEquals(script.includes('"status", "--porcelain"'), false);
-});
-
-test("README links to wld release policy", async () => {
-    const readme = await fsReadFile(new URL("../README.md", import.meta.url), "utf8");
-    assertStringIncludes(readme, "[releasing](docs/releasing.md)");
-});
-
-test("release publication waits for Candidate and Stable Homebrew checks", async () => {
-    const workflow = await fsReadFile(".github/workflows/release.yml", "utf8");
-    const release = workflow.slice(workflow.indexOf("    release:"), workflow.indexOf("    homebrew-package:"));
-    assertStringIncludes(release, "- homebrew-check");
-    const check = workflow.slice(workflow.indexOf("    homebrew-check:"), workflow.indexOf("    release:"));
-    assertEquals(check.split("        steps:")[0].includes("kind == 'stable'"), false);
-    assertStringIncludes(check, "--test-only");
-    assertStringIncludes(check, "brew tap 1broseidon/tap");
-});
-
-test("published recovery skips builds and verifies existing bytes before packaging", async () => {
-    const workflow = await fsReadFile(".github/workflows/release.yml", "utf8");
-    assertStringIncludes(workflow, "if: needs.metadata.outputs.published != 'true'");
-    assertStringIncludes(workflow, 'gh release download "$RELEASE_TAG"');
-    assertStringIncludes(workflow, 'release-upload "$RELEASE_TAG" published');
-    assertStringIncludes(workflow, "Retain Golden failure evidence");
-});
-
-for (const jobName of ["homebrew-check", "homebrew-package"]) {
-    test(`${jobName} trusts only the required dependency formulas before validation`, async () => {
-        const workflow = await fsReadFile(".github/workflows/release.yml", "utf8");
-        const start = workflow.indexOf(`    ${jobName}:`);
-        assertEquals(start >= 0, true);
-        const nextJob = workflow.slice(start + 1).search(/\n {4}[a-z][a-z-]*:/);
-        const end = nextJob < 0 ? -1 : start + 1 + nextJob;
-        const job = workflow.slice(start, end < 0 ? undefined : end);
-        const updateIndex = job.indexOf("brew update\n");
-        const tapIndex = job.indexOf("brew tap 1broseidon/tap");
-        const trustIndex = job.indexOf("brew trust --formula 1broseidon/tap/cymbal\n");
-        const checkIndex = job.indexOf("bun run package:homebrew:check");
-        assertEquals(updateIndex >= 0, true, "Explicitly refresh Core metadata even when auto-update is disabled");
-        assertEquals(tapIndex > updateIndex, true);
-        assertEquals(trustIndex > tapIndex, true, "Trust Cymbal after registering its tap");
-        assertEquals(checkIndex > trustIndex, true);
-        assertEquals(job.includes("brew trust 1broseidon/tap"), false);
-        assertEquals(job.includes("1broseidon/tap/ketch"), false);
-        assertEquals(workflow.includes("HOMEBREW_NO_REQUIRE_TAP_TRUST"), false);
-    });
-}
-
-test("native Homebrew jobs use a bottle-supported runner and a bounded timeout", async () => {
-    const workflow = await fsReadFile(".github/workflows/release.yml", "utf8");
-    for (const name of ["homebrew-check", "homebrew-package"]) {
-        const job = workflow.slice(workflow.indexOf(`    ${name}:`)).split(/\n {4}[a-z][a-z-]+:/)[0];
-        assertStringIncludes(job, "runs-on: macos-15");
-        assertStringIncludes(job, "timeout-minutes: 30");
-    }
-});
-
-test("manual recovery preserves workflow source checks and tagged product qualification", async () => {
-    const workflow = await fsReadFile(".github/workflows/release.yml", "utf8");
-    const ci = workflow.slice(workflow.indexOf("    ci-shards:"), workflow.indexOf("    golden-shards:"));
-    assertStringIncludes(ci, 'git checkout -B main "$GITHUB_SHA"');
-    assertEquals(ci.includes("ref: ${{ needs.metadata.outputs.source_sha }}"), false);
-    const golden = workflow.slice(workflow.indexOf("    golden-shards:"), workflow.indexOf("    release-check:"));
-    assertStringIncludes(golden, "ref: ${{ needs.metadata.outputs.source_sha }}");
-    // Existing immutable RCs have the isolated runner but predate package Golden aliases.
-    assertStringIncludes(golden, "bun scripts/run-tests.js --isolated src/ui/tui/testing src/ui/tui/golden-scenarios");
-    assertEquals(golden.includes("bun run test:golden"), false);
-});
-
-test("release executables use pinned Bun while native package and Stable channel gates remain", async () => {
-    const workflow = await fsReadFile(".github/workflows/release.yml", "utf8");
-    const build = workflow.slice(workflow.indexOf("    build:"), workflow.indexOf("    assets:"));
-    const binaryGate = workflow.slice(workflow.indexOf("    release-check:"), workflow.indexOf("    build:"));
-    assertStringIncludes(build, "bun-version-file: .bun-version");
-    assertStringIncludes(build, "bun run install:locked");
-    assertStringIncludes(build, "if [ -f scripts/compile-command.ts ]; then");
-    assertStringIncludes(build, 'bun run compile --output "${{ matrix.binary_name }}" --target "${{ matrix.target }}"');
-    // Historical tag recovery must use the Bun command that exists in RC1.
-    assertStringIncludes(build, 'bun run compile:bun "${{ matrix.binary_name }}" "${{ matrix.bun_target }}"');
-    assertEquals(build.includes("scripts/compile.js"), false);
-    assertStringIncludes(build, 'embedded.runtime !== "bun"');
-    assertStringIncludes(binaryGate, "scripts/release-check.js --runtime bun --binary-only");
-    for (const target of ["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64"]) {
-        assertStringIncludes(build, `bun_target: bun-${target}`);
-    }
-});
-
-test("Stable policy owns docs artifacts, branch deployment, and CI integration recovery", async () => {
-    const policy = (await fsReadFile("docs/releasing.md", "utf8")).replace(/\s+/g, " ");
-    for (const phrase of [
-        "Stable docs are qualified release artifacts",
-        "Candidates never build or publish docs assets",
-        "exactly one merge commit per Stable release",
-        "CI merges the final remote Release Branch tip into `main`",
-        "CI waits for that deployment",
-        "gh workflow run docs.yml --ref docs/stable -f tag=<stable-tag>",
-        "git merge-base --is-ancestor origin/release/vX.Y.Z origin/main",
-        "Only after the ancestry check succeeds",
-        "Local branch cleanup remains a separate operator step",
-    ])
-        assertStringIncludes(policy, phrase);
-    assertEquals(policy.includes("gh workflow run docs.yml --ref main"), false);
-    assertEquals(policy.includes("merge and branch cleanup are separate operator steps"), false);
-});
-
-test("Homebrew release jobs qualify existing dependency snapshots without selecting Mnemoteca", async () => {
-    const workflow = await fsReadFile(".github/workflows/release.yml", "utf8");
-    for (const name of ["homebrew-check", "homebrew-package"]) {
-        const job = workflow.slice(workflow.indexOf(`    ${name}:`)).split(/\n {4}[a-z][a-z-]+:/)[0];
-        assertEquals(job.includes("--mnemoteca-tag"), false);
-        const checkout = job.indexOf("repository: RunWield/homebrew-tap");
-        const render = job.indexOf("bun run package:homebrew ");
-        const check = job.indexOf("bun run package:homebrew:check");
-        assertEquals(checkout >= 0 && render > checkout && check > render, true);
-        if (name === "homebrew-package") {
-            const archive = job.indexOf("tar -czf");
-            const publish = job.indexOf("bun scripts/publish-homebrew.ts");
-            assertEquals(archive > check && publish > archive, true);
-        }
-    }
-    const publication = workflow.slice(
-        workflow.indexOf("    homebrew-package:"),
-        workflow.indexOf("    publish-docs:"),
-    );
-    assertStringIncludes(publication, 'echo "sha=$(git -C homebrew-tap-publish rev-parse HEAD)"');
-    assertStringIncludes(publication, "TAP_BASE: ${{ steps.tap-base.outputs.sha }}");
+test("recovery qualifies immutable tagged product with current workflow tooling", async () => {
+    const config = await workflow();
+    assertEquals(config.on.push?.tags, ["v*"]);
+    assertEquals(config.on.workflow_dispatch?.inputs.tag.required, false);
+    const jobs = config.jobs;
+    assertEquals(checkout(jobs.metadata).with?.ref, "${{ github.sha }}");
     assertStringIncludes(
-        publication,
-        'bun scripts/publish-homebrew.ts homebrew-tap-publish homebrew-tap "$TAP_BASE" "$RELEASE_TAG"',
+        script(jobs.metadata),
+        'git fetch --no-recurse-submodules --no-tags origin "refs/tags/$RELEASE_TAG"',
     );
-    assertEquals(publication.includes("cp homebrew-tap/Formula/mnemoteca.rb"), false);
-    assertEquals(publication.includes("cp homebrew-tap/README.md"), false);
-    assertEquals(publication.indexOf("path: homebrew-tap-publish") < publication.indexOf("Render Homebrew tap"), true);
+    for (const name of ["release-check", "build", "release", "golden-shards"]) {
+        assertEquals(checkout(jobs[name]).with?.ref, "${{ needs.metadata.outputs.source_sha }}");
+    }
+    assertEquals(checkout(jobs["ci-shards"]).with?.ref, "${{ github.sha }}");
+    assertStringIncludes(script(jobs["ci-shards"]), 'git checkout -B main "$GITHUB_SHA"');
+    assertStringIncludes(
+        script(jobs["golden-shards"]),
+        "bun scripts/run-tests.js --isolated src/ui/tui/testing src/ui/tui/golden-scenarios",
+    );
+    assertStringIncludes(script(jobs["release-check"]), "--runtime bun --binary-only");
+    assertStringIncludes(
+        script(jobs.build),
+        'bun run compile:bun "${{ matrix.binary_name }}" "${{ matrix.bun_target }}"',
+    );
+    const compile = jobs.build.steps.find((step) => step.run?.includes("bun run compile --output"));
+    assertEquals(compile?.env?.WLD_BUILD_VERSION, "${{ needs.metadata.outputs.build_version }}");
+    const schema = jobs.assets.steps.find((step) => step.with?.path === "release-source");
+    assertEquals(schema?.with?.ref, "${{ needs.metadata.outputs.source_sha }}");
 });
 
-test("manual Homebrew preparation selects packages explicitly and excludes checkout metadata", async () => {
-    const workflow = await fsReadFile(".github/workflows/homebrew-prepare.yml", "utf8");
-    assertEquals(workflow.includes("default: v0.3.3"), false);
-    assertStringIncludes(workflow, 'test -n "$WLD_TAG$MNEMOTECA_TAG"');
-    assertStringIncludes(workflow, "repository: RunWield/homebrew-tap");
-    assertStringIncludes(workflow, "persist-credentials: false");
-    assertStringIncludes(workflow, "args=(--output homebrew-tap)");
-    assertStringIncludes(workflow, "-C homebrew-tap Formula README.md runwield-homebrew-package.json");
-    assertEquals(workflow.includes("-C homebrew-tap ."), false);
+test("release tooling installs local dependencies before qualification", async () => {
+    const jobs = (await workflow()).jobs;
+    for (const name of ["metadata", "docs-artifact", "assets", "homebrew-check", "homebrew-package", "build"]) {
+        const job = jobs[name];
+        assertEquals(checkout(job).with?.submodules, "recursive", name);
+        const install = job.steps.findIndex((step) => step.run === "bun run install:locked");
+        assertEquals(install > job.steps.indexOf(checkout(job)), true, name);
+        assertEquals(
+            job.steps.some(
+                (step) =>
+                    step.with?.["bun-version-file"] ===
+                    (name === "docs-artifact" ? "tooling/.bun-version" : ".bun-version"),
+            ),
+            true,
+        );
+    }
+});
+
+test("Homebrew validates both channels but publishes only qualified Stable dependency snapshots", async () => {
+    const jobs = (await workflow()).jobs;
+    const check = jobs["homebrew-check"];
+    const publish = jobs["homebrew-package"];
+    assertEquals(check.if?.includes("kind == 'stable'"), false);
+    assertStringIncludes(script(check), "--test-only");
+    assertStringIncludes(publish.if || "", "needs.metadata.outputs.kind == 'stable'");
+    assertStringIncludes(publish.if || "", "needs.release.result == 'success'");
+    for (const job of [check, publish]) {
+        assertEquals(job["runs-on"], "macos-15");
+        assertEquals(job["timeout-minutes"], 30);
+        const commands = script(job);
+        assertEquals(commands.includes("--mnemoteca-tag"), false);
+        assertEquals(commands.includes("HOMEBREW_NO_REQUIRE_TAP_TRUST"), false);
+        const update = commands.indexOf("brew update\n");
+        const tap = commands.indexOf("brew tap 1broseidon/tap");
+        const trust = commands.indexOf("brew trust --formula 1broseidon/tap/cymbal\n");
+        const qualify = commands.indexOf("bun run package:homebrew:check");
+        assertEquals(update >= 0 && tap > update && trust > tap && qualify > trust, true);
+        assertEquals(commands.includes("brew trust 1broseidon/tap"), false);
+        const base = job.steps.findIndex((step) => step.with?.repository === "RunWield/homebrew-tap");
+        const render = job.steps.findIndex((step) => step.run?.includes("bun run package:homebrew "));
+        assertEquals(base >= 0 && render > base, true);
+    }
+    const commands = script(publish);
+    const validate = commands.indexOf("bun run package:homebrew:check");
+    const archive = commands.indexOf("tar -czf");
+    const publication = commands.indexOf("bun scripts/publish-homebrew.ts");
+    assertEquals(archive > validate && publication > archive, true);
+    const final = publish.steps.find((step) => step.run?.includes("bun scripts/publish-homebrew.ts"));
+    assertEquals(final?.env?.TAP_BASE, "${{ steps.tap-base.outputs.sha }}");
+    assertStringIncludes(final?.run || "", 'homebrew-tap-publish homebrew-tap "$TAP_BASE" "$RELEASE_TAG"');
+    assertEquals(
+        publish.steps.find((step) => step.with?.repository === "RunWield/homebrew-tap")?.with?.token,
+        "${{ secrets.HOMEBREW_TAP_TOKEN }}",
+    );
+    assertStringIncludes(script(check), "gh api repos/RunWield/homebrew-tap --jq '.permissions.push' | grep -Fx true");
+});
+
+test("Golden qualification runs for direct main and release-branch pushes", async () => {
+    assertEquals((await workflow("golden")).on.push?.branches, ["main", "release/**"]);
+});
+
+test("manual Homebrew preparation requires explicit package selection and archives no checkout metadata", async () => {
+    const config = await workflow("homebrew-prepare");
+    const commands = Object.values(config.jobs).map(script).join("\n");
+    assertEquals(
+        Object.values(config.on.workflow_dispatch?.inputs || {}).some((input) => input.default === "v0.3.3"),
+        false,
+    );
+    assertStringIncludes(commands, 'test -n "$WLD_TAG$MNEMOTECA_TAG"');
+    assertStringIncludes(commands, "-C homebrew-tap Formula README.md runwield-homebrew-package.json");
+    assertEquals(commands.includes("-C homebrew-tap ."), false);
+    const steps = Object.values(config.jobs).flatMap((job) => job.steps);
+    const tap = steps.find((step) => step.with?.repository === "RunWield/homebrew-tap");
+    assertEquals(tap?.with?.["persist-credentials"], false);
 });

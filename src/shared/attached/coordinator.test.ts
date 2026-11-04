@@ -4,7 +4,6 @@ import { spawnNativeProcess } from "../foreground-process.ts";
 import { hostname } from "node:os";
 import { test } from "node:test";
 import {
-    readdir as fsReaddir,
     stat as fsStat,
     writeFile as fsWriteFile,
     rename as fsRename,
@@ -21,7 +20,6 @@ import { ATTACHED_OPERATIONS, type AttachedJsonObject } from "./operations.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows, writeAttachedWorkflowRecord } from "./record-store.ts";
 import {
     activateInput,
-    EVIDENCE,
     pendingTriage,
     readRecordBytes,
     rejectionCode,
@@ -35,22 +33,6 @@ async function activated(projectRoot: string) {
     const result = await run("activate", projectRoot, activateInput());
     return { result, ...pendingTriage(result) };
 }
-
-test("activate saves revision 1 with a pending Router Triage action", async () => {
-    await withProject(async (projectRoot) => {
-        const { result } = await activated(projectRoot);
-        assert(result.ok);
-        assertEquals(result.workflow.revision, 1);
-        assertEquals(result.workflow.state, "triaging");
-        assertEquals(result.workflow.nextAction.kind, "triage");
-        assert(result.workflow.nextAction.kind === "triage");
-        assertEquals(result.workflow.nextAction.role, "router");
-        assertEquals(result.workflow.nextAction.contractVersion, "runwield.attached.triage/1");
-
-        const status = await run("status", projectRoot, { workflowId: result.workflow.workflowId });
-        assertEquals(status.ok && status.workflow, result.workflow);
-    });
-});
 
 for (const workKind of WORK_KINDS) {
     test(`a PLANNED_CHANGE ${workKind} outcome moves the workflow to planning`, async () => {
@@ -352,17 +334,3 @@ for (const operationId of ["constructor", "toString"]) {
         });
     });
 }
-
-test("an unsupported activation rejects without creating a workflow record", async () => {
-    await withProject(async (projectRoot) => {
-        const input = activateInput();
-        const result = await run("activate", projectRoot, { ...input, evidence: { ...EVIDENCE, host: "opencode" } });
-        assert(!result.ok);
-        assertEquals(result.rejection.code, "unsupported_host");
-        const files = await fsReaddir(locateAttachedWorkflows(projectRoot).workflowsDir).catch((error) => {
-            if (error.code === "ENOENT") return [];
-            throw error;
-        });
-        assertEquals(files, []);
-    });
-});

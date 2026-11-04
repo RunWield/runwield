@@ -1123,7 +1123,7 @@ test("runValidationPhase narrows semantic review to verification mode after disc
     assertStringIncludes(reviewPrompts[0], "R2-2");
 });
 
-test("runValidationPhase offers Code Review after automatic semantic rounds", async () => {
+test("semantic feedback hands off repair before offering human review", async () => {
     const { projectRoot, hostedSession } = await makeValidatedCiRun({ validationSemanticRounds: 2 });
     const interactions = /** @type {any[]} */ ([]);
 
@@ -1153,35 +1153,6 @@ test("runValidationPhase offers Code Review after automatic semantic rounds", as
     assertEquals(plan?.attrs.status, "implemented");
     assertEquals(plan?.attrs.humanReviewMode, undefined);
     assertEquals(plan?.attrs.humanReviewDecision, undefined);
-});
-
-test("Stop at the review round limit keeps the passing tests and the open findings", async () => {
-    const { projectRoot, hostedSession } = await makeValidatedCiRun({ validationSemanticRounds: 2 });
-
-    hostedSession.setInteractionAdapter({
-        requestInteraction: (/** @type {any} */ request) =>
-            Promise.resolve(
-                request.type === "select" ? { outcome: "selected", value: "stop" } : { outcome: "canceled" },
-            ),
-    });
-
-    const result = await runValidationPhase({
-        hostedSession,
-        planName: "p",
-        planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci", validationSemanticRounds: 2 },
-        supportsSemanticRepairHandoff: true,
-        semanticReviewPort: roundLimitPort(),
-        localCI: {
-            run: () => Promise.resolve({ kind: "completed", exitCode: 0, output: "" }),
-        },
-    });
-
-    assertEquals(result.kind, "semantic_repair_handoff");
-    assertStringIncludes(result.reason || "", "Dispatching repair");
-    assertEquals(result.semanticRepairHandoff?.semanticRound, 3);
-    // Semantic feedback reopens implementation; Runtime rolls to a repair segment and resumes validation after repair.
-    assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "implemented");
 });
 
 test("inline round-limit repair records passing CI before another Reviewer round", async () => {

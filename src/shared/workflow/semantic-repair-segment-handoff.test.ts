@@ -23,7 +23,7 @@ async function writeRepairTranscript(
     return path;
 }
 
-test("two real semantic rejections create two ordered repair segments and no Reviewer segments", async () => {
+test("two committed semantic repair rollovers retain ordered segments and no Reviewer segments", async () => {
     const fixture = await makeManagedSessionFixture();
     const store = fixture.openStore();
     try {
@@ -93,27 +93,4 @@ test("two real semantic rejections create two ordered repair segments and no Rev
         store.close();
         await fixture.cleanup();
     }
-});
-
-test("pending semantic repair markers resume the repair turn", async () => {
-    const fixture = await makeManagedSessionFixture();
-    try {
-        const seedPacket = "frozen Plan; current CI state; open Review Issues; repair claims; diff access";
-        assertEquals(seedPacket.includes("current CI state"), true);
-        assertEquals(seedPacket.includes("ENGINEER_SENTINEL_SHOULD_NOT_REPAIR"), false);
-        assertEquals(seedPacket.includes("REVIEWER_SENTINEL_SHOULD_NOT_REPAIR"), false);
-    } finally {
-        await fixture.cleanup();
-    }
-});
-
-test("semantic repair handoff preserves current CI state", () => {
-    const repairContext = { ciState: "deno task ci failed", openIssues: 2 };
-    assertEquals(repairContext.ciState, "deno task ci failed");
-});
-
-test("repair root context excludes predecessor Engineer and Reviewer history", () => {
-    const repairPrompt = "Fix open issues. Use diff access. Do not include predecessor transcript sentinels.";
-    assertEquals(repairPrompt.includes("ENGINEER_SENTINEL_SHOULD_NOT_REPAIR"), false);
-    assertEquals(repairPrompt.includes("REVIEWER_SENTINEL_SHOULD_NOT_REPAIR"), false);
 });

@@ -1,15 +1,12 @@
 import { assertEquals } from "../../testing/assertions.ts";
-import process from "node:process";
 import { test } from "node:test";
 import stripAnsi from "strip-ansi";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { initRunWieldTheme } from "../../ui/theme/theme.ts";
-import type { UiAPI } from "../../ui/tui/types.js";
-import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
+import { getHomeDir } from "../../constants.js";
 import type { SessionContextReport } from "../../shared/session/session-context-report.ts";
-import { abbreviateHomePath, formatContextReport, renderUsageBar, runContextCommand } from "./index.ts";
-
-type ContextReportReader = (() => SessionContextReport) | SessionRuntime["getSessionContextReport"];
+import { formatContextReport, runContextCommand } from "./index.ts";
 
 initRunWieldTheme();
 
@@ -18,8 +15,16 @@ function makeUi() {
     return {
         messages,
         uiAPI: {
-            appendSystemMessage: ((message: string) => messages.push(message)) as UiAPI["appendSystemMessage"],
-        } as UiAPI,
+            appendSystemMessage: (message: string) => {
+                messages.push(message);
+            },
+            appendAgentMessageStart: () => ({ appendText: () => {} }),
+            requestRender: () => {},
+            promptSelect: () => Promise.resolve(null),
+            promptText: () => Promise.resolve(null),
+            showModelSelector: () => {},
+            abortActivePrompt: () => {},
+        },
     };
 }
 
@@ -46,7 +51,14 @@ function makeReport(overrides: Partial<SessionContextReport> = {}): SessionConte
                 items: [],
             },
         ],
-        instructionFiles: [{ label: "/tmp/RUNWIELD.md", path: "/tmp/RUNWIELD.md", source: "local", tokens: 10 }],
+        instructionFiles: [
+            {
+                label: `${getHomeDir()}/.wld/RUNWIELD.md`,
+                path: `${getHomeDir()}/.wld/RUNWIELD.md`,
+                source: "local",
+                tokens: 10,
+            },
+        ],
         skills: [
             {
                 label: "write-tests",
@@ -74,26 +86,6 @@ function makeReport(overrides: Partial<SessionContextReport> = {}): SessionConte
     };
 }
 
-test("renderUsageBar shows known and unknown context state", () => {
-    assertEquals(renderUsageBar(50, 4), "■■□□ 50.0%");
-    assertEquals(renderUsageBar(null, 4), "□□□□ unknown");
-});
-
-test("abbreviateHomePath shortens files under HOME", async () => {
-    await withProcessGlobalTestLock(async () => {
-        const previous = process.env["HOME"];
-        try {
-            process.env["HOME"] = "/home/tester";
-            assertEquals(abbreviateHomePath("/home/tester/.wld/RUNWIELD.md"), "~/.wld/RUNWIELD.md");
-            assertEquals(abbreviateHomePath("/other/file"), "/other/file");
-            await Promise.resolve();
-        } finally {
-            if (previous === undefined) delete process.env["HOME"];
-            else process.env["HOME"] = previous;
-        }
-    });
-});
-
 test("formatContextReport renders active model, categories, files, and source-grouped skills", () => {
     const plain = stripAnsi(formatContextReport(makeReport()));
 
@@ -103,7 +95,8 @@ test("formatContextReport renders active model, categories, files, and source-gr
         "anthropic/claude-test",
         "1,000/2,000 (last known)",
         "Agent instructions: 300 tokens (30.0%)",
-        "/tmp/RUNWIELD.md [local]: ~10 tokens",
+        "~/.wld/RUNWIELD.md [local]: ~10 tokens",
+        "50.0%",
         "local:",
         "bundled:",
         "agent-browser-use: ~15 tokens",
@@ -143,15 +136,31 @@ test("runContextCommand reports missing active Agent Session", async () => {
     assertEquals(messages, ["Error: No active Agent Session context is available yet."]);
 });
 
-test("runContextCommand renders Runtime context report", async () => {
-    const { uiAPI, messages } = makeUi();
-    await runContextCommand([], {
-        uiAPI,
-        sessionId: "runtime-id",
-        sessionRuntime: {
-            getSessionContextReport: (() => makeReport()) as ContextReportReader,
-        } as SessionRuntime,
+test("context command renders the committed Session model and estimates without inventing resident context", async () => {
+    await withRuntimeCommandFixture("context-command-", async ({ projectRoot, setModelResponse }) => {
+        setModelResponse("Context is ready.");
+        const runtime = createSessionRuntime();
+        const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "guide" });
+        const { uiAPI, messages } = makeUi();
+        try {
+            assertEquals(
+                (await runtime.promptUserTurn(sessionId, { initialRequest: "Explain the project." })).ok,
+                true,
+            );
+            await runContextCommand([], { uiAPI, sessionRuntime: runtime, sessionId });
+            const report = stripAnsi(messages.join("\n"));
+            for (const expected of [
+                "Context Usage",
+                "Guide (guide)",
+                "runtime-command-fixture/fixture-model",
+                "Committed conversation:",
+                "(estimated)",
+                "None loaded.",
+            ]) {
+                assertEquals(report.includes(expected), true, report);
+            }
+        } finally {
+            await runtime.closeAllSessionsWhenIdle();
+        }
     });
-
-    assertEquals(stripAnsi(messages[0]).includes("Context Usage"), true);
 });

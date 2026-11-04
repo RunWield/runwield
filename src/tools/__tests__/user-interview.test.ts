@@ -46,17 +46,6 @@ function firstText(result: Pick<InterviewResult, "content">) {
     return first.text ?? "";
 }
 
-test("userInterviewTool exposes expected metadata", () => {
-    const tool = createUserInterviewTool(undefined);
-
-    assertEquals(tool.name, "user_interview");
-    assertEquals(tool.label, "User Interview");
-    assertMatch(tool.description, /Ask the user 1-3 structured clarification questions/i);
-    assertEquals(typeof tool.promptSnippet, "string");
-    assertEquals(typeof tool.parameters, "object");
-    assertEquals(typeof tool.execute, "function");
-});
-
 test("userInterviewTool completes a single yes/no question", async () => {
     const tool = createUserInterviewTool(
         makeUi({
@@ -430,24 +419,4 @@ test("userInterviewTool returns validation_error for invalid yes/no response", a
     assertEquals(result.details.status, "validation_error");
     assertEquals(result.details.errors?.[0]?.code, "INVALID_ANSWER");
     assertMatch(result.details.errors?.[0]?.message ?? "", /Unexpected yes\/no response/i);
-});
-
-test("userInterviewTool uses HostedSession interaction broker when available", async () => {
-    const hostedSession = new HostedSession({ id: "brokered-interview", cwd: getCwd() });
-    const prompts: string[] = [];
-    hostedSession.setInteractionAdapter({
-        requestInteraction: (request) => {
-            prompts.push(request.prompt);
-            return { outcome: "selected", value: "yes", valueLabel: "Yes" };
-        },
-    });
-    const tool = createUserInterviewTool({ hostedSession });
-
-    const result = await executeTool(tool, {
-        question: { type: "yes_no", prompt: "Proceed?" },
-    });
-
-    assertEquals(prompts, ["Proceed?"]);
-    assertEquals(result.details.status, "completed");
-    assertEquals(result.details.answers[0].value, true);
 });

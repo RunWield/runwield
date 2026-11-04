@@ -52,11 +52,7 @@ interface ResumeUiFixture {
     uiAPI: {
         appendSystemMessage(message: string): void;
         clearMessages(): void;
-        promptSelect(
-            title: string,
-            options: ResumeSelectItem[],
-            hooks?: ResumeSelectHooks,
-        ): Promise<string | null>;
+        promptSelect(title: string, options: ResumeSelectItem[], hooks?: ResumeSelectHooks): Promise<string | null>;
     };
 }
 
@@ -72,7 +68,7 @@ function makeUi(selections: string[]): ResumeUiFixture {
         },
         uiAPI: {
             appendSystemMessage: (message) => fixture.messages.push(message),
-            clearMessages: () => fixture.clears += 1,
+            clearMessages: () => (fixture.clears += 1),
             promptSelect: (title, options, hooks) => {
                 fixture.prompts.push(title);
                 fixture.selectOffers.push({ title, options, hooks });
@@ -138,7 +134,7 @@ test("runResumeCommand loads, replaces, and replays a real persisted session", a
                 editor: ui.editor,
                 sessionId: current.sessionId,
                 sessionRuntime: runtime,
-                replaceRuntimeSession: (sessionId) => replacementId = sessionId,
+                replaceRuntimeSession: (sessionId) => (replacementId = sessionId),
             });
 
             assertEquals(runtime.getSessionSnapshot(replacementId)?.sessionManagerId, seeded.id);
@@ -197,16 +193,13 @@ test("runResumeCommand falls back to read-only when another terminal claims a li
                 editor: ui.editor,
                 sessionId: current.sessionId,
                 sessionRuntime: runtime,
-                replaceRuntimeSession: (sessionId) => replacementId = sessionId,
+                replaceRuntimeSession: (sessionId) => (replacementId = sessionId),
             });
 
             assertEquals(runtime.getSessionSnapshot(replacementId)?.managed?.syncState?.status, "active_elsewhere");
-            assertEquals(
-                ui.messages,
-                [
-                    "Conversation restored in read-only mode because it is still running in another terminal. Continue there, or wait for its current turn to finish; this screen will become available automatically.",
-                ],
-            );
+            assertEquals(ui.messages, [
+                "Conversation restored in read-only mode because it is still running in another terminal. Continue there, or wait for its current turn to finish; this screen will become available automatically.",
+            ]);
             assertEquals(
                 runtime.getUserTurnSubmissionBlockMessage(replacementId),
                 "This conversation is still running in another terminal. Continue there, or wait for its current turn to finish before sending here.",
@@ -245,14 +238,12 @@ test("runResumeCommand recovers an interrupted checkpoint and replays the commit
             });
             await fsWriteFile(
                 seeded.path,
-                `${
-                    JSON.stringify({
-                        type: "custom",
-                        id: crypto.randomUUID(),
-                        customType: "runwield.request_attempt",
-                        data: { status: "failed" },
-                    })
-                }\n`,
+                `${JSON.stringify({
+                    type: "custom",
+                    id: crypto.randomUUID(),
+                    customType: "runwield.request_attempt",
+                    data: { status: "failed" },
+                })}\n`,
                 { flag: "a" },
             );
             store.markSessionUncertain(proof, { reason: "interrupted after a failed request" });
@@ -321,33 +312,33 @@ test("runResumeCommand offers full session names with date-only descriptions", a
 });
 
 test("runResumeCommand offers compaction from real transcript size and fixture settings", async () => {
-    await withRuntimeCommandFixture(
-        "runwield-resume-command-",
-        async ({ homeDir, projectRoot, settingsPath }) => {
-            await writeResumeThreshold(settingsPath, 1);
-            const seeded = seedPersistedSession(projectRoot, "large fixture context ".repeat(2000));
-            const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
-            const runtime = createSessionRuntime({ sessionStore: store });
-            const current = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
-            const ui = makeUi([seeded.path, "cancel"]);
-            let replacementId = "";
-            try {
-                await runResumeCommand([], {
-                    uiAPI: ui.uiAPI,
-                    editor: ui.editor,
-                    sessionId: current.sessionId,
-                    sessionRuntime: runtime,
-                    replaceRuntimeSession: (sessionId) => replacementId = sessionId,
-                });
+    await withRuntimeCommandFixture("runwield-resume-command-", async ({ homeDir, projectRoot, settingsPath }) => {
+        await writeResumeThreshold(settingsPath, 1);
+        const seeded = seedPersistedSession(projectRoot, "large fixture context ".repeat(2000));
+        const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
+        const runtime = createSessionRuntime({ sessionStore: store });
+        const current = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const ui = makeUi([seeded.path, "cancel"]);
+        let replacementId = "";
+        try {
+            await runResumeCommand([], {
+                uiAPI: ui.uiAPI,
+                editor: ui.editor,
+                sessionId: current.sessionId,
+                sessionRuntime: runtime,
+                replaceRuntimeSession: (sessionId) => (replacementId = sessionId),
+            });
 
-                assertEquals(ui.prompts.length, 2);
-                assertEquals(typeof replacementId, "string");
-            } finally {
-                runtime.closeAllSessions();
-                store.close();
-            }
-        },
-    );
+            assertEquals(ui.prompts.length, 2);
+            assertEquals(replacementId, "");
+            assertEquals(ui.clears, 0);
+            assertEquals(ui.editor.disableSubmit, false);
+            assert(runtime.getSessionSnapshot(current.sessionId));
+        } finally {
+            runtime.closeAllSessions();
+            store.close();
+        }
+    });
 });
 
 test("runResumeCommand compacts a real loaded session through the faux model boundary", async () => {
@@ -379,10 +370,7 @@ test("runResumeCommand compacts a real loaded session through the faux model bou
                 });
 
                 assertEquals(runtime.getSessionSnapshot(replacementId)?.sessionManagerId, seeded.id);
-                assertStringIncludes(
-                    ui.messages.at(-1) || "",
-                    "Conversation compacted and restored.",
-                );
+                assertStringIncludes(ui.messages.at(-1) || "", "Conversation compacted and restored.");
                 assert(replayedStatuses.some((message) => message.includes("Summary of the fixture session.")));
             } finally {
                 unsubscribe();

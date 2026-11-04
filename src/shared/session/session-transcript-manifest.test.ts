@@ -14,15 +14,6 @@ import type { PersistedActiveAgentState } from "./active-agent-session.ts";
 import { tmpdir } from "node:os";
 import { ok as assert } from "node:assert/strict";
 import { join } from "node:path";
-import { openOwnerCoordinationDatabase } from "../owner-coordination/database.ts";
-import { registerProject } from "../owner-coordination/projects.ts";
-import {
-    appendSessionTranscriptSegment,
-    ensureSessionCatalogRecord,
-    getCurrentSessionSegment,
-    listSessionTranscriptSegments,
-    sealSessionTranscriptSegment,
-} from "../owner-coordination/sessions.js";
 import { captureTranscriptEvidence } from "./session-transcript-projection.js";
 import { projectAggregateTranscript } from "./session-transcript-manifest.ts";
 import { getRunWieldSessionDir } from "./root-session.js";
@@ -47,11 +38,6 @@ interface FixtureActiveAgentEntry {
 }
 
 type FixtureBodyEntry = FixtureMessageEntry | FixtureActiveAgentEntry;
-
-function idFactory(prefix = "id") {
-    let next = 0;
-    return () => `${prefix}-${++next}`;
-}
 
 async function writeTranscript(cwd: string, piSessionId: string, timestamp: string, bodyEntries: FixtureBodyEntry[]) {
     const sessionDir = getRunWieldSessionDir(cwd);
@@ -83,40 +69,40 @@ async function createTwoSegmentFixture(
         },
     ];
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-aggregate-transcript-"));
-    const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
     const root = `${dir}/repo`;
     await fsMkdir(root);
-    const project = registerProject(database, { root, idFactory: idFactory("project"), now: () => "t0" });
     const first = await writeTranscript(root, "pi-one", "2026-01-01T00:00:00.000Z", firstEntries);
-    const session = await ensureSessionCatalogRecord(database, {
-        projectId: project.projectId,
+    const firstEvidence = await captureTranscriptEvidence({ transcriptPath: first.path, transcriptCwd: root });
+    const session = { runwieldSessionId: "fixture-session" };
+    const firstSegment = {
+        segmentId: "first",
+        runwieldSessionId: session.runwieldSessionId,
+        projectId: "fixture-project",
         piSessionId: "pi-one",
         transcriptPath: first.path,
         transcriptCwd: root,
-        idFactory: idFactory("session"),
-        now: () => "t1",
-    });
-    const firstSegment = getCurrentSessionSegment(database, session.runwieldSessionId);
-    assert(firstSegment);
-    const firstEvidence = await captureTranscriptEvidence({ transcriptPath: first.path, transcriptCwd: root });
-    await sealSessionTranscriptSegment(database, {
-        runwieldSessionId: session.runwieldSessionId,
-        segmentId: firstSegment.segmentId,
-        evidence: firstEvidence,
-        now: () => "t2",
-    });
+        ordinal: 0,
+        kind: "planning",
+        sealedAt: "2026-01-01T00:00:02.000Z",
+        sealedByteLength: firstEvidence.byteLength,
+        sealedDigestHex: firstEvidence.digestHex,
+        sealedTerminalEntryId: firstEvidence.terminalEntryId,
+    };
     const second = await writeTranscript(root, "pi-two", "2026-01-01T00:00:02.000Z", secondEntries);
-    const secondSegment = await appendSessionTranscriptSegment(database, {
+    const secondSegment = {
+        segmentId: "second",
         runwieldSessionId: session.runwieldSessionId,
-        projectId: project.projectId,
+        projectId: "fixture-project",
         piSessionId: "pi-two",
         transcriptPath: second.path,
         transcriptCwd: root,
+        ordinal: 1,
         kind: "execution",
-        lineageParentSegmentId: firstSegment.segmentId,
-        idFactory: idFactory("segment"),
-        now: () => "t3",
-    });
+        sealedAt: null,
+        sealedByteLength: null,
+        sealedDigestHex: null,
+        sealedTerminalEntryId: null,
+    };
     const secondEvidence = await captureTranscriptEvidence({ transcriptPath: second.path, transcriptCwd: root });
     const generation = {
         generation: 1,
@@ -125,13 +111,12 @@ async function createTwoSegmentFixture(
         digestHex: secondEvidence.digestHex,
         currentSegmentId: secondSegment.segmentId,
     };
-    return { dir, database, root, session, firstSegment, firstEvidence, first, second, secondSegment, generation };
+    return { dir, root, session, firstSegment, firstEvidence, first, second, secondSegment, generation };
 }
 
 type TwoSegmentFixture = Awaited<ReturnType<typeof createTwoSegmentFixture>>;
 
 async function cleanupFixture(fixture: TwoSegmentFixture) {
-    fixture.database.close();
     await fsRm(fixture.dir, { recursive: true });
 }
 
@@ -143,7 +128,7 @@ test("aggregate projection adds safe segment context without exposing segment ev
             runwieldSessionId: fixture.session.runwieldSessionId,
             runtimeSessionId: "runtime-1",
             generation: fixture.generation,
-            segments: listSessionTranscriptSegments(fixture.database, fixture.session.runwieldSessionId),
+            segments: [fixture.firstSegment, fixture.secondSegment],
         });
         assert(projected.ok);
         assertEquals(
@@ -302,7 +287,7 @@ test("aggregate projection carries active Agent state across segment boundaries"
             runwieldSessionId: fixture.session.runwieldSessionId,
             runtimeSessionId: "runtime-1",
             generation: fixture.generation,
-            segments: listSessionTranscriptSegments(fixture.database, fixture.session.runwieldSessionId),
+            segments: [fixture.firstSegment, fixture.secondSegment],
         });
         assert(projected.ok);
         assertEquals(
@@ -356,7 +341,7 @@ test("aggregate projection fails closed with zero events when sealed segment evi
                 runwieldSessionId: fixture.session.runwieldSessionId,
                 runtimeSessionId: "runtime-1",
                 generation: fixture.generation,
-                segments: listSessionTranscriptSegments(fixture.database, fixture.session.runwieldSessionId),
+                segments: [fixture.firstSegment, fixture.secondSegment],
                 cursorEventId:
                     mutate === "missing" ? `${fixture.firstSegment.segmentId}:duplicate:user_message:0` : null,
             });
@@ -382,7 +367,7 @@ test("aggregate projection fails closed when segments extend beyond committed ge
                 digestHex: fixture.firstEvidence.digestHex,
                 currentSegmentId: fixture.firstSegment.segmentId,
             },
-            segments: listSessionTranscriptSegments(fixture.database, fixture.session.runwieldSessionId),
+            segments: [fixture.firstSegment, fixture.secondSegment],
         });
         if (projected.ok) throw new Error("projection should have failed");
         assertEquals(projected.state, "degraded");
@@ -402,7 +387,7 @@ test("aggregate projection replays from start when a cursor is absent after full
             runwieldSessionId: fixture.session.runwieldSessionId,
             runtimeSessionId: "runtime-1",
             generation: fixture.generation,
-            segments: listSessionTranscriptSegments(fixture.database, fixture.session.runwieldSessionId),
+            segments: [fixture.firstSegment, fixture.secondSegment],
             cursorEventId: "old-client-cursor",
         });
         assert(projected.ok);
@@ -421,7 +406,7 @@ test("aggregate projection fails closed after a same-size sealed segment mutatio
             runwieldSessionId: fixture.session.runwieldSessionId,
             runtimeSessionId: "runtime-1",
             generation: fixture.generation,
-            segments: listSessionTranscriptSegments(fixture.database, fixture.session.runwieldSessionId),
+            segments: [fixture.firstSegment, fixture.secondSegment],
         });
         assert(firstProjection.ok);
         const stat = await fsStat(fixture.first.path);
@@ -433,7 +418,7 @@ test("aggregate projection fails closed after a same-size sealed segment mutatio
             runwieldSessionId: fixture.session.runwieldSessionId,
             runtimeSessionId: "runtime-1",
             generation: fixture.generation,
-            segments: listSessionTranscriptSegments(fixture.database, fixture.session.runwieldSessionId),
+            segments: [fixture.firstSegment, fixture.secondSegment],
         });
         assertEquals(secondProjection.ok, false);
         assertEquals(secondProjection.events, []);
@@ -450,7 +435,7 @@ test("aggregate projection resumes across a segment boundary", async () => {
             runwieldSessionId: fixture.session.runwieldSessionId,
             runtimeSessionId: "runtime-1",
             generation: fixture.generation,
-            segments: listSessionTranscriptSegments(fixture.database, fixture.session.runwieldSessionId),
+            segments: [fixture.firstSegment, fixture.secondSegment],
             cursorEventId: `${fixture.firstSegment.segmentId}:duplicate:user_message:0`,
             cursorEventOrdinal: 0,
         });

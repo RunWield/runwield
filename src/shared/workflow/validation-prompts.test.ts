@@ -1,4 +1,3 @@
-import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
@@ -13,17 +12,6 @@ test("loadManualQaPrompt returns a bare tool-free prompt", async () => {
     assertEquals(promptDef.displayName, "Manual QA");
     assertEquals(promptDef.tools, ["qa_checklist_generated"]);
     assertStringIncludes(promptDef.systemPrompt, "Manual verification steps for <plan name>");
-});
-
-test("bundled Manual QA prompt requires the user checklist shape", async () => {
-    const prompt = await fsReadFile(
-        new URL("../../agent-definitions/subagent-definitions/manual-qa-prompt.md", import.meta.url),
-        "utf8",
-    );
-
-    assertStringIncludes(prompt, "Manual verification steps for <plan name>");
-    assertStringIncludes(prompt, "- [ ] step 1");
-    assertStringIncludes(prompt, "automated verification has already passed");
 });
 
 test("loadReviewerPrompt returns a bare prompt with canonical review tools", async () => {
@@ -43,8 +31,8 @@ test("loadReviewerPrompt loads the verification prompt for later rounds", async 
 
 /**
  * The prompt an Agent actually receives. Reviewer prompts compose the shared
- * review practice, so their contracts hold for the composed prompt; other
- * bundled prompts are read as written.
+ * review practice; repair roles also use their composed definition. These checks
+ * protect delivered instructions, not whether an external model follows them.
  *
  */
 async function readBundledPrompt(name: string) {
@@ -52,7 +40,8 @@ async function readBundledPrompt(name: string) {
         const definition = await loadReviewerPrompt(name === "reviewer-verify-prompt.md" ? "verify" : "discovery");
         return definition.systemPrompt;
     }
-    return await fsReadFile(new URL(`../../agent-definitions/subagent-definitions/${name}`, import.meta.url), "utf8");
+    const definition = await loadSubAgentDefinition(name.replace(/\.md$/, ""));
+    return definition.systemPrompt;
 }
 
 test("Semantic review prompt includes the canonical effective Plan projection", () => {
@@ -290,21 +279,6 @@ test("validation repair engineer keeps working-tree safety and engineering pract
     assertStringIncludes(systemPrompt, 'Do **NOT** dismiss errors as "pre-existing"');
     // Reached the repair agent for the first time via the shared layer.
     assertStringIncludes(systemPrompt, "report the test-count delta");
-});
-
-test("bundled workflow-only agents cannot name the removed router handoff tool", async () => {
-    const removedToolName = ["return", "to", "router"].join("_");
-    for (const name of ["reviewer-prompt.md", "reviewer-verify-prompt.md", "reviewer-feedback-engineer.md"]) {
-        const prompt = await readBundledPrompt(name);
-        assertEquals(prompt.includes(removedToolName), false, `${name} must not reference removed handoff tool`);
-    }
-
-    const { systemPrompt } = await loadSubAgentDefinition(SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER);
-    assertEquals(
-        systemPrompt.includes(removedToolName),
-        false,
-        "composed reviewer-feedback engineer prompt must not reference removed handoff tool",
-    );
 });
 
 test("bundled reviewer-feedback engineer stops in prose on an unreachable finding", async () => {

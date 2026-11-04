@@ -3,9 +3,6 @@ import type { TextContent } from "@earendil-works/pi-ai";
 import {
     buildDiffInspectionSection,
     createReviewDiffTool,
-    formatChangedFileList,
-    getFileDiff,
-    listDiffFiles,
     parseDiffFiles,
     requiredReviewDiffFiles,
     ReviewDiffParseError,
@@ -13,14 +10,19 @@ import {
 import { assertEquals, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 
 import "../settings.js";
+import { ReviewInspection } from "./review-inspection.ts";
 
 interface FixtureDiffParams {
     command: string;
     scope?: string;
     path?: string;
+    offsetBytes?: number;
+    maxBytes?: number;
 }
 
 interface FixtureDiffDetails {
+    nextOffsetBytes?: number;
+    truncated?: boolean;
     command?: string;
     scope?: string;
     fileCount?: number;
@@ -80,116 +82,39 @@ index 0000000..7777777
 Binary files /dev/null and b/src/binary.png differ
 `;
 
-test("parseDiffFiles parses modified, added, deleted, renamed, and binary files", () => {
-    const entries = parseDiffFiles(SAMPLE_INLINE_DIFF);
-    assertEquals(entries.length, 5, "expected 5 file entries");
-
-    const modEntry = entries.find((e) => e.path === "src/a.js");
-    assertEquals(modEntry?.changeType, "modified");
-    assertEquals(modEntry?.hunkLines.added, 1);
-    assertEquals(modEntry?.hunkLines.removed, 1);
-
-    const addEntry = entries.find((e) => e.path === "src/b.js");
-    assertEquals(addEntry?.changeType, "added");
-    assertEquals(addEntry?.hunkLines.added, 2);
-    assertEquals(addEntry?.hunkLines.removed, 0);
-
-    const delEntry = entries.find((e) => e.path === "src/c.js");
-    assertEquals(delEntry?.changeType, "deleted");
-    assertEquals(delEntry?.hunkLines.added, 0);
-    assertEquals(delEntry?.hunkLines.removed, 2);
-
-    const renameEntry = entries.find((e) => e.path === "src/new.js");
-    assertEquals(renameEntry?.changeType, "renamed");
-
-    const binaryEntry = entries.find((e) => e.path === "src/binary.png");
-    assertEquals(binaryEntry?.changeType, "modified");
-    assertEquals(binaryEntry?.hunkLines.added, 0);
-    assertEquals(binaryEntry?.hunkLines.removed, 0);
-});
-
-test("parseDiffFiles returns empty array for empty diff", () => {
-    assertEquals(parseDiffFiles(""), []);
-    assertEquals(parseDiffFiles("   "), []);
-    assertEquals(parseDiffFiles("no header here"), []);
-});
-
-test("formatChangedFileList includes all entries with summary info", () => {
-    const entries = parseDiffFiles(SAMPLE_INLINE_DIFF);
-    const output = formatChangedFileList(entries);
-    assertStringIncludes(output, "src/a.js");
-    assertStringIncludes(output, "src/b.js");
-    assertStringIncludes(output, "src/c.js");
-    assertStringIncludes(output, "1 added, 1 removed");
-    assertStringIncludes(output, "2 added, 0 removed");
-    assertStringIncludes(output, "0 added, 2 removed");
-    assertStringIncludes(output, "5 file(s)");
-});
-
-test("getFileDiff finds file by exact path", () => {
-    const entries = parseDiffFiles(SAMPLE_INLINE_DIFF);
-    const result = getFileDiff(entries, "src/a.js");
-    assertEquals(result.found, true);
-    if (result.found) {
-        assertStringIncludes(result.content, "new line");
-        assertEquals(result.truncated, false);
-    }
-});
-
-test("getFileDiff returns not-found for nonexistent file", () => {
-    const entries = parseDiffFiles(SAMPLE_INLINE_DIFF);
-    const result = getFileDiff(entries, "src/nope.js");
-    assertEquals(result.found, false);
-    if (!result.found) {
-        assertStringIncludes(result.message, "not found");
-    }
-});
-
-test("getFileDiff supports byte offset for truncated reads", () => {
-    const entries = parseDiffFiles(SAMPLE_INLINE_DIFF);
-    // Use a very small maxBytes to force truncation
-    const result = getFileDiff(entries, "src/a.js", { offsetBytes: 0, maxBytes: 50 });
-    assertEquals(result.found, true);
-    if (result.found) {
-        assertEquals(result.truncated, true);
-        assertEquals(result.remainingBytes > 0, true);
-    }
-});
-
-test("getFileDiff preserves UTF-8 characters across byte pages", () => {
-    const diff = `diff --git a/src/unicode.js b/src/unicode.js\n--- a/src/unicode.js\n+++ b/src/unicode.js\n@@ -1 +1 @@\n-old\n+before 😀 after\n`;
-    const entry = parseDiffFiles(diff)[0];
-    const emojiStart = new TextEncoder().encode(entry.text.slice(0, entry.text.indexOf("😀"))).byteLength;
-    const first = getFileDiff([entry], entry.path, { maxBytes: emojiStart + 2 });
-    assertEquals(first.found, true);
-    if (!first.found) return;
-    const second = getFileDiff([entry], entry.path, { offsetBytes: first.nextOffsetBytes, maxBytes: 64 });
-    assertEquals(second.found, true);
-    if (!second.found) return;
-
-    assertEquals(first.content.includes("�"), false);
-    assertEquals(second.content.includes("�"), false);
-    assertEquals(first.content + second.content, entry.text);
-});
-
-test("listDiffFiles marks entries exceeding max inline bytes as truncated", () => {
-    const entries = parseDiffFiles(SAMPLE_INLINE_DIFF);
-    const summaries = listDiffFiles(entries, 1);
-
-    for (const s of summaries) {
-        assertEquals(s.truncated, true);
-        assertEquals(s.maxInlineBytes, 1);
-    }
-});
-
-test("listDiffFiles does not mark small entries as truncated", () => {
-    const entries = parseDiffFiles(SAMPLE_INLINE_DIFF);
-    const summaries = listDiffFiles(entries, 10_000_000);
-
-    for (const s of summaries) {
-        assertEquals(s.truncated, false);
-        assertEquals(s.maxInlineBytes, null);
-    }
+test("review_diff pages preserve UTF-8 content and complete inspection", async () => {
+    const diff =
+        "diff --git a/src/unicode.js b/src/unicode.js\n--- a/src/unicode.js\n+++ b/src/unicode.js\n@@ -1 +1 @@\n-old\n+" +
+        "x".repeat(300) +
+        "😀 after\n";
+    const bytes = new TextEncoder().encode(diff).byteLength;
+    const emojiStart = new TextEncoder().encode(diff.slice(0, diff.indexOf("😀"))).byteLength;
+    const inspection = new ReviewInspection([{ scope: "full", path: "src/unicode.js", byteLength: bytes }]);
+    const tool = createReviewDiffTool(diff, { inspection });
+    const execute = tool.execute as FixtureExecute;
+    const first = await execute("first", { command: "show", path: "unicode.js", maxBytes: emojiStart + 2 });
+    assertEquals(first.details.path, "src/unicode.js");
+    assertEquals(first.details.truncated, true);
+    assertEquals(first.details.nextOffsetBytes, emojiStart);
+    assertEquals(inspection.unread(), [
+        { scope: "full", path: "src/unicode.js", start: emojiStart, end: bytes, byteLength: bytes },
+    ]);
+    const second = await execute("second", {
+        command: "show",
+        path: "unicode.js",
+        offsetBytes: first.details.nextOffsetBytes,
+        maxBytes: 256,
+    });
+    const pages = [first, second].map(
+        (result) => result.content[0].text.split("\x60\x60\x60diff\n")[1].split("\n\x60\x60\x60")[0],
+    );
+    assertEquals(pages.join(""), diff);
+    assertEquals(pages.join("").includes("�"), false);
+    assertEquals(second.details.truncated, false);
+    assertEquals(inspection.unread(), []);
+    const eof = await execute("eof", { command: "show", path: "unicode.js", offsetBytes: bytes + 100 });
+    assertEquals(eof.details.truncated, false);
+    assertEquals(inspection.unread(), []);
 });
 
 test("buildDiffInspectionSection lists changed files without inlining the diff", () => {
@@ -218,6 +143,14 @@ test("review_diff tool responds to list command", async () => {
     assertStringIncludes(result.content[0].text, "src/b.js");
     assertEquals(result.details.command, "list");
     assertEquals(result.details.fileCount, 5);
+    for (const row of [
+        "src/a.js\x60 | modified | 1 | 1",
+        "src/b.js\x60 | added | 2 | 0",
+        "src/c.js\x60 | deleted | 0 | 2",
+        "src/new.js\x60 | renamed | 1 | 1",
+        "src/binary.png\x60 | modified | 0 | 0",
+    ])
+        assertStringIncludes(result.content[0].text, row);
 });
 
 test("review_diff describes full scope as the proposed branch patch", () => {

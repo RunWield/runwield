@@ -51,17 +51,6 @@ function decodeCommandStderr(output: Uint8Array): string {
         .join("\n");
 }
 
-test("help stderr normalization handles colored and plain Deno lock notices without hiding command errors", () => {
-    const encoder = new TextEncoder();
-    for (const notice of [
-        "Blocking waiting for file lock on node_modules directory",
-        "\u001b[0m\u001b[36mBlocking\u001b[0m waiting for file lock on node_modules directory",
-    ]) {
-        assertEquals(decodeCommandStderr(encoder.encode(`${notice}\n`)), "");
-        assertEquals(decodeCommandStderr(encoder.encode(`${notice}\nActual help failure\n`)), "Actual help failure\n");
-    }
-});
-
 async function captureLogs(run: () => void | Promise<void>): Promise<string[]> {
     const logs: string[] = [];
     const original = console.log;

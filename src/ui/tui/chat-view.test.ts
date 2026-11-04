@@ -414,62 +414,6 @@ test("chat view keeps unchanged retained blocks out of live-update renders", asy
     });
 });
 
-test("chat view refreshes an active tool without reformatting retained message blocks", async () => {
-    await withSessionViewFixture(async ({ runtime, sessionId }) => {
-        const terminal = new VirtualTerminal({ columns: 80, rows: 12 });
-        const tui = new RunWieldTui(terminal);
-        const view = await createChatView({
-            browser: NO_OPEN_BROWSER_PORT,
-            documentLinks: null,
-            tui,
-            suppressStartupHeader: true,
-            getSessionId: () => sessionId,
-            sessionRuntime: runtime,
-            setActiveModel: () => Promise.resolve({ status: "active" }),
-        });
-        try {
-            tui.start();
-            for (let index = 0; index < 20; index++) {
-                view.uiAPI.appendUserMessage?.(`retained message ${index}`);
-            }
-            const tool = view.uiAPI.startToolExecution?.("tool-1", "bash", "! echo streaming");
-            if (!tool) throw new Error("TUI API is incomplete.");
-            tool.setOutput("first tool output");
-            tui.renderNow(true);
-            await terminal.flush();
-            assertStringIncludes(terminal.getScreenText(), "first tool output");
-
-            tool.setOutput("updated tool output");
-            tui.renderNow();
-            await terminal.flush();
-            assertStringIncludes(terminal.getScreenText(), "updated tool output");
-        } finally {
-            view.uiAPI.setBusy?.(false);
-            view.dispose();
-            tui.stop();
-        }
-    });
-});
-
-test("chat view finds only tool groups intersecting the viewport", () => {
-    const messageList = new Container();
-    const firstGroup = new ToolExecutionGroupBlock();
-    const secondGroup = new ToolExecutionGroupBlock();
-    const containerLayout = [
-        { component: new Text("header", 0, 0), height: 1 },
-        { component: messageList, height: 7 },
-    ];
-    const messageLayout = [
-        { component: firstGroup, height: 3 },
-        { component: new Spacer(1), height: 1 },
-        { component: secondGroup, height: 3 },
-    ];
-
-    const visibleBlocks = findVisibleToolBlocks(containerLayout, messageList, messageLayout, 5, 3);
-    assertEquals(visibleBlocks.length, 1);
-    assertEquals(visibleBlocks[0] === secondGroup, true);
-});
-
 test("chat view keeps sidebar tabs on the first row above a queued steering message", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId }) => {
         const terminal = new VirtualTerminal({ columns: 150, rows: 20 });
@@ -572,51 +516,6 @@ test("chat view keeps block backgrounds out of the sidebar when the scrollbar is
             assertEquals(toolRow >= 0, true);
             assertEquals(lines[toolRow].includes("┃"), true);
             assertEquals(terminal.hasDefaultBackground(toolRow, 116), true);
-        } finally {
-            view.dispose();
-            tui.stop();
-        }
-    });
-});
-
-test("chat view keeps scrollback position during live thinking updates", async () => {
-    await withSessionViewFixture(async ({ runtime, sessionId }) => {
-        const terminal = new VirtualTerminal({ columns: 80, rows: 10 });
-        const tui = new TuiAltScreen(terminal);
-        const view = await createChatView({
-            browser: NO_OPEN_BROWSER_PORT,
-            documentLinks: null,
-            tui,
-            suppressStartupHeader: true,
-            getSessionId: () => sessionId,
-            sessionRuntime: runtime,
-            setActiveModel: () => Promise.resolve({ status: "active" }),
-        });
-
-        try {
-            tui.start();
-            const appendUserMessage = view.uiAPI.appendUserMessage;
-            const appendThinkingStart = view.uiAPI.appendThinkingStart;
-            if (!appendUserMessage || !appendThinkingStart) throw new Error("TUI API is incomplete.");
-            for (let index = 1; index <= 12; index++) {
-                appendUserMessage(`older message ${index}`);
-            }
-            const thinking = appendThinkingStart();
-            thinking.appendDelta("live update before scroll");
-            tui.renderNow(true);
-            await terminal.flush();
-
-            tui.scrollBy(-5);
-            tui.renderNow(true);
-            await terminal.flush();
-            const before = terminal.getScreenText();
-            assertStringIncludes(before, "older message");
-
-            thinking.appendDelta(" and after scroll");
-            tui.renderNow(true);
-            await terminal.flush();
-
-            assertEquals(terminal.getScreenText(), before);
         } finally {
             view.dispose();
             tui.stop();

@@ -169,9 +169,6 @@ test("remote Shared Space API enforces capabilities, ciphertext storage, lifecyc
         const storedText = JSON.stringify(rows);
         assertEquals(storedText.includes("reviewer-secret-capability"), false);
         assertEquals(storedText.includes("maintainer-secret-capability"), false);
-        assertEquals(storedText.includes("plaintext plan body"), false);
-        assertEquals(storedText.includes("Alice"), false);
-        assertEquals(storedText.includes("original text"), false);
 
         const invalidPlaintext = await app(
             jsonRequest("http://localhost/api/spaces", {

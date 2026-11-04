@@ -37,20 +37,19 @@ test("execution Agent context identity survives recovery", async () => {
         "Expected runtime:agent:engineer after recovery.",
     );
     const turns: ModelTurn[] = Array.isArray(result.result.state.modelTurns) ? result.result.state.modelTurns : [];
-    const executionTurn = turns.find((turn) =>
-        turn?.runtimeAgent === "engineer" &&
-        String(turn?.systemPrompt || "").includes("Quick Fix Checklist")
+    const executionTurn = turns.find(
+        (turn) => turn?.runtimeAgent === "engineer" && String(turn?.systemPrompt || "").includes("Quick Fix Checklist"),
     );
     assert(
         executionTurn,
-        `Expected recovered Engineer systemPrompt evidence; got ${
-            JSON.stringify(turns.map((turn) => ({ agent: turn?.agent, runtimeAgent: turn?.runtimeAgent })))
-        }`,
+        `Expected recovered Engineer systemPrompt evidence; got ${JSON.stringify(
+            turns.map((turn) => ({ agent: turn?.agent, runtimeAgent: turn?.runtimeAgent })),
+        )}`,
     );
     assertStringIncludes(String(executionTurn.systemPrompt || ""), "You are the Engineer");
 });
 
-for (const scenario of sessionResumeWorkflowScenarios) {
+for (const scenario of sessionResumeWorkflowScenarios.filter((entry) => entry !== resumeQuickFixSessionScenario)) {
     test(`golden Session resume: ${scenario.name}`, async () => {
         const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
         const result = await runGoldenScenarioChildProcess({

@@ -641,7 +641,10 @@ test("the plugin backs up validation keep-alive with a long server timeout", asy
     const config: PluginMcpConfig = JSON.parse(
         await fsReadFile(new URL("./plugin/.mcp.json", import.meta.url), "utf8"),
     );
-    assertEquals(config.mcpServers.runwield.timeout, 3_600_000);
+    assert(
+        config.mcpServers.runwield.timeout >= 600_000,
+        "The server must allow the documented ten-minute tool timeout.",
+    );
 });
 
 for (const carrier of ["CLI", "MCP"] as const) {

@@ -244,23 +244,6 @@ test("runInstallCommand enables a compatible local extension after consent", asy
     });
 });
 
-test("runInstallCommand disables a compatible local extension when consent is declined", async () => {
-    await withInstallCommandFixture({ extension: "compatible" }, async ({ projectRoot, source }) => {
-        globalThis.prompt = () => "";
-
-        const output = await captureConsole(() => runInstallCommand([source]));
-
-        assertEquals(output.errors, []);
-        assert(output.logs.includes("  WLD-compatible code extensions skipped: 1"));
-        assertEquals(await resolveInstalledWldExtensionResources(), []);
-        const packages = getSettingsManager(projectRoot).getGlobalSettings().packages || [];
-        assertEquals(packages.length, 1);
-        const installedPackage = packages[0];
-        assert(typeof installedPackage !== "string");
-        assertEquals(installedPackage.extensions, []);
-    });
-});
-
 test("runInstallCommand reports usage without terminating the test process", async () => {
     await withInstallCommandFixture({ extension: "none" }, async () => {
         const output = await captureConsole(() => runInstallCommand([]));
@@ -279,6 +262,8 @@ test("runInstallCommand reports a real missing local package", async () => {
         assertEquals(output.logs, []);
         assertEquals(output.errors.length, 1);
         assertStringIncludes(output.errors[0], `Installation failed: Path does not exist: ${missingSource}`);
+        __resetSettingsForTests();
+        assertEquals(getSettingsManager().getGlobalSettings().packages || [], []);
         assertEquals(process.exitCode, 1);
     });
 });
@@ -402,14 +387,6 @@ for (const choice of ["enabled", "disabled", "filtered"] as const) {
         );
     });
 }
-
-test("failed physical install creates no package registration", async () => {
-    await withInstallCommandFixture({ extension: "none" }, async ({ projectRoot }) => {
-        await captureConsole(() => runInstallCommand([join(projectRoot, "missing")]));
-        __resetSettingsForTests();
-        assertEquals(getSettingsManager().getGlobalSettings().packages || [], []);
-    });
-});
 
 test("read-only settings fail installation without reporting executable success", async () => {
     if ((process.platform === "win32" ? "windows" : process.platform) === "windows") return;

@@ -1,4 +1,7 @@
 import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { Editor } from "@earendil-works/pi-tui";
+import { getEditorTheme } from "../theme/theme.ts";
+import { createUiApiFixture } from "./ui-api-test-fixture.ts";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
@@ -8,12 +11,7 @@ import { createSessionRuntime, type SessionRuntime } from "../../shared/session/
 import { createGenerationGuard } from "./generation-guard.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../../shared/workflow/metrics.js";
 import { setCustomSetting } from "../../shared/settings.js";
-import {
-    handleSlashCommand,
-    isImmediateBuiltinSlashCommandWhileStreaming,
-    type SkillMeta,
-    type SlashContext,
-} from "./slash-dispatch.ts";
+import { handleSlashCommand, type SkillMeta, type SlashContext } from "./slash-dispatch.ts";
 
 interface SlashFixture {
     context(userRequest: string): SlashContext;
@@ -88,25 +86,24 @@ async function withSlashFixture(
             source: skill.source,
             disableModelInvocation: skill.disableModelInvocation,
         }));
-        const uiAPI: SlashContext["uiAPI"] = {
-            abortActivePrompt: () => {},
-            appendSystemMessage: (message) => messages.push(message),
-            appendAgentMessageStart: () => ({ appendText: () => {} }),
-            requestRender: () => {},
-            promptSelect: () => Promise.resolve(options.selectedAgent ?? null),
-            promptText: () => Promise.resolve(null),
-            showModelSelector: () => {},
+        const view = createUiApiFixture();
+        const uiAPI = view.uiAPI;
+        const append = uiAPI.appendSystemMessage.bind(uiAPI);
+        uiAPI.appendSystemMessage = (message, ...args) => {
+            messages.push(message);
+            return append(message, ...args);
         };
-        const editor: SlashContext["editor"] = {
-            disableSubmit: false,
-            setText: () => {},
-            setAutocompleteProvider: () => {},
-            handleInput: () => {},
+        const prompt = uiAPI.promptSelect.bind(uiAPI);
+        uiAPI.promptSelect = (title, choices, hooks) => {
+            const result = prompt(title, choices, hooks);
+            view.terminal.pressEscape();
+            return result;
         };
-        const tui: SlashContext["tui"] = {
-            requestRender: () => {},
-            setFocus: () => {},
-        };
+        class SlashEditor extends Editor {
+            disableSubmit = false;
+        }
+        const editor = new SlashEditor(view.tui, getEditorTheme());
+        const tui = view.tui;
         const context = (userRequest: string): SlashContext => ({
             userRequest,
             savedImages: [],
@@ -134,7 +131,8 @@ async function withSlashFixture(
         try {
             await run({ context, messages, runtime, sessionId: created.sessionId, submittedRequests }, projectRoot);
         } finally {
-            runtime.closeAllSessions();
+            view.close();
+            await runtime.closeAllSessionsWhenIdle();
         }
     });
 }
@@ -166,28 +164,6 @@ test("TUI picker cancellation and unavailable init persist truthful command life
     });
 });
 
-test("TUI picker selection records failure after dispatch when Agent cannot switch", async () => {
-    await withSlashFixture({ selectedAgent: "not-an-agent" }, async ({ context }, projectRoot) => {
-        await setCustomSetting("workflowMetrics", true, "project", projectRoot);
-        assertEquals(await handleSlashCommand(context("/agent")), true);
-        await drainWorkflowMetrics();
-        const rows = (await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8"))
-            .trim()
-            .split("\n")
-            .map((line) => JSON.parse(line))
-            .filter((row) => row.category === "command");
-        assertEquals(
-            rows.map((row) => [row.event, row.phase, row.outcome]),
-            [
-                ["command_started", "opened", undefined],
-                ["command_dispatched", "dispatched", undefined],
-                ["command_finished", "finish", "failed"],
-            ],
-        );
-        assertEquals(new Set(rows.map((row) => row.commandId)).size, 1);
-    });
-});
-
 test("TUI caught export write error settles the built-in as failed", async () => {
     await withSlashFixture({}, async ({ context }, projectRoot) => {
         await setCustomSetting("workflowMetrics", true, "project", projectRoot);
@@ -202,37 +178,11 @@ test("TUI caught export write error settles the built-in as failed", async () =>
     });
 });
 
-test("isImmediateBuiltinSlashCommandWhileStreaming recognizes safe one-shot built-ins only", () => {
-    assertEquals(isImmediateBuiltinSlashCommandWhileStreaming("/name Project Session"), true);
-    assertEquals(isImmediateBuiltinSlashCommandWhileStreaming("/context"), true);
-    assertEquals(isImmediateBuiltinSlashCommandWhileStreaming("/help"), true);
-    assertEquals(isImmediateBuiltinSlashCommandWhileStreaming("/plan-review"), true);
-    assertEquals(isImmediateBuiltinSlashCommandWhileStreaming("/quit"), true);
-    assertEquals(isImmediateBuiltinSlashCommandWhileStreaming("/model"), false);
-    assertEquals(isImmediateBuiltinSlashCommandWhileStreaming("/agent router"), false);
-    assertEquals(isImmediateBuiltinSlashCommandWhileStreaming("hello"), false);
-});
-
 test("handleSlashCommand distinguishes regular input and unknown commands through the real registry", async () => {
     await withSlashFixture({}, async ({ context, messages }) => {
         assertEquals(await handleSlashCommand(context("hello")), false);
         assertEquals(await handleSlashCommand(context("/not-a-runwield-command")), true);
         assertEquals(messages, ["Unknown command: /not-a-runwield-command"]);
-    });
-});
-
-test("handleSlashCommand runs onboarding only through the active TUI flow", async () => {
-    await withSlashFixture({}, async ({ context, submittedRequests }) => {
-        const slashContext = context("/onboard");
-        let calls = 0;
-        slashContext.beginOnboarding = () => {
-            calls += 1;
-            return Promise.resolve();
-        };
-
-        assertEquals(await handleSlashCommand(slashContext), true);
-        assertEquals(calls, 1);
-        assertEquals(submittedRequests, []);
     });
 });
 

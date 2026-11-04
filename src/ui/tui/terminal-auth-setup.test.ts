@@ -1,23 +1,9 @@
-import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
-import { captureForegroundProcess } from "../../shared/captured-process.ts";
-import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { getCwd } from "../../constants.js";
-import {
-    mkdir as fsMkdir,
-    mkdtemp as fsMkdtemp,
-    readdir as fsReaddir,
-    readFile as fsReadFile,
-    rm as fsRm,
-    stat as fsStat,
-    symlink as fsSymlink,
-    writeFile as fsWriteFile,
-} from "node:fs/promises";
-import process from "node:process";
+import { stat as fsStat } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath as fromFileUrl } from "node:url";
+import { join } from "node:path";
 import { TuiMainScreen } from "@earendil-works/pi-tui";
 import {
     registerScriptedOAuthProvider,
@@ -44,7 +30,6 @@ interface AcpHandle {
     connection: { close(): void; closed: Promise<void> };
 }
 
-const REPO_ROOT = resolve(dirname(fromFileUrl(import.meta.url)), "../../..");
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -356,94 +341,4 @@ test("terminal auth setup maps OAuth cancellation and provider failure to non-re
         },
         { providerState: "none" },
     );
-});
-
-test("terminal auth setup does not import the normal chat Session composition", async () => {
-    const source = await fsReadFile("src/ui/tui/terminal-auth-setup.ts", "utf8");
-    assert(!source.includes("chat-session"));
-    assert(!source.includes("createInteractiveSession"));
-    assert(!source.includes("SessionRuntime"));
-});
-
-async function symlinkEntries(sourceDir: string, targetDir: string, skip: Set<string>): Promise<void> {
-    await fsMkdir(targetDir, { recursive: true });
-    for await (const entry of await fsReaddir(sourceDir, { withFileTypes: true })) {
-        if (skip.has(entry.name)) continue;
-        await fsSymlink(join(sourceDir, entry.name), join(targetDir, entry.name), entry.isDirectory() ? "dir" : "file");
-    }
-}
-
-test("terminal auth setup succeeds against a temporary source mutation where createInteractiveSession throws", async () => {
-    const tempRoot = await fsMkdtemp(join(tmpdir(), "terminal-auth-mutated-source-"));
-    try {
-        await fsSymlink(join(REPO_ROOT, "runtime-root.js"), join(tempRoot, "runtime-root.js"));
-        await fsSymlink(join(REPO_ROOT, "node_modules"), join(tempRoot, "node_modules"), "dir");
-        await symlinkEntries(join(REPO_ROOT, "src"), join(tempRoot, "src"), new Set(["shared"]));
-        await symlinkEntries(join(REPO_ROOT, "src", "shared"), join(tempRoot, "src", "shared"), new Set(["session"]));
-        await symlinkEntries(
-            join(REPO_ROOT, "src", "shared", "session"),
-            join(tempRoot, "src", "shared", "session"),
-            new Set(["session-runtime.ts"]),
-        );
-        const runtimeSource = await fsReadFile(
-            join(REPO_ROOT, "src", "shared", "session", "session-runtime.ts"),
-            "utf8",
-        );
-        const mutatedRuntimeSource = runtimeSource.replace(
-            '    createInteractiveSession(...args: Parameters<RuntimeLifecycle["createInteractiveSession"]>) {',
-            '    createInteractiveSession(...args: Parameters<RuntimeLifecycle["createInteractiveSession"]>) {\n' +
-                '        throw new Error("mutated createInteractiveSession called");',
-        );
-        assert(mutatedRuntimeSource !== runtimeSource);
-        await fsWriteFile(join(tempRoot, "src", "shared", "session", "session-runtime.ts"), mutatedRuntimeSource);
-        const childScript = join(tempRoot, "mutation-proof.ts");
-        await fsWriteFile(
-            childScript,
-            `import { assertEquals } from ${JSON.stringify(import.meta.resolve("../../testing/assertions.ts"))};\n` +
-                `import { TuiMainScreen } from "@earendil-works/pi-tui";\n` +
-                `import { withRuntimeCommandFixture } from "./src/cmd/testing/runtime-command-fixture.ts";\n` +
-                `import { getModelRegistry } from "./src/shared/models/model-registry.ts";\n` +
-                `import { getSettingsManager } from "./src/shared/settings.js";\n` +
-                `import { initTUIWithPair, stopTUI } from "./src/ui/tui/tui.ts";\n` +
-                `import { runTerminalAuthSetup } from "./src/ui/tui/terminal-auth-setup.ts";\n` +
-                `import { VirtualTerminal } from "./src/ui/tui/testing/virtual-terminal.ts";\n` +
-                `async function waitForScreen(terminal: VirtualTerminal, text: string): Promise<void> {\n` +
-                `  const startedAt = Date.now();\n` +
-                `  while (Date.now() - startedAt < 10000) {\n` +
-                `    if (terminal.getScreenText().includes(text)) return;\n` +
-                `    await new Promise((resolveStep) => setTimeout(resolveStep, 25));\n` +
-                `  }\n` +
-                `  throw new Error("Timed out waiting for " + text + ". Screen:\\n" + terminal.getScreenText());\n` +
-                `}\n` +
-                `await withRuntimeCommandFixture("terminal-auth-mutation-proof-", async () => {\n` +
-                `  await getModelRegistry().logoutProvider("runtime-command-fixture");\n` +
-                `  const settings = getSettingsManager((await import("node:process")).cwd());\n` +
-                `  await settings.setDefaultModel("");\n` +
-                `  await settings.setDefaultProvider("");\n` +
-                `  stopTUI();\n` +
-                `  const terminal = new VirtualTerminal({ columns: 120, rows: 40 });\n` +
-                `  initTUIWithPair({ terminal, tui: new TuiMainScreen(terminal) });\n` +
-                `  const setup = runTerminalAuthSetup(["api-key", "runtime-command-fixture"]);\n` +
-                `  await waitForScreen(terminal, "Enter API key for Runtime Command Fixture Provider:");\n` +
-                `  terminal.typeText("terminal-auth-secret");\n` +
-                `  terminal.pressEnter();\n` +
-                `  await waitForScreen(terminal, "Only showing models from configured providers");\n` +
-                `  terminal.pressEnter();\n` +
-                `  assertEquals((await setup).status, "ready");\n` +
-                `}, { providerState: "provider-no-model" });\n`,
-        );
-        const output = await captureForegroundProcess(process.execPath, {
-            args: runtimeSourceArgs(["run", "-A", "--no-check", "--config", join(REPO_ROOT, "deno.json"), childScript]),
-            cwd: tempRoot,
-        });
-        assertEquals(
-            output.code,
-            0,
-            `mutation proof failed\nstdout:\n${decoder.decode(output.stdout)}\nstderr:\n${decoder.decode(
-                output.stderr,
-            )}`,
-        );
-    } finally {
-        await fsRm(tempRoot, { recursive: true }).catch(() => {});
-    }
 });

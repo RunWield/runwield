@@ -12,8 +12,7 @@ import { match as assertMatch, doesNotMatch as assertNotMatch, fail } from "node
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import type { ExtensionToolContext, EditToolDetails } from "@earendil-works/pi-coding-agent";
-import type { TextContent } from "@earendil-works/pi-ai";
-import type { TSchema } from "typebox";
+import { validateToolArguments, type TextContent } from "@earendil-works/pi-ai";
 import { createSingleEditToolDefinition } from "../edit.ts";
 
 type EditTool = ReturnType<typeof createSingleEditToolDefinition>;
@@ -41,10 +40,6 @@ interface FixtureEditResult {
     details?: Partial<EditToolDetails>;
 }
 
-interface FixtureEditSchema {
-    properties: Record<"path" | "oldText" | "newText", TSchema>;
-}
-
 type FixtureExecute = (
     id: string,
     params: FixtureEditParams,
@@ -56,21 +51,10 @@ type FixtureExecute = (
 type FixturePrepareArguments = (params: FixtureLegacyParams) => FixtureEditParams;
 
 async function executeEdit(tool: EditTool, params: FixtureEditParams) {
+    validateToolArguments(tool, { type: "toolCall", id: "edit-call-1", name: tool.name, arguments: { ...params } });
     const execute = tool.execute as FixtureExecute;
     return await execute("edit-call-1", params, new AbortController().signal, () => {}, {} as ExtensionToolContext);
 }
-
-test("createSingleEditToolDefinition exposes expected metadata", () => {
-    const tool = createSingleEditToolDefinition("/tmp");
-    assertEquals(tool.name, "edit");
-    assertEquals(tool.label, "edit");
-    assertMatch(tool.description, /single file/i);
-    assertEquals(typeof tool.execute, "function");
-    assertEquals(typeof tool.parameters, "object");
-
-    const properties = (tool.parameters as FixtureEditSchema).properties;
-    assertEquals(Object.keys(properties), ["path", "oldText", "newText"]);
-});
 
 test("edit: normal successful edit", async () => {
     const dir = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
@@ -186,37 +170,20 @@ test("edit: propagates error when file does not exist", async () => {
 });
 
 test("edit: rejects an empty path", async () => {
-    const tool = createSingleEditToolDefinition("/tmp");
-
-    try {
-        await executeEdit(tool, {
-            path: "",
-            oldText: "a",
-            newText: "b",
-        });
-        fail("Expected an error but edit succeeded");
-    } catch {
-        // Expected — error was thrown
-    }
-});
-
-test("edit: works with relative path", async () => {
     const dir = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    const filePath = join(dir, "relative-test.txt");
-    const originalContent = "First line\nSecond line\nThird line\n";
-    await fsWriteFile(filePath, originalContent);
-
-    const tool = createSingleEditToolDefinition(dir);
-    const result = await executeEdit(tool, {
-        path: "relative-test.txt",
-        oldText: "Second line",
-        newText: "Second line (edited)",
-    });
-
-    const text = result.content.map((c) => c.text || "").join("");
-    assertMatch(text, /successfully replaced/i);
-
-    await fsRm(dir, { recursive: true });
+    try {
+        await assertRejects(
+            () =>
+                executeEdit(createSingleEditToolDefinition(dir), {
+                    path: "",
+                    oldText: "a",
+                    newText: "b",
+                }),
+            Error,
+        );
+    } finally {
+        await fsRm(dir, { recursive: true });
+    }
 });
 
 test("edit: accepts legacy single-entry edits array", async () => {

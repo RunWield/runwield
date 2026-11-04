@@ -32,14 +32,13 @@ import { Client } from "@modelcontextprotocol/sdk/client";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp";
 import { getCwd, getHomeDir, SUBAGENTS } from "../constants.js";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
-import { __resetSettingsForTests, preserveRunWieldCustomSettingsForWrite } from "../shared/settings.js";
-import { createImage, encodeCreatedImage } from "../shared/image-generation.ts";
+import { __resetSettingsForTests } from "../shared/settings.js";
+import { createImage } from "../shared/image-generation.ts";
 import { persistImageAttachment } from "../shared/session/image-attachments.ts";
 import { buildAgentSession, composeClaudeCliBridgedTools } from "../shared/session/session.js";
 import { CLAUDE_CLI_MCP_PROVENANCE, startRunWieldMcpBridge } from "../shared/session/backends/claude-cli/mcp-bridge.ts";
 import { resolveImageGenerationSettings } from "../shared/image-generation-settings.ts";
 import type { ImageGenerationSettings } from "../shared/image-generation-settings.ts";
-import { createImageTool } from "./create-image.ts";
 import { loadAgentDef } from "../shared/session/agents.js";
 import { loadSubAgentDefinition } from "../shared/session/subagent-definitions.ts";
 import { resolveDelegatedToolNames } from "./delegate-agent.ts";
@@ -68,7 +67,16 @@ interface Fixture {
     home: string;
     requests: RequestPayload[];
     settings(value: ImageGenerationSettings): Promise<void>;
-    response: "image" | "text" | "invalid" | "multiple" | "unauthorized" | "model-denied" | "server-error" | "wait";
+    response:
+        | "image"
+        | "mime-mismatch"
+        | "text"
+        | "invalid"
+        | "multiple"
+        | "unauthorized"
+        | "model-denied"
+        | "server-error"
+        | "wait";
     onRequest?: () => void;
 }
 
@@ -140,7 +148,9 @@ async function withFixture(run: (fixture: Fixture) => Promise<void>) {
                 });
             }
             const image = {
-                image_url: { url: `data:image/png;base64,${fixture.response === "invalid" ? "aGVsbG8=" : PNG}` },
+                image_url: {
+                    url: `data:${fixture.response === "mime-mismatch" ? "image/jpeg" : "image/png"};base64,${fixture.response === "invalid" ? "aGVsbG8=" : PNG}`,
+                },
             };
             const images =
                 fixture.response === "text" ? [] : fixture.response === "multiple" ? [image, image] : [image];
@@ -286,12 +296,6 @@ test("create_image rejects unsupported options and vision-only models", () =>
 
 test("imageGeneration preserves settings and resets inherited options when the model changes", () =>
     withFixture(async (f) => {
-        assertEquals(
-            JSON.parse(
-                preserveRunWieldCustomSettingsForWrite(JSON.stringify({ imageGeneration: { model: MODEL } }), "{}"),
-            ),
-            { imageGeneration: { model: MODEL } },
-        );
         await fsWriteFile(
             join(f.home, ".wld", "settings.json"),
             JSON.stringify({ imageGeneration: { model: MODEL, temperature: 0.5, thinkingLevel: "high" } }),
@@ -351,21 +355,6 @@ test("create_image does not trust Agy final SUCCESS or paths from other runs", (
         }
     }));
 
-test("create_image tool returns text-only metadata when the primary model cannot view images", () =>
-    withFixture(async (f) => {
-        const tool = createImageTool({ cwd: f.cwd, includeImage: false });
-        const result = await tool.execute(
-            "fixture",
-            { prompt: "red", outputPath: "result.png" },
-            undefined,
-            undefined,
-            {} as never,
-        );
-        assertEquals(result.content.length, 1);
-        assertEquals(result.details?.ok, true);
-        assertStringIncludes(result.content[0].type === "text" ? result.content[0].text : "", "result.png");
-    }));
-
 test("create_image honors pre-cancellation without generating or saving", () =>
     withFixture(async (f) => {
         await assertRejects(() =>
@@ -377,7 +366,11 @@ test("create_image honors pre-cancellation without generating or saving", () =>
 
 test("create_image rejects mismatched raster MIME and symlinked reference escapes", () =>
     withFixture(async (f) => {
-        assertThrows(() => encodeCreatedImage({ type: "image", data: PNG, mimeType: "image/jpeg" }, "image/jpeg"));
+        f.response = "mime-mismatch";
+        await assertRejects(() => createImage({ cwd: f.cwd, prompt: "red", outputPath: "mismatch.png" }));
+        await assertRejects(() => fsStat(join(f.cwd, "mismatch.png")), Error, "ENOENT");
+        assertEquals(f.requests.length, 1);
+        f.requests.length = 0;
         await fsWriteFile(
             join(f.home, "private.png"),
             Uint8Array.from(atob(PNG), (c) => c.charCodeAt(0)),

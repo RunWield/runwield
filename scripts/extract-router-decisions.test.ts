@@ -1,58 +1,6 @@
 import { assertEquals } from "../src/testing/assertions.ts";
 import { test } from "node:test";
-import {
-    extractRouterDecisionsFromEntries,
-    extractToolCallNames,
-    normalizeTriageDetails,
-} from "./extract-router-decisions.js";
-
-test("normalizeTriageDetails preserves canonical routing intent", () => {
-    assertEquals(
-        normalizeTriageDetails({
-            routingIntent: "FEATURE",
-            complexity: "MEDIUM",
-            summary: "Build it",
-            affectedPaths: ["src/a.js"],
-        }),
-        {
-            routingIntent: "FEATURE",
-            classification: "FEATURE",
-            complexity: "MEDIUM",
-            summary: "Build it",
-            affectedPaths: ["src/a.js"],
-            intentSource: "routingIntent",
-        },
-    );
-});
-
-test("normalizeTriageDetails accepts legacy classification", () => {
-    assertEquals(
-        normalizeTriageDetails({
-            classification: "QUICK_FIX",
-            complexity: "LOW",
-            summary: "Fix it",
-            affectedPaths: ["src/a.js"],
-        }),
-        {
-            routingIntent: "QUICK_FIX",
-            complexity: "LOW",
-            summary: "Fix it",
-            affectedPaths: ["src/a.js"],
-            intentSource: "classification",
-        },
-    );
-});
-
-test("extractToolCallNames handles persisted Pi tool-call shapes", () => {
-    assertEquals(
-        extractToolCallNames([
-            { type: "toolCall", name: "grep" },
-            { type: "tool_use", name: "triage_report" },
-            { type: "text", text: "ignore" },
-        ]),
-        ["grep", "triage_report"],
-    );
-});
+import { extractRouterDecisionsFromEntries } from "./extract-router-decisions.js";
 
 test("extractRouterDecisionsFromEntries pairs router user request with triage_report", () => {
     const rows = extractRouterDecisionsFromEntries(

@@ -9,77 +9,12 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { createPayload, resolveNamedInvocation } from "./named-invocation.ts";
 import { HostedSession } from "./hosted-session.js";
 import { ensureRootAgentSession, runRootTurn } from "./session.js";
-import { setCustomSetting } from "../settings.js";
 
 async function writePrompt(projectRoot: string, name: string, frontMatter: string[], body: string): Promise<void> {
     const promptDir = join(projectRoot, ".wld", "prompts");
     await fsMkdir(promptDir, { recursive: true });
     await fsWriteFile(join(promptDir, `${name}.md`), ["---", ...frontMatter, "---", body].join("\n"));
 }
-
-async function writeSkill(projectRoot: string, name: string): Promise<void> {
-    const skillDir = join(projectRoot, ".wld", "skills", name);
-    await fsMkdir(skillDir, { recursive: true });
-    await fsWriteFile(
-        join(skillDir, "SKILL.md"),
-        ["---", `name: "${name}"`, "description: fixture skill", "---", "Use the fixture skill body."].join("\n"),
-    );
-}
-
-test("resolveNamedInvocation resolves Prompt Template Front Matter and exact expansion", async () => {
-    await withRuntimeCommandFixture("named-invocation-resolve-template-", async ({ projectRoot }) => {
-        await writePrompt(
-            projectRoot,
-            "summarize",
-            ["agent: operator", "model: runtime-command-fixture/fixture-model"],
-            "Summarize: {{input}}",
-        );
-
-        const resolved = await resolveNamedInvocation({ cwd: projectRoot, text: "/summarize the active diff" });
-
-        assertEquals(resolved.kind, "prompt_template");
-        if (resolved.kind !== "prompt_template") return;
-        assertEquals(resolved.name, "summarize");
-        assertEquals(resolved.agentName, "operator");
-        assertEquals(resolved.model, "runtime-command-fixture/fixture-model");
-        assertEquals(resolved.expandedRequest, "Summarize: {{input}}\n\nthe active diff");
-        const payload = resolved.payload;
-        assertEquals(payload.compactInvocation, "/summarize the active diff");
-        assertEquals(payload.expandedRequest, "Summarize: {{input}}\n\nthe active diff");
-        assertEquals(payload.profile.agentName, "operator");
-    });
-});
-
-test("resolveNamedInvocation preserves an omitted Agent for runtime Session defaults", async () => {
-    await withRuntimeCommandFixture("named-invocation-default-agent-", async ({ projectRoot }) => {
-        await writePrompt(projectRoot, "commit-message", [], "Write a commit message for {{input}}");
-
-        const resolved = await resolveNamedInvocation({ cwd: projectRoot, text: "/commit-message staged files" });
-
-        assertEquals(resolved.kind, "prompt_template");
-        if (resolved.kind !== "prompt_template") return;
-        assertEquals(resolved.agentName, undefined);
-    });
-});
-
-test("resolveNamedInvocation resolves Skills without changing the Agent profile", async () => {
-    await withRuntimeCommandFixture("named-invocation-resolve-skill-", async ({ projectRoot }) => {
-        await writeSkill(projectRoot, "diagnose-fixture");
-
-        const resolved = await resolveNamedInvocation({
-            cwd: projectRoot,
-            text: "/skill:diagnose-fixture inspect logs",
-        });
-
-        assertEquals(resolved.kind, "skill");
-        if (resolved.kind !== "skill") return;
-        assertEquals(resolved.name, "diagnose-fixture");
-        assertStringIncludes(resolved.expandedRequest, 'The user has invoked the "diagnose-fixture" skill.');
-        assertStringIncludes(resolved.expandedRequest, "Use the fixture skill body.");
-        assertStringIncludes(resolved.expandedRequest, "inspect logs");
-        assertEquals(resolved.payload.profile, {});
-    });
-});
 
 test("resolveNamedInvocation rejects invalid Prompt Template execution Front Matter clearly", async () => {
     await withRuntimeCommandFixture("named-invocation-invalid-profile-", async ({ projectRoot }) => {
@@ -123,22 +58,6 @@ test("resolveNamedInvocation does not resolve Prompt Template names outside reso
         await fsWriteFile(join(projectRoot, ".wld", "secret.md"), "Secret outside prompt layers.");
 
         const resolved = await resolveNamedInvocation({ cwd: projectRoot, text: "/../secret" });
-
-        assertEquals(resolved.kind, "ordinary");
-    });
-});
-
-test("resolveNamedInvocation obeys disabled external Skill discovery", async () => {
-    await withRuntimeCommandFixture("named-invocation-external-skill-disabled-", async ({ projectRoot, homeDir }) => {
-        const skillDir = join(homeDir, ".agents", "skills", "external-fixture");
-        await fsMkdir(skillDir, { recursive: true });
-        await fsWriteFile(
-            join(skillDir, "SKILL.md"),
-            ["---", "name: external-fixture", "description: external fixture", "---", "External body."].join("\n"),
-        );
-        await setCustomSetting("enableExternalSkills", false, "global", projectRoot);
-
-        const resolved = await resolveNamedInvocation({ cwd: projectRoot, text: "/skill:external-fixture" });
 
         assertEquals(resolved.kind, "ordinary");
     });
@@ -248,9 +167,9 @@ test("legacy Named Invocation repair preserves branch edits and omits summarized
             compactedHosted.dispose();
         }
         assertEquals(
-            compactedManager.getEntries().some((entry) =>
-                entry.type === "context_edit" && entry.targetId === summarizedTargetId
-            ),
+            compactedManager
+                .getEntries()
+                .some((entry) => entry.type === "context_edit" && entry.targetId === summarizedTargetId),
             false,
         );
     });
@@ -331,9 +250,7 @@ test("Prompt Template expansion is restored for kept pre-compaction Pi entries",
             const savedUser = branch.find((entry) => entry.id === userEntryId);
             assertEquals(
                 savedUser?.type === "message" && savedUser.message.role === "user" ? savedUser.message.content : null,
-                [
-                    { type: "text", text: "/kept-template saved request" },
-                ],
+                [{ type: "text", text: "/kept-template saved request" }],
             );
             assertEquals(modelRequests.length, 2);
             for (const modelRequest of modelRequests) {

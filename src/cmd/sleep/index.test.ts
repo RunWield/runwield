@@ -1,10 +1,4 @@
-import {
-    mkdtemp as fsMkdtemp,
-    readFile as fsReadFile,
-    rm as fsRm,
-    stat as fsStat,
-    writeFile as fsWriteFile,
-} from "node:fs/promises";
+import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { ok as assert, match as assertMatch } from "node:assert/strict";
@@ -94,43 +88,6 @@ test("sleep help uses the real command registry", async () => {
     assertStringIncludes(output.logs.join("\n"), "memory");
 });
 
-test("standalone sleep delegates only interactive session startup", async () => {
-    let request: string | null = null;
-    let agentName = "";
-    await runSleepCommand([], {
-        mnemotecaPort: createMnemotecaFixture().port,
-        sessionPort: {
-            startInteractiveSession: (nextRequest, options) => {
-                request = nextRequest;
-                agentName = options.initialAgentName || "";
-                return Promise.resolve();
-            },
-        },
-    });
-
-    assertEquals(request, "/sleep");
-    assertEquals(agentName, "engineer");
-});
-
-test("Mnemoteca export creates its real fixture directory and verifies the subprocess output", async () => {
-    const tempDir = await fsMkdtemp(join(tmpdir(), "runwield-sleep-export-"));
-    const outputPath = join(tempDir, "nested", "backup.jsonl");
-    const fixture = createMnemotecaFixture();
-    try {
-        await exportMnemotecaCollection("project", outputPath, fixture.port);
-
-        assertEquals(fixture.exports, [
-            {
-                args: ["export", "--name", "project", "--no-embeddings", "--output", outputPath],
-                outputPath,
-            },
-        ]);
-        assert((await fsStat(outputPath)).isFile());
-    } finally {
-        await fsRm(tempDir, { recursive: true });
-    }
-});
-
 test("Mnemoteca export rejects subprocess failure and false success", async () => {
     const tempDir = await fsMkdtemp(join(tmpdir(), "runwield-sleep-export-failure-"));
     try {
@@ -186,6 +143,14 @@ test("sleep backs up fixture memory before a real Runtime switches and runs Engi
             assertEquals(mnemoteca.exports.length, 1);
             assertEquals(agentsAtBackup, ["router"]);
             const backupPath = mnemoteca.exports[0].outputPath;
+            assertEquals(mnemoteca.exports[0].args, [
+                "export",
+                "--name",
+                "project",
+                "--no-embeddings",
+                "--output",
+                backupPath,
+            ]);
             assert(backupPath.startsWith(join(homeDir, ".wld")));
             assertMatch(backupPath, /project\.sleep-backup-.*\.jsonl$/);
             assertEquals(await fsReadFile(backupPath, "utf8"), '{"type":"mnemoteca-export"}\n');

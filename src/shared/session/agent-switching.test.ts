@@ -5,17 +5,25 @@ import { tmpdir } from "node:os";
 import { ok as assert, strictEqual as assertStrictEquals } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { fauxAssistantMessage, fauxText, getCurrentTools, getSystemMessageText } from "@earendil-works/pi-ai";
+import {
+    fauxAssistantMessage,
+    fauxText,
+    fauxToolCall,
+    getCurrentTools,
+    getSystemMessageText,
+    normalizeContext,
+} from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { runActiveAgentTurn, switchActiveAgent } from "./agent-switching.ts";
 import { __getRootSessionMetadataForTests } from "./session.js";
 import { HostedSession } from "./hosted-session.js";
+import { buildPostTriageRequest } from "../workflow/workflow-prompts.ts";
 import { RuntimeEventTypes } from "./session-runtime-events.js";
 import { createReplayEvents } from "./session-transcript-projection.js";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { TranscriptContext } from "@earendil-works/pi-ai";
 import type { ActiveExecutionWorkflow } from "./hosted-session.js";
-import type { RuntimeAgentChangedEvent, SessionRuntimeEvent } from "./session-runtime-events.js";
+import type { SessionRuntimeEvent } from "./session-runtime-events.js";
 
 interface TranscriptContentBlock {
     type: string;
@@ -45,6 +53,107 @@ function makeSession(projectRoot: string) {
         sessionManager,
     });
     return { hostedSession, sessionManager };
+}
+
+for (const [previousAgent, selectedAgent, routingIntent] of [
+    ["guide", "engineer", "INQUIRY"],
+    ["planner", "operator", "PLANNED_CHANGE"],
+]) {
+    test(`manual ${previousAgent} to ${selectedAgent} switch owns the provider prompt after triage`, async () => {
+        await withRuntimeCommandFixture("manual-triage-switch-", async ({ projectRoot, setModelResponseFactories }) => {
+            const initial = makeSession(projectRoot);
+            const sessionManager = initial.sessionManager;
+            let hostedSession = initial.hostedSession;
+            const requests: TranscriptContext[] = [];
+            const previousDisplayName = previousAgent === "guide" ? "Guide" : "Planner";
+            const selectedDisplayName = selectedAgent === "engineer" ? "Engineer" : "Operator";
+            await fsWriteFile(join(projectRoot, "handoff-context.txt"), "Task facts survive the handoff.");
+            const capture = (context: TranscriptContext) => {
+                requests.push(structuredClone(context));
+                if (requests.length === 2)
+                    return fauxAssistantMessage(fauxToolCall("read", { path: "handoff-context.txt" }));
+                return fauxAssistantMessage(fauxText(`I am the ${previousDisplayName}; I cannot act on this request.`));
+            };
+            setModelResponseFactories(Array.from({ length: 7 }, () => capture));
+            try {
+                await runActiveAgentTurn({
+                    hostedSession,
+                    sessionManager,
+                    agentName: previousAgent,
+                    // Saved Sessions can still contain the old triage role assignment.
+                    userRequest: `You are now ${previousDisplayName}.\n\n${buildPostTriageRequest("Investigate this change.", { routingIntent })}`,
+                });
+                await switchActiveAgent(hostedSession, { agentName: selectedAgent, releaseActiveWorkflow: true });
+                let root = hostedSession.getRootAgentSession() as AgentSession;
+                const handler = hostedSession.getActiveOnMessage();
+                assert(handler);
+                await handler("I disagree with triage. Act on the response.", [], sessionManager);
+                await handler("Continue.", [], sessionManager);
+                assertEquals(requests.length, 4);
+                assert(requests[2].messages.some((message) => message.role === "toolResult"));
+                hostedSession.dispose();
+                hostedSession = new HostedSession({ id: `resumed-${selectedAgent}`, cwd: projectRoot, sessionManager });
+                await runActiveAgentTurn({
+                    hostedSession,
+                    sessionManager,
+                    agentName: selectedAgent,
+                    userRequest: "Continue after resume.",
+                });
+                root = hostedSession.getRootAgentSession() as AgentSession;
+                assertEquals(requests.length, 5);
+                for (const request of requests.slice(1)) {
+                    const systems = request.messages.filter((message) => message.role === "system");
+                    assertEquals(systems.length, 1);
+                    assertEquals(getSystemMessageText(systems[0]), root.systemPrompt);
+                    assertEquals(request.messages[0], systems[0]);
+                    assert(getSystemMessageText(systems[0]).includes(`You are the ${selectedDisplayName}`));
+                    assert(!getSystemMessageText(systems[0]).includes(`You are the ${previousDisplayName}`));
+                    assert(JSON.stringify(request.messages).includes(`You are now ${previousDisplayName}.`));
+                    assert(JSON.stringify(request.messages).includes(`I am the ${previousDisplayName}`));
+                    assert(getCurrentTools(request.messages).some((tool) => tool.name === "bash"));
+                }
+
+                // Even if an upstream context transform reintroduces a historical prompt,
+                // the final RunWield provider boundary must send the active root's prompt.
+                const staleRequest = structuredClone(requests.at(-1)!);
+                staleRequest.messages.unshift({
+                    role: "system",
+                    content: `You are the ${previousDisplayName}.`,
+                    timestamp: 1,
+                });
+                staleRequest.messages.push({ role: "system", content: "Obsolete role restrictions.", timestamp: 2 });
+                const original = JSON.stringify(staleRequest);
+                const messages = await root.agent.convertToLlm(staleRequest.messages);
+                const stream = await root.agent.streamFunction(root.model!, normalizeContext({ messages }), {});
+                await stream.result();
+                assertEquals(requests.length, 6);
+                const repaired = requests.at(-1)!;
+                const systems = repaired.messages.filter((message) => message.role === "system");
+                assertEquals(systems.length, 1);
+                assertEquals(getSystemMessageText(systems[0]), root.systemPrompt);
+                assertEquals(getCurrentTools(repaired.messages), getCurrentTools(staleRequest.messages));
+                assertEquals(
+                    repaired.messages.filter((message) => message.role !== "system"),
+                    staleRequest.messages.filter((message) => message.role !== "system"),
+                );
+                assertEquals(JSON.stringify(staleRequest), original);
+
+                // Compaction uses the stream directly with independent instructions.
+                const summaryContext = normalizeContext({
+                    messages: [
+                        { role: "system", content: "Summarize the conversation.", timestamp: 3 },
+                        { role: "user", content: "Earlier conversation", timestamp: 4 },
+                    ],
+                });
+                const summaryStream = await root.agent.streamFunction(root.model!, summaryContext, {});
+                await summaryStream.result();
+                assertEquals(requests.length, 7);
+                assertEquals(requests.at(-1)?.messages, summaryContext.messages);
+            } finally {
+                hostedSession.dispose();
+            }
+        });
+    });
 }
 
 test("Agent switches replace provider system instructions while retaining conversation history", async () => {
@@ -131,32 +240,6 @@ test("switchActiveAgent rebuilds same Agent roots when cwd changes", async () =>
         assert(secondRoot && secondRoot !== firstRoot);
         assertEquals(hostedSession.cwd, nextRoot);
         assertEquals(__getRootSessionMetadataForTests(secondRoot as AgentSession)?.cwd, nextRoot);
-        hostedSession.dispose();
-    });
-});
-
-test("switchActiveAgent installs a real matching Agent root and handler", async () => {
-    await withRuntimeCommandFixture("agent-switch-install-", async ({ projectRoot }) => {
-        const { hostedSession, sessionManager } = makeSession(projectRoot);
-        const events: SessionRuntimeEvent[] = [];
-        hostedSession.setEventSink((event: SessionRuntimeEvent) => events.push(event));
-
-        const result = await switchActiveAgent(hostedSession, {
-            agentName: "guide",
-            sessionManager,
-        });
-
-        assertEquals(result, { ok: true, agentName: "guide", changed: true, model: undefined });
-        assertEquals(hostedSession.getRootAgentName(), "guide");
-        assertEquals(typeof (hostedSession.getRootAgentSession() as AgentSession | null)?.prompt, "function");
-        assertEquals(typeof hostedSession.getActiveOnMessage(), "function");
-        const agentEvents = events.filter(
-            (event): event is RuntimeAgentChangedEvent =>
-                event.type === RuntimeEventTypes.AGENT_CHANGED && event.agentName === "guide",
-        );
-        assertEquals(agentEvents.length, 1);
-        assertEquals(agentEvents[0].displayName, "Guide");
-        assertEquals(agentEvents[0].rootHandoff, undefined);
         hostedSession.dispose();
     });
 });
@@ -259,24 +342,6 @@ test("switchActiveAgent leaves the previous real root transaction intact when re
             ["retain after failure"],
         );
         hostedSession.completeAgentTransition(transitionId);
-        hostedSession.dispose();
-    });
-});
-
-test("runActiveAgentTurn switches and completes a real root turn through the faux model boundary", async () => {
-    await withRuntimeCommandFixture("active-agent-turn-", async ({ projectRoot, setModelResponse }) => {
-        setModelResponse("The isolated Guide turn completed.");
-        const { hostedSession, sessionManager } = makeSession(projectRoot);
-
-        const messages = await runActiveAgentTurn({
-            hostedSession,
-            agentName: "guide",
-            userRequest: "Explain the fixture.",
-            sessionManager,
-        });
-
-        assertEquals(hostedSession.getRootAgentName(), "guide");
-        assertEquals(JSON.stringify(messages).includes("The isolated Guide turn completed."), true);
         hostedSession.dispose();
     });
 });
@@ -591,26 +656,6 @@ test("switchActiveAgent releases QUICK_FIX workflow with no-plan notice", async 
             ),
             true,
         );
-        hostedSession.dispose();
-    });
-});
-
-test("switchActiveAgent same-Agent user switch still releases workflow", async () => {
-    await withRuntimeCommandFixture("agent-switch-release-same-agent-", async ({ projectRoot }) => {
-        const { hostedSession, sessionManager } = makeSession(projectRoot);
-        await switchActiveAgent(hostedSession, { agentName: "engineer", sessionManager });
-        hostedSession.setActiveExecutionWorkflow({
-            planName: "same-agent-plan",
-            triageMeta: { classification: "PLANNED_CHANGE" },
-            executionAgent: "engineer",
-            executionStarted: true,
-            executionAttemptStartedAtMs: 1,
-        });
-
-        await switchActiveAgent(hostedSession, { agentName: "engineer", sessionManager, releaseActiveWorkflow: true });
-
-        assertEquals(hostedSession.getRootAgentName(), "engineer");
-        assertEquals(hostedSession.getActiveExecutionWorkflow(), null);
         hostedSession.dispose();
     });
 });

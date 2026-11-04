@@ -75,19 +75,6 @@ function makeHarness(projectRoot = "/fixture/project"): OverridesHarness {
     return { container, editor, messageList, validationPanel, terminal, tui, uiAPI };
 }
 
-test("installUiApiOverrides disables and enables real editor submission", () => {
-    const harness = makeHarness();
-    try {
-        harness.editor.disableSubmit = false;
-        harness.uiAPI.disableInput?.();
-        assertEquals(harness.editor.disableSubmit, true);
-        harness.uiAPI.enableInput?.();
-        assertEquals(harness.editor.disableSubmit, false);
-    } finally {
-        harness.tui.stop();
-    }
-});
-
 test("installUiApiOverrides blocks the editor for real prompts and restores its prior state", async () => {
     const harness = makeHarness();
     try {

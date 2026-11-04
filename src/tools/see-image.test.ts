@@ -7,10 +7,10 @@ import { join } from "node:path";
 import { getHomeDir } from "../constants.js";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { persistImageAttachment } from "../shared/session/image-attachments.ts";
-import { createSeeImageTool, DEFAULT_SEE_IMAGE_PROMPT, extractAssistantText } from "./see-image.ts";
+import { createSeeImageTool, DEFAULT_SEE_IMAGE_PROMPT } from "./see-image.ts";
 
 import type { Context, ImageContent, TextContent } from "@earendil-works/pi-ai/compat";
-import type { SessionManager } from "@earendil-works/pi-coding-agent";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 
 type SeeImageTool = ReturnType<typeof createSeeImageTool>;
 type SeeImageToolContext = Parameters<SeeImageTool["execute"]>[4];
@@ -42,20 +42,6 @@ const TEST_USAGE = Object.freeze({
     cacheWrite: 0,
     totalTokens: 0,
     cost: TEST_COST,
-});
-
-test("extractAssistantText joins text blocks", () => {
-    assertEquals(
-        extractAssistantText([
-            { type: "text", text: "one" },
-            { type: "image", data: "x" },
-            {
-                type: "text",
-                text: "two",
-            },
-        ]),
-        "one\ntwo",
-    );
 });
 
 async function writeVisionFallbackSetting(cwd: string) {
@@ -121,7 +107,10 @@ test("see_image invokes fallback model with local image and default prompt", asy
                         api: "openai-completions",
                         provider: "vision",
                         model: "model",
-                        content: [{ type: "text", text: "description" }],
+                        content: [
+                            { type: "text", text: "one" },
+                            { type: "text", text: "two" },
+                        ],
                         stopReason: "stop",
                         usage: TEST_USAGE,
                         timestamp: Date.now(),
@@ -137,7 +126,7 @@ test("see_image invokes fallback model with local image and default prompt", asy
                 {} as SeeImageToolContext,
             );
 
-            assertEquals(result.content, [{ type: "text", text: "description" }]);
+            assertEquals(result.content, [{ type: "text", text: "one\ntwo" }]);
             assertEquals(calls.length, 1);
             assertEquals(calls[0].context.messages[0].content[0].text, DEFAULT_SEE_IMAGE_PROMPT);
             assertEquals(calls[0].context.messages[0].content[1].mimeType, "image/png");
@@ -211,7 +200,7 @@ test("see_image resolves attachment refs from the session image directory", asyn
             env.HOME = tempHome;
             await writeVisionModelConfig(tempHome);
             await writeVisionFallbackSetting(cwd);
-            const sessionManager = { getSessionId: () => "session-abc" } as SessionManager;
+            const sessionManager = SessionManager.create(cwd, join(tempHome, "sessions"));
             const attachment = await persistImageAttachment(
                 { base64: btoa("img"), mimeType: "image/png" },
                 sessionManager,

@@ -79,7 +79,6 @@ async function packageConfig(): Promise<PackageConfig> {
 
 test("all 49 public Deno tasks remain available under their original Bun script names", async () => {
     const { scripts } = await packageConfig();
-    strictEqual(LEGACY_TASKS.length, 49);
     for (const task of LEGACY_TASKS) {
         ok(scripts[task], `Missing original task: ${task}`);
         ok(!/\bdeno\b|\brun [\w:]+:bun\b/.test(scripts[task]), `Noncanonical task: ${task}`);

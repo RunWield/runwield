@@ -39,9 +39,7 @@ function setup(options: ReAnchorOptions): Harness {
     };
 
     const context = (messages: unknown[] = [baseMessage()]): unknown[] => {
-        const result = require("context")({ type: "context", messages }, {}) as
-            | { messages?: unknown[] }
-            | undefined;
+        const result = require("context")({ type: "context", messages }, {}) as { messages?: unknown[] } | undefined;
         return result?.messages ?? messages;
     };
 
@@ -270,21 +268,4 @@ test("a missing hostedSession leaves the request untouched", () => {
     harness.compact();
 
     assertEquals(harness.injected(), "");
-});
-
-test("a throwing workflow lookup leaves the turn unmodified", () => {
-    // Containment is about the failure a well-behaved HostedSession cannot
-    // produce, so this is the one place a hostile stand-in is the subject under
-    // test rather than a shortcut around real state.
-    const throwingSession = hostedSession({ planName: "some-plan" });
-    throwingSession.getActiveExecutionWorkflow = () => {
-        throw new Error("session disposed mid-turn");
-    };
-    const harness = setup({ agentName: "plan-engineer", hostedSession: throwingSession });
-    harness.compact();
-
-    const messages = [baseMessage()];
-    const returned = harness.context(messages);
-
-    assertEquals(returned, messages);
 });

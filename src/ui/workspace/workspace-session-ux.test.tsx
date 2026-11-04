@@ -1,9 +1,7 @@
 // @ts-nocheck: Deno test imports are checked by scripts/run-tests.js, not Astro check.
-import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
 import { Window } from "happy-dom";
 import { readSessionDraft, saveSessionDraft } from "./browser/session-drafts.ts";
-import { readWorkspaceStyles } from "./workspace-styles.ts";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import {
     activePlanProgressApiUrl,
@@ -12,7 +10,6 @@ import {
     mergeLiveSessionInfo,
     newSessionDraftInstanceStorageKey,
     reduceOperationTransientItems,
-    serializeSessionImageForRequest,
     sessionAttachmentsKey,
     SessionComposer,
     sessionDraftKey,
@@ -21,8 +18,6 @@ import {
     shouldApplyOperationPoll,
     shouldRefreshSessionAvailability,
 } from "./islands/SessionSurface.jsx";
-import { deriveSessionAvailability } from "./components/SessionActivationStatus.tsx";
-import { buildWorkflowPresentation } from "../../shared/workflow/workflow-presentation.ts";
 import {
     compactToolLine,
     displayAgentName,
@@ -71,30 +66,6 @@ test("Session composer keeps provider/model identities and opens slash choices b
         createElement(SessionComposer, { ...props, draft: "/model luna", canSend: true }),
     );
     assertEquals(models.includes("<strong>openai-codex/gpt-5.6-luna</strong>"), true);
-});
-
-test("Session composer renders restored image draft previews ready for corrected send", async () => {
-    const { createElement } = await import("react");
-    const { renderToStaticMarkup } = await import("react-dom/server");
-    const html = renderToStaticMarkup(
-        createElement(SessionComposer, {
-            id: "session-request-text",
-            draft: "  describe again  ",
-            disabled: false,
-            canSend: true,
-            submitting: false,
-            imageAttachments: [{ id: "image-1", name: "draft.png", mimeType: "image/png", base64: btoa("img") }],
-            onDraftChange() {},
-            onSubmit() {},
-            onRemoveImage() {},
-        }),
-    );
-
-    assertEquals(html.includes("  describe again  "), true);
-    assertEquals(html.includes('aria-label="Attached images"'), true);
-    assertEquals(html.includes("draft.png · image/png"), true);
-    assertEquals(html.includes('aria-label="Send"'), true);
-    assertEquals(html.includes('aria-label="Sending"'), false);
 });
 
 test("Session surface retains an HTTP-rejected image draft and sends a corrected draft once", async () => {
@@ -250,16 +221,6 @@ test("Session surface preserves drafts and replaces a lost live wait with one in
     assertEquals(interrupted[0]?.text, "The agent was interrupted. Ask it to continue.");
 });
 
-test("file-locked Sessions wait for the active surface without offering takeover", () => {
-    const availability = deriveSessionAvailability({
-        state: "active",
-        activeSurface: "tui",
-        generation: 0,
-    });
-    assertEquals(availability.key, "active");
-    assertEquals(availability.explanation, "Steer the agent or queue a follow-up.");
-});
-
 test("Session timeline labels transitions without inventing an initial Agent", () => {
     const items = reduceSessionEvents([
         {
@@ -344,83 +305,6 @@ test("Session availability observes idle Sessions too, so TUI turns appear autom
     assertEquals(shouldRefreshSessionAvailability({ mode: "detail", state: "idle" }), true);
     assertEquals(shouldRefreshSessionAvailability({ mode: "detail", state: "idle", queuedMessageCount: 1 }), true);
     assertEquals(shouldRefreshSessionAvailability({ mode: "new", state: "active" }), false);
-});
-
-test("Session availability refreshes when a busy page becomes active again", async () => {
-    const surface = await fsReadFile(new URL("./islands/SessionSurface.jsx", import.meta.url), "utf8");
-    assertEquals(surface.includes('globalThis.addEventListener("focus", refresh)'), true);
-    assertEquals(surface.includes('document.addEventListener("visibilitychange", refreshWhenVisible)'), true);
-});
-
-test("busy Session messages remain sendable and render above the Workspace composer", async () => {
-    const surface = await fsReadFile(new URL("./islands/SessionSurface.jsx", import.meta.url), "utf8");
-    const continuation = await fsReadFile(new URL("./server/session-continuation.js", import.meta.url), "utf8");
-    const css = await readWorkspaceStyles(new URL("./static/workspace.css", import.meta.url));
-    assertEquals(surface.includes('["active", "workspace-running"].includes(availability.key)'), true);
-    assertEquals(surface.includes("const [queuedMessages, setQueuedMessages] = useState"), true);
-    assertEquals(surface.includes("setQueuedMessages((current) => ["), true);
-    assertEquals(surface.includes('if (freshTimeline.state === "active" || operationRef.current)'), true);
-    assertEquals(surface.includes("const queued = queuedMessages[0]"), true);
-    assertEquals(surface.includes("queuedMessages={queuedMessages}"), true);
-    assertEquals(surface.includes("timeline.queuedMessages"), false);
-    assertEquals(continuation.includes("Keep the message queued in this browser"), true);
-    assertEquals(surface.includes('className="session-composer-queue"'), true);
-    assertEquals(surface.indexOf('className="session-composer-queue"') < surface.indexOf("<textarea"), true);
-    assertEquals(css.includes(".session-composer-queue"), true);
-});
-
-test("Workspace new Session creation uses Workspace navigation instead of remounting the shell", async () => {
-    const surface = await fsReadFile(new URL("./islands/SessionSurface.jsx", import.meta.url), "utf8");
-    assertEquals(surface.includes("function workspaceNavigate"), true);
-    assertEquals(
-        surface.includes(
-            "workspaceNavigate(\n                    `/projects/${encodeURIComponent(projectId)}/sessions/${",
-        ),
-        true,
-    );
-    assertEquals(
-        surface.includes(
-            "workspaceNavigate(\n                `/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(payload.runwieldSessionId)}`",
-        ),
-        true,
-    );
-    assertEquals(
-        surface.includes(
-            "globalThis.location.replace(\n                    `/projects/${encodeURIComponent(projectId)}/sessions/${",
-        ),
-        false,
-    );
-});
-
-test("Workspace-owned Session operations use live updates instead of browser polling", async () => {
-    const surface = await fsReadFile(new URL("./islands/SessionSurface.jsx", import.meta.url), "utf8");
-    const server = await fsReadFile(new URL("./server.js", import.meta.url), "utf8");
-    assertEquals(surface.includes("const freshTimeline = await loadTimeline();"), true);
-    assertEquals(surface.includes("expectedGeneration: freshTimeline.generation"), true);
-    assertEquals(surface.includes("pending-user:${envelope.requestId}"), true);
-    assertEquals(surface.includes("resubmit explicitly when ready"), false);
-    assertEquals(surface.includes("new EventSource("), true);
-    assertEquals(
-        surface.includes("/api/owner/session-operations/${encodeURIComponent(operation.operationId)}/stream"),
-        true,
-    );
-    assertEquals(surface.includes("setOperationStreamFailed(true)"), true);
-    assertEquals(surface.includes("/api/owner/session-operations/${encodeURIComponent(current.operationId)}"), true);
-    assertEquals(surface.includes("Recover stale Session"), false);
-    assertEquals(surface.includes("/force-recovery"), false);
-    assertEquals(surface.includes("/plan-workflow"), true);
-    assertEquals(server.includes("/api/owner/session-operations/:operationId/stream"), true);
-});
-
-test("Workspace Session UI uses the shared thinking dots loader", async () => {
-    const surface = await fsReadFile(new URL("./islands/SessionSurface.jsx", import.meta.url), "utf8");
-    const timeline = await fsReadFile(new URL("./components/SessionTimeline.jsx", import.meta.url), "utf8");
-    const css = await fsReadFile(new URL("../design-system/components.css", import.meta.url), "utf8");
-    const docs = await fsReadFile(new URL("../../../docs/design-system.md", import.meta.url), "utf8");
-    assertEquals(surface.includes("RunWieldThinkingDots"), true);
-    assertEquals(timeline.includes("RunWieldThinkingDots"), true);
-    assertEquals(css.includes(".rw-thinking-dots"), true);
-    assertEquals(docs.includes("Use `RunWieldThinkingDots`"), true);
 });
 
 test("Session timeline puts usage and stop time on the assistant block", () => {
@@ -582,16 +466,6 @@ test("Session scroll follows only while the reader stays near the live edge", ()
     assertEquals(isAtLiveScrollEdge({ scrollHeight: 1000, scrollTop: 300, clientHeight: 400 }), false);
 });
 
-test("Existing Session route lets the shared chat shell own the page heading", async () => {
-    const route = await fsReadFile(
-        new URL("./pages/projects/[projectId]/sessions/[runwieldSessionId].astro", import.meta.url),
-        "utf8",
-    );
-    assertEquals(route.includes("Session Continuation"), false);
-    assertEquals(route.includes("Committed transcript history"), false);
-    assertEquals(route.includes("SessionSurface"), true);
-});
-
 test("live Plan attachment updates sidebar state without replacing committed history", () => {
     const initial = {
         events: [{ eventId: "committed-1", text: "Start with Ideator" }],
@@ -637,84 +511,6 @@ test("live Plan attachment updates sidebar state without replacing committed his
     assertEquals(initial.snapshot.activeAgent, "ideator");
 });
 
-test("Session workflow sidebar uses canonical progress stages", async () => {
-    const surface = await fsReadFile(new URL("./islands/SessionSurface.jsx", import.meta.url), "utf8");
-    assertEquals(
-        activePlanProgressApiUrl("project-1", "session-1", {
-            activeExecutionWorkflow: { planId: "plan-demo" },
-        }),
-        "/api/owner/projects/project-1/plans/plan-demo/progress?session=session-1",
-    );
-    assertEquals(
-        activePlanProgressApiUrl("project-1", "session-1", {
-            workflowContext: { planName: "readme-wording" },
-            planAssociations: [{ planName: "readme-wording", planId: "plan-demo" }],
-        }),
-        "/api/owner/projects/project-1/plans/plan-demo/progress?session=session-1",
-    );
-    assertEquals(
-        activePlanProgressApiUrl("project-1", "session-1", {
-            workflowContext: { planName: "readme-wording" },
-        }),
-        "",
-    );
-    assertEquals(
-        buildWorkflowPresentation({
-            planName: "plan-demo",
-            status: "validated_ci",
-            progressFacts: [{ kind: "validation_checkpoint", phase: "semantic", state: "running" }],
-        }).stages.map((stage) => stage.label),
-        ["Planning", "Execution", "Verification Command", "AI review", "Code Review", "Publication", "Completion"],
-    );
-    assertEquals(surface.includes('ownerFetch(apiUrl, { method: "GET" })'), true);
-    assertEquals(surface.includes("WorkflowSidebar"), true);
-});
-
-test("Persisted Sessions expose the shared context sidebar tabs", async () => {
-    const surface = await fsReadFile(new URL("./islands/SessionSurface.jsx", import.meta.url), "utf8");
-    assertEquals(surface.includes("SESSION_SIDEBAR_TABS.map"), true);
-    assertEquals(surface.includes("session-context-tabs"), true);
-    assertEquals(surface.includes("session-artifact-list"), true);
-    assertEquals(surface.includes("defaultSessionSidebarTab"), true);
-    assertEquals(surface.includes("presentation={workflowSidebar}"), true);
-    assertEquals(surface.includes('title="Workflow"'), true);
-});
-
-test("Session sidebar adds current runtime settings to shared TUI fields", async () => {
-    const surface = await fsReadFile(new URL("./islands/SessionSurface.jsx", import.meta.url), "utf8");
-    assertEquals(
-        surface.includes('sessionSidebarFields(sessionSidebar).filter((field) => field.label !== "Session")'),
-        true,
-    );
-    assertEquals(surface.includes('label: "Agent"'), true);
-    assertEquals(surface.includes('label: "Model"'), true);
-    assertEquals(surface.includes('label: "Thinking"'), true);
-    assertEquals(surface.includes('const currentAgent = timeline?.snapshot?.activeAgent || ""'), true);
-    assertEquals(surface.includes("value: activeThinking"), true);
-    assertEquals(surface.includes('[activeProvider, activeModelId].filter(Boolean).join("/")'), true);
-    assertEquals(surface.includes("Execution Backend"), false);
-    assertEquals(surface.includes("<dd>{displayedThinking}</dd>"), false);
-    assertEquals(surface.includes("modelValue={stagedModelKey}"), true);
-    assertEquals(surface.includes("thinkingValue={displayedThinking}"), true);
-});
-
-test("Session sidebar keeps one toggle and its tabs in the shared header", async () => {
-    const surface = await fsReadFile(new URL("./islands/SessionSurface.jsx", import.meta.url), "utf8");
-    const header = surface.slice(
-        surface.indexOf("<WorkspaceHeaderActionsPortal>"),
-        surface.indexOf("</WorkspaceHeaderActionsPortal>"),
-    );
-    assertEquals(
-        header.indexOf("<RunWieldPanelToggle") < header.indexOf('className="rw-underline-tabs session-context-tabs"'),
-        true,
-    );
-    assertEquals(header.includes("collapsed={contextCollapsed}"), true);
-    assertEquals(surface.match(/<RunWieldPanelToggle/g)?.length, 1);
-    const sidebar = surface.slice(surface.indexOf('id="session-context-sidebar"'));
-    assertEquals(sidebar.includes('className="session-context-header"'), false);
-    assertEquals(sidebar.includes('className="kicker"'), false);
-});
-
 test("mobile Session context keeps covered chat out of keyboard navigation", async () => {
     const browser = new Window({ url: "http://localhost" });
     const globals = [
@@ -727,6 +523,7 @@ test("mobile Session context keeps covered chat out of keyboard navigation", asy
         "CustomEvent",
         "matchMedia",
         "ResizeObserver",
+        "getComputedStyle",
     ];
     const previous = new Map(globals.map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
     const previousFetch = globalThis.fetch;
@@ -751,29 +548,64 @@ test("mobile Session context keeps covered chat out of keyboard navigation", asy
     const container = browser.document.createElement("div");
     browser.document.body.append(header, container);
     let root;
+    const projectId = crypto.randomUUID();
+    const sessionId = crypto.randomUUID();
+    const configurations = [];
+    const snapshot = {
+        activeAgent: "guide",
+        activeModel: { provider: "openai", model: "model-a" },
+        thinkingLevel: "low",
+    };
     try {
         for (const key of globals) {
             const value =
                 key === "window"
                     ? browser
-                    : key === "matchMedia"
-                      ? (query) => (query === "(max-width: 900px)" ? media : browser.matchMedia(query))
-                      : browser[key];
+                    : key === "getComputedStyle"
+                      ? browser.getComputedStyle.bind(browser)
+                      : key === "matchMedia"
+                        ? (query) =>
+                              query === "(prefers-reduced-motion: reduce)"
+                                  ? { matches: true }
+                                  : query === "(max-width: 900px)"
+                                    ? media
+                                    : browser.matchMedia(query)
+                        : browser[key];
             Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
         }
         globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-        globalThis.fetch = (url) =>
-            Promise.resolve().then(() =>
-                String(url).includes("session-options")
-                    ? Response.json({ agents: [], models: [], commands: [], defaults: {} })
-                    : Response.json({ state: "idle", generation: 0, events: [], complete: true, snapshot: {} }),
-            );
+        globalThis.fetch = (url, options = {}) =>
+            Promise.resolve().then(() => {
+                if (String(url).includes("session-options"))
+                    return Response.json({
+                        agents: [
+                            { name: "guide", displayName: "Guide" },
+                            { name: "engineer", displayName: "Engineer" },
+                        ],
+                        models: [
+                            { provider: "openai", id: "model-a" },
+                            { provider: "anthropic", id: "model-b" },
+                        ],
+                        thinkingLevels: ["low", "high"],
+                        commands: [],
+                        defaults: {},
+                    });
+                if (String(url).endsWith("/configure")) {
+                    const change = JSON.parse(options.body);
+                    configurations.push(change);
+                    if (change.agentName) snapshot.activeAgent = change.agentName;
+                    if (change.model) snapshot.activeModel = { provider: change.provider, model: change.model };
+                    if (change.thinkingLevel) snapshot.thinkingLevel = change.thinkingLevel;
+                    return Response.json({ status: "applied" });
+                }
+                return Response.json({ state: "idle", generation: 7, events: [], complete: true, snapshot });
+            });
         root = createRoot(container);
         await act(async () =>
             root.render(
                 (await import("react")).createElement(SessionSurface, {
-                    projectId: crypto.randomUUID(),
-                    runwieldSessionId: crypto.randomUUID(),
+                    projectId,
+                    runwieldSessionId: sessionId,
                 }),
             ),
         );
@@ -805,8 +637,47 @@ test("mobile Session context keeps covered chat out of keyboard navigation", asy
         assertEquals(tabs()[2].getAttribute("aria-selected"), "true");
         await act(() => tabs()[2].dispatchEvent(new browser.KeyboardEvent("keydown", { key: "End", bubbles: true })));
         assertEquals(tabs()[2].getAttribute("aria-selected"), "true");
+        const sessionTab = tabs().find((tab) => tab.textContent.trim() === "Session");
+        await act(() => sessionTab.click());
+        const fields = () =>
+            Object.fromEntries(
+                [...container.querySelectorAll('[role="tabpanel"] dl > div')].map((row) => [
+                    row.querySelector("dt").textContent,
+                    row.querySelector("dd").textContent,
+                ]),
+            );
+        assertEquals(fields().Agent, "Guide");
+        assertEquals(fields().Model, "openai/model-a");
+        assertEquals(fields().Thinking, "low");
         await act(() => header.querySelector('[aria-label="Collapse Session sidebar"]').click());
         assertEquals(stream?.inert, false);
+        await act(() => container.querySelector(".session-composer-summary").click());
+        for (const [label, value] of [
+            ["Agent", "engineer"],
+            ["Model", "anthropic\u001fmodel-b"],
+            ["Thinking", "high"],
+        ]) {
+            const select = container.querySelector(`select[aria-label="${label}"]`);
+            assertEquals(select.hidden, false);
+            assertEquals(select.disabled, false);
+            await act(() => {
+                select.value = value;
+                select.dispatchEvent(new browser.Event("change", { bubbles: true }));
+            });
+        }
+        assertEquals(configurations, [
+            { expectedGeneration: 7, agentName: "engineer" },
+            { expectedGeneration: 7, provider: "anthropic", model: "model-b" },
+            { expectedGeneration: 7, thinkingLevel: "high" },
+        ]);
+        assertStringIncludes(container.textContent, "Session settings updated.");
+        await act(() => header.querySelector('[aria-label="Show Session sidebar"]').click());
+        await act(() => sessionTab.click());
+        assertEquals(fields().Agent, "Engineer");
+        assertEquals(fields().Model, "anthropic/model-b");
+        assertEquals(fields().Thinking, "high");
+        await act(() => header.querySelector('[aria-label="Collapse Session sidebar"]').click());
+
         await act(() => header.querySelector('[aria-label="Show Session sidebar"]').click());
         await act(() => {
             mobile = false;
@@ -824,35 +695,6 @@ test("mobile Session context keeps covered chat out of keyboard navigation", asy
         else globalThis.IS_REACT_ACT_ENVIRONMENT = previousActFlag;
         await browser.happyDOM.close();
     }
-});
-
-test("Session image attachments use a Session-scoped draft key and request payload", () => {
-    assertEquals(
-        sessionAttachmentsKey("project-1", "session-1"),
-        "runwield:owner:project:project-1:session:session-1:image-attachments",
-    );
-    assertEquals(
-        serializeSessionImageForRequest({ id: "img-1", name: "paste.png", mimeType: "image/png", base64: "abc" }),
-        { base64: "abc", mimeType: "image/png" },
-    );
-});
-
-test("idle Sessions can continue with planning or execution history", () => {
-    const planning = deriveSessionAvailability({
-        state: "idle",
-        generation: 4,
-        snapshot: { activeAgent: "Planner", workflowContext: { planName: "feature-a" } },
-    });
-    assertEquals(planning.key, "available");
-    assertEquals(planning.canContinue, true);
-
-    const execution = deriveSessionAvailability({
-        state: "idle",
-        generation: 4,
-        snapshot: { activeAgent: "Engineer", activeExecutionWorkflow: { planName: "feature-a" } },
-    });
-    assertEquals(execution.key, "available");
-    assertEquals(execution.canContinue, true);
 });
 
 test("review_diff stays collapsed while review_complete is an expanded workflow step", async () => {

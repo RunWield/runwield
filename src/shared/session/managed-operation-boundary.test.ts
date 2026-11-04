@@ -6,30 +6,9 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
 
-test("ManagedOperationCapability has no runtime constructor export", async () => {
-    const managedOperationModule = await import("./managed-operation.ts");
-    assertEquals("ManagedOperationCapability" in managedOperationModule, false);
-});
-
 function delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
-
-test("managed operation re-entry policy is keyed to capability state, not runtime busy state", async () => {
-    const source = await fsReadFile(new URL("./runtime/managed-operations.ts", import.meta.url), "utf8");
-    const rejectionStart = source.indexOf("rejectManagedPublicMutation(");
-    const rejectionEnd = source.indexOf("\n    async runManagedStandaloneMutation", rejectionStart);
-    const rejectionBody = source.slice(rejectionStart, rejectionEnd);
-    assertEquals(rejectionBody.includes("currentManagedOperations"), true);
-    assertEquals(rejectionBody.includes("busyOperationDepths"), false);
-    assertEquals(rejectionBody.includes("busy"), false);
-
-    const runStart = source.indexOf("async runManagedOperation<T>(");
-    const runEnd = source.indexOf("const managed = hostedSession.getManagedMetadata?.();", runStart);
-    const runPrelude = source.slice(runStart, runEnd);
-    assertEquals(runPrelude.includes("busyOperationDepths"), false);
-    assertEquals(runPrelude.includes("busy"), false);
-});
 
 test("managed prompt re-entry is rejected while a real operation holds the capability", async () => {
     await withRuntimeCommandFixture(

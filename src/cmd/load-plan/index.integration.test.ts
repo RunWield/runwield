@@ -355,10 +355,13 @@ test("sibling dependency resolution reads canonical child Plans from the fixture
         await writePlan(projectRoot, "epic/01-first", { status: "verified", parentPlan: "epic" });
         await writePlan(projectRoot, "epic/02-second", { status: "implemented", parentPlan: "epic" });
 
+        await writePlan(projectRoot, "epic/04-attested", { status: "user_verified", parentPlan: "epic" });
+
         const dependencies = await resolveSiblingChildPlanDependencies(projectRoot, "epic", [
             "01-first",
             "epic/02-second",
             "03-missing",
+            "04-attested",
         ]);
 
         assertEquals(
@@ -372,6 +375,12 @@ test("sibling dependency resolution reads canonical child Plans from the fixture
                     state: "unverified",
                 },
                 { dependency: "03-missing", planName: undefined, status: undefined, state: "missing" },
+                {
+                    dependency: "04-attested",
+                    planName: "epic/04-attested",
+                    status: "user_verified",
+                    state: "user_verified",
+                },
             ],
         );
     });
@@ -1228,6 +1237,7 @@ test("direct review from draft approves for later without a planning turn", asyn
 
             assertEquals((await loadPlan(projectRoot, "direct-draft"))?.attrs.status, "ready_for_work");
             assertEquals(runtime.getRuntimeActiveExecutionWorkflow(sessionId), null);
+            assertEquals(runtime.getEffectiveAgentName(sessionId), "planner");
             assertEquals(
                 ui.promptOptions[0].some((option) => option.value === "review" && option.label === "Review plan"),
                 true,

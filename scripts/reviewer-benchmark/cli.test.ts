@@ -4,25 +4,11 @@ import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../src/cmd/testing/runtime-command-fixture.ts";
-import { captureForegroundProcess } from "../../src/shared/captured-process.ts";
 import { main } from "../run-reviewer-benchmark.ts";
-import { checkoutRoot } from "./configuration.ts";
 import { materializeFixture } from "./materialize.ts";
 import { readRun } from "./records.ts";
 import { selectCases } from "./run.ts";
 import { inspectionSteps } from "./test-fixtures.ts";
-
-test("the executable prints help without model credentials", async () => {
-    const result = await captureForegroundProcess("bun", {
-        cwd: checkoutRoot,
-        args: ["scripts/run-reviewer-benchmark.ts", "--help"],
-        timeoutMs: 30000,
-    });
-    assert.equal(result.code, 0);
-    const help = new TextDecoder().decode(result.stdout);
-    assert.match(help, /--scenarios smoke\|all\|RV-D04,RV-D05\|RV-D04\/A,RV-D04\/B/);
-    assert.doesNotMatch(help, /smoke benchmark/);
-});
 
 for (const args of [
     ["invalid"],

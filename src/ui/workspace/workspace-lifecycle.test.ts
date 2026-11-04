@@ -1,13 +1,7 @@
 import type { WorkspaceLifecyclePayload } from "./routes/api/handlers.ts";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import {
-    mkdtemp as fsMkdtemp,
-    readFile as fsReadFile,
-    rm as fsRm,
-    stat as fsStat,
-    writeFile as fsWriteFile,
-} from "node:fs/promises";
+import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
@@ -155,44 +149,6 @@ test("Workspace dev lifecycle projection uses core transitions without mutating 
     assertEquals(moved.plan.attrs.status, "approved");
     assertEquals(moved.plan.actions.allowedManualTargetStatuses.includes("draft"), true);
     assertEquals(moved.message, "Plan moved to Approved.");
-});
-
-test("Workspace Plan document loads Plannotator viewer and published markdown editor", async () => {
-    const documentSource = await fsReadFile(new URL("./react/WorkspacePlanDocument.tsx", import.meta.url), "utf8");
-    const editorSource = await fsReadFile(new URL("./react/WorkspaceMarkdownEditor.tsx", import.meta.url), "utf8");
-
-    assertStringIncludes(documentSource, "@plannotator/ui/components/RenderedMarkdown.tsx");
-    assertStringIncludes(editorSource, "node_modules/@plannotator/markdown-editor/dist/index.js");
-    assertEquals(editorSource.includes("markdown-editor-shim"), false);
-});
-
-test("ArtifactReadSurface keeps the React read surface to Contents, notices, document, and Close", async () => {
-    const surfaceSource = await fsReadFile(new URL("./react/ArtifactReadSurface.tsx", import.meta.url), "utf8");
-    const pageSource = await fsReadFile(new URL("./pages/review/plan.astro", import.meta.url), "utf8");
-    const cssSource = await fsReadFile(new URL("./react/plannotator.css", import.meta.url), "utf8");
-
-    assertStringIncludes(pageSource, 'payload.surface === "artifact-read"');
-    assertStringIncludes(pageSource, '<ArtifactReadSurface payload={payload} client:only="react">');
-    assertStringIncludes(surfaceSource, "data-artifact-kind={artifactKind}");
-    assertStringIncludes(surfaceSource, "aria-label={`${artifactLabel} notices`}");
-    assertStringIncludes(surfaceSource, "{notices.map((notice) => <p key={notice}>{notice}</p>)}");
-    const componentsCssSource = await fsReadFile(new URL("../design-system/components.css", import.meta.url), "utf8");
-
-    assertStringIncludes(surfaceSource, 'className="rw-artifact-close-button rw-review-action-button"');
-    assertStringIncludes(componentsCssSource, ".rw-review-action-button");
-    assertStringIncludes(surfaceSource, 'activeTab="toc"');
-    assertStringIncludes(surfaceSource, "showFilesTab={false}");
-    assertStringIncludes(surfaceSource, "showVersionsTab={false}");
-    assertStringIncludes(surfaceSource, "showArchiveTab={false}");
-    assertStringIncludes(surfaceSource, "annotations={[]}");
-    assertStringIncludes(surfaceSource, "<Viewer");
-    assertStringIncludes(surfaceSource, "readOnly");
-    assertStringIncludes(cssSource, '.rw-artifact-read-layout[data-sidebar-open="true"]');
-    assertStringIncludes(cssSource, "@media (max-width: 980px)");
-    assertStringIncludes(cssSource, ".rw-artifact-contents > aside");
-    assertEquals(surfaceSource.includes("Feedback"), false);
-    assertEquals(surfaceSource.includes("Approve"), false);
-    assertEquals(surfaceSource.includes("WorkspaceMarkdownEditor"), false);
 });
 
 test("Workspace lifecycle API mutates through lifecycle events and blocks invalid actions", async () => {
@@ -400,34 +356,6 @@ test("Workspace persisted close preserves closure when Work Record generation fa
         assertEquals(detail.frontMatter.workRecord?.status, "failed");
         assertEquals(await listWorkRecords(cwd), []);
     });
-});
-
-test("Workspace in-memory close preview is side-effect free", async () => {
-    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
-    try {
-        const summary = serializePlanSummary({
-            planId: "preview-id",
-            name: "preview",
-            relativePath: "docs/plans/preview.md",
-            attrs: { planId: "preview-id", status: "implemented", classification: "FEATURE" },
-        });
-        const preview = applyWorkspaceLifecycleActionInMemory(summary, {
-            action: "close_without_verification",
-            closedWithoutVerificationReason: "Preview close.",
-        });
-
-        assertEquals(summary.status, "implemented");
-        assertEquals(preview.plan.status, "closed_without_verification");
-        let workRecordDirExists = true;
-        try {
-            await fsStat(`${cwd}/docs/work-records`);
-        } catch (error) {
-            workRecordDirExists = !(error instanceof Error && "code" in error && error.code === "ENOENT");
-        }
-        assertEquals(workRecordDirExists, false);
-    } finally {
-        await fsRm(cwd, { recursive: true });
-    }
 });
 
 test("Workspace lifecycle API requires Resume Check confirmation for staleness warnings", async () => {

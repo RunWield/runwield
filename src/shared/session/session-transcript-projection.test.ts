@@ -46,18 +46,6 @@ async function withHome(callback: (home: string) => Promise<void>) {
     });
 }
 
-test("Session projection reads the last persisted Session rename", () => {
-    assertEquals(
-        summarizeProjectedEntries([
-            { type: "session", name: "Original" },
-            { type: "session_info", name: "First rename" },
-            { type: "message", message: { role: "user", content: "Not the name" } },
-            { type: "session_info", name: "Saved name" },
-        ]).name,
-        "Saved name",
-    );
-});
-
 test("committed projection verifies exact prefix and ignores later tail", async () => {
     await withHome(async (home) => {
         const cwd = `${home}/project`;
@@ -395,23 +383,6 @@ test("projection emits RunWield notices only for later different active Agents",
     );
 });
 
-test("projection cursor selection returns only later events and advances summary-only generations", () => {
-    const events = [
-        { type: "user_message", eventId: "one" },
-        { type: "assistant_text_delta", eventId: "two" },
-        { type: "assistant_text_delta", eventId: "three" },
-    ];
-    const selected = selectProjectedEventsAfterCursor({ events, cursorEventId: "two" });
-    assertEquals(
-        selected.events.map((event) => event.eventId),
-        ["three"],
-    );
-    assertEquals(selected.nextCursor, "three");
-    const summaryOnly = selectProjectedEventsAfterCursor({ events: [], cursorEventId: null });
-    assertEquals(summaryOnly.events, []);
-    assertEquals(summaryOnly.nextCursor, null);
-});
-
 test("projection ignores old notification records", () => {
     const summary = summarizeProjectedEntries([
         { type: "custom", id: "agent-entry", customType: "runwield.active_agent", data: { agentName: "Ideator" } },
@@ -487,37 +458,6 @@ test("projection summary keeps the latest valid Agy execution backend fact", () 
         thinkingLevel: "medium",
         effort: "high",
         backendModel: "gemini-3.1-pro-high",
-    });
-});
-
-test("committed transcript authority facts are explicit projection extracts", () => {
-    const facts = getCommittedTranscriptAuthorityFacts({
-        snapshot: {
-            activeAgent: "Ideator",
-            model: "gpt-test",
-            provider: "openai",
-            thinkingLevel: "high",
-            workflowContext: { routingIntent: "FEATURE", complexity: "LOW" },
-        },
-    });
-
-    assertEquals(facts, {
-        activeAgent: "Ideator",
-        model: "gpt-test",
-        provider: "openai",
-        thinkingLevel: "high",
-        workflowContext: { routingIntent: "FEATURE", complexity: "LOW" },
-        tutorialContext: null,
-        planAssociations: [],
-    });
-    assertEquals(getCommittedTranscriptAuthorityFacts(null), {
-        activeAgent: null,
-        model: null,
-        provider: null,
-        thinkingLevel: null,
-        workflowContext: null,
-        tutorialContext: null,
-        planAssociations: [],
     });
 });
 

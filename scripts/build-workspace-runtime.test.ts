@@ -1,3 +1,5 @@
+import process from "node:process";
+import { captureScriptProcess } from "./script-process.ts";
 import { assertEquals } from "../src/testing/assertions.ts";
 import {
     mkdir as fsMkdir,
@@ -9,46 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { join } from "node:path";
-import {
-    buildWorkspaceRuntime,
-    getOpaqueWorkspaceAssetName,
-    getServerEntryImportPaths,
-    normalizeCompiledNodeChildProcessImports,
-    unrefBundledMessageChannels,
-} from "./build-workspace-runtime.ts";
-
-test("getOpaqueWorkspaceAssetName hides executable browser modules from compile graph tracing", () => {
-    assertEquals(getOpaqueWorkspaceAssetName("client.js"), "client.js.asset");
-    assertEquals(getOpaqueWorkspaceAssetName("worker.mjs"), "worker.mjs.asset");
-    assertEquals(getOpaqueWorkspaceAssetName("styles.css"), "styles.css");
-    assertEquals(getOpaqueWorkspaceAssetName("sprite.png"), "sprite.png");
-});
-
-test("getServerEntryImportPaths ignores JSDoc type imports", () => {
-    const source = `
-import { route } from "./chunks/route.mjs";
-import "./chunks/setup.mjs";
-const page = () => import("./chunks/page.mjs");
-/** @type {import("./types.js").GeneratedType} */
-const typed = route;
-`;
-
-    assertEquals(getServerEntryImportPaths(source, "dist/workspace/server"), [
-        join("dist", "workspace", "server", "chunks", "route.mjs"),
-        join("dist", "workspace", "server", "chunks", "setup.mjs"),
-        join("dist", "workspace", "server", "chunks", "page.mjs"),
-    ]);
-});
-
-test("normalizeCompiledNodeChildProcessImports replaces dynamic child_process requires", () => {
-    const source =
-        'var a=Ut("node:child_process");import{spawn as sp,spawnSync as ss}from"node:child_process";var b=Ut("node:child_process");';
-
-    assertEquals(
-        normalizeCompiledNodeChildProcessImports(source),
-        'var a=({exec:__rwNodeChildProcessExec,spawn:sp,spawnSync:ss});import{exec as __rwNodeChildProcessExec,spawn as sp,spawnSync as ss}from"node:child_process";var b=({exec:__rwNodeChildProcessExec,spawn:sp,spawnSync:ss});',
-    );
-});
+import { buildWorkspaceRuntime } from "./build-workspace-runtime.ts";
 
 test("standalone Workspace bundle omits runner environment without changing build flags", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "wld-workspace-build-env-"));
@@ -134,20 +97,6 @@ test("standalone Workspace runtime is identical across manifest asset discovery 
     }
 });
 
-test("unrefBundledMessageChannels prevents renderer ports from keeping the executable alive", () => {
-    assertEquals(
-        unrefBundledMessageChannels("const scheduler = new MessageChannel;"),
-        "class __RunWieldUnrefedMessageChannel extends MessageChannel{constructor(){super();this.port1.unref();this.port2.unref();queueMicrotask(()=>{this.port1.unref();this.port2.unref()})}}\n" +
-            "const scheduler = new __RunWieldUnrefedMessageChannel;",
-    );
-    assertEquals(
-        unrefBundledMessageChannels("const scheduler=new MessageChannel;scheduler.port1.onmessage=run;"),
-        "class __RunWieldUnrefedMessageChannel extends MessageChannel{constructor(){super();this.port1.unref();this.port2.unref();queueMicrotask(()=>{this.port1.unref();this.port2.unref()})}}\n" +
-            "const scheduler=new __RunWieldUnrefedMessageChannel;scheduler.port1.onmessage=run;",
-    );
-    assertEquals(unrefBundledMessageChannels("const scheduler = null;"), "const scheduler = null;");
-});
-
 for (const initialClientState of ["existing", "absent"]) {
     test(`runtime packages late client assets when the client directory is ${initialClientState}`, async () => {
         const root = await fsMkdtemp(join(tmpdir(), "wld-runtime-late-assets-"));
@@ -180,3 +129,120 @@ for (const initialClientState of ["existing", "absent"]) {
         }
     });
 }
+
+async function withCompiledOutput(source: string, check: (path: string) => Promise<void>) {
+    const root = await fsMkdtemp(join(tmpdir(), "workspace-compiled-contract-"));
+    const serverEntry = join(root, "entry.mjs");
+    const clientDir = join(root, "client");
+    const runtimeDir = join(root, "runtime");
+    try {
+        await fsWriteFile(serverEntry, "export default true;");
+        await fsMkdir(clientDir);
+        await buildWorkspaceRuntime(
+            { serverEntry, clientDir, runtimeDir },
+            {
+                run: () => fsWriteFile(join(runtimeDir, "server.mjs"), source),
+            },
+        );
+        await check(join(runtimeDir, "server.mjs"));
+    } finally {
+        await fsRm(root, { recursive: true, force: true });
+    }
+}
+
+test("packaged compiler shims execute real child processes without dynamic require support", async () => {
+    await withCompiledOutput(
+        `
+        function Ut() { throw new Error("Dynamic require is unavailable in compiled executables"); }
+        var childProcess=Ut("node:child_process");import{spawn as sp,spawnSync as ss}from"node:child_process";
+        const child = childProcess.spawnSync(process.execPath, ["-e", "process.stdout.write('child ran')"]);
+        if (child.status !== 0) throw new Error(String(child.stderr));
+        process.stdout.write(child.stdout);
+    `,
+        async (path) => {
+            const result = await captureScriptProcess(process.execPath, { args: [path] });
+            assertEquals(result.code, 0, new TextDecoder().decode(result.stderr));
+            assertEquals(new TextDecoder().decode(result.stdout), "child ran");
+        },
+    );
+});
+
+test("packaged renderer channels allow the standalone process to exit after rendering", async () => {
+    await withCompiledOutput(
+        `
+        const scheduler = new MessageChannel;
+        scheduler.port1.onmessage = () => {};
+        // Model a renderer/runtime that references its scheduling ports on setup.
+        scheduler.port1.ref();
+        scheduler.port2.ref();
+        console.log("rendered");
+    `,
+        async (path) => {
+            const result = await captureScriptProcess(process.execPath, {
+                args: [path],
+                signal: AbortSignal.timeout(3000),
+            });
+            assertEquals(result.code, 0, new TextDecoder().decode(result.stderr));
+            assertEquals(new TextDecoder().decode(result.stdout).trim(), "rendered");
+        },
+    );
+});
+
+test("runtime build waits for real executable chunks while ignoring type-only imports", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "workspace-chunk-contract-"));
+    const serverEntry = join(root, "entry.mjs");
+    const clientDir = join(root, "client");
+    const runtimeDir = join(root, "runtime");
+    let producer: Promise<void> | undefined;
+    try {
+        await fsWriteFile(
+            serverEntry,
+            `
+import { route } from "./route.mjs";
+import "./setup.mjs";
+const page = await import("./page.mjs");
+/** @type {import("./absent-types.js").GeneratedType} */
+const typed = route;
+console.log(typed + page.title);
+`,
+        );
+        await fsMkdir(clientDir);
+        for (const name of ["client.js", "worker.mjs", "styles.css", "sprite.png"]) {
+            await fsWriteFile(join(clientDir, name), `asset:${name}`);
+        }
+        producer = new Promise((resolve, reject) => {
+            setTimeout(
+                () =>
+                    Promise.all([
+                        fsWriteFile(join(root, "route.mjs"), 'export const route = "ready:";'),
+                        fsWriteFile(join(root, "setup.mjs"), "export const ready = true;"),
+                        fsWriteFile(join(root, "page.mjs"), 'export const title = "page";'),
+                    ]).then(() => resolve(), reject),
+                120,
+            );
+        });
+        await buildWorkspaceRuntime(
+            { serverEntry, clientDir, runtimeDir },
+            {
+                run: async (command, args) => {
+                    const built = await captureScriptProcess(command, { args });
+                    assertEquals(built.code, 0, new TextDecoder().decode(built.stderr));
+                },
+            },
+        );
+        const result = await captureScriptProcess(process.execPath, { args: [join(runtimeDir, "server.mjs")] });
+        assertEquals(result.code, 0, new TextDecoder().decode(result.stderr));
+        assertEquals(new TextDecoder().decode(result.stdout).trim(), "ready:page");
+        for (const [original, stored] of [
+            ["client.js", "client.js.asset"],
+            ["worker.mjs", "worker.mjs.asset"],
+            ["styles.css", "styles.css"],
+            ["sprite.png", "sprite.png"],
+        ]) {
+            assertEquals(await fsReadFile(join(runtimeDir, "client", stored), "utf8"), `asset:${original}`);
+        }
+    } finally {
+        await producer;
+        await fsRm(root, { recursive: true, force: true });
+    }
+});

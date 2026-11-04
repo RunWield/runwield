@@ -16,26 +16,6 @@ async function writePractice(body: string) {
     await writeFile(join(directory, "review-practice.md"), `---\nname: Fixture review practice\n---\n\n${body}\n`);
 }
 
-test("the actual Attached reviewer handoff includes the home review practice", async () => {
-    const fixture = await attachedValidationFixture();
-    try {
-        await writePractice(
-            "Read NOTES.md. If it lacks `acceptance: reviewed`, report a new finding titled `acceptance-notes`.",
-        );
-        assert((await loadReviewerPrompt()).systemPrompt.includes("acceptance-notes"));
-        await writeFile(join(fixture.cwd, "marker"), "pass");
-        const result = await fixture.call("start_validation", await fixture.status());
-        assert(result.ok && result.workflow.nextAction.kind === "validation");
-        assert(result.workflow.nextAction.request.kind === "reviewer");
-        assert(
-            result.instructions?.text.includes("acceptance-notes"),
-            "The Core tool result must pass the layered review practice to the actual Claude reviewer.",
-        );
-    } finally {
-        await fixture.close();
-    }
-});
-
 test("replaying a reviewer handoff loads the current home policy without rerunning CI", async () => {
     const fixture = await attachedValidationFixture();
     try {

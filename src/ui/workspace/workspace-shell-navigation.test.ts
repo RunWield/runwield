@@ -7,14 +7,12 @@ import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { createOwnerWorkspaceApp } from "./server.js";
 import { devOwnerSidebar } from "./server/dev-owner-fixtures.ts";
-import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
 import { ok as assert, strictEqual as assertStrictEquals } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import {
     applyActiveRoute,
     applySessionName,
-    clampSidebarWidth,
     currentRouteFromUrl,
     installSidebarResize,
     installWorkspaceShellBrowser,
@@ -22,17 +20,7 @@ import {
     loadMoreSidebarSessions,
     refreshSidebarForPage,
     renderSidebar,
-    shouldApplySidebarRefresh,
-    sidebarProjectOrder,
-    sidebarSessionOrder,
 } from "./static/workspace-shell.ts";
-
-test("Workspace sidebar resizing respects panel and conversation bounds", () => {
-    assertEquals(clampSidebarWidth(100, 1440), 220);
-    assertEquals(clampSidebarWidth(360, 1440), 360);
-    assertEquals(clampSidebarWidth(700, 1440), 480);
-    assertEquals(clampSidebarWidth(480, 870), 450);
-});
 
 test("Workspace home stays on the Attention Dashboard and reuses its sidebar", async () => {
     const { document, sidebar } = installFakeBrowser("/");
@@ -372,31 +360,73 @@ test("an older Session uses its persisted name even outside the sidebar's first 
     );
 });
 
-test("Workspace sidebar refreshes reject stale navigation responses", () => {
-    assertEquals(shouldApplySidebarRefresh(2, 2, "http://workspace.local/a", "http://workspace.local/a"), true);
-    assertEquals(shouldApplySidebarRefresh(1, 2, "http://workspace.local/a", "http://workspace.local/a"), false);
-    assertEquals(shouldApplySidebarRefresh(2, 2, "http://workspace.local/a", "http://workspace.local/b"), false);
-});
-
-test("Workspace sidebar reconciliation keeps only loaded older Sessions while inserting new server rows first", () => {
-    const order = sidebarSessionOrder(
-        {
-            projectId: "project-a",
-            sessions: [
-                { runwieldSessionId: "ordinary", displayName: "Ordinary" },
-                { runwieldSessionId: "loaded-old", displayName: "Loaded old", loaded: true },
+for (const navigation of ["new route", "return to same route", "route changed without another refresh"]) {
+    test(`late sidebar responses cannot replace current navigation after ${navigation}`, async () => {
+        const { sidebar } = installFakeBrowser("/projects/race-project/sessions/session-a");
+        const originalFetch = globalThis.fetch;
+        const pending = [];
+        const refreshes = [];
+        const project = { projectId: "race-project", displayName: "Race project", enabled: true };
+        const flush = async () => {
+            for (let index = 0; index < 30; index++) await Promise.resolve();
+        };
+        const navigate = (id) => {
+            globalThis.location.pathname = `/projects/race-project/sessions/${id}`;
+            globalThis.location.href = `http://workspace.local${globalThis.location.pathname}`;
+        };
+        globalThis.fetch = (url) => {
+            if (url === "/api/owner/sidebar") return new Promise((resolve) => pending.push(resolve));
+            return Promise.resolve(
+                Response.json(
+                    url === "/api/owner/projects" ? { projects: [project] } : { sessions: [], hasNext: false },
+                ),
+            );
+        };
+        const payload = (name) => ({
+            projects: [
+                {
+                    ...project,
+                    sessions: [
+                        { runwieldSessionId: "session-a", displayName: name },
+                        { runwieldSessionId: "session-b", displayName: name },
+                    ],
+                },
             ],
-        },
-        {
-            projectId: "project-a",
-            sessions: [{ runwieldSessionId: "new", displayName: "New Session" }],
-        },
-    );
-    assertEquals(
-        order.map((session) => session.runwieldSessionId),
-        ["new", "loaded-old"],
-    );
-});
+        });
+        try {
+            refreshes.push(refreshSidebarForPage());
+            await flush();
+            assertEquals(pending.length, 1);
+            navigate("session-b");
+            if (navigation !== "route changed without another refresh") {
+                refreshes.push(refreshSidebarForPage());
+                await flush();
+                if (navigation === "return to same route") {
+                    navigate("session-a");
+                    refreshes.push(refreshSidebarForPage());
+                    await flush();
+                }
+                pending.at(-1)(Response.json(payload("Latest conversation")));
+                await refreshes.at(-1);
+                assertStringIncludes(sidebar.textContent, "Latest conversation");
+            }
+            for (const resolve of pending.slice(
+                0,
+                navigation === "route changed without another refresh" ? undefined : -1,
+            )) {
+                resolve(Response.json(payload("Outdated conversation")));
+            }
+            await Promise.all(refreshes);
+            assertEquals(sidebar.textContent.includes("Outdated conversation"), false);
+            if (navigation !== "route changed without another refresh")
+                assertStringIncludes(sidebar.textContent, "Latest conversation");
+        } finally {
+            for (const resolve of pending) resolve(Response.json({ projects: [] }));
+            await Promise.allSettled(refreshes);
+            globalThis.fetch = originalFetch;
+        }
+    });
+}
 
 test("Workspace sidebar drops active omitted Sessions after the user navigates away", () => {
     const { sidebar } = installFakeBrowser("/projects/project-a/sessions/omitted");
@@ -422,20 +452,6 @@ test("Workspace sidebar drops active omitted Sessions after the user navigates a
     renderSidebar(payload, { kind: "session", projectId: "project-a", runwieldSessionId: "session-a" });
 
     assertEquals(sidebar.querySelector('[data-sidebar-session="omitted"]'), null);
-});
-
-test("Workspace sidebar project reconciliation removes Projects omitted by the server", () => {
-    const order = sidebarProjectOrder(
-        [
-            { projectId: "project-a", sessions: [] },
-            { projectId: "loaded-project", sessions: [] },
-        ],
-        [{ projectId: "project-a", displayName: "Project A", enabled: true, sessions: [] }],
-    );
-    assertEquals(
-        order.map((project) => project.projectId),
-        ["project-a"],
-    );
 });
 
 test("Workspace sidebar updates rows in place, inserts new Sessions, removes stale rows, and preserves expansion", () => {
@@ -614,6 +630,14 @@ test("Workspace sidebar resize supports keyboard, pointer, and persisted width",
     handle.dispatchEvent({ type: "keydown", key: "ArrowRight", preventDefault() {} });
     assertEquals(handle.getAttribute("aria-valuenow"), "296");
     handle.dispatchEvent({ type: "pointerdown", button: 0, pointerId: 1, preventDefault() {} });
+    handle.dispatchEvent({ type: "pointermove", clientX: -100 });
+    assertEquals(shell.styles.get("--rw-workspace-sidebar-width"), "220px");
+    handle.dispatchEvent({ type: "pointermove", clientX: 900 });
+    assertEquals(shell.styles.get("--rw-workspace-sidebar-width"), "480px");
+    shell.bounds = { left: 0, top: 0, bottom: 900, width: 700, height: 900 };
+    handle.dispatchEvent({ type: "pointermove", clientX: 900 });
+    assertEquals(shell.styles.get("--rw-workspace-sidebar-width"), "280px", "Keep room for the conversation");
+    delete shell.bounds;
     handle.dispatchEvent({ type: "pointermove", clientX: 380 });
     handle.dispatchEvent({ type: "pointerup" });
     assertEquals(shell.styles.get("--rw-workspace-sidebar-width"), "380px");
@@ -621,26 +645,6 @@ test("Workspace sidebar resize supports keyboard, pointer, and persisted width",
     handle.remove();
     installSidebarResize();
     assertEquals(shell.querySelector(".workspace-sidebar-resizer").getAttribute("aria-valuenow"), "380");
-});
-
-test("Workspace shell is event-driven and does not poll the sidebar", async () => {
-    const shell = await fsReadFile(new URL("./static/workspace-shell.ts", import.meta.url), "utf8");
-    assertStringIncludes(shell, 'document.addEventListener("astro:page-load", installWorkspaceShell)');
-    assertStringIncludes(shell, 'ownerJson("/api/owner/sidebar"');
-    assertEquals(/setInterval\s*\(/.test(shell), false);
-    assertEquals(shell.includes("setTimeout(()"), false);
-    assertEquals(/visibilitychange[^\n]+sidebar/.test(shell), false);
-});
-
-test("Workspace owner layout persists the real sidebar and owns navigation", async () => {
-    const layout = await fsReadFile(new URL("./layouts/WorkspaceLayout.astro", import.meta.url), "utf8");
-    assertStringIncludes(layout, 'import { ClientRouter } from "astro:transitions";');
-    assertStringIncludes(layout, "<ClientRouter />");
-    assertStringIncludes(layout, 'transition:name="workspace-sidebar" transition:persist');
-    assertStringIncludes(layout, 'document.addEventListener("runwield:workspace-navigate"');
-    assertEquals(layout.includes("__runwieldWorkspaceNavigate"), false);
-    assertStringIncludes(layout, '<script is:inline type="module" src="/workspace-shell.js"></script>');
-    assertStringIncludes(layout, 'data-workspace-sidebar-restore aria-label="Open Workspace sidebar"');
 });
 
 test("artifact and review headers keep one surface title and a reachable Workspace restore control", () => {

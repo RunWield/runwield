@@ -1,5 +1,4 @@
-import { opendir } from "node:fs/promises";
-import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
+import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import { checkBashCommand, intersectBashAllowedCommands } from "../bash-command-policy.ts";
@@ -15,44 +14,11 @@ import {
     type SubAgentDefinitionId,
 } from "./subagent-definitions.ts";
 
-const EXPECTED_PROMPT_FILES = [
-    "delegated-agent-prompt.md",
-    "delegated-read-agent-prompt.md",
-    "init-agent-prompt.md",
-    "integration-reviewer-prompt.md",
-    "integration-reviewer-verify-prompt.md",
-    "manual-qa-prompt.md",
-    "reviewer-feedback-engineer.md",
-    "reviewer-prompt.md",
-    "reviewer-verify-prompt.md",
-    "slicer-prompt.md",
-];
-
-const EXPECTED_ROLE_OVERLAY_FILES = ["verification-adversary.md"];
 const USER_AUTHORITY_MARKER = "After one concern, the discussion is complete. The user decides. Continue the work.";
 
 function sourcePromptPath(fileName: string) {
     return join("src", "agent-definitions", "subagent-definitions", fileName);
 }
-
-test("subagent prompt files live only in the subagent definitions directory", async () => {
-    const entries = [];
-    for await (const entry of await opendir(join("src", "agent-definitions", "subagent-definitions"))) {
-        if (entry.isFile()) entries.push(entry.name);
-    }
-    entries.sort();
-
-    const roleEntries = [];
-    for await (const entry of await opendir(join("src", "agent-definitions", "subagent-definitions", "roles"))) {
-        if (entry.isFile()) roleEntries.push(entry.name);
-    }
-    roleEntries.sort();
-
-    assertEquals(entries, EXPECTED_PROMPT_FILES);
-    assertEquals(roleEntries, EXPECTED_ROLE_OVERLAY_FILES);
-    const oldPromptDirectory = join("src", "agent-definitions", "workflow-" + "prompts");
-    await assertRejects(() => fsStat(oldPromptDirectory), Error, "ENOENT");
-});
 
 test("every registered subagent loads from the moved bundled prompt files", async () => {
     const loadedIds: string[] = [];

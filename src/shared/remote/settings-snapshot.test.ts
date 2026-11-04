@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { copyFile, rename } from "node:fs/promises";
+import { copyFile, readFile, rename } from "node:fs/promises";
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { getCwd } from "../../constants.js";
@@ -139,9 +139,13 @@ test("remote synchronous settings refresh after a lost acknowledgement and an un
             await fsWriteFile(mountedPath, JSON.stringify({ theme: "new-laptop-theme" }));
             assertEquals(manager.getTheme(), "project-theme");
             // A vanished mount cannot return the held manager's old personal values.
+            const writeTheme = manager.setTheme;
+            const laptopBeforeDetach = await readFile(laptopPath, "utf8");
             const mountedIdentity = await fsStat(mounted, { bigint: true });
             await rename(mounted, join(home, "detached-mount"));
             assertThrows(() => manager.getTheme(), PersonalResourcePathError);
+            assertThrows(() => writeTheme("must-not-write-after-detach"), PersonalResourcePathError);
+            assertEquals(await readFile(laptopPath, "utf8"), laptopBeforeDetach);
             assertThrows(() => getSettingsManager(project).getTheme(), PersonalResourcePathError);
             // SSHFS can detach and leave its sealed local directory behind.
             await fsMkdir(mounted);

@@ -109,14 +109,13 @@ while (!terminal.getScreenText().includes("laptop-http/remote-model") && Date.no
     await terminal.flush();
 }
 await new Promise((resolve) => setTimeout(resolve, 500));
-const screenBeforePaste = terminal.getScreenText();
 terminal.input("\\x16");
 const pasteDeadline = Date.now() + 10_000;
-while (terminal.getScreenText() === screenBeforePaste && Date.now() < pasteDeadline) {
+while (!terminal.getScreenText().includes("[image/png]") && Date.now() < pasteDeadline) {
     await new Promise((resolve) => setTimeout(resolve, 20));
     await terminal.flush();
 }
-const imagePreviewed = terminal.getScreenText() !== screenBeforePaste;
+const imagePreviewed = terminal.getScreenText().includes("[image/png]");
 terminal.typeText("Unsubmitted production prompt");
 await new Promise((resolve) => setTimeout(resolve, 200));
 await terminal.flush();

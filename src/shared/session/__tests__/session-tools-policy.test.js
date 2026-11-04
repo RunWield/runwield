@@ -1,3 +1,4 @@
+import { withRuntimeCommandFixture } from "../../../cmd/testing/runtime-command-fixture.ts";
 import { bashFixtureExecutable } from "../../../../scripts/bash-fixture.ts";
 import { delimiter } from "node:path";
 import {
@@ -26,7 +27,7 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withProcessGlobalTestLock } from "../../../testing/process-global-lock.ts";
 import { AGENTS, SUBAGENTS } from "../../../constants.js";
 import { __resetSettingsForTests, getSettingsManager } from "../../settings.js";
-import { loadAgentDef, resolveSessionToolNames } from "../agents.js";
+import { loadAgentDef } from "../agents.js";
 import { HostedSession } from "../hosted-session.js";
 import { loadSubAgentDefinition, REVIEWER_SUBAGENT_TOOLS } from "../subagent-definitions.ts";
 import {
@@ -275,15 +276,6 @@ test("bundled shell Agents offer background work without extending workflow-only
     }
 });
 
-test("effective tool selection cannot re-enable background shell after Agent policy removes it", () => {
-    const resolved = resolveEffectiveSessionToolNames(
-        ["read", "set_session_name"],
-        ["read", "bash", "background_task"],
-        [],
-    );
-    assertEquals(resolved.includes("background_task"), false);
-});
-
 test("Frontend Engineer autonomous base tools include task completion without pair checkpoint", async () => {
     const def = await loadAgentDef(AGENTS.FRONTEND_ENGINEER, REPO_ROOT);
 
@@ -315,31 +307,6 @@ test("RunWield PM, Init, Reviewer, and Slicer can delegate", async () => {
     }
 });
 
-test("bundled Agent definitions omit the removed router handoff tool", async () => {
-    const removedToolName = ["return", "to", "router"].join("_");
-    const agentNames = [
-        AGENTS.OPERATOR,
-        AGENTS.GUIDE,
-        AGENTS.IDEATOR,
-        AGENTS.PLANNER,
-        AGENTS.ARCHITECT,
-        AGENTS.ENGINEER,
-        AGENTS.FRONTEND_ENGINEER,
-        "tester",
-        AGENTS.ROUTER,
-    ];
-
-    for (const agentName of agentNames) {
-        const def = await loadAgentDef(agentName, REPO_ROOT);
-        assertEquals(def.tools.includes(removedToolName), false, `${agentName} must not expose removed handoff tool`);
-        assertEquals(
-            resolveEffectiveSessionToolNames(def.tools, undefined, []).includes(removedToolName),
-            false,
-            `${agentName} effective tools must not expose removed handoff tool`,
-        );
-    }
-});
-
 test("all user-facing bundled Agents receive set_session_name", async () => {
     const agentNames = [
         AGENTS.OPERATOR,
@@ -357,15 +324,6 @@ test("all user-facing bundled Agents receive set_session_name", async () => {
         const def = await loadAgentDef(agentName, REPO_ROOT);
         assert(def.tools.includes("set_session_name"), `${agentName} should include set_session_name`);
     }
-});
-
-test("set_session_name survives a narrowed runtime tool list", async () => {
-    const def = await loadAgentDef(AGENTS.GUIDE, REPO_ROOT);
-
-    const resolved = resolveEffectiveSessionToolNames(def.tools, ["read"], []);
-
-    assertEquals(resolved.includes("read"), true);
-    assertEquals(resolved.includes("set_session_name"), true);
 });
 
 test("Claude CLI and Agy CLI bridge the session name tool", async () => {
@@ -437,30 +395,6 @@ test("isolated Subagent definitions do not receive set_session_name", async () =
         const def = await loadSubAgentDefinition(subagent);
         assertEquals(def.tools.includes("set_session_name"), false, `${subagent} must not include set_session_name`);
     }
-});
-
-test("resolveSessionToolNames blocks runtime toolNames from re-enabling removed non-protected tools", () => {
-    const agentTools = ["read", "memory", "triage_report"];
-    const resolved = resolveSessionToolNames(agentTools, ["read", "bash", "triage_report"], []);
-
-    assertEquals(resolved, ["read", "triage_report"]);
-    assert(!resolved.includes("bash"));
-});
-
-test("Workflow tools cannot be re-enabled by static runtime tool names", () => {
-    const resolved = resolveSessionToolNames(["read"], ["read", "pair_checkpoint", "record_plan_deviation"], []);
-    assertEquals(resolved, ["read"]);
-});
-
-test("resolveSessionToolNames allows workflow runtime custom tools", () => {
-    const resolved = resolveSessionToolNames(["read"], ["read"], ["pair_checkpoint", "record_plan_deviation", "read"]);
-    assertEquals(resolved, ["read", "pair_checkpoint", "record_plan_deviation"]);
-});
-
-test("resolveEffectiveSessionToolNames does not special-case removed tool names", () => {
-    const agentTools = ["read", "memory"];
-
-    assertEquals(resolveEffectiveSessionToolNames(agentTools, undefined, []), ["read", "memory"]);
 });
 
 test("resolveEffectiveSessionToolNames normalizes legacy multi replace tool name", () => {
@@ -1257,16 +1191,6 @@ test("buildAgentSession defers invalid optional vision fallback until image use"
     });
 });
 
-test("resolveModel candidate metrics include enum failed reasons for skipped candidates", async () => {
-    const source = await fsReadFile(new URL("../session.js", import.meta.url), "utf8");
-    assertEquals(source.includes('failedReason: "invalid_candidate"'), true);
-    assertEquals(source.includes('failedReason: "unknown_candidate"'), true);
-    assertEquals(source.includes('failedReason: "discovery_error"'), true);
-    assertEquals(source.includes('failedReason: "missing_auth"'), true);
-    assertEquals(source.includes('event: "selection_resolved"'), true);
-    assertEquals(source.includes("discovered"), true);
-});
-
 test("bundled Work Record tools are protected for planning roles and excluded from Engineer", async () => {
     const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-planner-override-"));
     const localAgentsDir = join(projectRoot, ".wld", "agents");
@@ -1800,4 +1724,38 @@ test("Claude CLI and Agy CLI bridge declared Plan Deviations for execution Agent
         hostedSession.dispose();
         await removeTempDir(cwd);
     }
+});
+
+test("real Session tool policy rejects runtime privilege expansion while admitting registered extension tools", async () => {
+    await withRuntimeCommandFixture("tool-policy-boundary-", async ({ projectRoot }) => {
+        const agentsDir = join(projectRoot, ".wld", "agents");
+        await fsMkdir(agentsDir, { recursive: true });
+        await fsWriteFile(join(agentsDir, "guide.md"), "---\ntools: [read]\n---\nRead the project.\n");
+        const built = await buildAgentSession({
+            cwd: projectRoot,
+            agentName: "guide",
+            toolNames: ["read", "bash", "background_task", "pair_checkpoint", "record_plan_deviation"],
+            customTools: [
+                {
+                    name: "fixture_extension",
+                    label: "Fixture extension",
+                    description: "An explicitly registered external capability.",
+                    parameters: { type: "object", properties: {} },
+                    execute: () =>
+                        Promise.resolve({ content: [{ type: "text", text: "extension response" }], details: null }),
+                },
+            ],
+        });
+        try {
+            const permitted = built.session.getActiveToolNames();
+            for (const denied of ["bash", "background_task", "pair_checkpoint", "record_plan_deviation"]) {
+                assertEquals(permitted.includes(denied), false, denied);
+            }
+            for (const allowed of ["read", "set_session_name", "fixture_extension"]) {
+                assertEquals(permitted.includes(allowed), true, allowed);
+            }
+        } finally {
+            built.session.dispose();
+        }
+    });
 });

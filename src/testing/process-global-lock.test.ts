@@ -1,8 +1,11 @@
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { test } from "node:test";
-import { stat } from "node:fs/promises";
-import { cwd, pid } from "node:process";
+import { stat, copyFile, mkdtemp, rm } from "node:fs/promises";
+import { cwd, chdir } from "node:process";
 import { ok as assert } from "node:assert/strict";
-import { assertEquals, assertStringIncludes } from "./assertions.ts";
+import { assertEquals } from "./assertions.ts";
 import { HEARTBEAT_MS, LOCK_DIR, withProcessGlobalTestLock } from "./process-global-lock.ts";
 
 // Every case here goes through withProcessGlobalTestLock rather than touching
@@ -10,12 +13,34 @@ import { HEARTBEAT_MS, LOCK_DIR, withProcessGlobalTestLock } from "./process-glo
 // legitimately holding would corrupt that file's run, which is the exact class
 // of bug this lock exists to prevent.
 
-test("lock is keyed on the process, not the working directory", () => {
-    // Regression: keying on cwd() meant each test-file realm computed its
-    // own lock path whenever it initialized during another file's chdir window,
-    // so two files could hold the lock at once and clobber each other's cwd.
-    assertStringIncludes(LOCK_DIR, `pid-${pid}`);
-    assertEquals(LOCK_DIR.includes(encodeURIComponent(cwd()).replaceAll("%", "-")), false);
+test("a lock module initialized during a cwd change still waits for the existing holder", async () => {
+    const root = await mkdtemp(join(tmpdir(), "process-lock-realm-"));
+    let entered = false;
+    let waiter: Promise<void> | undefined;
+    try {
+        await withProcessGlobalTestLock(async () => {
+            const previous = cwd();
+            try {
+                chdir(root);
+                const freshModule = join(root, "process-global-lock.ts");
+                await copyFile(new URL("./process-global-lock.ts", import.meta.url), freshModule);
+                const isolated = await import(pathToFileURL(freshModule).href);
+                waiter = isolated.withProcessGlobalTestLock(() => {
+                    entered = true;
+                    return Promise.resolve();
+                });
+                await new Promise((resolve) => setTimeout(resolve, 80));
+                assertEquals(entered, false);
+            } finally {
+                chdir(previous);
+            }
+        });
+        await waiter;
+        assertEquals(entered, true);
+    } finally {
+        await waiter;
+        await rm(root, { recursive: true, force: true });
+    }
 });
 
 test("concurrent acquisitions serialize", async () => {

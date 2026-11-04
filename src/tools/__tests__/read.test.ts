@@ -11,7 +11,6 @@ import {
     type ToolRenderResultOptions,
 } from "@earendil-works/pi-coding-agent";
 import {
-    __test,
     createRunWieldReadToolDefinition,
     type DisplayImage,
     type ReadToolArgs,
@@ -61,15 +60,6 @@ async function executeRead(tool: ReadTool, params: ReadToolArgs) {
     return await execute("read-call-1", params, new AbortController().signal, () => {}, {});
 }
 
-test("read wrapper exposes expected metadata", () => {
-    const tool = createRunWieldReadToolDefinition("/tmp");
-
-    assertEquals(tool.name, "read");
-    assertEquals(tool.label, "read");
-    assertEquals(typeof tool.execute, "function");
-    assertStringIncludes(tool.description || "", "Suppresses binary/control-byte text");
-});
-
 test("read wrapper still returns binary git index content to the model", async () => {
     const dir = await fsMkdtemp(join(tmpdir(), "portable-tool-"));
     try {
@@ -91,19 +81,20 @@ test("read wrapper still returns binary git index content to the model", async (
 test("read wrapper renders binary/control-byte results as header-only output", async () => {
     const dir = await fsMkdtemp(join(tmpdir(), "portable-tool-"));
     try {
-        await fsWriteFile(join(dir, "blob.bin"), new Uint8Array([97, 7, 98]));
+        for (const content of ["A\u0007B", "A\u0000B", "A\ufffdB"]) {
+            await fsWriteFile(join(dir, "blob.bin"), content);
 
-        const tool = createRunWieldReadToolDefinition(dir);
-        const result = await executeRead(tool, { path: "blob.bin" });
-        const component = (tool.renderResult as FixtureRender)?.(
-            result,
-            { expanded: true },
-            {},
-            { lastComponent: new Text("stale", 0, 0) },
-        );
+            const tool = createRunWieldReadToolDefinition(dir);
+            const result = await executeRead(tool, { path: "blob.bin" });
+            const component = (tool.renderResult as FixtureRender)?.(
+                result,
+                { expanded: true },
+                { fg: (_name: string, text: string) => text },
+                { lastComponent: new Text("stale", 0, 0) },
+            );
 
-        assertEquals(__test.resultHasBinaryDisplaySuppression(result), true);
-        assertEquals(component.render(80), []);
+            assertEquals(component.render(80), []);
+        }
     } finally {
         await fsRm(dir, { recursive: true });
     }
@@ -120,12 +111,11 @@ test("read wrapper keeps binary display suppression after result serialization",
         const component = (tool.renderResult as FixtureRender)?.(
             serializedResult,
             { expanded: true },
-            {},
+            { fg: (_name: string, text: string) => text },
             { lastComponent: new Text("stale", 0, 0) },
         );
 
         assertEquals(result.content[0].text?.startsWith("PK"), true);
-        assertEquals(__test.resultHasBinaryDisplaySuppression(serializedResult), true);
         assertEquals(component.render(80), []);
     } finally {
         await fsRm(dir, { recursive: true });
@@ -142,21 +132,6 @@ test("read wrapper attaches display images for at-prefixed image paths", async (
         const result = await executeRead(tool, { path: "@image.png" });
 
         assertEquals(result.details?.runwieldDisplayImages, [{ base64: "iVBORw0KGgo=", mimeType: "image/png" }]);
-        assertEquals(__test.resultHasBinaryDisplaySuppression(result), false);
-    } finally {
-        await fsRm(dir, { recursive: true });
-    }
-});
-
-test("read wrapper exposes image files to the model when upstream returns text only", async () => {
-    const dir = await fsMkdtemp(join(tmpdir(), "portable-tool-"));
-    try {
-        const imageBytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
-        await fsWriteFile(join(dir, "image.png"), imageBytes);
-
-        const tool = createRunWieldReadToolDefinition(dir);
-        const result = await executeRead(tool, { path: "@image.png" });
-
         assertEquals(
             result.content.some((part) => part.type === "image"),
             true,
@@ -192,7 +167,7 @@ test("read wrapper delegates image rendering to terminal capability handling", (
 test("read wrapper allows normal text files to render normally", async () => {
     const dir = await fsMkdtemp(join(tmpdir(), "portable-tool-"));
     try {
-        await fsWriteFile(join(dir, "README.md"), "# Hello\n\nSafe text.\n");
+        await fsWriteFile(join(dir, "README.md"), "# Hello\n\tSafe text.\r\n");
 
         const tool = createRunWieldReadToolDefinition(dir);
         const result = await executeRead(tool, { path: "README.md" });
@@ -209,11 +184,4 @@ test("read wrapper allows normal text files to render normally", async () => {
     } finally {
         await fsRm(dir, { recursive: true });
     }
-});
-
-test("read wrapper unsafe display detection catches bell, nul, and replacement chars", () => {
-    assertEquals(__test.containsUnsafeDisplayText("A\t\n\rB"), false);
-    assertEquals(__test.containsUnsafeDisplayText("A\u0007B"), true);
-    assertEquals(__test.containsUnsafeDisplayText("A\u0000B"), true);
-    assertEquals(__test.containsUnsafeDisplayText("A\ufffdB"), true);
 });

@@ -23,7 +23,6 @@ import { __resetSettingsForTests } from "../settings.js";
 import {
     abortActiveSession,
     ensureRootAgentSession,
-    getRootSessionRebuildOptions,
     runIsolatedAgentSession,
     runRootTurn,
     steerActiveSessionWithTarget,
@@ -385,20 +384,6 @@ test("Claude CLI root turn can set the Session Name through MCP", async () => {
         ) as ToolResultMessage | undefined;
         assertEquals(toolResult?.details?.name, "claude session");
         assertEquals(toolResult?.details?.provenance, CLAUDE_CLI_MCP_PROVENANCE);
-    });
-});
-
-test("Claude CLI root keeps agent tool names available for provider reload", async () => {
-    await withClaudeExecutionFixture(async (_home, cwd) => {
-        const manager = SessionManager.inMemory(cwd);
-        const hostedSession = createHostedSession(cwd, manager);
-        await ensureRootAgentSession({ hostedSession, agentName: AGENTS.GUIDE });
-
-        const rebuildOptions = getRootSessionRebuildOptions(hostedSession);
-
-        assertEquals(rebuildOptions.toolNames?.includes("read"), true);
-        assertEquals(rebuildOptions.toolNames?.includes("bash"), true);
-        assertEquals(rebuildOptions.toolNames?.includes("set_session_name"), true);
     });
 });
 

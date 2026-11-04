@@ -32,35 +32,11 @@ function createUi(): InitUi {
     };
 }
 
-async function captureConsole(run: () => void | Promise<void>): Promise<{ logs: string[]; warnings: string[] }> {
-    const logs: string[] = [];
-    const warnings: string[] = [];
-    const originalLog = console.log;
-    const originalWarn = console.warn;
-    console.log = (message = "") => logs.push(String(message));
-    console.warn = (message = "") => warnings.push(String(message));
-    try {
-        await run();
-    } finally {
-        console.log = originalLog;
-        console.warn = originalWarn;
-    }
-    return { logs, warnings };
-}
-
 test("init exercises real project state, assets, settings, and Agent runtime in an isolated home", async (test) => {
     await withRuntimeCommandFixture(
         "init-command-",
         async ({ alternateRoot, homeDir, projectRoot, settingsPath, setModelMessages }) => {
             const originalSettings = await fsReadFile(settingsPath, "utf8");
-
-            await test.test("help comes from the real command registry before project inspection", async () => {
-                const output = await captureConsole(() =>
-                    runInitCommand(["--help"], { sessionPort: UNEXPECTED_SESSION_PORT }),
-                );
-                assertStringIncludes(output.logs.join("\n"), "Usage (init):");
-                assertStringIncludes(output.logs.join("\n"), "Runs a one-time agent");
-            });
 
             await test.test("an empty fixture project remains uninitialized", async () => {
                 process.chdir(alternateRoot);
@@ -216,14 +192,6 @@ test("init exercises real project state, assets, settings, and Agent runtime in 
                 assertStringIncludes(ui.messages[0].message, "Init has already been run");
                 assertStringIncludes(ui.messages[0].message, projectRoot);
                 assertEquals((await getCwdInitState())?.initDone, true);
-            });
-
-            await test.test("the registered init command keeps both CLI and slash surfaces", async () => {
-                const { getCommandDefinition, hasCommandSurface } = await import("../registry.js");
-                const command = getCommandDefinition("init");
-                assertEquals(command ? hasCommandSurface(command, "slash") : false, true);
-                assertEquals(command ? hasCommandSurface(command, "cli") : false, true);
-                assertEquals(command?.displayName, "Init");
             });
         },
     );

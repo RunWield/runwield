@@ -424,8 +424,8 @@ test("Router-to-Planner dispatch sends Planner system instructions despite Route
                 assertStringIncludes(systemPrompt, "You are the Planner");
                 assertEquals(systemPrompt.includes("Your ONLY job is to identify the Routing Intent"), false);
                 assertStringIncludes(modelMessages, "I am the Router. My only job is routing.");
-                assertStringIncludes(modelMessages, "You are now Planner.");
-                assertStringIncludes(modelMessages, "previous RunWield Agent");
+                assertEquals(modelMessages.includes("You are now Planner."), false);
+                assertEquals(modelMessages.includes("## Active RunWield Agent"), false);
                 assertStringIncludes(modelMessages, "## Triage Report");
             } finally {
                 fixture.hostedSession.dispose();

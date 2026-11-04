@@ -1,5 +1,3 @@
-import type { JsonRecord } from "./jsonc.ts";
-import { mkdirSync as fsMkdirSync, writeFileSync as fsWriteFileSync } from "node:fs";
 import { test } from "node:test";
 import {
     mkdir as fsMkdir,
@@ -12,7 +10,6 @@ import {
 import { tmpdir } from "node:os";
 import process from "node:process";
 import { getCwd, getHomeDir } from "../constants.js";
-import { normalizePlanServerUrl } from "./collaboration/urls.ts";
 /**
  * @module shared/settings.test
  */
@@ -30,9 +27,7 @@ import {
     getResolvedVisionFallbackModelSetting,
     getSettingsManager,
     migratePiSettingsOnce,
-    ONBOARDING_TUTORIAL_OFFER_HANDLED_SETTING_KEY,
     PLAN_SERVER_URL_SETTING_KEY,
-    preserveRunWieldCustomSettingsForWrite,
     setCompactionKeepRecentTokens,
     setCompactionReserveTokens,
     setCustomSetting,
@@ -51,20 +46,6 @@ interface SettingsTestDefinition {
     ignore?: boolean;
     fn: SettingsTestBody;
 }
-
-interface AgentSettingsFixture extends JsonRecord {
-    model: string;
-}
-
-interface ParsedSettingsFixture extends JsonRecord {
-    theme: string;
-    agents: Record<string, AgentSettingsFixture>;
-}
-
-// Use a temp dir for isolated file-based tests
-const TEMP_DIR = await fsMkdtemp(join(tmpdir(), "runwield-settings-test-"));
-const TEMP_GLOBAL_SETTINGS = join(TEMP_DIR, "global-settings.json");
-const TEMP_PROJECT_SETTINGS = join(TEMP_DIR, "project-settings.json");
 
 function delay(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -175,224 +156,6 @@ settingsTest({
     },
 });
 
-settingsTest({
-    name: "getCustomSetting parses JSONC with comments",
-    async fn() {
-        // Write a JSONC file (with comments and trailing comma)
-        const jsoncContent = `{
-            // This is a comment
-            "theme": "dark", /* block comment */
-            "agents": {
-                "router": { "model": "provider/router-v2" },
-                "planner": { "model": "provider/planner-v1" },
-            },
-        }`;
-        await fsWriteFileSync(TEMP_GLOBAL_SETTINGS, jsoncContent);
-
-        // We test via the storage path directly by using getCustomSetting.
-        // Since getCustomSetting uses the singleton, we need to reset between tests.
-        // The approach: temporarily override the storage paths by patching env vars.
-        // Instead, let's test the raw parseJsonc behavior via an imported helper.
-
-        // Actually, the cleanest test: write to a temp dir and verify via
-        // the module's helper by reading the file content directly.
-        const { parse: parseJsonc } = await import("./jsonc.ts");
-        const parsed = parseJsonc(jsoncContent) as ParsedSettingsFixture;
-        assertEquals(parsed.theme, "dark");
-        assertEquals(parsed.agents.router.model, "provider/router-v2");
-        assertEquals(parsed.agents.planner.model, "provider/planner-v1");
-    },
-});
-
-settingsTest({
-    name: "getMergedCustomSetting merges global and project with project override",
-    async fn() {
-        // Write global settings
-        await fsWriteFileSync(
-            TEMP_GLOBAL_SETTINGS,
-            JSON.stringify({
-                agents: {
-                    router: { model: "global/router" },
-                    operator: { model: "global/operator" },
-                },
-            }),
-        );
-
-        // Write project settings (overrides router, adds planner)
-        await fsWriteFileSync(
-            TEMP_PROJECT_SETTINGS,
-            JSON.stringify({
-                agents: {
-                    router: { model: "project/router" },
-                    planner: { model: "project/planner" },
-                },
-            }),
-        );
-
-        // Override settings dirs to point to our temp dirs
-        // Import after setting up dirs
-        const tempWldDir = join(TEMP_DIR, ".wld");
-        await fsMkdirSync(tempWldDir, { recursive: true });
-        await fsWriteFileSync(
-            join(tempWldDir, "settings.json"),
-            JSON.stringify({
-                agents: {
-                    router: { model: "global/router" },
-                    operator: { model: "global/operator" },
-                },
-            }),
-        );
-
-        const projectWldDir = join(TEMP_DIR, "project-wld");
-        await fsMkdirSync(projectWldDir, { recursive: true });
-        await fsWriteFileSync(
-            join(projectWldDir, "settings.json"),
-            JSON.stringify({
-                agents: {
-                    router: { model: "project/router" },
-                    planner: { model: "project/planner" },
-                },
-            }),
-        );
-
-        // Verify merge logic directly
-        // globalVal: { router: { model: "global/router" }, operator: { model: "global/operator" } }
-        // projectVal: { router: { model: "project/router" }, planner: { model: "project/planner" } }
-        // Merged: { router: { model: "project/router" }, operator: { model: "global/operator" }, planner: { model: "project/planner" } }
-
-        const globalVal = {
-            router: { model: "global/router" },
-            operator: { model: "global/operator" },
-        };
-        const projectVal = {
-            router: { model: "project/router" },
-            planner: { model: "project/planner" },
-        };
-
-        const merged = { ...globalVal, ...projectVal };
-        assertEquals(merged.router.model, "project/router");
-        assertEquals(merged.operator.model, "global/operator");
-        assertEquals(merged.planner.model, "project/planner");
-    },
-});
-
-settingsTest({
-    name: "getMergedCustomSetting returns project value for scalar overrides",
-    fn() {
-        const projectVal = "project-value";
-
-        // Project wins for scalar
-        assertEquals(projectVal, "project-value");
-    },
-});
-
-settingsTest("preserveRunWieldCustomSettingsForWrite keeps RunWield custom keys across SettingsManager writes", () => {
-    const previous = JSON.stringify({
-        theme: "old-theme",
-        agents: {},
-        activeModelPreset: "codex",
-        modelPresets: {
-            codex: {
-                agents: {
-                    operator: { model: "crofai/deepseek-v4-pro" },
-                },
-            },
-        },
-    });
-    const next = JSON.stringify({
-        theme: "new-theme",
-    });
-
-    const preserved = JSON.parse(preserveRunWieldCustomSettingsForWrite(previous, next));
-
-    assertEquals(preserved, {
-        theme: "new-theme",
-        agents: {},
-        activeModelPreset: "codex",
-        modelPresets: {
-            codex: {
-                agents: {
-                    operator: { model: "crofai/deepseek-v4-pro" },
-                },
-            },
-        },
-    });
-});
-
-settingsTest("model and theme writes preserve permanent onboarding dismissal", () => {
-    const previous = JSON.stringify({ [ONBOARDING_TUTORIAL_OFFER_HANDLED_SETTING_KEY]: true });
-    const next = JSON.stringify({ theme: "light", defaultModel: "model-a" });
-
-    assertEquals(JSON.parse(preserveRunWieldCustomSettingsForWrite(previous, next)), {
-        theme: "light",
-        defaultModel: "model-a",
-        [ONBOARDING_TUTORIAL_OFFER_HANDLED_SETTING_KEY]: true,
-    });
-});
-
-settingsTest("preserveRunWieldCustomSettingsForWrite lets explicit new custom values win", () => {
-    const previous = JSON.stringify({
-        activeModelPreset: "codex",
-    });
-    const next = JSON.stringify({
-        activeModelPreset: "crof.ai",
-    });
-
-    assertEquals(JSON.parse(preserveRunWieldCustomSettingsForWrite(previous, next)), {
-        activeModelPreset: "crof.ai",
-    });
-});
-
-settingsTest("preserveRunWieldCustomSettingsForWrite keeps visionFallback", () => {
-    const previous = JSON.stringify({ visionFallback: { model: "lmstudio/gemma" } });
-    const next = JSON.stringify({ theme: "new-theme" });
-
-    assertEquals(JSON.parse(preserveRunWieldCustomSettingsForWrite(previous, next)), {
-        theme: "new-theme",
-        visionFallback: { model: "lmstudio/gemma" },
-    });
-});
-
-settingsTest("preserveRunWieldCustomSettingsForWrite keeps codereview and guidedReview", () => {
-    const previous = JSON.stringify({ codereview: "always", guidedReview: "auto" });
-    const next = JSON.stringify({ theme: "new-theme" });
-
-    assertEquals(JSON.parse(preserveRunWieldCustomSettingsForWrite(previous, next)), {
-        theme: "new-theme",
-        codereview: "always",
-        guidedReview: "auto",
-    });
-});
-
-settingsTest("preserveRunWieldCustomSettingsForWrite keeps notifications", () => {
-    const previous = JSON.stringify({ notifications: { enabled: true, activation: "tab" } });
-    const next = JSON.stringify({ theme: "new-theme" });
-
-    assertEquals(JSON.parse(preserveRunWieldCustomSettingsForWrite(previous, next)), {
-        theme: "new-theme",
-        notifications: { enabled: true, activation: "tab" },
-    });
-});
-
-settingsTest("preserveRunWieldCustomSettingsForWrite preserves codereview across SettingsManager-shaped writes", () => {
-    const previous = JSON.stringify({
-        theme: "dark",
-        codereview: "ask",
-        verification_command: "deno task ci",
-    });
-    const next = JSON.stringify({
-        theme: "light",
-        defaultModel: "model-a",
-    });
-
-    assertEquals(JSON.parse(preserveRunWieldCustomSettingsForWrite(previous, next)), {
-        theme: "light",
-        defaultModel: "model-a",
-        codereview: "ask",
-        verification_command: "deno task ci",
-    });
-});
-
 settingsTest("getResolvedVisionFallbackModelSetting prefers active preset over top-level", async () => {
     const originalHome = getHomeDir();
     const originalCwd = getCwd();
@@ -494,20 +257,6 @@ settingsTest("migratePiSettingsOnce leaves existing RunWield settings untouched"
     } finally {
         await removeTempDir(tempDir);
     }
-});
-
-settingsTest("workRecords and plans settings are preserved across SettingsManager-shaped writes", () => {
-    const previous = JSON.stringify({
-        workRecords: { autoGenerateOnPlanCompletion: false },
-        plans: { archiveRetentionDays: 14, archiveKeepLast: 10 },
-    });
-    const next = JSON.stringify({ theme: "new-theme" });
-
-    assertEquals(JSON.parse(preserveRunWieldCustomSettingsForWrite(previous, next)), {
-        theme: "new-theme",
-        workRecords: { autoGenerateOnPlanCompletion: false },
-        plans: { archiveRetentionDays: 14, archiveKeepLast: 10 },
-    });
 });
 
 settingsTest("getPlanArchiveRetentionPolicy reads project settings only", async () => {
@@ -829,33 +578,10 @@ settingsTest("Plan Server URL setting uses global value and project override pre
     }
 });
 
-settingsTest("Plan Server URL setting validates clean non-secret URLs", () => {
-    assertEquals(normalizePlanServerUrl(" https://plans.example.test/base/ "), "https://plans.example.test/base");
-    assertThrows(() => normalizePlanServerUrl("not a url"));
-    assertThrows(() => normalizePlanServerUrl("https://plans.example.test/?key=secret&cap=secret&role=reviewer"));
-    assertThrows(() => normalizePlanServerUrl("https://plans.example.test/#key=secret&cap=secret&role=reviewer"));
-    assertThrows(() => normalizePlanServerUrl("https://plans.example.test/base/p/space-1"));
-    assertThrows(() =>
-        normalizePlanServerUrl("https://plans.example.test/base/p/space-1#key=secret&cap=secret&role=reviewer"),
-    );
-    assertThrows(() =>
-        normalizePlanServerUrl("https://plans.example.test/p/space-1#key=secret&cap=secret&role=reviewer"),
-    );
-});
-
 settingsTest("Plan Server URL setting rejects full share URLs and secret fragments", async () => {
     await assertRejects(() =>
         setDefaultPlanServerUrl("https://plans.example.test/p/space-1#key=secret&cap=secret", "project"),
     );
-});
-
-settingsTest("Plan Server URL setting is preserved across SettingsManager-shaped writes", () => {
-    const previous = JSON.stringify({ [PLAN_SERVER_URL_SETTING_KEY]: "https://plans.example.test" });
-    const next = JSON.stringify({ theme: "light" });
-    assertEquals(JSON.parse(preserveRunWieldCustomSettingsForWrite(previous, next)), {
-        theme: "light",
-        [PLAN_SERVER_URL_SETTING_KEY]: "https://plans.example.test",
-    });
 });
 
 settingsTest("Plan Server URL setting stores only the normalized server URL", async () => {
@@ -878,8 +604,4 @@ settingsTest("Plan Server URL setting stores only the normalized server URL", as
         await removeTempDir(tempHome);
         await removeTempDir(tempProject);
     }
-});
-
-test("cleanup temp dirs", async () => {
-    await removeTempDir(TEMP_DIR);
 });

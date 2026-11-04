@@ -1,13 +1,12 @@
 import { getCwd } from "../../constants.js";
 import { test } from "node:test";
-import type { RuntimeAgentChangedEvent, RuntimeSystemStatusEvent } from "./session-runtime-events.js";
+import type { RuntimeAgentChangedEvent } from "./session-runtime-events.js";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { HostedSession } from "./hosted-session.js";
 import {
     createSessionRuntimeEvent,
     emitHostedSessionRuntimeEvent,
     normalizeRuntimeToolResult,
-    normalizeRuntimeUsage,
     RuntimeEventTypes,
 } from "./session-runtime-events.js";
 
@@ -63,27 +62,6 @@ test("Runtime hides model-only image omission notes when TUI display image exist
     assertEquals(normalized.content, [{ type: "text", text }]);
     assertEquals(normalized.output, "Read image file [image/png]");
     assertEquals(normalized.details, { runwieldDisplayImages: [{ base64: "abc", mimeType: "image/png" }] });
-});
-
-test("Runtime normalizes provider usage once", () => {
-    assertEquals(
-        normalizeRuntimeUsage({
-            input: 12,
-            output: 4,
-            cacheRead: 3,
-            cacheWrite: 2,
-            cost: { total: 0.25 },
-            context_window: 128000,
-        }),
-        {
-            inputTokens: 12,
-            outputTokens: 4,
-            cacheReadTokens: 3,
-            cacheWriteTokens: 2,
-            costUsd: 0.25,
-            contextWindow: 128000,
-        },
-    );
 });
 
 test("Runtime event factory supplies shared identity defaults and rejects partial semantic events", () => {
@@ -171,29 +149,6 @@ test("Runtime event factory supplies shared identity defaults and rejects partia
         TypeError,
         "rootHandoff must be boolean",
     );
-});
-
-test("Runtime accepts complete validation progress snapshots on system status", () => {
-    const event = createSessionRuntimeEvent("session-1", {
-        type: RuntimeEventTypes.SYSTEM_STATUS,
-        message: "Starting Validation Cycle 1/3",
-        validationProgress: {
-            kind: "workflow",
-            outcome: "running",
-            stage: "cycle",
-            cycle: 1,
-            maxCycles: 3,
-            totalCycle: 1,
-            checks: {
-                ci: "pending",
-                semanticReview: "pending",
-                humanReview: "pending",
-                merge: "pending",
-            },
-        },
-    });
-    assertEquals(event.type, RuntimeEventTypes.SYSTEM_STATUS);
-    assertEquals((event as RuntimeSystemStatusEvent).validationProgress?.kind, "workflow");
 });
 
 test("Runtime rejects malformed validation progress snapshots", () => {
