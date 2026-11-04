@@ -12,7 +12,7 @@ import { RuntimeEventTypes } from "./session-runtime-events.js";
 import {
     readPersistedPendingSegmentContinuation,
     readPersistedSegmentLineageEvidence,
-} from "./workflow-context-session.js";
+} from "./workflow-context-session.ts";
 import { buildExecutionSegmentContinuation } from "../workflow/execution-segment-handoff.ts";
 import { loadPlanActionEvidence } from "../workflow/plan-actions.ts";
 

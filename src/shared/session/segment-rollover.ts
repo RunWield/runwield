@@ -12,7 +12,7 @@ import {
     recordNormalizedWorkflowContext,
     recordPendingSegmentContinuation,
     recordSegmentLineageEvidence,
-} from "./workflow-context-session.js";
+} from "./workflow-context-session.ts";
 import { appendExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
 import { recordTutorialContext } from "./tutorial-context-session.ts";
 import type { SegmentHandoffPayload } from "../workflow/execution-segment-handoff.ts";

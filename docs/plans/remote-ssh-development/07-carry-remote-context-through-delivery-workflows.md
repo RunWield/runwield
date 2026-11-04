@@ -76,7 +76,7 @@ The remote Core process runs on the server, so project work already lands in the
 
 ### Smaller gaps
 
-- **Swallowed save errors.** Workflow code catches some Session-save errors and continues (`workflow-context-session.js`,
+- **Swallowed save errors.** Workflow code catches some Session-save errors and continues (`workflow-context-session.ts`,
   `hosted-session.js`, `plan-written.ts`, `runtime/workflows.ts`). In remote mode, a save fault is sticky and stops the
   Agent. Git, worktree, CI, and Plan-file work can still start until something touches the manager again.
 - **Background task logs.** `background-tasks.ts` writes logs to `~/.wld/sessions/<projectId>/<sessionId>/` on the

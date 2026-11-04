@@ -15,7 +15,7 @@ import {
     readPersistedPendingSegmentContinuation,
     recordPendingSegmentContinuation,
     recordSegmentLineageEvidence,
-} from "./workflow-context-session.js";
+} from "./workflow-context-session.ts";
 import { readExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
 import type { ActiveExecutionWorkflow } from "../types.js";
 import { type TutorialContext, readPersistedTutorialContext } from "./tutorial-context-session.ts";

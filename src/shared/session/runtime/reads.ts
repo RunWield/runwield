@@ -38,7 +38,7 @@ import {
 } from "../session-export.ts";
 import { listRecentResumableSessions } from ".././session-resume-list.ts";
 import { buildSessionContextReport } from ".././session-context-report.ts";
-import { deriveWorkflowContextFromExecutionWorkflow } from ".././workflow-context-session.js";
+import { deriveWorkflowContextFromExecutionWorkflow } from ".././workflow-context-session.ts";
 import { dirname, isAbsolute } from "node:path";
 
 import {

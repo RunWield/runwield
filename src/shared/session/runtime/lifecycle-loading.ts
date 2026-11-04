@@ -11,7 +11,7 @@ import { createSessionRuntimeEvent, RuntimeEventTypes } from ".././session-runti
 import { createReplayEvents as createProjectedReplayEvents } from ".././session-transcript-projection.js";
 import { requestHostedSessionInteraction } from ".././session-runtime-interactions.ts";
 import { sessionDirForRoot } from ".././file-session-storage.ts";
-import { recordSegmentLineageEvidence } from ".././workflow-context-session.js";
+import { recordSegmentLineageEvidence } from ".././workflow-context-session.ts";
 import { isAbsolute } from "node:path";
 
 import { enterGitProjectRuntime, isRuntimeRootSessionManager } from "./support.ts";

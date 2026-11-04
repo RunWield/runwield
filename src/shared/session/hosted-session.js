@@ -19,7 +19,7 @@ import {
     recordWorkflowPlanName,
     recordWorkflowTriageContext,
     workflowContextsEqual,
-} from "./workflow-context-session.js";
+} from "./workflow-context-session.ts";
 import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "./session-runtime-events.js";
 import { clearPairCheckpoint } from "./pair-checkpoint-session.ts";
 import { recordExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
@@ -137,7 +137,7 @@ import { PlanReviewConversationOwner } from "./plan-review-conversation.ts";
  * @property {string | null} [model]
  * @property {string | null} [provider]
  * @property {string | null} [thinkingLevel]
- * @property {import('./workflow-context-session.js').WorkflowContext | null} workflowContext
+ * @property {import('./workflow-context-session.ts').WorkflowContext | null} workflowContext
  * @property {import('./tutorial-context-session.ts').TutorialContext | null} [tutorialContext]
  */
 
@@ -271,7 +271,7 @@ export class HostedSession {
         this.delegatedReaderCount = 0;
         this.delegatedWriterActive = false;
         this.projectStateContext = "";
-        /** @type {import('./workflow-context-session.js').WorkflowContext | null} */
+        /** @type {import('./workflow-context-session.ts').WorkflowContext | null} */
         this.workflowContext = readPersistedWorkflowContext(
             /** @type {import('@earendil-works/pi-coding-agent').SessionManager | null} */ (this.rootSessionManager),
         );
@@ -1032,7 +1032,7 @@ export class HostedSession {
     }
 
     /**
-     * @param {import('./workflow-context-session.js').WorkflowContext | null} nextContext
+     * @param {import('./workflow-context-session.ts').WorkflowContext | null} nextContext
      * @param {{ persist?: boolean }} options
      */
     replaceWorkflowContext(nextContext, options = {}) {
@@ -1106,7 +1106,7 @@ export class HostedSession {
         }
     }
 
-    /** @param {import('./workflow-context-session.js').WorkflowContextInput} details */
+    /** @param {import('./workflow-context-session.ts').WorkflowContextInput} details */
     setWorkflowExecutionContext(details) {
         if (this.disposed) return;
         const nextContext = deriveWorkflowContextFromExecutionWorkflow(details);

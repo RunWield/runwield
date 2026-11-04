@@ -6,66 +6,131 @@
 
 import { COMPLEXITIES, normalizeRoutingIntent } from "../../constants.js";
 
+import type { SessionManager } from "@earendil-works/pi-coding-agent";
+import type { SegmentHandoffPayload } from "../workflow/execution-segment-handoff.ts";
+import type { RuntimeValidationProgress } from "./session-runtime-events.js";
+import type { WorkflowProgressFact } from "../workflow/workflow-presentation.ts";
+import type { SessionSegmentLineageEvidence } from "../types.js";
+
+export interface LineageSessionManager {
+    appendCustomEntry?: (customType: string, data: SessionSegmentLineageEvidence) => string | void;
+    getBranch?: () => unknown[];
+    getEntries?: () => unknown[];
+}
+
+export type WorkflowContext = {
+    routingIntent?: string;
+    complexity?: string;
+    summary?: string;
+    planName?: string;
+    parentPlan?: string;
+    planId?: string;
+    status?: string;
+    classification?: string;
+    progressFacts?: WorkflowProgressFact[];
+    validationProgress?: RuntimeValidationProgress;
+    canRun?: boolean;
+    canResume?: boolean;
+    canRecover?: boolean;
+    liveQuestion?: boolean;
+    livePlanReview?: boolean;
+    liveCodeReview?: boolean;
+    liveReviewUrl?: string;
+};
+
+export interface WorkflowContextTriageMeta {
+    routingIntent?: string;
+    classification?: string;
+    complexity?: string;
+    parentPlan?: string;
+    planId?: string;
+    status?: string;
+    validationCheckpoint?: unknown;
+    publication?: unknown;
+    worktreeStatus?: string | null;
+}
+
+export interface WorkflowContextInput {
+    planName?: string | null;
+    triageMeta?: WorkflowContextTriageMeta | null;
+}
+
+export interface WorkflowTriageContextDetails {
+    routingIntent: unknown;
+    complexity: unknown;
+    summary?: unknown;
+}
+
+export interface PersistedSessionEntrySummary {
+    type?: string;
+    role?: string;
+    customType?: string;
+}
+
+export interface PendingSegmentContinuationEntry {
+    payload: SegmentHandoffPayload;
+    entryIndex: number;
+    entries: PersistedSessionEntrySummary[];
+}
+
+interface RawWorkflowContext {
+    routingIntent?: unknown;
+    complexity?: unknown;
+    planName?: unknown;
+    parentPlan?: unknown;
+    summary?: unknown;
+    planId?: unknown;
+    status?: unknown;
+    classification?: unknown;
+    progressFacts?: unknown;
+    validationProgress?: unknown;
+    canRun?: unknown;
+    canResume?: unknown;
+    canRecover?: unknown;
+}
+
+interface RawWorkflowValidationCheckpoint {
+    nextPhase?: unknown;
+    state?: unknown;
+    repairKind?: unknown;
+    updatedAt?: unknown;
+}
+
+interface RawWorkflowPublication {
+    phase?: unknown;
+    failure?: unknown;
+    updatedAt?: unknown;
+}
+
+interface PersistedCustomSessionEntry extends PersistedSessionEntrySummary {
+    data?: unknown;
+}
+
+interface PersistedLineageEntry extends PersistedCustomSessionEntry {
+    data?: SessionSegmentLineageEvidence;
+}
+
+interface PersistedContinuationEntry extends PersistedCustomSessionEntry {
+    data?: SegmentHandoffPayload;
+}
+
 export const WORKFLOW_CONTEXT_CUSTOM_TYPE = "runwield.workflow_context";
 export const SEGMENT_LINEAGE_CUSTOM_TYPE = "runwield.segment_lineage";
 export const PENDING_SEGMENT_CONTINUATION_CUSTOM_TYPE = "runwield.pending_segment_continuation";
 
-/** @typedef {import('../workflow/execution-segment-handoff.ts').SegmentHandoffPayload} SegmentHandoffPayload */
-/** @typedef {import('./session-runtime-events.js').RuntimeValidationProgress} RuntimeValidationProgress */
-
-/**
- * @typedef {Object} LineageSessionManager
- * @property {(customType: string, data: import('../types.js').SessionSegmentLineageEvidence) => string | void} [appendCustomEntry]
- * @property {() => unknown[]} [getBranch]
- * @property {() => unknown[]} [getEntries]
- */
-
-/**
- * @typedef {Object} WorkflowContext
- * @property {string} [routingIntent]
- * @property {string} [complexity]
- * @property {string} [summary]
- * @property {string} [planName]
- * @property {string} [parentPlan]
- * @property {string} [planId]
- * @property {string} [status]
- * @property {string} [classification]
- * @property {Array<import('../workflow/workflow-presentation.ts').WorkflowProgressFact>} [progressFacts]
- * @property {import('./session-runtime-events.js').RuntimeValidationProgress} [validationProgress]
- * @property {boolean} [canRun]
- * @property {boolean} [canResume]
- * @property {boolean} [canRecover]
- * @property {boolean} [liveQuestion]
- * @property {boolean} [livePlanReview]
- * @property {boolean} [liveCodeReview]
- * @property {string} [liveReviewUrl]
- */
-
-/**
- * @param {unknown} value
- * @returns {string}
- */
-export function normalizeWorkflowRoutingIntent(value) {
+export function normalizeWorkflowRoutingIntent(value: unknown): string {
     if (typeof value !== "string") return "";
     const normalized = normalizeRoutingIntent(value.trim().toUpperCase());
     return normalized || "";
 }
 
-/**
- * @param {unknown} value
- * @returns {string}
- */
-export function normalizeWorkflowComplexity(value) {
+export function normalizeWorkflowComplexity(value: unknown): string {
     if (typeof value !== "string") return "";
     const normalized = value.trim().toUpperCase();
     return COMPLEXITIES.includes(normalized) ? normalized : "";
 }
 
-/**
- * @param {unknown} value
- * @returns {string}
- */
-export function normalizeWorkflowPlanName(value) {
+export function normalizeWorkflowPlanName(value: unknown): string {
     if (typeof value !== "string") return "";
     return value
         .trim()
@@ -75,17 +140,13 @@ export function normalizeWorkflowPlanName(value) {
         .trim();
 }
 
-/**
- * @param {Record<string, unknown> | null} triageMeta
- * @returns {Array<import('../workflow/workflow-presentation.ts').WorkflowProgressFact>}
- */
-function progressFactsFromTriageMeta(triageMeta) {
+function progressFactsFromTriageMeta(triageMeta: WorkflowContextTriageMeta | null): WorkflowProgressFact[] {
     if (!triageMeta) return [];
-    /** @type {Array<import('../workflow/workflow-presentation.ts').WorkflowProgressFact>} */
-    const facts = [];
+
+    const facts: WorkflowProgressFact[] = [];
     const checkpoint = triageMeta.validationCheckpoint;
     if (checkpoint && typeof checkpoint === "object" && !Array.isArray(checkpoint)) {
-        const source = /** @type {Record<string, unknown>} */ (checkpoint);
+        const source = checkpoint as RawWorkflowValidationCheckpoint;
         facts.push({
             kind: "validation_checkpoint",
             phase: typeof source.nextPhase === "string" ? source.nextPhase : null,
@@ -96,7 +157,7 @@ function progressFactsFromTriageMeta(triageMeta) {
     }
     const publication = triageMeta.publication;
     if (publication && typeof publication === "object" && !Array.isArray(publication)) {
-        const source = /** @type {Record<string, unknown>} */ (publication);
+        const source = publication as RawWorkflowPublication;
         facts.push({
             kind: "publication",
             phase: typeof source.phase === "string" ? source.phase : null,
@@ -109,20 +170,15 @@ function progressFactsFromTriageMeta(triageMeta) {
     return facts;
 }
 
-/**
- * @param {unknown} value
- * @returns {WorkflowContext | null}
- */
-export function normalizeWorkflowContext(value) {
+export function normalizeWorkflowContext(value: unknown): WorkflowContext | null {
     if (!value || typeof value !== "object") return null;
-    const data = /** @type {Record<string, unknown>} */ (value);
+    const data = value as RawWorkflowContext;
     const routingIntent = normalizeWorkflowRoutingIntent(data.routingIntent);
     const complexity = normalizeWorkflowComplexity(data.complexity);
     const planName = normalizeWorkflowPlanName(data.planName);
     const parentPlan = normalizeWorkflowPlanName(data.parentPlan);
 
-    /** @type {WorkflowContext} */
-    const context = {};
+    const context: WorkflowContext = {};
     if (routingIntent && complexity) {
         context.routingIntent = routingIntent;
         context.complexity = complexity;
@@ -141,9 +197,7 @@ export function normalizeWorkflowContext(value) {
             .map((fact) => ({ ...fact }));
     }
     if (data.validationProgress && typeof data.validationProgress === "object") {
-        context.validationProgress = structuredClone(
-            /** @type {RuntimeValidationProgress} */ (data.validationProgress),
-        );
+        context.validationProgress = structuredClone(data.validationProgress as RuntimeValidationProgress);
     }
     if (typeof data.canRun === "boolean") context.canRun = data.canRun;
     if (typeof data.canResume === "boolean") context.canResume = data.canResume;
@@ -152,12 +206,10 @@ export function normalizeWorkflowContext(value) {
     return Object.keys(context).length > 0 ? context : null;
 }
 
-/**
- * @param {import('@earendil-works/pi-coding-agent').SessionManager | undefined | null} sessionManager
- * @param {{ routingIntent: unknown, complexity: unknown, summary?: unknown }} details
- * @returns {WorkflowContext | null}
- */
-export function recordWorkflowTriageContext(sessionManager, details) {
+export function recordWorkflowTriageContext(
+    sessionManager: SessionManager | undefined | null,
+    details: WorkflowTriageContextDetails,
+): WorkflowContext | null {
     const routingIntent = normalizeWorkflowRoutingIntent(details.routingIntent);
     const complexity = normalizeWorkflowComplexity(details.complexity);
     if (!routingIntent || !complexity) return readPersistedWorkflowContext(sessionManager);
@@ -168,12 +220,10 @@ export function recordWorkflowTriageContext(sessionManager, details) {
     });
 }
 
-/**
- * @param {import('@earendil-works/pi-coding-agent').SessionManager | undefined | null} sessionManager
- * @param {unknown} planName
- * @returns {WorkflowContext | null}
- */
-export function recordWorkflowPlanName(sessionManager, planName) {
+export function recordWorkflowPlanName(
+    sessionManager: SessionManager | undefined | null,
+    planName: unknown,
+): WorkflowContext | null {
     const normalizedPlanName = normalizeWorkflowPlanName(planName);
     if (!normalizedPlanName) return readPersistedWorkflowContext(sessionManager);
     try {
@@ -187,40 +237,19 @@ export function recordWorkflowPlanName(sessionManager, planName) {
     }
 }
 
-/**
- * @typedef {Object} WorkflowContextTriageMeta
- * @property {string} [routingIntent]
- * @property {string} [classification]
- * @property {string} [complexity]
- * @property {string} [parentPlan]
- * @property {string} [planId]
- * @property {string} [status]
- * @property {unknown} [validationCheckpoint]
- * @property {unknown} [publication]
- * @property {string|null} [worktreeStatus]
- */
-
-/**
- * @typedef {Object} WorkflowContextInput
- * @property {string | null} [planName]
- * @property {WorkflowContextTriageMeta | null} [triageMeta]
- */
-
-/**
- * @param {WorkflowContextInput | null | undefined} workflow
- * @param {unknown} [planName]
- * @returns {WorkflowContext | null}
- */
-export function deriveWorkflowContextFromExecutionWorkflow(workflow, planName) {
+export function deriveWorkflowContextFromExecutionWorkflow(
+    workflow: WorkflowContextInput | null | undefined,
+    planName?: unknown,
+): WorkflowContext | null {
     const triageMeta = workflow?.triageMeta && typeof workflow.triageMeta === "object" ? workflow.triageMeta : null;
-    const routingIntent = normalizeWorkflowRoutingIntent(triageMeta?.routingIntent) ||
+    const routingIntent =
+        normalizeWorkflowRoutingIntent(triageMeta?.routingIntent) ||
         normalizeWorkflowRoutingIntent(triageMeta?.classification);
     const complexity = normalizeWorkflowComplexity(triageMeta?.complexity);
     const normalizedPlanName = normalizeWorkflowPlanName(workflow?.planName || planName);
     const parentPlan = normalizeWorkflowPlanName(triageMeta?.parentPlan);
 
-    /** @type {WorkflowContext} */
-    const context = {};
+    const context: WorkflowContext = {};
     if (routingIntent && complexity) {
         context.routingIntent = routingIntent;
         context.complexity = complexity;
@@ -229,18 +258,16 @@ export function deriveWorkflowContextFromExecutionWorkflow(workflow, planName) {
     if (parentPlan) context.parentPlan = parentPlan;
     if (typeof triageMeta?.planId === "string" && triageMeta.planId.trim()) context.planId = triageMeta.planId.trim();
     if (typeof triageMeta?.status === "string" && triageMeta.status.trim()) context.status = triageMeta.status.trim();
-    const progressFacts = progressFactsFromTriageMeta(/** @type {Record<string, unknown> | null} */ (triageMeta));
+    const progressFacts = progressFactsFromTriageMeta(triageMeta);
     if (progressFacts.length) context.progressFacts = progressFacts;
 
     return Object.keys(context).length > 0 ? context : null;
 }
 
-/**
- * @param {import('@earendil-works/pi-coding-agent').SessionManager | undefined | null} sessionManager
- * @param {WorkflowContext | null | undefined} context
- * @returns {WorkflowContext | null}
- */
-export function recordNormalizedWorkflowContext(sessionManager, context) {
+export function recordNormalizedWorkflowContext(
+    sessionManager: SessionManager | undefined | null,
+    context: WorkflowContext | null | undefined,
+): WorkflowContext | null {
     const normalized = normalizeWorkflowContext(context);
     if (!normalized) return readPersistedWorkflowContext(sessionManager);
     if (!sessionManager?.appendCustomEntry) return normalized;
@@ -256,11 +283,9 @@ export function recordNormalizedWorkflowContext(sessionManager, context) {
     return normalized;
 }
 
-/**
- * @param {import('@earendil-works/pi-coding-agent').SessionManager | undefined | null} sessionManager
- * @returns {WorkflowContext | null}
- */
-export function readPersistedWorkflowContext(sessionManager) {
+export function readPersistedWorkflowContext(
+    sessionManager: SessionManager | undefined | null,
+): WorkflowContext | null {
     try {
         const entries = getSessionEntries(sessionManager);
 
@@ -276,26 +301,17 @@ export function readPersistedWorkflowContext(sessionManager) {
     return null;
 }
 
-/**
- * @param {import('@earendil-works/pi-coding-agent').SessionManager | undefined | null} sessionManager
- * @param {WorkflowContext} context
- * @returns {WorkflowContext | null}
- */
-function recordWorkflowContext(sessionManager, context) {
+function recordWorkflowContext(
+    sessionManager: SessionManager | undefined | null,
+    context: WorkflowContext,
+): WorkflowContext | null {
     return recordNormalizedWorkflowContext(sessionManager, context);
 }
 
-/**
- * @param {WorkflowContext | null} left
- * @param {WorkflowContext | null} right
- * @returns {boolean}
- */
-/**
- * @param {LineageSessionManager | undefined | null} sessionManager
- * @param {import('../types.js').SessionSegmentLineageEvidence} lineage
- * @returns {import('../types.js').SessionSegmentLineageEvidence | null}
- */
-export function recordSegmentLineageEvidence(sessionManager, lineage) {
+export function recordSegmentLineageEvidence(
+    sessionManager: LineageSessionManager | undefined | null,
+    lineage: SessionSegmentLineageEvidence,
+): SessionSegmentLineageEvidence | null {
     const normalized = normalizeSegmentLineageEvidence(lineage);
     if (!normalized) return readPersistedSegmentLineageEvidence(sessionManager);
     if (!sessionManager?.appendCustomEntry) return normalized;
@@ -308,7 +324,8 @@ export function recordSegmentLineageEvidence(sessionManager, lineage) {
             existing.parentPiSessionId === normalized.parentPiSessionId &&
             existing.lineageGroupKey === normalized.lineageGroupKey &&
             existing.kind === normalized.kind
-        ) return existing;
+        )
+            return existing;
         sessionManager.appendCustomEntry(SEGMENT_LINEAGE_CUSTOM_TYPE, normalized);
     } catch (_e) {
         return normalized;
@@ -316,11 +333,9 @@ export function recordSegmentLineageEvidence(sessionManager, lineage) {
     return normalized;
 }
 
-/**
- * @param {LineageSessionManager | undefined | null} sessionManager
- * @returns {import('../types.js').SessionSegmentLineageEvidence | null}
- */
-export function readPersistedSegmentLineageEvidence(sessionManager) {
+export function readPersistedSegmentLineageEvidence(
+    sessionManager: LineageSessionManager | undefined | null,
+): SessionSegmentLineageEvidence | null {
     try {
         const entries = getSessionEntries(sessionManager);
         for (let i = entries.length - 1; i >= 0; i--) {
@@ -333,12 +348,10 @@ export function readPersistedSegmentLineageEvidence(sessionManager) {
     return null;
 }
 
-/**
- * @param {import('@earendil-works/pi-coding-agent').SessionManager | undefined | null} sessionManager
- * @param {SegmentHandoffPayload} payload
- * @returns {SegmentHandoffPayload}
- */
-export function recordPendingSegmentContinuation(sessionManager, payload) {
+export function recordPendingSegmentContinuation(
+    sessionManager: SessionManager | undefined | null,
+    payload: SegmentHandoffPayload,
+): SegmentHandoffPayload {
     if (!sessionManager?.appendCustomEntry) return payload;
     try {
         sessionManager.appendCustomEntry(PENDING_SEGMENT_CONTINUATION_CUSTOM_TYPE, payload);
@@ -348,19 +361,15 @@ export function recordPendingSegmentContinuation(sessionManager, payload) {
     return payload;
 }
 
-/**
- * @param {import('@earendil-works/pi-coding-agent').SessionManager | undefined | null} sessionManager
- * @returns {SegmentHandoffPayload | null}
- */
-export function readPersistedPendingSegmentContinuation(sessionManager) {
+export function readPersistedPendingSegmentContinuation(
+    sessionManager: SessionManager | undefined | null,
+): SegmentHandoffPayload | null {
     return readPersistedPendingSegmentContinuationEntry(sessionManager)?.payload ?? null;
 }
 
-/**
- * @param {import('@earendil-works/pi-coding-agent').SessionManager | undefined | null} sessionManager
- * @returns {{ payload: SegmentHandoffPayload, entryIndex: number, entries: Array<{ type?: string, role?: string, customType?: string }> } | null}
- */
-export function readPersistedPendingSegmentContinuationEntry(sessionManager) {
+export function readPersistedPendingSegmentContinuationEntry(
+    sessionManager: SessionManager | undefined | null,
+): PendingSegmentContinuationEntry | null {
     try {
         const entries = getSessionEntries(sessionManager);
         for (let i = entries.length - 1; i >= 0; i--) {
@@ -370,7 +379,7 @@ export function readPersistedPendingSegmentContinuationEntry(sessionManager) {
                     payload: continuation,
                     entryIndex: i,
                     entries: entries.map((entry) => {
-                        const item = /** @type {{ type?: string, role?: string, customType?: string }} */ (entry || {});
+                        const item = (entry || {}) as PersistedSessionEntrySummary;
                         return { type: item.type, role: item.role, customType: item.customType };
                     }),
                 };
@@ -382,11 +391,9 @@ export function readPersistedPendingSegmentContinuationEntry(sessionManager) {
     return null;
 }
 
-/**
- * @param {import('../types.js').SessionSegmentLineageEvidence | null | undefined} lineage
- * @returns {import('../types.js').SessionSegmentLineageEvidence | null}
- */
-export function normalizeSegmentLineageEvidence(lineage) {
+export function normalizeSegmentLineageEvidence(
+    lineage: SessionSegmentLineageEvidence | null | undefined,
+): SessionSegmentLineageEvidence | null {
     if (!lineage || typeof lineage !== "object") return null;
     const segmentId = typeof lineage.segmentId === "string" ? lineage.segmentId.trim() : "";
     const runwieldSessionId = typeof lineage.runwieldSessionId === "string" ? lineage.runwieldSessionId.trim() : "";
@@ -394,28 +401,28 @@ export function normalizeSegmentLineageEvidence(lineage) {
     return {
         segmentId,
         runwieldSessionId,
-        parentSegmentId: typeof lineage.parentSegmentId === "string" && lineage.parentSegmentId.trim()
-            ? lineage.parentSegmentId.trim()
-            : null,
-        parentPiSessionId: typeof lineage.parentPiSessionId === "string" && lineage.parentPiSessionId.trim()
-            ? lineage.parentPiSessionId.trim()
-            : null,
-        lineageGroupKey: typeof lineage.lineageGroupKey === "string" && lineage.lineageGroupKey.trim()
-            ? lineage.lineageGroupKey.trim()
-            : null,
-        kind: typeof lineage.kind === "string" && ["planning", "execution", "semantic_repair"].includes(lineage.kind)
-            ? lineage.kind
-            : undefined,
+        parentSegmentId:
+            typeof lineage.parentSegmentId === "string" && lineage.parentSegmentId.trim()
+                ? lineage.parentSegmentId.trim()
+                : null,
+        parentPiSessionId:
+            typeof lineage.parentPiSessionId === "string" && lineage.parentPiSessionId.trim()
+                ? lineage.parentPiSessionId.trim()
+                : null,
+        lineageGroupKey:
+            typeof lineage.lineageGroupKey === "string" && lineage.lineageGroupKey.trim()
+                ? lineage.lineageGroupKey.trim()
+                : null,
+        kind:
+            typeof lineage.kind === "string" && ["planning", "execution", "semantic_repair"].includes(lineage.kind)
+                ? lineage.kind
+                : undefined,
     };
 }
 
-/**
- * @param {WorkflowContext | null} left
- * @param {WorkflowContext | null} right
- * @returns {boolean}
- */
-export function workflowContextsEqual(left, right) {
-    return (left?.routingIntent || "") === (right?.routingIntent || "") &&
+export function workflowContextsEqual(left: WorkflowContext | null, right: WorkflowContext | null): boolean {
+    return (
+        (left?.routingIntent || "") === (right?.routingIntent || "") &&
         (left?.complexity || "") === (right?.complexity || "") &&
         (left?.summary || "") === (right?.summary || "") &&
         (left?.planName || "") === (right?.planName || "") &&
@@ -427,50 +434,38 @@ export function workflowContextsEqual(left, right) {
         Boolean(left?.canResume) === Boolean(right?.canResume) &&
         Boolean(left?.canRecover) === Boolean(right?.canRecover) &&
         JSON.stringify(left?.progressFacts || []) === JSON.stringify(right?.progressFacts || []) &&
-        JSON.stringify(left?.validationProgress || null) === JSON.stringify(right?.validationProgress || null);
+        JSON.stringify(left?.validationProgress || null) === JSON.stringify(right?.validationProgress || null)
+    );
 }
 
-/**
- * @param {LineageSessionManager | undefined | null} sessionManager
- * @returns {unknown[]}
- */
-function getSessionEntries(sessionManager) {
+function getSessionEntries(sessionManager: LineageSessionManager | undefined | null): unknown[] {
     const entries = sessionManager?.getBranch?.() || sessionManager?.getEntries?.() || [];
     return Array.isArray(entries) ? entries : [];
 }
 
-/**
- * @param {unknown} entry
- * @returns {WorkflowContext | null}
- */
-function readWorkflowContextFromEntry(entry) {
+function readWorkflowContextFromEntry(entry: unknown): WorkflowContext | null {
     if (!entry || typeof entry !== "object") return null;
-    if (/** @type {{ type?: string }} */ (entry).type !== "custom") return null;
-    const customType = /** @type {{ customType?: string }} */ (entry).customType;
+    if ((entry as PersistedCustomSessionEntry).type !== "custom") return null;
+    const customType = (entry as PersistedCustomSessionEntry).customType;
     if (customType !== WORKFLOW_CONTEXT_CUSTOM_TYPE) return null;
 
-    const data = /** @type {{ data?: unknown }} */ (entry).data;
+    const data = (entry as PersistedCustomSessionEntry).data;
     return normalizeWorkflowContext(data);
 }
 
-/**
- * @param {unknown} entry
- * @returns {import('../types.js').SessionSegmentLineageEvidence | null}
- */
-function readSegmentLineageFromEntry(entry) {
+function readSegmentLineageFromEntry(entry: unknown): SessionSegmentLineageEvidence | null {
     if (!entry || typeof entry !== "object") return null;
-    if (/** @type {{ type?: string }} */ (entry).type !== "custom") return null;
-    const customType = /** @type {{ customType?: string }} */ (entry).customType;
+    if ((entry as PersistedCustomSessionEntry).type !== "custom") return null;
+    const customType = (entry as PersistedCustomSessionEntry).customType;
     if (customType !== SEGMENT_LINEAGE_CUSTOM_TYPE) return null;
-    const data = /** @type {{ data?: import('../types.js').SessionSegmentLineageEvidence }} */ (entry).data;
+    const data = (entry as PersistedLineageEntry).data;
     return normalizeSegmentLineageEvidence(data);
 }
 
-/** @param {unknown} entry */
-function readPendingSegmentContinuationFromEntry(entry) {
+function readPendingSegmentContinuationFromEntry(entry: unknown) {
     if (!entry || typeof entry !== "object") return undefined;
-    if (/** @type {{ type?: string }} */ (entry).type !== "custom") return undefined;
-    const customType = /** @type {{ customType?: string }} */ (entry).customType;
+    if ((entry as PersistedCustomSessionEntry).type !== "custom") return undefined;
+    const customType = (entry as PersistedCustomSessionEntry).customType;
     if (customType !== PENDING_SEGMENT_CONTINUATION_CUSTOM_TYPE) return undefined;
-    return /** @type {{ data?: SegmentHandoffPayload }} */ (entry).data;
+    return (entry as PersistedContinuationEntry).data;
 }
