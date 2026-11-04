@@ -29,7 +29,7 @@ import {
     RuntimeEventTypes,
 } from "../session/session-runtime-events.js";
 import { describeRuntimeTool } from "../session/tool-event-title.ts";
-import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.js";
+import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.ts";
 import { buildValidationUserMessage } from "./validation-user-messages.ts";
 import { classifyValidationOperationalError } from "./validation-operational-errors.ts";
 

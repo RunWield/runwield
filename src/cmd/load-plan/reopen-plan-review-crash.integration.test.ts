@@ -13,7 +13,7 @@ import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.js";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
-import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";
+import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { createOwnerWorkspaceApp } from "../../ui/workspace/server.js";
 
@@ -50,7 +50,7 @@ test("a Session reopens the current saved Plan after its pending review process 
                 import.meta.resolve("../../shared/owner-coordination/index.ts"),
             )};
             import { RuntimeInteractionTypes } from ${JSON.stringify(
-                import.meta.resolve("../../shared/session/session-runtime-interactions.js"),
+                import.meta.resolve("../../shared/session/session-runtime-interactions.ts"),
             )};
             const ownerStore = openOwnerCoordinationStore({ dbPath: ${JSON.stringify(
                 join(homeDir, "owner.sqlite3"),
@@ -195,7 +195,7 @@ test("Workspace opens and approves a saved Plan review after its owner is SIGKIL
                 import.meta.resolve("../../shared/owner-coordination/index.ts"),
             )};
             import { RuntimeInteractionTypes } from ${JSON.stringify(
-                import.meta.resolve("../../shared/session/session-runtime-interactions.js"),
+                import.meta.resolve("../../shared/session/session-runtime-interactions.ts"),
             )};
             const store = openOwnerCoordinationStore({ dbPath: ${JSON.stringify(join(homeDir, "owner.sqlite3"))} });
             const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });

@@ -11,7 +11,7 @@ import { loadPlan, savePlan } from "../../plan-store.js";
 import { git } from "../git-test-fixture.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { setCustomSetting } from "../settings.js";
-import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.js";
+import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.ts";
 import { listEntries as listWorktreeRegistryEntries } from "../worktree-registry.js";
 import { executePlan } from "./plan-executor.ts";
 

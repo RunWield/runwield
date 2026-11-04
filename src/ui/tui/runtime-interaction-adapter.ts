@@ -7,7 +7,7 @@ import {
     isApprovalAcceptedValue,
     RuntimeInteractionOutcomes,
     RuntimeInteractionTypes,
-} from "../../shared/session/session-runtime-interactions.js";
+} from "../../shared/session/session-runtime-interactions.ts";
 import { runCodeReview } from "../review/code-review.ts";
 import { submitPlanForReview } from "../review/plan-review.ts";
 import { startArtifactReadSurface } from "../review/review-launcher.ts";
@@ -16,7 +16,7 @@ import type { BrowserPort } from "../../shared/browser-port.ts";
 import type {
     RuntimeInteractionAdapter,
     RuntimeInteractionRequest,
-} from "../../shared/session/session-runtime-interactions.js";
+} from "../../shared/session/session-runtime-interactions.ts";
 import type { UiAPI } from "./types.js";
 
 export interface TuiInteractionPorts {

@@ -128,7 +128,7 @@ function browserTimelineProjection(projection) {
     };
 }
 
-/** @param {import('../../../shared/session/session-runtime-interactions.js').RuntimeInteractionRequest} request */
+/** @param {import('../../../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest} request */
 function safePlanReviewReference(request) {
     const meta = request._meta && typeof request._meta === "object" ? request._meta : {};
     const triageMeta =
@@ -178,7 +178,7 @@ function safePlanReviewReference(request) {
     };
 }
 
-/** @param {import('../../../shared/session/session-runtime-interactions.js').RuntimeInteractionRequest} request */
+/** @param {import('../../../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest} request */
 function safeCodeReviewReference(request) {
     const meta = request._meta && typeof request._meta === "object" ? request._meta : {};
     const rawPatch = typeof meta.diffText === "string" ? meta.diffText : "";
@@ -206,7 +206,7 @@ function safeCodeReviewReference(request) {
     };
 }
 
-/** @param {import('../../../shared/session/session-runtime-interactions.js').RuntimeInteractionRequest} request */
+/** @param {import('../../../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest} request */
 function safeArtifactReviewReference(request) {
     const meta = request._meta && typeof request._meta === "object" ? request._meta : {};
     const artifactId = typeof meta.artifactId === "string" ? meta.artifactId.trim() : "";
@@ -234,7 +234,7 @@ function readPlanReviewDecisionMeta(response) {
     return decision;
 }
 
-/** @param {unknown} response @returns {import("../../../shared/session/session-runtime-interactions.js").RuntimeInteractionResponse} */
+/** @param {unknown} response @returns {import("../../../shared/session/session-runtime-interactions.ts").RuntimeInteractionResponse} */
 function acceptedInteractionResponse(response) {
     if (response && typeof response === "object") {
         const source = /** @type {Record<string, unknown>} */ (response);
@@ -334,7 +334,7 @@ async function readSessionDisplayName(paths) {
  * @property {{ agentName?: string, model?: string, provider?: string }} [pendingConfiguration]
  * @property {{ interactionId: string, request: Record<string, unknown> }} [liveInteraction]
  * @property {import('../../../shared/session/notification-content.ts').BrowserNotificationPolicy} [browserNotificationPolicy]
- * @property {{ resolve: (value: import("../../../shared/session/session-runtime-interactions.js").RuntimeInteractionResponse) => void | Promise<void>, reject: (error: Error) => void } | null} [answer]
+ * @property {{ resolve: (value: import("../../../shared/session/session-runtime-interactions.ts").RuntimeInteractionResponse) => void | Promise<void>, reject: (error: Error) => void } | null} [answer]
  */
 
 /**
@@ -1297,7 +1297,7 @@ export class WorkspaceSessionContinuationService {
 
     /**
      * @param {string} operationId
-     * @param {import('../../../shared/session/session-runtime-interactions.js').RuntimeInteractionRequest} request
+     * @param {import('../../../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest} request
      * @param {NonNullable<WorkspaceOperationRecord['answer']>} answer
      */
     registerInteraction(operationId, request, answer) {
@@ -1348,7 +1348,7 @@ export class WorkspaceSessionContinuationService {
                     prompt: request.prompt,
                     options: Array.isArray(request.options)
                         ? request.options.map(
-                              /** @param {import('../../../shared/session/session-runtime-interactions.js').RuntimeInteractionOption} option */ (
+                              /** @param {import('../../../shared/session/session-runtime-interactions.ts').RuntimeInteractionOption} option */ (
                                   option,
                               ) => ({
                                   value: option.value,
@@ -1375,7 +1375,7 @@ export class WorkspaceSessionContinuationService {
     createInteractionAdapter(options) {
         return {
             supportsInteraction: () => true,
-            /** @param {import('../../../shared/session/session-runtime-interactions.js').RuntimeInteractionRequest} request @param {AbortSignal} [signal] */
+            /** @param {import('../../../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest} request @param {AbortSignal} [signal] */
             requestInteraction: async (request, signal) => {
                 const reviewPlanId = request.type === "plan_review" ? safePlanReviewReference(request)?.planId : null;
                 if (reviewPlanId) {

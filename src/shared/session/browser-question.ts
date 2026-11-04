@@ -14,7 +14,7 @@ import { startSessionQuestionWorkspaceServer } from "../../ui/workspace/server.j
  */
 
 /**
- * @param {{ interaction: import('./session-runtime-interactions.js').RuntimeInteractionRequest, acpSessionId?: string, answerQuestion: (request: Request) => Promise<Response>|Response }} options
+ * @param {{ interaction: import('./session-runtime-interactions.ts').RuntimeInteractionRequest, acpSessionId?: string, answerQuestion: (request: Request) => Promise<Response>|Response }} options
  * @returns {BrowserQuestionServer}
  */
 export function startBrowserQuestionServer({ interaction, acpSessionId = "", answerQuestion }) {

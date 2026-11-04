@@ -103,9 +103,9 @@ import { PlanReviewConversationOwner } from "./plan-review-conversation.ts";
 
 /**
  * @typedef {Object} ActiveInteractionRecord
- * @property {import('./session-runtime-interactions.js').RuntimeInteractionRequest} [request]
+ * @property {import('./session-runtime-interactions.ts').RuntimeInteractionRequest} [request]
  * @property {AbortController} [abortController]
- * @property {(response: import('./session-runtime-interactions.js').RuntimeInteractionResponse, source?: import('./session-runtime-events.js').NotificationSurface) => void} [answer]
+ * @property {(response: import('./session-runtime-interactions.ts').RuntimeInteractionResponse, source?: import('./session-runtime-events.js').NotificationSurface) => void} [answer]
  */
 
 /**
@@ -114,7 +114,7 @@ import { PlanReviewConversationOwner } from "./plan-review-conversation.ts";
  * @property {string} [cwd]
  * @property {MinimalSessionManagerLike | null} [sessionManager]
  * @property {unknown} [eventSink]
- * @property {import('./session-runtime-interactions.js').RuntimeInteractionAdapter} [interactionAdapter]
+ * @property {import('./session-runtime-interactions.ts').RuntimeInteractionAdapter} [interactionAdapter]
  * @property {ManagedSessionMetadata | null} [managed]
  */
 
@@ -245,7 +245,7 @@ export class HostedSession {
         /** @type {Set<(event: HostedRuntimeEventObservation) => void>} */
         this.eventObservers = new Set();
         this.planReviewConversations = new PlanReviewConversationOwner();
-        /** @type {import('./session-runtime-interactions.js').RuntimeInteractionAdapter | null} */
+        /** @type {import('./session-runtime-interactions.ts').RuntimeInteractionAdapter | null} */
         this.interactionAdapter = options.interactionAdapter || null;
         /** @type {Map<string, ActiveInteractionRecord>} */
         this.activeInteractions = new Map();
@@ -582,7 +582,7 @@ export class HostedSession {
     }
 
     /**
-     * @param {import('./session-runtime-interactions.js').RuntimeInteractionAdapter | null} adapter
+     * @param {import('./session-runtime-interactions.ts').RuntimeInteractionAdapter | null} adapter
      */
     setInteractionAdapter(adapter) {
         this.assertActive();

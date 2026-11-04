@@ -20,7 +20,7 @@ import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/me
 import { SessionRuntime } from "./session-runtime.ts";
 import { SessionHost } from "./session-host.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
-import type { RuntimeInteractionRequest } from "./session-runtime-interactions.js";
+import type { RuntimeInteractionRequest } from "./session-runtime-interactions.ts";
 
 interface NamedInvocationPromptResult {
     ok: boolean;

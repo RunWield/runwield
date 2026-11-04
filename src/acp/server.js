@@ -21,7 +21,7 @@ import { formatChatQuestion, parseChatReply } from "./chat-interaction.ts";
 import { buildAcpModelOptions } from "./model-options.ts";
 import { getCommandDefinition, getSlashCommandDefinition, getSlashCommandDefinitions } from "../cmd/registry.js";
 import { ProjectRuntimeEntryRefusedError } from "../shared/project-runtime-layout.ts";
-import { RuntimeInteractionOutcomes, RuntimeInteractionTypes } from "../shared/session/session-runtime-interactions.js";
+import { RuntimeInteractionOutcomes, RuntimeInteractionTypes } from "../shared/session/session-runtime-interactions.ts";
 import {
     applyUserModelSelection,
     listUserModelOptions,
@@ -526,7 +526,7 @@ async function notifyAcpContextUsage(context, runtime, sessionMap, runtimeSessio
  */
 function createAcpCommandUiAPI(options) {
     /**
-     * @param {import('../shared/session/session-runtime-interactions.js').RuntimeInteractionRequest['type']} type
+     * @param {import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest['type']} type
      * @param {string} title
      * @param {AcpCommandSelectOption[]} choices
      * @param {{ defaultValue?: string, placeholder?: string, allowEmpty?: boolean }} [requestOptions]
@@ -917,7 +917,7 @@ function createLiveOperation(options) {
     let tail = Promise.resolve();
     /** @type {PromiseWithResolvers<void>} */
     let wake = Promise.withResolvers();
-    /** @type {{ interaction: import('../shared/session/session-runtime-interactions.js').RuntimeInteractionRequest, delivered: boolean, queued: boolean } | null} */
+    /** @type {{ interaction: import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest, delivered: boolean, queued: boolean } | null} */
     let question = null;
     let settled = false;
     let cancelled = false;
@@ -984,7 +984,7 @@ function createLiveOperation(options) {
                             message: "Interaction canceled.",
                         });
                     }
-                    /** @type {PromiseWithResolvers<import('../shared/session/session-runtime-interactions.js').RuntimeInteractionResponse>} */
+                    /** @type {PromiseWithResolvers<import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionResponse>} */
                     const answered = Promise.withResolvers();
                     const current = { interaction, delivered: false, queued: false };
                     question = current;
@@ -1235,7 +1235,7 @@ function createLiveOperation(options) {
         cancel() {
             cancelled = true;
         },
-        /** @param {AcpNotificationContext & { requestId?: string | number | null }} context @param {string | undefined} expectedInteractionId @param {import('../shared/session/session-runtime-interactions.js').RuntimeInteractionResponse | null | undefined} reply @param {string} [feedback]
+        /** @param {AcpNotificationContext & { requestId?: string | number | null }} context @param {string | undefined} expectedInteractionId @param {import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionResponse | null | undefined} reply @param {string} [feedback]
          * @returns {Promise<import('@agentclientprotocol/sdk').PromptResponse>} */
         async attach(context, expectedInteractionId, reply, feedback) {
             attachRequest(context);

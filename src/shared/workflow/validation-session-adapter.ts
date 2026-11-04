@@ -5,7 +5,7 @@ import { type HostedSession } from "../session/hosted-session.js";
 import { runIsolatedAgentSession } from "../session/session.js";
 import { readRequestAttemptEntries } from "../session/request-dispatch.ts";
 import { emitAssistantMessage, type RuntimeValidationProgress } from "../session/session-runtime-events.js";
-import { requestHostedSessionInteraction } from "../session/session-runtime-interactions.js";
+import { requestHostedSessionInteraction } from "../session/session-runtime-interactions.ts";
 import { getAgentDisplayName as getSessionAgentDisplayName } from "../session/agents.js";
 import { ClaudeCliBackendError } from "../session/backends/claude-cli/failure.ts";
 import { INTEGRATION_REVIEWER_SUBAGENT_TOOLS, REVIEWER_SUBAGENT_TOOLS } from "../session/subagent-definitions.ts";

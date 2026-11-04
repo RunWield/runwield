@@ -7,52 +7,61 @@ import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "./session-runt
 import { RuntimeInteractionOutcomes, RuntimeInteractionTypes } from "./interaction-values.ts";
 export { isApprovalAcceptedValue, RuntimeInteractionOutcomes, RuntimeInteractionTypes } from "./interaction-values.ts";
 
-/**
- * @typedef {Object} RuntimeInteractionOption
- * @property {string} value
- * @property {string} label
- * @property {string} [description]
- * @property {Record<string, unknown>} [_meta]
- */
+import type { HostedSession } from "./hosted-session.js";
+import type { ManagedOperationCapability } from "./managed-operation.ts";
 
-/**
- * @typedef {Object} RuntimeInteractionRequest
- * @property {string} [id]
- * @property {"select"|"text"|"approval"|"link"|"plan_review"|"artifact_review"|"code_review"|"pair_checkpoint"|"plan_deviation_confirmation"} type
- * @property {string} prompt
- * @property {RuntimeInteractionOption[]} [options]
- * @property {string} [otherOptionValue] Choice whose answer can be supplied as free text in the same form.
- * @property {string} [defaultValue]
- * @property {string} [placeholder]
- * @property {boolean} [allowEmpty]
- * @property {string} [toolCallId]
- * @property {string} [reviewUrl]
- * @property {Record<string, unknown>} [_meta]
- */
+export type RuntimeInteractionType = (typeof RuntimeInteractionTypes)[keyof typeof RuntimeInteractionTypes];
+export type RuntimeInteractionOutcome = (typeof RuntimeInteractionOutcomes)[keyof typeof RuntimeInteractionOutcomes];
 
-/**
- * @typedef {Object} RuntimeInteractionResponse
- * @property {"selected"|"text"|"accepted"|"canceled"|"unsupported"|"blocked"} outcome
- * @property {string|boolean} [value]
- * @property {string} [valueLabel]
- * @property {string} [otherText] Free text supplied alongside the selected Other choice.
- * @property {string} [message]
- * @property {Record<string, unknown>} [_meta]
- */
+export type RuntimeInteractionOption = {
+    value: string;
+    label: string;
+    description?: string;
+    _meta?: Record<string, unknown>;
+};
 
-/**
- * @typedef {Object} RuntimeInteractionAdapter
- * @property {(request: RuntimeInteractionRequest, signal?: AbortSignal) => Promise<RuntimeInteractionResponse>|RuntimeInteractionResponse} requestInteraction
- * @property {(type: string) => boolean} [supportsInteraction]
- * @property {() => void} [cancelAll]
- */
+export interface RuntimeInteractionRequest {
+    id?: string;
+    type: RuntimeInteractionType;
+    prompt: string;
+    options?: RuntimeInteractionOption[];
+    /** Choice whose answer can be supplied as free text in the same form. */
+    otherOptionValue?: string;
+    defaultValue?: string;
+    placeholder?: string;
+    allowEmpty?: boolean;
+    toolCallId?: string;
+    reviewUrl?: string;
+    _meta?: Record<string, unknown>;
+}
 
-/**
- * @param {import('./hosted-session.js').HostedSession | undefined | null} hostedSession
- * @param {string} type
- * @returns {boolean}
- */
-export function supportsHostedSessionInteraction(hostedSession, type) {
+export interface RuntimeInteractionResponse {
+    outcome: RuntimeInteractionOutcome;
+    value?: string | boolean;
+    valueLabel?: string;
+    /** Free text supplied alongside the selected Other choice. */
+    otherText?: string;
+    message?: string;
+    _meta?: Record<string, unknown>;
+}
+
+export interface RuntimeInteractionAdapter {
+    requestInteraction: (
+        request: RuntimeInteractionRequest,
+        signal?: AbortSignal,
+    ) => Promise<RuntimeInteractionResponse> | RuntimeInteractionResponse;
+    supportsInteraction?: (type: string) => boolean;
+    cancelAll?: () => void;
+}
+
+interface RuntimeInteractionSurface {
+    url: string;
+}
+
+export function supportsHostedSessionInteraction(
+    hostedSession: HostedSession | undefined | null,
+    type: string,
+): boolean {
     const adapter = hostedSession?.getInteractionAdapter?.();
     if (!adapter || typeof adapter.supportsInteraction !== "function") return false;
     try {
@@ -62,21 +71,17 @@ export function supportsHostedSessionInteraction(hostedSession, type) {
     }
 }
 
-/** @param {unknown} value */
-function isAbortError(value) {
+function isAbortError(value: unknown) {
     return value instanceof DOMException && value.name === "AbortError";
 }
 
-/** @returns {string} */
 export function createInteractionId() {
     return crypto.randomUUID();
 }
 
-/**
- * @param {Partial<RuntimeInteractionResponse>|undefined|null} response
- * @returns {RuntimeInteractionResponse}
- */
-export function normalizeInteractionResponse(response) {
+export function normalizeInteractionResponse(
+    response: Partial<RuntimeInteractionResponse> | undefined | null,
+): RuntimeInteractionResponse {
     if (!response || typeof response !== "object") {
         return {
             outcome: RuntimeInteractionOutcomes.UNSUPPORTED,
@@ -84,8 +89,8 @@ export function normalizeInteractionResponse(response) {
         };
     }
     const outcome = response.outcome;
-    if (Object.values(RuntimeInteractionOutcomes).includes(/** @type {any} */ (outcome))) {
-        return /** @type {RuntimeInteractionResponse} */ ({ ...response, outcome });
+    if (Object.values(RuntimeInteractionOutcomes).includes(outcome as RuntimeInteractionOutcome)) {
+        return { ...response, outcome } as RuntimeInteractionResponse;
     }
     return {
         outcome: RuntimeInteractionOutcomes.UNSUPPORTED,
@@ -93,24 +98,18 @@ export function normalizeInteractionResponse(response) {
     };
 }
 
-/**
- * @param {unknown} error
- * @returns {RuntimeInteractionResponse}
- */
-export function interactionErrorToResponse(error) {
+export function interactionErrorToResponse(error: unknown): RuntimeInteractionResponse {
     if (isAbortError(error)) return { outcome: RuntimeInteractionOutcomes.CANCELED, message: "Interaction canceled." };
     const message = error instanceof Error ? error.message : String(error || "Interaction failed.");
     return { outcome: RuntimeInteractionOutcomes.UNSUPPORTED, message };
 }
 
-/**
- * @param {import('./hosted-session.js').HostedSession} hostedSession
- * @param {RuntimeInteractionRequest} request
- * @param {AbortSignal} [signal]
- * @param {import('./managed-operation.ts').ManagedOperationCapability | null} [capability]
- * @returns {Promise<RuntimeInteractionResponse>}
- */
-export async function requestHostedSessionInteraction(hostedSession, request, signal, capability = null) {
+export async function requestHostedSessionInteraction(
+    hostedSession: HostedSession,
+    request: RuntimeInteractionRequest,
+    signal?: AbortSignal,
+    capability: ManagedOperationCapability | null = null,
+): Promise<RuntimeInteractionResponse> {
     const currentCapability = hostedSession.getManagedOperationCapability?.() || null;
     if (hostedSession.getManagedMetadata?.() && (!capability || currentCapability !== capability)) {
         return {
@@ -164,8 +163,8 @@ export async function requestHostedSessionInteraction(hostedSession, request, si
             },
         };
     }
-    /** @type {string | null} */
-    let reviewContainerPlanId = null;
+
+    let reviewContainerPlanId: string | null = null;
     if (request.type === RuntimeInteractionTypes.PLAN_REVIEW) {
         const meta = interaction._meta || {};
         const triagePlanId =
@@ -223,8 +222,8 @@ export async function requestHostedSessionInteraction(hostedSession, request, si
     }
     if (request.type === RuntimeInteractionTypes.PLAN_REVIEW || request.type === RuntimeInteractionTypes.CODE_REVIEW) {
         const originalReady = request._meta?.onSurfaceReady;
-        /** @param {string | {url: string}} surface */
-        const onSurfaceReady = (surface) => {
+
+        const onSurfaceReady = (surface: string | RuntimeInteractionSurface) => {
             const url = typeof surface === "string" ? surface : surface?.url;
             if (typeof url === "string" && url && hostedSession.getActiveInteractions().has(id)) {
                 interaction.reviewUrl = url;
@@ -279,8 +278,8 @@ export async function requestHostedSessionInteraction(hostedSession, request, si
         return response;
     }
     const abortController = new AbortController();
-    /** @type {(() => void) | null} */
-    let removeAbortListener = null;
+
+    let removeAbortListener: (() => void) | null = null;
     const operationSignal = capability?.signal || null;
     if (signal || operationSignal) {
         const abort = () => abortController.abort();
@@ -291,7 +290,7 @@ export async function requestHostedSessionInteraction(hostedSession, request, si
             operationSignal?.removeEventListener("abort", abort);
         };
     }
-    const remoteAnswer = new Promise((resolve) => {
+    const remoteAnswer = new Promise<RuntimeInteractionResponse>((resolve) => {
         hostedSession.addActiveInteraction(id, {
             request: interaction,
             abortController,
@@ -329,7 +328,7 @@ export async function requestHostedSessionInteraction(hostedSession, request, si
             });
             return response;
         }
-        const canceled = new Promise((resolve) => {
+        const canceled = new Promise<RuntimeInteractionResponse>((resolve) => {
             abortController.signal.addEventListener(
                 "abort",
                 () => resolve({ outcome: RuntimeInteractionOutcomes.CANCELED, message: "Interaction canceled." }),
@@ -337,25 +336,21 @@ export async function requestHostedSessionInteraction(hostedSession, request, si
             );
         });
         const response = normalizeInteractionResponse(
-            /** @type {Partial<RuntimeInteractionResponse>} */ (
-                await Promise.race([
-                    Promise.resolve(adapter.requestInteraction(interaction, abortController.signal)).then(
-                        (response) => {
-                            if (
-                                response &&
-                                ["selected", "text", "accepted"].includes(response.outcome || "") &&
-                                hostedSession.getActiveInteractions().has(id) &&
-                                hostedSession.localInputSurface
-                            ) {
-                                hostedSession.notificationSurface = hostedSession.localInputSurface;
-                            }
-                            return response;
-                        },
-                    ),
-                    remoteAnswer,
-                    canceled,
-                ])
-            ),
+            await Promise.race([
+                Promise.resolve(adapter.requestInteraction(interaction, abortController.signal)).then((response) => {
+                    if (
+                        response &&
+                        ["selected", "text", "accepted"].includes(response.outcome || "") &&
+                        hostedSession.getActiveInteractions().has(id) &&
+                        hostedSession.localInputSurface
+                    ) {
+                        hostedSession.notificationSurface = hostedSession.localInputSurface;
+                    }
+                    return response;
+                }),
+                remoteAnswer,
+                canceled,
+            ]),
         );
         retainCodeReview =
             request.type === RuntimeInteractionTypes.CODE_REVIEW &&

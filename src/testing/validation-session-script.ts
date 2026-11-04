@@ -14,7 +14,7 @@ import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../shared/work-records/mnemot
 import {
     type RuntimeInteractionRequest,
     type RuntimeInteractionResponse,
-} from "../shared/session/session-runtime-interactions.js";
+} from "../shared/session/session-runtime-interactions.ts";
 
 export type SessionScript = {
     outcomes: Array<ReviewCompletePayload | null>;

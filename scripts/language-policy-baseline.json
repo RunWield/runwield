@@ -15,7 +15,6 @@
     "src/shared/session/root-session.js",
 
     "src/shared/session/session-runtime-events.js",
-    "src/shared/session/session-runtime-interactions.js",
     "src/shared/session/session-transcript-projection.js",
     "src/shared/session/session.js",
     "src/shared/session/types.js",

@@ -8,7 +8,7 @@ import {
     isApprovalAcceptedValue,
     RuntimeInteractionOutcomes,
     RuntimeInteractionTypes,
-} from "../shared/session/session-runtime-interactions.js";
+} from "../shared/session/session-runtime-interactions.ts";
 import { startBrowserQuestionServer } from "../shared/session/browser-question.ts";
 import { requestLocalReviewInteraction } from "../shared/session/local-review-interactions.ts";
 
@@ -43,10 +43,10 @@ function notifyClient(context, method, params) {
 }
 
 /**
- * @param {{ context: any, acpSessionId: string, interaction: import('../shared/session/session-runtime-interactions.js').RuntimeInteractionRequest, signal?: AbortSignal }} options
+ * @param {{ context: any, acpSessionId: string, interaction: import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest, signal?: AbortSignal }} options
  */
 async function requestBrowserQuestion(options) {
-    /** @type {PromiseWithResolvers<import('../shared/session/session-runtime-interactions.js').RuntimeInteractionResponse>} */
+    /** @type {PromiseWithResolvers<import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionResponse>} */
     const answered = Promise.withResolvers();
     let used = false;
     let origin = "";
@@ -145,7 +145,7 @@ async function requestBrowserQuestion(options) {
 }
 
 /**
- * @param {import('../shared/session/session-runtime-interactions.js').RuntimeInteractionRequest} interaction
+ * @param {import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest} interaction
  */
 function buildSchema(interaction) {
     if (interaction.type === RuntimeInteractionTypes.SELECT || interaction.type === RuntimeInteractionTypes.APPROVAL) {
@@ -188,8 +188,8 @@ function buildSchema(interaction) {
 }
 
 /**
- * @param {{ context: any, acpSessionId: string, clientCapabilities?: unknown, presentChatQuestion?: (interaction: import('../shared/session/session-runtime-interactions.js').RuntimeInteractionRequest, signal?: AbortSignal) => Promise<import('../shared/session/session-runtime-interactions.js').RuntimeInteractionResponse> }} options
- * @returns {import('../shared/session/session-runtime-interactions.js').RuntimeInteractionAdapter}
+ * @param {{ context: any, acpSessionId: string, clientCapabilities?: unknown, presentChatQuestion?: (interaction: import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest, signal?: AbortSignal) => Promise<import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionResponse> }} options
+ * @returns {import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionAdapter}
  */
 export function createAcpInteractionAdapter({ context, acpSessionId, clientCapabilities, presentChatQuestion }) {
     return {

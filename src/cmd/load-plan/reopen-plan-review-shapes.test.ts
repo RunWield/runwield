@@ -4,7 +4,7 @@ import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.js";
-import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";
+import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
 
 for (const classification of ["PLANNED_CHANGE", "PROJECT"] as const) {
     test(`an idle Session opens the current ${classification} Plan and cancellation leaves its status unchanged`, async () => {

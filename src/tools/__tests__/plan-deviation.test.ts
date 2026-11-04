@@ -7,7 +7,7 @@ import { HostedSession } from "../../shared/session/hosted-session.js";
 import type {
     RuntimeInteractionRequest,
     RuntimeInteractionResponse,
-} from "../../shared/session/session-runtime-interactions.js";
+} from "../../shared/session/session-runtime-interactions.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
 import { createPlanDeviationTool } from "../plan-deviation.ts";
 

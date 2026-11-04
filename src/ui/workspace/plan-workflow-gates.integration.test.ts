@@ -1,6 +1,6 @@
 import { mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import type { RuntimeInteractionRequest } from "../../shared/session/session-runtime-interactions.js";
+import type { RuntimeInteractionRequest } from "../../shared/session/session-runtime-interactions.ts";
 import type { OwnerPlanProgress } from "./server/owner-plan-progress.ts";
 import type { WorkspacePlanReviewStarted } from "./server/session-continuation.js";
 import { tmpdir } from "node:os";
