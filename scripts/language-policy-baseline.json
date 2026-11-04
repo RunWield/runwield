@@ -34,7 +34,6 @@
     "src/ui/tui/api.js",
     "src/ui/tui/blocks.js",
     "src/ui/tui/golden-scenarios/planned-change-workflow.js",
-    "src/ui/tui/golden-scenarios/project-workflow.js",
     "src/ui/tui/testing/child-protocol.js",
     "src/ui/tui/testing/scenario-runner.js",
     "src/ui/tui/types.js",
