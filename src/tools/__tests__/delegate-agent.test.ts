@@ -16,48 +16,43 @@ import { createDelegateAgentTool, diffDelegatedChangeSnapshot, resolveDelegatedT
 import { loadSubAgentDefinition } from "../../shared/session/subagent-definitions.ts";
 import { SUBAGENTS } from "../../constants.js";
 
-/**
- * @typedef {Object} DelegateToolDetails
- * @property {boolean} ok
- * @property {"read" | "write"} mode
- * @property {string} [role]
- * @property {"read" | "write"} [requestedAuthority]
- * @property {"read" | "write"} [effectiveAuthority]
- * @property {"read" | "write"} [roleAuthorityCeiling]
- * @property {string[]} [validRoles]
- * @property {string[]} [tools]
- * @property {string[]} [changedPaths]
- * @property {boolean} [changeAttributionComplete]
- * @property {boolean} [committedChangesDetected]
- * @property {string} [error]
- */
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { AssistantMessage, TextContent } from "@earendil-works/pi-ai";
+import type { AgentToolResult, ExtensionToolContext } from "@earendil-works/pi-coding-agent";
+import type { DelegateAgentDetails, DelegatedAgentSessionOptions, DelegationMode } from "../delegate-agent.ts";
 
-/**
- * @typedef {Object} DelegateToolResult
- * @property {Array<{ type: string, text: string }>} content
- * @property {DelegateToolDetails} details
- * @property {boolean} [isError]
- */
+type DelegateTool = ReturnType<typeof createDelegateAgentTool>;
+interface DelegateToolResult extends Omit<AgentToolResult<DelegateAgentDetails>, "content"> {
+    content: TextContent[];
+    isError?: boolean;
+}
+type DelegatedLeaseState = ReturnType<HostedSession["getDelegatedAgentLeaseState"]>;
 
-/**
- * @typedef {Object} ExecutableTool
- * @property {(toolCallId: string, params: Record<string, unknown>, signal: AbortSignal, onUpdate: () => void, context: Record<string, unknown>) => Promise<DelegateToolResult>} execute
- */
-
-/**
- * @param {unknown} tool
- * @param {Record<string, unknown>} params
- * @param {AbortSignal} [signal]
- * @returns {Promise<DelegateToolResult>}
- */
-async function execute(tool, params, signal = new AbortController().signal) {
-    const executable = /** @type {ExecutableTool} */ (tool);
-    return await executable.execute("delegate-call", params, signal, () => {}, {});
+// The invalid-role case deliberately exercises the tool's runtime validation boundary.
+interface DelegateTestParameters {
+    mode: DelegationMode;
+    role?: string;
+    brief: string;
 }
 
-/** @returns {Promise<import('@earendil-works/pi-agent-core').AgentMessage[]>} */
-function assistantDone() {
-    const message = /** @type {import('@earendil-works/pi-ai').AssistantMessage} */ ({
+async function execute(
+    tool: DelegateTool,
+    params: DelegateTestParameters,
+    signal = new AbortController().signal,
+): Promise<DelegateToolResult> {
+    const executable = tool;
+    // These fixtures use no context fields and assert the tool's text-only results.
+    return (await executable.execute(
+        "delegate-call",
+        params,
+        signal,
+        () => {},
+        {} as ExtensionToolContext,
+    )) as DelegateToolResult;
+}
+
+function assistantDone(): Promise<AgentMessage[]> {
+    const message: AssistantMessage = {
         role: "assistant",
         api: "openai-completions",
         provider: "test",
@@ -73,15 +68,11 @@ function assistantDone() {
         },
         stopReason: "stop",
         timestamp: Date.now(),
-    });
+    };
     return Promise.resolve([message]);
 }
 
-/**
- * @param {string} cwd
- * @param {string[]} args
- */
-async function git(cwd, args) {
+async function git(cwd: string, args: string[]) {
     const output = await captureForegroundProcess("git", { cwd, args });
     if (!output.success) throw new Error(new TextDecoder().decode(output.stderr));
     return new TextDecoder().decode(output.stdout);
@@ -197,8 +188,7 @@ test("delegated agent prompt includes inherited repository context placeholders"
 });
 
 test("delegate_agent returns child output without inheriting workflow tools", async () => {
-    /** @type {Array<import('../delegate-agent.ts').DelegatedAgentSessionOptions>} */
-    const calls = [];
+    const calls: DelegatedAgentSessionOptions[] = [];
     const hostedSession = new HostedSession({ id: "delegate-read", cwd: getCwd() });
     const tool = createDelegateAgentTool({
         hostedSession,
@@ -235,11 +225,9 @@ test("delegate_agent returns child output without inheriting workflow tools", as
 });
 
 test("delegate_agent applies verification-adversary read-only role ceiling", async () => {
-    /** @type {Array<import('../delegate-agent.ts').DelegatedAgentSessionOptions>} */
-    const calls = [];
+    const calls: DelegatedAgentSessionOptions[] = [];
     const hostedSession = new HostedSession({ id: "delegate-adversary", cwd: getCwd() });
-    /** @type {Array<{ readers: number, writer: boolean }>} */
-    const leaseStates = [];
+    const leaseStates: DelegatedLeaseState[] = [];
     const tool = createDelegateAgentTool({
         hostedSession,
         cwd: getCwd(),
@@ -366,8 +354,7 @@ test("delegate_agent limited to write mode refuses a role that reduces it to rea
 });
 
 test("delegate_agent propagates parent model and thinking state", async () => {
-    /** @type {Array<import('../delegate-agent.ts').DelegatedAgentSessionOptions>} */
-    const calls = [];
+    const calls: DelegatedAgentSessionOptions[] = [];
     const hostedSession = new HostedSession({ id: "delegate-parent-state", cwd: getCwd() });
     hostedSession.pushAgentInfo("Engineer", "anthropic/claude-sonnet-4", "anthropic", "engineer");
     hostedSession.setThinkingLevel("high");
@@ -394,8 +381,7 @@ test("delegate_agent preserves failed writer changes and releases lease", async 
     try {
         await fsWriteFile(join(executionCwd, "src", "pre-existing.js"), "modified\n");
         const hostedSession = new HostedSession({ id: "delegate-write-fail", cwd: getCwd() });
-        /** @type {Array<import('../delegate-agent.ts').DelegatedAgentSessionOptions>} */
-        const calls = [];
+        const calls: DelegatedAgentSessionOptions[] = [];
         const tool = createDelegateAgentTool({
             hostedSession,
             cwd: executionCwd,
@@ -473,8 +459,7 @@ test("delegate_agent returns structured failure when lease acquisition is reject
 test("delegate_agent forwards cancellation and releases its lease", async () => {
     const hostedSession = new HostedSession({ id: "delegate-cancel", cwd: getCwd() });
     const controller = new AbortController();
-    /** @type {AbortSignal | undefined} */
-    let childSignal;
+    let childSignal: AbortSignal | undefined;
     const tool = createDelegateAgentTool({
         hostedSession,
         cwd: getCwd(),

@@ -687,7 +687,7 @@
     "src/testing/workflow-binary-fixtures.test.ts",
     "src/tools/__tests__/bash-fixture.test.ts",
     "src/tools/__tests__/bash.test.ts",
-    "src/tools/__tests__/delegate-agent.test.js",
+    "src/tools/__tests__/delegate-agent.test.ts",
     "src/tools/__tests__/delegate-bash-integration.test.ts",
     "src/tools/__tests__/docs-file-tools.test.ts",
     "src/tools/__tests__/edit.test.ts",
