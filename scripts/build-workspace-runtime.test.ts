@@ -15,7 +15,6 @@ import {
     getServerEntryImportPaths,
     normalizeCompiledNodeChildProcessImports,
     unrefBundledMessageChannels,
-    waitForStableWorkspaceClientAssets,
 } from "./build-workspace-runtime.ts";
 
 test("getOpaqueWorkspaceAssetName hides executable browser modules from compile graph tracing", () => {
@@ -39,46 +38,6 @@ const typed = route;
         join("dist", "workspace", "server", "chunks", "setup.mjs"),
         join("dist", "workspace", "server", "chunks", "page.mjs"),
     ]);
-});
-
-test("waitForStableWorkspaceClientAssets waits for delayed generated files", async () => {
-    const root = await fsMkdtemp(join(tmpdir(), "wld-workspace-client-assets-"));
-    try {
-        await fsWriteFile(join(root, "first.css"), "a{}");
-        const delayedWrite = new Promise<void>((resolve, reject) => {
-            setTimeout(() => fsWriteFile(join(root, "second.css"), "b{}").then(resolve, reject), 120);
-        });
-        await waitForStableWorkspaceClientAssets(root, { intervalMs: 50, timeoutMs: 1000 });
-        await delayedWrite;
-
-        assertEquals(await fsReadFile(join(root, "second.css"), "utf8"), "b{}");
-    } finally {
-        await fsRm(root, { recursive: true });
-    }
-});
-
-test("waitForStableWorkspaceClientAssets waits for delayed client directory creation", async () => {
-    const root = await fsMkdtemp(join(tmpdir(), "wld-workspace-client-parent-"));
-    const clientDir = join(root, "client");
-    try {
-        const delayedCreate = new Promise<void>((resolve, reject) => {
-            setTimeout(async () => {
-                try {
-                    await fsMkdir(clientDir);
-                    await fsWriteFile(join(clientDir, "entry.css"), "a{}");
-                    resolve(undefined);
-                } catch (error) {
-                    reject(error);
-                }
-            }, 20);
-        });
-        await waitForStableWorkspaceClientAssets(clientDir, { intervalMs: 50, timeoutMs: 1000 });
-        await delayedCreate;
-
-        assertEquals(await fsReadFile(join(clientDir, "entry.css"), "utf8"), "a{}");
-    } finally {
-        await fsRm(root, { recursive: true });
-    }
 });
 
 test("normalizeCompiledNodeChildProcessImports replaces dynamic child_process requires", () => {
@@ -188,3 +147,36 @@ test("unrefBundledMessageChannels prevents renderer ports from keeping the execu
     );
     assertEquals(unrefBundledMessageChannels("const scheduler = null;"), "const scheduler = null;");
 });
+
+for (const initialClientState of ["existing", "absent"]) {
+    test(`runtime packages late client assets when the client directory is ${initialClientState}`, async () => {
+        const root = await fsMkdtemp(join(tmpdir(), "wld-runtime-late-assets-"));
+        const serverEntry = join(root, "entry.mjs");
+        const clientDir = join(root, "client");
+        const runtimeDir = join(root, "runtime");
+        let producer: Promise<void> | undefined;
+        try {
+            await fsWriteFile(serverEntry, "export default true;");
+            if (initialClientState === "existing") await fsMkdir(clientDir);
+            await buildWorkspaceRuntime(
+                { serverEntry, clientDir, runtimeDir },
+                {
+                    run: async () => {
+                        await fsWriteFile(join(runtimeDir, "server.mjs"), "export default true;");
+                        producer = new Promise<void>((resolve, reject) => {
+                            setTimeout(() => {
+                                fsMkdir(clientDir, { recursive: true })
+                                    .then(() => fsWriteFile(join(clientDir, "late.css"), ".late{display:block}"))
+                                    .then(resolve, reject);
+                            }, 120);
+                        });
+                    },
+                },
+            );
+            assertEquals(await fsReadFile(join(runtimeDir, "client/late.css"), "utf8"), ".late{display:block}");
+        } finally {
+            await producer;
+            await fsRm(root, { recursive: true, force: true });
+        }
+    });
+}

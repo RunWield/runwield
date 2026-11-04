@@ -2438,6 +2438,19 @@ test("SessionRuntime emits one keyboard-help event for the requested session", a
     assertEquals(typeof events[0].timestamp, "string");
     assertEquals(events[0].title, "Keyboard shortcuts");
     assertEquals(events[0].items[0], { key: "esc", description: "to interrupt" });
+
+    // A consumer can edit its payload without changing help delivered on a later request.
+    events[0].title = "consumer title";
+    events[0].items[0].key = "consumer key";
+    events[0].items.push({ key: "consumer shortcut", description: "consumer description" });
+    assertEquals(runtime.requestSessionHelp(sessionId), { ok: true });
+    assertEquals(events.length, 2);
+    assertEquals(events[1].title, "Keyboard shortcuts");
+    assertEquals(events[1].items[0], { key: "esc", description: "to interrupt" });
+    assertEquals(
+        events[1].items.some((item) => item.key === "consumer shortcut"),
+        false,
+    );
 });
 
 test("SessionRuntime emits one ordered lifecycle for one prompt", async () => {

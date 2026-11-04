@@ -2149,6 +2149,29 @@ disabled, the catalog uses project `.wld`, home `.wld`, and bundled skills. The 
 user-selected PR or change against project standards, the requested behavior, and test strength; it complements the
 workflow Reviewer.
 
+**Requirement: Test authoring earns its coverage.** The bundled
+[write-tests Skill](../../src/skills/write-tests/SKILL.md) guides Agents to establish expectations from requirements,
+journeys, bugs, or contracts independently of implementation, then test meaningful module interfaces, Golden journeys,
+and robustness with real internal machinery. The guidance applies to any target repository, using that repository's
+terminology, test stack, fixtures, and validation workflow without requiring RunWield-specific infrastructure.
+Agents may skip a new test that adds no meaningful protection, briefly
+explaining why and identifying existing coverage when relied upon. This does not waive required validation or an
+explicit user request. During requested pruning, important behavior retains protection through an appropriate
+interface before its sole existing test is removed. Debugging establishes a failing reproduction before the fix and
+verifies that the fix makes it pass; an existing test can supply that reproduction. These are authoring instructions,
+not an automated quality gate or a claim that the existing test portfolio has been audited.
+
+**Acceptance scenarios: Test contribution.**
+
+- Given a trivial delegation change already covered by a meaningful contract test, the Agent adds no duplicate test
+  and explains the existing protection.
+- Given an uncovered recovery requirement, the Agent uses a deliberately broken fixture, runs real recovery machinery,
+  and checks preservation and the observable recovery outcome against that requirement.
+- Given a confirmed bug, the Agent reproduces it with a failing existing, extended, or new test before fixing it, then
+  verifies the same expectation passes. An infeasible automated reproduction is reported as a coverage gap.
+- Given a pruning request and a weak test that alone protects an important behavior, the Agent replaces that protection
+  through a meaningful interface before removing the weak test.
+
 **Requirement: Portable skills install independently.** Guide, Ideator, and Review are available from
 [RunWield/skills](https://github.com/RunWield/skills) without downloading Core. They work in other coding agents and
 projects without requiring RunWield-specific tools. Core maintenance detects changes to the portable skills, their

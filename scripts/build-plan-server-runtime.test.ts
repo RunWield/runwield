@@ -11,13 +11,7 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertRejects } from "../src/testing/assertions.ts";
 import { join } from "node:path";
 import { readWorkspaceStyles } from "../src/ui/workspace/workspace-styles.ts";
-import {
-    buildPlanServerRuntime,
-    findProhibitedRuntimeFiles,
-    listRuntimeAssetDestinations,
-    listRuntimeFiles,
-    REQUIRED_WORKSPACE_RUNTIME_FILES,
-} from "./build-plan-server-runtime.ts";
+import { buildPlanServerRuntime, findProhibitedRuntimeFiles, listRuntimeFiles } from "./build-plan-server-runtime.ts";
 
 interface RuntimeBuildCommand {
     command: string;
@@ -57,18 +51,6 @@ async function writeRuntimeInputs(root: string): Promise<void> {
     await writeFile(join(root, "src/ui/design-system/components.css"), ".button{}\n");
     await writeFile(join(root, "src/ui/theme/catppuccin-mocha.json"), '{"name":"catppuccin-mocha"}\n');
 }
-
-test("listRuntimeAssetDestinations returns the passive asset allowlist", () => {
-    assertEquals(listRuntimeAssetDestinations(), [
-        "brand/logo.svg",
-        ...AGENT_DEFINITION_ASSETS,
-        "src/ui/design-system/components.css",
-        "src/ui/design-system/tokens.css",
-        "src/ui/theme/catppuccin-mocha.json",
-        "src/ui/workspace/static/styles.css",
-        "src/ui/workspace/static/workspace.css",
-    ]);
-});
 
 test("buildPlanServerRuntime creates a minimal runtime root", async () => {
     const root = await makeTempRoot();
@@ -211,10 +193,6 @@ test("buildPlanServerRuntime fails clearly when Workspace runtime output lacks s
     } finally {
         await fsRm(root, { recursive: true });
     }
-});
-
-test("required Workspace runtime file list includes the Astro server entry", () => {
-    assertEquals(REQUIRED_WORKSPACE_RUNTIME_FILES, ["server.mjs"]);
 });
 
 test("findProhibitedRuntimeFiles rejects broad source and state copies", () => {

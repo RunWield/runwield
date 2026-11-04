@@ -47,8 +47,8 @@ test("public docs render their source heading and release-pinned links", () => {
     assertEquals(rendered.includes("# Example"), false);
 });
 
-test("public docs reject source without a page title", () => {
-    assertRejects(
+test("public docs reject source without a page title", async () => {
+    await assertRejects(
         async () =>
             await Promise.resolve(renderPublicDocument("No heading", "user-documentation/quickstart.md", RELEASE)),
         Error,
