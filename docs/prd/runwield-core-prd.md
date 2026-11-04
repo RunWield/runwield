@@ -1615,6 +1615,53 @@ Noninteractive project commands refuse with nonzero status and stderr guidance u
 connections retain their existing behavior. This warning is consent, not a security sandbox or universal unsafe-path
 detector.
 
+**Requirement: Stable Core Project identity.** Deliberate Project Runtime Entry assigns one opaque Project ID.
+Linked worktrees and subdirectory entry share that ID and one repository binding; each checkout has its own binding.
+Moves and remote edits retain identity. The Git common directory's own configuration is authoritative, excluding
+included, global, command-injected, and per-worktree identity values. Ordinary and manual-SSH launches keep a versioned
+identity and verified storage-locator record in their account's `~/.wld/projects/<projectId>/project.wld.json`; Core entry needs no Workspace
+database. Workspace registration IDs remain unchanged and expose an association to existing Core identity.
+
+A non-Git Project uses `.wld-project.json`. After Git initialization, entry verifies the same identity in Git before
+removing the valid marker. Conflicting, malformed, user-owned, and symlink evidence is preserved and reported. Settings
+and overrides remain unchanged. Identity admission never stages an identity file in Git.
+
+A fresh clone's remote only suggests known Projects. The user selects one Project or creates a separate Project;
+acceptance and decline are remembered on that repository. Cancellation saves no answer. Unavailable interaction returns
+a pending choice, and changed candidate evidence requires a fresh choice. Passive lookup never creates identity, home
+records, or locks. Directory consent alone does not admit identity or prepare runtime state. An empty TUI defers
+admission until submitted work; a supplied startup request or continuation admits identity while runtime preparation
+stays with its existing action owner. Interrupted entry retains committed Git identity and repairs missing home metadata
+on retry.
+
+**Requirement: Explicit owner context.** Ordinary `wld`, including manual SSH, uses the execution account regardless of
+SSH environment variables. Verified managed-remote activation can supply a different personal owner while retaining the
+remote execution account home. That context does not authorize registry writes through the laptop mount or a replacement
+remote personal store. Managed-remote store operations remain target scope.
+
+**Stable identity acceptance scenarios:**
+
+- Given a Project entered from a new process, linked checkout, subdirectory, or moved folder, it retains its Project ID;
+  linked checkouts share the repository binding and have distinct checkout bindings.
+- Given a fresh or matching clone, CLI Plan listing, body reads, archive listing, and Doctor `--check` preserve
+  Project identity, Git configuration, runtime evidence, and ignore rules without asking for a clone-link choice.
+  Doctor repair and submitted work admit identity and can present the remembered clone-link choice.
+- Given simultaneous first entry, both processes converge on the same committed identity. Missing home metadata is
+  repaired without replacing the Git ID; corrupt evidence remains visible and unchanged.
+- Given a matching fresh clone, no identity is selected until the user chooses. Linking shares Project identity and verified Session/Connect history lookup;
+  declining creates a separate Project. Execution attempts and Workspace registration remain separate. Reopening either clone does not ask again.
+- Given two pending prompts for one clone, if one commits a Project before the other submits a conflicting choice,
+  the later choice reports the conflict and preserves the committed identity. Repeating the winning choice reuses it.
+- Given a non-Git folder that is moved and initialized with Git, entry preserves its ID and settings and removes only
+  its valid identity marker. Conflicting or malformed evidence is preserved.
+- Given manual SSH, ownership remains the remote execution account. Given an explicit managed launch owner, ownership
+  remains that owner, never an inference from the mount path or an automatic fallback after disconnection.
+
+Current Plan, Session, runtime, metrics, and worktree locators retain their existing paths. Session and Connect
+continuity uses verified bindings to original stores. Plan continuity, document/runtime relocation, and managed-remote
+Project-store persistence remain targets of the
+[External Project State and Plan Store Epic](../plans/external-plan-store.md).
+
 **Requirement: Keep project knowledge correctly scoped.** Keep the remote project locator separate from execution cwd.
 
 Laptop history identifies a remote project by exact host identity plus its canonical remote project root. Host identity
@@ -2609,6 +2656,35 @@ history is separate from local-client continuation. [Remote connection](#remote-
 browser transport; that transport does not change Session continuity or review decisions.
 
 Runtime boundaries are in [ADR-010](../adr/010-session-runtime-sibling-adapters-and-acp.md); storage and synchronization are in [ADR-015](../adr/015-file-authoritative-session-bundles.md).
+
+**Requirement: Project move and linked-clone continuity.** After deliberate entry verifies a moved checkout or accepts a
+clone link, fresh processes discover the same local Sessions through their original storage locators. History, legacy
+Project and Session IDs, segments, committed generations, Plan Associations, settings, and archive state remain intact.
+Continuation uses a verified current checkout for tools and historical cwd for transcript validation. An active execution
+or repair segment retains its existing execution binding until normal workflow recovery authorizes a change.
+Without a selected checkout, a planning segment keeps its recorded worktree cwd; its storage Project's root does not
+replace that cwd. A planning segment recorded at the Project root follows that root's verified move binding.
+
+Locator admission waits for existing Session writers to settle without replacing their native lock files. Conflicting
+Session identities and missing established stores remain unavailable rather than creating replacement history. Passive
+inspection never publishes bindings. Pending/declined clone choices, foreign owners, remote locators, reused roots, and
+retargeted aliases do not grant access. Moves without prior identity/root evidence cannot infer history ownership.
+
+**Move/link acceptance scenarios:**
+
+- Given a saved Git or non-Git Session and admitted identity, moving the Project and entering it again lets a fresh
+  process list and append to that same Session. Its prior transcript bytes and original bundle/lock remain unchanged.
+- Given separate histories in two clones, accepting their link exposes both original Sessions without merging IDs,
+  settings, writer ownership, or Git execution attempts. Explicit Core-ID and Pi-ID resume use the accepted membership.
+  Declining keeps their histories separate.
+- Given a Session created between successive admitted moves, resume and adoption use the current checkout while
+  preserving its intermediate historical cwd, original storage path, and transcript bytes.
+- Given a planning segment recorded in a worktree but stored under the primary Project, adoption and repair rollover
+  retain the worktree cwd. Adopting a Project-root planning segment after a verified move uses the moved root.
+- Given an active writer during move admission, the binding waits without blocking the writer's own Project entry.
+  After settlement, retry resolves the original bundle; aliases contend on its same native writer lock.
+- Given Workspace relinking, registration retains its ID and enabled/disabled/removed policy. Removing Workspace SQLite
+  leaves intact Core Sessions listable and writable; explicit re-registration restores browser visibility.
 
 **Requirement: Continue the same saved work across clients.** Users work with several independent Sessions through
 the TUI, ACP, and Workspace. Each Session keeps its project, conversation, selected Agent and model, and workflow

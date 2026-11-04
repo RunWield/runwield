@@ -583,8 +583,26 @@ _Avoid_: Remote plan database, hosted board, task board
 Projects while repository artifacts remain canonical. _Avoid_: Project root, browser IDE, database-only knowledge base,
 replacement for Plans
 
-**Project**: A trusted repository or directory registered in Workspace as a boundary for Sessions, artifacts, code, and
-workflows, distinct from the uppercase `PROJECT` Routing Intent. _Avoid_: Workspace, workspace root, project space
+**Project**: A repository or directory used as a boundary for Sessions, artifacts, code, and workflows. Core admits
+Projects independently of optional Workspace registration. Distinct from the uppercase `PROJECT` Routing Intent.
+_Avoid_: Workspace, workspace root, project space
+
+**Project Identity**: An opaque Core Project ID, stable across folder moves and linked worktrees. A matching clone
+shares it only after an explicit linking choice. Git's common configuration or a non-Git marker supplies local identity;
+paths and remote URLs do not. Workspace registration IDs are separate identifiers associated with existing Core identity.
+Verified personal locator bindings connect legacy Session IDs and Attached Workflow directories to this identity across
+moves and accepted clone links. They do not own transcript generations, workflow revisions, or execution attempts.
+Physical bundles and native locks retain their paths; Plan/runtime relocation remains separate.
+
+**Repository binding**: One local repository instance associated with a Project ID. Linked worktrees share a repository
+binding; explicitly linked clones share Project identity while keeping separate repository bindings.
+
+**Checkout binding**: One execution checkout within a repository binding, distinct from its current cwd. Each linked
+worktree has its own binding. A non-Git folder preserves both bindings when it adopts Git.
+
+**Personal Project owner**: The explicit account whose personal Project state is authoritative. Ordinary execution,
+including manual SSH, uses its execution account. Managed remote activation names the laptop owner separately from the
+execution account home; a mount path is not ownership evidence.
 
 **Attention Dashboard**: The Workspace surface aggregating work needing user judgment and active or recent workflow
 state across Projects. It has Needs You, Ready to Continue, In Progress, and Recently Finished groups. _Avoid_: Project

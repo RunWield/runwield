@@ -382,7 +382,14 @@ export async function withRemoteRuntimeFixture(
                             }
                         }
                         const process = await startProcess(
-                            { connection, resources, memoryCollection, cwd: remoteProject, review },
+                            {
+                                connection,
+                                resources,
+                                laptopHome: local.homeDir,
+                                memoryCollection,
+                                cwd: remoteProject,
+                                review,
+                            },
                             remoteHome,
                             remotePath,
                         );

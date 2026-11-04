@@ -1,6 +1,6 @@
 # Plan Store
 
-Last updated: 2026-10-05 EDT
+Last updated: 2026-11-01 EST
 
 ## Background
 
@@ -10,7 +10,9 @@ every branch, including Epic branches. RunWield spends a large and growing share
 which copy is authoritative and reconciling the others. This proposal moves Plans and Work Records into one
 RunWield-managed store outside the repository. Plan documents stay plain, unencrypted, human-readable Markdown, and the
 metadata RunWield owns moves into a separate file beside them. Each project chooses separately whether delivered Plans
-and Work Records are also committed to the repository.
+and Work Records are also committed to the repository. The full proposal also moves all state currently under
+project `.wld/internal/` into `~/.wld/projects/<projectId>/`. Only local settings and user overrides remain in project
+`.wld/`. These are target requirements, not implemented behavior.
 
 ## Problem Description
 
@@ -36,8 +38,8 @@ loses Session history; tying Plans to the same key would lose Plans too.
 
 **Goals:**
 
-- Every Plan and Work Record has exactly one live copy, and every RunWield process, Session, worktree, and agent reads
-  and writes it.
+- Within a personal owner's Project store, every Plan and Work Record has exactly one live copy, and every RunWield
+  process, Session, worktree, and agent using that store reads and writes it.
 - Plan documents remain plain Markdown files a person can open, edit, and search with ordinary tools, with no RunWield
   metadata inside them.
 - RunWield adds no Plans to a repository unless the project asks for them.
@@ -45,6 +47,10 @@ loses Session history; tying Plans to the same key would lose Plans too.
   that off.
 - Plans, Work Records, and Sessions survive folder renames, moves, and remote changes.
 - A Plan's important versions are kept and restorable.
+- All machine-owned project runtime state lives in home Project storage; no checkout retains `.wld/internal/` or a
+  Plan-store link under `.wld/`.
+- Ordinary `wld`, including one started manually over SSH, owns Plans on its execution machine. `wld remote <host>`
+  keeps Plans on the initiating laptop.
 
 **Non-goals:**
 
@@ -66,8 +72,8 @@ loses Session history; tying Plans to the same key would lose Plans too.
 - **Plan bodies belong to the user.** RunWield owns Plan metadata and the user owns the body. Keeping them in separate
   files means RunWield never rewrites a file the user is editing, and repository copies carry no RunWield fields.
 
-This matters now because the Plan Packages Epic is about to redefine Plan storage in its first child. Settling where
-Plans live first avoids building packages on the copy model and migrating twice.
+Settling the Project store and runtime ownership together avoids building new Plan packages on the checkout-copy
+model and migrating the same workflow state twice.
 
 ## Audience
 
@@ -80,16 +86,16 @@ Plans live first avoids building packages on the copy model and migrating twice.
 
 ## Product Fit, Prototypes, and Descriptions
 
-Today a user opens `docs/plans/my-feature.md` in the project. After this change they open
-`.wld/plans/my-feature/context.md` in the same project, the same way, in the same editor. That path is a link to the
-project's store, so the file they edit is the one RunWield uses everywhere.
+Today a user opens `docs/plans/my-feature.md` in the project. After this change RunWield exposes the live document at
+`~/.wld/projects/<projectId>/plans/my-feature/context.md` on the owning machine, through a usable path or document
+operation. The user edits it in an ordinary editor. No `.wld/plans` link is installed in the project.
 
 Each Plan is a folder. `plan.wld.json` holds everything RunWield owns: identity, status, lifecycle and controller state,
 Epic relationships, Session associations, and links. The Markdown documents beside it hold everything the user owns,
 with no front matter.
 
 ```text
-~/.wld/projects/<project>/
+~/.wld/projects/<projectId>/
   plans/
     my-feature/
       plan.wld.json                       RunWield-owned metadata
@@ -106,9 +112,12 @@ with no front matter.
       2026-10-04T09-30-delivered/
   work-records/
     my-feature.md                         the live Work Record
+  internal/                               personal project runtime state
+  execution/                              execution-host runtime; remote when using wld remote
 
 <project folder>/
-  .wld/plans  →  ~/.wld/projects/<project>/plans/   (never shown as a repository change)
+  .wld/settings.json                             local settings
+  .wld/agents/, skills/, prompts/                 user overrides
   docs/plans/my-feature/context.md                 delivery copy, only when Plan copies are on
   docs/work-records/my-feature.md                  delivery copy, unless Work Record copies are off
 ```
@@ -134,6 +143,10 @@ Journeys:
   no Work Records until they run `wld wr import docs/work-records/` once. The release notes say so. RunWield then asks
   whether to keep delivered Plans in `docs/plans/` for this project.
 - **Moving the project.** The user renames the project folder. RunWield still finds its Plans and Sessions.
+- **Clean project configuration.** RunWield automatically relocates existing internal runtime state during deliberate
+  use, preserving unfinished work. Project `.wld/` contains only settings and user overrides afterwards.
+- **Choosing how to work remotely.** Running `ssh host` and then `wld` uses the remote account's home Plan store.
+  Running `wld remote host` from the laptop uses the laptop's Plan store while code execution stays remote.
 
 ## Capability Requirements
 
@@ -146,9 +159,9 @@ change that delivers the behavior.
 [Plan authoring and external adoption](runwield-core-prd.md#plan-authoring-and-external-adoption) and every capability
 that reads Plans from a checkout.
 
-**Requirement: Every Plan has one live copy.** RunWield keeps each project's Plans in one store outside the repository.
-Every Session, worktree, agent, and client reads and writes that copy. No checkout or branch holds a live Plan, so no
-Plan can disagree with itself.
+**Requirement: Every Plan has one live copy.** RunWield keeps each personal owner's Project Plans in one store outside
+the repository. Every Session, worktree, agent, and client using that owner reads and writes that copy. No checkout or
+branch holds a live Plan. Different personal owners do not become synchronized stores merely by sharing a repository.
 
 **Requirement: Plans stay plain Markdown.** Plan documents in the store are ordinary unencrypted Markdown files with
 their existing structure. The user can open, edit, search, and copy them with ordinary tools. Edits made outside
@@ -159,10 +172,12 @@ RunWield are the Plan's content from then on, with the same body-ownership rules
 Plan has manual QA. `plan.wld.json` holds everything RunWield owns, including identity, status, lifecycle and controller
 state, Epic relationships, Session associations, and links. The Markdown documents carry no front matter. RunWield
 changes status and metadata without writing to any Markdown document, and a hand edit to a document can never change or
-corrupt RunWield's metadata. The Plan Packages work builds on this folder rather than defining another layout.
+corrupt RunWield's metadata. All Plan package work uses this layout.
 
-**Requirement: Plans are reachable from the project.** The project folder contains a link, `.wld/plans`, to the store,
-so editors and agents limited to the project folder can reach Plans. The link never appears as a repository change.
+**Requirement: Plans remain accessible without a project-local alias.** RunWield exposes the live document's path or
+a supported document operation to the user and Agent. External hosts use their normal authorization mechanism for
+home-store access; RunWield neither bypasses that boundary nor creates another live copy to work around it. Project
+`.wld/` contains no Plan-store link.
 
 **Requirement: Recovery reads the one copy.** Restarting, crashing, or walking away and returning resumes from the
 store's copy at every status, from draft through delivery, with no reconciliation between copies.
@@ -171,16 +186,73 @@ store's copy at every status, from draft through delivery, with no reconciliatio
 
 - Given Planner editing a sibling draft while planning one Epic child, when the next child's planning starts, it sees
   the edit without any execution or publication step.
-- Given a Plan edited in an editor through `.wld/plans`, when the user loads it, RunWield uses the edited content.
+- Given a Plan edited in an editor at its exposed live path, when the user loads it, RunWield uses the edited content.
 - Given a Plan whose `context.md` is open in an editor, when RunWield moves the Plan from review to execution, only
   `plan.wld.json` changes and the open document is untouched.
 - Given a user who deletes or rewrites the top of `context.md`, when they load the Plan, its status, identity, and Epic
   relationships are unchanged.
-- Given an external host whose file access is limited to the project folder, when it reads a Plan through `.wld/plans`,
-  it reads the live Plan.
-- Given a project with the link, when the user runs `git status`, the link does not appear.
+- Given an external host with approved store access or supported Core document tools, when it reads a Plan, it reads
+  the live Plan without a project-local copy or alias.
+- Given a project using the new store, when the user inspects `.wld/`, only local settings and user overrides remain.
 - Given a crash during a review turn, execution, or publication, when the user loads the Plan again, RunWield resumes
   from the store's status without consulting any checkout's copy.
+
+### Project runtime outside checkouts
+
+**Scope and maturity:** Target. Changes [Work protection](runwield-core-prd.md#work-protection) and
+[Project context and initialization](runwield-core-prd.md#project-context-and-initialization).
+
+**Requirement: All internal state leaves the project.** Everything currently stored under `.wld/internal/` moves
+under `~/.wld/projects/<projectId>/` on its responsible host. This includes controller state, worktree registries,
+publication staging, delivery evidence, locks, journals, migration records, backups, collaboration secrets, indexes,
+diagnostics, and fallback execution files. Their logical ownership and unfinished work survive the move. No runtime
+directory, compatibility symlink, or permanent migration marker remains in project `.wld/`.
+
+**Requirement: Only configuration remains locally.** Preserve project settings, Agents, Skills, prompts, and other
+user overrides exactly. RunWield does not exempt or delete `.wld/` wholesale. New operations never recreate the
+retired internal runtime tree, including during recovery or when the home store is unavailable.
+
+**Requirement: Runtime relocation is automatic and recoverable.** Deliberate Core entry handles relocation and its
+recovery without asking users to manipulate locks, paths, or metadata. Passive reads stay side-effect-free. Explicit
+Plan and Work Record import remains separate; moving machine-owned state does not silently import documents.
+
+**Acceptance scenarios:**
+
+- Given primary and linked checkouts with internal state and unfinished work, when relocation completes, their runtime
+  state is available from home Project storage and neither checkout retains `.wld/internal/`.
+- Given interruption during transfer to another filesystem or host, when deliberate use resumes, RunWield recovers
+  without losing repairs, duplicating authority, or resetting a workflow.
+- Given project settings and overrides, when migration, execution, publication, and recovery run, those files remain
+  unchanged and no new internal runtime files appear beside them.
+- Given an unavailable home store, when an operation needs to write state, it reports the missing access prerequisite
+  without falling back to runtime storage in the project.
+
+### Storage ownership by launch mode
+
+**Scope and maturity:** Target. Extends [Remote connection](runwield-core-prd.md#remote-connection) and
+[Session continuity](runwield-core-prd.md#session-continuity).
+
+**Requirement: Ordinary execution owns its personal store locally.** Running `wld` directly uses the current
+machine/account's home Plan and Work Record store. This remains true when the shell was opened through manual SSH.
+It has no dependency on an initiating laptop.
+
+**Requirement: Managed remote execution keeps laptop-owned Plans.** Running `wld remote <host>` keeps Plans and Work
+Records on the laptop alongside its existing personal Session authority, while code executes remotely. Disconnect
+does not select a remote-account Plan store or create a fallback live copy. Reconnect resumes the same owner's work.
+
+**Requirement: Switching launch mode does not transfer ownership.** A shared repository or matching Project ID does
+not implicitly synchronize, adopt, or overwrite another personal owner's Plans or unfinished work.
+
+**Acceptance scenarios:**
+
+- Given a manual SSH shell on a server, when the user runs ordinary `wld`, its Plans are stored under that remote
+  account's `~/.wld/projects/<projectId>/` and the laptop can be offline.
+- Given laptop `wld remote host`, when Planner edits a Plan, the canonical change is in the laptop Project store;
+  remote execution creates no competing live Plan and no `.wld/internal/` in the source project.
+- Given a disconnected managed remote operation, when the user reconnects, RunWield reconciles its saved operation
+  and preserves both confirmed delivery and any unfinished work without blindly repeating external effects.
+- Given the same repository opened using both modes, each sees its selected personal store and neither silently
+  takes over the other's execution attempt.
 
 ### Plan history
 
@@ -203,7 +275,12 @@ or by copying the file.
 
 ### Project identity
 
-**Scope and maturity:** Target. Changes [Session continuity](runwield-core-prd.md#session-continuity).
+**Scope and maturity:** Stable opaque identity, repository/checkout bindings, non-Git adoption, and deliberate clone
+linking are current; [Core Project initialization](runwield-core-prd.md#project-context-and-initialization) owns their
+requirements and acceptance scenarios. [Session continuity](runwield-core-prd.md#session-continuity) and
+[Connect recovery](runwield-connect-prd.md#lazy-project-setup-and-recovery) now follow verified original-store bindings
+across moves and accepted clone links. Physical Session bundles and native locks remain in place. Plan/Work Record
+continuity and relocation, runtime relocation, and managed-remote personal-store persistence remain targets.
 
 **Requirement: Plans and Sessions belong to the project, not its folder.** RunWield identifies a project by an identity
 it creates once and keeps with the project's local repository configuration, or in a small file for a folder without a
@@ -364,14 +441,18 @@ The capability scenarios above show the behavior is present; these measures show
 
 ## Delivery
 
-The smallest useful release is the store with the metadata split, project identity, the project link, and explicit
-import, released with a note telling existing users to run `wld plans import docs/plans/` once. Work Records may move
+The Epic covers the full proposal, including runtime relocation and launch-mode ownership. Delivery may be staged;
+the smallest useful release includes the store, metadata split, project identity, runtime relocation, supported live
+document access, and explicit import, with a note telling existing users to run `wld plans import docs/plans/` once.
+Work Records may move
 into the store only in the same release as Work Record delivery copies, so default projects never stop putting Work
 Records in the repository. Plan delivery copies, Work Record retention, and milestone history can follow without
 changing the store.
 
-This work changes Plan storage and settles the Plan folder layout. Hand this PRD to Architect to plan an Epic against
-the current implementation.
+This work changes Plan storage and settles the Plan folder layout. The
+[External Project State and Plan Store Epic](../plans/external-plan-store.md) develops the architecture against the current implementation.
+It records the owner's confirmed scope and launch-mode choices; detailed mechanisms remain proposed, and no behavior
+is claimed delivered.
 
 ## Attached Research and Other Evidence
 
@@ -395,8 +476,8 @@ the current implementation.
 - **Tools that expect front matter in Plan files.** Agents, prompts, and external hosts that read or write Plan front
   matter break when it moves to `plan.wld.json`. Mitigation: RunWield's own agents change Plan status only through its
   tools, and the import moves existing front matter into `plan.wld.json`.
-- **The project link can break on platforms without symbolic links or with restricted permissions.** Mitigation: a
-  directory junction on Windows; report a broken link with a one-step repair instead of failing silently.
+- **External hosts can restrict home-store access.** Mitigation: expose supported Core document operations or request
+  the host's normal root-access authorization, without adding a project-local copy or alias.
 - **Agents may read a stale delivery copy in a worktree.** Mitigation: agents are always given the live Plan's path,
   Plan delivery copies are only written in projects that opt in, and Work Record retrieval reads only the store.
 - **Users upgrade with work in progress.** Plans imported with their status keep their identity, so RunWield's runtime
@@ -415,6 +496,8 @@ These terms are proposed. The implementing work updates `docs/domain-language.md
   documents. _Avoid:_ front matter, which no longer describes where this lives.
 - **Project Identity:** the identity RunWield creates once per project and keeps with its local repository configuration
   or folder, used to find its Plan Store and Sessions. _Avoid:_ project path, repo ID.
+- **Project Runtime State:** machine-owned project state under home Project storage on its responsible host; project
+  `.wld/` contains only local settings and user overrides. This changes the current checkout-local definition.
 - **Plan History:** the frozen Markdown versions a Plan keeps at its milestones. _Avoid:_ Plan revisions, backups.
 - **Delivery Copy:** a Plan's Markdown documents or a Work Record as delivered, written into the final publication
   commit when the project's setting for it is on, and never read by RunWield. _Avoid:_ mirror, synced Plan, snapshot

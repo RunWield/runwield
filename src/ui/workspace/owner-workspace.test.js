@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import { getPlanRevisionForText, injectFrontMatter, loadPlan, savePlan } from "../../plan-store.js";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { createRootSessionManager, resolveCreatedRootSessionPath } from "../../shared/session/root-session.js";
 import { createOwnerWorkspaceApp, startWorkspaceServer } from "./server.js";
 
 /** @param {string} credential @param {string} [csrf] */
@@ -524,18 +525,25 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
             assertStringIncludes(settingsHtml, "Relink Project root");
         }
 
-        /** @type {any} */ (store).getSessionById = (runwieldSessionId) =>
-            runwieldSessionId === "session-owned"
-                ? {
-                      runwieldSessionId,
-                      projectId: "file-project-identity",
-                      transcriptCwd: projectRoot,
-                  }
-                : null;
+        const manager = await createRootSessionManager("new", projectRoot);
+        manager.appendMessage({
+            role: "user",
+            timestamp: Date.now(),
+            content: [{ type: "text", text: "Owned Session" }],
+        });
+        const ownedSession = await store.ensureSessionCatalogRecord({
+            projectId: project.projectId,
+            piSessionId: manager.getSessionId(),
+            transcriptPath: await resolveCreatedRootSessionPath(projectRoot, manager),
+            transcriptCwd: projectRoot,
+        });
         const sessionDetailPage = await app(
-            new Request(`http://127.0.0.1:8787/projects/${project.projectId}/sessions/session-owned`, {
-                headers: { cookie: cookiePair(claimed.credential) },
-            }),
+            new Request(
+                `http://127.0.0.1:8787/projects/${project.projectId}/sessions/${ownedSession.runwieldSessionId}`,
+                {
+                    headers: { cookie: cookiePair(claimed.credential) },
+                },
+            ),
         );
         assertEquals(sessionDetailPage.status === 404, false);
 

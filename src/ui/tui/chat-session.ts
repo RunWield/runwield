@@ -1,3 +1,4 @@
+import { admitProjectWithIdentityChoice } from "./project-identity-entry.ts";
 import { resolvePrimaryCheckoutRoot } from "../../shared/primary-checkout.ts";
 import { resolveSessionContinuation } from "../../shared/session/session-runtime.ts";
 import {
@@ -185,6 +186,9 @@ export async function startInteractiveSession(
                 continuation.managed ? inspectMissingManagedProjectDirectory(root) : inspectProjectDirectory(root)
             ).classified;
         }
+    }
+    if ((initialUserRequest || sessionStartMode === "continue") && !(await admitProjectWithIdentityChoice(getCwd()))) {
+        throw new DirectoryStartupCanceled("Project startup canceled");
     }
     const sessionStore = options.remoteSessionControl || shouldDeferManagedActivation ? null : openFileSessionStore();
     const sessionRuntime = createSessionRuntime({

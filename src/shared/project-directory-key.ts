@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import { createHash } from "node:crypto";
 /**
  * @module shared/project-directory-key
- * The filesystem-safe directory segment that keys per-project state under `~/.wld/`.
+ * Legacy path-based storage locator under `~/.wld/`; never a stable Core Project ID.
  *
  * Sessions, execution worktrees, workflow metrics, and Attached Workflow Records all
  * use this one encoding, so a project resolves to the same segment everywhere.
