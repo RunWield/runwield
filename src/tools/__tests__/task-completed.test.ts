@@ -7,15 +7,61 @@ import { readCurrentPairCheckpoint } from "../../shared/session/pair-checkpoint-
 import { createTaskCompletedTool } from "../task-completed.ts";
 import { makeToolProjectFixture, withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 
-/** @typedef {{ type: string, customType: string, data: * }} TestSessionEntry */
-/** @typedef {{ getSessionId: () => string, getCwd: () => string, getBranch: () => TestSessionEntry[], getEntries: () => TestSessionEntry[], appendCustomEntry: (customType: string, data: *) => number }} TestSessionManager */
+import type { SessionManager } from "@earendil-works/pi-coding-agent";
+import type { TextContent } from "@earendil-works/pi-ai";
+import type { ActiveExecutionWorkflow } from "../../shared/session/hosted-session.js";
+import type { RequestDispatchKind } from "../../shared/session/request-dispatch.ts";
+import type {
+    RuntimeAssistantTextDeltaEvent,
+    SessionRuntimeEvent,
+} from "../../shared/session/session-runtime-events.js";
+import type { PairCheckpointDecision } from "../../shared/session/pair-checkpoint-session.ts";
+import type { PairCheckpointDetails, PairCheckpointParameters } from "../pair-checkpoint.ts";
+import type { BrowserPreflightOutcome, TaskCompletedDetails } from "../task-completed.ts";
+
+interface TestSessionEntry {
+    type: "custom";
+    customType: string;
+    data: Parameters<SessionManager["appendCustomEntry"]>[1];
+}
+interface TestSessionManager {
+    getSessionId(): string;
+    getCwd(): string;
+    getBranch(): TestSessionEntry[];
+    getEntries(): TestSessionEntry[];
+    appendCustomEntry(customType: string, data: TestSessionEntry["data"]): number;
+}
+interface ObservedCompletionEvent extends Partial<Omit<RuntimeAssistantTextDeltaEvent, "type">> {
+    type: SessionRuntimeEvent["type"];
+}
+interface CompletionTestParameters extends PairCheckpointParameters {
+    message?: string;
+    browserPreflightOutcome?: BrowserPreflightOutcome;
+}
+interface CompletionTestDetails {
+    outcome: TaskCompletedDetails["outcome"] | PairCheckpointDetails["outcome"];
+    reason?: string;
+    checkpointId?: string;
+    checkpointNumber?: number;
+    decision?: PairCheckpointDecision | "pending";
+    message?: string;
+    browserPreflightOutcome?: BrowserPreflightOutcome;
+}
+interface CompletionTestResult {
+    terminate: boolean;
+    details: CompletionTestDetails;
+    content: TextContent[];
+}
+// Existing direct-handler tests omit the unused SDK signal, update callback, and context arguments.
+type CompletionTestExecute = (toolCallId: string, params: CompletionTestParameters) => Promise<CompletionTestResult>;
+interface ConstSchema {
+    const: string;
+}
 
 const TASK_PROJECT_ROOT = makeToolProjectFixture("runwield-task-completed-");
 
-/** @param {string} projectRoot @returns {TestSessionManager} */
-function makeSessionManager(projectRoot) {
-    /** @type {TestSessionEntry[]} */
-    const entries = [];
+function makeSessionManager(projectRoot: string): TestSessionManager {
+    const entries: TestSessionEntry[] = [];
     return {
         getSessionId: () => `task-session-${crypto.randomUUID()}`,
         getCwd: () => projectRoot,
@@ -25,12 +71,11 @@ function makeSessionManager(projectRoot) {
     };
 }
 
-/**
- * @param {HostedSession} hostedSession
- * @param {TestSessionManager} sessionManager
- * @param {import("../../shared/session/request-dispatch.ts").RequestDispatchKind} [dispatchKind]
- */
-function beginRequest(hostedSession, sessionManager, dispatchKind = "interactive") {
+function beginRequest(
+    hostedSession: HostedSession,
+    sessionManager: TestSessionManager,
+    dispatchKind: RequestDispatchKind = "interactive",
+) {
     const activeTurnId = hostedSession.getActiveTurnId();
     if (activeTurnId) hostedSession.endTurn(activeTurnId);
     hostedSession.beginTurn(`turn:${crypto.randomUUID()}`);
@@ -49,12 +94,12 @@ function beginRequest(hostedSession, sessionManager, dispatchKind = "interactive
 
 test("task_completed emits one semantic assistant message and terminates", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
-        const events = /** @type {any[]} */ ([]);
+        const events: ObservedCompletionEvent[] = [];
         const hostedSession = new HostedSession({ id: "task-completed", cwd: projectRoot });
-        hostedSession.setEventSink({ emit: (/** @type {any} */ event) => events.push(event) });
+        hostedSession.setEventSink({ emit: (event: ObservedCompletionEvent) => events.push(event) });
         const tool = createTaskCompletedTool({ hostedSession, agentName: "engineer" });
 
-        const result = await /** @type {any} */ (tool.execute)("call", { message: "- Implemented and tested." });
+        const result = await (tool.execute as CompletionTestExecute)("call", { message: "- Implemented and tested." });
 
         assertEquals(result.terminate, true);
         assertEquals(result.details, { outcome: "task_completed", message: "- Implemented and tested." });
@@ -74,26 +119,27 @@ test("task_completed emits one semantic assistant message and terminates", async
 
 test("task_completed warns once for running work and cancels it before publishing acceptance", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
-        /** @type {any[]} */
-        const events = [];
+        const events: ObservedCompletionEvent[] = [];
         const session = new HostedSession({ id: `completion-warning-${crypto.randomUUID()}`, cwd: projectRoot });
-        session.setEventSink({ emit: (/** @type {any} */ event) => events.push(event) });
+        session.setEventSink({ emit: (event: ObservedCompletionEvent) => events.push(event) });
         try {
             const task = session.backgroundTasks.startShell({ command: "sleep 8", cwd: projectRoot });
-            const first =
-                await /** @type {any} */ (createTaskCompletedTool({ hostedSession: session, agentName: "engineer" })
-                    .execute)("first", { message: "- Done." });
+            const first = await (
+                createTaskCompletedTool({ hostedSession: session, agentName: "engineer" })
+                    .execute as CompletionTestExecute
+            )("first", { message: "- Done." });
             assertEquals(first.details, { outcome: "rejected", reason: "background_tasks_pending" });
             assertEquals(first.terminate, false);
-            assertStringIncludes(/** @type {{type:"text",text:string}} */ (first.content[0]).text, task.task_id);
-            assertStringIncludes(/** @type {{type:"text",text:string}} */ (first.content[0]).text, "shell");
+            assertStringIncludes(first.content[0].text, task.task_id);
+            assertStringIncludes(first.content[0].text, "shell");
             assertEquals(session.backgroundTasks.status(task.task_id).state, "running");
             assertEquals(session.consumePendingTaskCompletion(null), null);
             assertEquals(events, []);
             assertEquals((await readMetrics()).length, 0);
-            const second =
-                await /** @type {any} */ (createTaskCompletedTool({ hostedSession: session, agentName: "engineer" })
-                    .execute)("retry", { message: "- Done." });
+            const second = await (
+                createTaskCompletedTool({ hostedSession: session, agentName: "engineer" })
+                    .execute as CompletionTestExecute
+            )("retry", { message: "- Done." });
             assertEquals(second.details.outcome, "task_completed");
             assertEquals(session.backgroundTasks.activeCount, 0);
             assertEquals(session.backgroundTasks.pendingCompletions(), []);
@@ -114,8 +160,7 @@ test("task_completed warns once for running work and cancels it before publishin
 
 test("workflow metadata refresh preserves the warning but a new assignment gets its own warning", async () => {
     const session = new HostedSession({ id: `completion-workflow-${crypto.randomUUID()}`, cwd: TASK_PROJECT_ROOT });
-    /** @type {import("../../shared/session/hosted-session.js").ActiveExecutionWorkflow} */
-    const workflow = {
+    const workflow: ActiveExecutionWorkflow = {
         planName: "first-plan",
         triageMeta: { classification: "PLANNED_CHANGE" },
         executionAgent: "engineer",
@@ -126,16 +171,16 @@ test("workflow metadata refresh preserves the warning but a new assignment gets 
         session.backgroundTasks.startShell({ command: "sleep 8", cwd: TASK_PROJECT_ROOT });
         const finish = createTaskCompletedTool({ hostedSession: session, agentName: "Plan Engineer" });
         assertEquals(
-            (await /** @type {any} */ (finish.execute)("first", { message: "- Done." })).details.reason,
+            (await (finish.execute as CompletionTestExecute)("first", { message: "- Done." })).details.reason,
             "background_tasks_pending",
         );
         session.setActiveExecutionWorkflow({ ...workflow, pairCheckpointCount: 2 });
-        const refreshed = await /** @type {any} */ (finish.execute)("second", { message: "- Done." });
+        const refreshed = await (finish.execute as CompletionTestExecute)("second", { message: "- Done." });
         assertEquals(refreshed.details.outcome, "task_completed");
         session.backgroundTasks.resumeDelivery();
         session.backgroundTasks.startShell({ command: "sleep 8", cwd: TASK_PROJECT_ROOT });
         session.setActiveExecutionWorkflow({ ...workflow, planName: "second-plan" });
-        const newAssignment = await /** @type {any} */ (finish.execute)("third", { message: "- Done." });
+        const newAssignment = await (finish.execute as CompletionTestExecute)("third", { message: "- Done." });
         assertEquals(newAssignment.details.reason, "background_tasks_pending");
     } finally {
         await session.dispose();
@@ -146,20 +191,20 @@ test("later completion cycle warns again for new tasks", async () => {
     const session = new HostedSession({ id: `completion-cycle-${crypto.randomUUID()}`, cwd: TASK_PROJECT_ROOT });
     try {
         const firstTask = session.backgroundTasks.startShell({ command: "sleep 8", cwd: TASK_PROJECT_ROOT });
-        const firstWarning =
-            await /** @type {any} */ (createTaskCompletedTool({ hostedSession: session, agentName: "engineer" })
-                .execute)("first", { message: "- Done." });
+        const firstWarning = await (
+            createTaskCompletedTool({ hostedSession: session, agentName: "engineer" }).execute as CompletionTestExecute
+        )("first", { message: "- Done." });
         assertEquals(firstWarning.details.reason, "background_tasks_pending");
-        const accepted =
-            await /** @type {any} */ (createTaskCompletedTool({ hostedSession: session, agentName: "engineer" })
-                .execute)("retry", { message: "- Done." });
+        const accepted = await (
+            createTaskCompletedTool({ hostedSession: session, agentName: "engineer" }).execute as CompletionTestExecute
+        )("retry", { message: "- Done." });
         assertEquals(accepted.details.outcome, "task_completed");
         assertEquals(session.backgroundTasks.status(firstTask.task_id).state, "cancelled");
         session.backgroundTasks.resumeDelivery();
         const secondTask = session.backgroundTasks.startShell({ command: "sleep 8", cwd: TASK_PROJECT_ROOT });
-        const nextWarning =
-            await /** @type {any} */ (createTaskCompletedTool({ hostedSession: session, agentName: "engineer" })
-                .execute)("new-cycle", { message: "- New work done." });
+        const nextWarning = await (
+            createTaskCompletedTool({ hostedSession: session, agentName: "engineer" }).execute as CompletionTestExecute
+        )("new-cycle", { message: "- New work done." });
         assertEquals(nextWarning.details.reason, "background_tasks_pending");
         assertEquals(session.backgroundTasks.status(secondTask.task_id).state, "running");
     } finally {
@@ -174,14 +219,14 @@ test("a finished task after the first warning does not require another warning",
             command: "sleep 0.1; printf 'done'",
             cwd: TASK_PROJECT_ROOT,
         });
-        const first =
-            await /** @type {any} */ (createTaskCompletedTool({ hostedSession: session, agentName: "engineer" })
-                .execute)("first", { message: "- Done." });
+        const first = await (
+            createTaskCompletedTool({ hostedSession: session, agentName: "engineer" }).execute as CompletionTestExecute
+        )("first", { message: "- Done." });
         assertEquals(first.details, { outcome: "rejected", reason: "background_tasks_pending" });
         await session.backgroundTasks.wait(task.task_id);
-        const second =
-            await /** @type {any} */ (createTaskCompletedTool({ hostedSession: session, agentName: "engineer" })
-                .execute)("second", { message: "- Verified result." });
+        const second = await (
+            createTaskCompletedTool({ hostedSession: session, agentName: "engineer" }).execute as CompletionTestExecute
+        )("second", { message: "- Verified result." });
         assertEquals(second.details.outcome, "task_completed");
         assertEquals(session.backgroundTasks.pendingCompletions(), []);
     } finally {
@@ -198,14 +243,17 @@ test("wrong owner does not consume the background completion warning", async () 
     });
     try {
         const task = session.backgroundTasks.startShell({ command: "sleep 8", cwd: TASK_PROJECT_ROOT });
-        const invalid = await /** @type {any} */ (createTaskCompletedTool({
-            hostedSession: session,
-            agentName: "Frontend Engineer",
-        }).execute)("invalid", { message: "- Done.", browserPreflightOutcome: "succeeded" });
+        const invalid = await (
+            createTaskCompletedTool({
+                hostedSession: session,
+                agentName: "Frontend Engineer",
+            }).execute as CompletionTestExecute
+        )("invalid", { message: "- Done.", browserPreflightOutcome: "succeeded" });
         assertEquals(invalid.details, { outcome: "rejected", reason: "wrong_execution_owner" });
-        const valid =
-            await /** @type {any} */ (createTaskCompletedTool({ hostedSession: session, agentName: "Plan Engineer" })
-                .execute)("valid", { message: "- Done." });
+        const valid = await (
+            createTaskCompletedTool({ hostedSession: session, agentName: "Plan Engineer" })
+                .execute as CompletionTestExecute
+        )("valid", { message: "- Done." });
         assertEquals(valid.details, { outcome: "rejected", reason: "background_tasks_pending" });
         assertEquals(session.backgroundTasks.status(task.task_id).state, "running");
     } finally {
@@ -218,14 +266,15 @@ test("completion does not suppress another Session's background result", async (
     const second = new HostedSession({ id: `other-isolation-${crypto.randomUUID()}`, cwd: TASK_PROJECT_ROOT });
     try {
         const other = second.backgroundTasks.startShell({ command: "printf 'other result'", cwd: TASK_PROJECT_ROOT });
-        const finished =
-            await /** @type {any} */ (createTaskCompletedTool({ hostedSession: first, agentName: "engineer" }).execute)(
-                "first",
-                { message: "- Done." },
-            );
+        const finished = await (
+            createTaskCompletedTool({ hostedSession: first, agentName: "engineer" }).execute as CompletionTestExecute
+        )("first", { message: "- Done." });
         assertEquals(finished.details.outcome, "task_completed");
         await second.backgroundTasks.wait(other.task_id);
-        assertEquals(second.backgroundTasks.pendingCompletions().map((task) => task.task_id), [other.task_id]);
+        assertEquals(
+            second.backgroundTasks.pendingCompletions().map((task) => task.task_id),
+            [other.task_id],
+        );
     } finally {
         await first.dispose();
         await second.dispose();
@@ -238,15 +287,18 @@ test("task_completed suppresses a finished undelivered result and allows new wor
         const task = session.backgroundTasks.startShell({ command: "printf 'finished'", cwd: TASK_PROJECT_ROOT });
         await session.backgroundTasks.wait(task.task_id);
         assertEquals(session.backgroundTasks.pendingCompletions().length, 1);
-        const accepted =
-            await /** @type {any} */ (createTaskCompletedTool({ hostedSession: session, agentName: "engineer" })
-                .execute)("accept", { message: "- Done." });
+        const accepted = await (
+            createTaskCompletedTool({ hostedSession: session, agentName: "engineer" }).execute as CompletionTestExecute
+        )("accept", { message: "- Done." });
         assertEquals(accepted.details.outcome, "task_completed");
         assertEquals(session.backgroundTasks.pendingCompletions(), []);
         session.backgroundTasks.resumeDelivery();
         const next = session.backgroundTasks.startShell({ command: "printf 'new'", cwd: TASK_PROJECT_ROOT });
         await session.backgroundTasks.wait(next.task_id);
-        assertEquals(session.backgroundTasks.pendingCompletions().map((item) => item.task_id), [next.task_id]);
+        assertEquals(
+            session.backgroundTasks.pendingCompletions().map((item) => item.task_id),
+            [next.task_id],
+        );
         assertEquals(session.backgroundTasks.canDeliver(task.task_id), false);
     } finally {
         await session.dispose();
@@ -274,7 +326,7 @@ test("task_completed records accepted completion on hosted session only after ow
         now: () => 1234,
     });
 
-    const result = await /** @type {any} */ (tool.execute)("call", { message: "- Done." });
+    const result = await (tool.execute as CompletionTestExecute)("call", { message: "- Done." });
     const completion = hostedSession.consumePendingTaskCompletion(null);
 
     assertEquals(result.details, { outcome: "task_completed", message: "- Done." });
@@ -293,16 +345,16 @@ test("task_completed records accepted completion on hosted session only after ow
     });
     const rejectedTool = createTaskCompletedTool({ hostedSession, agentName: "Engineer" });
 
-    const rejected = await /** @type {any} */ (rejectedTool.execute)("call", { message: "- Wrong owner." });
+    const rejected = await (rejectedTool.execute as CompletionTestExecute)("call", { message: "- Wrong owner." });
 
     assertEquals(rejected.details, { outcome: "rejected", reason: "wrong_execution_owner" });
     assertEquals(hostedSession.consumePendingTaskCompletion(null), null);
 });
 
 test("task_completed rejects a mismatched active workflow owner without side effects", async () => {
-    const events = /** @type {any[]} */ ([]);
+    const events: ObservedCompletionEvent[] = [];
     const hostedSession = new HostedSession({ id: "task-completed-wrong-owner", cwd: TASK_PROJECT_ROOT });
-    hostedSession.setEventSink({ emit: (/** @type {any} */ event) => events.push(event) });
+    hostedSession.setEventSink({ emit: (event: ObservedCompletionEvent) => events.push(event) });
     hostedSession.setActiveExecutionWorkflow({
         planName: "visual-plan",
         triageMeta: { classification: "FEATURE" },
@@ -310,7 +362,7 @@ test("task_completed rejects a mismatched active workflow owner without side eff
     });
     const tool = createTaskCompletedTool({ hostedSession, agentName: "engineer" });
 
-    const result = await /** @type {any} */ (tool.execute)("call", { message: "- Done." });
+    const result = await (tool.execute as CompletionTestExecute)("call", { message: "- Done." });
 
     assertEquals(result.terminate, false);
     assertEquals(result.details, { outcome: "rejected", reason: "wrong_execution_owner" });
@@ -319,9 +371,9 @@ test("task_completed rejects a mismatched active workflow owner without side eff
 });
 
 test("task_completed rejects a provisional workflow before execution starts", async () => {
-    const events = /** @type {any[]} */ ([]);
+    const events: ObservedCompletionEvent[] = [];
     const hostedSession = new HostedSession({ id: "task-completed-not-started", cwd: TASK_PROJECT_ROOT });
-    hostedSession.setEventSink({ emit: (/** @type {any} */ event) => events.push(event) });
+    hostedSession.setEventSink({ emit: (event: ObservedCompletionEvent) => events.push(event) });
     hostedSession.setActiveExecutionWorkflow({
         planName: "visual-plan",
         triageMeta: { classification: "FEATURE" },
@@ -331,7 +383,7 @@ test("task_completed rejects a provisional workflow before execution starts", as
     });
     const tool = createTaskCompletedTool({ hostedSession, agentName: "Frontend Engineer" });
 
-    const result = await /** @type {any} */ (tool.execute)("call", { message: "- Done." });
+    const result = await (tool.execute as CompletionTestExecute)("call", { message: "- Done." });
 
     assertEquals(result.terminate, false);
     assertEquals(result.details, { outcome: "rejected", reason: "execution_not_started" });
@@ -339,9 +391,9 @@ test("task_completed rejects a provisional workflow before execution starts", as
 });
 
 test("task_completed rejects a paused Pair turn without terminal side effects", async () => {
-    const events = /** @type {any[]} */ ([]);
+    const events: ObservedCompletionEvent[] = [];
     const hostedSession = new HostedSession({ id: "task-completed-pair-paused", cwd: TASK_PROJECT_ROOT });
-    hostedSession.setEventSink({ emit: (/** @type {any} */ event) => events.push(event) });
+    hostedSession.setEventSink({ emit: (event: ObservedCompletionEvent) => events.push(event) });
     hostedSession.setActiveExecutionWorkflow({
         planName: "visual-plan",
         triageMeta: { classification: "FEATURE" },
@@ -352,7 +404,7 @@ test("task_completed rejects a paused Pair turn without terminal side effects", 
     });
     const tool = createTaskCompletedTool({ hostedSession, agentName: "Frontend Engineer" });
 
-    const result = await /** @type {any} */ (tool.execute)("call", { message: "- Done." });
+    const result = await (tool.execute as CompletionTestExecute)("call", { message: "- Done." });
 
     assertEquals(result.terminate, false);
     assertEquals(result.details, { outcome: "rejected", reason: "pair_execution_paused" });
@@ -378,7 +430,7 @@ test("task_completed records a final Pair checkpoint before accepting completion
     const completionTool = createTaskCompletedTool({ hostedSession, agentName: "Frontend Engineer" });
     beginRequest(hostedSession, sessionManager, "plan_execution");
 
-    const pending = await /** @type {any} */ (completionTool.execute)("final-call", {
+    const pending = await (completionTool.execute as CompletionTestExecute)("final-call", {
         message: "- Final page is ready.",
         browserPreflightOutcome: "succeeded",
     });
@@ -392,7 +444,7 @@ test("task_completed records a final Pair checkpoint before accepting completion
 
     const task = hostedSession.backgroundTasks.startShell({ command: "sleep 8", cwd: TASK_PROJECT_ROOT });
     beginRequest(hostedSession, sessionManager);
-    const stillPending = await /** @type {any} */ (completionTool.execute)("early-call", {
+    const stillPending = await (completionTool.execute as CompletionTestExecute)("early-call", {
         message: "- Final page is ready.",
         browserPreflightOutcome: "succeeded",
     });
@@ -400,19 +452,19 @@ test("task_completed records a final Pair checkpoint before accepting completion
     assertEquals(hostedSession.backgroundTasks.status(task.task_id).state, "running");
 
     const pairTool = createPairCheckpointTool({ hostedSession });
-    const accepted = await /** @type {any} */ (pairTool.execute)("resolve-final", {
+    const accepted = await (pairTool.execute as CompletionTestExecute)("resolve-final", {
         action: "resolve",
         checkpointId: checkpoint?.report.checkpointId,
         decision: "continue",
     });
     assertEquals(accepted.details.decision, "continue");
 
-    const warned = await /** @type {any} */ (completionTool.execute)("warn-call", {
+    const warned = await (completionTool.execute as CompletionTestExecute)("warn-call", {
         message: "- Final page is ready.",
         browserPreflightOutcome: "succeeded",
     });
     assertEquals(warned.details, { outcome: "rejected", reason: "background_tasks_pending" });
-    const completed = await /** @type {any} */ (completionTool.execute)("accepted-call", {
+    const completed = await (completionTool.execute as CompletionTestExecute)("accepted-call", {
         message: "- Final page is ready.",
         browserPreflightOutcome: "succeeded",
     });
@@ -440,13 +492,13 @@ test("a later revision revokes final Pair assent", async () => {
     const completionTool = createTaskCompletedTool({ hostedSession, agentName: "Frontend Engineer" });
     const pairTool = createPairCheckpointTool({ hostedSession });
     beginRequest(hostedSession, sessionManager, "plan_execution");
-    const pending = await /** @type {any} */ (completionTool.execute)("final-call", {
+    const pending = await (completionTool.execute as CompletionTestExecute)("final-call", {
         message: "- Final result is ready.",
         browserPreflightOutcome: "succeeded",
     });
 
     beginRequest(hostedSession, sessionManager);
-    const accepted = await /** @type {any} */ (pairTool.execute)("resolve-final", {
+    const accepted = await (pairTool.execute as CompletionTestExecute)("resolve-final", {
         action: "resolve",
         checkpointId: pending.details.checkpointId,
         decision: "continue",
@@ -454,7 +506,7 @@ test("a later revision revokes final Pair assent", async () => {
     assertEquals(accepted.details.decision, "continue");
 
     beginRequest(hostedSession, sessionManager);
-    const revised = await /** @type {any} */ (pairTool.execute)("revise-final", {
+    const revised = await (pairTool.execute as CompletionTestExecute)("revise-final", {
         action: "resolve",
         checkpointId: pending.details.checkpointId,
         decision: "revise",
@@ -462,7 +514,7 @@ test("a later revision revokes final Pair assent", async () => {
     });
     assertEquals(revised.details.decision, "revise");
 
-    const replacement = await /** @type {any} */ (completionTool.execute)("replacement-final", {
+    const replacement = await (completionTool.execute as CompletionTestExecute)("replacement-final", {
         message: "- Revised final result is ready.",
         browserPreflightOutcome: "succeeded",
     });
@@ -479,7 +531,7 @@ test("final Pair assent cannot authorize a different execution attempt", async (
         cwd: TASK_PROJECT_ROOT,
         sessionManager,
     });
-    const workflow = /** @type {import("../../shared/session/hosted-session.js").ActiveExecutionWorkflow} */ ({
+    const workflow: ActiveExecutionWorkflow = {
         planName: "visual-plan",
         triageMeta: { classification: "FEATURE" },
         executionAgent: "frontend-engineer",
@@ -487,16 +539,16 @@ test("final Pair assent cannot authorize a different execution attempt", async (
         executionAttemptStartedAtMs: 1000,
         collaborationStyle: "pair",
         pairCheckpointCount: 0,
-    });
+    };
     hostedSession.setActiveExecutionWorkflow(workflow);
     const completionTool = createTaskCompletedTool({ hostedSession, agentName: "Frontend Engineer" });
     beginRequest(hostedSession, sessionManager, "plan_execution");
-    const pending = await /** @type {any} */ (completionTool.execute)("first-final", {
+    const pending = await (completionTool.execute as CompletionTestExecute)("first-final", {
         message: "- First attempt is ready.",
         browserPreflightOutcome: "succeeded",
     });
     beginRequest(hostedSession, sessionManager);
-    await /** @type {any} */ (createPairCheckpointTool({ hostedSession }).execute)("resolve-first", {
+    await (createPairCheckpointTool({ hostedSession }).execute as CompletionTestExecute)("resolve-first", {
         action: "resolve",
         checkpointId: pending.details.checkpointId,
         decision: "continue",
@@ -507,7 +559,7 @@ test("final Pair assent cannot authorize a different execution attempt", async (
         executionAttemptStartedAtMs: 2000,
         pairCheckpointCount: 0,
     });
-    const stale = await /** @type {any} */ (completionTool.execute)("second-final", {
+    const stale = await (completionTool.execute as CompletionTestExecute)("second-final", {
         message: "- Second attempt is ready.",
         browserPreflightOutcome: "succeeded",
     });
@@ -544,16 +596,14 @@ test("task_completed message schema owns Engineer report format and accepts runt
 test("task_completed tells every agent to stop in prose instead of reporting a blocker", () => {
     const hostedSession = new HostedSession({ id: "task-completed-blocker-contract", cwd: TASK_PROJECT_ROOT });
 
-    for (
-        const agentName of [
-            "Engineer",
-            "plan-engineer",
-            "Frontend Engineer",
-            "operator",
-            "tester",
-            "reviewer-feedback-engineer",
-        ]
-    ) {
+    for (const agentName of [
+        "Engineer",
+        "plan-engineer",
+        "Frontend Engineer",
+        "operator",
+        "tester",
+        "reviewer-feedback-engineer",
+    ]) {
         const tool = createTaskCompletedTool({ hostedSession, agentName });
         assertStringIncludes(tool.description, "DO NOT call this tool when you are blocked");
         assertStringIncludes(tool.description, "A blocker ends your turn in plain text");
@@ -568,14 +618,8 @@ test("task_completed requires Frontend Engineer preflight outcome only", () => {
 
     assertEquals(frontendEngineerTool.parameters.required, ["message", "browserPreflightOutcome"]);
     assertEquals(
-        frontendEngineerTool.parameters.properties.browserPreflightOutcome.anyOf.map((/** @type {any} */ item) =>
-            item.const
-        ),
-        [
-            "succeeded",
-            "failed",
-            "externally_blocked",
-        ],
+        frontendEngineerTool.parameters.properties.browserPreflightOutcome.anyOf.map((item: ConstSchema) => item.const),
+        ["succeeded", "failed", "externally_blocked"],
     );
     assertStringIncludes(
         frontendEngineerTool.parameters.properties.message.description,
@@ -584,7 +628,7 @@ test("task_completed requires Frontend Engineer preflight outcome only", () => {
     assertEquals(engineerTool.parameters.properties.browserPreflightOutcome, undefined);
 });
 
-for (const outcome of /** @type {const} */ (["succeeded", "failed", "externally_blocked"])) {
+for (const outcome of ["succeeded", "failed", "externally_blocked"] satisfies BrowserPreflightOutcome[]) {
     test(`task_completed records Frontend Engineer completion preflight outcome ${outcome}`, async () => {
         await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
             const sessionManager = makeSessionManager(projectRoot);
@@ -611,17 +655,17 @@ for (const outcome of /** @type {const} */ (["succeeded", "failed", "externally_
             });
 
             beginRequest(hostedSession, sessionManager, "plan_execution");
-            const pending = await /** @type {any} */ (tool.execute)("call", {
+            const pending = await (tool.execute as CompletionTestExecute)("call", {
                 message: "- URL: http://localhost:5173/private\n- Screenshot: /tmp/secret.png",
                 browserPreflightOutcome: outcome,
             });
             beginRequest(hostedSession, sessionManager);
-            await /** @type {any} */ (createPairCheckpointTool({ hostedSession }).execute)("resolve", {
+            await (createPairCheckpointTool({ hostedSession }).execute as CompletionTestExecute)("resolve", {
                 action: "resolve",
                 checkpointId: pending.details.checkpointId,
                 decision: "continue",
             });
-            const result = await /** @type {any} */ (tool.execute)("accepted", {
+            const result = await (tool.execute as CompletionTestExecute)("accepted", {
                 message: "- URL: http://localhost:5173/private\n- Screenshot: /tmp/secret.png",
                 browserPreflightOutcome: outcome,
             });
@@ -689,7 +733,7 @@ test("task_completed labels validation repair Frontend Engineer completion", asy
             now: () => 900,
         });
 
-        await /** @type {any} */ (tool.execute)("call", {
+        await (tool.execute as CompletionTestExecute)("call", {
             message: "- Repair complete.",
             browserPreflightOutcome: "succeeded",
         });
@@ -704,9 +748,9 @@ test("task_completed accepts the Reviewer-Feedback Engineer completing on the ow
     // Validation keeps the execution owner on the active workflow while a repair agent
     // works, so an owner check alone rejects the completion the loop is waiting for and
     // the repair round can never finish.
-    const events = /** @type {any[]} */ ([]);
+    const events: ObservedCompletionEvent[] = [];
     const hostedSession = new HostedSession({ id: "task-completed-repair-agent", cwd: TASK_PROJECT_ROOT });
-    hostedSession.setEventSink({ emit: (/** @type {any} */ event) => events.push(event) });
+    hostedSession.setEventSink({ emit: (event: ObservedCompletionEvent) => events.push(event) });
     hostedSession.setActiveExecutionWorkflow({
         planName: "p",
         triageMeta: { classification: "PLANNED_CHANGE" },
@@ -718,7 +762,7 @@ test("task_completed accepts the Reviewer-Feedback Engineer completing on the ow
         agentName: "reviewer-feedback-engineer",
     });
 
-    const result = await /** @type {any} */ (tool.execute)("call", { message: "- Repaired the finding." });
+    const result = await (tool.execute as CompletionTestExecute)("call", { message: "- Repaired the finding." });
 
     assertEquals(result.details.outcome, "task_completed");
     assertEquals(
@@ -739,14 +783,14 @@ test("an engineer-owned Plan is completed by Plan Engineer, not by the Quick Fix
     });
 
     const quickFixEngineer = createTaskCompletedTool({ hostedSession, agentName: "engineer" });
-    const rejected = await /** @type {any} */ (quickFixEngineer.execute)("call", { message: "- Done." });
+    const rejected = await (quickFixEngineer.execute as CompletionTestExecute)("call", { message: "- Done." });
 
     assertEquals(rejected.details, { outcome: "rejected", reason: "wrong_execution_owner" });
     assertStringIncludes(rejected.content[0].text, "active workflow owner is plan-engineer");
     assertEquals(hostedSession.consumePendingTaskCompletion(null), null);
 
     const planEngineer = createTaskCompletedTool({ hostedSession, agentName: "plan-engineer" });
-    const accepted = await /** @type {any} */ (planEngineer.execute)("call", { message: "- Done." });
+    const accepted = await (planEngineer.execute as CompletionTestExecute)("call", { message: "- Done." });
 
     assertEquals(accepted.details, { outcome: "task_completed", message: "- Done." });
     assertEquals(hostedSession.consumePendingTaskCompletion(null)?.agentName, "plan-engineer");
@@ -761,13 +805,13 @@ test("a QUICK_FIX is completed by the Quick Fix Engineer, not by Plan Engineer",
     });
 
     const planEngineer = createTaskCompletedTool({ hostedSession, agentName: "plan-engineer" });
-    const rejected = await /** @type {any} */ (planEngineer.execute)("call", { message: "- Done." });
+    const rejected = await (planEngineer.execute as CompletionTestExecute)("call", { message: "- Done." });
 
     assertEquals(rejected.details, { outcome: "rejected", reason: "wrong_execution_owner" });
     assertEquals(hostedSession.consumePendingTaskCompletion(null), null);
 
     const engineer = createTaskCompletedTool({ hostedSession, agentName: "engineer" });
-    const accepted = await /** @type {any} */ (engineer.execute)("call", { message: "- Done." });
+    const accepted = await (engineer.execute as CompletionTestExecute)("call", { message: "- Done." });
 
     assertEquals(accepted.details, { outcome: "task_completed", message: "- Done." });
     assertEquals(hostedSession.consumePendingTaskCompletion(null)?.agentName, "engineer");

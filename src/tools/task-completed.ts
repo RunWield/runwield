@@ -33,9 +33,9 @@ const FRONTEND_ENGINEER_MESSAGE_DESCRIPTION =
     ENGINEER_MESSAGE_DESCRIPTION +
     " Include final URL/route, headed-browser checks, relevant viewports/states, diagnostics, and visible evidence; Pair checkpoint acceptance is not verification evidence.";
 
-type BrowserPreflightOutcome = "succeeded" | "failed" | "externally_blocked";
+export type BrowserPreflightOutcome = "succeeded" | "failed" | "externally_blocked";
 type ActiveExecutionWorkflow = import("../shared/session/hosted-session.js").ActiveExecutionWorkflow;
-type TaskCompletedDetails =
+export type TaskCompletedDetails =
     | {
           outcome: "rejected";
           reason:
