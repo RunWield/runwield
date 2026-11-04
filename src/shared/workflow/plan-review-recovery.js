@@ -3,7 +3,7 @@
  * Adapter-neutral recovery helpers for interrupted Plan Review flows.
  */
 
-import { RuntimeInteractionOutcomes, RuntimeInteractionTypes } from "../session/session-runtime-interactions.js";
+import { RuntimeInteractionOutcomes, RuntimeInteractionTypes } from "../session/session-runtime-interactions.ts";
 
 export const SESSION_COMPLETE_GUIDANCE =
     "This session is complete. To work on something new, make a new session with `/new` or close `wld`.";
@@ -126,7 +126,7 @@ export async function requestRecoverablePlanReview({ requestReview, requestRetry
 
 /**
  * @param {import('../session/hosted-session.js').HostedSession} hostedSession
- * @param {(hostedSession: import('../session/hosted-session.js').HostedSession, request: import('../session/session-runtime-interactions.js').RuntimeInteractionRequest) => Promise<any>} requestInteraction
+ * @param {(hostedSession: import('../session/hosted-session.js').HostedSession, request: import('../session/session-runtime-interactions.ts').RuntimeInteractionRequest) => Promise<any>} requestInteraction
  * @param {{ attempt: number, reason: string, response: any }} details
  * @returns {Promise<any>}
  */

@@ -4,7 +4,7 @@ import {
     type RuntimeInteractionRequest,
     type RuntimeInteractionResponse,
     RuntimeInteractionTypes,
-} from "../shared/session/session-runtime-interactions.js";
+} from "../shared/session/session-runtime-interactions.ts";
 
 function displayLabel(label: string) {
     return label.replace(/\s*\(recommended\)$/i, "");

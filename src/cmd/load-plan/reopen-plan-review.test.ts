@@ -7,7 +7,7 @@ import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
 import { ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.js";
-import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";
+import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
 import type { SequenceReviewDocument } from "../../shared/workflow/sequence-review.ts";
 
 test("an idle Session reopens the complete saved Sequence and saves approval without a model turn", async () => {

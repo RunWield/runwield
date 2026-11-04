@@ -46,7 +46,7 @@ import {
     requestHostedSessionInteraction,
     RuntimeInteractionOutcomes,
     RuntimeInteractionTypes,
-} from "../shared/session/session-runtime-interactions.js";
+} from "../shared/session/session-runtime-interactions.ts";
 import {
     appendSessionCompleteGuidance,
     requestPlanReviewRetryConfirmation,

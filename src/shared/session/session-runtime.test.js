@@ -36,7 +36,7 @@ import { SessionHost } from "./session-host.ts";
 import { captureTranscriptEvidence } from "./session-transcript-projection.js";
 import { switchActiveAgent } from "./agent-switching.ts";
 import { RuntimeEventTypes } from "./session-runtime-events.js";
-import { RuntimeInteractionTypes } from "./session-runtime-interactions.js";
+import { RuntimeInteractionTypes } from "./session-runtime-interactions.ts";
 import { createSessionRuntime, SessionRuntime, SessionTurnInProgressError } from "./session-runtime.ts";
 import { getRootSessionRebuildOptions } from "./session.js";
 import { createRootSessionManager, getRunWieldSessionDir, resolveCreatedRootSessionPath } from "./root-session.js";

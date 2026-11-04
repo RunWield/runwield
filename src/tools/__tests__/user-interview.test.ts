@@ -6,7 +6,7 @@ import { createUserInterviewTool, type InterviewResultDetails } from "../user-in
 import { HostedSession } from "../../shared/session/hosted-session.js";
 import type { AgentToolResult, ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import type { Static } from "typebox";
-import type { RuntimeInteractionOption } from "../../shared/session/session-runtime-interactions.js";
+import type { RuntimeInteractionOption } from "../../shared/session/session-runtime-interactions.ts";
 
 type InterviewTool = ReturnType<typeof createUserInterviewTool>;
 type InterviewParameters = Static<InterviewTool["parameters"]>;

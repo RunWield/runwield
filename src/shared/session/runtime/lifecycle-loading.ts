@@ -9,7 +9,7 @@ import {
 } from ".././root-session.js";
 import { createSessionRuntimeEvent, RuntimeEventTypes } from ".././session-runtime-events.js";
 import { createReplayEvents as createProjectedReplayEvents } from ".././session-transcript-projection.js";
-import { requestHostedSessionInteraction } from ".././session-runtime-interactions.js";
+import { requestHostedSessionInteraction } from ".././session-runtime-interactions.ts";
 import { sessionDirForRoot } from ".././file-session-storage.ts";
 import { recordSegmentLineageEvidence } from ".././workflow-context-session.js";
 import { isAbsolute } from "node:path";
@@ -384,7 +384,7 @@ export class RuntimeLifecycleLoading {
 
     setInteractionAdapter(
         sessionId: string,
-        adapter: import(".././session-runtime-interactions.js").RuntimeInteractionAdapter | null,
+        adapter: import(".././session-runtime-interactions.ts").RuntimeInteractionAdapter | null,
     ) {
         const session = this.services.sessionHost.getSession(sessionId);
         if (!session) return { ok: false, error: "not_found" };
@@ -395,7 +395,7 @@ export class RuntimeLifecycleLoading {
     answerInteraction(
         sessionId: string,
         interactionId: string,
-        response: import("../session-runtime-interactions.js").RuntimeInteractionResponse,
+        response: import("../session-runtime-interactions.ts").RuntimeInteractionResponse,
     ) {
         const record = this.services.sessionHost.getSession(sessionId)?.getActiveInteractions().get(interactionId);
         if (!record?.answer || !["select", "text", "approval"].includes(record.request?.type || "")) return false;
@@ -409,7 +409,7 @@ export class RuntimeLifecycleLoading {
 
     async requestInteraction(
         sessionId: string,
-        request: import(".././session-runtime-interactions.js").RuntimeInteractionRequest,
+        request: import(".././session-runtime-interactions.ts").RuntimeInteractionRequest,
         signal?: AbortSignal,
     ): Promise<import("./types.ts").RuntimeInteractionResult> {
         const session = this.services.sessionHost.getSession(sessionId);

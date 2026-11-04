@@ -2499,7 +2499,7 @@ async function runComposedTuiScenario(scenario, options) {
                     events.push("terminal:autocomplete:/he");
                 } else if (typed.type === "runtimeInteraction") {
                     const request =
-                        /** @type {import('../../../shared/session/session-runtime-interactions.js').RuntimeInteractionRequest} */ (
+                        /** @type {import('../../../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest} */ (
                             typed.request || {}
                         );
                     activeScriptedInteractionType =

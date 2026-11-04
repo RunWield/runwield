@@ -164,7 +164,7 @@ Forbidden edges are as important as the shown edges:
 ## Public Runtime boundary
 
 The public boundary lives in `src/shared/session/session-runtime.ts`, `src/shared/session/session-runtime-events.js`,
-and `src/shared/session/session-runtime-interactions.js`.
+and `src/shared/session/session-runtime-interactions.ts`.
 
 | Surface                 | Consumer-visible contract                                                                      |
 | ----------------------- | ---------------------------------------------------------------------------------------------- |
@@ -1090,7 +1090,7 @@ The highest-value cross-boundary paths for later confidence analysis are visible
 | Per-session state                         | `src/shared/session/hosted-session.js`                                        |
 | Session registry                          | `src/shared/session/session-host.ts`                                          |
 | Runtime event contract                    | `src/shared/session/session-runtime-events.js`                                |
-| Interaction contract                      | `src/shared/session/session-runtime-interactions.js`                          |
+| Interaction contract                      | `src/shared/session/session-runtime-interactions.ts`                          |
 | Pi session construction and prompt bridge | `src/shared/session/session.js`                                               |
 | Agent definition layering                 | `src/shared/session/agents.js`                                                |
 | Agent switching                           | `src/shared/session/agent-switching.ts`                                       |

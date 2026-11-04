@@ -10,12 +10,12 @@ import type { HostedSession } from "../shared/session/hosted-session.js";
 import type {
     RuntimeInteractionRequest,
     RuntimeInteractionResponse,
-} from "../shared/session/session-runtime-interactions.js";
+} from "../shared/session/session-runtime-interactions.ts";
 import {
     requestHostedSessionInteraction,
     RuntimeInteractionOutcomes,
     RuntimeInteractionTypes,
-} from "../shared/session/session-runtime-interactions.js";
+} from "../shared/session/session-runtime-interactions.ts";
 
 const OTHER_VALUE = "other";
 const RECOMMENDED_SUFFIX_PATTERN = /\s*\(recommended\)\s*$/i;

@@ -18,7 +18,7 @@ import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts"
 import { runValidationPhase } from "./validation.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 import { findWorkRecordById, generateWorkRecordForSource, previewWorkRecordBackfill } from "../work-records/index.ts";
-import type { RuntimeInteractionRequest } from "../session/session-runtime-interactions.js";
+import type { RuntimeInteractionRequest } from "../session/session-runtime-interactions.ts";
 import type { IsolatedAgentSessionOptions } from "./validation-session-adapter.ts";
 
 const FIXTURE = defineCommittedGitFixture({

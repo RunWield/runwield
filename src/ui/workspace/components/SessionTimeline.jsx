@@ -645,7 +645,7 @@ export function sessionInteractionChoiceResponse(requestType, request, choice) {
     const choiceValue = text(choiceRecord.value || choiceLabel);
     if (requestType === RuntimeInteractionTypes.APPROVAL) {
         const accepted = isApprovalAcceptedValue(
-            /** @type {import("../../../shared/session/session-runtime-interactions.js").RuntimeInteractionRequest} */
+            /** @type {import("../../../shared/session/session-runtime-interactions.ts").RuntimeInteractionRequest} */
             (request),
             choiceValue,
         );

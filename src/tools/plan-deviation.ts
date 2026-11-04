@@ -15,7 +15,7 @@ import {
     RuntimeInteractionOutcomes,
     RuntimeInteractionTypes,
     supportsHostedSessionInteraction,
-} from "../shared/session/session-runtime-interactions.js";
+} from "../shared/session/session-runtime-interactions.ts";
 
 const PARAMETERS = Type.Object(
     {

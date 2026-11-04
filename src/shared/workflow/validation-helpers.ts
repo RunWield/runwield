@@ -36,7 +36,7 @@ import {
     requestHostedSessionInteraction,
     RuntimeInteractionOutcomes,
     RuntimeInteractionTypes,
-} from "../session/session-runtime-interactions.js";
+} from "../session/session-runtime-interactions.ts";
 
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { recordWorkflowMetric } from "./metrics.js";

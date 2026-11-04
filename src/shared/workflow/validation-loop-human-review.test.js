@@ -978,7 +978,7 @@ test("an unconfigured Plan offers human review and cancellation pauses before de
         executionCwd: projectRoot,
         nonGitInPlace: true,
     });
-    /** @type {import("../session/session-runtime-interactions.js").RuntimeInteractionRequest[]} */
+    /** @type {import("../session/session-runtime-interactions.ts").RuntimeInteractionRequest[]} */
     const requests = [];
     setInteraction(hostedSession, (request) => {
         requests.push(request);

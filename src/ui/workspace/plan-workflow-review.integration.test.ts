@@ -1,5 +1,5 @@
 import type { FileSessionGeneration } from "../../shared/session/file-session-store-types.ts";
-import type { RuntimeInteractionRequest } from "../../shared/session/session-runtime-interactions.js";
+import type { RuntimeInteractionRequest } from "../../shared/session/session-runtime-interactions.ts";
 import { readFile as fsReadFile, rm as fsRm, stat as fsStat } from "node:fs/promises";
 import { test } from "node:test";
 import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
