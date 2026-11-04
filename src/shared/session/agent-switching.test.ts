@@ -12,7 +12,24 @@ import { __getRootSessionMetadataForTests } from "./session.js";
 import { HostedSession } from "./hosted-session.js";
 import { RuntimeEventTypes } from "./session-runtime-events.js";
 import { createReplayEvents } from "./session-transcript-projection.js";
-/** @typedef {{ type: string, agentName?: string, rootHandoff?: boolean }} AgentNoticeEvent */
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import type { TranscriptContext } from "@earendil-works/pi-ai";
+import type { ActiveExecutionWorkflow } from "./hosted-session.js";
+import type { RuntimeAgentChangedEvent, SessionRuntimeEvent } from "./session-runtime-events.js";
+
+interface TranscriptContentBlock {
+    type: string;
+    text?: string;
+}
+interface TranscriptMessage {
+    content?: TranscriptContentBlock[];
+}
+interface TranscriptEntryView {
+    message?: TranscriptMessage;
+}
+interface SwitchingSettings {
+    activeModelPreset: string;
+}
 import {
     BACKEND_CONTINUATION_REQUEST,
     failRequestDispatch,
@@ -20,15 +37,12 @@ import {
     readRequestAttemptEntries,
 } from "./request-dispatch.ts";
 
-/**
- * @param {string} projectRoot
- */
-function makeSession(projectRoot) {
+function makeSession(projectRoot: string) {
     const sessionManager = SessionManager.inMemory(projectRoot);
     const hostedSession = new HostedSession({
         id: `root-switch-${crypto.randomUUID()}`,
         cwd: projectRoot,
-        sessionManager: /** @type {any} */ (sessionManager),
+        sessionManager,
     });
     return { hostedSession, sessionManager };
 }
@@ -40,8 +54,7 @@ test("Agent switches replace provider system instructions while retaining conver
             const initial = makeSession(projectRoot);
             const sessionManager = initial.sessionManager;
             let hostedSession = initial.hostedSession;
-            /** @type {import('@earendil-works/pi-ai').TranscriptContext[]} */
-            const requests = [];
+            const requests: TranscriptContext[] = [];
             try {
                 for (const agentName of ["router", "ideator", "engineer", "engineer", "engineer", "router"]) {
                     if (requests.length === 4) {
@@ -117,7 +130,7 @@ test("switchActiveAgent rebuilds same Agent roots when cwd changes", async () =>
         const secondRoot = hostedSession.getRootAgentSession();
         assert(secondRoot && secondRoot !== firstRoot);
         assertEquals(hostedSession.cwd, nextRoot);
-        assertEquals(__getRootSessionMetadataForTests(/** @type {any} */ (secondRoot))?.cwd, nextRoot);
+        assertEquals(__getRootSessionMetadataForTests(secondRoot as AgentSession)?.cwd, nextRoot);
         hostedSession.dispose();
     });
 });
@@ -125,9 +138,8 @@ test("switchActiveAgent rebuilds same Agent roots when cwd changes", async () =>
 test("switchActiveAgent installs a real matching Agent root and handler", async () => {
     await withRuntimeCommandFixture("agent-switch-install-", async ({ projectRoot }) => {
         const { hostedSession, sessionManager } = makeSession(projectRoot);
-        /** @type {Array<{ type?: string, agentName?: string }>} */
-        const events = [];
-        hostedSession.setEventSink((/** @type {{ type?: string, agentName?: string }} */ event) => events.push(event));
+        const events: SessionRuntimeEvent[] = [];
+        hostedSession.setEventSink((event: SessionRuntimeEvent) => events.push(event));
 
         const result = await switchActiveAgent(hostedSession, {
             agentName: "guide",
@@ -136,17 +148,15 @@ test("switchActiveAgent installs a real matching Agent root and handler", async 
 
         assertEquals(result, { ok: true, agentName: "guide", changed: true, model: undefined });
         assertEquals(hostedSession.getRootAgentName(), "guide");
-        assertEquals(
-            typeof (/** @type {{ prompt?: Function } | null} */ (hostedSession.getRootAgentSession())?.prompt),
-            "function",
-        );
+        assertEquals(typeof (hostedSession.getRootAgentSession() as AgentSession | null)?.prompt, "function");
         assertEquals(typeof hostedSession.getActiveOnMessage(), "function");
         const agentEvents = events.filter(
-            (event) => event.type === RuntimeEventTypes.AGENT_CHANGED && event.agentName === "guide",
+            (event): event is RuntimeAgentChangedEvent =>
+                event.type === RuntimeEventTypes.AGENT_CHANGED && event.agentName === "guide",
         );
         assertEquals(agentEvents.length, 1);
-        assertEquals(/** @type {any} */ (agentEvents[0]).displayName, "Guide");
-        assertEquals(/** @type {any} */ (agentEvents[0]).rootHandoff, undefined);
+        assertEquals(agentEvents[0].displayName, "Guide");
+        assertEquals(agentEvents[0].rootHandoff, undefined);
         hostedSession.dispose();
     });
 });
@@ -155,9 +165,8 @@ test("switchActiveAgent reports a user switch from the unpersisted prompt-ready 
     await withRuntimeCommandFixture("agent-switch-prompt-ready-", async ({ projectRoot }) => {
         const { hostedSession, sessionManager } = makeSession(projectRoot);
         hostedSession.resetAgentInfoStack("Guide", "", "", "guide");
-        /** @type {AgentNoticeEvent[]} */
-        const events = [];
-        hostedSession.setEventSink((/** @type {AgentNoticeEvent} */ event) => events.push(event));
+        const events: SessionRuntimeEvent[] = [];
+        hostedSession.setEventSink((event: SessionRuntimeEvent) => events.push(event));
         await switchActiveAgent(hostedSession, { agentName: "planner", sessionManager, releaseActiveWorkflow: true });
         const changed = events.filter((event) => event.type === RuntimeEventTypes.AGENT_CHANGED);
         assertEquals(
@@ -171,11 +180,8 @@ test("switchActiveAgent reports a user switch from the unpersisted prompt-ready 
 test("switchActiveAgent marks only successful different root switches as handoffs", async () => {
     await withRuntimeCommandFixture("agent-switch-handoff-", async ({ projectRoot }) => {
         const { hostedSession, sessionManager } = makeSession(projectRoot);
-        /** @type {Array<Record<string, unknown>>} */
-        const events = [];
-        hostedSession.setEventSink((/** @type {unknown} */ event) =>
-            events.push(/** @type {Record<string, unknown>} */ (event)),
-        );
+        const events: SessionRuntimeEvent[] = [];
+        hostedSession.setEventSink((event: SessionRuntimeEvent) => events.push(event));
 
         await switchActiveAgent(hostedSession, { agentName: "guide", sessionManager });
         await switchActiveAgent(hostedSession, { agentName: "planner", sessionManager });
@@ -198,11 +204,8 @@ test("switchActiveAgent marks a presented Agent change while replay keeps the fi
     await withRuntimeCommandFixture("agent-switch-presented-baseline-", async ({ projectRoot }) => {
         const { hostedSession, sessionManager } = makeSession(projectRoot);
         hostedSession.pushAgentInfo("Guide", "", "", "guide");
-        /** @type {Array<Record<string, unknown>>} */
-        const events = [];
-        hostedSession.setEventSink((/** @type {unknown} */ event) =>
-            events.push(/** @type {Record<string, unknown>} */ (event)),
-        );
+        const events: SessionRuntimeEvent[] = [];
+        hostedSession.setEventSink((event: SessionRuntimeEvent) => events.push(event));
 
         await switchActiveAgent(hostedSession, { agentName: "planner", sessionManager });
 
@@ -356,9 +359,7 @@ test("switchActiveAgent resolves the active preset model when Router dispatches 
             const routerRoot = hostedSession.getRootAgentSession();
             assert(routerRoot);
             assertEquals(
-                __getRootSessionMetadataForTests(
-                    /** @type {import("@earendil-works/pi-coding-agent").AgentSession} */ (routerRoot),
-                )?.model,
+                __getRootSessionMetadataForTests(routerRoot as AgentSession)?.model,
                 "runtime-command-fixture/router-model",
             );
 
@@ -366,9 +367,7 @@ test("switchActiveAgent resolves the active preset model when Router dispatches 
             const guideRoot = hostedSession.getRootAgentSession();
             assert(guideRoot);
             assertEquals(
-                __getRootSessionMetadataForTests(
-                    /** @type {import("@earendil-works/pi-coding-agent").AgentSession} */ (guideRoot),
-                )?.model,
+                __getRootSessionMetadataForTests(guideRoot as AgentSession)?.model,
                 "runtime-command-fixture/guide-model",
             );
 
@@ -378,9 +377,7 @@ test("switchActiveAgent resolves the active preset model when Router dispatches 
             const engineerRoot = hostedSession.getRootAgentSession();
             assert(engineerRoot);
             assertEquals(
-                __getRootSessionMetadataForTests(
-                    /** @type {import("@earendil-works/pi-coding-agent").AgentSession} */ (engineerRoot),
-                )?.model,
+                __getRootSessionMetadataForTests(engineerRoot as AgentSession)?.model,
                 "runtime-command-fixture/engineer-model",
             );
             const persistedModelChanges = sessionManager.getBranch().filter((entry) => entry.type === "model_change");
@@ -395,7 +392,7 @@ test("switchActiveAgent resolves the active preset model when Router dispatches 
                 },
             );
 
-            const alternateSettings = JSON.parse(await fsReadFile(settingsPath, "utf8"));
+            const alternateSettings: SwitchingSettings = JSON.parse(await fsReadFile(settingsPath, "utf8"));
             alternateSettings.activeModelPreset = "alternate-agents";
             await fsWriteFile(settingsPath, JSON.stringify(alternateSettings));
             await switchActiveAgent(hostedSession, { agentName: "engineer", sessionManager });
@@ -404,9 +401,7 @@ test("switchActiveAgent resolves the active preset model when Router dispatches 
             assert(alternateEngineerRoot);
             assertEquals(alternateEngineerRoot === engineerRoot, false);
             assertEquals(
-                __getRootSessionMetadataForTests(
-                    /** @type {import("@earendil-works/pi-coding-agent").AgentSession} */ (alternateEngineerRoot),
-                )?.model,
+                __getRootSessionMetadataForTests(alternateEngineerRoot as AgentSession)?.model,
                 "runtime-command-fixture/engineer-alt-model",
             );
             hostedSession.dispose();
@@ -477,8 +472,7 @@ test("provider switch continues a failed request without changing execution owne
     await withRuntimeCommandFixture("agent-switch-backend-continuation-", async ({ projectRoot, setModelResponse }) => {
         setModelResponse("Continuation completed.");
         const { hostedSession, sessionManager } = makeSession(projectRoot);
-        /** @type {import('./hosted-session.js').ActiveExecutionWorkflow} */
-        const workflow = {
+        const workflow: ActiveExecutionWorkflow = {
             planName: "stable-plan",
             triageMeta: { classification: "FEATURE", worktreeId: "wt-stable" },
             executionAgent: "engineer",
@@ -523,11 +517,7 @@ test("provider switch continues a failed request without changing execution owne
         const transcript = sessionManager
             .getBranch()
             .filter((entry) => entry.type === "message")
-            .flatMap(
-                (entry) =>
-                    /** @type {{ message?: { content?: Array<{ type: string, text?: string }> } }} */ (entry).message
-                        ?.content || [],
-            )
+            .flatMap((entry) => (entry as TranscriptEntryView).message?.content || [])
             .filter((block) => block.type === "text")
             .map((block) => block.text || "")
             .join("\n");
@@ -546,9 +536,8 @@ test("provider switch continues a failed request without changing execution owne
 test("switchActiveAgent releases planned workflow only when user authorized", async () => {
     await withRuntimeCommandFixture("agent-switch-release-planned-", async ({ projectRoot }) => {
         const { hostedSession, sessionManager } = makeSession(projectRoot);
-        /** @type {Array<{ type?: string, message?: string }>} */
-        const events = [];
-        hostedSession.setEventSink((/** @type {{ type?: string, message?: string }} */ event) => events.push(event));
+        const events: SessionRuntimeEvent[] = [];
+        hostedSession.setEventSink((event: SessionRuntimeEvent) => events.push(event));
         await switchActiveAgent(hostedSession, { agentName: "engineer", sessionManager });
         hostedSession.setWorkflowPlanName("planned-release");
         hostedSession.setActiveExecutionWorkflow({
@@ -580,9 +569,8 @@ test("switchActiveAgent releases planned workflow only when user authorized", as
 test("switchActiveAgent releases QUICK_FIX workflow with no-plan notice", async () => {
     await withRuntimeCommandFixture("agent-switch-release-quick-fix-", async ({ projectRoot }) => {
         const { hostedSession, sessionManager } = makeSession(projectRoot);
-        /** @type {Array<{ type?: string, message?: string }>} */
-        const events = [];
-        hostedSession.setEventSink((/** @type {{ type?: string, message?: string }} */ event) => events.push(event));
+        const events: SessionRuntimeEvent[] = [];
+        hostedSession.setEventSink((event: SessionRuntimeEvent) => events.push(event));
         await switchActiveAgent(hostedSession, { agentName: "engineer", sessionManager });
         hostedSession.setActiveExecutionWorkflow({
             planName: "quick-fix",

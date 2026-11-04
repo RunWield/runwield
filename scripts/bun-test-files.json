@@ -407,7 +407,7 @@
     "src/shared/session/active-agent-session.test.ts",
     "src/shared/session/agent-contracts.test.ts",
     "src/shared/session/agent-handler.test.ts",
-    "src/shared/session/agent-switching.test.js",
+    "src/shared/session/agent-switching.test.ts",
     "src/shared/session/agents-discovery.test.ts",
     "src/shared/session/agents-shared-practice.test.ts",
     "src/shared/session/agy-cli-execution.test.ts",
