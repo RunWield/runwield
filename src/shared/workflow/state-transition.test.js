@@ -13,7 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { ok as assert } from "node:assert/strict";
 import { dirname, join } from "node:path";
-import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "../../constants.js";
+import { getRunWieldRuntimeDir } from "../../constants.js";
 import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
 import {
     closeTransitionRecordByAttestation,
@@ -31,7 +31,7 @@ import {
 import { recordPlanEvent } from "./plan-lifecycle.js";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { enterProjectRuntime } from "../project-runtime-layout.ts";
+import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 
 const linkedCheckoutFixture = defineCommittedGitFixture({ ".gitignore": ".wld/\n", "app.ts": "// app\n" });
 
@@ -41,22 +41,12 @@ async function makeProject() {
 
 /** @param {string} projectRoot @param {string} transitionId */
 function selectedJournalPath(projectRoot, transitionId) {
-    return join(
-        getRunWieldRuntimeDir(fsRealpathSync(projectRoot)),
-        PROJECT_INTERNAL_RUNTIME_DIR_NAME,
-        "plan-transitions",
-        `${transitionId}.json`,
-    );
+    return join(resolveProjectRuntimeLayout(projectRoot).selected.transitionJournalsDir, `${transitionId}.json`);
 }
 
 /** @param {string} projectRoot @param {string} fileName */
 function selectedLockPath(projectRoot, fileName) {
-    return join(
-        getRunWieldRuntimeDir(fsRealpathSync(projectRoot)),
-        PROJECT_INTERNAL_RUNTIME_DIR_NAME,
-        "plan-locks",
-        fileName,
-    );
+    return join(resolveProjectRuntimeLayout(projectRoot).selected.planLocksDir, fileName);
 }
 
 /** @param {string} path */
@@ -1320,9 +1310,7 @@ test("an unprovable record can be closed on user attestation without destroying 
         assertEquals(await listTransitionRecoveryRecords(cwd), [], "the record no longer blocks the Plan");
         // ...but not destroyed. An attestation can be wrong, so the evidence survives.
         const archivePath = join(
-            getRunWieldRuntimeDir(fsRealpathSync(cwd)),
-            PROJECT_INTERNAL_RUNTIME_DIR_NAME,
-            "plan-transitions",
+            resolveProjectRuntimeLayout(cwd).selected.transitionJournalsDir,
             "attested",
             "stuck-1.json",
         );

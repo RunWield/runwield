@@ -1,3 +1,4 @@
+import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { test } from "node:test";
 import process from "node:process";
 import { deepEqual, equal, notEqual, ok, match } from "node:assert/strict";
@@ -320,3 +321,56 @@ test(
         }
     },
 );
+
+interface IdentityGitTraceEvent {
+    event: string;
+    argv?: string[];
+}
+
+test("identity config parsing is reused only while its exact file contents remain unchanged", async () => {
+    await withProcessGlobalTestLock(async () => {
+        const f = await environment();
+        const previousTrace = process.env.GIT_TRACE2_EVENT;
+        try {
+            admitted(await admitProjectIdentity(f.root, { context: f.context }));
+            const trace = join(f.home, "identity-git-trace.jsonl");
+            await writeFile(trace, "");
+            process.env.GIT_TRACE2_EVENT = trace;
+            const configQueries = async () => {
+                const events: IdentityGitTraceEvent[] = (await readFile(trace, "utf8"))
+                    .split("\n")
+                    .filter(Boolean)
+                    .map((line) => JSON.parse(line));
+                return events.filter((event) => event.event === "start" && event.argv?.includes("--get-regexp")).length;
+            };
+            equal(inspectProjectIdentity(f.root, { context: f.context }).kind, "existing");
+            const first = await configQueries();
+            for (let index = 0; index < 3; index++)
+                equal(inspectProjectIdentity(f.root, { context: f.context }).kind, "existing");
+            equal(await configQueries(), first, "unchanged config must not launch duplicate Git parsers");
+            const movedHome = join(f.home, "another-account");
+            const changedContext: ProjectLaunchContext = {
+                executionAccountHome: movedHome,
+                personalOwner: { kind: "execution-account", identity: movedHome },
+            };
+            const currentOwner = inspectProjectIdentity(f.root, { context: changedContext });
+            ok(currentOwner.kind === "existing");
+            equal(currentOwner.identity.executionAccountHome, movedHome);
+            deepEqual(currentOwner.identity.personalOwner, changedContext.personalOwner);
+            const managedOwner: ProjectLaunchContext = {
+                executionAccountHome: f.home,
+                personalOwner: { kind: "managed-remote", identity: "another-owner" },
+            };
+            const managed = inspectProjectIdentity(f.root, { context: managedOwner });
+            ok(managed.kind === "existing");
+            deepEqual(managed.identity.personalOwner, managedOwner.personalOwner);
+            await git(f.root, ["config", "--add", "runwield.projectId", randomUUID()]);
+            equal(inspectProjectIdentity(f.root, { context: f.context }).kind, "invalid");
+            ok((await configQueries()) > first, "changed identity must be re-parsed and rejected");
+        } finally {
+            if (previousTrace === undefined) delete process.env.GIT_TRACE2_EVENT;
+            else process.env.GIT_TRACE2_EVENT = previousTrace;
+            await f.close();
+        }
+    });
+});

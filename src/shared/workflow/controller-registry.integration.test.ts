@@ -1,3 +1,4 @@
+import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { getCwd } from "../../constants.js";
@@ -232,7 +233,10 @@ test("execution Plan and controller survive stale primary metadata, a fresh read
         assertEquals((await loadPlanActionEvidence(root, "controller-demo")).kind, "success");
         const controllerPath = controllerRecordPath(root, { planName: "demo", planId: "controller-demo" });
         assertEquals(controllerPath, controllerRecordPath(tree, { planName: "demo", planId: "controller-demo" }));
-        assertStringIncludes(controllerPath, join(".wld", "internal", "controller", "plans", "controller-demo.json"));
+        assertEquals(
+            controllerPath,
+            join(resolveProjectRuntimeLayout(root).primary.controllerPlansDir, "controller-demo.json"),
+        );
         assertEquals((await readControllerRecord(tree, { planName: "demo", planId: "controller-demo" }))?.revision, 2);
         await assertRejects(
             () => fsLstat(join(root, ".wld", "controller", "plans", "controller-demo.json")),

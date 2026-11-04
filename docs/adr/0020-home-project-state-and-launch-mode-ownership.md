@@ -6,8 +6,8 @@ status: proposed
 
 ## Context and Constraints
 
-Live Plans currently follow checkout/branch ownership while controllers, execution registries, locks, secrets, and
-recovery files live under project `.wld/internal/`. Sessions already live in home storage. This splits a Project's
+Live Plans currently follow checkout/branch ownership. Ordinary runtime and Sessions live in home storage;
+explicit managed-remote runtime retains its admitted checkout layout until its transport cutover. This splits a Project's
 workflow across paths that change as work moves between planning, execution, publication, and recovery.
 
 The owner confirmed these target constraints on 2026-11-01:
@@ -30,7 +30,8 @@ The stable-identity slice now uses `runwield.projectId` and `runwield.repository
 configuration, a distinct administrative-directory checkout ID, and `.wld-project.json` before Git adoption. Local
 identity and verified Session/Attached locator records live under `~/.wld/projects/<projectId>/project.wld.json`. Workspace registration remains optional
 and separate. Explicit managed-remote owner context does not introduce remote-store persistence. This narrow delivery
-does not accept or implement the runtime and document relocation decisions below. Session/Connect continuation now
+does not implement document relocation. Ordinary runtime relocation is now the accepted decision in ADR-017;
+managed transport and the Plan-package decisions below remain proposed. Session/Connect continuation now
 resolves verified original stores after moves and accepted clone links, without relocating bundles or locks, rewriting
 historical evidence, transferring execution attempts, or changing managed-remote ownership. ADR-015 owns that accepted
 Session lookup decision; the broader home-state proposal remains proposed.

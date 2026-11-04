@@ -6,7 +6,7 @@ import { getRunWieldRuntimeDir } from "../../constants.js";
 import { getPlanRevisionForText, loadPlan } from "../../plan-store.js";
 import { resolvePlanWithPrimaryRecovery } from "../../cmd/load-plan/primary-plan-recovery.ts";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
-import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { executePlanAction, loadPlanActionEvidence } from "./plan-actions.ts";
 
 const planId = "83468a46-d34e-4e3d-af27-c4924dc4ab88";
@@ -99,10 +99,12 @@ for (const argument of ["demo", planId]) {
 test("blocked runtime preparation returns an action result without changing authority evidence", async () => {
     const root = await fixture.checkout();
     try {
-        const directory = resolveProjectRuntimeLayout(root).primary.deliveryEvidenceRoot;
+        const layout = await enterProjectRuntime(root);
+        const directory = layout.primary.deliveryEvidenceRoot;
         await mkdir(directory, { recursive: true });
         const receipt = join(directory, "unadopted.json");
         await writeFile(receipt, "Retain existing evidence\n");
+        await writeFile(layout.primary.layoutMarkerPath, "{invalid");
         const result = await executePlanAction(root, {
             planId,
             expectedRevision: await getPlanRevisionForText(markdown),

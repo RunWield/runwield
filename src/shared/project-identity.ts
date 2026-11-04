@@ -143,8 +143,8 @@ function regularFile(path: string): boolean {
         throw error;
     }
 }
-function git(cwd: string, args: string[], absent = false): string | null {
-    const result = spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8", timeout: 10000 });
+function git(cwd: string, args: string[], absent = false, input?: Uint8Array): string | null {
+    const result = spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8", timeout: 10000, input });
     if (result.error) throw result.error;
     if (result.status === 0) return result.stdout.trim();
     if (absent && result.status === 1) return null;
@@ -155,20 +155,28 @@ interface GitIdentityConfig {
     repositoryId: string | null;
     remote: string | null;
 }
+// Cache only Git's parsing of exact bytes. Every access still checks the current file,
+// checkout binding, launch owner, and home record; no identity decision is retained.
+const parsedIdentityConfigs = new Map<string, GitIdentityConfig>();
 function identityConfig(cwd: string, file: string): GitIdentityConfig {
     if (!regularFile(file)) throw new Error(`Missing Project Git config: ${file}`);
+    const content = readFileSync(file);
+    const key = `${process.env.PATH}\0${content.toString("base64")}`;
+    const cached = parsedIdentityConfigs.get(key);
+    if (cached) return cached;
     const output = git(
         cwd,
         [
             "config",
             "--file",
-            file,
+            "-",
             "--no-includes",
             "--null",
             "--get-regexp",
             "^(runwield\\.(projectid|repositoryid)|remote\\.origin\\.url)$",
         ],
         true,
+        content,
     );
     const values = new Map<string, string[]>();
     for (const entry of output?.split("\0") ?? []) {
@@ -185,11 +193,14 @@ function identityConfig(cwd: string, file: string): GitIdentityConfig {
         if (matches.length > 1 || matches[0]?.includes("\n"))
             throw new Error(`Multiple values for identity key ${key} in ${file}`);
     }
-    return {
+    const parsed = {
         projectId: values.get("runwield.projectid")?.[0] ?? null,
         repositoryId: values.get("runwield.repositoryid")?.[0] ?? null,
         remote: values.get("remote.origin.url")?.at(-1) ?? null,
     };
+    if (parsedIdentityConfigs.size >= 128) parsedIdentityConfigs.clear();
+    parsedIdentityConfigs.set(key, parsed);
+    return parsed;
 }
 function markerAt(path: string): IdentityMarker | null {
     if (!regularFile(path)) return null;
@@ -207,14 +218,31 @@ function markerAt(path: string): IdentityMarker | null {
     requireId(marker.checkoutId, `checkout ID in ${path}`);
     return marker;
 }
+function hasGitDirectory(path: string): boolean {
+    if (process.env.GIT_DIR || process.env.GIT_COMMON_DIR || process.env.GIT_WORK_TREE) return true;
+    for (let ancestor = path; ; ancestor = dirname(ancestor)) {
+        for (const name of [".git", "HEAD"]) {
+            try {
+                // HEAD also keeps bare repositories on Git's authoritative probe path.
+                lstatSync(join(ancestor, name));
+                return true;
+            } catch (error) {
+                if (!(error instanceof Error && missing(error))) throw error;
+            }
+        }
+        if (dirname(ancestor) === ancestor) return false;
+    }
+}
 function evidence(path: string): IdentityEvidence {
     const cwd = realpathSync(path);
     if (!lstatSync(cwd).isDirectory()) throw new Error("Project root must be a directory");
     // A non-repository exit is distinguished from other Git failures by filesystem evidence.
-    const probe = spawnSync("git", ["-C", cwd, "rev-parse", "--show-toplevel", "--git-common-dir", "--git-dir"], {
-        encoding: "utf8",
-        timeout: 10000,
-    });
+    const probe = hasGitDirectory(cwd)
+        ? spawnSync("git", ["-C", cwd, "rev-parse", "--show-toplevel", "--git-common-dir", "--git-dir"], {
+              encoding: "utf8",
+              timeout: 10000,
+          })
+        : { status: 1, stdout: "", stderr: "not a git repository", error: undefined };
     if (probe.error) throw probe.error;
     if (probe.status !== 0 && !probe.stderr.includes("not a git repository"))
         throw new Error(`Cannot inspect Project Git directory: ${probe.stderr}`);

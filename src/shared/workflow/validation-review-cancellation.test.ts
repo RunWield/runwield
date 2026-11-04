@@ -209,6 +209,7 @@ for (const revise of [false, true]) {
         });
         const opened = [Promise.withResolvers<string>(), Promise.withResolvers<string>()];
         const agentStarted = Promise.withResolvers<void>();
+        const revisionCiRequested = Promise.withResolvers<void>();
         const releaseAgent = Promise.withResolvers<void>();
         let rounds = 0;
         let ciRuns = 0;
@@ -243,6 +244,7 @@ for (const revise of [false, true]) {
             localCI: {
                 run: () => {
                     ciRuns++;
+                    revisionCiRequested.resolve();
                     assertEquals(snapshot()?.liveReviewUrl, firstUrl, "CI must retain the review link");
                     return Promise.resolve({ kind: "completed" as const, exitCode: 0, output: "ok" });
                 },
@@ -298,6 +300,7 @@ for (const revise of [false, true]) {
             assertEquals(snapshot()?.liveReviewUrl, firstUrl, "the conversation must retain the reopen URL");
             assertEquals(snapshot()?.liveCodeReview, true);
             releaseAgent.resolve();
+            if (revise) await awaitReviewStep("revision CI requested", revisionCiRequested.promise);
             assertEquals(
                 await awaitReviewStep("review reopened", opened[1]!.promise),
                 firstUrl,

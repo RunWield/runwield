@@ -210,35 +210,43 @@ test("real runtime entry preserves independently pinned runtime and legacy Sessi
                 readableKey.length <= 120
                     ? readableKey
                     : `--${basename(canonicalRoot).slice(0, 40)}-${createHash("sha256").update(canonicalRoot).digest("hex").slice(0, 32)}--`;
-            const internal = join(canonicalRoot, ".wld", "internal");
             const layout = await enterProjectRuntime(root, { context });
+            const binding = inspectProjectIdentity(root, { context });
+            ok(binding.kind === "existing");
+            const { projectId, repositoryId, checkoutId, personalOwner } = binding.identity;
+            const owner = createHash("sha256").update(`${personalOwner.kind}\0${personalOwner.identity}`).digest("hex");
+            const project = join(home, ".wld", "projects", projectId);
+            const internal = join(project, "internal", "legacy", repositoryId, owner);
+            const execution = join(project, "execution", repositoryId, owner);
+            const selected = join(execution, "checkouts", checkoutId);
+            const locks = join(project, "execution-locks", repositoryId, owner);
             deepEqual(layout, {
                 primary: {
                     checkoutRoot: canonicalRoot,
                     internalRoot: internal,
                     layoutMarkerPath: join(internal, "layout.json"),
                     layoutMigrationJournalPath: join(internal, "layout-migration.json"),
-                    layoutMigrationLockPath: join(internal, "layout-migration.lock"),
+                    layoutMigrationLockPath: join(locks, "runtime-adoption.lock"),
                     controllerPlansDir: join(internal, "controller", "plans"),
-                    worktreeRegistryPath: join(internal, "worktrees.json"),
-                    worktreeRegistryLockPath: join(internal, "worktrees.lock"),
-                    worktreeRegistryMigrationIssuesPath: join(internal, "worktree-registry-migration-issues.json"),
-                    publicationStagingRoot: join(internal, "plan-staging"),
-                    deliveryEvidenceRoot: join(internal, "delivery-evidence"),
-                    projectSecretStorePath: join(internal, "collaboration-secrets.json"),
-                    fallbackWorktreesRoot: join(internal, "worktrees"),
-                    debugRoot: join(internal, "debug"),
-                    workRecordIndexDatabasePath: join(internal, "work-records.sqlite3"),
+                    worktreeRegistryPath: join(execution, "worktrees.json"),
+                    worktreeRegistryLockPath: join(locks, "worktrees.lock"),
+                    worktreeRegistryMigrationIssuesPath: join(execution, "worktree-registry-migration-issues.json"),
+                    publicationStagingRoot: join(execution, "plan-staging"),
+                    deliveryEvidenceRoot: join(execution, "delivery-evidence"),
+                    projectSecretStorePath: join(project, "internal", owner, "collaboration-secrets.json"),
+                    fallbackWorktreesRoot: join(execution, "worktrees"),
+                    debugRoot: join(execution, "debug"),
+                    workRecordIndexDatabasePath: join(project, "internal", owner, "work-records.sqlite3"),
                 },
                 selected: {
                     checkoutRoot: canonicalRoot,
-                    internalRoot: internal,
-                    planLocksDir: join(internal, "plan-locks"),
-                    planCatalogLockPath: join(internal, "plan-locks", "catalog.lock"),
-                    transitionJournalsDir: join(internal, "plan-transitions"),
-                    planBackupsDir: join(internal, "plan-backups"),
-                    workRecordSupersessionLockPath: join(internal, "work-record-supersession.lock"),
-                    workRecordSupersessionRecoveryLockPath: join(internal, "work-record-supersession-recovery.lock"),
+                    internalRoot: selected,
+                    planLocksDir: join(selected, "plan-locks"),
+                    planCatalogLockPath: join(selected, "plan-locks", "catalog.lock"),
+                    transitionJournalsDir: join(selected, "plan-transitions"),
+                    planBackupsDir: join(selected, "plan-backups"),
+                    workRecordSupersessionLockPath: join(selected, "work-record-supersession.lock"),
+                    workRecordSupersessionRecoveryLockPath: join(selected, "work-record-supersession-recovery.lock"),
                 },
             });
             equal(getRunWieldSessionDir(root), join(getHomeDir(), ".wld", "sessions", legacyKey));
