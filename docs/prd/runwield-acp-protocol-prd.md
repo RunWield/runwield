@@ -70,7 +70,7 @@ gateway is deferred until a demonstrated product need justifies it.
 ## Architectural References
 
 - [Runtime and adapter boundaries](../adr/010-session-runtime-sibling-adapters-and-acp.md)
-- [Session continuity](../adr/015-file-authoritative-session-bundles.md)
+- [Session continuity](../adr/014-file-authoritative-session-bundles.md)
 - [Protocol coverage and implementation details](../acp-implementation-details.md)
 
 ## Capability Requirements
@@ -196,6 +196,8 @@ Stage 1 proves the reference journey through the shared Session experience. Prot
 - The standard `sessionId` returned by `session/new` remains loadable after the `wld acp` process exits and maps to the
   same saved RunWield Session.
 - `initialize` negotiates the supported protocol version instead of echoing unsupported versions.
+- Session creation and loading reject malformed MCP server configuration with an invalid-parameters error. They do
+  not silently discard requested tools and report success.
 - `usage_update.cost` uses the ACP cost object shape with cumulative USD Session cost. `usage_update.used` and `size`
   come from the Runtime's exact current context usage and effective capacity. If either value is unknown, RunWield does
   not send a context update or substitute a local estimate.
@@ -313,7 +315,7 @@ requirement.
 requires first-party Workspace clients to control a separate `wld` process through ACP plus extensions, with local
 desktop first and network-runtime access later. See
 [Desktop Workspace](runwield-workspace-prd.md#desktop-workspace) and
-[proposed ADR-0021](../adr/0021-electron-workspace-acp-client.md).
+[proposed ADR-020](../adr/020-electron-workspace-acp-client.md).
 
 **Requirement: Carry the full workbench through the runtime contract.** A Workspace client can discover admitted
 Projects and saved Sessions, read bounded history and current observations, converse, configure supported choices,
@@ -485,6 +487,8 @@ models receive the image directly, while text-only models can inspect the persis
   result on success. Listing is not advertised; archive support does not imply `session/list` support.
 - When RunWield advertises a capability, its required protocol behavior passes interoperability checks with more than
   one client before full compliance is claimed.
+- When `session/new` or `session/load` receives a non-array MCP configuration, a stdio definition missing its required
+  environment array, or an unsupported transport, it returns invalid parameters before creating or loading a Session.
 - When an optional capability is unsupported, it is not advertised merely to satisfy a checklist; public coverage
   remains aligned with evidence.
 - When an ACP client sends an image prompt, a vision-capable model receives the image. A text-only model with a
@@ -568,7 +572,7 @@ Discord and other OpenAB-supported chats are already supported. Separate future 
 
 - ACP implementation audit: `docs/acp-implementation-details.md`
 - SessionRuntime architecture decision: `docs/adr/010-session-runtime-sibling-adapters-and-acp.md`
-- File-backed Session continuity: `docs/adr/015-file-authoritative-session-bundles.md`
+- File-backed Session continuity: `docs/adr/014-file-authoritative-session-bundles.md`
 - SessionRuntime and ACP MVP Work Record: `docs/work-records/2026-07-17-sessionruntime-and-acp-v1-stdio-mvp.md`
 - OpenAB: <https://github.com/openabdev/openab>
 - ACP v1 extensibility: <https://agentclientprotocol.com/protocol/v1/extensibility>

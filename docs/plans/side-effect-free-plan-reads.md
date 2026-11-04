@@ -13,7 +13,7 @@ affectedPaths:
     - "src/cmd/plans/"
     - "src/cmd/load-plan/"
     - "src/ui/workspace/server/"
-    - "docs/adr/017-project-runtime-state-under-wld-internal.md"
+    - "docs/adr/016-project-runtime-state-under-wld-internal.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-09-27"

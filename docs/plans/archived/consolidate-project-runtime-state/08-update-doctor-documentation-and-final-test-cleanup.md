@@ -21,9 +21,9 @@ affectedPaths:
     - "docs/plan-lifecycle.md"
     - "docs/collaboration.md"
     - "docs/validation-authority.md"
-    - "docs/adr/005-concurrent-worktree-isolation.md"
-    - "docs/adr/016-proof-bearing-publication-state-machine.md"
-    - "docs/adr/017-project-runtime-state-under-wld-internal.md"
+    - "docs/adr/004-concurrent-worktree-isolation.md"
+    - "docs/adr/015-proof-bearing-publication-state-machine.md"
+    - "docs/adr/016-project-runtime-state-under-wld-internal.md"
     - "docs/domain-language.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
@@ -67,7 +67,7 @@ Owning product capabilities:
 - [Core: Execution, validation, and recovery](../../../prd/runwield-core-prd.md#execution-validation-and-recovery) —
   preserve repair of RunWield-owned bookkeeping, truthful evidence, and recoverable workflows. Doctor is an optional
   diagnostic tool, not a new mandatory user-operated recovery step.
-- [ADR-017: One-way migration](../../../adr/017-project-runtime-state-under-wld-internal.md#one-way-0110-migration) —
+- [ADR-016: One-way migration](../../../adr/016-project-runtime-state-under-wld-internal.md#one-way-0110-migration) —
   accepted upgrade behavior. Add its user-visible safe-adoption and protected-stop scenarios to Core Work protection.
   Link that guidance from [Core: Installation and updates](../../../prd/runwield-core-prd.md#installation-and-updates)
   without duplicating requirements or changing package-manager behavior.
@@ -174,9 +174,9 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   under the new layout.
 - `../../../collaboration.md` — describe project-local and global secret store locations and cleanup/security guidance.
 - `../../../validation-authority.md` — describe validation and publication authority with the new internal paths.
-- `../../../adr/005-concurrent-worktree-isolation.md` and `../../../adr/016-proof-bearing-publication-state-machine.md`
+- `../../../adr/004-concurrent-worktree-isolation.md` and `../../../adr/015-proof-bearing-publication-state-machine.md`
   — retain decisions but name the new canonical locations.
-- `../../../adr/017-project-runtime-state-under-wld-internal.md` — keep the accepted decision aligned with
+- `../../../adr/016-project-runtime-state-under-wld-internal.md` — keep the accepted decision aligned with
   implementation details if needed.
 - `../../../domain-language.md` — reconcile glossary terms with implemented behavior.
 - Tests changed during this Epic — remove any temporary skip or ignore markers introduced to keep intermediate slices
@@ -224,7 +224,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
       ignored registry from Git or manually deleting an uncertain lock.
 - [ ] Architecture, lifecycle, validation-authority, collaboration, and troubleshooting or release-facing docs describe
       `../../../../.wld/internal` as the machine-owned project-runtime boundary.
-- [ ] ADR-005 and ADR-016 retain their decisions but name the new canonical runtime locations.
+- [ ] ADR-004 and ADR-016 retain their decisions but name the new canonical runtime locations.
 - [ ] ADR-017 remains consistent with the final implementation.
 - [ ] `../../../domain-language.md` keeps the existing Project Runtime State, Project Runtime Entry, Project Internal
       Root, Primary-Checkout Runtime State, and Selected-Checkout Runtime State definitions. Their avoided aliases and
@@ -302,7 +302,7 @@ Re-express their still-valid outcomes against the new layout rather than deletin
   unfinished publication. Verify the matrix outcomes, custom ignore preservation, and repeat-entry stability.
 - Repeat from a linked execution worktree. Inspect primary-shared versus selected-checkout paths and retained user
   settings, Agents, Skills, and prompts. Global `~/.wld` data and normal home-based worktrees do not move.
-- Compare each current path in architecture, lifecycle, collaboration, validation authority, ADR-005/016/017, and the
+- Compare each current path in architecture, lifecycle, collaboration, validation authority, ADR-004/016/017, and the
   glossary with the implemented layout. Old paths may remain only when clearly identified as legacy/historical examples.
   Do not mechanically rewrite global paths or unrelated externally configured storage paths.
 - Follow affected PRD/ADR links. Confirm named requirements and scenarios match these checks and preserve the merged

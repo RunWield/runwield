@@ -19,7 +19,7 @@ affectedPaths:
     - "src/attached/claude/plugin/commands/"
     - "src/cmd/attached/index.ts"
     - "docs/prd/runwield-connect-prd.md"
-    - "docs/adr/014-attached-workflow-coordination-boundary.md"
+    - "docs/adr/013-attached-workflow-coordination-boundary.md"
     - "docs/user-documentation/connect-claude-code.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
@@ -48,13 +48,13 @@ delivered, the integration gate runs again on the whole Epic.
 
 Planning sorted the findings into three groups:
 
-| Finding                                        | Decision              | Reason                                                                                                                                                                                                                                                                                                                                                              |
-| ---------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| #1 Project checks fail                         | **Dismissed here**    | Environmental. The gate's temporary checkout had no `node_modules` and no initialized `third_party/plannotator` submodule ("Cannot find package 'typescript'", "Submodule is not initialized"). With dependencies installed, `bun run ci` passes on this branch (1318 s). The user fixes the gate separately.                                                       |
+| Finding                                        | Decision              | Reason                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| #1 Project checks fail                         | **Dismissed here**    | Environmental. The gate's temporary checkout had no `node_modules` and no initialized `third_party/plannotator` submodule ("Cannot find package 'typescript'", "Submodule is not initialized"). With dependencies installed, `bun run ci` passes on this branch (1318 s). The user fixes the gate separately.                                                          |
 | #2 No Planning Gate                            | **Dismissed**         | Owner decision: RunWield adds no hooks or tool restrictions in Connect, as in Core ([Connect: Compatibility and honest availability](../../../prd/runwield-connect-prd.md#compatibility-and-honest-availability), ADR-014). The gate reviewed main's old copy of the Epic, which still has the removed Planning Gate text. The user fixes that gate defect separately. |
 | #3 Unknown and untested host versions continue | **Dismissed**         | Intended behavior: "Newer or unreported host versions continue with a visible notice" ([Connect PRD](../../../prd/runwield-connect-prd.md#compatibility-and-honest-availability)). The user confirmed that no code change is needed.                                                                                                                                   |
-| #4 Two workflows can implement the same Plan   | **Dismissed**         | Owner decision: an Attached Workflow Record references its Plan and does not own it. Nothing in Core stops one Plan from running in two places, and `execution-start.ts` reuses an active worktree in the same way. Leave it as is.                                                                                                                                 |
-| #5–#10                                         | **Fix in this child** | Real defects in the Epic's Attached code, described below.                                                                                                                                                                                                                                                                                                          |
+| #4 Two workflows can implement the same Plan   | **Dismissed**         | Owner decision: an Attached Workflow Record references its Plan and does not own it. Nothing in Core stops one Plan from running in two places, and `execution-start.ts` reuses an active worktree in the same way. Leave it as is.                                                                                                                                    |
+| #5–#10                                         | **Fix in this child** | Real defects in the Epic's Attached code, described below.                                                                                                                                                                                                                                                                                                             |
 
 The fixes keep these PRD requirements:
 
@@ -182,7 +182,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   `validation-supervisor.ts`, `validation-types.ts` (or the checkpoint type owner): host-turn merge repair, rethrow
   of host waits, durable publication-repair budget (#8).
 - `docs/prd/runwield-connect-prd.md`, `docs/user-documentation/connect-claude-code.md`,
-  `docs/adr/014-attached-workflow-coordination-boundary.md`: delivered behavior for #5, #8, #9, and #10. The ADR loses its
+  `docs/adr/013-attached-workflow-coordination-boundary.md`: delivered behavior for #5, #8, #9, and #10. The ADR loses its
   self-contradicting fallback sentence.
 - Tests named in the Verification Plan.
 

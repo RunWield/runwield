@@ -26,9 +26,9 @@ affectedPaths:
     - "docs/plan-lifecycle.md"
     - "docs/collaboration.md"
     - "docs/validation-authority.md"
-    - "docs/adr/005-concurrent-worktree-isolation.md"
-    - "docs/adr/016-proof-bearing-publication-state-machine.md"
-    - "docs/adr/017-project-runtime-state-under-wld-internal.md"
+    - "docs/adr/004-concurrent-worktree-isolation.md"
+    - "docs/adr/015-proof-bearing-publication-state-machine.md"
+    - "docs/adr/016-project-runtime-state-under-wld-internal.md"
 createdAt: "2026-08-28T11:53:52-04:00"
 origin: "internal"
 userVerifiedAt: null
@@ -171,7 +171,7 @@ Migration must not run for help, version, or a new empty TUI before its first su
   state.
 - Architecture, lifecycle, validation-authority, collaboration, troubleshooting, and release-facing documentation —
   describe the new paths, the 0.10.0 breaking boundary, the active-publication upgrade stop, and user cleanup for
-  tracked legacy files. ADR-005 and ADR-016 retain their decisions but must name the new canonical locations.
+  tracked legacy files. ADR-004 and ADR-016 retain their decisions but must name the new canonical locations.
 - Tests and golden scenarios around path ownership, linked worktrees, publication recovery, Plan Doctor, Init,
   collaboration, staging, and TUI/Agent Client Protocol startup — use the target layout and prove migration behavior
   with real filesystem and Git fixtures.

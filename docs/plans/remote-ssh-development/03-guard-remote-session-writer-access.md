@@ -21,7 +21,7 @@ affectedPaths:
     - "src/shared/remote/control.ts"
     - "src/shared/remote/supervisor.ts"
     - "src/shared/remote/personal-resources.ts"
-    - "docs/adr/015-file-authoritative-session-bundles.md"
+    - "docs/adr/014-file-authoritative-session-bundles.md"
     - "docs/prd/runwield-core-prd.md"
     - "docs/prd/remote-ssh-prd.md"
 executionAgent: "engineer"
@@ -275,7 +275,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/shared/remote/control.ts`, `supervisor.ts`, and `personal-resources.ts` — add the authenticated save endpoint to
   the existing child02 control service; keep independent supervision able to stop owned work during a blocked save; keep
   the personal mount from ever serving as Session persistence.
-- `docs/adr/015-file-authoritative-session-bundles.md` — record the explicit-save extension: the laptop stays sole
+- `docs/adr/014-file-authoritative-session-bundles.md` — record the explicit-save extension: the laptop stays sole
   writer, no lease is introduced, and mounted writes are never authoritative.
 - The owning Core and Remote SSH PRD sections — record the delivered writer guarantee, the measured per-entry blocking
   behavior, and unresolved platform evidence.

@@ -9,7 +9,7 @@ targetBranch: epic/connect-codex
 affectedPaths:
     - docs/user-documentation
     - docs/prd/runwield-connect-prd.md
-    - docs/adr/014-attached-workflow-coordination-boundary.md
+    - docs/adr/013-attached-workflow-coordination-boundary.md
     - README.md
 createdAt: "2026-10-29"
 status: draft

@@ -12,7 +12,7 @@ affectedPaths:
     - "scripts/"
     - "docs/prd/runwield-workspace-prd.md"
     - "docs/prd/runwield-acp-protocol-prd.md"
-    - "docs/adr/0021-electron-workspace-acp-client.md"
+    - "docs/adr/020-electron-workspace-acp-client.md"
 devServerCommand: null
 devServerUrl: null
 devServerHmr: null
@@ -54,7 +54,7 @@ It reuses existing provider setup and canonical work, carries the existing local
 process, and preserves the same outcomes in the browser and TUI. Its local work must remain available when Workspace
 cloud endpoints are unreachable; a model provider may still require its own connection and credentials.
 
-The selected approach is [proposed ADR-0021](../adr/0021-electron-workspace-acp-client.md). Wrapping the existing server
+The selected approach is [proposed ADR-020](../adr/020-electron-workspace-acp-client.md). Wrapping the existing server
 would ship a window sooner but retain runtime ownership in the UI host. Flutter would require replacing the existing
 frontend and adopting Flutter web to preserve hosted-client reuse. The meaningful commitment here is the ACP-backed
 client contract and shared UI, not the choice of installer generator.
@@ -85,7 +85,7 @@ Source inspected on 2026-11-01:
    That is distinct from the future Workspace account. A clean desktop install needs an actual provider-setup journey.
 6. `package.json` pins Bun 1.4.3, ACP SDK 1.4.0, Astro, React, Vite, CodeMirror, and Pierre diffs. Existing compiled CLI
    and Workspace release scripts can supply assets, but no Electron package/runtime boundary exists yet.
-7. [ADR-018](../adr/018-remote-ssh-local-personal-authority.md) governs a different remote SSH product with laptop-owned
+7. [ADR-017](../adr/017-remote-ssh-local-personal-authority.md) governs a different remote SSH product with laptop-owned
    personal state. It does not establish an authenticated remote ACP endpoint or the lifetime of an attached worker.
 
 ```mermaid
@@ -217,7 +217,7 @@ justify shipping speculative services, mock authentication, remote transport imp
 - `src/ui/design-system/`, `docs/design-system.md` — reuse existing primitives; any necessary new desktop pattern
   enters the shared system with documentation.
 - `package.json`, Bun locks, existing build/release scripts and CI — explicit Electron build and platform artifacts.
-- Workspace/ACP/root PRDs, ADR-010, ADR-0021, `docs/domain-language.md`, and user documentation — target/current
+- Workspace/ACP/root PRDs, ADR-011, ADR-021, `docs/domain-language.md`, and user documentation — target/current
   reconciliation at the milestone that actually delivers each capability.
 
 ## Reuse Opportunities

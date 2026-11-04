@@ -10,7 +10,7 @@ affectedPaths:
     - "src/shared/work-records/published-source.ts"
     - "src/shared/settings.js"
     - "docs/prd/runwield-core-prd.md"
-    - "docs/adr/016-proof-bearing-publication-state-machine.md"
+    - "docs/adr/015-proof-bearing-publication-state-machine.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-11-01"
@@ -60,7 +60,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/shared/work-records/published-source.ts` — retained source instead of new-format git-show reconstruction
 - `src/shared/settings.js` — separate copy policy definitions
 - `docs/prd/runwield-core-prd.md` — publication and execution recovery requirements
-- `docs/adr/016-proof-bearing-publication-state-machine.md` — reconcile Git artifacts versus canonical Plan truth
+- `docs/adr/015-proof-bearing-publication-state-machine.md` — reconcile Git artifacts versus canonical Plan truth
 
 ## Reuse Opportunities
 

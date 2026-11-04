@@ -2,7 +2,7 @@
 status: accepted
 ---
 
-# ADR-016: Publication Is a Proof-Bearing State Machine
+# Publication Is a Proof-Bearing State Machine
 
 ## Decision
 

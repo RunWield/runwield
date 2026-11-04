@@ -20,10 +20,10 @@ The owner confirmed these target constraints on 2026-11-01:
 - `wld remote <host>` keeps Plans on the initiating laptop, while code execution stays remote.
 
 This ADR proposes the mechanisms that implement those constraints. It is not accepted guidance or evidence of shipped
-behavior. [ADR-015](015-file-authoritative-session-bundles.md),
-[ADR-016](016-proof-bearing-publication-state-machine.md),
-[ADR-017](017-project-runtime-state-under-wld-internal.md), and
-[ADR-018](018-remote-ssh-local-personal-authority.md) remain the existing decisions until reconciled with an accepted
+behavior. [ADR-014](014-file-authoritative-session-bundles.md),
+[ADR-015](015-proof-bearing-publication-state-machine.md),
+[ADR-016](016-project-runtime-state-under-wld-internal.md), and
+[ADR-017](017-remote-ssh-local-personal-authority.md) remain the existing decisions until reconciled with an accepted
 replacement. The [Epic](../plans/external-plan-store.md) owns implementation outcomes and migration work.
 
 ## Decision and Rationale

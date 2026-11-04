@@ -173,7 +173,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   resolution independent of `node_modules` in a developer checkout.
 - Focused tests near session policy, MCP integration, persistence, and packaging — execute the real extension and sandbox.
 - `docs/prd/runwield-core-prd.md`, `docs/user-documentation/mcp.md`, relevant customization documentation,
-  `docs/domain-language.md`, and `docs/adr/0019-pi-owned-mcp-integration.md` — align behavior, terminology, and ownership.
+  `docs/domain-language.md`, and `docs/adr/018-pi-owned-mcp-integration.md` — align behavior, terminology, and ownership.
 
 ## Reuse Opportunities
 
@@ -214,7 +214,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
    tests enter the explicit runner inventory where required; no RunWield-owned injection seam is introduced.
 9. The owning Core capability and acceptance scenarios describe the delivered activation and backend coverage.
    Documentation includes a small working script, settings, output/error behavior, and tool authority. The glossary
-   defines Codemode consistently. ADR-0019 preserves MCP lifetime ownership and replaces its blanket codemode deferral
+   defines Codemode consistently. ADR-019 preserves MCP lifetime ownership and replaces its blanket codemode deferral
    with the accepted integration boundary; unrelated HTTP/OAuth and manager UI remain deferred.
 
 ## Approval Confirmation

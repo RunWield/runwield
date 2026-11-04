@@ -14,7 +14,7 @@ affectedPaths:
     - "src/cmd/plans/doctor.ts"
     - ".github/workflows/release.yml"
     - "scripts/release-policy.test.ts"
-    - "docs/adr/017-project-runtime-state-under-wld-internal.md"
+    - "docs/adr/016-project-runtime-state-under-wld-internal.md"
     - "docs/prd/runwield-core-prd.md"
     - "docs/releasing.md"
 executionAgent: "engineer"
@@ -164,7 +164,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `.github/workflows/release.yml`, `scripts/release-policy.test.ts`, and package checks as needed — preserve current
   `main` qualification and publication rules during integration. Verify both native package gates. Reuse existing
   diagnostic workflows if needed; do not create a replacement pipeline.
-- `docs/adr/017-project-runtime-state-under-wld-internal.md`, relevant ADR-005 references, `docs/releasing.md`,
+- `docs/adr/016-project-runtime-state-under-wld-internal.md`, relevant ADR-004 references, `docs/releasing.md`,
   `docs/usage.md`, architecture/collaboration guidance, and the owning Core PRD capabilities — correct the release
   boundary and document the narrowed fallback rule in the same change. Historical Work Records stay historical.
 - `docs/plans/consolidate-project-runtime-state/manual-qa.md` — record new final-state checks with actual results; do

@@ -14,7 +14,7 @@ affectedPaths:
     - "scripts/write-version.ts"
     - "scripts/release-assets.ts"
     - "docs/domain-language.md"
-    - "docs/adr/018-remote-ssh-local-personal-authority.md"
+    - "docs/adr/017-remote-ssh-local-personal-authority.md"
     - "docs/prd/runwield-core-prd.md"
     - "docs/prd/remote-ssh-prd.md"
 executionAgent: "engineer"
@@ -124,7 +124,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   matching-runtime selection, and independent cleanup through real process boundaries.
 - `docs/domain-language.md` — define **Remote SSH connection** and update the stable Core, Session, and Project Runtime
   State relationships made true by this slice.
-- `docs/adr/018-remote-ssh-local-personal-authority.md` and the owning PRDs — record the implemented connection boundary
+- `docs/adr/017-remote-ssh-local-personal-authority.md` and the owning PRDs — record the implemented connection boundary
   while later capabilities remain target behavior.
 
 ## Reuse Opportunities

@@ -97,7 +97,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/shared/remote/personal-resources.ts` — distinguish ordinary execution from activated laptop personal resources
 - `docs/domain-language.md` — Project Identity and repository-binding relationships
 - `docs/prd/runwield-core-prd.md` and the identity subsection of `docs/prd/plan-store-prd.md` — current identity requirements and explicitly remaining continuity targets
-- `docs/adr/0020-home-project-state-and-launch-mode-ownership.md` — reconcile identity decisions if implementation changes them; do not claim the whole proposed relocation has shipped
+- `docs/adr/019-home-project-state-and-launch-mode-ownership.md` — reconcile identity decisions if implementation changes them; do not claim the whole proposed relocation has shipped
 
 ## Reuse Opportunities
 

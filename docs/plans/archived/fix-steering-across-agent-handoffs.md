@@ -61,7 +61,7 @@ Owning requirements:
 
 Proposed clarification: undelivered Steering Messages at an Agent handoff go to the replacement Agent once, in order,
 with their images. No routing choices or review outcomes change. Existing
-[ADR-006](../../adr/006-uniform-agent-handler-workflow-tools.md) event authority and
+[ADR-005](../../adr/005-uniform-agent-handler-workflow-tools.md) event authority and
 [ADR-010](../../adr/010-session-runtime-sibling-adapters-and-acp.md) runtime ownership remain in force.
 
 ## Objective

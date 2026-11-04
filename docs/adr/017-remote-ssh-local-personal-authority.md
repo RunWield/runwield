@@ -89,7 +89,7 @@ Split execution from personal authority:
   remote subprocess behavior. Direct server CLI review, remote ACP clients, and hosted Workspace registration are
   outside this connection's scope.
 
-This extends [ADR-015](015-file-authoritative-session-bundles.md). It preserves Pi entry formats, file-authoritative
+This extends [ADR-014](014-file-authoritative-session-bundles.md). It preserves Pi entry formats, file-authoritative
 history, native locks, operation-scoped ownership, and recovery without automatic effect replay. Ordinary local Sessions
 keep their formats, identifiers, directories, and behavior.
 

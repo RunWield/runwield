@@ -2,7 +2,7 @@
 status: accepted
 ---
 
-# ADR-015: File-Authoritative Session Bundles
+# File-Authoritative Session Bundles
 
 ## Context
 

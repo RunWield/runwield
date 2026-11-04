@@ -12,7 +12,7 @@ affectedPaths:
     - "docs/prd/runwield-workspace-prd.md"
     - "docs/prd/runwield-connect-prd.md"
     - "docs/prd/runwield-acp-protocol-prd.md"
-    - "docs/adr/0020-home-project-state-and-launch-mode-ownership.md"
+    - "docs/adr/019-home-project-state-and-launch-mode-ownership.md"
     - "docs/user-documentation/"
 executionAgent: "engineer"
 collaborationRecommendation: "pair"
@@ -66,7 +66,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `docs/prd/runwield-workspace-prd.md` — surface journey consistency
 - `docs/prd/runwield-connect-prd.md` — host continuation evidence
 - `docs/prd/runwield-acp-protocol-prd.md` — client continuation evidence
-- `docs/adr/0020-home-project-state-and-launch-mode-ownership.md` — record verified owner mechanisms without unilateral acceptance
+- `docs/adr/019-home-project-state-and-launch-mode-ownership.md` — record verified owner mechanisms without unilateral acceptance
 - `docs/user-documentation/` — explicit import, storage locations, copy defaults and backup guidance
 
 ## Reuse Opportunities

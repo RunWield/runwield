@@ -15,7 +15,7 @@ affectedPaths:
     - "src/shared/remote/"
     - "src/tools/see-image.ts"
     - "docs/domain-language.md"
-    - "docs/adr/018-remote-ssh-local-personal-authority.md"
+    - "docs/adr/017-remote-ssh-local-personal-authority.md"
     - "docs/plans/remote-ssh-development/"
     - "docs/prd/runwield-core-prd.md"
     - "docs/prd/remote-ssh-prd.md"

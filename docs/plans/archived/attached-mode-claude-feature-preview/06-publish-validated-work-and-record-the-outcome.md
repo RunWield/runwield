@@ -80,7 +80,7 @@ Owning PRD capabilities:
 - Connect [artifact privacy and records](../../../prd/runwield-connect-prd.md#artifact-privacy-and-records) — no raw host
   transcript in RunWield storage. Connect also requires that feedback and approval return as structured workflow
   outcomes, not chat prose.
-- [ADR-016](../../../adr/016-proof-bearing-publication-state-machine.md) — publication evidence and the state machine.
+- [ADR-015](../../../adr/015-proof-bearing-publication-state-machine.md) — publication evidence and the state machine.
 
 ### Planning Decisions (2026-10-13)
 

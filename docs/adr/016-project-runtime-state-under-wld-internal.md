@@ -2,7 +2,7 @@
 status: accepted
 ---
 
-# ADR-017: Project Runtime State Lives Under `.wld/internal/`
+# Project Runtime State Lives Under `.wld/internal/`
 
 ## Context
 
@@ -153,7 +153,7 @@ locks and revision checks; a pending projection cannot authorize a write.
 
 Target discovery and body hydration use locally available Git refs and objects, without temporary document files,
 fetch, or clone. Missing local target evidence is unavailable, not proof of no children. Fresh remote publication proof
-belongs to actions under [ADR-016](016-proof-bearing-publication-state-machine.md). Passive inspection does not change
+belongs to actions under [ADR-015](015-proof-bearing-publication-state-machine.md). Passive inspection does not change
 sources, reconcile ignore rules, assign identities, clean journals, change refs/worktrees, or queue those effects.
 In-memory reuse and the search service's own derived index/status writes are allowed.
 

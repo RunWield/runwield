@@ -11,7 +11,7 @@ affectedPaths:
     - "src/shared/worktree-registry.js"
     - "src/shared/workflow/"
     - "docs/prd/runwield-core-prd.md"
-    - "docs/adr/018-remote-ssh-local-personal-authority.md"
+    - "docs/adr/017-remote-ssh-local-personal-authority.md"
     - "docs/domain-language.md"
 executionAgent: "engineer"
 collaborationRecommendation: "pair"
@@ -70,7 +70,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/shared/worktree-registry.js` — personal-owner scoped attempts and repository-level Git coordination
 - `src/shared/workflow/` — cross-host lifecycle/publication reconciliation
 - `docs/prd/runwield-core-prd.md` — managed remote acceptance and project runtime scope
-- `docs/adr/018-remote-ssh-local-personal-authority.md` — reconcile laptop Plan ownership and remote home execution state
+- `docs/adr/017-remote-ssh-local-personal-authority.md` — reconcile laptop Plan ownership and remote home execution state
 - `docs/domain-language.md` — remote personal authority and Project Runtime State relationships
 
 ## Reuse Opportunities

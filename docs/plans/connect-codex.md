@@ -24,7 +24,7 @@ it does not establish Codex support or stable release qualification.
 The owning requirements are [explicit activation](../prd/runwield-connect-prd.md#explicit-per-request-activation),
 [shared Plan and verification outcomes](../prd/runwield-connect-prd.md#shared-plan-and-verification-outcomes), and
 [honest compatibility](../prd/runwield-connect-prd.md#compatibility-and-honest-availability).
-[ADR-014](../adr/014-attached-workflow-coordination-boundary.md) owns the shared coordination boundary.
+[ADR-013](../adr/013-attached-workflow-coordination-boundary.md) owns the shared coordination boundary.
 
 ## Objective
 

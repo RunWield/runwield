@@ -57,7 +57,7 @@ production and tests subsystem by subsystem; qualify and switch distribution. Th
 ## Objective and scope
 
 Preserve current Session identity, files, recovery, writer exclusion, CLI/TUI behavior and Workspace journeys while
-replacing Deno-specific runtime dependencies. Follow [ADR-015](../../adr/015-file-authoritative-session-bundles.md) and the
+replacing Deno-specific runtime dependencies. Follow [ADR-014](../../adr/014-file-authoritative-session-bundles.md) and the
 Core [execution, validation and recovery requirements](../../prd/runwield-core-prd.md#execution-validation-and-recovery).
 No current PRD requirement is added or removed by the first portable storage slice.
 

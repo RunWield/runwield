@@ -304,7 +304,7 @@ Evidence: `src/acp/server.js` new/load handlers; `src/acp/session-map.ts` (`crea
 `src/acp/server.test.js` checks continuation with the returned ACP ID and explicitly checks the differing metadata IDs.
 
 Accepted [ADR-010](adr/010-session-runtime-sibling-adapters-and-acp.md) separates live and transport identities;
-accepted [ADR-015](adr/015-file-authoritative-session-bundles.md) defines stable file-backed Session identity across
+accepted [ADR-014](adr/014-file-authoritative-session-bundles.md) defines stable file-backed Session identity across
 segments. This review does not claim that the new ACP ID is already the stable bundle ID.
 
 ## Prompt content handling
@@ -679,7 +679,7 @@ approval workflow with a custom ACP Plan editor is not necessary.
 Recommendation basis: the inspected behavior above; the
 [ACP PRD's Session-continuity and browser-review goals](prd/runwield-acp-protocol-prd.md); accepted
 [ADR-010](adr/010-session-runtime-sibling-adapters-and-acp.md) and
-[ADR-015](adr/015-file-authoritative-session-bundles.md); and the linked upstream optional-capability rules.
+[ADR-014](adr/014-file-authoritative-session-bundles.md); and the linked upstream optional-capability rules.
 
 ## Related documents
 

@@ -51,7 +51,7 @@ Runtime inspection distinguishes fresh state, safe adopted authority, pending pr
 Project needs no runtime storage. Ready reads retain registered document-worktree and controller authority, including
 when legacy recovery input returns. Unmigrated or interrupted stores are not combined. Unsafe or unreadable authority
 keeps its diagnostic instead of becoming an authoritative empty catalog. See
-[ADR-017](adr/017-project-runtime-state-under-wld-internal.md).
+[ADR-016](adr/016-project-runtime-state-under-wld-internal.md).
 
 `PlanReadAvailability` carries `ready` or `pending` separately from `attrs` and Front Matter. Missing identity,
 controller import, or runtime adoption can leave workflow details pending while safe local documents remain browseable.
@@ -68,7 +68,7 @@ projections. Inspection reuse expires with the read operation and never satisfie
 Passive progress shows applicable saved publication evidence without obtaining remote proof. A valid controller receipt
 can retain established completion after attempt cleanup; missing or invalidated evidence stays unconfirmed. Reopening
 or a new execution invalidates prior completion evidence. Publication and recovery actions still need fresh target proof
-before new success or cleanup, as required by [ADR-016](adr/016-proof-bearing-publication-state-machine.md).
+before new success or cleanup, as required by [ADR-015](adr/015-proof-bearing-publication-state-machine.md).
 
 ## State ownership
 
@@ -555,7 +555,7 @@ For worktree-backed plans:
     branch, temporary clone, and attempt registry entry. Cleanup or index failure does not revoke delivery or remove the
     receipt. Later target commits do not invalidate proof that the publication commit is an ancestor.
 
-Publication recovery is defined by [ADR-016](adr/016-proof-bearing-publication-state-machine.md). Legacy lifecycle
+Publication recovery is defined by [ADR-015](adr/015-proof-bearing-publication-state-machine.md). Legacy lifecycle
 labels are interpreted using saved validation and delivery evidence; status strings alone do not prove publication.
 
 Code Review has no separate public status. An offer, cancellation, pending decision, or reply-only Git conversation

@@ -102,6 +102,14 @@ Users can:
 **Requirement: Agent selection replaces active instructions.** Switching Agents keeps the conversation history and
 gives the model the selected Agent's system instructions and tools. Earlier Agents' instructions remain history only,
 including after Session resume. A successful change to a different Agent produces one conversation notice.
+Every provider request carries one leading system prompt from the active Agent session, including follow-ups,
+tool continuations, and resumed Sessions. Historical system messages cannot replace it. Agent definitions own role
+instructions; triage handoffs carry the user request and routing facts without assigning a role in conversation text.
+
+**Acceptance scenarios:** After an INQUIRY handoff to Guide, selecting Engineer and asking it to act sends Engineer's
+system prompt and tools. After a planning handoff to Planner, selecting Operator sends Operator's system prompt and
+tools. Earlier handoff instructions and replies remain conversation history. These guarantees hold on subsequent
+requests and after resume, including when stale system messages reach the provider dispatch boundary.
 
 **Requirement: Preserve steering through an Agent handoff.** When a workflow event starts a handoff, Core settles the
 outgoing Agent turn before the replacement Agent starts provider work. Steering Messages sent from that point go to the
@@ -765,7 +773,7 @@ A receipt for another candidate, target, or live execution remains historical ev
 Missing or inapplicable proof leaves publication unconfirmed; neither absence of an attempt nor
 a stale tracking ref proves completion. Reopening or a new execution invalidates prior completion evidence. Publication
 and recovery actions still obtain the fresh target proof required by
-[ADR-016](../adr/016-proof-bearing-publication-state-machine.md) before reporting new success or cleaning up work.
+[ADR-015](../adr/015-proof-bearing-publication-state-machine.md) before reporting new success or cleaning up work.
 
 **Requirement: Treat an unknown state as live.** Automatic repair keeps a lock, run, worktree, Session, or publication
 attempt when it cannot get a positive answer about that item. An empty, unreadable, timed-out, truncated, or unknown
@@ -2652,7 +2660,7 @@ including unfinished publications and saved repairs. Unsafe layouts receive a re
 safe paths, and all user work stays in place. Adoption is one-way; after it, use only the new version. Each action entry
 rechecks changed runtime evidence independently of earlier reads. Nested inspection reuse ends with its operation;
 new requests see newly tracked runtime paths, attached worktrees, and changed files. See
-[ADR-017](../adr/017-project-runtime-state-under-wld-internal.md).
+[ADR-016](../adr/016-project-runtime-state-under-wld-internal.md).
 
 **Requirement: Reconcile leftovers automatically.** When a Plan is selected, RunWield reconciles files recreated by
 older processes, stale runtime records, and concurrent migrations. Current progress, review decisions, and
@@ -2717,7 +2725,7 @@ exist. Remote history, images, workflow context, segment rollover, and connected
 history is separate from local-client continuation. [Remote connection](#remote-connection) owns the tested matrix and
 browser transport; that transport does not change Session continuity or review decisions.
 
-Runtime boundaries are in [ADR-010](../adr/010-session-runtime-sibling-adapters-and-acp.md); storage and synchronization are in [ADR-015](../adr/015-file-authoritative-session-bundles.md).
+Runtime boundaries are in [ADR-010](../adr/010-session-runtime-sibling-adapters-and-acp.md); storage and synchronization are in [ADR-014](../adr/014-file-authoritative-session-bundles.md).
 
 **Requirement: Continue the same saved work across clients.** Users work with several independent Sessions through
 the TUI, ACP, and Workspace. Each Session keeps its project, conversation, selected Agent and model, and workflow
@@ -3457,9 +3465,9 @@ requirements and use Core's [Plan lifecycle](#plan-lifecycle), [Plan review](#pl
 Core is fully usable locally. Personal Remote Workspace adds access to the same work from another device. Hosted
 collaboration and broader code-intelligence improvements are separate follow-up scope.
 
-- [Session architecture](../adr/015-file-authoritative-session-bundles.md)
-- [Transcript handoffs](../adr/012-segment-session-transcripts-at-execution-handoff.md)
-- [Project runtime state](../adr/017-project-runtime-state-under-wld-internal.md)
+- [Session architecture](../adr/014-file-authoritative-session-bundles.md)
+- [Transcript handoffs](../adr/011-segment-session-transcripts-at-execution-handoff.md)
+- [Project runtime state](../adr/016-project-runtime-state-under-wld-internal.md)
 - [ACP compatibility](runwield-acp-protocol-prd.md) and [implementation details](../acp-implementation-details.md)
 - [Workspace requirements](runwield-workspace-prd.md) and
   [continuation readiness Plan](../plans/archived/workspace-session-continuation-readiness.md)

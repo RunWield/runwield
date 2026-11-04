@@ -13,7 +13,7 @@ affectedPaths:
     - "src/shared/workflow/plan-review-actions.ts"
     - "docs/domain-language.md"
     - "docs/prd/runwield-connect-prd.md"
-    - "docs/adr/014-attached-workflow-coordination-boundary.md"
+    - "docs/adr/013-attached-workflow-coordination-boundary.md"
 executionAgent: "engineer"
 collaborationRecommendation: "pair"
 devServerCommand: "bun run workspace:dev"
@@ -44,7 +44,7 @@ no pending action. Nothing opens a review.
 Core review today is process-local: the Session runtime opens the Plannotator browser surface and waits on an in-process
 promise (`waitForDecision`); the browser POST resolves that promise; only then does `applySharedPlanReviewDecision`
 record the canonical `review_feedback` / `review_approved` Plan Events. If the waiting process dies, the decision is
-lost. [ADR-014](../../../adr/014-attached-workflow-coordination-boundary.md) already names the fix: durable pending-review
+lost. [ADR-013](../../../adr/013-attached-workflow-coordination-boundary.md) already names the fix: durable pending-review
 decisions plus status polling, never the promise alone.
 
 Owning capabilities:
@@ -139,7 +139,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
  src/ui/workspace/routes/api/review-handlers.js  # await the sink before ack
  docs/domain-language.md                # Attached Review Round
  docs/prd/runwield-connect-prd.md       # delivered review journey + host-only restoration
- docs/adr/014-attached-workflow-coordination-boundary.md  # delivered durable-review consequence
+ docs/adr/013-attached-workflow-coordination-boundary.md  # delivered durable-review consequence
 ```
 
 Not touched: `applySharedPlanReviewDecision` and `reviewSourceStillMatches` (reused unchanged), the Core TUI review path

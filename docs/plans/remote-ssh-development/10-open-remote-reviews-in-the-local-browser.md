@@ -20,7 +20,7 @@ affectedPaths:
     - "src/shared/remote/verify-remote-workflows.ts"
     - "docs/prd/remote-ssh-prd.md"
     - "docs/prd/runwield-core-prd.md"
-    - "docs/adr/018-remote-ssh-local-personal-authority.md"
+    - "docs/adr/017-remote-ssh-local-personal-authority.md"
     - "docs/domain-language.md"
 planDeviations:
     - id: "call_e02bebc62c1c43768a7ef0f89a297b4a|fc_00530ac59043dc30016adcdb8add2c819585b4d7a64d38f05a"
@@ -227,7 +227,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   reads the selected runner; one shared guide generation function.
 - `src/shared/remote/verify-remote-workflows.ts` — the live harness reaches review through the product forward instead of
   its own `ssh -N -L`.
-- `docs/prd/remote-ssh-prd.md`, `docs/prd/runwield-core-prd.md`, `docs/adr/018-remote-ssh-local-personal-authority.md`,
+- `docs/prd/remote-ssh-prd.md`, `docs/prd/runwield-core-prd.md`, `docs/adr/017-remote-ssh-local-personal-authority.md`,
   `docs/domain-language.md` — delivered review behavior; ADR-018's "SSH forwards their full origin" line names the one
   connection-start forward of the review host.
 - `scripts/bun-test-files.json` — list new test files.

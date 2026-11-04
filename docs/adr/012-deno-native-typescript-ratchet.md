@@ -2,11 +2,11 @@
 status: accepted
 ---
 
-# 013 - Runtime-Native TypeScript Ratchet
+# Runtime-Native TypeScript Ratchet
 
 ## Context
 
-ADR-000 selected vanilla JavaScript with JSDoc to avoid a TypeScript transpilation or bundling pipeline. That decision
+ADR-001 selected vanilla JavaScript with JSDoc to avoid a TypeScript transpilation or bundling pipeline. That decision
 kept early RunWield iteration fast, but the codebase now has enough type-heavy runtime, workflow, and UI boundaries that
 native TypeScript syntax is useful for new code.
 

@@ -434,7 +434,7 @@ Existing functions, modules, or patterns to reuse:
       identity remain protected after compaction.
 - [ ] Step 13: The Core compaction capability and its acceptance scenarios match delivered behavior. Consolidate lasting
       intent from `session-context-resilience-prd.md`, retain unimplemented targets explicitly, update affected links,
-      and retire the transient proposal when reconciled. Session docs and ADR-010 describe the shared owner and public
+      and retire the transient proposal when reconciled. Session docs and ADR-011 describe the shared owner and public
       dependency constraint without competing old policy. Existing glossary meanings are preserved; do not introduce a
       new domain term for internal policy flags.
 
@@ -456,14 +456,14 @@ unless the complete public AgentSession contract has been verified; a partial ga
   `withProcessGlobalTestLock`; production reads use `getCwd()`/`getHomeDir()`. No new owned injection seam is allowed.
 - Automated focused tests: run
   `deno run -A scripts/run-tests.js src/shared/session/session-context-resilience.test.js
-  src/shared/session/session-prompt.test.js src/shared/session/session-subscribers.test.js
-  src/shared/session/hosted-session.test.js src/shared/session/abort-active-session.test.js
-  src/shared/session/session-runtime-events.test.js src/shared/session/session-runtime.test.js
-  src/shared/session/agent-handler.test.ts src/shared/session/request-dispatch.test.ts
-  src/shared/session/background-tasks.test.ts src/shared/session/background-tasks-extra.test.ts
-  src/shared/session/segment-rollover.test.js src/shared/session/session-transcript-projection.test.ts
-  src/tools/__tests__/delegate-agent.test.ts src/cmd/compact/index.test.js
-  src/ui/tui/runtime-adapter.test.js src/acp/server.test.js src/ui/workspace/workspace-session-ux.test.tsx`.
+src/shared/session/session-prompt.test.js src/shared/session/session-subscribers.test.js
+src/shared/session/hosted-session.test.js src/shared/session/abort-active-session.test.js
+src/shared/session/session-runtime-events.test.js src/shared/session/session-runtime.test.js
+src/shared/session/agent-handler.test.ts src/shared/session/request-dispatch.test.ts
+src/shared/session/background-tasks.test.ts src/shared/session/background-tasks-extra.test.ts
+src/shared/session/segment-rollover.test.js src/shared/session/session-transcript-projection.test.ts
+src/tools/__tests__/delegate-agent.test.ts src/cmd/compact/index.test.js
+src/ui/tui/runtime-adapter.test.js src/acp/server.test.js src/ui/workspace/workspace-session-ux.test.tsx`.
   Include new focused integration suites through the same runner. Never use direct `deno test`.
 - Existing coverage: preserve manual/resume compaction, automatic-disabled behavior, image and Named Invocation context,
   completed tool persistence, active-Agent identity, genuine backend failure recovery, steering transfer, Pair
@@ -486,7 +486,7 @@ unless the complete public AgentSession contract has been verified; a partial ga
 - Effective standard recovery: for a non-Engineer at `W=128000`, `R=16384`, a result
   `{tokensBefore:118000, estimatedTokensAfter:90000}` emits exactly
   `compacting(threshold), compacted(threshold),
-  continuing(threshold), continued(threshold)`, continues once, and
+continuing(threshold), continued(threshold)`, continues once, and
   permits a later standard attempt only above `T`.
 - Useful Engineer recovery above the early trigger: with `W=200000`, `R=16384`, recover from `120000` to `90000`. Assert
   one continuation and no early compaction at `90000`, `98000`, or later growth below `T=183616`. Explicitly cross the

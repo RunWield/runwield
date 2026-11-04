@@ -13,7 +13,7 @@ affectedPaths:
     - "src/shared/session/runtime/workflows.ts"
     - "src/ui/workspace/routes/owner-session-api.js"
     - "docs/prd/runwield-core-prd.md"
-    - "docs/adr/005-concurrent-worktree-isolation.md"
+    - "docs/adr/004-concurrent-worktree-isolation.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-10-14"
@@ -93,7 +93,7 @@ Worktrees that were already created early stay as they are. The user decided tha
     - Add a named requirement: a child's worktree exists only after a session starts in it.
     - Preserve: fetch-before-prepare, refresh of existing unstarted worktrees, sibling scope synchronization,
       continuation behavior, and the primary checkout staying intact.
-- [ADR-005 concurrent worktree isolation](../../adr/005-concurrent-worktree-isolation.md), Lifecycle step 1 says "when a
+- [ADR-004 concurrent worktree isolation](../../adr/004-concurrent-worktree-isolation.md), Lifecycle step 1 says "when a
   targeted Epic child is opened for planning". This change makes the trigger exact: a session start, not a lookup or a
   load.
 
@@ -205,7 +205,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - Other `resolveWorkflowPlanLocation` callers that only read a Plan that can be an unstarted child — switch to
   `readOnly: true`. Writers stay as they are and get the refusal.
 - Tests in `src/shared/workflow/` and `src/cmd/load-plan/` — see the Verification Plan.
-- `docs/prd/runwield-core-prd.md`, `docs/adr/005-concurrent-worktree-isolation.md` — record the session-start rule.
+- `docs/prd/runwield-core-prd.md`, `docs/adr/004-concurrent-worktree-isolation.md` — record the session-start rule.
 
 Not changed: `preparePlanningWorktreeForPlan` and `planning-worktree-refresh.ts`. Their fetch, rebase, and scope
 preservation already do what the user asked. `ensureEpicBranch` and Epic branch seeding are also not changed. They write
@@ -259,7 +259,7 @@ through the Epic's own document root, not through the lookup. The domain languag
   worktree is created only when a session starts in it (planning, review, re-review, execution, or continuation), from
   the latest fetched Epic branch. Lookups, loads, and session-less writes never create one. It adds the acceptance
   scenarios listed under PRD checks below.
-- `docs/adr/005-concurrent-worktree-isolation.md` Lifecycle step 1 names a session start as the only trigger. It says
+- `docs/adr/004-concurrent-worktree-isolation.md` Lifecycle step 1 names a session start as the only trigger. It says
   that Plan location lookups are pure and that session-less writes to an unstarted child are refused.
 
 ## Verification Plan

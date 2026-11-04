@@ -106,7 +106,7 @@ Decisions from planning:
 
 ## Approach
 
-Core reads the Session one time and returns data. Consumers render and write files. ADR-010 does not let
+Core reads the Session one time and returns data. Consumers render and write files. ADR-011 does not let
 `src/shared/session/` import `src/ui/`, so the HTML renderer lives under `src/ui/`.
 
 ```text

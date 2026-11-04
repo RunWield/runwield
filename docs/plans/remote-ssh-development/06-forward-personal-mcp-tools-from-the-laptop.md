@@ -12,7 +12,7 @@ affectedPaths:
     - "src/shared/remote/remote-mcp.test.ts"
     - "docs/prd/runwield-core-prd.md"
     - "docs/prd/remote-ssh-prd.md"
-    - "docs/adr/0019-pi-owned-mcp-integration.md"
+    - "docs/adr/018-pi-owned-mcp-integration.md"
     - "docs/domain-language.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
@@ -51,7 +51,7 @@ personal MCP servers run on the laptop with their existing credentials, and thei
   access for delegated or isolated Agents; native Pi names, resources, updates, progress, results, and reconnect.
 - **Preserve:** [Disconnect and recovery](../../prd/runwield-core-prd.md#workflow-completion-and-automatic-recovery) stops owned work and does
   not replay uncertain tool effects. This child adds its laptop server processes to existing connection cleanup.
-- **Architecture:** accepted [ADR-0019](../../adr/0019-pi-owned-mcp-integration.md) now gives Pi ownership of MCP
+- **Architecture:** accepted [ADR-018](../../adr/018-pi-owned-mcp-integration.md) now gives Pi ownership of MCP
   behavior. `McpIntegration.call` in the old draft does not exist. Public `createMcpExtension` and `McpTransport` in the
   pinned Pi 1.0.0 packages support the selected relay without another MCP client or naming system.
 
@@ -140,7 +140,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/shared/remote/remote-mcp.test.ts`, remote runtime fixtures, and `src/shared/mcp/fixture-server.ts` — real-process
   placement, native protocol behavior, cancellation, and failure evidence. Add focused relay tests.
 - Core and Remote SSH PRDs — update the named requirements and acceptance scenarios, leaving sibling targets explicit.
-- `docs/adr/018-remote-ssh-local-personal-authority.md`, `docs/adr/0019-pi-owned-mcp-integration.md` — record the remote Pi
+- `docs/adr/017-remote-ssh-local-personal-authority.md`, `docs/adr/018-pi-owned-mcp-integration.md` — record the remote Pi
   host/laptop process split and its rationale without changing Session storage or trust policy.
 - `docs/domain-language.md`, `docs/user-documentation/mcp.md` — describe MCP Server Configuration placement, laptop home
   cwd, root Agent access, and path/cancellation limits using existing terms.
@@ -196,7 +196,7 @@ backends, and transparent access to remote files from laptop servers remain outs
    closes laptop transports and startup races; final service close awaits owned stdio cleanup. Late messages cannot
    reach a replacement transport. Cancellation does not promise rollback or termination of server work that ignores
    the MCP cancellation notification.
-8. The named PRD requirements and scenarios match the delivered behavior. ADR-018 and ADR-0019 describe the chosen
+8. The named PRD requirements and scenarios match the delivered behavior. ADR-018 and ADR-019 describe the chosen
    transport split, ownership, no-replay rule, and limits. The glossary updates **MCP Server Configuration** and
    **Remote SSH connection** without inventing a new Session or Bridged Tool type. User MCP docs explain home cwd,
    unchanged paths, location/status, reconnect, and trusted server output. Keep remote workflows, `/sleep`, and

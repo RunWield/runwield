@@ -47,7 +47,7 @@ Execute after child 06 on the existing target branch. Recheck its delivered entr
 prerequisites here. Preserve unrelated working-tree edits, including execution-start and Core PRD changes.
 
 The existing [Epic](../consolidate-project-runtime-state.md) and
-[ADR-017](../../../adr/017-project-runtime-state-under-wld-internal.md#git-behavior-during-and-after-migration) settle
+[ADR-016](../../../adr/016-project-runtime-state-under-wld-internal.md#git-behavior-during-and-after-migration) settle
 the policy. Core's [work protection](../../../prd/runwield-core-prd.md#work-protection) capability owns the proposed
 named requirement **Keep Project Runtime State out of repository changes**, with scenarios for runtime exclusion,
 trackable configuration, preserved ignore rules, and non-destructive refusal. Extend the child 06 requirement if it

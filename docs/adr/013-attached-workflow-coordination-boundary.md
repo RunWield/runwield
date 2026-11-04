@@ -2,7 +2,7 @@
 status: accepted
 ---
 
-# ADR-014: Attached Workflow Coordination Boundary
+# Attached Workflow Coordination Boundary
 
 ## Context
 
@@ -10,7 +10,7 @@ Attached Mode lets an External Agent Host such as Claude Code own the user conve
 turn while RunWield remains authoritative for Plans, Plan Lifecycle transitions, review, execution isolation,
 validation, recovery evidence, Work Records, and organizational memory.
 
-ADR-010 established the TUI and Agent Client Protocol (ACP) server as sibling adapters over `SessionRuntime`. Those
+ADR-011 established the TUI and Agent Client Protocol (ACP) server as sibling adapters over `SessionRuntime`. Those
 adapters still ask RunWield to construct and execute a Hosted Session. Attached Mode is materially different: no
 RunWield Hosted Session or Pi `AgentSession` exists for the host conversation, and importing the host transcript is
 explicitly prohibited. Treating Attached Mode as another `SessionRuntime` adapter would either make RunWield the model

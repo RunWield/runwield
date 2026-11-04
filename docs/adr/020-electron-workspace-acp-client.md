@@ -53,8 +53,8 @@ modules, construct `SessionRuntime`, acquire Session writer locks, or mutate Pla
 The bundled `wld` executable owns runtime execution and canonical storage through existing Core services. Project
 registration and access grants are runtime-side facts; window state, drafts, and connection preferences can remain
 client-side. Client caches are projections. Storage format and Session authority remain as defined by
-[ADR-015](015-file-authoritative-session-bundles.md) and
-[ADR-017](017-project-runtime-state-under-wld-internal.md). This client change must use the current Plan-store boundary
+[ADR-014](014-file-authoritative-session-bundles.md) and
+[ADR-016](016-project-runtime-state-under-wld-internal.md). This client change must use the current Plan-store boundary
 rather than freeze its storage location while separate Plan-store work proceeds.
 
 Astro may remain the browser host. Move reusable interactive composition and data access out of server-only pages as
@@ -131,7 +131,7 @@ must not silently target the desktop filesystem. Establish authenticated host tr
 shipping network access. ACP is a protocol, not authentication or a guaranteed standard network listener.
 
 Attaching to an independently running remote runtime is distinct from `wld remote`'s connected-only SSH TUI with
-laptop-owned personal data in [ADR-018](018-remote-ssh-local-personal-authority.md). Do not inherit its mounts, storage
+laptop-owned personal data in [ADR-017](017-remote-ssh-local-personal-authority.md). Do not inherit its mounts, storage
 placement, or disconnect policy implicitly. Future remote planning must choose and document its authority/lifetime
 model. The local implementation provides a connection boundary, not speculative SSH, WebSocket, or relay backends.
 
