@@ -6,10 +6,33 @@
 import { ok as assert } from "node:assert/strict";
 import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.js";
 
-/** @typedef {import('../testing/scenario-runner.js').GoldenScenarioResult} GoldenScenarioResult */
+import type {
+    ConsumedScriptedInteraction,
+    ConsumedScriptedReview,
+    GoldenScenario,
+    GoldenScenarioResult,
+} from "../testing/mod.ts";
 
-/** @param {GoldenScenarioResult} result */
-function assertRuntimeGuideSwitch(result) {
+interface PlanReviewLifecycleEvent {
+    event: string;
+    status?: string;
+}
+interface PlanReviewAttributes {
+    status: string;
+}
+interface ReviewConversationDocument {
+    before?: string;
+    after?: string;
+}
+interface PlanReviewEvidence {
+    attrs: PlanReviewAttributes;
+    lifecycleEvents: PlanReviewLifecycleEvent[];
+    consumed: ConsumedScriptedReview[];
+    conversationDocuments: ReviewConversationDocument[];
+    plan: string;
+}
+
+function assertRuntimeGuideSwitch(result: GoldenScenarioResult) {
     assertEventIncludes(result, "runtime:agent:guide");
     assert(
         result.state.activeAgent === "guide",
@@ -21,43 +44,36 @@ function assertRuntimeGuideSwitch(result) {
     assertEventIncludes(result, "runtime:assistant:text");
 }
 
-/** @param {GoldenScenarioResult} result */
-function assertTerminalInputVisible(result) {
+function assertTerminalInputVisible(result: GoldenScenarioResult) {
     assertEventIncludes(result, "terminal:type:how does routing work?");
 }
 
-/** @param {GoldenScenarioResult} result */
-function assertProjectClean(result) {
+function assertProjectClean(result: GoldenScenarioResult) {
     assert(
         result.state.projectMutation === "clean",
         `Expected clean Project mutation state; got ${result.state.projectMutation}`,
     );
 }
 
-/** @param {GoldenScenarioResult} result */
-function assertCancellationEvent(result) {
+function assertCancellationEvent(result: GoldenScenarioResult) {
     assertEventIncludes(result, "runtime:cancellation");
 }
 
-/** @param {GoldenScenarioResult} result */
-function assertEditorReady(result) {
+function assertEditorReady(result: GoldenScenarioResult) {
     assert(result.state.editorUsable === true, "Expected editor to be usable after cancellation.");
     assertEventIncludes(result, "terminal:type:benign follow-up after cancel");
     assertEventIncludes(result, "runtime:assistant:text");
 }
 
-/** @param {GoldenScenarioResult} result */
-function assertHelpSlashVisible(result) {
+function assertHelpSlashVisible(result: GoldenScenarioResult) {
     assertEventIncludes(result, "terminal:type:/help");
 }
 
-/** @param {GoldenScenarioResult} result */
-function assertKeyboardHelpVisible(result) {
+function assertKeyboardHelpVisible(result: GoldenScenarioResult) {
     assertScreenIncludes(result, "Global flags:");
 }
 
-/** @param {GoldenScenarioResult} result */
-function assertStartupLoginPromptOpened(result) {
+function assertStartupLoginPromptOpened(result: GoldenScenarioResult) {
     const startupScreen = String(result.state.startupScreen || "");
     assert(
         startupScreen.includes("Welcome to RunWield"),
@@ -69,8 +85,7 @@ function assertStartupLoginPromptOpened(result) {
     );
 }
 
-/** @param {GoldenScenarioResult} result */
-function assertStartupModelSelectorOpened(result) {
+function assertStartupModelSelectorOpened(result: GoldenScenarioResult) {
     const startupScreen = String(result.state.startupScreen || "");
     assert(
         startupScreen.includes("Only showing models from configured providers"),
@@ -82,24 +97,18 @@ function assertStartupModelSelectorOpened(result) {
     );
 }
 
-/** @param {GoldenScenarioResult} result */
-function assertReviewFeedbackEvent(result) {
+function assertReviewFeedbackEvent(result: GoldenScenarioResult) {
     assertEventIncludes(result, "interaction:PLAN_REVIEW:feedback");
     assertEventIncludes(result, "review_feedback");
 }
 
-/** @param {GoldenScenarioResult} result */
-function assertReviewApprovedEvent(result) {
+function assertReviewApprovedEvent(result: GoldenScenarioResult) {
     assertEventIncludes(result, "interaction:PLAN_REVIEW:approved");
     assertEventIncludes(result, "review_approved");
 }
 
-/** @param {GoldenScenarioResult} result */
-function assertPlanReviewLifecyclePersisted(result) {
-    const planReview =
-        /** @type {{ lifecycleEvents?: Array<{ event: string, status?: unknown }>, attrs?: Record<string, unknown>, consumed?: unknown[] } | undefined} */ (
-            result.state.planReview
-        );
+function assertPlanReviewLifecyclePersisted(result: GoldenScenarioResult) {
+    const planReview = result.state.planReview as Partial<PlanReviewEvidence> | undefined;
     assert(planReview, "Expected planReview state from production submitPlanForReview transaction.");
     assert(
         planReview.lifecycleEvents?.map((event) => `${event.event}:${event.status}`).join(",") ===
@@ -110,7 +119,7 @@ function assertPlanReviewLifecyclePersisted(result) {
     );
     assert(planReview.consumed?.length === 2, "Expected scripted review surface to be consumed twice.");
     assert(
-        String(/** @type {{ plan?: unknown }} */ (planReview).plan || "").includes("Reviewed content persisted."),
+        String(planReview.plan || "").includes("Reviewed content persisted."),
         "Expected reviewed Plan body to persist.",
     );
 }
@@ -163,7 +172,7 @@ export const routerToGuideInquiryScenario = {
         { type: "assertProjectUnchanged" },
     ],
     assertions: [assertTerminalInputVisible, assertRuntimeGuideSwitch, assertProjectClean],
-};
+} satisfies GoldenScenario;
 
 export const escapeCancellationScenario = {
     name: "escape-cancellation-restores-editor",
@@ -203,7 +212,7 @@ export const escapeCancellationScenario = {
         { type: "waitForIdle" },
     ],
     assertions: [assertCancellationEvent, assertEditorReady],
-};
+} satisfies GoldenScenario;
 
 export const helpSlashCommandScenario = {
     name: "help-slash-command",
@@ -211,7 +220,7 @@ export const helpSlashCommandScenario = {
     terminal: { columns: 100, rows: 30 },
     actions: [{ type: "type", text: "/help" }, { type: "enter" }, { type: "waitForIdle" }],
     assertions: [assertHelpSlashVisible, assertKeyboardHelpVisible],
-};
+} satisfies GoldenScenario;
 
 export const startupNoProvidersOpensLoginScenario = {
     name: "startup-no-providers-opens-login",
@@ -227,7 +236,7 @@ export const startupNoProvidersOpensLoginScenario = {
     actions: [],
     assertions: [assertStartupLoginPromptOpened],
     timeoutMs: 5000,
-};
+} satisfies GoldenScenario;
 
 export const startupProviderWithoutModelsOpensModelScenario = {
     name: "startup-provider-without-models-opens-model",
@@ -241,7 +250,7 @@ export const startupProviderWithoutModelsOpensModelScenario = {
     actions: [],
     assertions: [assertStartupModelSelectorOpened],
     timeoutMs: 15000,
-};
+} satisfies GoldenScenario;
 
 export const planReviewTransactionContractScenario = {
     name: "plan-review-transaction-contract",
@@ -294,10 +303,9 @@ export const planReviewTransactionContractScenario = {
         { type: "waitForIdle" },
     ],
     assertions: [assertReviewFeedbackEvent, assertReviewApprovedEvent, assertPlanReviewLifecyclePersisted],
-};
+} satisfies GoldenScenario;
 
-/** @param {GoldenScenarioResult} result */
-function assertReplyOnlyReviewApproval(result) {
+function assertReplyOnlyReviewApproval(result: GoldenScenarioResult) {
     assertEventIncludes(result, "interaction:PLAN_REVIEW:conversation");
     assertEventIncludes(result, "interaction:PLAN_REVIEW:approved");
     assertEventIncludes(result, "runtime:assistant:text");
@@ -305,10 +313,7 @@ function assertReplyOnlyReviewApproval(result) {
         result.events.filter((event) => event === "runtime:tool:start:plan_written").length === 1,
         "The reply-only turn must not call plan_written again.",
     );
-    const review =
-        /** @type {{ attrs: { status: string }, conversationDocuments: Array<{ before?: string, after?: string }>, lifecycleEvents: Array<{ event: string }>, consumed: Array<{ decision: { approved: boolean } }>, plan: string }} */ (
-            result.state.planReview
-        );
+    const review = result.state.planReview as PlanReviewEvidence;
     assert(review.attrs.status === "ready_for_work", "Approval through the re-armed review must pass readiness.");
     assert(review.consumed.length === 2, "The same live page must accept chat then approval.");
     assert(
@@ -357,7 +362,7 @@ export const planReviewReplyOnlyConversationScenario = {
         { type: "waitForIdle" },
     ],
     assertions: [assertReplyOnlyReviewApproval],
-};
+} satisfies GoldenScenario;
 
 export const fauxProviderProtocolScenario = {
     name: "faux-provider-protocol-contract",
@@ -392,19 +397,16 @@ export const fauxProviderProtocolScenario = {
     ],
     actions: [{ type: "type", text: "protocol check" }, { type: "enter" }, { type: "waitForIdle" }],
     assertions: [
-        (/** @type {GoldenScenarioResult} */ result) =>
-            assertEventIncludes(result, "model:faux-provider:router:triage"),
-        (/** @type {GoldenScenarioResult} */ result) =>
-            assertEventIncludes(result, "model:faux-provider:guide:inquiry"),
+        (result: GoldenScenarioResult) => assertEventIncludes(result, "model:faux-provider:router:triage"),
+        (result: GoldenScenarioResult) => assertEventIncludes(result, "model:faux-provider:guide:inquiry"),
     ],
-};
+} satisfies GoldenScenario;
 
-/** @param {GoldenScenarioResult} result */
-function assertScriptedRuntimeInteractions(result) {
+function assertScriptedRuntimeInteractions(result: GoldenScenarioResult) {
     assertEventIncludes(result, "interaction:select:selected");
     assertEventIncludes(result, "interaction:text:text");
     assertEventIncludes(result, "interaction:approval:accepted");
-    const interactions = /** @type {unknown[]} */ (result.state.scriptedInteractions || []);
+    const interactions = (result.state.scriptedInteractions || []) as ConsumedScriptedInteraction[];
     assert(interactions.length === 3, `Expected three scripted Runtime interactions; got ${interactions.length}`);
 }
 
@@ -446,7 +448,7 @@ export const runtimeInteractionContractScenario = {
         },
     ],
     assertions: [assertScriptedRuntimeInteractions],
-};
+} satisfies GoldenScenario;
 
 // Deliberately hangs so the parent's scenario timeout fires mid-sleep. The sleep
 // is far longer than that timeout so the kill window cannot be outrun.
@@ -456,7 +458,7 @@ export const timeoutDiagnosticScenario = {
     terminal: { columns: 80, rows: 20 },
     script: [{ id: "timeout-unused-turn", agent: "router", phase: "triage", text: "unused" }],
     actions: [{ type: "sleep", ms: 120_000 }],
-};
+} satisfies GoldenScenario;
 
 export const diagnosticArtifactFailureScenario = {
     name: "diagnostic-artifact-failure",
@@ -464,7 +466,7 @@ export const diagnosticArtifactFailureScenario = {
     terminal: { columns: 80, rows: 20 },
     script: [{ id: "unused-router-turn", agent: "router", phase: "triage", text: "unused" }],
     actions: [{ type: "unknown-composed-action" }],
-};
+} satisfies GoldenScenario;
 
 export const initialGoldenScenarios = [
     routerToGuideInquiryScenario,
