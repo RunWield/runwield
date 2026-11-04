@@ -508,7 +508,7 @@
     "src/shared/session/session-subscribers.test.js",
     "src/shared/session/session-temperature.test.ts",
     "src/shared/session/session-transcript-manifest.test.ts",
-    "src/shared/session/session-transcript-projection.test.js",
+    "src/shared/session/session-transcript-projection.test.ts",
     "src/shared/session/session-user-messages.test.ts",
     "src/shared/session/skill-catalog.test.ts",
     "src/shared/session/subagent-definitions.test.ts",
