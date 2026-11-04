@@ -25,7 +25,7 @@ dependencies:
     - "external-plan-store/relocate-project-runtime-into-home-storage"
 targetBranch: "epic/external-plan-store"
 userVerifiedAt: null
-status: "in_progress"
+status: "implemented"
 ---
 
 # Add Canonical Plan Packages

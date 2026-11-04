@@ -36,6 +36,20 @@ resolves verified original stores after moves and accepted clone links, without 
 historical evidence, transferring execution attempts, or changing managed-remote ownership. ADR-015 owns that accepted
 Session lookup decision; the broader home-state proposal remains proposed.
 
+The canonical-package persistence slice is available through explicit internal operations; public discovery and
+lifecycle still retain the repository boundary. Its version-1 metadata owns IDs, names, independent revisions,
+relationships, archive facts, supported definition/controller fields and references to execution records. It does not
+copy mutable worktree registries or validation checkpoints into package authority. Unsupported fields and versions
+require an explicit format change. This persistence contract does not accept the broader proposed ownership and
+activation decision below.
+
+Package lookup derives from directories and validated metadata, without an authoritative catalog database. Mutations
+take the personal Project catalog lock before stable, ordered Plan-ID locks; this deliberately serializes mutations
+within one store to keep recovery and uniqueness in one owner. A durable intent covers publication and rename. Rename
+moves the package's own resources so nested names do not make directory ancestry into a parent relationship. Retained
+inputs publish complete staged bytes and a manifest before exposing their reference. Editors do not take Core locks,
+so capture revalidates observed bytes and membership; arbitrary multi-file editor writes are not an atomic transaction.
+
 ## Decision and Rationale
 
 Use stable opaque Project identity to locate home Project storage. Keep repository and checkout bindings as explicit

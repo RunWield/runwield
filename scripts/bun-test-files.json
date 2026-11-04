@@ -945,5 +945,9 @@
     "src/ui/workspace/workspace-shell-navigation.test.ts",
     "src/ui/workspace/workspace-styles.test.ts",
     "src/ui/workspace/workspace-surface-parity.test.ts",
-    "src/ui/workspace/workspace-theme.test.ts"
+    "src/ui/workspace/workspace-theme.test.ts",
+    "src/plan-package-store.test.ts",
+    "src/plan-package-concurrency.test.ts",
+    "src/plan-package-recovery.test.ts",
+    "src/plan-package-snapshots.test.ts"
 ]
