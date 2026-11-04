@@ -1323,8 +1323,10 @@ function createRunWieldAcpServer(context) {
         return createInitializeResponse(context.params);
     });
 
-    app.onRequest(methods.agent.session.new, async (context) => {
-        const request = validateNewSessionParams(context.params);
+    // The SDK's default parser silently drops malformed MCP definitions. Validate
+    // the original request so a client never receives a Session missing its tools.
+    app.onRequest(methods.agent.session.new, validateNewSessionParams, async (context) => {
+        const request = context.params;
         const readiness = getSelectedDefaultModelAvailability(request.cwd);
         if (!readiness.available) throwAuthenticationRequired(request.cwd);
         let runtimeSessionId;
@@ -1362,8 +1364,8 @@ function createRunWieldAcpServer(context) {
         };
     });
 
-    app.onRequest(methods.agent.session.load, async (context) => {
-        const request = validateLoadSessionParams(context.params);
+    app.onRequest(methods.agent.session.load, validateLoadSessionParams, async (context) => {
+        const request = context.params;
         const persistedSessionId = normalizeAcpSessionIdForLoad(request.sessionId);
         if (
             sessionMap
