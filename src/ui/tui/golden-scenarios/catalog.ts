@@ -9,7 +9,7 @@ import { loadPlanWorkflowScenarios } from "./load-plan-workflow.ts";
 import { loadPlanEpicWorkflowScenarios } from "./load-plan-epic-workflow.ts";
 import { plannedChangeWorkflowScenarios } from "./planned-change-workflow.js";
 import { presentationAndTerminalScenarios } from "./presentation-and-terminal.ts";
-import { projectWorkflowScenarios } from "./project-workflow.js";
+import { projectWorkflowScenarios } from "./project-workflow.ts";
 import { projectRoutingWorkflowScenarios } from "./project-routing-workflow.ts";
 import { roleJourneyScenarios } from "./role-journeys.ts";
 import { sessionResumeWorkflowScenarios } from "./session-resume-workflow.ts";

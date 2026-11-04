@@ -7,22 +7,75 @@ import { ok as assert } from "node:assert/strict";
 import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.js";
 import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-assertions.ts";
 
-/** @typedef {import('../testing/scenario-runner.js').GoldenScenarioResult} GoldenScenarioResult */
-/** @typedef {{ status?: string, path?: string }} WorkRecordStatus */
-/** @typedef {{ status?: string, epicCompletionMode?: string, validatedCommit?: string, workRecord?: WorkRecordStatus }} EpicCompletionAttrs */
-/** @typedef {{ attrs?: EpicCompletionAttrs }} EpicPlanState */
-/** @typedef {{ plans?: EpicPlanState[] }} EpicProjectState */
+import type { GoldenScenario, GoldenScenarioResult } from "../testing/mod.ts";
+import type { WorktreeRegistryEntry } from "../../../shared/worktree-registry.js";
 
-/** @param {GoldenScenarioResult} result @param {string | undefined} capability */
-function assertProjectPlanReviewJourney(result, capability) {
+interface WorkRecordStatus {
+    status?: string;
+    path?: string;
+}
+interface EpicCompletionAttrs {
+    status?: string;
+    epicCompletionMode?: string;
+    validatedCommit?: string;
+    workRecord?: WorkRecordStatus;
+}
+interface ProjectPlanAttrs extends EpicCompletionAttrs {
+    classification?: string;
+}
+interface EpicPlanState {
+    name?: string;
+    attrs?: ProjectPlanAttrs | null;
+}
+interface EpicProjectState {
+    plans?: EpicPlanState[];
+}
+interface ProjectPlanReview {
+    attrs?: ProjectPlanAttrs;
+    plan?: string;
+}
+interface ProjectChildPlan extends ProjectPlanAttrs {
+    name?: string;
+    order?: number;
+    parentPlan?: string;
+}
+interface ReplacedSession {
+    previousSessionId?: string;
+    currentSessionId?: string;
+    reason?: string;
+    childPlanName?: string;
+}
+interface ProjectPlans {
+    parent?: ProjectPlanAttrs;
+    firstChild?: ProjectPlanAttrs;
+    secondChild?: ProjectPlanAttrs;
+}
+interface ProjectDurability {
+    trackedFiles?: string;
+    primaryTrackedFiles?: string;
+    epicBranch?: string;
+    deliveryLog?: string;
+    liveRegistryEntries?: string[];
+    registryEntryCount?: number;
+}
+interface CapturedProjectState extends EpicProjectState {
+    registryEntries?: WorktreeRegistryEntry[];
+    nonTerminalRegistryEntries?: WorktreeRegistryEntry[];
+    workRecordNames?: string[];
+}
+interface CapturedWorkRecord extends WorkRecordStatus {
+    error?: string;
+    recordNames?: string[];
+}
+type LabeledPlanAttrs = [label: string, attrs: ProjectPlanAttrs | undefined];
+
+function assertProjectPlanReviewJourney(result: GoldenScenarioResult, capability: string | undefined) {
     assert(typeof capability === "string" && capability.length > 0, "Expected capability-specific PROJECT assertion.");
     assertEventIncludes(result, "interaction:PLAN_REVIEW:approved");
     assertEventIncludes(result, "review_approved");
     assertEventIncludes(result, "runtime:tool:start:plan_written");
     assertScreenIncludes(result, 'Plan "plan" approved');
-    const planReview = /** @type {{ attrs?: Record<string, unknown>, plan?: string } | undefined} */ (
-        result.state.planReview
-    );
+    const planReview = result.state.planReview as ProjectPlanReview | undefined;
     assert(planReview?.attrs?.classification === "PROJECT", "Expected reviewed Plan to use PROJECT classification.");
     assert(
         String(planReview.plan || "").includes("Golden PROJECT revised content."),
@@ -30,8 +83,7 @@ function assertProjectPlanReviewJourney(result, capability) {
     );
 }
 
-/** @param {GoldenScenarioResult} result @param {string | undefined} capability */
-function assertRuntimeSessionReplacementAndEpicEvidence(result, capability) {
+function assertRuntimeSessionReplacementAndEpicEvidence(result: GoldenScenarioResult, capability: string | undefined) {
     assert(typeof capability === "string" && capability.length > 0, "Expected capability-specific Epic assertion.");
     assertEventIncludes(result, "project:epic:status:ready_for_decomposition");
     assertEventIncludes(result, "runtime:tool:start:slicer_finalize_decomposition");
@@ -42,10 +94,7 @@ function assertRuntimeSessionReplacementAndEpicEvidence(result, capability) {
 
     // The Slicer materialized these through the real decomposition transaction, so
     // their shape is the product's output rather than fixture setup.
-    const children =
-        /** @type {Array<{ name?: string, status?: string, classification?: string, order?: unknown, parentPlan?: string }> | undefined} */ (
-            result.state.projectChildren
-        );
+    const children = result.state.projectChildren as ProjectChildPlan[] | undefined;
     assert(children?.length === 2, `Expected two materialized child Plans; got ${JSON.stringify(children)}`);
     assert(
         children[0].name === "epic/child-one" && children[1].name === "epic/child-two",
@@ -61,10 +110,7 @@ function assertRuntimeSessionReplacementAndEpicEvidence(result, capability) {
         `Expected the Slicer to materialize child drafts; got ${JSON.stringify(children)}`,
     );
 
-    const replacement =
-        /** @type {{ previousSessionId?: string, currentSessionId?: string, reason?: string, childPlanName?: string } | undefined} */ (
-            result.state.replacedSession
-        );
+    const replacement = result.state.replacedSession as ReplacedSession | undefined;
     assert(replacement?.previousSessionId && replacement?.currentSessionId, "Expected previous/current Session IDs.");
     assert(
         replacement.previousSessionId !== replacement.currentSessionId,
@@ -76,18 +122,15 @@ function assertRuntimeSessionReplacementAndEpicEvidence(result, capability) {
         `Expected continuation into the second child ${children[1].name}; got ${replacement.childPlanName}`,
     );
 
-    const plans =
-        /** @type {{ parent?: Record<string, unknown>, firstChild?: Record<string, unknown>, secondChild?: Record<string, unknown> } | undefined} */ (
-            result.state.projectPlans
-        );
+    const plans = result.state.projectPlans as ProjectPlans | undefined;
     assert(plans?.parent?.classification === "PROJECT", "Expected parent Epic PROJECT metadata.");
     // Both children reached a terminal verified state through their own real
     // execution and Workflow Validation, not a harness status write.
     for (const [label, attrs] of [
         ["first", plans?.firstChild],
         ["second", plans?.secondChild],
-    ]) {
-        const childAttrs = /** @type {Record<string, unknown> | undefined} */ (attrs);
+    ] satisfies LabeledPlanAttrs[]) {
+        const childAttrs = attrs;
         assert(
             childAttrs?.classification === "PLANNED_CHANGE",
             `Expected ${label} child canonical PLANNED_CHANGE metadata.`,
@@ -98,10 +141,7 @@ function assertRuntimeSessionReplacementAndEpicEvidence(result, capability) {
         );
     }
 
-    const durability =
-        /** @type {{ trackedFiles?: string, primaryTrackedFiles?: string, epicBranch?: string, deliveryLog?: string, liveRegistryEntries?: string[], registryEntryCount?: number } | undefined} */ (
-            result.state.projectDurability
-        );
+    const durability = result.state.projectDurability as ProjectDurability | undefined;
     // Each child ran a real Engineer turn in a real worktree and a real Direct
     // Delivery merge to the Epic branch, so its file has to be tracked there and
     // the primary branch must not have received partial Epic work.
@@ -162,14 +202,14 @@ export const projectPlanReviewScenario = {
         ),
         assertsGoldenCoverage("durable:plan-lifecycle", (result) => {
             assertEventIncludes(result, "review_approved");
-            const planReview = /** @type {{ attrs?: Record<string, unknown> } | undefined} */ (result.state.planReview);
+            const planReview = result.state.planReview as ProjectPlanReview | undefined;
             assert(
                 ["approved", "ready_for_decomposition"].includes(String(planReview?.attrs?.status || "")),
                 "Expected PROJECT Plan Review approval lifecycle state.",
             );
         }),
     ],
-};
+} satisfies GoldenScenario;
 
 export const twoChildProjectContinuationScenario = {
     // This scenario isolates automated delivery; human policy gates have dedicated journeys.
@@ -525,9 +565,7 @@ export const twoChildProjectContinuationScenario = {
     assertions: [
         assertsGoldenCoverage("durable:session-replaced", (result) => {
             assertRuntimeEvent("durable:session-replaced", "runtime:session-replaced:epic_continuation")(result);
-            const replacement = /** @type {{ previousSessionId?: string, currentSessionId?: string } | undefined} */ (
-                result.state.replacedSession
-            );
+            const replacement = result.state.replacedSession as ReplacedSession | undefined;
             assert(
                 replacement?.previousSessionId !== replacement?.currentSessionId,
                 "Expected typed Session replacement identity.",
@@ -538,14 +576,9 @@ export const twoChildProjectContinuationScenario = {
             assertRuntimeSessionReplacementAndEpicEvidence(result, "durable:epic-evidence");
         }),
         assertsGoldenCoverage("durable:epic-completion", (result) => {
-            const projectState =
-                /** @type {{ plans?: Array<{ name?: string, attrs?: Record<string, unknown> | null }>, registryEntries?: unknown[], nonTerminalRegistryEntries?: unknown[], workRecordNames?: string[] } | undefined} */ (
-                    result.state.projectState
-                );
-            const parent = /** @type {EpicCompletionAttrs | undefined} */ (
-                projectState?.plans?.find((plan) => plan.name === "epic")?.attrs || undefined
-            );
-            const reviewedState = /** @type {EpicProjectState} */ (result.state.reviewedEpicState);
+            const projectState = result.state.projectState as CapturedProjectState | undefined;
+            const parent = projectState?.plans?.find((plan) => plan.name === "epic")?.attrs || undefined;
+            const reviewedState = result.state.reviewedEpicState as EpicProjectState;
             const reviewed = reviewedState.plans?.[0]?.attrs;
             assert(
                 reviewed?.status === "reviewed",
@@ -589,10 +622,7 @@ export const twoChildProjectContinuationScenario = {
             );
         }),
         assertsGoldenCoverage("durable:work-record", (result) => {
-            const workRecord =
-                /** @type {{ status?: string, path?: string, error?: string, recordNames?: string[] } | undefined} */ (
-                    result.state.workRecord
-                );
+            const workRecord = result.state.workRecord as CapturedWorkRecord | undefined;
             // Loading the externally delivered Epic writes its Work Record in the primary checkout.
             assert(
                 workRecord?.status === "local" || workRecord?.status === "published",
@@ -608,7 +638,7 @@ export const twoChildProjectContinuationScenario = {
             );
         }),
     ],
-};
+} satisfies GoldenScenario;
 
 /**
  * Reuse a turn from the two-child Epic script by name.
@@ -619,7 +649,7 @@ export const twoChildProjectContinuationScenario = {
  *
  * @param {string} id
  */
-function epicTurn(id) {
+function epicTurn(id: string) {
     const turn = twoChildProjectContinuationScenario.script.find((entry) => entry.id === id);
     if (!turn) throw new Error(`Golden PROJECT script has no turn "${id}".`);
     return turn;
@@ -704,14 +734,12 @@ export const projectChildCiFailureStopScenario = {
             assertEventIncludes(result, "runtime:interaction_resolved");
         }),
         assertsGoldenCoverage("durable:epic-child-halted", (result) => {
-            const children = /** @type {Array<{ name?: string, status?: string }> | undefined} */ (
-                result.state.projectChildren
-            );
+            const children = result.state.projectChildren as ProjectChildPlan[] | undefined;
             const second = children?.find((child) => String(child.name || "").includes("child-two"));
             assert(second && !["verified", "user_verified"].includes(String(second.status || "")));
         }),
     ],
-};
+} satisfies GoldenScenario;
 
 export const projectWorkflowScenarios = [
     projectPlanReviewScenario,
