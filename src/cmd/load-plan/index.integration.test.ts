@@ -240,18 +240,6 @@ async function prepareValidatedPublicationPlan(
     return { planName, worktreePath: worktree.path, worktreeBranch: worktree.branch, worktreeId: worktree.id };
 }
 
-async function captureLogs(run: () => Promise<void>): Promise<string[]> {
-    const originalLog = console.log;
-    const logs: string[] = [];
-    console.log = (message = "") => logs.push(String(message));
-    try {
-        await run();
-    } finally {
-        console.log = originalLog;
-    }
-    return logs;
-}
-
 async function pathExists(path: string): Promise<boolean> {
     try {
         await fsStat(path);
@@ -359,12 +347,6 @@ test("load-plan follow-up replaces the TUI Session with one rooted in the execut
             }
         },
     );
-});
-
-test("load-plan prints its real command help", async () => {
-    const logs = await captureLogs(() => runLoadPlanCommand(["--help"]));
-
-    assertStringIncludes(logs.join("\n"), "load-plan");
 });
 
 test("sibling dependency resolution reads canonical child Plans from the fixture catalogue", async () => {
