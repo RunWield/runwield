@@ -28,18 +28,36 @@ import {
     withWorkflowMetricJournalLock,
 } from "./metrics-journal.ts";
 
+import type { JournalResult } from "./metrics-journal.ts";
+
+interface ObservedJournalRow {
+    v: number;
+    event: string;
+    eventId?: string;
+    collectionEpoch?: string;
+    enabled?: boolean;
+    reason?: string;
+    corruptLines?: number[];
+}
+type JournalEpochState = ReturnType<typeof resolveCollectionEpoch>;
+interface CheckpointedJournalState extends Omit<JournalEpochState, "journalLines"> {
+    journalLines: number;
+}
+interface ReportedMetricResult extends JournalResult {
+    recorderId: string;
+    seq: number;
+}
+
 const metric = { v: 2, category: "command", event: "command_started", recorderId: "test", seq: 0, command: "help" };
 
-/** @param {string} path */
-async function readJournal(path) {
+async function readJournal(path: string): Promise<ObservedJournalRow[]> {
     return (await fsReadFile(path, "utf8"))
         .trim()
         .split("\n")
-        .map((line) => JSON.parse(line));
+        .map((line): ObservedJournalRow => JSON.parse(line));
 }
 
-/** @param {string} path @param {boolean} [enabled] */
-function invocation(path, enabled = true) {
+function invocation(path: string, enabled = true) {
     return { enabled, epoch: resolveCollectionEpoch(path, enabled).collectionEpoch.id, deadline: Date.now() + 1000 };
 }
 
@@ -108,7 +126,7 @@ test("upgrade keeps v1 bytes and unknown history without transcript replay", asy
             }),
         );
         await recordWorkflowMetric({ ...metric, seq: 1 }, projectRoot);
-        const state = JSON.parse(await fsReadFile(join(dirname(path), "state.json"), "utf8"));
+        const state: JournalEpochState = JSON.parse(await fsReadFile(join(dirname(path), "state.json"), "utf8"));
         assertEquals(state.collectionEpoch.id, rows[1].collectionEpoch);
     });
 });
@@ -195,7 +213,7 @@ console.log(JSON.stringify(results));`,
         );
         const outcomes = results.flatMap((result, index) => {
             assertEquals(result.code, 0, new TextDecoder().decode(result.stderr));
-            const reported = JSON.parse(new TextDecoder().decode(result.stdout));
+            const reported: ReportedMetricResult[] = JSON.parse(new TextDecoder().decode(result.stdout));
             assertEquals(reported.length, 12);
             for (const [seq, outcome] of reported.entries()) {
                 assertEquals(outcome.recorderId, index === 0 ? "one" : "two");
@@ -358,7 +376,7 @@ test("large checkpointed history does not delay enabled or disabled observations
         const path = getWorkflowMetricsFilePath(projectRoot);
         await recordWorkflowMetric(metric, projectRoot);
         const statePath = join(dirname(path), "state.json");
-        const state = JSON.parse(await fsReadFile(statePath, "utf8"));
+        const state: CheckpointedJournalState = JSON.parse(await fsReadFile(statePath, "utf8"));
         const retained = ('{"v":1,"event":"legacy","padding":"' + "x".repeat(1024) + '"}\n').repeat(32768);
         await fsWriteFile(path, retained, { flag: "a" });
         state.journalBytes = (await fsStat(path)).size;
@@ -452,7 +470,7 @@ test("behind checkpoint recovers distant boundaries and gaps without accepting o
         assertEquals(journalLines.filter((line) => line === "broken-interior").length, 1);
         const gaps = journalLines
             .filter((line) => line !== "broken-interior")
-            .map((line) => JSON.parse(line))
+            .map((line): ObservedJournalRow => JSON.parse(line))
             .filter((row) => row.event === "measurement_gap");
         assertEquals(gaps.length, 1);
         assertEquals(gaps[0].corruptLines, [3]);
@@ -735,7 +753,7 @@ console.log(JSON.stringify(await appendWorkflowMetric(${JSON.stringify(path)}, $
                 text += new TextDecoder().decode(part.value);
             }
             assertEquals((await child.status).code, 0);
-            const result = JSON.parse(text.trim());
+            const result: JournalResult = JSON.parse(text.trim());
             assertEquals(result.persisted, false);
             assertEquals(result.reason, "history_boundary");
             assertEquals((await readJournal(path)).filter((row) => row.v === 2).length, 0);

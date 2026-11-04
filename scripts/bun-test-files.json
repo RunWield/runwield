@@ -577,7 +577,7 @@
     "src/shared/workflow/metrics-export-process.test.ts",
     "src/shared/workflow/metrics-export-record.test.ts",
     "src/shared/workflow/metrics-journal-recovery.test.ts",
-    "src/shared/workflow/metrics-journal.test.js",
+    "src/shared/workflow/metrics-journal.test.ts",
     "src/shared/workflow/metrics-process-boundary.test.ts",
     "src/shared/workflow/metrics.test.ts",
     "src/shared/workflow/orchestrator.test.ts",
