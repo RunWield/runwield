@@ -11,16 +11,59 @@ import { installPairCheckpointAutoCompactionPreservation } from "../../shared/se
 import { readRequestAttemptEntries } from "../../shared/session/request-dispatch.ts";
 import { makeToolProjectFixture, withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 
-/** @typedef {{ type: string, customType: string, data: * }} TestSessionEntry */
-/** @typedef {{ getSessionId: () => string, getCwd: () => string, getBranch: () => TestSessionEntry[], getEntries: () => TestSessionEntry[], appendCustomEntry: (customType: string, data: *) => number }} TestSessionManager */
-/** @typedef {{ const: string }} ConstSchema */
+import type {
+    AgentSession,
+    AgentSessionEventListener,
+    SessionManager,
+    ExtensionToolContext,
+} from "@earendil-works/pi-coding-agent";
+import type { TextContent } from "@earendil-works/pi-ai";
+import type { PairCheckpointParameters, PairCheckpointDetails } from "../pair-checkpoint.ts";
+import type { RequestDispatchKind, RequestPromptMode } from "../../shared/session/request-dispatch.ts";
+
+type PairCheckpointTool = ReturnType<typeof createPairCheckpointTool>;
+interface TestSessionEntry {
+    type: "custom";
+    customType: string;
+    data: Parameters<SessionManager["appendCustomEntry"]>[1];
+}
+interface TestSessionManager {
+    getSessionId(): string;
+    getCwd(): string;
+    getBranch(): TestSessionEntry[];
+    getEntries(): TestSessionEntry[];
+    appendCustomEntry(customType: string, data: TestSessionEntry["data"]): number;
+}
+interface BeginRequestOptions {
+    turnId?: string;
+    requestId?: string;
+    dispatchKind?: RequestDispatchKind;
+    promptMode?: RequestPromptMode;
+}
+interface ConstSchema {
+    const: string;
+}
+interface TestCheckpointDetails {
+    outcome: PairCheckpointDetails["outcome"];
+    checkpointId?: string;
+    checkpointNumber?: number;
+    reason?: string;
+    decision?: Extract<PairCheckpointDetails, { outcome: "resolved" }>["decision"];
+}
+interface TestCheckpointResult {
+    terminate: boolean;
+    details: TestCheckpointDetails;
+    content: TextContent[];
+}
+interface CompactingSession {
+    subscribe(callback: AgentSessionEventListener): () => void;
+    _runAutoCompaction(reason?: string, retry?: boolean): Promise<boolean>;
+}
 
 const PAIR_PROJECT_ROOT = makeToolProjectFixture("runwield-pair-checkpoint-");
 
-/** @param {string} projectRoot @returns {TestSessionManager} */
-function makeSessionManager(projectRoot) {
-    /** @type {TestSessionEntry[]} */
-    const entries = [];
+function makeSessionManager(projectRoot: string): TestSessionManager {
+    const entries: TestSessionEntry[] = [];
     return {
         getSessionId: () => `pair-session-${crypto.randomUUID()}`,
         getCwd: () => projectRoot,
@@ -52,17 +95,16 @@ function makePairSession(projectRoot = PAIR_PROJECT_ROOT) {
     return { session, sessionManager };
 }
 
-/**
- * @param {HostedSession} session
- * @param {TestSessionManager} sessionManager
- * @param {{ turnId?: string, requestId?: string, dispatchKind?: import("../../shared/session/request-dispatch.ts").RequestDispatchKind, promptMode?: import("../../shared/session/request-dispatch.ts").RequestPromptMode }} [options]
- */
-function beginRequest(session, sessionManager, {
-    turnId = `turn:${crypto.randomUUID()}`,
-    requestId = `request:${crypto.randomUUID()}`,
-    dispatchKind = "interactive",
-    promptMode = "original",
-} = {}) {
+function beginRequest(
+    session: HostedSession,
+    sessionManager: TestSessionManager,
+    {
+        turnId = `turn:${crypto.randomUUID()}`,
+        requestId = `request:${crypto.randomUUID()}`,
+        dispatchKind = "interactive",
+        promptMode = "original",
+    }: BeginRequestOptions = {},
+) {
     const activeTurnId = session.getActiveTurnId();
     if (activeTurnId) session.endTurn(activeTurnId);
     session.beginTurn(turnId);
@@ -80,7 +122,7 @@ function beginRequest(session, sessionManager, {
     return { turnId, requestId };
 }
 
-const reportParams = {
+const reportParams: PairCheckpointParameters = {
     action: "report",
     summary: "Rendered settings form",
     route: "/settings",
@@ -91,18 +133,16 @@ const reportParams = {
     nextIncrement: "Polish validation states",
 };
 
-/**
- * @param {*} tool
- * @param {string} id
- * @param {*} params
- * @returns {Promise<*>}
- */
-function execute(tool, id, params) {
-    return tool.execute(id, params, undefined, undefined, {});
+function execute(
+    tool: PairCheckpointTool,
+    id: string,
+    params: PairCheckpointParameters,
+): Promise<TestCheckpointResult> {
+    // The fixture supplies only the context and text result fields exercised by these tests.
+    return tool.execute(id, params, undefined, undefined, {} as ExtensionToolContext) as Promise<TestCheckpointResult>;
 }
 
-/** @param {ConstSchema} item */
-function schemaConst(item) {
+function schemaConst(item: ConstSchema) {
     return item.const;
 }
 
@@ -163,12 +203,9 @@ test("automatic compaction preserves Pair state and active user-turn provenance"
     const { session, sessionManager } = makePairSession();
     beginRequest(session, sessionManager, { dispatchKind: "plan_execution" });
     await execute(createPairCheckpointTool({ hostedSession: session }), "checkpoint-1", reportParams);
-    /** @type {import('@earendil-works/pi-coding-agent').AgentSessionEventListener | undefined} */
-    let listener;
-    const compactingSession = /** @type {*} */ ({
-        subscribe: /** @param {import('@earendil-works/pi-coding-agent').AgentSessionEventListener} callback */ (
-            callback,
-        ) => {
+    let listener: AgentSessionEventListener | undefined;
+    const compactingSession: CompactingSession = {
+        subscribe: (callback) => {
             listener = callback;
             return () => {
                 listener = undefined;
@@ -185,12 +222,15 @@ test("automatic compaction preserves Pair state and active user-turn provenance"
             });
             return Promise.resolve(false);
         },
-    });
-    installPairCheckpointAutoCompactionPreservation(compactingSession, session);
+    };
+    installPairCheckpointAutoCompactionPreservation(compactingSession as CompactingSession & AgentSession, session);
 
     assertEquals(await compactingSession._runAutoCompaction("threshold", false), false);
     assertEquals(readCurrentPairCheckpoint(session)?.report.report.summary, reportParams.summary);
-    assertEquals(readRequestAttemptEntries(/** @type {*} */ (sessionManager)).at(-1)?.phase, "started");
+    assertEquals(
+        readRequestAttemptEntries(sessionManager as TestSessionManager & SessionManager).at(-1)?.phase,
+        "started",
+    );
 });
 
 test("resolved Pair checkpoint survives a compacted branch snapshot", async () => {
@@ -212,10 +252,7 @@ test("resolved Pair checkpoint survives a compacted branch snapshot", async () =
     recordPairCheckpointSnapshot(session, checkpoint);
 
     assertEquals(readCurrentPairCheckpoint(session)?.resolution?.decision, "revise");
-    assertEquals(
-        readCurrentPairCheckpoint(session)?.resolution?.revisionDirection,
-        "Use the compact layout.",
-    );
+    assertEquals(readCurrentPairCheckpoint(session)?.resolution?.revisionDirection, "Use the compact layout.");
 });
 
 test("Pair restoration does not replace a different active attempt", async () => {
@@ -369,9 +406,10 @@ test("pair_checkpoint switches to autonomous and records content-free metrics", 
         assertEquals(session.getActiveExecutionWorkflow()?.collaborationStyle, "autonomous");
         assertEquals(session.getActiveExecutionWorkflow()?.pairSwitchedToAutonomous, true);
         const metrics = await readMetrics();
-        assertEquals(metrics.map((entry) => entry.details), [
-            { checkpointNumber: 1, decision: "switch_to_autonomous" },
-        ]);
+        assertEquals(
+            metrics.map((entry) => entry.details),
+            [{ checkpointNumber: 1, decision: "switch_to_autonomous" }],
+        );
         const serialized = JSON.stringify(metrics);
         assertEquals(serialized.includes("settings form"), false);
         assertEquals(serialized.includes("/settings"), false);
