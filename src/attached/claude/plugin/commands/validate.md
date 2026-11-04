@@ -40,9 +40,11 @@ Core owns host and version compatibility.
    structured outcome unchanged. Keep stable finding IDs. Do not map or reinterpret fields. If Core requests a correction,
    dispatch another fresh reviewer with the new action ID and revision; it fetches its own complete instructions. Core
    alone accepts coverage and candidate freshness.
-5. For `repair`, dispatch a fresh repair subagent with the action ID and request cwd. Tell it to fetch complete current
+5. For `repair`, dispatch a fresh repair subagent with the workflow ID, revision, action ID, and request cwd. Tell it to fetch complete current
    instructions with `get_instructions`. Do not enable host worktree isolation. Use only Core's handed-off checkout. The
-   worker makes no RunWield lifecycle calls and returns its per-item Markdown bullet report. Submit completed repair with
+   worker calls MCP `review_diff` directly with `scope: "full"`, following every truncated page before editing and using
+   each returned revision for its next call. Repair reads do not count as reviewer coverage. The worker makes no
+   RunWield lifecycle calls and returns its per-item Markdown bullet report and latest revision. Submit completed repair with
    `task_completed`, the current action ID and revision, and `payload.message`. A blocker is not completion: show it to
    the user and leave the workflow open.
 6. For `decision`, call `get_instructions` with the workflow and action IDs to fetch the exact Core prompt and options.

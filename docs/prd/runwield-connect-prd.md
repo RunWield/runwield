@@ -545,6 +545,10 @@ QUICK_FIX, and safe-handoff fallback beyond non-Git consent remain targets.
 - A fresh repair worker receives the current focused repair instructions and existing execution checkout. It returns its
   per-item report; the coordinating conversation submits `task_completed`. A user-decision request is asked in Claude
   and returned through `validation_decision`, not guessed by the host.
+- Repair workers can call MCP `review_diff` directly for their current action to inspect the checkout's full
+  target-relative diff, including after restoring a pending repair. Instructions and compact artifact references expose
+  this capability. Workers finish paged reads before editing and return the latest revision with their report. Repair
+  reads never satisfy independent reviewer coverage; obsolete actions remain rejected.
 - `/runwield:validate` restores this flow. An active MCP call sends progress every 30 seconds, stopping when it returns.
   The plugin sets a one-hour per-server timeout as a backup. Start Claude with `MCP_TOOL_TIMEOUT=600000` or a higher
   value suitable for the configured check (milliseconds).
@@ -566,6 +570,9 @@ QUICK_FIX, and safe-handoff fallback beyond non-Git consent remain targets.
   conversation reports completion. Core reruns CI before issuing a fresh reviewer request.
 - Given a reviewer that lists files but does not read every required diff byte, Core requests a correction instead of
   accepting approval. A stale action or changed candidate cannot advance review.
+- Given fresh review findings and a repair packet requiring full-diff inspection, the repair worker fetches its own
+  instructions and reads every diff page directly through MCP. It can complete the repair without coordinator-proxied
+  reads or shell-diff workarounds. The next reviewer must independently inspect the repaired candidate.
 - Given a Core process lost during CI, another conversation reads status and resumes validation from durable claims. A
   live validation call does not block reading Attached status. Replaying an accepted completion repeats no effects.
 - Given Core advances its checkpoint but the final Attached write is lost, retry reconciles the durable claim without

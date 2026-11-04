@@ -105,6 +105,7 @@ function compactAction(action: AttachedNextAction, workflow: AttachedWorkflowVie
                 repairGeneration: request.repairGeneration,
                 artifacts: {
                     planPath,
+                    diffTool: "review_diff",
                     readTool: "get_artifact",
                     names: ["prompt", "execution_report", "repair_report"],
                 },

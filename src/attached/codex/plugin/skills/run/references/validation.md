@@ -42,6 +42,10 @@ checkout, including its publication directory when requested. Do not create host
 original implementation. The worker may stage conflict resolutions when Core's repair instructions require that, but
 does not commit, merge, push, publish, or make lifecycle calls.
 
+The repair worker calls `review_diff` directly with `scope: "full"` for the current checkout's target-relative diff.
+It follows every truncated page before editing and uses each returned revision for its next call. These reads do not
+count as independent reviewer coverage. It returns its latest revision with the repair report.
+
 Submit its completed per-item Markdown bullet report through `task_completed`, with the current action ID, revision,
 and `payload.message`. For a blocked item, show its identity and needed recovery; do not claim completion.
 

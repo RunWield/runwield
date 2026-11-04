@@ -120,7 +120,8 @@ import {
     ValidationHostRejected,
     type ValidationHostResume,
 } from "../workflow/validation-host-contract.ts";
-import { readReviewDiff } from "../workflow/review-diff.ts";
+import { readReviewDiff, type ReviewDiffTexts } from "../workflow/review-diff.ts";
+import { getWorktreeReviewDiff } from "../workflow/git-snapshot.ts";
 import { resolveAttachedRoleInstructions } from "./role-instructions.ts";
 import { attachedHost, type AttachedHostId } from "./hosts.ts";
 import { loadReviewerPrompt } from "../workflow/validation-prompts.ts";
@@ -1907,7 +1908,7 @@ async function withRoleInstructions(
                 role,
                 ...(action.dispatch && { dispatch: action.dispatch }),
                 contractVersion: "runwield.attached.validation/1",
-                text: `${text}\n\n${action.request.prompt}${action.request.kind === "recorder" && action.request.validationError ? `\n\nValidation error:\n${action.request.validationError}` : ""}\n\nAttached worker override: Return your report or structured review outcome to the coordinating conversation. Do not call completion or lifecycle tools. Only the reviewer may call MCP review_diff directly.`,
+                text: `${text}\n\n${action.request.prompt}${action.request.kind === "recorder" && action.request.validationError ? `\n\nValidation error:\n${action.request.validationError}` : ""}\n\nAttached worker override: Return your report or structured review outcome to the coordinating conversation. Do not call completion or lifecycle tools. Reviewers and repair workers may call MCP review_diff directly for their current action.`,
             },
         };
     }
@@ -2242,14 +2243,24 @@ export async function runValidationOperation(
             );
         }
         const request = checkpoint.request;
-        if (operation === "review_diff" && request.kind === "reviewer" && "command" in envelope.payload) {
+        if (
+            operation === "review_diff" &&
+            (request.kind === "reviewer" || request.kind === "repair") &&
+            "command" in envelope.payload
+        ) {
+            let diffs: ReviewDiffTexts;
             try {
-                await validateAttachedReviewerCandidate(current, {
-                    kind: "reviewer",
-                    identity: request.identity,
-                    outcome: null,
-                    coverage: [],
-                });
+                if (request.kind === "reviewer") {
+                    await validateAttachedReviewerCandidate(current, {
+                        kind: "reviewer",
+                        identity: request.identity,
+                        outcome: null,
+                        coverage: [],
+                    });
+                    diffs = { full: request.fullDiff, repair: request.repairDiff };
+                } else {
+                    diffs = { full: await readAttachedRepairDiff(current, request) };
+                }
             } catch (error) {
                 return await rejected(
                     operation,
@@ -2257,17 +2268,16 @@ export async function runValidationOperation(
                     current,
                 );
             }
-            const diff = readReviewDiff(
-                { full: request.fullDiff, repair: request.repairDiff },
-                {
-                    command: envelope.payload.command || "list",
-                    scope: envelope.payload.scope,
-                    path: envelope.payload.path,
-                    offsetBytes: envelope.payload.offsetBytes,
-                    maxBytes: envelope.payload.maxBytes,
-                },
-            );
+            const diff = readReviewDiff(diffs, {
+                command: envelope.payload.command || "list",
+                scope: envelope.payload.scope,
+                path: envelope.payload.path,
+                offsetBytes: envelope.payload.offsetBytes,
+                maxBytes: envelope.payload.maxBytes,
+            });
             if (diff.isError) return await rejected(operation, rejection("invalid_input", diff.text), current);
+            // Repair context is not evidence of an independent reviewer's inspection.
+            if (request.kind === "repair") delete diff.coverage;
             const decision = await accept(operation, envelope, current, {
                 state: "validating",
                 pendingAction: null,
@@ -2501,6 +2511,21 @@ export async function runValidationOperation(
             });
         });
     }
+}
+
+async function readAttachedRepairDiff(
+    record: AttachedWorkflowRecord,
+    request: Extract<import("../workflow/validation-host-contract.ts").ValidationHostRequest, { kind: "repair" }>,
+): Promise<string> {
+    if (!record.plan) throw new Error("The Plan is missing.");
+    const source = await resolveWorkflowPlanLocation(record.projectRoot, record.plan.planName, { readOnly: true });
+    const pending = source.plan?.attrs.validationCheckpoint?.pendingRepair;
+    if (!source.plan || !pending || !sameHostIdentity(pending.identity, request.identity)) {
+        throw new Error("This repair action is no longer pending.");
+    }
+    const entry = await findActiveByPlanName(record.projectRoot, record.plan.planName);
+    // Repairs may edit the checkout. Read its current target-relative patch, including on restored actions.
+    return await getWorktreeReviewDiff(request.cwd, source.plan.attrs.worktreeBaseBranch || "", entry?.baseRef);
 }
 
 async function validateAttachedReviewerCandidate(
