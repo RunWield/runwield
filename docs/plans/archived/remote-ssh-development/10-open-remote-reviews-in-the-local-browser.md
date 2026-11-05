@@ -43,6 +43,9 @@ userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
 validatedCommit: "c0711618dfea212366521ba4a25feffd3797b0fd"
 status: "verified"
+archivedAt: "2026-11-05T01:47:54.787Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/remote-ssh-development/10-open-remote-reviews-in-the-local-browser.md"
 ---
 
 # Open Remote Reviews in the Local Browser

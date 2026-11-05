@@ -12,6 +12,10 @@ affectedPaths:
     - docs/prd/runwield-core-prd.md
 createdAt: "2026-10-29"
 status: draft
+archivedAt: "2026-11-05T01:54:16.131Z"
+archiveReason: "done"
+archivedFromStatus: "draft"
+archivedFromPath: "docs/plans/connect-codex/repair-catalog-identity-collisions.md"
 ---
 
 # Repair catalog identity collisions

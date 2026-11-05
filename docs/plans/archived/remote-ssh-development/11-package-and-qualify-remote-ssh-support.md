@@ -44,6 +44,9 @@ userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
 validatedCommit: "80fef8fd6e8106f6bad4b52c03a09c6be89576f5"
 status: "verified"
+archivedAt: "2026-11-05T01:47:54.787Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/remote-ssh-development/11-package-and-qualify-remote-ssh-support.md"
 ---
 
 # Package the Remote Runtime for Released Builds

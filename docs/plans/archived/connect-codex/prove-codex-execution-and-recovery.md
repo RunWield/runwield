@@ -11,6 +11,10 @@ affectedPaths:
     - scripts/connect-codex-acceptance.ts
 createdAt: "2026-10-29"
 status: draft
+archivedAt: "2026-11-05T01:52:41.519Z"
+archiveReason: "done"
+archivedFromStatus: "draft"
+archivedFromPath: "docs/plans/connect-codex/prove-codex-execution-and-recovery.md"
 ---
 
 # Prove Codex execution and recovery

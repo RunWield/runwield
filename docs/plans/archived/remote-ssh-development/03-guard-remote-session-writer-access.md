@@ -37,6 +37,9 @@ userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
 validatedCommit: "fe2ef67da32e1f79fec8e38e2b58b6ec5859b5be"
 status: "verified"
+archivedAt: "2026-11-05T01:47:54.787Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/remote-ssh-development/03-guard-remote-session-writer-access.md"
 ---
 
 # Guard Remote Session Writer Access

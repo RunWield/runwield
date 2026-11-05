@@ -12,6 +12,10 @@ affectedPaths:
     - docs/prd/runwield-workspace-prd.md
 createdAt: "2026-10-29"
 status: draft
+archivedAt: "2026-11-05T01:55:12.198Z"
+archiveReason: "done"
+archivedFromStatus: "draft"
+archivedFromPath: "docs/plans/connect-codex/repair-archive-settlement-race.md"
 ---
 
 # Repair confirmed archive during turn settlement

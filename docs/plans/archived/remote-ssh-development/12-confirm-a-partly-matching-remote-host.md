@@ -25,6 +25,9 @@ userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
 validatedCommit: "84fc9ad938d255addcd84228e909d6f8e0485f1b"
 status: "verified"
+archivedAt: "2026-11-05T01:47:54.787Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/remote-ssh-development/12-confirm-a-partly-matching-remote-host.md"
 ---
 
 # Confirm a Partly Matching Remote Host

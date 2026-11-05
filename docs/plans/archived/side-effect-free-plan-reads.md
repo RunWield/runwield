@@ -23,6 +23,9 @@ deliveryBranch: "main"
 status: "user_verified"
 userVerifiedAt: "2026-11-01T02:00:25.156Z"
 userVerificationNote: "Finished with Codex."
+archivedAt: "2026-11-05T01:42:14.580Z"
+archivedFromStatus: "user_verified"
+archivedFromPath: "docs/plans/side-effect-free-plan-reads.md"
 ---
 
 # Side-Effect-Free Plan Reads

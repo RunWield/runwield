@@ -13,6 +13,10 @@ affectedPaths:
     - README.md
 createdAt: "2026-10-29"
 status: draft
+archivedAt: "2026-11-05T01:53:32.474Z"
+archiveReason: "done"
+archivedFromStatus: "draft"
+archivedFromPath: "docs/plans/connect-codex/document-codex-support.md"
 ---
 
 # Document Codex support

@@ -2,8 +2,8 @@
 
 ## Scope
 
-[Child06](../plans/remote-ssh-development/06-forward-personal-mcp-tools-from-the-laptop.md) adds personal MCP transport
-forwarding. This record covers a bounded live check on `sct`, not release qualification or a production-provider matrix.
+[Child06](../plans/archived/remote-ssh-development/06-forward-personal-mcp-tools-from-the-laptop.md) adds personal MCP
+transport forwarding. This record covers a bounded live check on `sct`, not release qualification or a production-provider matrix.
 
 The pilot used matching compiled verification entrypoints on macOS ARM64 and Linux x86-64, built with Bun 1.4.3 through
 `scripts/compile-bun.ts`. They exercised production configuration resolution, the authenticated control listener,

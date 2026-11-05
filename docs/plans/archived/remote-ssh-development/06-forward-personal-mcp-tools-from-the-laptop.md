@@ -27,6 +27,9 @@ targetBranch: "epic/remote-ssh-development"
 userVerifiedAt: null
 validatedCommit: "87ea3ab6e393315e2030863aaa77bf417e28e84a"
 status: "verified"
+archivedAt: "2026-11-05T01:47:54.787Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/remote-ssh-development/06-forward-personal-mcp-tools-from-the-laptop.md"
 ---
 
 # Forward Personal MCP Tools from the Laptop

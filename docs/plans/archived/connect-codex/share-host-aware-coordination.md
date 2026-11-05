@@ -12,6 +12,10 @@ affectedPaths:
     - src/cmd/attached
 createdAt: "2026-10-29"
 status: draft
+archivedAt: "2026-11-05T01:51:01.472Z"
+archiveReason: "done"
+archivedFromStatus: "draft"
+archivedFromPath: "docs/plans/connect-codex/share-host-aware-coordination.md"
 ---
 
 # Share host-aware coordination

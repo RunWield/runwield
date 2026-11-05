@@ -10,6 +10,10 @@ targetBranch: epic/connect-codex
 createdAt: "2026-10-29"
 status: draft
 planId: "d8c448fa-d4aa-4deb-937a-1a206d1416b3"
+archivedAt: "2026-11-05T01:56:11.014Z"
+archiveReason: "done"
+archivedFromStatus: "draft"
+archivedFromPath: "docs/plans/connect-codex.md"
 ---
 
 # RunWield Connect for Codex

@@ -31,6 +31,9 @@ targetBranch: "epic/remote-ssh-development"
 userVerifiedAt: null
 status: "validated"
 validatedCommit: "01d9e08dd39dbafb7b17e515a4d5d0abcda4b3dd"
+archivedAt: "2026-11-05T01:47:54.787Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/remote-ssh-development/02-bridge-local-models-and-personal-resources.md"
 ---
 
 # Bridge Local Models and Personal Resources

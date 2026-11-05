@@ -18,7 +18,109 @@
         ]
     },
     "validation": {
-        "status": "pending final CI"
+        "status": "passed",
+        "command": "bun run ci",
+        "environment": {
+            "bun": "1.4.3",
+            "dependencies": "Root and docs frozen locks installed with disabled lifecycle scripts before checks"
+        },
+        "snapshot": {
+            "baseCommit": "63777a40e19c48219400989f5184260c53789e73",
+            "sourceManifestSHA256": "321202c06acd455d404995ec44ca89f80dc299999c0a520301ff9756b7df4261",
+            "sourceUnchangedDuringFinalRun": true,
+            "isolationReason": "Another process edited the shared checkout and replaced its test reports. Validation used an isolated snapshot of the audit changes; unrelated concurrent shared-checkout edits are not covered by this result."
+        },
+        "result": {
+            "completedTestFiles": 915,
+            "passedTestFiles": 914,
+            "failedTestFiles": 0,
+            "skippedTestFiles": 1,
+            "skippedFiles": ["src/shared/remote/supervisor.test.ts"],
+            "ciElapsedSeconds": 1678.5
+        },
+        "checks": [
+            {
+                "name": "skills:sync:check",
+                "code": 0
+            },
+            {
+                "name": "snip:check",
+                "code": 0
+            },
+            {
+                "name": "language-policy:check",
+                "code": 0
+            },
+            {
+                "name": "submodules:check",
+                "code": 0
+            },
+            {
+                "name": "doc-links:check",
+                "code": 0
+            },
+            {
+                "name": "seams:check",
+                "code": 0
+            },
+            {
+                "name": "workspace:build",
+                "code": 0
+            },
+            {
+                "name": "docs:check",
+                "code": 0
+            },
+            {
+                "name": "workspace:check",
+                "code": 0
+            },
+            {
+                "name": "check",
+                "code": 0
+            },
+            {
+                "name": "lint",
+                "code": 0
+            },
+            {
+                "name": "test:all:suite",
+                "code": 0
+            }
+        ],
+        "regressionEvidence": [
+            {
+                "behavior": "Shell output reaches the next model turn only for persistent commands",
+                "deliberateRegression": "Disable persistence",
+                "observation": "Corrected terminal journey fails because the real provider context lacks the output marker; restored full input suites pass."
+            },
+            {
+                "behavior": "Filesystem failure preserves the draft and explicit retry",
+                "deliberateRegression": "Suppress resource guidance or omit draft restoration",
+                "observation": "Real OS open failure loses guidance; damaged-project retry cannot submit the preserved text. Both regressions detected and restored."
+            },
+            {
+                "behavior": "Backend failure keeps actionable messages without generic replacement or stacks",
+                "deliberateRegression": "Disable specialized Claude, Antigravity and setup-approval error mapping",
+                "observation": "All three real composed-terminal scenarios fail their public-message expectations; restored suites pass."
+            },
+            {
+                "behavior": "Rejected streaming image input remains editable and unqueued",
+                "deliberateRegression": "Omit draft and image restoration in the steering rejection handler",
+                "observation": "Real runtime test detects empty draft and missing images; restoration makes it pass."
+            },
+            {
+                "behavior": "Malformed ACP MCP parameters are refused before normalization",
+                "deliberateRegression": "Original SDK parser accepted malformed values",
+                "observation": "Real wire tests were red before validating original request parameters and green after the fix."
+            },
+            {
+                "behavior": "Custom commands may close unused stdin; built-in jobs must consume their prompt",
+                "deliberateRegression": "Broaden EPIPE suppression to built-in jobs",
+                "observation": "Compiled built-in review-job test detects the missing rejection. Narrow custom-command fix passes large-input early-exit output and failure cases."
+            }
+        ],
+        "resolvedValidationIssue": "A later full run exposed an intermittent EPIPE from successful custom Guide commands that close stdin early. A deterministic large-input fixture reproduced it, and the job handler now preserves successful custom output while requiring complete input for built-in jobs. Both positive and negative contracts passed; a broad-suppression mutation failed as intended. The first isolated full run passed 913 files, skipped one, and exposed one test timing race. The shell-context test now waits for successful public TOOL_END output and uses a command that does not itself contain the expected output marker. Focused tests, a deliberate persistence regression, and this fresh full CI run validate the correction."
     },
     "files": [
         {

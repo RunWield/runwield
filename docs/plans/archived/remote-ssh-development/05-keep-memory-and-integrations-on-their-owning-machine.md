@@ -29,6 +29,9 @@ targetBranch: "epic/remote-ssh-development"
 userVerifiedAt: null
 validatedCommit: "14c1259632ed7a11351787322ce083f5ffdc72dc"
 status: "verified"
+archivedAt: "2026-11-05T01:47:54.787Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/remote-ssh-development/05-keep-memory-and-integrations-on-their-owning-machine.md"
 ---
 
 # Keep Memory and Integrations on Their Owning Machine

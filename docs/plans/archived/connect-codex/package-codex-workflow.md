@@ -11,6 +11,10 @@ affectedPaths:
     - .agents/plugins/marketplace.json
 createdAt: "2026-10-29"
 status: draft
+archivedAt: "2026-11-05T01:51:55.514Z"
+archiveReason: "done"
+archivedFromStatus: "draft"
+archivedFromPath: "docs/plans/connect-codex/package-codex-workflow.md"
 ---
 
 # Package the Codex workflow

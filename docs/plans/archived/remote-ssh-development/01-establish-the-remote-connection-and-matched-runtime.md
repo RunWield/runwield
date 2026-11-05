@@ -28,6 +28,9 @@ targetBranch: "epic/remote-ssh-development"
 userVerifiedAt: null
 status: "validated"
 validatedCommit: "6d7ce6b66647bd720bb365bfe337f990bad23925"
+archivedAt: "2026-11-05T01:47:54.787Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/remote-ssh-development/01-establish-the-remote-connection-and-matched-runtime.md"
 ---
 
 # Establish the Remote Connection and Matched Runtime

@@ -22,6 +22,9 @@ targetBranch: "epic/remote-ssh-development"
 userVerifiedAt: null
 validatedCommit: "bc3363b271e9eb0187df84cacea59e9c2709bb4a"
 status: "verified"
+archivedAt: "2026-11-05T01:47:54.787Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/remote-ssh-development/09-host-reviews-on-one-server-per-process.md"
 ---
 
 # Host Reviews on One Server per Process

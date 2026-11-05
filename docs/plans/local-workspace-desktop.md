@@ -13,13 +13,11 @@ affectedPaths:
     - "docs/prd/runwield-workspace-prd.md"
     - "docs/prd/runwield-acp-protocol-prd.md"
     - "docs/adr/020-electron-workspace-acp-client.md"
-devServerCommand: null
-devServerUrl: null
-devServerHmr: null
 targetBranch: "epic/local-workspace-desktop"
 createdAt: "2026-11-01"
 status: "draft"
 planId: "ef41ec9b-f1ff-4184-aeb1-56c22224469e"
+epicBaseCommit: "8363344cdfb4bcf6715a5aac6ed24d06c6437ec7"
 ---
 
 # Local Workspace Desktop

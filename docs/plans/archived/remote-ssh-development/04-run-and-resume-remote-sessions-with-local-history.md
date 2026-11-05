@@ -33,6 +33,9 @@ targetBranch: "epic/remote-ssh-development"
 userVerifiedAt: null
 validatedCommit: "68ff6362164a60d51360741fdbd8f0bf65f1dce4"
 status: "verified"
+archivedAt: "2026-11-05T01:47:54.787Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/remote-ssh-development/04-run-and-resume-remote-sessions-with-local-history.md"
 ---
 
 # Run and Resume Remote Sessions with Local History

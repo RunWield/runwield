@@ -36,6 +36,9 @@ userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
 validatedCommit: "1e62015e5aac773a149db480dcac1f875187d550"
 status: "verified"
+archivedAt: "2026-11-05T01:47:54.787Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/remote-ssh-development/13-qualify-remote-ssh-and-retire-the-proposal.md"
 ---
 
 # Qualify Remote SSH and Retire the Proposal

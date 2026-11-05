@@ -36,7 +36,7 @@ archivedFromPath: "docs/plans/remote-session-save-proof.md"
 ## Context
 
 The owner approved a throwaway proof before choosing how remote Pi saves laptop-owned Session history. The
-[production child](../remote-ssh-development/03-guard-remote-session-writer-access.md) remains paused. Its research records
+[production child](remote-ssh-development/03-guard-remote-session-writer-access.md) remains paused. Its research records
 Warp's explicit remote file requests and the Pi persistence findings; neither establishes this proposed save path.
 
 Pi 0.87.1 supports an in-memory Session manager. RunWield already intercepts its synchronous `_persist` and

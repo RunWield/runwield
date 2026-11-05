@@ -35,6 +35,9 @@ userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
 validatedCommit: "05e86dbdd10af926cccb70d2f7970b5c67ffeb3b"
 status: "verified"
+archivedAt: "2026-11-05T01:47:54.787Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/remote-ssh-development/07-carry-remote-context-through-delivery-workflows.md"
 ---
 
 # Carry Remote Context Through Delivery Workflows

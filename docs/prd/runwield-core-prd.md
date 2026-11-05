@@ -324,7 +324,9 @@ user sends a message.
 
 **Requirement: Open saved Plans directly for review.** Loading a draft, approved, or ready-for-work Plan with
 a valid execution policy offers direct Plan Review. Users inspect and annotate the saved Plan, and the decision follows
-the normal review flow.
+the normal review flow. Non-Sequence Epics label this action **Open Epic review**. Draft Epics also offer
+**Resume planning with Architect**, which starts a planning turn before review. Approved Epics do not show this second,
+duplicate action. Sequence review actions stay unchanged.
 
 **Requirement: Send a ready Plan back for re-review.** The load-plan menu offers **Send back to Planner for re-review**
 for a ready-for-work Planned Change. A non-Sequence Epic at `ready_for_decomposition` or `ready_for_work` offers
@@ -368,6 +370,8 @@ stays light, terminal animations pause during human input, and the decision cont
   code, links, or execution policy requires a new decision.
 - Given a ready-for-work Plan, when the user loads it and chooses **Review plan**, the saved Plan opens for review
   directly.
+- Given a draft Epic, the menu offers **Open Epic review** and **Resume planning with Architect** as separate actions.
+  An approved or ready-for-work Epic offers **Open Epic review** without the duplicate planning action.
 - Given a `ready_for_decomposition` Epic with no children, selecting **Send back to Architect for re-review** starts
   Architect with the saved parent already draft, before any review page opens. A reply-only turn keeps Architect active
   and the parent draft.
@@ -519,6 +523,7 @@ User Verified and RunWield Verified Plans share one terminal menu: Archive, Re-o
 Epic archive writes and retention checks in the background. It reopens the Load Plan menu with pending archives
 excluded, so the user can select another Plan without waiting. If no Plans remain, it returns to chat. It reports
 completion or failure in the conversation. A repeat request for the same pending archive does not start a second archive.
+Epic archive uses each child's authoritative document for its revision check and preserves that document in the archive.
 
 **Requirement: Deliberate closure.** Users can mark an Epic done enough, with a summary, when its delivered children
 meet the goal; this records a done-enough completion. `closed_without_verification` records the user's deliberate
@@ -540,6 +545,9 @@ verification.
 - Given a confirmed Plan or Epic archive waiting for storage, Load Plan reopens its menu before the write completes,
   excludes pending archives, and reports the result later. If no Plans remain, it returns to chat. A repeat request
   reports that the archive is already running.
+- Given an Epic child with a registered planning document and an older primary copy, Epic archive reads the revision
+  from the registered document and preserves that document's content and metadata in the archive. A real metadata
+  change after the read still blocks the write.
 - Given a background archive that fails, the conversation reports the failure and does not claim completion.
 - Given the user closes a Plan without verification, the Plan records that outcome and its reason.
 - Given an unpublished workflow, User Verification labels it unpublished, and a canceled turn keeps the workflow open.

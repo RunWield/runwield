@@ -23,6 +23,9 @@ targetBranch: "epic/remote-ssh-development"
 userVerifiedAt: null
 validatedCommit: "9eceb74f31185c0377de6ff435a52932d3da25e7"
 status: "verified"
+archivedAt: "2026-11-05T01:47:54.787Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/remote-ssh-development/08-stop-owned-remote-work-on-connection-loss.md"
 ---
 
 # Stop Owned Remote Work on Connection Loss

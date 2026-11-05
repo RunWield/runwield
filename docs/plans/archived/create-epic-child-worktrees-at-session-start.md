@@ -97,7 +97,7 @@ Worktrees that were already created early stay as they are. The user decided tha
   targeted Epic child is opened for planning". This change makes the trigger exact: a session start, not a lookup or a
   load.
 
-The `ready_for_work` Plan [Side-Effect-Free Plan Reads](../side-effect-free-plan-reads.md) has the same direction for
+The `ready_for_work` Plan [Side-Effect-Free Plan Reads](side-effect-free-plan-reads.md) has the same direction for
 catalog reads. This Plan does not depend on it, and it does not conflict with it.
 
 ## Objective
