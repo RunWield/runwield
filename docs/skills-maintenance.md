@@ -1,6 +1,6 @@
 # Maintaining portable skills
 
-[RunWield/skills](https://github.com/RunWield/skills) owns the installable Guide, Ideator, and Review skills. Its checkout
+[RunWield/skills](https://github.com/RunWield/skills) owns the installable Guide, Ideator, Review, and Write Tests skills. Its checkout
 lives at `skills/` in Core as a Git submodule. The small repository contains the skills, their supporting documents,
 MIT license, README, and installation metadata; installing it never needs Core's history or dependencies.
 
@@ -38,11 +38,12 @@ Start with a clean skills checkout. Review the resulting changes before acceptin
 
 ## Edit and review
 
-| Portable skill            | Source in Core                     |
-| ------------------------- | ---------------------------------- |
-| `skills/ideator/SKILL.md` | `src/agent-definitions/ideator.md` |
-| `skills/guide/SKILL.md`   | `src/agent-definitions/guide.md`   |
-| `skills/review/SKILL.md`  | Independently maintained           |
+| Portable skill                | Source in Core                     |
+| ----------------------------- | ---------------------------------- |
+| `skills/ideator/SKILL.md`     | `src/agent-definitions/ideator.md` |
+| `skills/guide/SKILL.md`       | `src/agent-definitions/guide.md`   |
+| `skills/review/SKILL.md`      | Independently maintained           |
+| `skills/write-tests/SKILL.md` | Independently maintained           |
 
 1. Edit the skill directly inside `skills/`, or edit its source Agent definition.
 2. Carry relevant wording changes to the other side. Describe capabilities without RunWield-specific tool names or
@@ -62,5 +63,27 @@ Publish the reviewed skills commit to `RunWield/skills` first. Then record that 
 baseline in Core. The pinned skills commit must be fetchable before Core's change can pass release validation.
 Commit and push only when the repository owner requests them.
 
-Core's bundled Review skill under `src/skills/review/` remains a runtime asset. Its existing catalog test checks it
-against the portable Review skill, including the different relative license path; update both when Review changes.
+## Public and bundled copies
+
+Review and Write Tests each have two distribution paths. Maintain their portable packages in `skills/review/` and
+`skills/write-tests/`. Carry each change into the matching runtime directory under `src/skills/` in the same change.
+The compiler embeds `src/skills/`; it does not use the public submodule at runtime. RunWield extracts those assets to
+`~/.wld/bundled-skills/`, where `/skill:write-tests` is available without a separate public Skills installation.
+
+Catalog tests compare both copies independently of the accepted sync hashes. The only accepted instruction-file
+difference is `license: MIT; complete terms in ../LICENSE` in the public package versus
+`license: MIT; complete terms in LICENSE` in the runtime package. Each runtime directory has a local `LICENSE` that
+matches `skills/LICENSE`.
+
+Run the focused checks after updating either copy:
+
+```sh
+bun scripts/run-tests.js scripts/check-skill-sync.test.ts src/shared/session/skill-catalog.test.ts
+bun run skills:sync:check
+bun run compile:bun .ci-cache/write-tests-package/wld
+bun run check:package:bun .ci-cache/write-tests-package/wld
+```
+
+The relocated package check selects and expands bundled Write Tests in a clean HOME and compares its extracted
+instructions and license with runtime source bytes. On macOS, it also denies the child process read access to the
+checkout. Publish the public commit before recording its final gitlink and baseline in Core, as described above.

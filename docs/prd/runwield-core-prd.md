@@ -2191,14 +2191,23 @@ not an automated quality gate or a claim that the existing test portfolio has be
 - Given a pruning request and a weak test that alone protects an important behavior, the Agent replaces that protection
   through a meaningful interface before removing the weak test.
 
-**Requirement: Portable skills install independently.** Guide, Ideator, and Review are available from
+**Requirement: Portable skills install independently.** Guide, Ideator, Review, and Write Tests are available from
 [RunWield/skills](https://github.com/RunWield/skills) without downloading Core. They work in other coding agents and
 projects without requiring RunWield-specific tools. Core maintenance detects changes to the portable skills, their
 supporting documents, and the source definitions they adapt, so maintainers review wording drift before accepting it.
+Write Tests retains the same instructions in its public and bundled packages, except for the relative license path.
+RunWield includes the bundled package without a separate public Skills installation.
 
 **Acceptance scenarios:**
 
 - A user installs the portable skills from their dedicated repository without installing Core.
+- A user lists `RunWield/skills`, finds `write-tests`, and installs only that Skill into a project without Core or
+  another required Skill package. TDD guidance is optional.
+- The public Write Tests instructions diverge from the bundled copy outside the license-path adjustment; the catalog
+  parity check fails even if the sync hashes have been accepted.
+- A user runs `/skill:write-tests check the recovery contract` from an installed executable with a clean HOME and no
+  public checkout. Core selects the bundled Skill, expands its current instructions, and keeps the extra instruction.
+  Package qualification checks the extracted instruction and license bytes against the runtime sources.
 - A source definition or portable skill changes; the synchronization check fails and names the files requiring review.
 - A new supporting document or unintended published skill is detected; validation reports it rather than silently
   accepting a stale inventory.

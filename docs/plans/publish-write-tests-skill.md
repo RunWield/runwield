@@ -16,11 +16,16 @@ executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-11-04"
 origin: "internal"
-status: "ready_for_work"
 userVerifiedAt: null
 routingIntent: "PLANNED_CHANGE"
 targetBranch: "main"
 deliveryBranch: "main"
+status: "reviewed"
+validatedCommit: "bd333eba7df60af79732d22ecc617cefc77e8c67"
+workRecord:
+    status: "failed"
+    lastAttemptAt: "2026-11-05T02:04:05.196Z"
+    error: "docs/work-records/2026-10-16-remote-mcp-transport-pilot.md: Invalid Work Record: front matter is required."
 ---
 
 # Publish Write Tests Without Losing the Bundled Skill
