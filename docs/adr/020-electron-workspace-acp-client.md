@@ -7,8 +7,9 @@ status: proposed
 ## Context and Constraints
 
 The owner selected Electron for a desktop Workspace on Windows, macOS, and Linux. Hosted Workspace must remain a web
-application, making reuse of the existing React components and design system a primary constraint. `wld` remains the
-TUI and runtime. Desktop owns its application and UI; starting `wld workspace serve` and displaying its URL is only a
+application, making reuse of the existing React components and design system a primary constraint. The owner rejects
+maintaining a separate local browser workbench: Electron replaces it, while hosted SaaS remains future scope. `wld`
+remains the TUI and runtime. Desktop owns its application and UI; starting `wld workspace serve` and displaying its URL is only a
 prototype, not the intended product architecture.
 
 The first delivery is free local desktop work without a Workspace account. Later, the same application should connect
@@ -30,16 +31,16 @@ Product outcomes belong to [Workspace desktop requirements](../prd/runwield-work
 
 Reuse Workspace's React surfaces, browser model, and semantic design tokens. Give them a typed client interface for
 workbench queries, actions, subscriptions, and interactions. Electron supplies that interface through a narrow preload
-bridge; the browser supplies it through its authenticated server adapter. Both hosts use the same ACP client mapping.
-The interface represents a real process/network boundary, not a fake implementation introduced for tests.
+bridge. Future hosted SaaS reuses the shared UI and client models; its service and transport design belongs to later
+work. Do not build an ACP adapter for the old local browser workbench merely to keep it alive. The interface represents
+a real process/network boundary, not a fake implementation introduced for tests.
 
 ```mermaid
-flowchart LR
-    UI[Shared Workspace React surfaces] --> Client[Workspace client interface]
+flowchart TD
+    Future[Future hosted SaaS] -.-> UI[Shared Workspace React surfaces]
+    UI --> Client[Workspace client interface]
     Client --> Desktop[Electron preload and main]
-    Client --> Web[Browser HTTP adapter and Workspace server]
-    Desktop --> ACP[Shared ACP client]
-    Web --> ACP
+    Desktop --> ACP[ACP client]
     ACP -->|Local stdio first| WLD[wld ACP server]
     WLD --> Core[Core runtime and domain services]
     TUI[wld TUI] --> Core
@@ -57,9 +58,11 @@ client-side. Client caches are projections. Storage format and Session authority
 [ADR-016](016-project-runtime-state-under-wld-internal.md). This client change must use the current Plan-store boundary
 rather than freeze its storage location while separate Plan-store work proceeds.
 
-Astro may remain the browser host. Move reusable interactive composition and data access out of server-only pages as
-needed, so a locally packaged React renderer can display the same workbench. Do not fork a second desktop component
-library or force a hosted-site framework migration to ship the desktop application.
+Move reusable interactive composition and data access out of server-only pages so a locally packaged React renderer
+can display the workbench. Remove the standalone local workbench host at desktop cutover; preserve canonical work.
+Do not fork a second desktop component library or build the future hosted service to ship the local application.
+Narrow browser review pages and existing Shared Plan links are separate compatibility decisions, still open in the
+Epic. Workbench retirement does not implicitly authorize their removal.
 
 ### ACP and workbench access
 
@@ -85,8 +88,8 @@ working behavior. Required desktop capability mismatches produce an actionable c
 
 Review content and decisions are structured data rendered with the shared review components. Large files and images
 use bounded transfers/resource references tied to the selected runtime, not renderer-side arbitrary filesystem access.
-Existing external ACP review links remain valid; desktop must not depend on a remote machine's loopback URL being
-reachable from the user's browser. No general-purpose shell or filesystem RPC is added to solve UI gaps.
+The Epic must settle compatibility for existing external ACP review links before final review. Desktop must not depend
+on a remote machine's loopback URL being reachable from the user's browser. No general-purpose shell or filesystem RPC is added to solve UI gaps.
 
 ### Local process and distribution
 
@@ -155,8 +158,10 @@ their own subsequent Plan. The first local app has no nonfunctional cloud contro
 ## Implications
 
 The main investment is separating Workspace's client and runtime responsibilities while preserving full workbench
-behavior. Electron supplies distribution and integration, not new lifecycle authority. Browser and desktop share UI
-improvements and ACP client semantics; protocol compatibility and process recovery become explicit obligations.
+behavior. Electron supplies distribution and integration, not new lifecycle authority. Desktop and future hosted SaaS
+share product UI, without a third local web workbench to maintain. Protocol compatibility and process recovery become
+explicit obligations. Removing local browser access also removes its paired-device workbench journey; it does not
+claim that hosted SaaS is available as a replacement.
 
 Chromium adds baseline memory and release-maintenance costs. Keep observation retention bounded, avoid a browser engine
 per Session, and measure representative release builds with long conversations and diffs. Window, keyboard, clipboard,
