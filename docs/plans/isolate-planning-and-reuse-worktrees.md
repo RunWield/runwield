@@ -183,7 +183,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/tools/plan-written.ts`, `src/shared/workflow/sequence-review.ts` — real identity binding before review and saved
   container/child document references; all tools use the selected cwd.
 - `src/shared/workflow/plan-location.ts`, `controller-registry.ts`, `plan-executor.ts`, `execution-start.ts`,
-  `execution-plan-file.js` — authoritative document discovery and refresh-before-materialization for first execution.
+  `execution-plan-file.ts` — authoritative document discovery and refresh-before-materialization for first execution.
 - `src/cmd/load-plan/`, `src/shared/workflow/epic-continuation.ts`, `workflow-slicer.ts`, and post-publication handoff —
   correct container/child cwd for manual and automatic continuation, including unpublished child drafts.
 - Real-Git workflow, tool, registry, and Session tests — prove composed behavior, not only helper results.

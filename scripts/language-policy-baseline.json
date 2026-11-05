@@ -22,7 +22,6 @@
     "src/shared/types.js",
     "src/shared/work-records/auto-generation.js",
     "src/shared/work-records/generation.js",
-    "src/shared/workflow/execution-plan-file.js",
     "src/shared/workflow/metrics.js",
     "src/shared/workflow/plan-lifecycle.js",
     "src/shared/workflow/plan-review-recovery.js",

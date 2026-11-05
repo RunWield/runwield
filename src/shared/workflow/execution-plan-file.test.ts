@@ -18,7 +18,7 @@ import {
     ensureExecutionPlanFile,
     loadCanonicalExecutionPlanSource,
     prepareExecutionPlanFile,
-} from "./execution-plan-file.js";
+} from "./execution-plan-file.ts";
 import { injectFrontMatter, parsePlanFrontMatter, planDocumentMarkdown } from "../../plan-store.js";
 
 async function makeTempProject() {
