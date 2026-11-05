@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { assertEquals } from "../src/testing/assertions.ts";
 import { buildJudgementCsv } from "./write-router-judgement-csv.js";
-import { parseCsv } from "./router-eval-utils.js";
+import { parseCsv } from "./router-eval-utils.ts";
 
 test("serialized judgement CSV retains human corrections and Router disagreement metrics", () => {
     const [row] = parseCsv(

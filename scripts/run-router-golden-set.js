@@ -28,7 +28,7 @@ import {
     scoreAgainstHuman,
     toCsv,
     withRouterJudgementMetrics,
-} from "./router-eval-utils.js";
+} from "./router-eval-utils.ts";
 
 /** @typedef {Parameters<import("../src/shared/session/session-runtime.ts").SessionRuntime["setSessionThinkingLevel"]>[1]} RouterThinkingLevel */
 

@@ -12,7 +12,7 @@ import {
     normalizeGoldenRow,
     runRouterGoldenSet,
 } from "./run-router-golden-set.js";
-import { parseCsv, ROUTER_JUDGEMENT_COLUMNS, toCsv } from "./router-eval-utils.js";
+import { parseCsv, ROUTER_JUDGEMENT_COLUMNS, toCsv } from "./router-eval-utils.ts";
 
 const fixture = defineGitFixture(async (cwd) => {
     await fsWriteFile(join(cwd, "marker.txt"), "before");
