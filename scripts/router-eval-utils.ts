@@ -6,6 +6,34 @@
 
 import { LEGACY_ROUTING_INTENT_FEATURE, ROUTING_INTENT_PLANNED_CHANGE, ROUTING_INTENTS } from "../src/constants.js";
 
+export type CsvRow<TCell = string> = Record<string, TCell>;
+
+export interface RouterJudgementInput {
+    routerDecision?: string;
+    humanJudgement?: string;
+}
+
+export type RouterJudgementMetrics = {
+    routerDecision: string;
+    humanJudgement: string;
+    routerAgreesWithHuman: "TRUE" | "FALSE" | "";
+    routerCorrection: string;
+    routerDistanceFromHuman: number | "";
+    routerDisagreementKind: string;
+};
+
+export type RouterJudgementRow<TRow> = Omit<TRow, keyof RouterJudgementMetrics> & RouterJudgementMetrics;
+
+export interface RouterJudgementScore {
+    total: number;
+    agreementCount: number;
+    agreementRate: number;
+    meanDistance: number;
+    invalidRows: number;
+    unscoredRows: number;
+    corrections: Record<string, number>;
+}
+
 export const ROUTER_JUDGEMENT_COLUMNS = [
     "decisionId",
     "timestamp",
@@ -29,29 +57,16 @@ ROUTING_INTENT_ORDER.set("PROJECT", (ROUTING_INTENT_ORDER.get("PLANNED_CHANGE") 
 const NON_MATERIALIZING = new Set(["INQUIRY", "IDEATION"]);
 const MATERIALIZING = new Set(["OPERATION", "QUICK_FIX", "PLANNED_CHANGE", "FEATURE", "PROJECT"]);
 
-/**
- * @param {unknown} value
- * @returns {string}
- */
-export function oneLine(value) {
+export function oneLine<TValue>(value: TValue): string {
     return value == null ? "" : String(value).replace(/\s+/g, " ").trim();
 }
 
-/**
- * @param {unknown} value
- * @returns {string}
- */
-export function toCsvCell(value) {
+export function toCsvCell<TValue>(value: TValue): string {
     const text = oneLine(value);
     return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
-/**
- * @param {string[]} columns
- * @param {Array<Record<string, unknown>>} rows
- * @returns {string}
- */
-export function toCsv(columns, rows) {
+export function toCsv<TCell>(columns: string[], rows: CsvRow<TCell>[]): string {
     const lines = [columns.join(",")];
     for (const row of rows) {
         lines.push(columns.map((column) => toCsvCell(row[column])).join(","));
@@ -59,15 +74,10 @@ export function toCsv(columns, rows) {
     return `${lines.join("\n")}\n`;
 }
 
-/**
- * @param {string} text
- * @returns {Array<Record<string, string>>}
- */
-export function parseCsv(text) {
-    /** @type {string[][]} */
-    const records = [];
-    /** @type {string[]} */
-    let record = [];
+export function parseCsv(text: string): CsvRow[] {
+    const records: string[][] = [];
+
+    let record: string[] = [];
     let field = "";
     let quoted = false;
 
@@ -110,8 +120,7 @@ export function parseCsv(text) {
     const [header, ...body] = records;
     if (!header) return [];
     return body.map((cells) => {
-        /** @type {Record<string, string>} */
-        const row = {};
+        const row: CsvRow = {};
         header.forEach((column, index) => {
             row[column] = cells[index] || "";
         });
@@ -119,34 +128,20 @@ export function parseCsv(text) {
     });
 }
 
-/**
- * @param {unknown} value
- * @returns {string}
- */
-export function normalizeRoutingIntentCell(value) {
+export function normalizeRoutingIntentCell<TValue>(value: TValue): string {
     const text = oneLine(value).toUpperCase();
     if (text === LEGACY_ROUTING_INTENT_FEATURE) return ROUTING_INTENT_PLANNED_CHANGE;
     return ROUTING_INTENTS.includes(text) ? text : "";
 }
 
-/**
- * @param {unknown} left
- * @param {unknown} right
- * @returns {number | null}
- */
-export function routingIntentDistance(left, right) {
+export function routingIntentDistance<TLeft, TRight>(left: TLeft, right: TRight): number | null {
     const a = normalizeRoutingIntentCell(left);
     const b = normalizeRoutingIntentCell(right);
     if (!a || !b) return null;
     return Math.abs((ROUTING_INTENT_ORDER.get(a) ?? 0) - (ROUTING_INTENT_ORDER.get(b) ?? 0));
 }
 
-/**
- * @param {unknown} from
- * @param {unknown} to
- * @returns {string}
- */
-export function classifyRoutingIntentDisagreement(from, to) {
+export function classifyRoutingIntentDisagreement<TFrom, TTo>(from: TFrom, to: TTo): string {
     const a = normalizeRoutingIntentCell(from);
     const b = normalizeRoutingIntentCell(to);
     if (!a || !b) return "invalid";
@@ -160,10 +155,7 @@ export function classifyRoutingIntentDisagreement(from, to) {
     if ((a === "OPERATION" && b === "QUICK_FIX") || (a === "QUICK_FIX" && b === "OPERATION")) {
         return "operation_quick_fix_boundary";
     }
-    if (
-        (NON_MATERIALIZING.has(a) && MATERIALIZING.has(b)) ||
-        (MATERIALIZING.has(a) && NON_MATERIALIZING.has(b))
-    ) {
+    if ((NON_MATERIALIZING.has(a) && MATERIALIZING.has(b)) || (MATERIALIZING.has(a) && NON_MATERIALIZING.has(b))) {
         return "answer_action_boundary";
     }
     if (a === "QUICK_FIX" && (b === ROUTING_INTENT_PLANNED_CHANGE || b === "PROJECT")) {
@@ -182,29 +174,22 @@ export function classifyRoutingIntentDisagreement(from, to) {
     return "other";
 }
 
-/**
- * @param {Array<Record<string, string>>} rows
- * @returns {Map<string, Record<string, string>>}
- */
-export function indexRowsByDecisionId(rows) {
-    const indexed = new Map();
+export function indexRowsByDecisionId(rows: CsvRow[]): Map<string, CsvRow> {
+    const indexed = new Map<string, CsvRow>();
     for (const row of rows) {
         if (row.decisionId) indexed.set(row.decisionId, row);
     }
     return indexed;
 }
 
-/**
- * @param {Record<string, unknown>} row
- * @returns {Record<string, unknown>}
- */
-export function withRouterJudgementMetrics(row) {
+export function withRouterJudgementMetrics<TRow extends RouterJudgementInput>(row: TRow): RouterJudgementRow<TRow> {
     const routerDecision = normalizeRoutingIntentCell(row.routerDecision);
     const humanJudgement = normalizeRoutingIntentCell(row.humanJudgement);
     const agrees = routerDecision && humanJudgement && routerDecision === humanJudgement;
-    const correction = routerDecision && humanJudgement && routerDecision !== humanJudgement
-        ? `${routerDecision}->${humanJudgement}`
-        : "";
+    const correction =
+        routerDecision && humanJudgement && routerDecision !== humanJudgement
+            ? `${routerDecision}->${humanJudgement}`
+            : "";
     const isScored = Boolean(routerDecision && humanJudgement);
 
     return {
@@ -213,24 +198,19 @@ export function withRouterJudgementMetrics(row) {
         humanJudgement,
         routerAgreesWithHuman: isScored ? (agrees ? "TRUE" : "FALSE") : "",
         routerCorrection: correction,
-        routerDistanceFromHuman: isScored ? routingIntentDistance(routerDecision, humanJudgement) ?? "" : "",
+        routerDistanceFromHuman: isScored ? (routingIntentDistance(routerDecision, humanJudgement) ?? "") : "",
         routerDisagreementKind: isScored ? classifyRoutingIntentDisagreement(routerDecision, humanJudgement) : "",
     };
 }
 
-/**
- * @param {Array<Record<string, string>>} rows
- * @param {string} candidateColumn
- * @returns {{ total: number, agreementCount: number, agreementRate: number, meanDistance: number, invalidRows: number, unscoredRows: number, corrections: Record<string, number> }}
- */
-export function scoreAgainstHuman(rows, candidateColumn) {
+export function scoreAgainstHuman(rows: CsvRow[], candidateColumn: string): RouterJudgementScore {
     let total = 0;
     let agreementCount = 0;
     let distanceSum = 0;
     let invalidRows = 0;
     let unscoredRows = 0;
-    /** @type {Record<string, number>} */
-    const corrections = {};
+
+    const corrections: Record<string, number> = {};
 
     for (const row of rows) {
         const human = normalizeRoutingIntentCell(row.humanJudgement);

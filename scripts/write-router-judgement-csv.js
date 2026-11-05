@@ -15,7 +15,7 @@ import {
     ROUTER_JUDGEMENT_COLUMNS,
     toCsv,
     withRouterJudgementMetrics,
-} from "./router-eval-utils.js";
+} from "./router-eval-utils.ts";
 
 const DEFAULT_INPUT = "/private/tmp/runwield-router-decisions.jsonl";
 const DEFAULT_OUTPUT_NAME = "router-judgements.csv";

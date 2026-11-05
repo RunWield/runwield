@@ -1,6 +1,6 @@
 import { assertEquals } from "../src/testing/assertions.ts";
 import { test } from "node:test";
-import { parseCsv, scoreAgainstHuman, toCsv, withRouterJudgementMetrics } from "./router-eval-utils.js";
+import { parseCsv, scoreAgainstHuman, toCsv, withRouterJudgementMetrics } from "./router-eval-utils.ts";
 
 test("CSV utilities round-trip quoted cells", () => {
     const csv = toCsv(

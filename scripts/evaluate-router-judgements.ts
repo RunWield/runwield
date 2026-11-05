@@ -9,7 +9,7 @@ import process from "node:process";
 import { parseArgs } from "../src/shared/cli-args.ts";
 import { dirname, join } from "node:path";
 import { getHomeDir } from "../src/constants.js";
-import { parseCsv, scoreAgainstHuman } from "./router-eval-utils.js";
+import { parseCsv, scoreAgainstHuman } from "./router-eval-utils.ts";
 
 export interface RouterJudgementSummary {
     labelledRows: number;
