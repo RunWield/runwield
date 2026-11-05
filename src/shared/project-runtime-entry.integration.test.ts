@@ -3,11 +3,13 @@ import { test } from "node:test";
 import {
     lstat as fsLstat,
     mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
     readFile as fsReadFile,
     realpath as fsRealpath,
     rm as fsRm,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { env } from "node:process";
 import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
 import { dirname, join } from "node:path";
@@ -25,8 +27,11 @@ const fixture = defineCommittedGitFixture({ "README.md": "# runtime entry\n" });
 test("Project Runtime Entry adopts legacy registry before normal registry reads", async () => {
     await withProcessGlobalTestLock(async () => {
         const originalSandboxHome = env.WLD_TEST_SANDBOX_HOME;
+        const originalHome = env.HOME;
+        const personalHome = await fsMkdtemp(join(tmpdir(), "runtime-entry-home-"));
         const projectRoot = await fixture.checkout({ prefix: "runwield-runtime-entry-adopt-" });
         try {
+            env.HOME = personalHome;
             delete env.WLD_TEST_SANDBOX_HOME;
             const legacyPath = join(projectRoot, ".wld", "worktrees.json");
             await fsMkdir(dirname(legacyPath), { recursive: true });
@@ -70,6 +75,9 @@ test("Project Runtime Entry adopts legacy registry before normal registry reads"
             assertEquals(markerAfter, markerBefore);
             await rejects(() => fsLstat(legacyPath), { code: "ENOENT" });
         } finally {
+            if (originalHome === undefined) delete env.HOME;
+            else env.HOME = originalHome;
+            await fsRm(personalHome, { recursive: true, force: true });
             if (originalSandboxHome === undefined) delete env.WLD_TEST_SANDBOX_HOME;
             else env.WLD_TEST_SANDBOX_HOME = originalSandboxHome;
             await fsRm(projectRoot, { recursive: true }).catch(() => {});
@@ -80,10 +88,13 @@ test("Project Runtime Entry adopts legacy registry before normal registry reads"
 test("Project Runtime Entry reconciles gitignore and reports broad wld rules", async () => {
     await withProcessGlobalTestLock(async () => {
         const originalSandboxHome = env.WLD_TEST_SANDBOX_HOME;
+        const originalHome = env.HOME;
+        const personalHome = await fsMkdtemp(join(tmpdir(), "runtime-entry-home-"));
         const projectRoot = await fixture.checkout({ prefix: "runwield-runtime-entry-gitignore-" });
         const originalWarn = console.warn;
         const warnings: string[] = [];
         try {
+            env.HOME = personalHome;
             delete env.WLD_TEST_SANDBOX_HOME;
             console.warn = (message) => warnings.push(String(message));
             await fsWriteFile(join(projectRoot, ".gitignore"), ".wld/\n.wld/plan-locks\n");
@@ -106,6 +117,9 @@ test("Project Runtime Entry reconciles gitignore and reports broad wld rules", a
             assertEquals(warnings.length, 1);
         } finally {
             console.warn = originalWarn;
+            if (originalHome === undefined) delete env.HOME;
+            else env.HOME = originalHome;
+            await fsRm(personalHome, { recursive: true, force: true });
             if (originalSandboxHome === undefined) delete env.WLD_TEST_SANDBOX_HOME;
             else env.WLD_TEST_SANDBOX_HOME = originalSandboxHome;
             await fsRm(projectRoot, { recursive: true }).catch(() => {});
@@ -153,8 +167,11 @@ test("Project Runtime Entry reports changed warnings independently per project",
 test("Project Runtime Entry refusal stops direct normal registry access", async () => {
     await withProcessGlobalTestLock(async () => {
         const originalSandboxHome = env.WLD_TEST_SANDBOX_HOME;
+        const originalHome = env.HOME;
+        const personalHome = await fsMkdtemp(join(tmpdir(), "runtime-entry-home-"));
         const projectRoot = await fixture.checkout({ prefix: "runwield-runtime-entry-refuse-" });
         try {
+            env.HOME = personalHome;
             delete env.WLD_TEST_SANDBOX_HOME;
             const legacyPath = join(projectRoot, ".wld", "worktrees.json");
             await fsMkdir(dirname(legacyPath), { recursive: true });
@@ -168,6 +185,9 @@ test("Project Runtime Entry refusal stops direct normal registry access", async 
             await rejects(() => fsLstat(layout.primary.worktreeRegistryPath), { code: "ENOENT" });
             await rejects(() => fsLstat(layout.primary.layoutMarkerPath), { code: "ENOENT" });
         } finally {
+            if (originalHome === undefined) delete env.HOME;
+            else env.HOME = originalHome;
+            await fsRm(personalHome, { recursive: true, force: true });
             if (originalSandboxHome === undefined) delete env.WLD_TEST_SANDBOX_HOME;
             else env.WLD_TEST_SANDBOX_HOME = originalSandboxHome;
             await fsRm(projectRoot, { recursive: true }).catch(() => {});

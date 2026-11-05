@@ -1,3 +1,4 @@
+import { admitProjectWithIdentityChoice } from "../../ui/tui/project-identity-entry.ts";
 import { discoverPlanDocumentRoot } from "../load-plan/primary-plan-recovery.ts";
 import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
 /**
@@ -33,6 +34,7 @@ async function confirmArchivePlanRoot(cwd: string, name: string): Promise<void> 
         ? await confirmMissingManagedProjectDirectory(target.path)
         : await confirmProjectDirectory(target.path);
     if (!confirmed) throw new DirectoryStartupCanceled("Project startup canceled");
+    if (!(await admitProjectWithIdentityChoice(cwd))) throw new DirectoryStartupCanceled("Project startup canceled");
     await preparePlanWorkflow(cwd, name);
 }
 
@@ -242,6 +244,7 @@ export async function runPlansArchiveCommand(argv: string[]): Promise<void> {
         if (positionals.length > 2) throw new Error(`Unexpected restore argument: ${positionals[2]}`);
         const source = await loadArchivedPlan(getCwd(), target);
         if (!(await confirmProjectDirectory(source ? getPlanDocumentRoot(source.path) : getCwd()))) return;
+        if (!(await admitProjectWithIdentityChoice(source ? getPlanDocumentRoot(source.path) : getCwd()))) return;
         const restored = unwrapArchiveTransitionValue<RestoredPlan>(
             await runArchiveTransition({
                 projectRoot: source ? getPlanDocumentRoot(source.path) : getCwd(),

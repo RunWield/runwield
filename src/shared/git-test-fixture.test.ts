@@ -5,6 +5,8 @@ import { join } from "node:path";
 import process from "node:process";
 import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
+import { savePlan } from "../plan-store.js";
+import { readControllerRecord, writeControllerState } from "./workflow/controller-registry.ts";
 import { defineGitFixture, git } from "./git-test-fixture.ts";
 
 test("Git fixture templates stay unchanged by automatic object maintenance", async () => {
@@ -35,4 +37,25 @@ test("Git fixture templates stay unchanged by automatic object maintenance", asy
             await rm(root, { recursive: true });
         }
     });
+});
+
+test("Git fixture checkouts isolate home-owned controller state seeded by the template", async () => {
+    const fixture = defineGitFixture(async (repo) => {
+        await savePlan(repo, "demo", "# Seeded Plan\n", { planId: "seeded", status: "reviewed" });
+        await git(repo, ["add", "."]);
+        await git(repo, ["commit", "-m", "Seeded Plan"]);
+    });
+    const first = await fixture.checkout();
+    const second = await fixture.checkout();
+    try {
+        await writeControllerState(first, { planId: "seeded", planName: "demo" }, { validationCiAttempts: 2 });
+        await writeControllerState(second, { planId: "seeded", planName: "demo" }, {});
+        assertEquals(
+            (await readControllerRecord(second, { planId: "seeded", planName: "demo" }))?.state.validationCiAttempts,
+            undefined,
+        );
+    } finally {
+        await rm(first, { recursive: true, force: true });
+        await rm(second, { recursive: true, force: true });
+    }
 });

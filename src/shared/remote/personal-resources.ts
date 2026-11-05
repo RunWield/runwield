@@ -3,11 +3,13 @@ import { realpathSync as fsRealpathSync, type BigIntStats, statSync as fsStatSyn
 import { lstat as fsLstat, realpath as fsRealpath, stat as fsStat } from "node:fs/promises";
 import { platform } from "node:process";
 import { dirname, isAbsolute, join, normalize, relative } from "node:path";
+import type { ProjectPersonalOwner } from "../project-identity.ts";
 import { getHomeDir } from "../../constants.js";
 
 /** Resource roots for one explicitly activated remote connection. Never set during connection-only startup. */
 export interface RemotePersonalResources {
     globalRoot: string;
+    personalOwner?: ProjectPersonalOwner;
     agentsRoot?: string;
     /** Only laptop-verified installed global package roots; never resolve from the remote profile. */
     packageRoots?: Record<string, string>;
@@ -73,31 +75,36 @@ async function assertRootIdentities(roots: string[], resource: string, path: str
 /** Call only in the remote process after the connection supplies a verified mount. */
 export function configureRemotePersonalResources(roots: RemotePersonalResources): void {
     if (
-        !isAbsolute(roots.globalRoot) || (roots.agentsRoot && !isAbsolute(roots.agentsRoot)) ||
+        !isAbsolute(roots.globalRoot) ||
+        (roots.agentsRoot && !isAbsolute(roots.agentsRoot)) ||
         Object.values(roots.packageRoots ?? {}).some((path) => !isAbsolute(path))
     ) {
         throw new Error("Remote personal resource roots must be absolute");
     }
     if (active) throw new Error("Remote personal resources are already configured");
+    if (roots.personalOwner && (roots.personalOwner.kind !== "managed-remote" || !roots.personalOwner.identity)) {
+        throw new Error("Managed remote Project owner identity is required");
+    }
     const configured = Object.freeze({
+        ...(roots.personalOwner ? { personalOwner: Object.freeze({ ...roots.personalOwner }) } : {}),
         globalRoot: normalize(roots.globalRoot),
         ...(roots.agentsRoot ? { agentsRoot: normalize(roots.agentsRoot) } : {}),
         ...(roots.packageRoots
             ? {
-                packageRoots: Object.freeze(Object.fromEntries(
-                    Object.entries(roots.packageRoots).map(([source, path]) => [source, normalize(path)]),
-                )),
-            }
+                  packageRoots: Object.freeze(
+                      Object.fromEntries(
+                          Object.entries(roots.packageRoots).map(([source, path]) => [source, normalize(path)]),
+                      ),
+                  ),
+              }
             : {}),
     });
     const identities = new Map<string, RootIdentity>();
-    for (
-        const root of [
-            configured.globalRoot,
-            ...(configured.agentsRoot ? [configured.agentsRoot] : []),
-            ...Object.values(configured.packageRoots ?? {}),
-        ]
-    ) {
+    for (const root of [
+        configured.globalRoot,
+        ...(configured.agentsRoot ? [configured.agentsRoot] : []),
+        ...Object.values(configured.packageRoots ?? {}),
+    ]) {
         try {
             identities.set(root, rootIdentity(root, fsStatSync(root, { bigint: true })));
         } catch (error) {
@@ -107,6 +114,15 @@ export function configureRemotePersonalResources(roots: RemotePersonalResources)
     }
     activeRootIdentities = identities;
     active = configured;
+}
+
+/** Owner context arrives through verified activation, never from SSH variables or mount names. */
+export function remoteProjectOwner(): ProjectPersonalOwner | undefined {
+    if (!active) return undefined;
+    assertRootIdentitiesSync(mountedRoots(), "Project owner", active.globalRoot);
+    if (!active.personalOwner)
+        throw new Error("Managed remote Project identity requires explicit laptop owner context");
+    return active.personalOwner;
 }
 
 export function personalPackageRoots(): Readonly<Record<string, string>> {
@@ -135,9 +151,12 @@ export class PersonalResourcePathError extends Error {
 
 function within(path: string, root: string): boolean {
     const remainder = relative(root, path);
-    return remainder === "" ||
-        (remainder !== ".." && !remainder.startsWith(`..${platform === "win32" ? "\\" : "/"}`) &&
-            !isAbsolute(remainder));
+    return (
+        remainder === "" ||
+        (remainder !== ".." &&
+            !remainder.startsWith(`..${platform === "win32" ? "\\" : "/"}`) &&
+            !isAbsolute(remainder))
+    );
 }
 
 function mountedRoots(): string[] {

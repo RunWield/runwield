@@ -31,6 +31,7 @@ import {
     lockPath,
     readJson,
     sessionDirForManifestPath,
+    sessionProjectMatches,
     writeTextAtomically,
 } from "./file-session-storage.ts";
 import type {
@@ -93,7 +94,7 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
 
     function setArchiveState(runwieldSessionId: string, projectId: string | undefined, archived: boolean) {
         const found = manifests.resolve(runwieldSessionId, projectId);
-        if (!found || (projectId && found.manifest.projectId !== projectId)) {
+        if (!found || (projectId && !sessionProjectMatches(options.baseDir, found.manifest.projectId, projectId))) {
             throw new Error("Session identity is unavailable");
         }
         const file = openNativeFileLock(lockPath(sessionDirForManifestPath(found.path), runwieldSessionId));
@@ -104,7 +105,7 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
                 if (
                     manifest.version !== FILE_SESSION_STORE_VERSION ||
                     manifest.runwieldSessionId !== runwieldSessionId ||
-                    (projectId && manifest.projectId !== projectId)
+                    (projectId && !sessionProjectMatches(options.baseDir, manifest.projectId, projectId))
                 ) {
                     throw new Error("Session identity is unavailable");
                 }

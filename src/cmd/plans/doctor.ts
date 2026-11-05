@@ -1,3 +1,4 @@
+import { admitProjectWithIdentityChoice } from "../../ui/tui/project-identity-entry.ts";
 import { inspectControllerDocumentWorktrees } from "../../shared/workflow/controller-registry.ts";
 import { hasApplicablePublicationReceipt } from "../../shared/workflow/publication-receipt.ts";
 import { platform } from "node:process";
@@ -1310,6 +1311,7 @@ export async function runPlansDoctorCommand(argv: string[], _options: PlansDocto
     for (const root of new Set([...adoptionRoots, ...registry.entries.map((entry) => entry.path)])) {
         if (!(await confirmMissingManagedProjectDirectory(root))) return;
     }
+    if (!checkOnly && inspection.kind !== "blocked" && !(await admitProjectWithIdentityChoice(projectRoot))) return;
     const result = await runPlansDoctor(projectRoot, !checkOnly);
     if (checkOnly) {
         console.log(

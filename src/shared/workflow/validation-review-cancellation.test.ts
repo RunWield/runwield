@@ -162,148 +162,168 @@ const reopenFixture = defineGitFixture(async (root) => {
     await git(root, ["commit", "-m", "review reopen fixture"]);
 });
 
+// Bound each observable handoff, rather than charging Git setup, conversation,
+// validation and publication against one shared deadline. A timeout names the stalled step.
+async function awaitReviewStep<T>(name: string, pending: Promise<T>, timeoutMs = 10_000): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+        return await Promise.race([
+            pending,
+            new Promise<never>((_, reject) => {
+                timer = setTimeout(
+                    () => reject(new Error(`Code Review stalled at ${name} after ${timeoutMs}ms`)),
+                    timeoutMs,
+                );
+            }),
+        ]);
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 for (const revise of [false, true]) {
-    test(
-        `Code Review reopen projects the same live URL through ${revise ? "revision and CI" : "conversation"} until approval`,
-        { timeout: 10_000 },
-        async () => {
-            const projectRoot = await reopenFixture.checkout();
-            await savePlan(projectRoot, "p", "# Review reopen\n\nKeep the exported label.", {
-                classification: "QUICK_FIX",
-                status: "reviewed",
-                humanReviewMode: "always",
-                humanReviewDecision: null,
-            });
-            const plan = await loadPlan(projectRoot, "p");
-            assertExists(plan);
-            await writeFile(join(projectRoot, "label.ts"), "export const label = 'first';\n");
-            const host = new SessionHost();
-            const session = attachRecorder(host.createSession({ cwd: projectRoot }), makeUi());
-            const runtime = new SessionRuntime({
-                sessionHost: host,
-                sessionStore: null,
-                ownerProcessKind: "test",
-                ownerInstanceId: crypto.randomUUID(),
-            });
-            session.setActiveExecutionWorkflow({
-                planName: "p",
-                triageMeta: plan.attrs,
-                executionAgent: "engineer",
-                projectRoot,
-                executionCwd: projectRoot,
-                baselineTree: await git(projectRoot, ["rev-parse", "HEAD"]),
-                worktreeBaseBranch: "main",
-            });
-            const opened = [Promise.withResolvers<string>(), Promise.withResolvers<string>()];
-            const agentStarted = Promise.withResolvers<void>();
-            const releaseAgent = Promise.withResolvers<void>();
-            let rounds = 0;
-            let ciRuns = 0;
-            const ui = makeUi();
-            let browserUrl = "";
-            const unsubscribe = session.subscribeRuntimeEvents((event: ReviewProgressObservation) => {
-                if (
-                    event.type === "system_status" &&
-                    event.validationProgress?.stage === "human_review" &&
-                    event.validationProgress.checks.humanReview === "running" &&
-                    browserUrl
-                ) {
-                    opened[rounds++]?.resolve(browserUrl);
-                }
-            });
-            session.setInteractionAdapter(
-                createTuiInteractionAdapter(ui, {
-                    browser: {
-                        open: (url) => {
-                            browserUrl = url;
-                            return Promise.resolve(false);
-                        },
-                    },
-                }),
-            );
-            const snapshot = () => runtime.getSessionSnapshot(session.id)?.workflowContext;
-            const running = runValidationLoop({
-                hostedSession: session,
-                planName: "p",
-                planContent: plan.body,
-                triageMeta: plan.attrs,
-                localCI: {
-                    run: () => {
-                        ciRuns++;
-                        assertEquals(snapshot()?.liveReviewUrl, firstUrl, "CI must retain the review link");
-                        return Promise.resolve({ kind: "completed" as const, exitCode: 0, output: "ok" });
-                    },
-                },
-                semanticReviewPort: {
-                    runIsolatedAgentSession: async (options) => {
-                        agentStarted.resolve();
-                        await releaseAgent.promise;
-                        if (revise) {
-                            await writeFile(join(projectRoot, "label.ts"), "export const label = 'revised';\n");
-                            await executeWorkflowTestTools(options, [
-                                { name: "task_completed", arguments: { message: "Updated the label." } },
-                            ]);
-                            return [];
-                        }
-                        return [fauxAssistantMessage(fauxText("The label identifies this fixture."))];
-                    },
-                },
-            });
-            let firstUrl = "";
-            try {
-                firstUrl = await opened[0]!.promise;
-                assertEquals(snapshot()?.liveReviewUrl, firstUrl, "Open Code Review must have the real ready URL");
-                assertEquals(snapshot()?.liveCodeReview, true);
-                const parsed = new URL(firstUrl);
-                const token = parsed.searchParams.get("token")!;
-                const respond = async (approved: boolean) => {
-                    const statusResponse = await fetch(
-                        new URL(`/api/review/conversation?token=${token}`, parsed.origin),
-                    );
-                    assertEquals(statusResponse.status, 200);
-                    const { reviewRevision } = await statusResponse.json();
-                    const response = await fetch(
-                        new URL(`/api/review/${approved ? "decision" : "deny"}?token=${token}`, parsed.origin),
-                        {
-                            method: "POST",
-                            headers: { "content-type": "application/json", "x-runwield-review-token": token },
-                            body: JSON.stringify(
-                                approved
-                                    ? { approved: true, reviewRevision }
-                                    : {
-                                          approved: false,
-                                          reviewRevision,
-                                          conversationTurn: true,
-                                          feedback: revise ? "Change the label." : "Why this label?",
-                                      },
-                            ),
-                        },
-                    );
-                    assertEquals(response.status, 200, await response.text());
-                };
-                await respond(false);
-                await agentStarted.promise;
-                assertEquals(session.getActiveInteractions().size, 0, "the Agent turn runs between review requests");
-                assertEquals(snapshot()?.liveReviewUrl, firstUrl, "the conversation must retain the reopen URL");
-                assertEquals(snapshot()?.liveCodeReview, true);
-                releaseAgent.resolve();
-                assertEquals(await opened[1]!.promise, firstUrl, "the real browser surface must reuse its URL");
-                assertEquals(snapshot()?.liveReviewUrl, firstUrl, "the revised review must still be reopenable");
-                await respond(true);
-                const result = await running;
-                assertEquals(result.kind, "verified", JSON.stringify(result));
-                assertEquals(ciRuns, revise ? 1 : 0);
-                assertEquals(snapshot()?.liveReviewUrl, undefined, "approval must remove the live URL");
-                assertEquals(snapshot()?.liveCodeReview, false);
-            } finally {
-                // A failed assertion must also cancel any review that the gated Agent has yet to rearm.
-                session.setInteractionAdapter({ requestInteraction: () => ({ outcome: "canceled" }) });
-                releaseAgent.resolve();
-                session.cancelActiveInteractions();
-                await running;
-                unsubscribe();
-                await runtime.closeSession(session.id);
+    test(`Code Review reopen projects the same live URL through ${revise ? "revision and CI" : "conversation"} until approval`, async () => {
+        const projectRoot = await awaitReviewStep("fixture checkout", reopenFixture.checkout());
+        await savePlan(projectRoot, "p", "# Review reopen\n\nKeep the exported label.", {
+            classification: "QUICK_FIX",
+            status: "reviewed",
+            humanReviewMode: "always",
+            humanReviewDecision: null,
+        });
+        const plan = await loadPlan(projectRoot, "p");
+        assertExists(plan);
+        await writeFile(join(projectRoot, "label.ts"), "export const label = 'first';\n");
+        const host = new SessionHost();
+        const session = attachRecorder(host.createSession({ cwd: projectRoot }), makeUi());
+        const runtime = new SessionRuntime({
+            sessionHost: host,
+            sessionStore: null,
+            ownerProcessKind: "test",
+            ownerInstanceId: crypto.randomUUID(),
+        });
+        session.setActiveExecutionWorkflow({
+            planName: "p",
+            triageMeta: plan.attrs,
+            executionAgent: "engineer",
+            projectRoot,
+            executionCwd: projectRoot,
+            baselineTree: await git(projectRoot, ["rev-parse", "HEAD"]),
+            worktreeBaseBranch: "main",
+        });
+        const opened = [Promise.withResolvers<string>(), Promise.withResolvers<string>()];
+        const agentStarted = Promise.withResolvers<void>();
+        const revisionCiRequested = Promise.withResolvers<void>();
+        const releaseAgent = Promise.withResolvers<void>();
+        let rounds = 0;
+        let ciRuns = 0;
+        const ui = makeUi();
+        let browserUrl = "";
+        const unsubscribe = session.subscribeRuntimeEvents((event: ReviewProgressObservation) => {
+            if (
+                event.type === "system_status" &&
+                event.validationProgress?.stage === "human_review" &&
+                event.validationProgress.checks.humanReview === "running" &&
+                browserUrl
+            ) {
+                opened[rounds++]?.resolve(browserUrl);
             }
-        },
-    );
+        });
+        session.setInteractionAdapter(
+            createTuiInteractionAdapter(ui, {
+                browser: {
+                    open: (url) => {
+                        browserUrl = url;
+                        return Promise.resolve(false);
+                    },
+                },
+            }),
+        );
+        const snapshot = () => runtime.getSessionSnapshot(session.id)?.workflowContext;
+        const running = runValidationLoop({
+            hostedSession: session,
+            planName: "p",
+            planContent: plan.body,
+            triageMeta: plan.attrs,
+            localCI: {
+                run: () => {
+                    ciRuns++;
+                    revisionCiRequested.resolve();
+                    assertEquals(snapshot()?.liveReviewUrl, firstUrl, "CI must retain the review link");
+                    return Promise.resolve({ kind: "completed" as const, exitCode: 0, output: "ok" });
+                },
+            },
+            semanticReviewPort: {
+                runIsolatedAgentSession: async (options) => {
+                    agentStarted.resolve();
+                    await releaseAgent.promise;
+                    if (revise) {
+                        await writeFile(join(projectRoot, "label.ts"), "export const label = 'revised';\n");
+                        await executeWorkflowTestTools(options, [
+                            { name: "task_completed", arguments: { message: "Updated the label." } },
+                        ]);
+                        return [];
+                    }
+                    return [fauxAssistantMessage(fauxText("The label identifies this fixture."))];
+                },
+            },
+        });
+        let firstUrl = "";
+        try {
+            firstUrl = await awaitReviewStep("initial review ready", opened[0]!.promise);
+            assertEquals(snapshot()?.liveReviewUrl, firstUrl, "Open Code Review must have the real ready URL");
+            assertEquals(snapshot()?.liveCodeReview, true);
+            const parsed = new URL(firstUrl);
+            const token = parsed.searchParams.get("token")!;
+            const respond = async (approved: boolean) => {
+                const statusResponse = await fetch(new URL(`/api/review/conversation?token=${token}`, parsed.origin));
+                assertEquals(statusResponse.status, 200);
+                const { reviewRevision } = await statusResponse.json();
+                const response = await fetch(
+                    new URL(`/api/review/${approved ? "decision" : "deny"}?token=${token}`, parsed.origin),
+                    {
+                        method: "POST",
+                        headers: { "content-type": "application/json", "x-runwield-review-token": token },
+                        body: JSON.stringify(
+                            approved
+                                ? { approved: true, reviewRevision }
+                                : {
+                                      approved: false,
+                                      reviewRevision,
+                                      conversationTurn: true,
+                                      feedback: revise ? "Change the label." : "Why this label?",
+                                  },
+                        ),
+                    },
+                );
+                assertEquals(response.status, 200, await response.text());
+            };
+            await awaitReviewStep("conversation request", respond(false));
+            await awaitReviewStep("conversation agent", agentStarted.promise);
+            assertEquals(session.getActiveInteractions().size, 0, "the Agent turn runs between review requests");
+            assertEquals(snapshot()?.liveReviewUrl, firstUrl, "the conversation must retain the reopen URL");
+            assertEquals(snapshot()?.liveCodeReview, true);
+            releaseAgent.resolve();
+            if (revise) await awaitReviewStep("revision CI requested", revisionCiRequested.promise);
+            assertEquals(
+                await awaitReviewStep("review reopened", opened[1]!.promise),
+                firstUrl,
+                "the real browser surface must reuse its URL",
+            );
+            assertEquals(snapshot()?.liveReviewUrl, firstUrl, "the revised review must still be reopenable");
+            await awaitReviewStep("approval", respond(true));
+            const result = await awaitReviewStep("verified publication", running, 30_000);
+            assertEquals(result.kind, "verified", JSON.stringify(result));
+            assertEquals(ciRuns, revise ? 1 : 0);
+            assertEquals(snapshot()?.liveReviewUrl, undefined, "approval must remove the live URL");
+            assertEquals(snapshot()?.liveCodeReview, false);
+        } finally {
+            // A failed assertion must also cancel any review that the gated Agent has yet to rearm.
+            session.setInteractionAdapter({ requestInteraction: () => ({ outcome: "canceled" }) });
+            releaseAgent.resolve();
+            session.cancelActiveInteractions();
+            await awaitReviewStep("canceled workflow cleanup", running, 30_000);
+            unsubscribe();
+            await runtime.closeSession(session.id);
+        }
+    });
 }
