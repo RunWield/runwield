@@ -28,7 +28,7 @@ dependencies:
     - "external-plan-store/add-canonical-plan-packages"
 targetBranch: "epic/external-plan-store"
 userVerifiedAt: null
-status: "in_progress"
+status: "implemented"
 ---
 
 # Import Plans with Workflow Evidence

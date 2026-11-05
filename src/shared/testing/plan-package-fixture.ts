@@ -47,7 +47,18 @@ export async function tree(root: string): Promise<Record<string, string>> {
 }
 export interface DriverRequest {
     identity: ProjectIdentity;
-    command: "metadata" | "document" | "create" | "rename" | "capture" | "read" | "input" | "hold";
+    command:
+        | "metadata"
+        | "document"
+        | "create"
+        | "rename"
+        | "capture"
+        | "read"
+        | "input"
+        | "hold"
+        | "import"
+        | "list"
+        | "evidence";
     barrier?: string;
     boundary?: string;
     planId?: string;
@@ -55,6 +66,10 @@ export interface DriverRequest {
     edit?: "context.md" | "validation.md" | "manual-qa.md";
     remove?: boolean;
     inputId?: string;
+    selection?: string;
+    mutateEvidencePath?: string;
+    mutateEvidenceDestination?: string;
+    mutateEvidenceText?: string;
 }
 export function startDriver(request: DriverRequest) {
     const child = spawn(

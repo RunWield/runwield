@@ -50,6 +50,21 @@ moves the package's own resources so nested names do not make directory ancestry
 inputs publish complete staged bytes and a manifest before exposing their reference. Editors do not take Core locks,
 so capture revalidates observed bytes and membership; arbitrary multi-file editor writes are not an atomic transaction.
 
+The internal import contract extends version-1 metadata with named Sequence, Ticket, supersession/deviation, delivery,
+closure and archive facts. Original bytes and remaining historical fields are immutable provenance, including retired
+objective-check fields. Typed import references resolve retained controller/checkpoint and repository-attempt evidence;
+they do not create another mutable lifecycle authority. Existing version-1 packages remain valid without these optional
+fields. Lifecycle admission must recheck the retained binding before execution.
+
+A batch intent reserves IDs and retains complete selected inputs before any package is visible. The same persistence
+owner stages and publishes every new member under the catalog lock and ordered Plan-ID locks. One persistent batch
+generation marks commitment; passive scans compare it before and after traversal and retry when it changes. Merely
+checking for an intent at either end would miss a batch that both starts and finishes during traversal. Repeating
+ordinary single-package creation was rejected because interruption could expose half a family. Keeping the immutable
+inputs permits recovery without the original sources, while the committed marker prevents replay over newer edits.
+The import boundary is explicit selection, not automatic repository migration, and does not accept the broader public
+activation or managed-remote ownership proposal below.
+
 ## Decision and Rationale
 
 Use stable opaque Project identity to locate home Project storage. Keep repository and checkout bindings as explicit

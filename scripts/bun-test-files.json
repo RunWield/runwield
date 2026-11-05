@@ -958,5 +958,8 @@
     "src/plan-package-store.test.ts",
     "src/plan-package-concurrency.test.ts",
     "src/plan-package-recovery.test.ts",
-    "src/plan-package-snapshots.test.ts"
+    "src/plan-package-snapshots.test.ts",
+    "src/plan-package-import.test.ts",
+    "src/plan-package-import-recovery.test.ts",
+    "src/plan-package-import-evidence.test.ts"
 ]

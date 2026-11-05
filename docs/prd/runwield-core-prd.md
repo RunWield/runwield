@@ -369,10 +369,30 @@ Creation and rename reject a destination whose existing directory spelling diffe
 store's filesystem, preserving readable packages and the existing namespace.
 
 This is a preparatory persistence capability. Public discovery, adoption, lifecycle and Epic workflows still use their
-admitted repository Plans. Package operations create no checkout copy or `.wld/plans` alias. Import, public activation,
+admitted repository Plans. Package operations create no checkout copy or `.wld/plans` alias. Public import and activation,
 managed-remote transport, lifecycle input binding, delivery copies, history and retention remain targets in the
 [Plan Store proposal](plan-store-prd.md#plan-store). Explicit managed-remote ownership cannot fall back to an execution
 account's local package store.
+
+**Requirement: Explicit internal import preserves selected Plans and continuation evidence.** An established ordinary
+Project can import a selected Markdown file or folder as one recoverable package batch. It preserves original files,
+Plan IDs and age, canonical status, Sequence type, Tickets, delivery intent, closure/hold/archive facts and ID-based
+relationships. Exact post-front-matter prose becomes `context.md`; generic YAML and plain Markdown retain all bytes as
+external drafts. Epic QA and integration files remain resources of their selected Epic. Required `validation.md` points
+to the retained context rather than moving verification prose.
+
+Import retains immutable source bytes, source locators, relationship mappings and typed legacy controller/attempt
+references. Unfinished Plans use registered documents or locally available target snapshots, with persisted controller
+and repository evidence; uncertain authority never selects a stale primary. Retained checkpoints, receipts, pending
+repair/Recorder work and publication attempts remain evidence owned by their existing runtime authorities. Import
+neither advances them nor grants execution admission. Later lifecycle admission must revalidate that binding.
+
+An ID-less source keeps its allocated ID across restarts and overlapping selections; changed bytes at that locator
+produce a conflict. Reimporting an existing ID preserves current package edits and names. Conflicting identities,
+ambiguous relationships and unavailable evidence publish no selected member. Explicitly selecting a target-only child
+may use its local target snapshot; import does not expand the selection to unrelated siblings or fetch remote refs.
+Original repository-relative paths remain available for later pruning; this operation performs no pruning or delivery
+copy setup. Public commands, path-loading activation and store-only discovery remain target behavior.
 
 **Requirement: External Markdown Plans are first-class.** A plain Markdown file in `docs/plans/` is a valid draft.
 Listing, browsing, and inspecting it leave its bytes as they are. Deliberate `/load-plan` adoption adds identity and
@@ -416,6 +436,14 @@ conditions for reconsideration. Routine choices receive brief treatment; individ
 
 **Acceptance scenarios:**
 
+- Given a selected Epic family with archived children and resources, import preserves exact originals, age, Tickets,
+  statuses and ID relationships; generic YAML remains complete draft prose.
+- Given an imported ID or ID-less locator, a restarted or overlapping import returns the same package. Later package
+  edits and rename survive repeats; changed ID-less source bytes require an explicit content decision.
+- Given stale primary prose and a registered execution document, import retains the execution prose and exact
+  controller/checkpoint/publication evidence. Missing, foreign or racing authority produces no committed batch.
+- Given interruption during a family import, passive ID/name/catalog reads expose the whole committed family or pending
+  evidence, never a partial family; deliberate recovery completes it without touching original workflow authorities.
 - Given an explicit package and an ordinary editor change, a metadata update preserves every document byte. A
   document save rejects an old document hash; a metadata update rejects an old metadata revision independently.
 - Given an Epic package renamed or archived, its ID, Session references, children and dependency IDs stay stable;
@@ -758,6 +786,14 @@ restart; recovery cannot revert a later revision. A retained input commits all o
 hashes, Plan identity and metadata revision before returning a reference. Detected changes or missing required input
 produce no usable reference. Retained bytes survive later live edits. Capture assigns no approval, execution or delivery
 status; those consumers bind inputs in the later lifecycle work.
+
+**Requirement: Import publishes complete families and recovers the same identities.** One durable batch intent reserves
+all new IDs and retains complete import inputs before publication. Until the batch commits, ID and name lookup report
+pending for its members while unrelated packages remain readable. Catalog reads detect a whole batch that starts and
+finishes during a scan, retry without locks or writes, and report pending after bounded retries. Deliberate recovery
+finishes the recorded batch after staging, partial publication or lost acknowledgement, without replaying over newer
+committed edits. Committed packages and retained evidence remain usable after original sources disappear. Import does
+not reseal, advance or clean a legacy publication attempt.
 
 **Requirement: Separate saved delivery evidence from fresh publication proof.** Passive progress reads show applicable
 saved evidence without remote verification. A valid controller publication receipt can preserve established delivery
