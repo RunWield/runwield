@@ -12,7 +12,7 @@ affectedPaths:
     - "src/shared/session/session-prompt.test.js"
     - "src/shared/session/session-subscribers.test.js"
     - "src/shared/session/hosted-session.js"
-    - "src/shared/session/hosted-session.test.js"
+    - "src/shared/session/hosted-session.test.ts"
     - "src/shared/session/abort-active-session.test.js"
     - "src/shared/session/runtime/turns.ts"
     - "src/shared/session/runtime/agent-settings.ts"
@@ -310,7 +310,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   emission without duplicate generic compaction statuses.
 - `src/shared/session/hosted-session.js` — retain the coordinator and current-segment root health across Pi Session
   disposal, plus isolated-child health and cancellation. All compaction shares one arbiter per Hosted Session.
-- `src/shared/session/hosted-session.test.js` — cover arbiter exclusivity, active-turn cancellation/settlement,
+- `src/shared/session/hosted-session.test.ts` — cover arbiter exclusivity, active-turn cancellation/settlement,
   disposal, and isolation between Hosted Sessions.
 - `src/shared/session/abort-active-session.test.js` — verify the shared abort path handles streaming and compaction for
   root and every registered transient Agent Session without duplicate aborts.
@@ -457,7 +457,7 @@ unless the complete public AgentSession contract has been verified; a partial ga
 - Automated focused tests: run
   `deno run -A scripts/run-tests.js src/shared/session/session-context-resilience.test.js
 src/shared/session/session-prompt.test.js src/shared/session/session-subscribers.test.js
-src/shared/session/hosted-session.test.js src/shared/session/abort-active-session.test.js
+src/shared/session/hosted-session.test.ts src/shared/session/abort-active-session.test.js
 src/shared/session/session-runtime-events.test.js src/shared/session/session-runtime.test.js
 src/shared/session/agent-handler.test.ts src/shared/session/request-dispatch.test.ts
 src/shared/session/background-tasks.test.ts src/shared/session/background-tasks-extra.test.ts
