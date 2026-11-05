@@ -13,59 +13,113 @@ import { ROUTING_INTENTS } from "../src/constants.js";
 
 const PLAN_ROUTING_INTENTS = ["FEATURE", "PROJECT"];
 
-/**
- * @typedef {Object} RouterDecision
- * @property {string} decisionId
- * @property {string} sessionId
- * @property {string} sessionFile
- * @property {string} triageEntryId
- * @property {string} userEntryId
- * @property {string} timestamp
- * @property {string} requestText
- * @property {boolean} hasImages
- * @property {string} provider
- * @property {string} model
- * @property {string} routingIntent
- * @property {string | undefined} [classification]
- * @property {string} complexity
- * @property {string} summary
- * @property {string[]} affectedPaths
- * @property {number} discoveryToolCount
- * @property {string[]} discoveryTools
- * @property {"routingIntent" | "classification"} intentSource
- * @property {"active_agent_router"} attribution
- */
+export interface RouterDecision {
+    decisionId: string;
+    sessionId: string;
+    sessionFile: string;
+    triageEntryId: string;
+    userEntryId: string;
+    timestamp: string;
+    requestText: string;
+    hasImages: boolean;
+    provider: string;
+    model: string;
+    routingIntent: string;
+    classification?: string;
+    complexity: string;
+    summary: string;
+    affectedPaths: string[];
+    discoveryToolCount: number;
+    discoveryTools: string[];
+    intentSource: "routingIntent" | "classification";
+    attribution: "active_agent_router";
+}
 
-/**
- * @param {unknown} value
- * @returns {string | null}
- */
-function asRoutingIntent(value) {
+export type RouterTriageDecision = Pick<
+    RouterDecision,
+    "routingIntent" | "classification" | "complexity" | "summary" | "affectedPaths" | "intentSource"
+>;
+
+export interface RouterContentBlock {
+    type?: string;
+    text?: string;
+    name?: string;
+}
+
+export type RouterMessageContent = string | RouterContentBlock[];
+
+export interface RouterSessionMessage {
+    role?: string;
+    content?: RouterMessageContent;
+    provider?: string;
+    model?: string;
+    toolName?: string;
+    details?: Partial<RouterTriageDecision>;
+}
+
+export interface RouterActiveAgentData {
+    agentName?: string;
+}
+
+export interface RouterSessionEntry {
+    type?: string;
+    id?: string;
+    timestamp?: string;
+    customType?: string;
+    data?: RouterActiveAgentData;
+    provider?: string;
+    modelId?: string;
+    message?: RouterSessionMessage;
+}
+
+export interface RouterUserContent {
+    text: string;
+    hasImages: boolean;
+}
+
+interface PendingRouterUser extends RouterUserContent {
+    entryId: string;
+    timestamp: string;
+    discoveryTools: string[];
+}
+
+export interface RouterEntryExtractionOptions {
+    sessionFile?: string;
+}
+
+export interface RouterExtractionOptions {
+    sessionsDir: string;
+    limit?: number;
+}
+
+interface RouterExtractionArguments {
+    _: (string | number)[];
+    help?: boolean;
+    cwd?: string;
+    out?: string;
+    limit?: string;
+    "sessions-dir"?: string;
+}
+
+function asRoutingIntent<TValue>(value: TValue): string | null {
     return typeof value === "string" && ROUTING_INTENTS.includes(value) ? value : null;
 }
 
-/**
- * @param {unknown} value
- * @returns {string[]}
- */
-function asStringArray(value) {
-    return Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
+function asStringArray<TValue>(value: TValue): string[] {
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
-/**
- * @param {unknown} details
- * @returns {(Pick<RouterDecision, "routingIntent" | "classification" | "complexity" | "summary" | "affectedPaths" | "intentSource">) | null}
- */
-export function normalizeTriageDetails(details) {
+export function normalizeTriageDetails(
+    details: Partial<RouterTriageDecision> | null | undefined,
+): RouterTriageDecision | null {
     if (!details || typeof details !== "object" || Array.isArray(details)) return null;
-    const record = /** @type {Record<string, unknown>} */ (details);
+    const record = details;
     const directIntent = asRoutingIntent(record.routingIntent);
     const legacyIntent = asRoutingIntent(record.classification);
     const routingIntent = directIntent || legacyIntent;
     if (!routingIntent) return null;
 
-    /** @type {Pick<RouterDecision, "routingIntent" | "classification" | "complexity" | "summary" | "affectedPaths" | "intentSource">} */
-    const normalized = {
+    const normalized: RouterTriageDecision = {
         routingIntent,
         complexity: typeof record.complexity === "string" ? record.complexity : "",
         summary: typeof record.summary === "string" ? record.summary : "",
@@ -80,54 +134,39 @@ export function normalizeTriageDetails(details) {
     return normalized;
 }
 
-/**
- * @param {string} cwd
- * @returns {string}
- */
-export function encodeCwdForSessionDir(cwd) {
+export function encodeCwdForSessionDir(cwd: string): string {
     return `--${cwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
 }
 
-/**
- * @param {unknown} content
- * @returns {{ text: string, hasImages: boolean }}
- */
-export function extractUserContent(content) {
+export function extractUserContent(content: RouterMessageContent | undefined): RouterUserContent {
     if (typeof content === "string") return { text: content, hasImages: false };
     if (!Array.isArray(content)) return { text: "", hasImages: false };
 
-    /** @type {string[]} */
-    const text = [];
+    const text: string[] = [];
     let hasImages = false;
     for (const block of content) {
         if (!block || typeof block !== "object") continue;
-        const typed = /** @type {{ type?: string, text?: string }} */ (block);
+        const typed = block;
         if (typed.type === "text" && typed.text) text.push(typed.text);
         if (typed.type === "image" || typed.type === "image_url") hasImages = true;
     }
     return { text: text.join("\n").trim(), hasImages };
 }
 
-/**
- * @param {unknown} content
- * @returns {string[]}
- */
-export function extractToolCallNames(content) {
+export function extractToolCallNames(content: RouterMessageContent | undefined): string[] {
     if (!Array.isArray(content)) return [];
     return content.flatMap((block) => {
         if (!block || typeof block !== "object") return [];
-        const typed = /** @type {{ type?: string, name?: string }} */ (block);
+        const typed = block;
         if ((typed.type === "toolCall" || typed.type === "tool_use") && typed.name) return [typed.name];
         return [];
     });
 }
 
-/**
- * @param {Record<string, unknown>[]} entries
- * @param {{ sessionFile?: string }} [options]
- * @returns {RouterDecision[]}
- */
-export function extractRouterDecisionsFromEntries(entries, options = {}) {
+export function extractRouterDecisionsFromEntries(
+    entries: RouterSessionEntry[],
+    options: RouterEntryExtractionOptions = {},
+): RouterDecision[] {
     let sessionId = "";
     let activeAgent = "";
     let provider = "";
@@ -135,10 +174,8 @@ export function extractRouterDecisionsFromEntries(entries, options = {}) {
     let lastRouterAssistantProvider = "";
     let lastRouterAssistantModel = "";
 
-    /** @type {{ entryId: string, timestamp: string, text: string, hasImages: boolean, discoveryTools: string[] } | null} */
-    let pendingRouterUser = null;
-    /** @type {RouterDecision[]} */
-    const decisions = [];
+    let pendingRouterUser: PendingRouterUser | null = null;
+    const decisions: RouterDecision[] = [];
     const sessionFile = options.sessionFile || "";
 
     for (const entry of entries) {
@@ -151,9 +188,10 @@ export function extractRouterDecisionsFromEntries(entries, options = {}) {
         if (
             (type === "custom" || type === "custom_message") &&
             entry.customType === "runwield.active_agent" &&
-            entry.data && typeof entry.data === "object"
+            entry.data &&
+            typeof entry.data === "object"
         ) {
-            const agentName = /** @type {{ agentName?: unknown }} */ (entry.data).agentName;
+            const agentName = entry.data.agentName;
             activeAgent = typeof agentName === "string" ? agentName : activeAgent;
             if (activeAgent !== "router") pendingRouterUser = null;
             continue;
@@ -166,10 +204,7 @@ export function extractRouterDecisionsFromEntries(entries, options = {}) {
         }
 
         if (type !== "message" || !entry.message || typeof entry.message !== "object") continue;
-        const message =
-            /** @type {{ role?: string, content?: unknown, provider?: string, model?: string, toolName?: string, details?: unknown }} */ (
-                entry.message
-            );
+        const message = entry.message;
 
         if (message.role === "user") {
             if (activeAgent !== "router") {
@@ -236,48 +271,30 @@ export function extractRouterDecisionsFromEntries(entries, options = {}) {
     return decisions;
 }
 
-/**
- * @param {string} text
- * @returns {Record<string, unknown>[]}
- */
-export function parseJsonlEntries(text) {
+export function parseJsonlEntries(text: string): RouterSessionEntry[] {
     return text
         .split(/\r?\n/)
         .map((line) => line.trim())
         .filter(Boolean)
-        .map((line) => /** @type {Record<string, unknown>} */ (JSON.parse(line)));
+        .map((line): RouterSessionEntry => JSON.parse(line));
 }
 
-/**
- * @param {string} path
- * @returns {Promise<RouterDecision[]>}
- */
-export async function extractRouterDecisionsFromFile(path) {
+export async function extractRouterDecisionsFromFile(path: string): Promise<RouterDecision[]> {
     const entries = parseJsonlEntries(await fsReadFile(path, "utf8"));
     return extractRouterDecisionsFromEntries(entries, { sessionFile: path });
 }
 
-/**
- * @param {string} dir
- * @returns {Promise<string[]>}
- */
-export async function listSessionFiles(dir) {
-    /** @type {string[]} */
-    const files = [];
+export async function listSessionFiles(dir: string): Promise<string[]> {
+    const files: string[] = [];
     for await (const entry of await fsReaddir(dir, { withFileTypes: true })) {
         if (entry.isFile() && entry.name.endsWith(".jsonl")) files.push(join(dir, entry.name));
     }
     return files.sort();
 }
 
-/**
- * @param {{ sessionsDir: string, limit?: number }} options
- * @returns {Promise<RouterDecision[]>}
- */
-export async function extractRouterDecisions(options) {
+export async function extractRouterDecisions(options: RouterExtractionOptions): Promise<RouterDecision[]> {
     const files = await listSessionFiles(options.sessionsDir);
-    /** @type {RouterDecision[]} */
-    const rows = [];
+    const rows: RouterDecision[] = [];
     for (const file of files) {
         const entries = parseJsonlEntries(await fsReadFile(file, "utf8"));
         rows.push(...extractRouterDecisionsFromEntries(entries, { sessionFile: file }));
@@ -286,52 +303,40 @@ export async function extractRouterDecisions(options) {
     return rows;
 }
 
-/**
- * @param {unknown[]} rows
- * @returns {string}
- */
-function toJsonl(rows) {
+function toJsonl<TRow>(rows: TRow[]): string {
     return rows.map((row) => JSON.stringify(row)).join("\n") + (rows.length ? "\n" : "");
 }
 
-/**
- * @param {string} text
- */
-async function writeStdout(text) {
+async function writeStdout(text: string) {
     await new Promise((resolve, reject) =>
-        process.stdout.write(text, (error) => error ? reject(error) : resolve(undefined))
+        process.stdout.write(text, (error) => (error ? reject(error) : resolve(undefined))),
     );
 }
 
-/**
- * @param {string} value
- * @returns {number | undefined}
- */
-function parsePositiveInt(value) {
+function parsePositiveInt(value: string): number | undefined {
     const parsed = Number(value);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-/**
- * @param {string[]} argv
- */
-export async function main(argv) {
-    const args = parseArgs(argv, {
+export async function main(argv: string[]) {
+    const args: RouterExtractionArguments = parseArgs(argv, {
         string: ["sessions-dir", "cwd", "out", "limit"],
         boolean: ["help"],
         alias: { h: "help", o: "out" },
     });
 
     if (args.help) {
-        console.log([
-            "Usage: bun scripts/extract-router-decisions.js [options]",
-            "",
-            "Options:",
-            "  --sessions-dir <dir>  Session directory to read",
-            "  --cwd <path>          Project cwd used to resolve the default session directory",
-            "  --out, -o <path>      Write JSONL to this path instead of stdout",
-            "  --limit <n>           Stop after n decisions",
-        ].join("\n"));
+        console.log(
+            [
+                "Usage: bun scripts/extract-router-decisions.ts [options]",
+                "",
+                "Options:",
+                "  --sessions-dir <dir>  Session directory to read",
+                "  --cwd <path>          Project cwd used to resolve the default session directory",
+                "  --out, -o <path>      Write JSONL to this path instead of stdout",
+                "  --limit <n>           Stop after n decisions",
+            ].join("\n"),
+        );
         return;
     }
 

@@ -1,6 +1,6 @@
 import { assertEquals } from "../src/testing/assertions.ts";
 import { test } from "node:test";
-import { extractRouterDecisionsFromEntries } from "./extract-router-decisions.js";
+import { extractRouterDecisionsFromEntries } from "./extract-router-decisions.ts";
 
 test("extractRouterDecisionsFromEntries pairs router user request with triage_report", () => {
     const rows = extractRouterDecisionsFromEntries(

@@ -18,7 +18,7 @@ import {
     withRouterJudgementMetrics,
 } from "./router-eval-utils.ts";
 
-import type { RouterDecision } from "./extract-router-decisions.js";
+import type { RouterDecision } from "./extract-router-decisions.ts";
 
 export type RouterJudgementDecision = Partial<
     Pick<
