@@ -781,7 +781,7 @@
     "src/ui/tui/remote-history.test.ts",
     "src/ui/tui/remote-resume-submit.test.ts",
     "src/ui/tui/remote-submit.test.ts",
-    "src/ui/tui/runtime-adapter.test.js",
+    "src/ui/tui/runtime-adapter.test.ts",
     "src/ui/tui/runtime-interaction-adapter.test.ts",
     "src/ui/tui/session-completion.test.ts",
     "src/ui/tui/session-replay.test.ts",
