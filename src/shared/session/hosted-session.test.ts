@@ -4,10 +4,16 @@ import { test } from "node:test";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { HostedSession } from "./hosted-session.js";
 import { WORKFLOW_CONTEXT_CUSTOM_TYPE } from "./workflow-context-session.ts";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { SessionManager, type CustomEntry } from "@earendil-works/pi-coding-agent";
+import type { ActiveExecutionWorkflow } from "../types.js";
 
-/** @param {string} id @param {Array<{customType: string, data: Record<string, string>}>} [entries] */
-function makeSessionManager(id, entries = []) {
+type SessionManagerFixtureEntry = Required<Pick<CustomEntry<Record<string, string>>, "customType" | "data">>;
+
+interface InvalidCollaborationWorkflow extends Omit<ActiveExecutionWorkflow, "collaborationStyle"> {
+    collaborationStyle: string;
+}
+
+function makeSessionManager(id: string, entries: SessionManagerFixtureEntry[] = []) {
     const manager = SessionManager.inMemory(`/tmp/${id}`);
     for (const entry of entries) manager.appendCustomEntry(entry.customType, entry.data);
     return manager;
@@ -27,9 +33,10 @@ test("HostedSession rejects ownerless active execution workflows", () => {
 
     assertThrows(
         () =>
-            session.setActiveExecutionWorkflow(
-                /** @type {any} */ ({ planName: "p", triageMeta: { classification: "FEATURE" } }),
-            ),
+            session.setActiveExecutionWorkflow({
+                planName: "p",
+                triageMeta: { classification: "FEATURE" },
+            } as ActiveExecutionWorkflow),
         Error,
         "requires executionAgent",
     );
@@ -51,28 +58,24 @@ test("HostedSession validates Pair execution runtime state", () => {
     assertEquals(session.getActiveExecutionWorkflow()?.collaborationStyle, "pair");
     assertThrows(
         () =>
-            session.setActiveExecutionWorkflow(
-                /** @type {any} */ ({
-                    planName: "visual-plan",
-                    triageMeta: {},
-                    executionAgent: "frontend-engineer",
-                    collaborationStyle: "live",
-                }),
-            ),
+            session.setActiveExecutionWorkflow({
+                planName: "visual-plan",
+                triageMeta: {},
+                executionAgent: "frontend-engineer",
+                collaborationStyle: "live",
+            } satisfies InvalidCollaborationWorkflow as ActiveExecutionWorkflow),
         Error,
         "collaborationStyle must be autonomous or pair",
     );
     assertThrows(
         () =>
-            session.setActiveExecutionWorkflow(
-                /** @type {any} */ ({
-                    planName: "visual-plan",
-                    triageMeta: {},
-                    executionAgent: "frontend-engineer",
-                    collaborationStyle: "pair",
-                    pairCheckpointCount: -1,
-                }),
-            ),
+            session.setActiveExecutionWorkflow({
+                planName: "visual-plan",
+                triageMeta: {},
+                executionAgent: "frontend-engineer",
+                collaborationStyle: "pair",
+                pairCheckpointCount: -1,
+            }),
         Error,
         "pairCheckpointCount must be a non-negative integer",
     );
@@ -92,27 +95,23 @@ test("HostedSession validates execution attempt timestamp", () => {
     assertEquals(session.getActiveExecutionWorkflow()?.executionAttemptStartedAtMs, 1234);
     assertThrows(
         () =>
-            session.setActiveExecutionWorkflow(
-                /** @type {any} */ ({
-                    planName: "visual-plan",
-                    triageMeta: {},
-                    executionAgent: "frontend-engineer",
-                    executionAttemptStartedAtMs: -1,
-                }),
-            ),
+            session.setActiveExecutionWorkflow({
+                planName: "visual-plan",
+                triageMeta: {},
+                executionAgent: "frontend-engineer",
+                executionAttemptStartedAtMs: -1,
+            }),
         Error,
         "executionAttemptStartedAtMs must be a non-negative number",
     );
     assertThrows(
         () =>
-            session.setActiveExecutionWorkflow(
-                /** @type {any} */ ({
-                    planName: "visual-plan",
-                    triageMeta: {},
-                    executionAgent: "frontend-engineer",
-                    executionAttemptStartedAtMs: Infinity,
-                }),
-            ),
+            session.setActiveExecutionWorkflow({
+                planName: "visual-plan",
+                triageMeta: {},
+                executionAgent: "frontend-engineer",
+                executionAttemptStartedAtMs: Infinity,
+            }),
         Error,
         "executionAttemptStartedAtMs must be a non-negative number",
     );
