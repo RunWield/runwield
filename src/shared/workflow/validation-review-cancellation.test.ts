@@ -164,13 +164,16 @@ const reopenFixture = defineGitFixture(async (root) => {
 
 // Bound each observable handoff, rather than charging Git setup, conversation,
 // validation and publication against one shared deadline. A timeout names the stalled step.
-async function awaitReviewStep<T>(name: string, pending: Promise<T>): Promise<T> {
+async function awaitReviewStep<T>(name: string, pending: Promise<T>, timeoutMs = 10_000): Promise<T> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
         return await Promise.race([
             pending,
             new Promise<never>((_, reject) => {
-                timer = setTimeout(() => reject(new Error(`Code Review stalled at ${name} after 10000ms`)), 10_000);
+                timer = setTimeout(
+                    () => reject(new Error(`Code Review stalled at ${name} after ${timeoutMs}ms`)),
+                    timeoutMs,
+                );
             }),
         ]);
     } finally {
@@ -308,7 +311,7 @@ for (const revise of [false, true]) {
             );
             assertEquals(snapshot()?.liveReviewUrl, firstUrl, "the revised review must still be reopenable");
             await awaitReviewStep("approval", respond(true));
-            const result = await awaitReviewStep("verified publication", running);
+            const result = await awaitReviewStep("verified publication", running, 30_000);
             assertEquals(result.kind, "verified", JSON.stringify(result));
             assertEquals(ciRuns, revise ? 1 : 0);
             assertEquals(snapshot()?.liveReviewUrl, undefined, "approval must remove the live URL");
@@ -318,7 +321,7 @@ for (const revise of [false, true]) {
             session.setInteractionAdapter({ requestInteraction: () => ({ outcome: "canceled" }) });
             releaseAgent.resolve();
             session.cancelActiveInteractions();
-            await awaitReviewStep("canceled workflow cleanup", running);
+            await awaitReviewStep("canceled workflow cleanup", running, 30_000);
             unsubscribe();
             await runtime.closeSession(session.id);
         }

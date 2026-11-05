@@ -742,6 +742,15 @@ function expectedRevision(metadata: PlanPackageMetadata, expected: number): void
 async function assertDestination(paths: PackageLayout, name: string): Promise<void> {
     const destination = join(paths.plans, normalizeName(name));
     await safe(paths.home, destination);
+    let parent = paths.plans;
+    for (const segment of name.split("/")) {
+        const path = join(parent, segment);
+        if (!(await stat(path))) break;
+        // Case-insensitive lookup can resolve a name that directory enumeration spells differently.
+        if (!(await fs.readdir(parent)).includes(segment))
+            fail("collision", "Package destination must match existing directory spelling.");
+        parent = path;
+    }
     for (const resource of [...resources, "plan.wld.json"]) {
         if (await stat(join(destination, resource))) fail("collision", "Package destination already exists.");
     }

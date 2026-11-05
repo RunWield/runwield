@@ -365,6 +365,8 @@ and metadata revisions are independent: changing either cannot overwrite or unne
 including YAML-looking prose, cannot assign identity or workflow state. Rename preserves identity, references and
 ID-based relationships; archive visibility does not archive children. Strict passive reads distinguish missing,
 damaged, unsafe and pending packages while keeping healthy packages available.
+Creation and rename reject a destination whose existing directory spelling differs from the requested name on the
+store's filesystem, preserving readable packages and the existing namespace.
 
 This is a preparatory persistence capability. Public discovery, adoption, lifecycle and Epic workflows still use their
 admitted repository Plans. Package operations create no checkout copy or `.wld/plans` alias. Import, public activation,
@@ -418,6 +420,8 @@ conditions for reconsideration. Routine choices receive brief treatment; individ
   document save rejects an old document hash; a metadata update rejects an old metadata revision independently.
 - Given an Epic package renamed or archived, its ID, Session references, children and dependency IDs stay stable;
   reserved QA and integration resources never become executable Plans.
+- Given `Epic/first` on a case-insensitive filesystem, creating or renaming another package to `epic/second` fails
+  before publication. Existing packages remain readable, and a correctly spelled destination remains usable.
 - Given package inspection in a missing or damaged store, no identities, locks, directories or repairs are created;
   healthy packages remain inspectable. Existing repository Plan discovery and saves retain their behavior.
 - Given an external Plan without metadata, a listing or board shows it unchanged; loading it adopts it with its prose
@@ -813,6 +817,10 @@ point. Commands are copy-ready with real values. Waiting for the user's action s
   or request publication again. A real active document or unfinished attempt still requires inspection.
 - Given an action after a successful read, the action repeats runtime admission and current evidence checks. Read
   availability cannot authorize execution, publication, or a lifecycle change.
+- Given one Plan publishing while another removes its completed worktrees, a temporarily pending authority read
+  releases the publishing Plan's lock before a bounded retry. Publication re-enters runtime admission and resumes
+  its durable attempt without repeating completed checks or requesting a manual reload. Malformed authority remains
+  an error, never an empty registry or proof of publication.
 - Given two Plans and a missing execution document for one, catalog reads and validation identity preparation for the
   other succeed. Neither operation changes the missing Plan's primary copy or registry entry.
 - Given that missing document, loading its Plan reports the exact execution path and does not use the primary copy.
@@ -2619,6 +2627,8 @@ removal as completed cleanup.
 repair, writes, or writer-lock probes. Fresh Projects need no storage; unmigrated or interrupted authority leaves
 workflow details pending without combining old and new stores. Adopted authority remains readable when legacy recovery
 input returns. Path resolution alone is not permission to read runtime state.
+If publication removes a linked checkout during its Git evidence read, inspection leaves details pending until a fresh
+read establishes current authority. Git failures for an existing checkout remain visible errors.
 
 Deliberate actions enter runtime state before mutation locks or writes. Ordinary local execution and manual SSH
 execution adopt checkout runtime into the executing account's `~/.wld/projects/<projectId>/`, including unfinished
@@ -2689,6 +2699,8 @@ Open product questions:
   refusing a conflict; valid current locks remain intact, and genuine authority conflicts still block entry.
 - Given adoption completes during passive inspection, Core rechecks changed marker evidence without writes or lock
   probes; valid current locks remain intact, and unmatched authorities still produce a conflict.
+- Given publication removes a linked checkout between its filesystem check and Git read, passive polling waits for
+  fresh evidence and then reads the remaining registry. A damaged index in an existing checkout still reports failure.
 - Given adopted state with returning legacy files, passive reads keep current authority without recovery; selecting a
   Plan performs required recovery and preserves current decisions.
 - Given a symlink escape, newer marker, identity conflict, or unreadable registry, passive reads keep the specific

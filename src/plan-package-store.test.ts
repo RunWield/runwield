@@ -154,6 +154,42 @@ test("name and ID collisions cannot overwrite packages, including an empty desti
     }
 });
 
+for (const operation of ["create", "rename"] as const)
+    for (const name of ["epic/second", "Epic/group/second", "Epic/group"])
+        test(`${operation} preserves readable packages when ${name} aliases existing directory spelling`, async () => {
+            const f = await packageFixture();
+            try {
+                const first = await create(f.identity, { name: "Epic/Group/first" });
+                const original =
+                    operation === "rename" ? await create(f.identity, { planId: "second", name: "original" }) : null;
+                const plans = join(first.path, "../../..");
+                const aliases = await fs.stat(join(plans, "epic")).then(
+                    () => true,
+                    (error) => {
+                        if (error.code === "ENOENT") return false;
+                        throw error;
+                    },
+                );
+                const publish = () =>
+                    operation === "create"
+                        ? create(f.identity, { planId: "second", name })
+                        : renamePlanPackage(f.identity, "second", 1, name);
+                if (aliases) {
+                    await rejects(publish, /directory spelling/);
+                    deepEqual(await read(f.identity), first);
+                    if (original) deepEqual(await read(f.identity, "second"), original);
+                    else equal((await readPlanPackage(f.identity, { planId: "second" })).kind, "missing");
+                } else {
+                    await publish();
+                    equal((await read(f.identity, "second")).metadata.name, name);
+                }
+                await create(f.identity, { planId: "after", name: "Epic/Group/after" });
+                equal((await listPlanPackages(f.identity)).issues.length, 0);
+            } finally {
+                await f.cleanup();
+            }
+        });
+
 for (const [label, contents, kind] of [
     ["malformed JSON", "{", "malformed_metadata"],
     ["unsupported version", '{"version":2}', "unsupported_metadata"],

@@ -2,6 +2,7 @@ import type { TriageMeta } from "../../tools/plan-written.ts";
 import type { SessionRuntimeEvent } from "../session/session-runtime-events.js";
 import { hostname } from "node:os";
 import { test } from "node:test";
+import fs from "node:fs/promises";
 import {
     chmod as fsChmod,
     mkdtemp as fsMkdtemp,
@@ -14,7 +15,7 @@ import {
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { setCustomSetting } from "../settings.js";
 import { ensurePlanIdentity, loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.js";
@@ -283,6 +284,154 @@ for (const interruption of ["abandoned catalog lock", "Git commit hook"]) {
         },
     );
 }
+
+for (const malformed of [false, true])
+    test(
+        malformed
+            ? "publication preserves malformed authority errors during sibling cleanup"
+            : "publication continues when sibling checkouts disappear during consecutive registry reads",
+        async () => {
+            const fixture = await makePlannedReviewWorktree();
+            const sibling = `${fixture.projectRoot}-sibling`;
+            const secondSibling = `${fixture.projectRoot}-sibling-two`;
+            const lstat = fs.lstat;
+            let armed = false;
+            let removed = false;
+            let secondRemoved = false;
+            let nextRead = false;
+            try {
+                const plan = await loadPlan(fixture.executionCwd, "p");
+                if (!plan) throw new Error("Missing execution Plan");
+                await savePlan(
+                    fixture.executionCwd,
+                    "p",
+                    plan.body,
+                    {
+                        ...plan.attrs,
+                        status: "reviewed",
+                        humanReviewMode: "none",
+                        humanReviewDecision: "not_required",
+                    },
+                    { expectedRevision: plan.revision },
+                );
+                await fsWriteFile(join(fixture.executionCwd, "delivered.txt"), "reviewed implementation\n");
+                await git(fixture.projectRoot, ["worktree", "add", "-b", "sibling-cleanup", sibling]);
+                await enterProjectRuntime(sibling);
+                await git(fixture.projectRoot, ["worktree", "add", "-b", "sibling-cleanup-two", secondSibling]);
+                const layout = await enterProjectRuntime(secondSibling);
+                const publicationLock = join(
+                    resolveProjectRuntimeLayout(fixture.projectRoot).selected.planLocksDir,
+                    "p.lock",
+                );
+                const siblingGit = join(await fsRealpath(sibling), ".git");
+                const secondSiblingGit = join(await fsRealpath(secondSibling), ".git");
+                const primaryGit = join(await fsRealpath(fixture.projectRoot), ".git");
+                const record = fixture.hostedSession.getEventSink();
+                fixture.hostedSession.setEventSink((event: SessionRuntimeEvent) => {
+                    if (event.type === "system_status" && event.message.includes("Merging work into main"))
+                        armed = true;
+                    if (typeof record === "function") record(event);
+                });
+                Object.defineProperty(fs, "lstat", {
+                    value: async (...args: Parameters<typeof fs.lstat>) => {
+                        const result = await lstat(...args);
+                        // Schedule real filesystem changes in passive inspection, after admission has finished.
+                        const passiveRead =
+                            [siblingGit, secondSiblingGit].includes(String(args[0])) &&
+                            new Error().stack?.includes("inspectHomeProjectRuntime") === true;
+                        if (removed && String(args[0]) === primaryGit) nextRead = true;
+                        if (armed && passiveRead && !removed && String(args[0]) === siblingGit) {
+                            assertEquals((await lstat(publicationLock)).isFile(), true);
+                            removed = true;
+                            if (malformed) await fsWriteFile(layout.primary.layoutMarkerPath, "invalid marker\n");
+                            else await git(fixture.projectRoot, ["worktree", "remove", "--force", sibling]);
+                        }
+                        if (
+                            !malformed &&
+                            armed &&
+                            passiveRead &&
+                            nextRead &&
+                            !secondRemoved &&
+                            String(args[0]) === secondSiblingGit
+                        ) {
+                            secondRemoved = true;
+                            await git(fixture.projectRoot, ["worktree", "remove", "--force", secondSibling]);
+                        }
+                        return result;
+                    },
+                });
+                const args = createEngineValidationArgs({
+                    hostedSession: fixture.hostedSession,
+                    planName: "p",
+                    planContent: plan.body,
+                    triageMeta: { classification: "FEATURE", status: "reviewed" },
+                    git: createGitPort(),
+                    localCI: { run: () => Promise.reject(new Error("Completed CI must not run again")) },
+                    workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
+                    semanticReviewPort: NO_ISOLATED_AGENT_PORT,
+                });
+                const phase = await resolvePhaseContext(args);
+                if (phase.kind !== "ok") throw new Error("Missing phase context");
+                let finished = false;
+                let observedRetry = false;
+                const lockObservations: boolean[] = [];
+                const observeRetry = (async () => {
+                    while (!finished) {
+                        const retry = [...fixture.hostedSession.getActiveInteractions().keys()].find((id) =>
+                            id.startsWith("validation-retry:"),
+                        );
+                        if (retry) {
+                            observedRetry = true;
+                            const held = await lstat(publicationLock).then(
+                                () => true,
+                                (error) => {
+                                    if (error.code === "ENOENT") return false;
+                                    throw error;
+                                },
+                            );
+                            if (fixture.hostedSession.getActiveInteractions().has(retry)) lockObservations.push(held);
+                        }
+                        await new Promise((resolve) => setTimeout(resolve, 10));
+                    }
+                })();
+                const publish = () =>
+                    runPublicationPhase(args, phase.context, {
+                        humanReviewMode: "none",
+                        humanReviewDecision: "not_required",
+                        humanReviewedAt: null,
+                    });
+                try {
+                    if (malformed) {
+                        await assertRejects(publish, Error, "Home runtime marker is unreadable");
+                        assertEquals(observedRetry, false);
+                    } else {
+                        const result = await publish();
+                        assertEquals(result.result.kind, "verified", JSON.stringify(result));
+                        assertEquals(secondRemoved, true, "The second passive read must race cleanup too");
+                        assertEquals(observedRetry, true);
+                        assertEquals(
+                            lockObservations.some(Boolean),
+                            false,
+                            "Retry must release the publishing Plan lock",
+                        );
+                        assertEquals(
+                            await git(fixture.projectRoot, ["show", "main:delivered.txt"]),
+                            "reviewed implementation",
+                        );
+                    }
+                    assertEquals(removed, true, "The real authority inspection boundary must be exercised");
+                } finally {
+                    finished = true;
+                    await observeRetry;
+                }
+            } finally {
+                Object.defineProperty(fs, "lstat", { value: lstat });
+                await fsRm(sibling, { recursive: true, force: true });
+                await fsRm(secondSibling, { recursive: true, force: true });
+                await fixture.cleanup();
+            }
+        },
+    );
 
 for (const sealed of [false, true]) {
     test(`publication rereads a target edited after phase resolution (sealed: ${sealed})`, async () => {
