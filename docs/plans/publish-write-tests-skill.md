@@ -16,9 +16,11 @@ executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-11-04"
 origin: "internal"
-status: "ready_for_work"
 userVerifiedAt: null
 routingIntent: "PLANNED_CHANGE"
+targetBranch: "main"
+deliveryBranch: "main"
+status: "in_progress"
 ---
 
 # Publish Write Tests Without Losing the Bundled Skill
