@@ -1,10 +1,8 @@
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture, type RuntimeCommandFixture } from "../../../cmd/testing/runtime-command-fixture.ts";
 import { openOwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
-import type {
-    RuntimeInteractionRequest,
-    RuntimeInteractionResult,
-} from "../../../shared/session/session-runtime-interactions.ts";
+import type { RuntimeInteractionRequest } from "../../../shared/session/session-runtime-interactions.ts";
+import type { RuntimeInteractionResult } from "../../../shared/session/runtime/types.ts";
 import { WorkspaceSessionContinuationService } from "../server/session-continuation.js";
 import { createOwnerWorkspaceApp } from "../server.js";
 
@@ -69,8 +67,7 @@ export async function withExistingRuntimeInteraction(
         if (options?.signal?.aborted) throw new DOMException("Canceled provider turn", "AbortError");
         return fauxAssistantMessage(fauxText("Review fixture finished."));
     });
-    let pending:
-        Promise<import("../../../shared/session/session-runtime-interactions.ts").RuntimeInteractionResult> | undefined;
+    let pending: Promise<RuntimeInteractionResult> | undefined;
     try {
         const prepared = await prepareSession?.(service);
         const started = prepared

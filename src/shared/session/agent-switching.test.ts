@@ -55,6 +55,85 @@ function makeSession(projectRoot: string) {
     return { hostedSession, sessionManager };
 }
 
+test("long-lived Agents keep role instructions out of user requests across switches", async () => {
+    await withRuntimeCommandFixture("agent-role-request-", async ({ projectRoot, setModelResponseFactory }) => {
+        const { hostedSession, sessionManager } = makeSession(projectRoot);
+        let requestCount = 0;
+        try {
+            for (const agentName of ["guide", "planner", "engineer", "operator"]) {
+                for (let turn = 1; turn <= 12; turn++) {
+                    const request = `Continue task ${agentName}, turn ${turn}.`;
+                    setModelResponseFactory((context) => {
+                        requestCount++;
+                        const users = context.messages.filter((message) => message.role === "user");
+                        assertEquals(users.at(-1)?.content, [{ type: "text", text: request }]);
+                        assertEquals(JSON.stringify(context.messages).includes("<attention_nudge>"), false);
+                        const root = hostedSession.getRootAgentSession() as AgentSession;
+                        const system = context.messages[0];
+                        assert(system.role === "system");
+                        assertEquals(getSystemMessageText(system), root.systemPrompt);
+                        return fauxAssistantMessage(fauxText("Task context retained."));
+                    });
+                    await runActiveAgentTurn({ hostedSession, sessionManager, agentName, userRequest: request });
+                }
+            }
+            assertEquals(requestCount, 48);
+        } finally {
+            hostedSession.dispose();
+        }
+    });
+});
+
+test("compacted provider context follows the selected Agent reminder through switch and resume", async () => {
+    await withRuntimeCommandFixture("compacted-agent-reminder-", async ({ projectRoot, setModelResponseFactory }) => {
+        const initial = makeSession(projectRoot);
+        let hostedSession = initial.hostedSession;
+        const sessionManager = initial.sessionManager;
+        sessionManager.appendMessage({ role: "user", content: "Original task", timestamp: 1 });
+        sessionManager.appendMessage(fauxAssistantMessage(fauxText("Earlier work.")));
+        const kept = sessionManager.appendMessage({ role: "user", content: "Keep this decision.", timestamp: 2 });
+        sessionManager.appendCompaction("The task and decisions survived compaction.", kept, 100);
+        let requests = 0;
+        try {
+            for (const agentName of ["guide", "engineer", "engineer", "router"]) {
+                if (requests === 2) {
+                    hostedSession.dispose();
+                    hostedSession = new HostedSession({
+                        id: "restored-compacted-agent",
+                        cwd: projectRoot,
+                        sessionManager,
+                    });
+                }
+                setModelResponseFactory((context) => {
+                    requests++;
+                    const history = JSON.stringify(context.messages.filter((message) => message.role !== "system"));
+                    assert(history.includes("The task and decisions survived compaction."));
+                    if (agentName === "router") {
+                        assertEquals(history.includes("## Compaction reminder"), false);
+                    } else {
+                        const displayName = agentName === "guide" ? "Guide" : "Engineer";
+                        const otherName = agentName === "guide" ? "Engineer" : "Guide";
+                        assertEquals(history.split(`You are still the ${displayName}`).length - 1, 1);
+                        assertEquals(history.includes(`You are still the ${otherName}`), false);
+                    }
+                    return fauxAssistantMessage(fauxText("Continuing the task."));
+                });
+                await runActiveAgentTurn({ hostedSession, sessionManager, agentName, userRequest: "Continue." });
+            }
+            assertEquals(requests, 4);
+            assertEquals(
+                sessionManager
+                    .getEntries()
+                    .filter((entry) => entry.type === "compaction")
+                    .map((entry) => entry.summary),
+                ["The task and decisions survived compaction."],
+            );
+        } finally {
+            hostedSession.dispose();
+        }
+    });
+});
+
 for (const [previousAgent, selectedAgent, routingIntent] of [
     ["guide", "engineer", "INQUIRY"],
     ["planner", "operator", "PLANNED_CHANGE"],

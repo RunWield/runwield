@@ -4,9 +4,9 @@ import { installFakeClipboardCommands } from "./testing/clipboard-command-fixtur
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { Container, Spacer, StdinBuffer, Text, TuiAltScreen } from "@earendil-works/pi-tui";
-import { createChatView, findVisibleToolBlocks } from "./chat-view.ts";
-import { ToolExecutionBlock, ToolExecutionGroupBlock, UserPromptBlock } from "./blocks.js";
+import { StdinBuffer, TuiAltScreen } from "@earendil-works/pi-tui";
+import { createChatView } from "./chat-view.ts";
+import { ToolExecutionBlock, UserPromptBlock } from "./blocks.js";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { RunWieldTui } from "./tui.ts";
 import { installTerminalFocusState } from "./terminal-focus-state.ts";
@@ -63,6 +63,28 @@ test("TUI artifact shortcut opens the shared-reader picker without changing the 
             terminal.input("\x1b");
             await terminal.flush();
             assertEquals(view.editor.getText(), "Keep my draft");
+            terminal.input("]");
+            tui.renderNow(true);
+            await terminal.flush();
+            assertEquals(view.editor.getText(), "Keep my draft]");
+            assertEquals(terminal.getScreenText().includes("Open artifact"), false);
+            terminal.input("\x1d");
+            tui.renderNow(true);
+            await terminal.flush();
+            assertStringIncludes(terminal.getScreenText(), "Reader requirements");
+            assertStringIncludes(terminal.getScreenText(), "alt+] open artifact");
+            const artifactScreen = terminal.getScreenText();
+            for (const event of ["\x1b[93;5:2u", "\x1b[93;5:3u"]) {
+                terminal.input(event);
+                tui.renderNow(true);
+                await terminal.flush();
+                assertEquals(terminal.getScreenText(), artifactScreen);
+            }
+            terminal.input("\x1b[93;5:1u");
+            tui.renderNow(true);
+            await terminal.flush();
+            assertEquals(terminal.getScreenText().includes("alt+] open artifact"), false);
+            assertEquals(view.editor.getText(), "Keep my draft]");
         } finally {
             view.dispose();
             tui.stop();

@@ -2,7 +2,7 @@ import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { animations, mascotRoleForAgent, terminalLines } from "./frames.ts";
-import { mascotPose, MASCOTS } from "./mascot.ts";
+import { mascotPose } from "./mascot.ts";
 
 test("mascot identities follow aliases, hidden agents and inherited delegation", () => {
     for (const [agent, expected] of [

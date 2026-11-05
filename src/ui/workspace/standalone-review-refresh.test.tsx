@@ -1,4 +1,5 @@
 // @ts-nocheck: browser tests install happy-dom globals around the real React surface.
+// @ts-nocheck: browser tests install happy-dom globals around the real React surface.
 import { importTestBundle } from "../../testing/import-test-bundle.ts";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";

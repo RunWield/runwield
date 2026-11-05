@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { assertEquals, assertInstanceOf } from "../../testing/assertions.ts";
 import { Container, Editor, Spacer, TuiMainScreen } from "@earendil-works/pi-tui";
-import { createFooterOnlyUiApi, createSilentUiApi, createUiApi } from "./api.js";
+import { createUiApi } from "./api.js";
 import {
     KeyboardHelpBlock,
     ManagedSyncStatusBlock,
@@ -13,7 +13,6 @@ import {
     ThinkingBlock,
     ToolExecutionBlock,
     ToolExecutionGroupBlock,
-    UserPromptBlock,
     ValidationHandoffBlock,
 } from "./blocks.js";
 import stripAnsi from "strip-ansi";
@@ -435,7 +434,7 @@ test("createUiApi pauses tool timers for terminal prompts, including tools start
         await new Promise((resolve) => setTimeout(resolve, 250));
         assertEquals(renders(), waitingRenders);
         tool.endExecution(false, 100);
-        textPrompt(focus()).input.onSubmit("Revise the Plan");
+        submitTextPrompt(textPrompt(focus()), "Revise the Plan");
         assertEquals(await prompt, "Revise the Plan");
         spinner.setBusy(false);
         const resumedRenders = renders();
@@ -498,7 +497,7 @@ test("createUiApi pauses the busy animation while waiting for prompt input", asy
 
     const prompt = ui.promptText("What should the Engineer try next?");
     assertEquals(spinner.isBusy, false);
-    textPrompt(focus()).input.onSubmit("Merge main first.");
+    submitTextPrompt(textPrompt(focus()), "Merge main first.");
 
     assertEquals(await prompt, "Merge main first.");
     assertEquals(spinner.isBusy, true);
@@ -534,7 +533,7 @@ test("createUiApi renders validation panel separately from active prompt placeme
     assertEquals(activeInteractionContainer.children[0] instanceof PromptSelectBlock, true);
     assertEquals(messageList.children, []);
 
-    selectPrompt(focus()).list.onSelect({ value: "yes" });
+    selectPrompt(focus()).handleInput("\r");
     assertEquals(await promptPromise, "yes");
     assertEquals(activeInteractionContainer.children, []);
     assertEquals(messageList.children[0] instanceof PromptSelectBlock, true);
@@ -587,27 +586,27 @@ test("createUiApi promptSelect resolves selection, cancellation, and selection-c
     );
     const selectBlock = selectPrompt(focus());
     assertEquals(messageList.children[1] instanceof Spacer, true);
-    selectBlock.list.onSelectionChange({ value: "two" });
-    selectBlock.list.onSelect({ value: "two" });
+    selectBlock.handleInput("\x1b[B");
+    selectBlock.handleInput("\r");
 
     assertEquals(await selectionPromise, "two");
     assertEquals(previews, ["two"]);
 
     const cancelPromise = ui.promptSelect("Cancel", [{ value: "one", label: "One" }]);
     assertEquals(messageList.children[3] instanceof Spacer, true);
-    selectPrompt(focus()).list.onCancel();
+    selectPrompt(focus()).handleInput("\x1b");
     assertEquals(await cancelPromise, null);
 
     const childCountBeforeTransient = messageList.children.length;
     const transientPromise = ui.promptSelect("Transient", [{ value: "router", label: "router" }], {
         persistResult: false,
     });
-    selectPrompt(focus()).list.onSelect({ value: "router" });
+    selectPrompt(focus()).handleInput("\r");
     assertEquals(await transientPromise, "router");
     assertEquals(messageList.children.length, childCountBeforeTransient);
 
     const agentPromptPromise = ui.promptSelect("Switch agent:", [{ value: "engineer", label: "engineer" }]);
-    selectPrompt(focus()).list.onSelect({ value: "engineer" });
+    selectPrompt(focus()).handleInput("\r");
     assertEquals(await agentPromptPromise, "engineer");
     assertEquals(messageList.children.length, childCountBeforeTransient);
 });
@@ -619,24 +618,24 @@ test("createUiApi promptText resolves submit, rejects empty required submit, and
     const textPromise = ui.promptText("Name", { defaultValue: "Ada", allowEmpty: false });
     const textBlock = textPrompt(focus());
     assertEquals(messageList.children[1] instanceof Spacer, true);
-    textBlock.input.onSubmit("");
+    submitTextPrompt(textBlock, "");
     assertEquals(await textPromise, "Ada");
 
     const requiredPromise = ui.promptText("Required", { allowEmpty: false });
     const requiredBlock = textPrompt(focus());
-    requiredBlock.input.onSubmit("   ");
+    submitTextPrompt(requiredBlock, "   ");
     let settled = false;
     requiredPromise.then(() => {
         settled = true;
     });
     await Promise.resolve();
     assertEquals(settled, false);
-    requiredBlock.input.onSubmit("Grace");
+    submitTextPrompt(requiredBlock, "Grace");
     assertEquals(await requiredPromise, "Grace");
 
     const privatePromptChildCount = messageList.children.length;
     const privatePromise = ui.promptText("API key", { allowEmpty: false, persistResult: false });
-    textPrompt(focus()).input.onSubmit("secret-key");
+    submitTextPrompt(textPrompt(focus()), "secret-key");
     assertEquals(await privatePromise, "secret-key");
     assertEquals(messageList.children.length, privatePromptChildCount);
 
@@ -763,4 +762,10 @@ function textPrompt(component) {
 function selectPrompt(component) {
     if (!(component instanceof PromptSelectBlock)) throw new Error("Expected the active select prompt");
     return component;
+}
+
+/** @param {PromptTextBlock} prompt @param {string} value */
+function submitTextPrompt(prompt, value) {
+    prompt.input.setValue(value);
+    prompt.handleInput("\r");
 }

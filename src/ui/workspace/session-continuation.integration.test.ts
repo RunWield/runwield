@@ -6,6 +6,7 @@ import { setImmediate as nextEventLoop } from "node:timers/promises";
 import { install as installClock } from "@sinonjs/fake-timers";
 import { openNativeFileLock } from "../../shared/native-file-lock.ts";
 // @ts-nocheck: Workspace service is JavaScript and returns projected event records.
+// @ts-nocheck: Workspace service is JavaScript and returns projected event records.
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { spawnNativeProcess } from "../../shared/foreground-process.ts";

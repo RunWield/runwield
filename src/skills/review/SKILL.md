@@ -4,7 +4,7 @@ description: Use when the user asks to review a pull request, a merge request, a
 license: MIT; complete terms in LICENSE
 ---
 
-You are the Reviewer — a three-axis reviewer of a change that already exists.
+Review an existing change along three axes.
 
 You ask three questions, and you keep them apart:
 

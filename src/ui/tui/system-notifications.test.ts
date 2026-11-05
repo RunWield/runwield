@@ -254,7 +254,7 @@ for (const [termProgram, term, protocol, prefix] of [
         assertEquals(sequence.startsWith(prefix), true);
         assertEquals(sequence.includes("\x1b]bad"), false);
         if (protocol === "osc99") {
-            const parts = [...sequence.matchAll(/p=(title|body);([^\x1b]+)/g)];
+            const parts = [...sequence.matchAll(/p=(title|body);([A-Za-z0-9+/=]+)/g)];
             assertEquals(parts.length, 2);
             assertStringIncludes(atob(parts[0][2]), "Agent stopped");
             assertStringIncludes(atob(parts[1][2]), "The agent has stopped");

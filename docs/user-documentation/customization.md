@@ -49,6 +49,12 @@ still required, even if it's empty (`---` on two lines).
 `promptOverride` applies only to the layers below the file that sets it. If `~/.wld/agents/guide.md` sets it and
 `.wld/agents/guide.md` doesn't, the project body is added after your personal one, and the bundled body is dropped.
 
+An Agent body can include a `## Compaction reminder` section. After compaction, RunWield includes that section beside
+the summary on model requests. The reminder comes from the current system prompt, so switching Agents replaces it;
+it is not saved into the summary or added periodically to user messages. The last section with that heading wins,
+through the next level-one or level-two heading. An empty section disables an inherited reminder. Replacing the
+prompt with `promptOverride: true` also removes lower-layer reminders.
+
 Some tools are **protected**: if the bundled Agent has one, a narrower tool list in an override gets it back anyway.
 They cover memory, code exploration (`code_*`), web access (`web_*`), and workflow tools such as `task_completed`,
 `plan_written`, and `user_interview`, which RunWield needs to move work forward.

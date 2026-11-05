@@ -105,11 +105,18 @@ including after Session resume. A successful change to a different Agent produce
 Every provider request carries one leading system prompt from the active Agent session, including follow-ups,
 tool continuations, and resumed Sessions. Historical system messages cannot replace it. Agent definitions own role
 instructions; triage handoffs carry the user request and routing facts without assigning a role in conversation text.
+Periodic reminders, workflow handoffs, delegation briefs, tool results, Skills, and prompt templates must not assign
+or reassert an Agent identity. They carry task instructions, facts, and outcomes; Agent definitions own role behavior.
+An Agent definition may include a **Compaction reminder** section. Core projects that section alongside compacted
+context from the active system prompt, without storing a role assignment in the conversation summary.
 
 **Acceptance scenarios:** After an INQUIRY handoff to Guide, selecting Engineer and asking it to act sends Engineer's
 system prompt and tools. After a planning handoff to Planner, selecting Operator sends Operator's system prompt and
 tools. Earlier handoff instructions and replies remain conversation history. These guarantees hold on subsequent
 requests and after resume, including when stale system messages reach the provider dispatch boundary.
+Long-lived conversations preserve the user's request on the sixth and later turns without inserting role reminders.
+Slicer and delegated requests retain their artifact or brief context without duplicating their system role; Plan
+review results report the outcome without declaring the Agent's role finished or forbidding future replies.
 
 **Requirement: Preserve steering through an Agent handoff.** When a workflow event starts a handoff, Core settles the
 outgoing Agent turn before the replacement Agent starts provider work. Steering Messages sent from that point go to the
@@ -1888,6 +1895,10 @@ access to their own attachments. **Target:** deleting a Session also removes its
   or more, it is 120,000.
 - Given a successful compaction, the resumed Session keeps its goal, decisions, constraints, Named Invocation expansion,
   and progress, and Pair checkpoints stay available.
+- Given compacted context, an Agent's **Compaction reminder** from its current system prompt accompanies the summary
+  on model requests, including after Session resume. Switching Agents replaces that reminder with the selected
+  Agent's reminder, or removes it when none is defined. The stored summary stays unchanged and reminders do not
+  accumulate across requests. Uncompacted conversations receive no reminder outside the system prompt.
 - Given a text-only model and no fallback, sending an image shows setup guidance and keeps the message and preview.
 - Given a resumed Session with saved images, its own attachments stay available.
 - Given a standalone release, resizing an image produces a valid image at the requested size.
@@ -2595,7 +2606,9 @@ TUI links and artifact actions use the remote `BrowserPort` through authenticate
 connection’s review origin and public HTTP/HTTPS links, not other laptop services. Expanded files and diffs, images,
 uploads, and polling reach the remote review host. Built-in Guided Review runs in memory in the remote view with the
 remote worktree and laptop model bridge; it creates no saved remote Session. An explicit
-`RUNWIELD_GUIDED_REVIEW_COMMAND` keeps its configured remote subprocess behavior.
+`RUNWIELD_GUIDED_REVIEW_COMMAND` keeps its configured remote subprocess behavior. A successful custom command may
+close unused prompt input; preserve its output rather than report a broken pipe. Failed commands retain their exit
+failure and diagnostic output. Built-in jobs still require complete prompt delivery.
 
 **Requirement: Do not continue unattended.** Normal exit stops the remote TUI and active RunWield-owned work.
 Unexpected laptop or network loss stops new work and cancels owned active processes when detected, without requiring a
@@ -2635,6 +2648,8 @@ removal as completed cleanup.
   explanation alone keeps reviewed content unchanged, while changed content produces a revision.
 - Given remote Code Review, expanded files, images, uploads, and polling reach the remote host. In-memory Guided Review
   reads its remote worktree through the laptop model and creates no saved remote Session.
+- Given a custom Guided Review command that closes stdin before consuming a large prompt, a successful exit preserves
+  its output, while a failed exit reports its diagnostic. Built-in review jobs reject incomplete prompt delivery.
 - Given a non-Git home or missing project build dependencies, ordinary non-Git behavior or specific prerequisite
   guidance applies. RunWield neither invents a repository nor validates on the laptop.
 - Given an active Agent, a long-running owned subprocess, and an Agent-started server, normal exit stops them and

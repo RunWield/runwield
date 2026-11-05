@@ -108,8 +108,6 @@ import { readCurrentPairCheckpoint, recordPairCheckpointSnapshot } from "./pair-
 import { recordExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
 import { directoryExists, fileExists } from "../helpers.ts";
 import {
-    _AGENT_ATTENTION_NUDGES,
-    ATTENTION_NUDGE_TURN_INTERVAL,
     loadAgentDef,
     normalizeAgentInternalName,
     resolveAgentDefsDir as _resolveAgentDefsDir,
@@ -4253,24 +4251,10 @@ export async function runPrompt({
     return session.agent.state.messages;
 }
 
-/**
- * @param {string} agentName
- * @param {string} userRequest
- * @param {number} rootTurnCount
- * @returns {string}
- */
-export function applyAttentionNudge(agentName, userRequest, rootTurnCount) {
-    const nudge = _AGENT_ATTENTION_NUDGES[agentName];
-    if (!nudge) return userRequest;
-    if (rootTurnCount <= 1 || rootTurnCount % ATTENTION_NUDGE_TURN_INTERVAL !== 0) return userRequest;
-
-    return ["<attention_nudge>", nudge, "</attention_nudge>", "", userRequest].join("\n");
-}
-
 /** @type {WeakMap<import('@earendil-works/pi-coding-agent').AgentSession, ExecutionMetricsRecorder>} */
 const executionMetricsForSession = new WeakMap();
 
-/** @type {WeakMap<import('@earendil-works/pi-coding-agent').AgentSession, { agentDef: import('./types.js').AgentDefinition, subAgentDefinition?: { id: import('./subagent-definitions.ts').SubAgentDefinitionId, options?: import('./subagent-definitions.ts').LoadSubAgentDefinitionOptions }, promptState: { text: string }, subscriberState: SubscriberState, unsubscribeMetrics: () => void, agentName: string, tools: string[], finalCustomTools: import('@earendil-works/pi-coding-agent').ToolDefinition[], callerCustomTools?: import('@earendil-works/pi-coding-agent').ToolDefinition[], effectiveToolDefinitions: import('@earendil-works/pi-coding-agent').ToolDefinition[], mcpToolNames?: string[], rootTurnCount: number, projectStateContext: string, cwd: string, model?: string, resolvedModel?: import('../models/model-registry.ts').RunWieldModel, contextProjection?: import('./session-context-report.ts').SessionContextProjection, imageMode?: string, visionFallbackModelRef?: string, steeringTargetId?: string }>} */
+/** @type {WeakMap<import('@earendil-works/pi-coding-agent').AgentSession, { agentDef: import('./types.js').AgentDefinition, subAgentDefinition?: { id: import('./subagent-definitions.ts').SubAgentDefinitionId, options?: import('./subagent-definitions.ts').LoadSubAgentDefinitionOptions }, promptState: { text: string }, subscriberState: SubscriberState, unsubscribeMetrics: () => void, agentName: string, tools: string[], finalCustomTools: import('@earendil-works/pi-coding-agent').ToolDefinition[], callerCustomTools?: import('@earendil-works/pi-coding-agent').ToolDefinition[], effectiveToolDefinitions: import('@earendil-works/pi-coding-agent').ToolDefinition[], mcpToolNames?: string[], projectStateContext: string, cwd: string, model?: string, resolvedModel?: import('../models/model-registry.ts').RunWieldModel, contextProjection?: import('./session-context-report.ts').SessionContextProjection, imageMode?: string, visionFallbackModelRef?: string, steeringTargetId?: string }>} */
 const rootSessionMetadata = new WeakMap();
 
 /** @type {WeakMap<import('./hosted-session.js').HostedSession, { agentName: string, debugLogPath?: string }>} */
@@ -4558,7 +4542,6 @@ export async function ensureRootAgentSession(opts) {
         callerCustomTools: opts.customTools || [],
         effectiveToolDefinitions,
         mcpToolNames: (opts.mcpRootTools || hostedSession.getMcpRootTools?.() || []).map((tool) => tool.name),
-        rootTurnCount: 0,
         projectStateContext: rootProjectStateContext,
         cwd: opts.cwd || hostedSession.cwd,
         model: finalModelForUi,
@@ -4778,11 +4761,7 @@ export async function runRootTurn({
         });
         const userInitiated = targetHostedSession.metricsHumanInputPending && !targetHostedSession.generatedTaskTurnId;
         targetHostedSession.metricsHumanInputPending = false;
-        meta.rootTurnCount += 1;
-        const finalRequest =
-            dispatch.promptMode === "continuation"
-                ? dispatch.userRequest
-                : applyAttentionNudge(agentName, dispatch.userRequest, meta.rootTurnCount);
+        const finalRequest = dispatch.userRequest;
         let messages;
         if (isExecutionSession(session) && (session.kind === "claude-cli" || session.kind === "agy-cli")) {
             publishTransitionSteeringConsumption(targetHostedSession, transitionSteering);

@@ -659,7 +659,11 @@ test("personal remote Workspace v2 Dashboard promotes associated live questions 
             let completedSessionId = "";
             await withExistingRuntimeInteraction(
                 fixture,
-                { type, prompt: "Choose.", _meta: { planId: "active-plan", planName: "active" } },
+                {
+                    type,
+                    prompt: "Choose.",
+                    _meta: { planId: "active-plan", planName: "active", planningAgentName: "planner" },
+                },
                 async ({ store, service, reference, settle }) => {
                     const payload = await loadOwnerDashboard(store, service);
                     const needsYou =

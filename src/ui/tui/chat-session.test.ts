@@ -8,7 +8,7 @@ import { test } from "node:test";
 import process from "node:process";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { runResumeCommand } from "../../cmd/resume/index.ts";
+
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { getRunWieldSessionsBaseDir } from "../../shared/session/root-session.js";
 import {
@@ -19,20 +19,12 @@ import {
 } from "../../shared/settings.js";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
-import { resolveTemplateModel } from "../../shared/models/model-validation.ts";
+
 import { createInteractiveTuiComposition } from "./interactive-tui-composition.ts";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { recordInitOffered } from "../../cmd/init/init-state.ts";
 import { ONBOARDING_TUTORIAL_REQUEST, ONBOARDING_WARNING } from "./onboarding-content.ts";
-import {
-    getActiveModel,
-    persistThinkingLevel,
-    recordUserInputHistory,
-    runScopedSubmitHandoffLoop,
-    type SessionRuntime,
-    setActiveModel,
-    shouldReplaySessionHistory,
-} from "./chat-session.ts";
+import { persistThinkingLevel, setActiveModel } from "./chat-session.ts";
 
 async function waitForFolderConsent(terminal: VirtualTerminal): Promise<void> {
     const marker = "System or home folder detected. Continue?";

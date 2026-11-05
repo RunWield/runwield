@@ -51,6 +51,9 @@ test("buildSlicerRequest includes existing child order and dependencies", () => 
     assertStringIncludes(request, "  - Work Kind: DOCUMENTATION");
     assertStringIncludes(request, "  - Dependencies: 01-first");
     assertStringIncludes(request, "- Target branch: feature-base");
+    assertEquals(request.includes("You are resuming an interactive Slicer"), false);
+    assertEquals(request.includes("Follow the Slicer system prompt"), false);
+    assertEquals(request.includes("Do not finalize or write child files"), false);
 });
 
 test("approval annotations are included in Engineer and Slicer handoffs", () => {

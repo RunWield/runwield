@@ -1,4 +1,5 @@
 // @ts-nocheck: Browser fixtures install happy-dom globals around the real review surface.
+// @ts-nocheck: Browser fixtures install happy-dom globals around the real review surface.
 import { test } from "node:test";
 import { act } from "react";
 import { assertEquals, assertStringIncludes } from "../../../testing/assertions.ts";
@@ -8,14 +9,14 @@ test("review history selects an older base without replacing the current Plan", 
     const plan = "# Plan\n\nCurrent scope.\n";
     await withReview(
         async ({ container, button, submitted }) => {
-            await act(async () => button("Versions").click());
+            await act(() => button("Versions").click());
             assertStringIncludes(container.textContent, "Version 3 of 3");
             const initial = [...container.querySelectorAll("button")].find((node) => node.textContent.trim() === "v1");
-            await act(async () => initial.click());
+            await act(() => initial.click());
             assertStringIncludes(container.textContent, "Comparing current revision with version 1");
             assertStringIncludes(container.textContent, "Original");
             assertStringIncludes(container.textContent, "Current scope");
-            await act(async () => button("Approve & Run").click());
+            await act(() => button("Approve & Run").click());
             assertEquals(submitted[0].plan, plan);
         },
         plan,
@@ -26,10 +27,10 @@ test("review history selects an older base without replacing the current Plan", 
 test("reviewed execution style survives changing the owner and reaches approval", async () => {
     await withReview(async ({ container, button, submitted }) => {
         assertEquals(button("Pair Execution").getAttribute("aria-pressed"), "true");
-        await act(async () => button("Engineer").click());
+        await act(() => button("Engineer").click());
         assertEquals(button("Engineer").getAttribute("aria-pressed"), "true");
         assertEquals(button("Pair Execution").getAttribute("aria-pressed"), "true");
-        await act(async () => button("Approve & Run").click());
+        await act(() => button("Approve & Run").click());
         assertEquals(submitted[0].executionAgent, "engineer");
         assertEquals(submitted[0].collaborationRecommendation, "pair");
         assertStringIncludes(container.textContent, "Approved & Run");
@@ -38,15 +39,15 @@ test("reviewed execution style survives changing the owner and reaches approval"
 
 test("compact review keeps both sidebars reachable without hiding the approval action", async () => {
     await withReview(async ({ browser, container, button }) => {
-        await act(async () => browser.happyDOM.setWindowSize({ width: 390, height: 844 }));
+        await act(() => browser.happyDOM.setWindowSize({ width: 390, height: 844 }));
         assertEquals(Boolean(button("Collapse contents sidebar")), false);
         assertEquals(Boolean(button("Collapse annotations sidebar")), false);
-        await act(async () => button("Open contents sidebar").click());
+        await act(() => button("Open contents sidebar").click());
         assertEquals(Boolean(button("Collapse contents sidebar")), true);
-        await act(async () => button("Open annotations sidebar").click());
+        await act(() => button("Open annotations sidebar").click());
         assertEquals(Boolean(button("Collapse contents sidebar")), false);
         assertEquals(Boolean(button("Collapse annotations sidebar")), true);
-        await act(async () => button("Collapse annotations sidebar").click());
+        await act(() => button("Collapse annotations sidebar").click());
         assertEquals(Boolean(button("Open annotations sidebar")), true);
         assertEquals(button("Approve & Run").disabled, false);
         assertStringIncludes(container.textContent, "Review me");
@@ -59,11 +60,11 @@ test("a stale approval preserves the review and offers an actual reload", async 
             Promise.resolve(Response.json({ error: "Plan changed while review was open" }, { status: 409 }));
         let reloads = 0;
         globalThis.location = { reload: () => reloads++ };
-        await act(async () => button("Approve & Run").click());
+        await act(() => button("Approve & Run").click());
         assertStringIncludes(container.querySelector('[role="alert"]').textContent, "Review is out of date");
         assertEquals(button("Approve & Run").disabled, false);
         assertStringIncludes(container.textContent, "Keep this scope");
-        await act(async () => button("Reload review").click());
+        await act(() => button("Reload review").click());
         assertEquals(reloads, 1);
     }, "# Plan\n\nKeep this scope.\n");
 });
@@ -82,13 +83,13 @@ test("recovery-required approval withholds success and recovers using the displa
                     ),
                 );
             };
-            await act(async () => button("Approve & Run").click());
+            await act(() => button("Approve & Run").click());
             assertStringIncludes(container.textContent, "Recovery needed");
             assertEquals(container.textContent.includes("Approved & Run"), false);
-            await act(async () => button("Recover in Workspace").click());
+            await act(() => button("Recover in Workspace").click());
             assertEquals(requests.length, 1);
             confirm(true);
-            await act(async () => button("Recover in Workspace").click());
+            await act(() => button("Recover in Workspace").click());
             assertEquals(requests[1], {
                 url: "/recover",
                 body: { expectedGeneration: 7, expectedCurrentSegmentId: "segment-7" },

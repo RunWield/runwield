@@ -9,11 +9,12 @@ import { createUiApiFixture } from "./ui-api-test-fixture.ts";
 
 /**
  * @typedef {Parameters<Parameters<typeof withSessionViewFixture>[0]>[0]} SessionFixture
+ * @typedef {{type: "image", data: string, mimeType: string}} DisplayImage
  * @typedef {Partial<import('../../shared/session/session-runtime-events.js').SessionRuntimeEvent> & {type: string}} EventDraft
  * @typedef {ReturnType<typeof createUiApiFixture> & Pick<SessionFixture, 'runtime' | 'sessionId' | 'session'> & {adapter: ReturnType<typeof attachTuiRuntimeAdapter>, options: Parameters<typeof attachTuiRuntimeAdapter>[0], notifications: string[], completions: string[], emit: (event: EventDraft) => boolean, panel: () => string}} AdapterFixture
  */
 /**
- * @param {(fixture: AdapterFixture) => Promise<void>} check
+ * @param {(fixture: AdapterFixture) => Promise<void> | void} check
  * @param {Parameters<SessionFixture['session']['replaceWorkflowContext']>[0]} context
  */
 async function withAdapter(check, context = { routingIntent: "FEATURE", complexity: "LOW" }) {
@@ -47,7 +48,13 @@ async function withAdapter(check, context = { routingIntent: "FEATURE", complexi
                 emit: (event) =>
                     emitHostedSessionRuntimeEvent(session, {
                         ...(event.type.startsWith("tool_")
-                            ? { title: event.toolName, kind: "execute", content: [], details: null, durationMs: 0 }
+                            ? {
+                                  title: "toolName" in event ? event.toolName : "",
+                                  kind: "execute",
+                                  content: [],
+                                  details: null,
+                                  durationMs: 0,
+                              }
                             : {}),
                         ...(event.type.startsWith("assistant_") ? { agentName: "Guide" } : {}),
                         ...event,
@@ -75,7 +82,7 @@ const progress = (outcome = "running") => ({
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 test("real TUI renders semantic messages, tool results and safe failures without duplicate diagnostics", async () => {
-    await withAdapter(async ({ emit, allText, uiAPI }) => {
+    await withAdapter(({ emit, allText, uiAPI }) => {
         emit({ type: "user_message", text: "Inspect this change", images: [] });
         emit({
             type: "assistant_thinking_delta",
@@ -94,7 +101,7 @@ test("real TUI renders semantic messages, tool results and safe failures without
             isError: false,
             durationMs: 10,
         });
-        uiAPI.toggleToolOutputsExpanded();
+        uiAPI.toggleToolOutputsExpanded?.();
         emit({
             type: "assistant_text_delta",
             messageId: "answer",
@@ -123,7 +130,7 @@ test("real TUI renders semantic messages, tool results and safe failures without
 });
 
 test("real TUI validation reports survive model changes and clear on settlement or failure", async () => {
-    await withAdapter(async ({ emit, panel, allText }) => {
+    await withAdapter(({ emit, panel, allText }) => {
         emit({ type: "model_changed", model: "test/model" });
         emit({ type: "thinking_level_changed", thinkingLevel: "medium" });
         emit({
@@ -163,7 +170,7 @@ test("real TUI validation reports survive model changes and clear on settlement 
 
 test("ordinary operations do not leak old completion reports into a later validation", async () => {
     await withAdapter(
-        async ({ emit, panel }) => {
+        ({ emit, panel }) => {
             emit({
                 type: "assistant_text_delta",
                 messageId: "operation",
@@ -177,7 +184,7 @@ test("ordinary operations do not leak old completion reports into a later valida
         },
         { routingIntent: "OPERATION", complexity: "LOW" },
     );
-    await withAdapter(async ({ emit, panel }) => {
+    await withAdapter(({ emit, panel }) => {
         emit({
             type: "assistant_text_delta",
             messageId: "old",
@@ -193,7 +200,7 @@ test("ordinary operations do not leak old completion reports into a later valida
 });
 
 test("replayed thinking and hidden workflow plumbing stay out of the transcript", async () => {
-    await withAdapter(async ({ emit, allText, runtime, sessionId }) => {
+    await withAdapter(({ emit, allText, runtime, sessionId }) => {
         emit({
             type: "assistant_thinking_delta",
             messageId: "old",
@@ -255,7 +262,7 @@ test("TUI attention belongs to its surface and completion requires current settl
     for (const outcome of /** @type {const} */ (["verified", "failed", "paused"]))
         for (const replay of [false, true]) {
             await withAdapter(async ({ emit, completions, notifications, sessionId, session }) => {
-                for (const notificationSurface of ["workspace", "acp", "tui"]) {
+                for (const notificationSurface of /** @type {const} */ (["workspace", "acp", "tui"])) {
                     session.notificationSurface = notificationSurface;
                     emit({ type: "attention_requested", reason: "agentStopped" });
                 }
@@ -321,8 +328,8 @@ test("TUI retains repeated message IDs from different segments and removes only 
 });
 
 test("TUI preserves read-tool images and hidden-tool image fallback without repeating root handoffs", async () => {
-    await withAdapter(async ({ emit, allText, uiAPI }) => {
-        /** @type {{type: "image", data: string, mimeType: string}} */
+    await withAdapter(({ emit, allText, uiAPI }) => {
+        /** @type {DisplayImage} */
         const image = {
             type: "image",
             data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
@@ -343,7 +350,7 @@ test("TUI preserves read-tool images and hidden-tool image fallback without repe
             content: [image],
             isError: false,
         });
-        uiAPI.toggleToolOutputsExpanded();
+        uiAPI.toggleToolOutputsExpanded?.();
         assertStringIncludes(allText(), "[image/png");
         const before = allText().split("[image/png").length;
         emit({

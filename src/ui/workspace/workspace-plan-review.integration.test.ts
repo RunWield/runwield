@@ -30,7 +30,7 @@ test("Workspace Plan review carries revision history, returns feedback to Core, 
                     ],
                 },
             },
-            async ({ app, origin, cookie, csrf, root, reference, service, response }) => {
+            async ({ app, origin, cookie, csrf, reference, service, response }) => {
                 const path = `/projects/${reference.projectId}/plans/review-plan?session=${reference.runwieldSessionId}&operation=${reference.operationId}&interaction=${reference.interactionId}`;
                 const read = () => app.handler()(new Request(origin + path, { headers: { cookie } }));
                 const page = await read();

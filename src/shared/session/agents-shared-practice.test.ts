@@ -10,7 +10,7 @@ import { test } from "node:test";
 import { match as assertMatch } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { _AGENT_ATTENTION_NUDGES, listAgentDefNames, loadAgentDef } from "./agents.js";
+import { listAgentDefNames, loadAgentDef } from "./agents.js";
 
 const BUNDLED_AGENT_DEFS = join("src", "agent-definitions");
 const SHARED_PRACTICE_DIR = join(BUNDLED_AGENT_DEFS, "shared-practice");
@@ -280,12 +280,6 @@ test("Plan executors keep a strict no-self-edit boundary while explicit user aut
             normalizedPrompt,
             "call `task_completed` only when its revised requirements are actually complete",
         );
-    }
-
-    for (const agentName of PLAN_EXECUTION_PERSONAS) {
-        const nudge = _AGENT_ATTENTION_NUDGES[agentName];
-        assertStringIncludes(nudge, "never edit the Plan on your own or to match what you built");
-        assertStringIncludes(nudge, "raise at most one concern, then make the exact edit and continue");
     }
 });
 

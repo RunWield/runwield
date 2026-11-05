@@ -1,5 +1,6 @@
 import { serveHttp } from "../../../shared/http-server.ts";
 // @ts-nocheck: focused service tests use the repository's JavaScript-style owner store.
+// @ts-nocheck: focused service tests use the repository's JavaScript-style owner store.
 import { constants as fsConstants, readdirSync as fsReaddirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { test } from "node:test";

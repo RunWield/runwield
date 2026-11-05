@@ -15,16 +15,10 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { join } from "node:path";
 import { encodeGuidedReviewMetadata } from "../../cmd/guided-review/protocol.ts";
 
-import { PLAN_UI_TOKEN_HEADER } from "../../constants.js";
 import { RUNWIELD_ROOT } from "../../../runtime-root.js";
 import { workspaceMetadata as _workspaceMetadata } from "./server/plan-adapter.js";
 
-import {
-    createReviewWorkspaceApp,
-    createWorkspaceApp,
-    hasWorkspaceToken,
-    startReviewWorkspaceServer,
-} from "./server.js";
+import { createReviewWorkspaceApp, createWorkspaceApp, startReviewWorkspaceServer } from "./server.js";
 
 import {
     createReviewAgentState,
@@ -33,11 +27,7 @@ import {
     runWldJobCommand,
 } from "./routes/api/review-agent-handlers.js";
 
-import {
-    registerReviewDecisionPromise,
-    resolveReviewDecision,
-    unregisterReviewDecision,
-} from "./routes/api/review-handlers.ts";
+import { registerReviewDecisionPromise, unregisterReviewDecision } from "./routes/api/review-handlers.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { makeToolProjectFixture, withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 

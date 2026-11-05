@@ -2,7 +2,7 @@
     "skills": [
         {
             "source": "src/agent-definitions/ideator.md",
-            "sourceHash": "3ecf68f43c2821534a9305f9a1ecb2e50ac3d12c43ac26db2992f635253a336b",
+            "sourceHash": "aecc83ec6f15f7c4cf112b62660d48ab2e457a7b524024f28fd68b254c966408",
             "skill": "skills/ideator/SKILL.md",
             "skillHash": "05794619634231949af42dcf111ec48bcd5961969dea4348545ec8e926b49722",
             "supportFiles": [
@@ -14,7 +14,7 @@
         },
         {
             "source": "src/agent-definitions/guide.md",
-            "sourceHash": "16a234805758fdfd2ef40330e54258ddb865d925d493d4fe5d3c784c9fffea0c",
+            "sourceHash": "54cf1c8f882ddc3924eaa652e76ca1abfbcae22f7eb446ca0df9c7b2717a83cc",
             "skill": "skills/guide/SKILL.md",
             "skillHash": "6bb8b126e7dd0370e9c58cdb615c4fe84a72e572cae2216ca9c3cd44ce551716",
             "supportFiles": []

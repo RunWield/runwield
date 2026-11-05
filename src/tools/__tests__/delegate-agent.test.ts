@@ -112,17 +112,7 @@ test("delegate_agent returns child output without inheriting workflow tools", as
     assertEquals(result.details.role, "general");
     assertEquals(result.details.requestedAuthority, "read");
     assertEquals(result.details.effectiveAuthority, "read");
-    assertEquals(
-        calls[0].userRequest,
-        [
-            "Delegation mode: read",
-            "",
-            "You are running as a context-isolated child. Complete only the brief below and return a concise handoff.",
-            "",
-            "## Brief",
-            "Inspect src/foo.js",
-        ].join("\n"),
-    );
+    assertEquals(calls[0].userRequest, ["Delegation mode: read", "", "## Brief", "Inspect src/foo.js"].join("\n"));
 });
 
 test("delegate_agent applies verification-adversary read-only role ceiling", async () => {
@@ -171,8 +161,7 @@ test("delegate_agent applies verification-adversary read-only role ceiling", asy
     assertEquals(result.details.effectiveAuthority, "read");
     assertEquals(result.details.roleAuthorityCeiling, "read");
     assertEquals(result.details.mode, "read");
-    assertStringIncludes(String(calls[0].userRequest || ""), "Delegated role: verification-adversary");
-    assertStringIncludes(String(calls[0].userRequest || ""), "so this session runs as read");
+    assertEquals(calls[0].userRequest, "Delegation mode: read\n\n## Brief\nAttack the draft Plan below.");
     // Session machinery receives a canonical registry selection, not a replaceable definition.
     assertEquals(calls[0].subAgentDefinition, {
         id: "delegated-read",

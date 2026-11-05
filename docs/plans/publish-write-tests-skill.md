@@ -19,6 +19,8 @@ origin: "internal"
 status: "ready_for_work"
 userVerifiedAt: null
 routingIntent: "PLANNED_CHANGE"
+targetBranch: "main"
+deliveryBranch: "main"
 ---
 
 # Publish Write Tests Without Losing the Bundled Skill

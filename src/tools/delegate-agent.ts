@@ -20,11 +20,7 @@ import {
     getDelegatedRole,
     loadSubAgentDefinition,
 } from "../shared/session/subagent-definitions.ts";
-import type {
-    DelegatedAuthority,
-    DelegatedRoleDefinition,
-    DelegatedRoleId,
-} from "../shared/session/subagent-definitions.ts";
+import type { DelegatedAuthority, DelegatedRoleId } from "../shared/session/subagent-definitions.ts";
 import type { HostedSession } from "../shared/session/hosted-session.js";
 import type { AgentDefinition } from "../shared/session/types.js";
 import type { BashAllowedCommands } from "../shared/bash-command-policy.ts";
@@ -347,30 +343,6 @@ function resolveDelegatedThinkingLevelOverride(
 }
 
 /**
- * Role context for the child's user request. A general delegation adds nothing, so its
- * request text stays byte-identical to pre-role delegation.
- *
- * @param {import('../shared/session/subagent-definitions.ts').DelegatedRoleDefinition} role
- * @param {"read" | "write"} requestedMode
- * @param {"read" | "write"} effectiveMode
- * @returns {string[]}
- */
-function roleRequestLines(
-    role: DelegatedRoleDefinition,
-    requestedMode: DelegationMode,
-    effectiveMode: DelegationMode,
-): string[] {
-    if (role.id === DELEGATED_ROLE_GENERAL) return [];
-    const lines = [`Delegated role: ${role.id}`];
-    if (effectiveMode !== requestedMode) {
-        lines.push(
-            `The parent requested ${requestedMode} mode; the ${role.id} role has a ${role.authorityCeiling}-only authority ceiling, so this session runs as ${effectiveMode}.`,
-        );
-    }
-    return lines;
-}
-
-/**
  * @param {DelegateAgentToolOptions} opts
  * @returns {import('@earendil-works/pi-coding-agent').ToolDefinition}
  */
@@ -449,15 +421,7 @@ export function createDelegateAgentTool(opts: DelegateAgentToolOptions) {
             }
             const childTools = resolveDelegatedToolNames(opts.parentTools, mode);
             const definitionId = mode === "read" ? SUBAGENTS.DELEGATED_READ : SUBAGENTS.DELEGATED;
-            const userRequest = [
-                `Delegation mode: ${mode}`,
-                ...roleRequestLines(role, requestedMode, mode),
-                "",
-                "You are running as a context-isolated child. Complete only the brief below and return a concise handoff.",
-                "",
-                "## Brief",
-                brief,
-            ].join("\n");
+            const userRequest = [`Delegation mode: ${mode}`, "", "## Brief", brief].join("\n");
             const modelOverride = resolveDelegatedModelOverride(opts.hostedSession, opts.modelOverride);
             const thinkingLevelOverride = resolveDelegatedThinkingLevelOverride(
                 opts.hostedSession,

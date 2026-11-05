@@ -4,7 +4,7 @@ import { openOwnerCoordinationStore } from "../../shared/owner-coordination/inde
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { createOwnerWorkspaceApp } from "./server.js";
 import { test } from "node:test";
-import { readFile as fsReadFile } from "node:fs/promises";
+
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { createRoot } from "react-dom/client";
 import { act } from "react";
@@ -97,7 +97,7 @@ test("usage page renders daily costs and completeness from the real report and r
         document.body.append(container);
         const root = createRoot(container);
         try {
-            await act(async () => root.render(createElement(UsageReport)));
+            await act(() => root.render(createElement(UsageReport)));
             assertStringIncludes(
                 container.querySelector('[role="alert"]')?.textContent || "",
                 "Usage source unavailable",
@@ -105,12 +105,12 @@ test("usage page renders daily costs and completeness from the real report and r
             failed = false;
             const retry = [...container.querySelectorAll("button")].find((button) => button.textContent === "Retry");
             if (!retry) throw new Error("Missing retry control");
-            await act(async () => retry.click());
+            await act(() => retry.click());
             const summary = [...container.querySelectorAll("summary")].find(
                 (node) => node.textContent === "Daily values and data completeness",
             );
             if (!summary) throw new Error("Missing daily usage disclosure");
-            await act(async () => summary.click());
+            await act(() => summary.click());
             const daily = [...container.querySelectorAll("table")].find((table) =>
                 table.querySelector("caption")?.textContent?.startsWith("Daily values in "),
             );
@@ -131,7 +131,7 @@ test("usage page renders daily costs and completeness from the real report and r
                 false,
             );
         } finally {
-            await act(async () => root.unmount());
+            await act(() => root.unmount());
             for (const [name, descriptor] of previous) {
                 if (descriptor) Object.defineProperty(globalThis, name, descriptor);
                 else Reflect.deleteProperty(globalThis, name);

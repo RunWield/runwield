@@ -707,13 +707,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                 });
                 const details = { ...params, outcome: "canceled" as const, reason: recoverableReview.reason };
                 publishAcceptedPlanOutcome(details);
-                return textResult(
-                    appendPlanAssociationFailure(
-                        `${SESSION_COMPLETE_GUIDANCE}\n\nYour role as ${agentName} is complete. Do not generate any further text.`,
-                    ),
-                    details,
-                    true,
-                );
+                return textResult(appendPlanAssociationFailure(SESSION_COMPLETE_GUIDANCE), details, true);
             }
             const reviewResponse = recoverableReview.response;
             reviewUrl = "";
@@ -948,7 +942,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                     return textResult(
                         appendPlanAssociationFailure(
                             appendSessionCompleteGuidance(
-                                `Plan "${planName}" approved and saved for later decomposition. Your role as ${agentName} is complete. Do not generate any further text.${savedFeedbackSuffix}`,
+                                `Plan "${planName}" approved and saved for later decomposition.${savedFeedbackSuffix}`,
                             ),
                         ),
                         details,
@@ -1036,7 +1030,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                 return textResult(
                     appendPlanAssociationFailure(
                         appendSessionCompleteGuidance(
-                            `Plan "${planName}" approved and saved for later execution. Your role as ${agentName} is complete. Do not generate any further text.${savedFeedbackSuffix}`,
+                            `Plan "${planName}" approved and saved for later execution.${savedFeedbackSuffix}`,
                         ),
                     ),
                     details,

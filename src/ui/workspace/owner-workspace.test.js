@@ -9,8 +9,8 @@ import { getRunWieldSessionDir } from "../../shared/session/root-session.js";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
-import { getPlanRevisionForText, injectFrontMatter, loadPlan, savePlan } from "../../plan-store.js";
+import { assertEquals, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
+import { savePlan } from "../../plan-store.js";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { createOwnerWorkspaceApp, startWorkspaceServer } from "./server.js";
 
@@ -132,7 +132,7 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
             csrfFactory: () => "csrf-secret",
         });
         const project = store.registerProject({ root: projectRoot, displayName: "Owner Project" });
-        const otherProject = store.registerProject({ root: otherProjectRoot, displayName: "Other Project" });
+        store.registerProject({ root: otherProjectRoot, displayName: "Other Project" });
         let closedConnections = 0;
         appObject = /** @type {any} */ (
             createOwnerWorkspaceApp({

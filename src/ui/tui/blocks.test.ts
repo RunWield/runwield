@@ -11,6 +11,7 @@ import chalk from "chalk";
 chalk.level = 3;
 
 // Initialize the runwield theme before importing blocks (theme must be ready)
+// Initialize the runwield theme before importing blocks (theme must be ready)
 import { initRunWieldTheme, theme } from "../theme/theme.ts";
 initRunWieldTheme();
 
@@ -26,10 +27,9 @@ import {
     ThinkingBlock,
     ToolExecutionBlock,
     ToolExecutionGroupBlock,
-    UserPromptBlock,
     ValidationHandoffBlock,
 } from "./blocks.js";
-import { getCapabilities, setCapabilities, Text } from "@earendil-works/pi-tui";
+import { getCapabilities, setCapabilities } from "@earendil-works/pi-tui";
 import stripAnsi from "strip-ansi";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

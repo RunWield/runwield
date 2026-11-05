@@ -1,4 +1,5 @@
 // @ts-nocheck: cross-surface protocol payloads are checked by runtime assertions.
+// @ts-nocheck: cross-surface protocol payloads are checked by runtime assertions.
 import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
