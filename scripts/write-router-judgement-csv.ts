@@ -10,6 +10,7 @@ import { parseArgs } from "../src/shared/cli-args.ts";
 import { dirname, join } from "node:path";
 import { getHomeDir } from "../src/constants.js";
 import {
+    type CsvRow,
     indexRowsByDecisionId,
     parseCsv,
     ROUTER_JUDGEMENT_COLUMNS,
@@ -17,36 +18,41 @@ import {
     withRouterJudgementMetrics,
 } from "./router-eval-utils.ts";
 
+import type { RouterDecision } from "./extract-router-decisions.js";
+
+export type RouterJudgementDecision = Partial<
+    Pick<
+        RouterDecision,
+        "decisionId" | "timestamp" | "attribution" | "requestText" | "routingIntent" | "summary" | "affectedPaths"
+    >
+>;
+
+interface RouterJudgementArguments {
+    _: (string | number)[];
+    help?: boolean;
+    in?: string;
+    out?: string;
+    "no-preserve"?: boolean;
+}
+
 const DEFAULT_INPUT = "/private/tmp/runwield-router-decisions.jsonl";
 const DEFAULT_OUTPUT_NAME = "router-judgements.csv";
 
-/**
- * @returns {string}
- */
 export function getDefaultRouterJudgementCsvPath() {
     return join(getHomeDir(), ".wld", "router-eval", DEFAULT_OUTPUT_NAME);
 }
 
 export const JUDGEMENT_COLUMNS = ROUTER_JUDGEMENT_COLUMNS;
 
-/**
- * @param {string} text
- * @returns {Record<string, unknown>[]}
- */
-export function parseJsonlRows(text) {
+export function parseJsonlRows(text: string): RouterJudgementDecision[] {
     return text
         .split(/\r?\n/)
         .map((line) => line.trim())
         .filter(Boolean)
-        .map((line) => /** @type {Record<string, unknown>} */ (JSON.parse(line)));
+        .map((line): RouterJudgementDecision => JSON.parse(line));
 }
 
-/**
- * @param {Record<string, unknown>} row
- * @param {Record<string, string> | undefined} existing
- * @returns {Record<string, unknown>}
- */
-export function buildJudgementCsvRow(row, existing) {
+export function buildJudgementCsvRow(row: RouterJudgementDecision, existing: CsvRow | undefined) {
     const routerDecision = typeof row.routingIntent === "string" ? row.routingIntent : "";
 
     return withRouterJudgementMetrics({
@@ -63,49 +69,39 @@ export function buildJudgementCsvRow(row, existing) {
     });
 }
 
-/**
- * @param {Record<string, unknown>[]} reviewedRows
- * @param {Array<Record<string, string>>} [existingRows]
- * @returns {string}
- */
-export function buildJudgementCsv(reviewedRows, existingRows = []) {
+export function buildJudgementCsv(reviewedRows: RouterJudgementDecision[], existingRows: CsvRow[] = []) {
     const existingById = indexRowsByDecisionId(existingRows);
     const rows = reviewedRows.map((row) => buildJudgementCsvRow(row, existingById.get(String(row.decisionId || ""))));
     return toCsv(JUDGEMENT_COLUMNS, rows);
 }
 
-/**
- * @param {string} path
- * @returns {Promise<Array<Record<string, string>>>}
- */
-async function readExistingCsv(path) {
+async function readExistingCsv(path: string): Promise<CsvRow[]> {
     try {
         return parseCsv(await fsReadFile(path, "utf8"));
     } catch (error) {
-        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return [];
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
         throw error;
     }
 }
 
-/**
- * @param {string[]} argv
- */
-export async function main(argv) {
-    const args = parseArgs(argv, {
+export async function main(argv: string[]) {
+    const args: RouterJudgementArguments = parseArgs(argv, {
         string: ["in", "out"],
         boolean: ["help", "no-preserve"],
         alias: { h: "help", i: "in", o: "out" },
     });
 
     if (args.help) {
-        console.log([
-            "Usage: bun scripts/write-router-judgement-csv.js --in router-decisions.jsonl --out router-judgements.csv",
-            "",
-            "Options:",
-            `  --in, -i <path>       Extracted Router decisions JSONL (default: ${DEFAULT_INPUT})`,
-            `  --out, -o <path>      CSV output (default: ${getDefaultRouterJudgementCsvPath()})`,
-            "  --no-preserve         Do not preserve existing humanJudgement/humanNotes values from the output CSV",
-        ].join("\n"));
+        console.log(
+            [
+                "Usage: bun scripts/write-router-judgement-csv.ts --in router-decisions.jsonl --out router-judgements.csv",
+                "",
+                "Options:",
+                `  --in, -i <path>       Extracted Router decisions JSONL (default: ${DEFAULT_INPUT})`,
+                `  --out, -o <path>      CSV output (default: ${getDefaultRouterJudgementCsvPath()})`,
+                "  --no-preserve         Do not preserve existing humanJudgement/humanNotes values from the output CSV",
+            ].join("\n"),
+        );
         return;
     }
 

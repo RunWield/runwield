@@ -10,7 +10,7 @@ import { parseArgs } from "../src/shared/cli-args.ts";
 import { dirname, join } from "node:path";
 import { getHomeDir } from "../src/constants.js";
 import { parseCsv, toCsv } from "./router-eval-utils.ts";
-import { JUDGEMENT_COLUMNS } from "./write-router-judgement-csv.js";
+import { JUDGEMENT_COLUMNS } from "./write-router-judgement-csv.ts";
 
 export interface RouterJudgementCsvRow {
     [column: string]: string | undefined;
