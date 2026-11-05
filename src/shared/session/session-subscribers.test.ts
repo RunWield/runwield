@@ -7,44 +7,92 @@ import { attachSessionEventSubscribers } from "./session.js";
 import { createSessionRuntimeEvent } from "./session-runtime-events.js";
 import { getCwd } from "../../constants.js";
 
-/**
- * @returns {{ session: any, emit: (event: any) => void, unsubscribed: () => boolean }}
- */
+import type {
+    AgentSession,
+    AgentSessionEvent,
+    AgentSessionEventListener,
+    CompactionResult,
+} from "@earendil-works/pi-coding-agent";
+import type { AssistantMessage, AssistantMessageEvent, TextContent, Usage } from "@earendil-works/pi-ai";
+import type { AgentDefinition } from "./types.js";
+import type {
+    RuntimeAssistantThinkingDeltaEvent,
+    RuntimeToolEndEvent,
+    RuntimeToolIdentity,
+    RuntimeToolResult,
+    SessionRuntimeEvent,
+} from "./session-runtime-events.js";
+
+interface SubscriberMessageFixture extends Omit<Partial<AssistantMessage>, "usage"> {
+    id?: string;
+    usage?: Partial<Usage>;
+}
+
+type SubscriberDeltaFixture = Pick<
+    Extract<AssistantMessageEvent, Record<"type", "thinking_delta" | "text_delta">>,
+    "type" | "delta"
+>;
+
+interface SubscriberToolResultFixture {
+    content: Pick<TextContent, "text">[];
+}
+
+interface SubscriberEventPayload {
+    turnId?: string;
+    message?: SubscriberMessageFixture;
+    assistantMessageEvent?: SubscriberDeltaFixture;
+    partialResult?: SubscriberToolResultFixture;
+    result?: SubscriberToolResultFixture | Pick<CompactionResult, "tokensBefore">;
+}
+
+type SubscriberFixtureFields<TEvent extends AgentSessionEvent> = TEvent extends AgentSessionEvent
+    ? Partial<Omit<TEvent, keyof SubscriberEventPayload>>
+    : never;
+
+type SubscriberEventFixture = SubscriberFixtureFields<AgentSessionEvent> &
+    SubscriberEventPayload &
+    Pick<AgentSessionEvent, "type">;
+
+type ObservedSubscriberEvent = SessionRuntimeEvent &
+    Partial<
+        RuntimeToolIdentity &
+            RuntimeToolResult &
+            Pick<RuntimeToolEndEvent, "durationMs"> &
+            Pick<RuntimeAssistantThinkingDeltaEvent, "messageId">
+    >;
+
 function makeSubscribableSession() {
-    /** @type {((event: any) => void) | null} */
-    let subscriber = null;
+    let subscriber: AgentSessionEventListener | null = null;
     let unsubscribed = false;
     return {
         session: {
-            /** @param {(event: any) => void} fn */
-            subscribe(fn) {
+            subscribe(fn: AgentSessionEventListener) {
                 subscriber = fn;
                 return () => {
                     unsubscribed = true;
                     subscriber = null;
                 };
             },
-        },
-        emit(event) {
+        } as AgentSession,
+        emit(event: SubscriberEventFixture) {
             if (!subscriber) throw new Error("no subscriber registered");
-            subscriber(event);
+            subscriber(event as AgentSessionEvent);
         },
         unsubscribed: () => unsubscribed,
     };
 }
 
-/** @param {string} id */
-function makeRuntimeHarness(id) {
+function makeRuntimeHarness(id: string) {
     const hostedSession = new HostedSession({ id, cwd: getCwd() });
-    /** @type {any[]} */
-    const events = [];
+    const events: ObservedSubscriberEvent[] = [];
     hostedSession.setEventSink({
-        emit: (/** @type {any} */ event) => events.push(createSessionRuntimeEvent(id, event)),
+        emit: (event: Parameters<typeof createSessionRuntimeEvent>[1]) =>
+            events.push(createSessionRuntimeEvent(id, event)),
     });
     return { hostedSession, events };
 }
 
-const agentDef = /** @type {any} */ ({ name: "tester", displayName: "Tester" });
+const agentDef = { name: "tester", displayName: "Tester" } as AgentDefinition;
 
 test("explicit isolated-step cancellation does not erase the validation panel with a terminal error", () => {
     const { session, emit } = makeSubscribableSession();
@@ -203,14 +251,14 @@ test("session subscriber maps one Pi tool lifecycle to one runtime tool lifecycl
 test("delegated child messages remain visible on the parent HostedSession event surface", () => {
     const { session, emit } = makeSubscribableSession();
     const { hostedSession, events } = makeRuntimeHarness("subscriber-delegated");
-    const delegatedAgent = /** @type {import('./types.js').AgentDefinition} */ ({
+    const delegatedAgent: AgentDefinition = {
         name: "delegated",
         displayName: "Delegated Agent",
         model: "",
         description: "Context-isolated child",
         tools: [],
         systemPrompt: "system",
-    });
+    };
     const state = attachSessionEventSubscribers(session, delegatedAgent, undefined, hostedSession);
 
     emit({ type: "turn_start", turnId: "delegated-turn" });
