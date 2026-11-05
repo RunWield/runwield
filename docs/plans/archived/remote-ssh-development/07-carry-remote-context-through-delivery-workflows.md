@@ -89,21 +89,21 @@ The remote Core process runs on the server, so project work already lands in the
 
 This child delivers the non-browser part of the Remote SSH PRD:
 
-- [Remote workflows and local review](../../prd/runwield-core-prd.md#remote-connection): **Complete normal
+- [Remote workflows and local review](../../../prd/runwield-core-prd.md#remote-connection): **Complete normal
   Core work remotely**, and the scenario "planning, review, execution, validation, and publication occur remotely and the
   local Session records the results". The local browser is child10, after the review-host refactor in child09.
-- [Disconnect and recovery](../../prd/runwield-core-prd.md#workflow-completion-and-automatic-recovery): **Preserve work and report
+- [Disconnect and recovery](../../../prd/runwield-core-prd.md#workflow-completion-and-automatic-recovery): **Preserve work and report
   uncertainty**, and the scenario "a remote edit or publication attempt whose result was not saved locally is checked
   on reconnect, not repeated".
-- [Local memories and saved Sessions](../../prd/runwield-core-prd.md#session-continuity): workflow context
+- [Local memories and saved Sessions](../../../prd/runwield-core-prd.md#session-continuity): workflow context
   and rollover on resume.
 
-It extends the Core [Laptop-owned remote Session saves](../../prd/runwield-core-prd.md#laptop-owned-remote-session-saves)
+It extends the Core [Laptop-owned remote Session saves](../../../prd/runwield-core-prd.md#laptop-owned-remote-session-saves)
 contract to Session records and rollover. It must preserve, unchanged, the meanings in
-[Plan review](../../prd/runwield-core-prd.md#plan-review),
-[Execution, validation, and recovery](../../prd/runwield-core-prd.md#execution-validation-and-recovery),
-[Semantic review and repair](../../prd/runwield-core-prd.md#semantic-review-and-repair), and
-[Work protection](../../prd/runwield-core-prd.md#work-protection).
+[Plan review](../../../prd/runwield-core-prd.md#plan-review),
+[Execution, validation, and recovery](../../../prd/runwield-core-prd.md#execution-validation-and-recovery),
+[Semantic review and repair](../../../prd/runwield-core-prd.md#semantic-review-and-repair), and
+[Work protection](../../../prd/runwield-core-prd.md#work-protection).
 
 ### Epic Scope Changes
 

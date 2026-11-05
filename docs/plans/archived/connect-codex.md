@@ -25,10 +25,10 @@ through child Plans, separate subagent worktrees, CI, fresh-context reviews, and
 desktop app and CLI are in scope. The existing Claude acceptance result describes a particular older source snapshot;
 it does not establish Codex support or stable release qualification.
 
-The owning requirements are [explicit activation](../prd/runwield-connect-prd.md#explicit-per-request-activation),
-[shared Plan and verification outcomes](../prd/runwield-connect-prd.md#shared-plan-and-verification-outcomes), and
-[honest compatibility](../prd/runwield-connect-prd.md#compatibility-and-honest-availability).
-[ADR-013](../adr/013-attached-workflow-coordination-boundary.md) owns the shared coordination boundary.
+The owning requirements are [explicit activation](../../prd/runwield-connect-prd.md#explicit-per-request-activation),
+[shared Plan and verification outcomes](../../prd/runwield-connect-prd.md#shared-plan-and-verification-outcomes), and
+[honest compatibility](../../prd/runwield-connect-prd.md#compatibility-and-honest-availability).
+[ADR-013](../../adr/013-attached-workflow-coordination-boundary.md) owns the shared coordination boundary.
 
 ## Objective
 

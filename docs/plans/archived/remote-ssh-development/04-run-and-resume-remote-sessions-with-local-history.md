@@ -64,13 +64,13 @@ ensureProject: statSync/realPathSync          createRemoteRootSessionManager (te
 - `RemoteTarget` (`target.ts`) has `cwd`, `home`, `gitRoot`, and `primaryRoot`. It does not identify the host.
 
 This child delivers the user journey in the Remote SSH PRD
-[Local memories and saved Sessions](../../prd/runwield-core-prd.md#session-continuity) capability: the
+[Local memories and saved Sessions](../../../prd/runwield-core-prd.md#session-continuity) capability: the
 **Preserve local history** requirement and its "Given a saved remote conversation, when SSH closes…" scenario. It also
 delivers the same-named-folder part of **Keep project knowledge correctly scoped** for Sessions. Memory scoping is
 child05.
 
-It uses the Core [Laptop-owned remote Session saves](../../prd/runwield-core-prd.md#laptop-owned-remote-session-saves)
-contract without changing it. The [Session continuity](../../prd/runwield-core-prd.md#session-continuity) outcomes must
+It uses the Core [Laptop-owned remote Session saves](../../../prd/runwield-core-prd.md#laptop-owned-remote-session-saves)
+contract without changing it. The [Session continuity](../../../prd/runwield-core-prd.md#session-continuity) outcomes must
 survive: Sessions appear only after the first message, and saved history can be reopened.
 
 ### Decisions from planning

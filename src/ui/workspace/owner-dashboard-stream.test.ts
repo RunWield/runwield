@@ -400,7 +400,8 @@ test("unreadable publication registry fails the finished card before unrelated P
         }> = [];
         const unsubscribe = subscribeOwnerDashboard(store, continuation, (frame) => {
             frames.push(frame);
-            if (frame.sectionProgress["recently-finished"].failed) seen.resolve();
+            const finished = frame.sectionProgress["recently-finished"];
+            if (finished.failed && !finished.pending) seen.resolve();
         });
         try {
             await Promise.race([

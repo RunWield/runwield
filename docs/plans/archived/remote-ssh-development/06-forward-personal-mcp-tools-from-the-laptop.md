@@ -41,20 +41,20 @@ from the server user's personal `mcp.json`. Project servers start remotely after
 Personal servers are listed but not started, so their tools are missing.
 
 This child delivers the Epic's **Reviewable integration default** in
-[Personal resources, integrations, and Memory](../remote-ssh-development.md#personal-resources-integrations-and-memory):
+[Personal resources, integrations, and Memory](../../remote-ssh-development.md#personal-resources-integrations-and-memory):
 personal MCP servers run on the laptop with their existing credentials, and their tools reach the remote Agent.
 
 ### Owning requirements and current evidence
 
-- **Change:** Core [Agent and skill customization](../../prd/runwield-core-prd.md#agent-and-skill-customization),
-  **Trusted MCP tools**, and Remote SSH [Local personal environment](../../prd/runwield-core-prd.md#agent-and-skill-customization),
+- **Change:** Core [Agent and skill customization](../../../prd/runwield-core-prd.md#agent-and-skill-customization),
+  **Trusted MCP tools**, and Remote SSH [Local personal environment](../../../prd/runwield-core-prd.md#agent-and-skill-customization),
   **Run MCP servers on their owning machine**, gain callable personal servers. Replace the current
   `not started remotely` limitation only when forwarding is implemented.
 - **Preserve:** project override/disable and file-safety rules; root Agent access across handoff; no inherited MCP
   access for delegated or isolated Agents; native Pi names, resources, updates, progress, results, and reconnect.
-- **Preserve:** [Disconnect and recovery](../../prd/runwield-core-prd.md#workflow-completion-and-automatic-recovery) stops owned work and does
+- **Preserve:** [Disconnect and recovery](../../../prd/runwield-core-prd.md#workflow-completion-and-automatic-recovery) stops owned work and does
   not replay uncertain tool effects. This child adds its laptop server processes to existing connection cleanup.
-- **Architecture:** accepted [ADR-018](../../adr/018-pi-owned-mcp-integration.md) now gives Pi ownership of MCP
+- **Architecture:** accepted [ADR-018](../../../adr/018-pi-owned-mcp-integration.md) now gives Pi ownership of MCP
   behavior. `McpIntegration.call` in the old draft does not exist. Public `createMcpExtension` and `McpTransport` in the
   pinned Pi 1.0.0 packages support the selected relay without another MCP client or naming system.
 

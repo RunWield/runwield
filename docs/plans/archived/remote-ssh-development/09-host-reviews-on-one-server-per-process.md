@@ -54,7 +54,7 @@ The change also stands on its own: fewer listeners per process, and one module t
 
 ### PRD capabilities
 
-- [Plan Review](../../prd/runwield-core-prd.md#plan-review) and Code Review behavior must survive unchanged: page
+- [Plan Review](../../../prd/runwield-core-prd.md#plan-review) and Code Review behavior must survive unchanged: page
   tokens, feedback rounds, reopen, decision once, cancel on stop, Guided Review, uploads, images, file content.
 - The Core PRD's TUI document-reader text ("The TUI owns one lazy loopback reader … TUI disposal stops the host") changes
   wording: the reader becomes a registration on the process review host. Its behavior (token rotation on Session

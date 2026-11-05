@@ -45,16 +45,16 @@ lock. Preserve these behaviors and the existing read-only picker/autocomplete fl
 
 Owning requirements and proposed changes:
 
-- [Core Plan authoring and external adoption](../prd/runwield-core-prd.md#plan-authoring-and-external-adoption): extend
+- [Core Plan authoring and external adoption](../../prd/runwield-core-prd.md#plan-authoring-and-external-adoption): extend
   read-only browsing beyond the existing `/load-plan` picker. Preserve external Markdown, body ownership, identity,
   ordering, and explicit adoption.
-- [Core Work protection](../prd/runwield-core-prd.md#work-protection): change **Enter project runtime state safely**
+- [Core Work protection](../../prd/runwield-core-prd.md#work-protection): change **Enter project runtime state safely**
   to distinguish passive inspection from mutation admission. Preserve all migration security and work protection.
-- [Core execution, validation, and recovery](../prd/runwield-core-prd.md#execution-validation-and-recovery): preserve
+- [Core execution, validation, and recovery](../../prd/runwield-core-prd.md#execution-validation-and-recovery): preserve
   automatic recovery by the owning action or workflow. Browsing is not permission to run that recovery.
-- Workspace [Local Plan management](../prd/runwield-workspace-prd.md#local-plan-management),
-  [Attention dashboard](../prd/runwield-workspace-prd.md#attention-dashboard), and
-  [Durable knowledge search](../prd/runwield-workspace-prd.md#durable-knowledge-search): expose pending read information
+- Workspace [Local Plan management](../../prd/runwield-workspace-prd.md#local-plan-management),
+  [Attention dashboard](../../prd/runwield-workspace-prd.md#attention-dashboard), and
+  [Durable knowledge search](../../prd/runwield-workspace-prd.md#durable-knowledge-search): expose pending read information
   without hidden Project changes. Preserve current-source checks, partial results, and explicit saves/actions.
 
 These are proposed changes, not claims that read purity has shipped. ADR-017 currently requires entry before normal
