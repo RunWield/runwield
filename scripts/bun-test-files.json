@@ -807,7 +807,7 @@
     "src/ui/tui/tui-crash-guards.test.ts",
     "src/ui/tui/tui-manager.test.ts",
     "src/ui/tui/tui.test.ts",
-    "src/ui/tui/tutorial-guidance.test.js",
+    "src/ui/tui/tutorial-guidance.test.ts",
     "src/ui/tui/ui-api-overrides.test.ts",
     "src/ui/workspace/artifact-read-close.test.tsx",
     "src/ui/workspace/background-continuation.integration.test.ts",
