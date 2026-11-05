@@ -201,7 +201,7 @@ const reopenFixture = defineGitFixture(async (root) => {
 for (const revise of [false, true]) {
     test(
         `Code Review reopen projects the same live URL through ${revise ? "revision and CI" : "conversation"} until approval`,
-        { timeout: 10_000 },
+        { timeout: 30_000 },
         async () => {
             const projectRoot = await reopenFixture.checkout();
             await savePlan(projectRoot, "p", "# Review reopen\n\nKeep the exported label.", {

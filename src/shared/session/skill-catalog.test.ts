@@ -110,14 +110,12 @@ test("installed review skill is user-invokable with its portable instructions an
         for (const file of ["SKILL.md", "github.md", "gitlab.md", "pull-requests.md"]) {
             assertEquals(
                 await fsReadFile(join(bundledDir, file), "utf8"),
-                (
-                    await fsReadFile(fromFileUrl(new URL(`../../../skills/review/${file}`, import.meta.url)), "utf8")
-                ).replace("license: MIT; complete terms in ../LICENSE", "license: MIT; complete terms in LICENSE"),
+                await fsReadFile(fromFileUrl(new URL(`../../skills/review/${file}`, import.meta.url)), "utf8"),
             );
         }
         assertEquals(
             await fsReadFile(join(bundledDir, "LICENSE"), "utf8"),
-            await fsReadFile(fromFileUrl(new URL("../../../skills/LICENSE", import.meta.url)), "utf8"),
+            await fsReadFile(fromFileUrl(new URL("../../skills/review/LICENSE", import.meta.url)), "utf8"),
         );
     });
 });
