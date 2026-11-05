@@ -212,7 +212,7 @@ export async function handleEpicPlan({
 
     const canReviewWithArchitect =
         plan.attrs.status === "draft" ||
-        plan.attrs.status === "approved" ||
+        (sequence && plan.attrs.status === "approved") ||
         (sequence &&
             plan.attrs.status === "ready_for_work" &&
             children.every((child) => ["draft", "approved", "ready_for_work"].includes(child.attrs.status)));
@@ -231,9 +231,7 @@ export async function handleEpicPlan({
     if (canReviewWithArchitect) {
         const action = sequence
             ? "Review the Sequence and all children with Planner."
-            : canOpenSlicer
-              ? "Review it with Architect or resume Slicer decomposition to create child plans."
-              : "Review it with Architect to continue planning.";
+            : "Open Epic review or resume planning with Architect.";
         uiAPI.appendSystemMessage(
             `This PROJECT ${sequence ? "Sequence" : "Epic"} contains child Plans. ${action}`,
             false,
@@ -251,9 +249,14 @@ export async function handleEpicPlan({
                 label: `Resume publication: ${child.name}`,
             })),
             ...(canPickChild ? [{ value: "pick_child", label: "Pick a child Planned Change plan" }] : []),
-            ...(canDirectReview ? [{ value: "direct_review", label: "Review plan" }] : []),
+            ...(canDirectReview ? [{ value: "direct_review", label: "Open Epic review" }] : []),
             ...(canReviewWithArchitect
-                ? [{ value: "review", label: sequence ? "Review Sequence with Planner" : "Review with Architect" }]
+                ? [
+                      {
+                          value: "review",
+                          label: sequence ? "Review Sequence with Planner" : "Resume planning with Architect",
+                      },
+                  ]
                 : []),
             ...(canSendBackToArchitect
                 ? [{ value: "architect_re_review", label: "Send back to Architect for re-review" }]

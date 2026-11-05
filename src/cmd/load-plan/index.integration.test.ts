@@ -1568,6 +1568,37 @@ test("direct review menu is omitted when a draft has an invalid execution policy
     });
 });
 
+for (const status of ["draft", "approved", "ready_for_work"] as const) {
+    test(`${status} Epic menu separates direct review from draft planning`, async () => {
+        await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot }) => {
+            await writePlan(projectRoot, "epic-menu", { classification: "PROJECT", status });
+            const { runtime, sessionId } = await createRuntime(projectRoot);
+            const ui = makeUi(["cancel"]);
+            try {
+                await runLoadPlanCommand(["epic-menu"], {
+                    sessionRuntime: runtime,
+                    sessionId,
+                    uiAPI: ui.uiAPI,
+                    editor: ui.editor,
+                });
+
+                const options = ui.promptOptions[0];
+                assertEquals(
+                    options.filter((option) => option.value === "direct_review"),
+                    [{ value: "direct_review", label: "Open Epic review" }],
+                );
+                assertEquals(
+                    options.filter((option) => option.value === "review"),
+                    status === "draft" ? [{ value: "review", label: "Resume planning with Architect" }] : [],
+                );
+                assertEquals((await loadPlan(projectRoot, "epic-menu"))?.attrs.status, status);
+            } finally {
+                runtime.closeAllSessions();
+            }
+        });
+    });
+}
+
 test("direct review on a PROJECT Epic approves and slices", async () => {
     await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot, setModelMessages }) => {
         await writePlan(projectRoot, "direct-epic", { classification: "PROJECT", status: "draft" });
@@ -1609,13 +1640,13 @@ test("direct review on a PROJECT Epic approves and slices", async () => {
             assertEquals((await loadPlan(projectRoot, "direct-epic"))?.attrs.status, "ready_for_decomposition");
             assertEquals(
                 ui.promptOptions[0].some(
-                    (option) => option.value === "direct_review" && option.label === "Review plan",
+                    (option) => option.value === "direct_review" && option.label === "Open Epic review",
                 ),
                 true,
             );
             assertEquals(
                 ui.promptOptions[0].some(
-                    (option) => option.value === "review" && option.label === "Review with Architect",
+                    (option) => option.value === "review" && option.label === "Resume planning with Architect",
                 ),
                 true,
             );
