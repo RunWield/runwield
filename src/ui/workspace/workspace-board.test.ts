@@ -29,7 +29,6 @@ import { PlanBoard, buildPlanBoardSearchIndex } from "./components/Board.tsx";
 import { renderMarkdown } from "./components/MarkdownView.tsx";
 
 import { detailHref, workspaceHref } from "./components/PlanCard.tsx";
-import { draftRecoveryState, planBodyDraftKey, restoredDraftExpectedBodyHash } from "./islands/PlanBodyEditor.jsx";
 
 import { matchingPlanIds, normalizePlanSearchQuery, PLAN_SEARCH_QUERY_PARAM } from "./islands/PlanBoardSearch.tsx";
 

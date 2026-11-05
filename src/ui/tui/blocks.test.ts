@@ -26,10 +26,9 @@ import {
     ThinkingBlock,
     ToolExecutionBlock,
     ToolExecutionGroupBlock,
-    UserPromptBlock,
     ValidationHandoffBlock,
 } from "./blocks.js";
-import { getCapabilities, setCapabilities, Text } from "@earendil-works/pi-tui";
+import { getCapabilities, setCapabilities } from "@earendil-works/pi-tui";
 import stripAnsi from "strip-ansi";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

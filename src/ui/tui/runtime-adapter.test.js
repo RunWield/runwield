@@ -1,3 +1,4 @@
+import { getCapabilities, setCapabilities } from "@earendil-works/pi-tui";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import { emitHostedSessionRuntimeEvent } from "../../shared/session/session-runtime-events.js";
@@ -13,7 +14,7 @@ import { createUiApiFixture } from "./ui-api-test-fixture.ts";
  * @typedef {ReturnType<typeof createUiApiFixture> & Pick<SessionFixture, 'runtime' | 'sessionId' | 'session'> & {adapter: ReturnType<typeof attachTuiRuntimeAdapter>, options: Parameters<typeof attachTuiRuntimeAdapter>[0], notifications: string[], completions: string[], emit: (event: EventDraft) => boolean, panel: () => string}} AdapterFixture
  */
 /**
- * @param {(fixture: AdapterFixture) => Promise<void>} check
+ * @param {(fixture: AdapterFixture) => void | Promise<void>} check
  * @param {Parameters<SessionFixture['session']['replaceWorkflowContext']>[0]} context
  */
 async function withAdapter(check, context = { routingIntent: "FEATURE", complexity: "LOW" }) {
@@ -46,7 +47,7 @@ async function withAdapter(check, context = { routingIntent: "FEATURE", complexi
                 completions,
                 emit: (event) =>
                     emitHostedSessionRuntimeEvent(session, {
-                        ...(event.type.startsWith("tool_")
+                        ...("toolName" in event
                             ? { title: event.toolName, kind: "execute", content: [], details: null, durationMs: 0 }
                             : {}),
                         ...(event.type.startsWith("assistant_") ? { agentName: "Guide" } : {}),
@@ -75,7 +76,7 @@ const progress = (outcome = "running") => ({
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 test("real TUI renders semantic messages, tool results and safe failures without duplicate diagnostics", async () => {
-    await withAdapter(async ({ emit, allText, uiAPI }) => {
+    await withAdapter(({ emit, allText, uiAPI }) => {
         emit({ type: "user_message", text: "Inspect this change", images: [] });
         emit({
             type: "assistant_thinking_delta",
@@ -94,6 +95,7 @@ test("real TUI renders semantic messages, tool results and safe failures without
             isError: false,
             durationMs: 10,
         });
+        if (!uiAPI.toggleToolOutputsExpanded) throw new Error("Expected tool-output toggle");
         uiAPI.toggleToolOutputsExpanded();
         emit({
             type: "assistant_text_delta",
@@ -123,7 +125,7 @@ test("real TUI renders semantic messages, tool results and safe failures without
 });
 
 test("real TUI validation reports survive model changes and clear on settlement or failure", async () => {
-    await withAdapter(async ({ emit, panel, allText }) => {
+    await withAdapter(({ emit, panel, allText }) => {
         emit({ type: "model_changed", model: "test/model" });
         emit({ type: "thinking_level_changed", thinkingLevel: "medium" });
         emit({
@@ -163,7 +165,7 @@ test("real TUI validation reports survive model changes and clear on settlement 
 
 test("ordinary operations do not leak old completion reports into a later validation", async () => {
     await withAdapter(
-        async ({ emit, panel }) => {
+        ({ emit, panel }) => {
             emit({
                 type: "assistant_text_delta",
                 messageId: "operation",
@@ -177,7 +179,7 @@ test("ordinary operations do not leak old completion reports into a later valida
         },
         { routingIntent: "OPERATION", complexity: "LOW" },
     );
-    await withAdapter(async ({ emit, panel }) => {
+    await withAdapter(({ emit, panel }) => {
         emit({
             type: "assistant_text_delta",
             messageId: "old",
@@ -193,7 +195,7 @@ test("ordinary operations do not leak old completion reports into a later valida
 });
 
 test("replayed thinking and hidden workflow plumbing stay out of the transcript", async () => {
-    await withAdapter(async ({ emit, allText, runtime, sessionId }) => {
+    await withAdapter(({ emit, allText, runtime, sessionId }) => {
         emit({
             type: "assistant_thinking_delta",
             messageId: "old",
@@ -255,7 +257,7 @@ test("TUI attention belongs to its surface and completion requires current settl
     for (const outcome of /** @type {const} */ (["verified", "failed", "paused"]))
         for (const replay of [false, true]) {
             await withAdapter(async ({ emit, completions, notifications, sessionId, session }) => {
-                for (const notificationSurface of ["workspace", "acp", "tui"]) {
+                for (const notificationSurface of /** @type {const} */ (["workspace", "acp", "tui"])) {
                     session.notificationSurface = notificationSurface;
                     emit({ type: "attention_requested", reason: "agentStopped" });
                 }
@@ -321,42 +323,49 @@ test("TUI retains repeated message IDs from different segments and removes only 
 });
 
 test("TUI preserves read-tool images and hidden-tool image fallback without repeating root handoffs", async () => {
-    await withAdapter(async ({ emit, allText, uiAPI }) => {
-        /** @type {{type: "image", data: string, mimeType: string}} */
-        const image = {
-            type: "image",
-            data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-            mimeType: "image/png",
-        };
-        emit({
-            type: "tool_start",
-            toolCallId: "image-read",
-            toolName: "read",
-            title: "Read diagram.png",
-            kind: "read",
-        });
-        emit({
-            type: "tool_end",
-            toolCallId: "image-read",
-            toolName: "read",
-            output: "Read image",
-            content: [image],
-            isError: false,
-        });
-        uiAPI.toggleToolOutputsExpanded();
-        assertStringIncludes(allText(), "[image/png");
-        const before = allText().split("[image/png").length;
-        emit({
-            type: "tool_end",
-            toolCallId: "hidden-image",
-            toolName: "task_completed",
-            output: "",
-            content: [image],
-            isError: false,
-        });
-        assertEquals(allText().split("[image/png").length, before + 1);
-        emit({ type: "agent_changed", agentName: "guide", displayName: "Guide", rootHandoff: true });
-        emit({ type: "agent_changed", agentName: "guide", displayName: "Guide", rootHandoff: true });
-        assertEquals(allText().split("Agent switched to Guide").length - 1, 1);
+    await withAdapter(({ emit, allText, uiAPI }) => {
+        const capabilities = getCapabilities();
+        setCapabilities({ ...capabilities, images: null });
+        try {
+            /** @type {{type: "image", data: string, mimeType: string}} */
+            const image = {
+                type: "image",
+                data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+                mimeType: "image/png",
+            };
+            emit({
+                type: "tool_start",
+                toolCallId: "image-read",
+                toolName: "read",
+                title: "Read diagram.png",
+                kind: "read",
+            });
+            emit({
+                type: "tool_end",
+                toolCallId: "image-read",
+                toolName: "read",
+                output: "Read image",
+                content: [image],
+                isError: false,
+            });
+            if (!uiAPI.toggleToolOutputsExpanded) throw new Error("Expected tool-output toggle");
+            uiAPI.toggleToolOutputsExpanded();
+            assertStringIncludes(allText(), "[image/png");
+            const before = allText().split("[image/png").length;
+            emit({
+                type: "tool_end",
+                toolCallId: "hidden-image",
+                toolName: "task_completed",
+                output: "",
+                content: [image],
+                isError: false,
+            });
+            assertEquals(allText().split("[image/png").length, before + 1);
+            emit({ type: "agent_changed", agentName: "guide", displayName: "Guide", rootHandoff: true });
+            emit({ type: "agent_changed", agentName: "guide", displayName: "Guide", rootHandoff: true });
+            assertEquals(allText().split("Agent switched to Guide").length - 1, 1);
+        } finally {
+            setCapabilities(capabilities);
+        }
     });
 });

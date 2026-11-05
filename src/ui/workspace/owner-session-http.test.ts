@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { assertEquals } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { withExistingRuntimeInteraction } from "./testing/live-interaction-fixture.ts";
 

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { assertEquals, assertInstanceOf } from "../../testing/assertions.ts";
 import { Container, Editor, Spacer, TuiMainScreen } from "@earendil-works/pi-tui";
-import { createFooterOnlyUiApi, createSilentUiApi, createUiApi } from "./api.js";
+import { createUiApi } from "./api.js";
 import {
     KeyboardHelpBlock,
     ManagedSyncStatusBlock,
@@ -13,7 +13,6 @@ import {
     ThinkingBlock,
     ToolExecutionBlock,
     ToolExecutionGroupBlock,
-    UserPromptBlock,
     ValidationHandoffBlock,
 } from "./blocks.js";
 import stripAnsi from "strip-ansi";
@@ -534,7 +533,7 @@ test("createUiApi renders validation panel separately from active prompt placeme
     assertEquals(activeInteractionContainer.children[0] instanceof PromptSelectBlock, true);
     assertEquals(messageList.children, []);
 
-    selectPrompt(focus()).list.onSelect({ value: "yes" });
+    selectPrompt(focus()).list.onSelect({ value: "yes", label: "Yes" });
     assertEquals(await promptPromise, "yes");
     assertEquals(activeInteractionContainer.children, []);
     assertEquals(messageList.children[0] instanceof PromptSelectBlock, true);
@@ -587,8 +586,9 @@ test("createUiApi promptSelect resolves selection, cancellation, and selection-c
     );
     const selectBlock = selectPrompt(focus());
     assertEquals(messageList.children[1] instanceof Spacer, true);
-    selectBlock.list.onSelectionChange({ value: "two" });
-    selectBlock.list.onSelect({ value: "two" });
+    if (!selectBlock.list.onSelectionChange) throw new Error("Expected selection-change callback");
+    selectBlock.list.onSelectionChange({ value: "two", label: "Two" });
+    selectBlock.list.onSelect({ value: "two", label: "Two" });
 
     assertEquals(await selectionPromise, "two");
     assertEquals(previews, ["two"]);
@@ -602,12 +602,12 @@ test("createUiApi promptSelect resolves selection, cancellation, and selection-c
     const transientPromise = ui.promptSelect("Transient", [{ value: "router", label: "router" }], {
         persistResult: false,
     });
-    selectPrompt(focus()).list.onSelect({ value: "router" });
+    selectPrompt(focus()).list.onSelect({ value: "router", label: "router" });
     assertEquals(await transientPromise, "router");
     assertEquals(messageList.children.length, childCountBeforeTransient);
 
     const agentPromptPromise = ui.promptSelect("Switch agent:", [{ value: "engineer", label: "engineer" }]);
-    selectPrompt(focus()).list.onSelect({ value: "engineer" });
+    selectPrompt(focus()).list.onSelect({ value: "engineer", label: "engineer" });
     assertEquals(await agentPromptPromise, "engineer");
     assertEquals(messageList.children.length, childCountBeforeTransient);
 });
@@ -757,10 +757,14 @@ test("createUiApi dispose clears prompts, timers, focus, and validation containe
 /** @param {import('@earendil-works/pi-tui').Component | null} component */
 function textPrompt(component) {
     if (!(component instanceof PromptTextBlock)) throw new Error("Expected the active text prompt");
-    return component;
+    const onSubmit = component.input.onSubmit;
+    if (!onSubmit) throw new Error("Expected text submission callback");
+    return { input: { onSubmit } };
 }
 /** @param {import('@earendil-works/pi-tui').Component | null} component */
 function selectPrompt(component) {
     if (!(component instanceof PromptSelectBlock)) throw new Error("Expected the active select prompt");
-    return component;
+    const { onSelect, onCancel, onSelectionChange } = component.list;
+    if (!onSelect || !onCancel) throw new Error("Expected selection callbacks");
+    return { list: { onSelect, onCancel, onSelectionChange } };
 }

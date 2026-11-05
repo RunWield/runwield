@@ -10,7 +10,7 @@ import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { savePlan } from "../../plan-store.js";
 import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
-import { getTutorialExplanation, presentTutorialEvent, restoreVerifiedTutorialRecap } from "./tutorial-guidance.ts";
+import { presentTutorialEvent, restoreVerifiedTutorialRecap } from "./tutorial-guidance.ts";
 import { setCustomSetting } from "../../shared/settings.js";
 import { INIT_VERIFICATION_COMMAND_PLACEHOLDER } from "../../tools/init-verification-command.ts";
 

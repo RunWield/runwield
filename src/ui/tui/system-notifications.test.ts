@@ -254,6 +254,7 @@ for (const [termProgram, term, protocol, prefix] of [
         assertEquals(sequence.startsWith(prefix), true);
         assertEquals(sequence.includes("\x1b]bad"), false);
         if (protocol === "osc99") {
+            // deno-lint-ignore no-control-regex
             const parts = [...sequence.matchAll(/p=(title|body);([^\x1b]+)/g)];
             assertEquals(parts.length, 2);
             assertStringIncludes(atob(parts[0][2]), "Agent stopped");

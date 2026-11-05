@@ -4,9 +4,9 @@ import { installFakeClipboardCommands } from "./testing/clipboard-command-fixtur
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { Container, Spacer, StdinBuffer, Text, TuiAltScreen } from "@earendil-works/pi-tui";
-import { createChatView, findVisibleToolBlocks } from "./chat-view.ts";
-import { ToolExecutionBlock, ToolExecutionGroupBlock, UserPromptBlock } from "./blocks.js";
+import { StdinBuffer, TuiAltScreen } from "@earendil-works/pi-tui";
+import { createChatView } from "./chat-view.ts";
+import { ToolExecutionBlock, UserPromptBlock } from "./blocks.js";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { RunWieldTui } from "./tui.ts";
 import { installTerminalFocusState } from "./terminal-focus-state.ts";

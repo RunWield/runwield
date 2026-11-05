@@ -5,13 +5,10 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { initRunWieldTheme } from "../theme/theme.ts";
 import {
     buildFooterContextStat,
-    buildFooterLine1Parts,
     buildFooterLocationText,
     buildFooterWorkflowLabelParts,
     createChatFooterController,
     getFooterWorkflowLabelText,
-    renderFooterWorkflowLabelParts,
-    shouldShowFooterThinkingLevel,
 } from "./chat-footer.ts";
 
 initRunWieldTheme();

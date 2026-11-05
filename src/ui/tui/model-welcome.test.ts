@@ -12,11 +12,7 @@ import {
 } from "../../cmd/testing/runtime-command-fixture.ts";
 import { getSettingsManager } from "../../shared/settings.js";
 import { getModelRegistry } from "../../shared/models/model-registry.ts";
-import {
-    detectModelAvailability,
-    getConfiguredModelAvailability,
-    getSelectedDefaultModelAvailability,
-} from "./model-welcome.ts";
+import { getConfiguredModelAvailability, getSelectedDefaultModelAvailability } from "./model-welcome.ts";
 import {
     createInteractiveCompositionHarness,
     type InteractiveCompositionHarness,
@@ -27,24 +23,6 @@ const WELCOME_TITLE = "Welcome to RunWield";
 const MODEL_SELECTOR_MARKER = "Only showing models from configured providers";
 const REDIRECT_URL = "https://fixture.example/callback";
 const SCRIPTED_PROVIDER_FILTER = "Aardvark";
-
-interface RegistryValueModel {
-    id: string;
-    provider: string;
-}
-
-interface RegistryValue {
-    getAvailable(): RegistryValueModel[];
-    find(provider: string, id: string): RegistryValueModel | undefined;
-}
-
-function registryValue(available: RegistryValueModel[]): RegistryValue {
-    return {
-        getAvailable: () => available,
-        find: (provider: string, id: string) =>
-            available.find((model) => model.id === id && (!provider || model.provider === provider)),
-    };
-}
 
 /** Drive the onboarding completion path through the scripted OAuth provider. */
 async function chooseSubscriptionLogin(harness: InteractiveCompositionHarness): Promise<void> {
