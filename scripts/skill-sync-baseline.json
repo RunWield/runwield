@@ -36,6 +36,11 @@
                     "hash": "dd8e445ab2dfc2c0414ca644317babc9687ee47350a22b7d4d248024d046e066"
                 }
             ]
+        },
+        {
+            "skill": "skills/write-tests/SKILL.md",
+            "skillHash": "89b06bf6c8c1edc92166b5543bc6483b697f0d25f28a971796a6d0ee59e21722",
+            "supportFiles": []
         }
     ]
 }

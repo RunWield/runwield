@@ -83,6 +83,7 @@ export async function checkBunPackage(
             ["plans"],
             ["package-smoke", "image-resize"],
             ["package-smoke", "codemode"],
+            ["package-smoke", "skills"],
         ]) {
             const running = start(args);
             const timeout = setTimeout(() => running.child.kill("SIGKILL"), 30_000);
@@ -92,10 +93,18 @@ export async function checkBunPackage(
                 else if (args[0] === "--version") ok(running.output().includes(metadata.version));
                 else if (args[0] === "plans") match(running.output(), /No saved plans found/);
                 else if (args[1] === "codemode") match(running.output(), /Packaged codemode passed/);
+                else if (args[1] === "skills") match(running.output(), /Packaged skills passed/);
                 else match(running.output(), /Packaged image resize passed/);
             } finally {
                 clearTimeout(timeout);
             }
+        }
+        for (const file of ["SKILL.md", "LICENSE"]) {
+            deepEqual(
+                await readFile(join(home, ".wld/bundled-skills/write-tests", file)),
+                await readFile(join(ROOT, "src/skills/write-tests", file)),
+                `Packaged write-tests/${file} must match the runtime source bytes`,
+            );
         }
         const bin = join(home, "bin");
         await installPackageHelperFixtures(bin, helperFixturePath);
@@ -213,7 +222,7 @@ export async function checkBunPackage(
             await running.finished;
         }
         console.log(
-            `Relocated Bun package passed: CLI onboarding/cancel and Plan entry, worker/WASM, image conversion, Workspace assets/auth, shutdown (${metadata.target}).`,
+            `Relocated Bun package passed: CLI onboarding/cancel and Plan entry, worker/WASM, image conversion, bundled skills, Workspace assets/auth, shutdown (${metadata.target}).`,
         );
     } finally {
         await removeExecutableFixtureDirectory(home);
