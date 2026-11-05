@@ -1,3 +1,4 @@
+import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { lstat as fsLstat } from "node:fs/promises";
 /** Recover a deleted execution checkout from Git evidence left by a manual rescue. */
@@ -190,6 +191,7 @@ export async function recoverMissingExecutionWorktree(
         await runGit(projectRoot, ["worktree", "prune"]);
         await runGit(projectRoot, ["worktree", "add", attempt.path, attempt.branch]);
         worktreeAdded = true;
+        await enterProjectRuntime(attempt.path);
         const restored = await loadPlan(attempt.path, attempt.planName);
         if (!restored || restored.attrs.planId !== attempt.planId) {
             throw new Error("the restored checkout did not contain the expected Plan");

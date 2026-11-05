@@ -1,3 +1,4 @@
+import { admitProjectWithIdentityChoice } from "../../ui/tui/project-identity-entry.ts";
 import { prepareWorktreeRegistry } from "../../shared/worktree-registry.js";
 import process from "node:process";
 import {
@@ -177,6 +178,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
         const startupProjectRoot = getCwd();
         if (!(await confirmProjectDirectory(startupProjectRoot))) return;
         if (!(await confirmProjectDirectory(resolvePrimaryCheckoutRoot(startupProjectRoot)))) return;
+        if (!(await admitProjectWithIdentityChoice(startupProjectRoot))) return;
         await prepareWorktreeRegistry(startupProjectRoot);
         const discovered = await discoverPlanDocumentRoot(startupProjectRoot, planArg);
         if (
@@ -273,6 +275,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
     let unresolvedLifecycleRecords: TransitionRecoveryRecord[] = [];
 
     try {
+        if (options.slashSurface !== "acp" && !(await admitProjectWithIdentityChoice(projectRoot))) return;
         await prepareWorktreeRegistry(projectRoot);
         const discovered = options.slashSurface === "acp" ? null : await discoverPlanDocumentRoot(projectRoot, planArg);
         if (

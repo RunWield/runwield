@@ -72,6 +72,8 @@ interface GitTraceEvent {
 interface TracedProject {
     root: string;
     listings: () => Promise<number>;
+    indexQueries: () => Promise<number>;
+    identityQueries: () => Promise<number>;
 }
 
 async function withTracedProject(run: (project: TracedProject) => Promise<void>) {
@@ -84,12 +86,38 @@ async function withTracedProject(run: (project: TracedProject) => Promise<void>)
             process.env["GIT_TRACE2_EVENT"] = trace;
             await run({
                 root,
+                identityQueries: async () => {
+                    const events: GitTraceEvent[] = (await fsReadFile(trace, "utf8"))
+                        .trim()
+                        .split("\n")
+                        .filter(Boolean)
+                        .map((line) => JSON.parse(line));
+                    return events.filter(
+                        (event) =>
+                            event.event === "start" &&
+                            event.argv?.slice(-4).join(" ") === "rev-parse --show-toplevel --git-common-dir --git-dir",
+                    ).length;
+                },
+                indexQueries: async () => {
+                    const events: GitTraceEvent[] = (await fsReadFile(trace, "utf8"))
+                        .trim()
+                        .split("\n")
+                        .filter(Boolean)
+                        .map((line) => JSON.parse(line));
+                    return events.filter(
+                        (event) => event.event === "start" && event.argv?.slice(-4).join(" ") === "ls-files -z -- .wld",
+                    ).length;
+                },
                 listings: async () => {
                     const lines = (await fsReadFile(trace, "utf8")).trim().split("\n").filter(Boolean);
                     const events: GitTraceEvent[] = lines.map((line) => JSON.parse(line));
                     return events.filter(
                         (event) =>
-                            event.event === "start" && event.argv?.slice(-3).join(" ") === "worktree list --porcelain",
+                            event.event === "start" &&
+                            event.argv
+                                ?.filter((arg) => arg !== "-z")
+                                .slice(-3)
+                                .join(" ") === "worktree list --porcelain",
                     ).length;
                 },
             });
@@ -157,16 +185,20 @@ test("Plan lists share validation without caching Plan or controller contents", 
 });
 
 test("registry lists share inspection within a read and reject newly staged runtime on the next read", async () => {
-    await withTracedProject(async ({ root, listings }) => {
+    await withTracedProject(async ({ root, listings, indexQueries }) => {
+        await settleGitEvidence();
         assertEquals(await listEntries(root), []);
         assert((await listings()) <= 1);
+        const firstIndexQueries = await indexQueries();
         assertEquals(await listEntries(root), []);
+        assertEquals(await indexQueries(), firstIndexQueries);
         assert((await listings()) <= 2);
         const runtimeFile = join(root, ".wld", "debug", "tracked.txt");
         await fsMkdir(join(root, ".wld", "debug"), { recursive: true });
         await fsWriteFile(runtimeFile, "newly staged runtime must be detected\n");
         await git(root, ["add", "-f", ".wld/debug/tracked.txt"]);
         await assertRejects(() => listEntries(root), ProjectRuntimeEntryRefusedError);
+        assert((await indexQueries()) > firstIndexQueries);
         await git(root, ["reset", "--", ".wld/debug/tracked.txt"]);
         assertEquals(await listEntries(root), []);
     });
@@ -247,5 +279,12 @@ test("runtime read scope retries failed validation after the evidence is repaire
             await fsWriteFile(layout.primary.layoutMarkerPath, marker);
             assertEquals((await enterProjectRuntime(root)).primary.checkoutRoot, layout.primary.checkoutRoot);
         });
+    });
+});
+
+test("one passive runtime inspection resolves its selected checkout identity once", async () => {
+    await withTracedProject(async ({ root, identityQueries }) => {
+        assertEquals((await inspectProjectRuntimeReadAccess(root)).kind, "ready");
+        assertEquals(await identityQueries(), 1);
     });
 });

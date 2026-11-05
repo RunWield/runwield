@@ -1,3 +1,4 @@
+import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { REVIEW_DIFF_FORMAT_ARGS } from "./git-snapshot.ts";
 import { tmpdir } from "node:os";
@@ -790,6 +791,7 @@ async function withGateCheckout<T>(primaryRoot: string, commit: string, run: (pa
     const path = join(parent, "checkout");
     await runGit(primaryRoot, ["worktree", "add", "--detach", path, commit]);
     try {
+        await enterProjectRuntime(path);
         return await run(path);
     } finally {
         await runGitResult(primaryRoot, ["worktree", "remove", "--force", "--force", path]);

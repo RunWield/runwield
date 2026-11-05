@@ -20,7 +20,7 @@ import { setCustomSetting } from "../settings.js";
 import { ensurePlanIdentity, loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.js";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { createGitPort } from "../git-port.ts";
-import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { removeWorktreeGitArtifacts } from "../worktree.js";
@@ -533,6 +533,7 @@ test("runValidationLoop shows why FEATURE validation fails when workflow diff is
 test("runValidationLoop fails PROJECT validation when workflow diff only changes a plan document", async () => {
     const { projectRoot, hostedSession } = await makeLifecycleRun("validated_ci", { classification: "PROJECT" });
     await git(projectRoot, ["init", "-b", "main"]);
+    await enterProjectRuntime(projectRoot);
     await git(projectRoot, ["config", "user.email", "runwield@example.com"]);
     await git(projectRoot, ["config", "user.name", "RunWield Test"]);
     await git(projectRoot, ["add", "."]);

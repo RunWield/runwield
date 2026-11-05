@@ -1,6 +1,6 @@
 import process from "node:process";
 import { serveHttp } from "../../shared/http-server.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd, getHomeDir } from "../../constants.js";
 import { type NativeProcess, spawnNativeProcess } from "../../shared/foreground-process.ts";
 import { readableStdin } from "../../shared/stdin-stream.ts";
 import { readFile as fsReadFile, rm as fsRm, stat as fsStat } from "node:fs/promises";
@@ -154,6 +154,7 @@ async function sendPrivateHeader(
         mount: MountHeader;
         remoteHome: string;
         memoryCollection: string;
+        personalOwner: import("../../shared/project-identity.ts").ProjectPersonalOwner;
         modelProof?: RemoteModelProof;
     },
 ): Promise<void> {
@@ -382,6 +383,7 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
             protocol: REMOTE_PROTOCOL_VERSION,
             mount: sftp.header,
             remoteHome: target.home,
+            personalOwner: { kind: "managed-remote", identity: getHomeDir() },
             memoryCollection,
             ...(modelProof ? { modelProof } : {}),
             view: {

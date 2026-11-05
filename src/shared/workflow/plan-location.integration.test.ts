@@ -1,3 +1,4 @@
+import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
@@ -47,7 +48,7 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 function selectedInternalLockPath(root: string, name: string): string {
-    return join(getRunWieldRuntimeDir(fsRealpathSync(root)), PROJECT_INTERNAL_RUNTIME_DIR_NAME, "plan-locks", name);
+    return join(resolveProjectRuntimeLayout(root).selected.planLocksDir, name);
 }
 
 test("Plan locks stay in the linked checkout while primary locks remain independent", async () => {
@@ -56,6 +57,7 @@ test("Plan locks stay in the linked checkout while primary locks remain independ
     const selected = join(container, "selected");
     try {
         await git(root, ["worktree", "add", "-b", "worktree/selected-locks", selected, "HEAD"]);
+        await enterProjectRuntime(selected);
         const selectedLock = selectedInternalLockPath(selected, "demo.lock");
         const selectedCatalog = selectedInternalLockPath(selected, "catalog.lock");
         const primaryLock = selectedInternalLockPath(root, "demo.lock");

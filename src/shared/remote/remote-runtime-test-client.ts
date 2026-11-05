@@ -51,6 +51,7 @@ export interface RuntimeClientInput {
     review?: RuntimeReviewConfiguration;
     connection: RemoteSessionControlConnection;
     resources: string;
+    laptopHome: string;
     memoryCollection: string;
     cwd: string;
 }
@@ -148,7 +149,10 @@ export interface RuntimeClientReport {
 }
 const lines = processLines(stdinStream());
 const input: RuntimeClientInput = JSON.parse((await lines.read()).value || "{}");
-configureRemotePersonalResources({ globalRoot: input.resources });
+configureRemotePersonalResources({
+    globalRoot: input.resources,
+    personalOwner: { kind: "managed-remote", identity: input.laptopHome },
+});
 configureRemoteSettingsConnection(input.connection);
 const clearMcp = configureRemoteMcpConnection(input.connection);
 const clearMemory = configureRemoteMemoryConnection({ ...input.connection, collection: input.memoryCollection });

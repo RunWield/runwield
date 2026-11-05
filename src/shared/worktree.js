@@ -27,7 +27,7 @@ import { assertGitRepository, GitRepositoryRequiredError } from "./git.ts";
 import { resolvePublicationUpstream } from "./publication-target.ts";
 import { getWorkflowDiff, REVIEW_DIFF_FORMAT_ARGS } from "./workflow/git-snapshot.ts";
 import { addEntry, listEntries, pruneStaleEntries, removeEntry } from "./worktree-registry.js";
-import { enterProjectRuntime, resolveProjectRoot, resolveProjectRuntimeLayout } from "./project-runtime-layout.ts";
+import { enterProjectRuntime } from "./project-runtime-layout.ts";
 import {
     isRunWieldOwnedGitignoreChange,
     isRunWieldOwnedRuntimePath,
@@ -923,7 +923,7 @@ export function resolveWorktreeParent(projectRoot, worktreeRoot) {
     if (worktreeRoot) return worktreeRoot;
     const homeDir = getHomeDir();
     if (homeDir) return join(homeDir, RUNWIELD_DIR_NAME, "worktrees", encodeCwdForSessionDir(projectRoot));
-    return resolveProjectRuntimeLayout(resolveProjectRoot(projectRoot)).primary.fallbackWorktreesRoot;
+    throw new Error("An accessible account home is required to create an execution worktree.");
 }
 
 /**
