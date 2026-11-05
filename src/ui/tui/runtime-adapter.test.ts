@@ -1,33 +1,49 @@
 import { getCapabilities, setCapabilities } from "@earendil-works/pi-tui";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
-import { emitHostedSessionRuntimeEvent } from "../../shared/session/session-runtime-events.js";
+import {
+    emitHostedSessionRuntimeEvent,
+    type NotificationSurface,
+    type RuntimeValidationCheckResults,
+    type RuntimeValidationProgress,
+    type SessionRuntimeEvent,
+} from "../../shared/session/session-runtime-events.js";
+import type { ImageContent } from "@earendil-works/pi-ai";
+import type { WorkflowContext } from "../../shared/session/workflow-context-session.ts";
 import stripAnsi from "strip-ansi";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
-import { attachTuiRuntimeAdapter } from "./runtime-adapter.ts";
-import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
+import {
+    attachTuiRuntimeAdapter,
+    type TuiRuntimeAdapterOptions,
+    type TuiRuntimeAdapterRegistration,
+} from "./runtime-adapter.ts";
+import { withSessionViewFixture, type SessionViewFixture } from "./testing/session-view-fixture.ts";
 import { createUiApiFixture } from "./ui-api-test-fixture.ts";
 
-/**
- * @typedef {Parameters<Parameters<typeof withSessionViewFixture>[0]>[0]} SessionFixture
- * @typedef {{type: "image", data: string, mimeType: string}} DisplayImage
- * @typedef {Partial<import('../../shared/session/session-runtime-events.js').SessionRuntimeEvent> & {type: string}} EventDraft
- * @typedef {ReturnType<typeof createUiApiFixture> & Pick<SessionFixture, 'runtime' | 'sessionId' | 'session'> & {adapter: ReturnType<typeof attachTuiRuntimeAdapter>, options: Parameters<typeof attachTuiRuntimeAdapter>[0], notifications: string[], completions: string[], emit: (event: EventDraft) => boolean, panel: () => string}} AdapterFixture
- */
-/**
- * @param {(fixture: AdapterFixture) => void | Promise<void>} check
- * @param {Parameters<SessionFixture['session']['replaceWorkflowContext']>[0]} context
- */
-async function withAdapter(check, context = { routingIntent: "FEATURE", complexity: "LOW" }) {
+type EventDraft = Partial<SessionRuntimeEvent> & Pick<SessionRuntimeEvent, "type">;
+
+interface AdapterFixture
+    extends ReturnType<typeof createUiApiFixture>, Pick<SessionViewFixture, "runtime" | "sessionId" | "session"> {
+    adapter: TuiRuntimeAdapterRegistration;
+    options: TuiRuntimeAdapterOptions;
+    notifications: string[];
+    completions: string[];
+    emit: (event: EventDraft) => boolean;
+    panel: () => string;
+}
+
+type AdapterCheck = (fixture: AdapterFixture) => void | Promise<void>;
+
+async function withAdapter(
+    check: AdapterCheck,
+    context: WorkflowContext | null = { routingIntent: "FEATURE", complexity: "LOW" },
+) {
     await withSessionViewFixture(async ({ runtime, sessionId, session }) => {
         session.replaceWorkflowContext(context);
         const ui = createUiApiFixture();
-        /** @type {string[]} */
-        const notifications = [];
-        /** @type {string[]} */
-        const completions = [];
-        /** @type {Parameters<typeof attachTuiRuntimeAdapter>[0]} */
-        const options = {
+        const notifications: string[] = [];
+        const completions: string[] = [];
+        const options: TuiRuntimeAdapterOptions = {
             runtime,
             sessionId,
             uiAPI: ui.uiAPI,
@@ -68,10 +84,13 @@ async function withAdapter(check, context = { routingIntent: "FEATURE", complexi
         }
     });
 }
-/** @type {import("../../shared/session/session-runtime-events.js").RuntimeValidationCheckResults} */
-const checks = { ci: "passed", semanticReview: "passed", humanReview: "skipped", merge: "passed" };
-/** @param {"running" | "verified" | "paused" | "failed"} outcome @returns {import("../../shared/session/session-runtime-events.js").RuntimeValidationProgress} */
-const progress = (outcome = "running") => ({
+const checks: RuntimeValidationCheckResults = {
+    ci: "passed",
+    semanticReview: "passed",
+    humanReview: "skipped",
+    merge: "passed",
+};
+const progress = (outcome: RuntimeValidationProgress["outcome"] = "running"): RuntimeValidationProgress => ({
     kind: "workflow",
     cycle: 1,
     maxCycles: 3,
@@ -80,7 +99,7 @@ const progress = (outcome = "running") => ({
     stage: outcome === "running" ? "semantic_review" : "terminal",
     checks: { ...checks, merge: outcome === "failed" ? "failed" : "passed" },
 });
-const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 test("real TUI renders semantic messages, tool results and safe failures without duplicate diagnostics", async () => {
     await withAdapter(({ emit, allText, uiAPI }) => {
@@ -249,7 +268,7 @@ test("a duplicate TUI attachment cannot duplicate output and disposal settles an
         try {
             const question = runtime.requestInteraction(sessionId, { type: "text", prompt: "Next question" });
             for (let attempt = 0; attempt < 200 && !allText().includes("Next question"); attempt++)
-                await new Promise((resolve) => setTimeout(resolve, 10));
+                await new Promise<void>((resolve) => setTimeout(resolve, 10));
             assertStringIncludes(allText(), "Next question");
             terminal.typeText("Answer after replacement");
             terminal.pressEnter();
@@ -261,10 +280,10 @@ test("a duplicate TUI attachment cannot duplicate output and disposal settles an
 });
 
 test("TUI attention belongs to its surface and completion requires current settled publication", async () => {
-    for (const outcome of /** @type {const} */ (["verified", "failed", "paused"]))
+    for (const outcome of ["verified", "failed", "paused"] satisfies RuntimeValidationProgress["outcome"][])
         for (const replay of [false, true]) {
             await withAdapter(async ({ emit, completions, notifications, sessionId, session }) => {
-                for (const notificationSurface of /** @type {const} */ (["workspace", "acp", "tui"])) {
+                for (const notificationSurface of ["workspace", "acp", "tui"] satisfies NotificationSurface[]) {
                     session.notificationSurface = notificationSurface;
                     emit({ type: "attention_requested", reason: "agentStopped" });
                 }
@@ -334,8 +353,7 @@ test("TUI preserves read-tool images and hidden-tool image fallback without repe
         const capabilities = getCapabilities();
         setCapabilities({ ...capabilities, images: null });
         try {
-            /** @type {DisplayImage} */
-            const image = {
+            const image: ImageContent = {
                 type: "image",
                 data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
                 mimeType: "image/png",

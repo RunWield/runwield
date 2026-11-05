@@ -1046,8 +1046,8 @@ dependency guard are what prevent this seam from silently returning.
 | One Pi text/thinking/tool translation                  | `src/shared/session/session-subscribers.test.js`                                    |
 | Consumer-ready event identity, usage, and tool data    | `src/shared/session/session-runtime-events.test.js`                                 |
 | One shared tool title and semantic-kind implementation | `src/shared/session/tool-event-title.test.ts`                                       |
-| TUI and ACP consume the same transcript                | `src/ui/tui/runtime-adapter.test.js`, `src/acp/event-mapper.test.js`                |
-| Duplicate TUI adapter attachment fails until disposal  | `src/ui/tui/runtime-adapter.test.js`                                                |
+| TUI and ACP consume the same transcript                | `src/ui/tui/runtime-adapter.test.ts`, `src/acp/event-mapper.test.js`                |
+| Duplicate TUI adapter attachment fails until disposal  | `src/ui/tui/runtime-adapter.test.ts`                                                |
 | Local shell is Runtime-owned                           | `src/shared/session/session-runtime.test.js`, `src/ui/tui/bash-interceptor.test.js` |
 | Semantic interactions and cancellation                 | `src/shared/session/session-runtime.test.js`, adapter interaction tests             |
 | Workflow tools emit messages/events without UI ports   | tool tests under `src/tools/__tests__/`                                             |

@@ -31,7 +31,7 @@ affectedPaths:
     - "src/cmd/compact/index.ts"
     - "src/cmd/compact/index.test.js"
     - "src/ui/tui/runtime-adapter.ts"
-    - "src/ui/tui/runtime-adapter.test.js"
+    - "src/ui/tui/runtime-adapter.test.ts"
     - "src/acp/event-mapper.ts"
     - "src/acp/server.test.js"
     - "src/ui/workspace/components/SessionTimeline.jsx"
@@ -342,7 +342,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   manual-compaction re-arm, and non-duplicated manual/automatic status.
 - `src/ui/tui/runtime-adapter.ts` — render canonical context-resilience messages without implementing policy or
   normalization in the TUI.
-- `src/ui/tui/runtime-adapter.test.js` — verify each user-visible context outcome renders once.
+- `src/ui/tui/runtime-adapter.test.ts` — verify each user-visible context outcome renders once.
 - `src/acp/event-mapper.ts` — map the same semantic event to ACP text plus structured `_meta` status/reason fields.
 - `src/acp/server.test.js` — verify ACP receives equivalent outcomes without Session content or TUI-specific semantics.
 - `src/ui/workspace/components/SessionTimeline.jsx` and Session history/event projection tests — render the new event
@@ -463,7 +463,7 @@ src/shared/session/agent-handler.test.ts src/shared/session/request-dispatch.tes
 src/shared/session/background-tasks.test.ts src/shared/session/background-tasks-extra.test.ts
 src/shared/session/segment-rollover.test.js src/shared/session/session-transcript-projection.test.ts
 src/tools/__tests__/delegate-agent.test.ts src/cmd/compact/index.test.js
-src/ui/tui/runtime-adapter.test.js src/acp/server.test.js src/ui/workspace/workspace-session-ux.test.tsx`.
+src/ui/tui/runtime-adapter.test.ts src/acp/server.test.js src/ui/workspace/workspace-session-ux.test.tsx`.
   Include new focused integration suites through the same runner. Never use direct `deno test`.
 - Existing coverage: preserve manual/resume compaction, automatic-disabled behavior, image and Named Invocation context,
   completed tool persistence, active-Agent identity, genuine backend failure recovery, steering transfer, Pair

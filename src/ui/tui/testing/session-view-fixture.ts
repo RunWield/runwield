@@ -5,7 +5,7 @@ import { openFileSessionStore } from "../../../shared/session/file-session-store
 import type { HostedSession } from "../../../shared/session/hosted-session.js";
 import type { FileSessionStore } from "../../../shared/session/file-session-store-types.ts";
 
-interface SessionViewFixture {
+export interface SessionViewFixture {
     runtime: SessionRuntime;
     host: SessionHost;
     sessionId: string;
