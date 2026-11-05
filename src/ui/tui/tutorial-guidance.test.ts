@@ -1,5 +1,5 @@
 import { createUiApiFixture } from "./ui-api-test-fixture.ts";
-import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
+import { withSessionViewFixture, type SessionViewFixture } from "./testing/session-view-fixture.ts";
 import { test } from "node:test";
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -7,15 +7,18 @@ import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { savePlan } from "../../plan-store.js";
+import { savePlan, type PlanFrontMatter } from "../../plan-store.js";
 import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
-import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
+import {
+    RuntimeEventTypes,
+    type RuntimeValidationCheckResults,
+    type SessionRuntimeEvent,
+} from "../../shared/session/session-runtime-events.js";
 import { presentTutorialEvent, restoreVerifiedTutorialRecap } from "./tutorial-guidance.ts";
 import { setCustomSetting } from "../../shared/settings.js";
 import { INIT_VERIFICATION_COMMAND_PLACEHOLDER } from "../../tools/init-verification-command.ts";
 
-/** @param {string[]} messages */
-function tutorialView(messages) {
+function tutorialView(messages: string[]) {
     const view = createUiApiFixture();
     const append = view.uiAPI.appendSystemMessage.bind(view.uiAPI);
     view.uiAPI.appendSystemMessage = (text, error, header) => {
@@ -31,8 +34,7 @@ function tutorialView(messages) {
     return view;
 }
 
-/** @param {Parameters<Parameters<typeof withSessionViewFixture>[0]>[0]} fixture */
-async function startTutorial(fixture) {
+async function startTutorial(fixture: SessionViewFixture) {
     await fixture.runtime.promptUserTurn(fixture.sessionId, {
         initialRequest: "Start tutorial",
         agentName: "planner",
@@ -46,15 +48,21 @@ async function startTutorial(fixture) {
     });
 }
 
-/** @type {import("../../shared/session/session-runtime-events.js").RuntimeValidationCheckResults} */
-const CHECKS = { ci: "passed", semanticReview: "passed", humanReview: "skipped", merge: "passed" };
-
-/** @typedef {{ shownExplanationIds?: string[], recapShown?: boolean }} TutorialUpdate */
+const CHECKS: RuntimeValidationCheckResults = {
+    ci: "passed",
+    semanticReview: "passed",
+    humanReview: "skipped",
+    merge: "passed",
+};
 
 test("tutorial verified recap requires exact verified status", async () => {
     await withRuntimeCommandFixture("tutorial-manual-status-", async ({ projectRoot, setModelResponse }) => {
         setModelResponse("Choose a small change.");
-        for (const status of /** @type {const} */ (["implemented", "user_verified", "closed_without_verification"])) {
+        for (const status of [
+            "implemented",
+            "user_verified",
+            "closed_without_verification",
+        ] satisfies PlanFrontMatter["status"][]) {
             const planId = `${status}-plan-id`;
             const planName = `${status}-plan`;
             await savePlan(projectRoot, planName, `# ${planName}\n`, {
@@ -74,8 +82,7 @@ test("tutorial verified recap requires exact verified status", async () => {
 
             const runtime = createSessionRuntime();
             const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
-            /** @type {string[]} */
-            const messages = [];
+            const messages: string[] = [];
             try {
                 await runtime.promptUserTurn(created.sessionId, {
                     initialRequest: "Start tutorial",
@@ -101,7 +108,7 @@ test("tutorial verified recap requires exact verified status", async () => {
                         runtime,
                         sessionId: created.sessionId,
                         uiAPI: view.uiAPI,
-                        event: /** @type {any} */ ({ type: RuntimeEventTypes.BUSY_CHANGED, busy: false }),
+                        event: { type: RuntimeEventTypes.BUSY_CHANGED, busy: false } as SessionRuntimeEvent,
                     });
                 } finally {
                     view.close();
@@ -121,8 +128,7 @@ test("tutorial guidance persists deduplication and requires an associated Plan f
         const runtime = createSessionRuntime();
         const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
         const sessionId = created.sessionId;
-        /** @type {string[]} */
-        const messages = [];
+        const messages: string[] = [];
         const view = tutorialView(messages);
         const uiAPI = view.uiAPI;
         try {
@@ -138,10 +144,10 @@ test("tutorial guidance persists deduplication and requires an associated Plan f
                     planId: null,
                 },
             });
-            const reviewEvent = /** @type {any} */ ({
+            const reviewEvent = {
                 type: RuntimeEventTypes.INTERACTION_REQUESTED,
                 interactionType: "plan_review",
-            });
+            } as SessionRuntimeEvent;
             await presentTutorialEvent({ runtime, sessionId, uiAPI, event: reviewEvent });
             await presentTutorialEvent({ runtime, sessionId, uiAPI, event: reviewEvent });
             assertEquals(messages.length, 1);
@@ -150,10 +156,10 @@ test("tutorial guidance persists deduplication and requires an associated Plan f
                 "plan-review",
             ]);
 
-            const verifiedEvent = /** @type {any} */ ({
+            const verifiedEvent = {
                 type: RuntimeEventTypes.SYSTEM_STATUS,
                 validationProgress: { stage: "terminal", outcome: "verified", checks: CHECKS },
-            });
+            } as SessionRuntimeEvent;
             await presentTutorialEvent({ runtime, sessionId, uiAPI, event: verifiedEvent });
             assertEquals(messages.length, 1, "verified recap needs committed Plan identity");
 
@@ -199,8 +205,7 @@ test("completed tutorial recap restores after reload without changing saved prog
                 deliveryEvidence: { version: 1, mode: "non_git_in_place" },
             },
         );
-        /** @type {string[]} */
-        const messages = [];
+        const messages: string[] = [];
         const view = tutorialView(messages);
         const uiAPI = view.uiAPI;
         try {
@@ -218,7 +223,7 @@ test("completed tutorial recap restores after reload without changing saved prog
             });
             await runtime.recordPlanAssociation(created.sessionId, { planId, planName, purpose: "execution" });
             await runtime.updateTutorialContext(created.sessionId, { planId });
-            const idle = /** @type {any} */ ({ type: RuntimeEventTypes.BUSY_CHANGED, busy: false });
+            const idle = { type: RuntimeEventTypes.BUSY_CHANGED, busy: false } as SessionRuntimeEvent;
             await presentTutorialEvent({ runtime, sessionId: created.sessionId, uiAPI, event: idle });
             assertEquals(messages.length, 1);
             const saved = runtime.getSessionSnapshot(created.sessionId);
@@ -266,7 +271,7 @@ test("completed tutorial recap restores after reload without changing saved prog
                 await restoreVerifiedTutorialRecap({ runtime: restarted, sessionId: loaded.sessionId, uiAPI });
                 assertEquals(messages, []);
             }
-            await new Promise((resolve) => setTimeout(resolve, 20));
+            await new Promise<void>((resolve) => setTimeout(resolve, 20));
             assertEquals(await readFile(planPath, "utf8"), legacyMarkdown);
             assertEquals(await Promise.all(files.map((path) => readFile(path, "base64"))), beforeFiles);
             assertEquals(
