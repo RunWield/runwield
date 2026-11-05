@@ -358,6 +358,22 @@ owns the lifecycle metadata and keeps the user's current body intact through met
 rollback. A document save retains its assigned Plan identity and durable workflow decisions. Saving content protects edits made since that content was opened. Changes to the intended work follow normal
 Plan review.
 
+**Requirement: Explicit canonical packages keep metadata beside editable documents.** Internal package operations
+for an established ordinary personal Project persist one ID-addressed package in home storage, with versioned
+`plan.wld.json`, required `context.md` and `validation.md`, and optional QA and integration resources. Document hashes
+and metadata revisions are independent: changing either cannot overwrite or unnecessarily stale the other. Markdown,
+including YAML-looking prose, cannot assign identity or workflow state. Rename preserves identity, references and
+ID-based relationships; archive visibility does not archive children. Strict passive reads distinguish missing,
+damaged, unsafe and pending packages while keeping healthy packages available.
+Creation and rename reject a destination whose existing directory spelling differs from the requested name on the
+store's filesystem, preserving readable packages and the existing namespace.
+
+This is a preparatory persistence capability. Public discovery, adoption, lifecycle and Epic workflows still use their
+admitted repository Plans. Package operations create no checkout copy or `.wld/plans` alias. Import, public activation,
+managed-remote transport, lifecycle input binding, delivery copies, history and retention remain targets in the
+[Plan Store proposal](plan-store-prd.md#plan-store). Explicit managed-remote ownership cannot fall back to an execution
+account's local package store.
+
 **Requirement: External Markdown Plans are first-class.** A plain Markdown file in `docs/plans/` is a valid draft.
 Listing, browsing, and inspecting it leave its bytes as they are. Deliberate `/load-plan` adoption adds identity and
 defaults and keeps the body and the file's original age. Loading an adopted Plan again keeps its lifecycle and
@@ -400,6 +416,14 @@ conditions for reconsideration. Routine choices receive brief treatment; individ
 
 **Acceptance scenarios:**
 
+- Given an explicit package and an ordinary editor change, a metadata update preserves every document byte. A
+  document save rejects an old document hash; a metadata update rejects an old metadata revision independently.
+- Given an Epic package renamed or archived, its ID, Session references, children and dependency IDs stay stable;
+  reserved QA and integration resources never become executable Plans.
+- Given `Epic/first` on a case-insensitive filesystem, creating or renaming another package to `epic/second` fails
+  before publication. Existing packages remain readable, and a correctly spelled destination remains usable.
+- Given package inspection in a missing or damaged store, no identities, locks, directories or repairs are created;
+  healthy packages remain inspectable. Existing repository Plan discovery and saves retain their behavior.
 - Given an external Plan without metadata, a listing or board shows it unchanged; loading it adopts it with its prose
   intact.
 - Given `/load-plan` without an argument, the picker lists local Plan documents; Cancel leaves everything as it was.
@@ -727,6 +751,14 @@ confirms the outcome of an uncertain external action before it repeats that acti
 action or active workflow owner. Passive Plan inspection neither starts repair nor queues it for later; pending read
 availability does not abandon the workflow or require a separate Doctor ceremony.
 
+**Requirement: Package persistence recovers without inventing workflow progress.** Explicit package mutations settle
+interrupted creation and rename under Project-scoped native locks. Passive reads report unresolved publication instead
+of selecting an old or new location as authoritative. Durable metadata replacement preserves committed revisions across
+restart; recovery cannot revert a later revision. A retained input commits all observed document bytes, membership,
+hashes, Plan identity and metadata revision before returning a reference. Detected changes or missing required input
+produce no usable reference. Retained bytes survive later live edits. Capture assigns no approval, execution or delivery
+status; those consumers bind inputs in the later lifecycle work.
+
 **Requirement: Separate saved delivery evidence from fresh publication proof.** Passive progress reads show applicable
 saved evidence without remote verification. A valid controller publication receipt can preserve established delivery
 after attempt cleanup. Doctor uses the same controller evidence for Epic children read from cached target snapshots
@@ -770,6 +802,13 @@ point. Commands are copy-ready with real values. Waiting for the user's action s
 
 **Acceptance scenarios:**
 
+- Given competing package writers from worktrees or explicitly linked clones, one stale revision wins once; a
+  metadata edit and document edit both survive. An active native lock is not stolen; process exit releases it.
+- Given interruption during package publication, inspection reports pending recovery without writes. The next
+  deliberate package operation settles one identity and location, preserving committed documents and metadata.
+- Given a required or optional document change detected during capture, no retained-input handle is returned. After
+  successful capture or loss of its acknowledgement, every resolvable input contains all committed bytes and hashes;
+  staging alone never resolves as an input.
 - Given passive progress reads and an unreachable upstream, no fetch or clone starts. Applicable saved completion
   remains visible after attempt cleanup; absent or invalidated proof stays unconfirmed.
 - Given an Epic child with an applicable controller receipt, Doctor accepts that saved delivery when it reads a cached
@@ -778,6 +817,10 @@ point. Commands are copy-ready with real values. Waiting for the user's action s
   or request publication again. A real active document or unfinished attempt still requires inspection.
 - Given an action after a successful read, the action repeats runtime admission and current evidence checks. Read
   availability cannot authorize execution, publication, or a lifecycle change.
+- Given one Plan publishing while another removes its completed worktrees, a temporarily pending authority read
+  releases the publishing Plan's lock before a bounded retry. Publication re-enters runtime admission and resumes
+  its durable attempt without repeating completed checks or requesting a manual reload. Malformed authority remains
+  an error, never an empty registry or proof of publication.
 - Given two Plans and a missing execution document for one, catalog reads and validation identity preparation for the
   other succeed. Neither operation changes the missing Plan's primary copy or registry entry.
 - Given that missing document, loading its Plan reports the exact execution path and does not use the primary copy.
@@ -2584,6 +2627,8 @@ removal as completed cleanup.
 repair, writes, or writer-lock probes. Fresh Projects need no storage; unmigrated or interrupted authority leaves
 workflow details pending without combining old and new stores. Adopted authority remains readable when legacy recovery
 input returns. Path resolution alone is not permission to read runtime state.
+If publication removes a linked checkout during its Git evidence read, inspection leaves details pending until a fresh
+read establishes current authority. Git failures for an existing checkout remain visible errors.
 
 Deliberate actions enter runtime state before mutation locks or writes. Ordinary local execution and manual SSH
 execution adopt checkout runtime into the executing account's `~/.wld/projects/<projectId>/`, including unfinished
@@ -2654,6 +2699,8 @@ Open product questions:
   refusing a conflict; valid current locks remain intact, and genuine authority conflicts still block entry.
 - Given adoption completes during passive inspection, Core rechecks changed marker evidence without writes or lock
   probes; valid current locks remain intact, and unmatched authorities still produce a conflict.
+- Given publication removes a linked checkout between its filesystem check and Git read, passive polling waits for
+  fresh evidence and then reads the remaining registry. A damaged index in an existing checkout still reports failure.
 - Given adopted state with returning legacy files, passive reads keep current authority without recovery; selecting a
   Plan performs required recovery and preserves current decisions.
 - Given a symlink escape, newer marker, identity conflict, or unreadable registry, passive reads keep the specific

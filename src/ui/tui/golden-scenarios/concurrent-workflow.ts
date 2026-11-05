@@ -200,7 +200,8 @@ export const concurrentPlansIdentityScenario = {
         { type: "concurrentType", name: "plan-b", text: "/load-plan concurrent-b" },
         { type: "concurrentEnter", name: "plan-b" },
         { type: "concurrentEnter", name: "plan-b" },
-        { type: "waitForEvent", event: "concurrent:plan-b:runtime:tool:start:bash", timeoutMs: 30000 },
+        // This wait includes worktree preparation and the managed execution-segment handoff.
+        { type: "waitForEvent", event: "concurrent:plan-b:runtime:tool:start:bash", timeoutMs: 60000 },
         { type: "sleep", ms: 1000 },
         {
             type: "captureProjectState",

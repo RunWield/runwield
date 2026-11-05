@@ -1,6 +1,6 @@
 # Plan Store
 
-Last updated: 2026-11-01 EST
+Last updated: 2026-11-04 EST
 
 ## Background
 
@@ -14,6 +14,18 @@ and Work Records are also committed to the repository. The full proposal also mo
 project `.wld/internal/` into `~/.wld/projects/<projectId>/`. Only local settings and user overrides remain in project
 `.wld/`. Ordinary runtime relocation is current under the Core work-protection capability. Plan/Work Record package
 adoption and managed transport remain target requirements.
+
+## Current Persistence Boundary
+
+Explicit internal package operations now provide home storage for established ordinary Projects, independent document
+hashes and metadata revisions, ID-based relationships, rename/archive/restore, native writer coordination, recoverable
+publication, and durable retained inputs. The [Core authoring requirements](runwield-core-prd.md#plan-authoring-and-external-adoption)
+and [recovery requirements](runwield-core-prd.md#execution-validation-and-recovery) own this preparatory contract.
+
+Public Plan discovery, lifecycle and Epic workflows continue using repository Markdown. These operations do not import
+existing Plans or create a second writable representation of an admitted Plan. Import, lifecycle binding, public
+activation, managed-remote ownership transport, repository publication, Work Records, milestone history and retention
+remain target journeys below. A captured input is persistence evidence, not approval or delivery evidence.
 
 ## Problem Description
 

@@ -1,4 +1,5 @@
 import { preparePlanWorkflow } from "./plan-preparation.ts";
+import { ProjectRuntimeReadPendingError } from "../project-runtime-layout.ts";
 import { stat as fsStat } from "node:fs/promises";
 import { completeInPlaceWorkRecord } from "../work-records/in-place-completion.ts";
 import { ValidationHostRejected, ValidationHostWait } from "./validation-host-contract.ts";
@@ -262,29 +263,67 @@ export async function runPublicationPhase(
     context: PhaseContext,
     humanReviewMetadata: HumanReviewMetadata,
 ): Promise<PublicationOutcome> {
-    args.session.assertLive();
-    await preparePlanWorkflow(context.projectRoot, args.planName);
-    args.session.releaseActiveAgent();
-    const outcome = await withPlanLock(
-        context.projectRoot,
-        args.planName,
-        async () => await runLockedPublicationPhase(args, context, humanReviewMetadata),
-    );
-    args.session.assertLive();
-    if (!outcome.recorded && (await preparePublicationRevalidation(context.projectRoot, args.planName))) {
-        emitStatus(args, PUBLICATION_REVALIDATION_MESSAGE);
-        return {
-            recorded: false,
-            result: {
-                kind: "paused",
-                planName: args.planName,
-                projectRoot: context.projectRoot,
-                continueValidation: true,
-                reason: PUBLICATION_REVALIDATION_MESSAGE,
-            },
-        };
+    for (let attempt = 1; ; attempt += 1) {
+        try {
+            args.session.assertLive();
+            await preparePlanWorkflow(context.projectRoot, args.planName);
+            args.session.releaseActiveAgent();
+            const outcome = await withPlanLock(
+                context.projectRoot,
+                args.planName,
+                async () => await runLockedPublicationPhase(args, context, humanReviewMetadata),
+            );
+            args.session.assertLive();
+            if (!outcome.recorded && (await preparePublicationRevalidation(context.projectRoot, args.planName))) {
+                emitStatus(args, PUBLICATION_REVALIDATION_MESSAGE);
+                return {
+                    recorded: false,
+                    result: {
+                        kind: "paused",
+                        planName: args.planName,
+                        projectRoot: context.projectRoot,
+                        continueValidation: true,
+                        reason: PUBLICATION_REVALIDATION_MESSAGE,
+                    },
+                };
+            }
+            return outcome;
+        } catch (error) {
+            if (!(error instanceof ProjectRuntimeReadPendingError)) throw error;
+            args.session.assertLive();
+            // A sibling's publication can change the checkout inventory during a passive read.
+            // Release our Plan lock before waiting, then re-enter admission and durable publication.
+            const decision = decideValidationRecovery({
+                failure: {
+                    code: "publication/runtime_pending",
+                    message: "Concurrent workflow updates are still settling.",
+                    operation: "publication",
+                    recoveryClass: "transient",
+                    retry: { idempotent: true },
+                },
+                attempt,
+                policy: readValidationRetryPolicy(context.projectRoot),
+                nextPhase: "delivery",
+            });
+            await recordOperationalRecoveryMetric(args, context.projectRoot, decision.result);
+            if (
+                decision.action === "retry" &&
+                (await waitForValidationRetryWithSessionCancellation(args, decision.delayMs, "publication")) ===
+                    "completed"
+            )
+                continue;
+            return {
+                recorded: false,
+                result: {
+                    kind: "paused",
+                    planName: args.planName,
+                    projectRoot: context.projectRoot,
+                    reason: decision.action === "retry" ? "Validation retry was canceled." : decision.result.message,
+                    recovery: decision.result,
+                },
+            };
+        }
     }
-    return outcome;
 }
 
 async function runLockedPublicationPhase(
@@ -561,6 +600,7 @@ async function runLockedPublicationPhase(
         } catch (caught) {
             args.session.assertLive();
             if (caught instanceof ValidationHostWait || caught instanceof ValidationHostRejected) throw caught;
+            if (caught instanceof ProjectRuntimeReadPendingError) throw caught;
             const error = caught instanceof Error ? caught : new Error(String(caught));
             const failure = normalizePublicationFailure(error);
             // A source can change after this invocation sealed it. Recover in

@@ -1,0 +1,10 @@
+import { test } from "node:test";
+import { recoverDelivery } from "./delivery-recovery-test-fixture.ts";
+
+for (const point of ["target_published", "publication_verified"]) {
+    for (const timing of ["before", "after"]) {
+        test(`fresh Attached process recovers ${timing} ${point} without repeating accepted work`, async () => {
+            await recoverDelivery(point, timing);
+        });
+    }
+}

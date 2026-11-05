@@ -230,7 +230,14 @@ async function assertUntracked(roots: string[]): Promise<void> {
         const evidence = await observeGitEvidence(`home-runtime-index\0${root}`, await gitIndexEvidence(root));
         let tracked = reusedGitRead<string>(evidence);
         if (tracked === undefined) {
-            tracked = git(root, ["ls-files", "-z", "--", ".wld"]);
+            try {
+                tracked = git(root, ["ls-files", "-z", "--", ".wld"]);
+            } catch (error) {
+                // Publication can remove a linked checkout after its Git entry was observed.
+                // Identity inspection below leaves that stale root pending until the next read.
+                if (!(await info(root))) continue;
+                throw error;
+            }
             await rememberGitRead(evidence, tracked);
         }
         const paths = tracked.split("\0").filter(isRunWieldOwnedRuntimePath);
