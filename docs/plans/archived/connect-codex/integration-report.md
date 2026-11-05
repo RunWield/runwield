@@ -75,8 +75,8 @@ observed host. Its one-hour MCP timeout was exercised with a 65-second call. Pro
 execution remain distinct evidence scopes. Saved summaries identify their exact source commit, digest, host version,
 permissions, and limitations; they contain no raw conversation or credentials.
 
-Both [installed protocol](../../../src/attached/codex/acceptance/results/codex-0.164.0-alpha.11.1-installed-protocol.json)
-and [source-skill](../../../src/attached/codex/acceptance/results/codex-0.164.0-alpha.11.1-source-skill.json) acceptance pass
+Both [installed protocol](../../../../src/attached/codex/acceptance/results/codex-0.164.0-alpha.11.1-installed-protocol.json)
+and [source-skill](../../../../src/attached/codex/acceptance/results/codex-0.164.0-alpha.11.1-source-skill.json) acceptance pass
 on clean integrated source `a2ff2ef73`, digest `6cb23082c7ed342e3216d5986d9e19f080aa58877c67ba72636cf319b388f697`,
 with Codex `0.164.0-alpha.11.1`. All 16 live checks pass. The live journey exercises browser Plan chat, restoration, isolated implementation, interrupted validation, independent
 review, forced repair and re-review, Code Review approval, Core publication, and the canonical Work Record. Native
@@ -88,6 +88,6 @@ The Codex Compatibility Matrix remains empty. Native installed-package protocol 
 evidence do not establish an installed complete workflow, desktop UI walkthrough, default-permissions acceptance, or a
 stable version range. Recognized untested hosts receive a visible notice. Publishing this repository PR does not release
 a new Core binary or submit the plugin to a public directory. Installation and remaining scope are documented in the
-[Codex guide](../../user-documentation/connect-codex.md).
+[Codex guide](../../../user-documentation/connect-codex.md).
 
 Review counts: Standards 0 issues / 0 advisories; Spec 0 / 0; Tests 0 / 0.

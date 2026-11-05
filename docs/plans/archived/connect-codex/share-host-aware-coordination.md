@@ -24,7 +24,7 @@ archivedFromPath: "docs/plans/connect-codex/share-host-aware-coordination.md"
 
 The [Epic](../connect-codex.md) adds Codex desktop and CLI to the existing FEATURE coordinator. Claude-only framing,
 compatibility and presentation prevent that reuse. The owning capability is
-[compatibility and honest availability](../../prd/runwield-connect-prd.md#compatibility-and-honest-availability).
+[compatibility and honest availability](../../../prd/runwield-connect-prd.md#compatibility-and-honest-availability).
 
 ## Objective
 

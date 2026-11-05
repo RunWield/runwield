@@ -27,7 +27,7 @@ Workspace's remote Session archive journey: a confirmed archive observes active 
 before the live stop lookup. The request then returns HTTP 409 instead of archiving the now-idle Session. The relevant
 source is unchanged from `875f058b7`; removing a fixture delay reproduces the interleaving with a real Session.
 
-The owning requirement is [Archive conversations from history](../../prd/runwield-workspace-prd.md#browser-sessions)
+The owning requirement is [Archive conversations from history](../../../prd/runwield-workspace-prd.md#browser-sessions)
 and its linked Core Session continuity authority. This repair preserves existing archive semantics.
 
 ## Objective

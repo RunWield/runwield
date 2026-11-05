@@ -27,7 +27,7 @@ registered document authority can replace an unrelated Plan that shares its ID w
 The later identity guard then cannot see the collision. Assigning roles from real directory enumeration reproduces the failure on
 macOS without changing production code or weakening the expected rejection.
 
-The owning capability is Core's [execution, validation, and recovery](../../prd/runwield-core-prd.md#execution-validation-and-recovery).
+The owning capability is Core's [execution, validation, and recovery](../../../prd/runwield-core-prd.md#execution-validation-and-recovery).
 This repair preserves existing Plan identity and document authority; it does not expand Codex workflow scope.
 
 ## Objective
