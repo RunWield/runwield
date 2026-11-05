@@ -1043,7 +1043,7 @@ dependency guard are what prevent this seam from silently returning.
 | Core knows no consumers; consumers use only Runtime    | `src/shared/session/architecture-boundary.test.ts`                                  |
 | Opaque IDs and private internals                       | `src/shared/session/session-runtime.test.js`                                        |
 | One ordered turn lifecycle and error settlement        | `src/shared/session/session-runtime.test.js`                                        |
-| One Pi text/thinking/tool translation                  | `src/shared/session/session-subscribers.test.js`                                    |
+| One Pi text/thinking/tool translation                  | `src/shared/session/session-subscribers.test.ts`                                    |
 | Consumer-ready event identity, usage, and tool data    | `src/shared/session/session-runtime-events.test.js`                                 |
 | One shared tool title and semantic-kind implementation | `src/shared/session/tool-event-title.test.ts`                                       |
 | TUI and ACP consume the same transcript                | `src/ui/tui/runtime-adapter.test.ts`, `src/acp/event-mapper.test.js`                |
@@ -1064,7 +1064,7 @@ Git behavior.
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | Hosted state and registry    | `hosted-session.test.ts`, `session-host.test.ts`                                                                                      | Ownership, isolation, disposal, active turn and interaction state                               |
 | Runtime lifecycle            | `session-runtime.test.js`, `root-session.test.ts`, `active-agent-session.test.js`, `workflow-context-session.test.js`                 | Create/load/replay, prompt serialization, handoffs, close/cancel, persisted markers             |
-| Agent/Pi bridge              | `session-prompt.test.js`, `session-subscribers.test.js`, `agent-switching.test.ts`, `session-catalog.test.js`                         | Root reuse/rebuild, event translation, prompt assembly, project-root catalog isolation          |
+| Agent/Pi bridge              | `session-prompt.test.js`, `session-subscribers.test.ts`, `agent-switching.test.ts`, `session-catalog.test.js`                         | Root reuse/rebuild, event translation, prompt assembly, project-root catalog isolation          |
 | Agent workflow handler       | `agent-handler.test.js`, `orchestrator.test.js`, `decisions.test.js`, `workflow-results` coverage inside workflow tests               | Current-turn outcome extraction, routing, dispatch, completion gates, semantic decisions        |
 | Plan persistence and state   | `plan-store.test.js`, `plan-lifecycle.test.js`, `src/ui/review/plan-review.test.js`, `plan-written.test.js`                           | Front matter, hierarchy, identity, locks, transition matrix, readiness and submission outcomes  |
 | Execution and validation     | `workflow.test.js`, `validation.test.js`, `git-snapshot.test.ts`                                                                      | Worktree setup, completion gate, CI/review/repair/merge paths, lifecycle evidence               |
