@@ -26,6 +26,7 @@ dependencies:
 targetBranch: "epic/external-plan-store"
 userVerifiedAt: null
 status: "reviewed"
+validatedCommit: "033fd4ea6b7c71a27f541d87c7c0f0d849aec306"
 ---
 
 # Add Canonical Plan Packages
