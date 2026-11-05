@@ -29,6 +29,7 @@ dependencies:
 targetBranch: "epic/external-plan-store"
 userVerifiedAt: null
 status: "reviewed"
+validatedCommit: "1a1566d3c552a8a4954c7f5a06db834eb165f335"
 ---
 
 # Import Plans with Workflow Evidence
