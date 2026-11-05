@@ -108,6 +108,15 @@ async function info(path: string): Promise<Stats | null> {
         throw error;
     }
 }
+async function directoryEntries(path: string): Promise<string[]> {
+    try {
+        return await fs.readdir(path);
+    } catch (error) {
+        // Publication and transfer cleanup can retire a directory after inspection.
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
+        throw error;
+    }
+}
 function git(root: string, args: string[]): string {
     const result = spawnSync("git", args, { cwd: root, encoding: "utf8" });
     if (result.error || result.status !== 0)
@@ -214,7 +223,7 @@ async function validateHomeAuthorities(
         if (!stat) return;
         if (stat.isDirectory()) {
             if (repositories && (await info(join(path, ".git")))) return;
-            for (const name of await fs.readdir(path))
+            for (const name of await directoryEntries(path))
                 await walk(join(path, name), repositories || name === "worktrees" || name === "plan-staging");
         } else if (!stat.isFile())
             refuse("malformed_migration_evidence", [path], "Home authority has an unsupported file type.");
@@ -293,27 +302,27 @@ async function sourceMappings(identity: ProjectIdentity, identities: ProjectIden
                 mappings.push({ source: join(base, name), destination: named[name], repository: true });
             }
             if (!(await info(base))) continue;
-            for (const entry of await fs.readdir(base, { withFileTypes: true })) {
-                if (["worktrees", "plan-staging"].includes(entry.name)) continue;
+            for (const name of await directoryEntries(base)) {
+                if (["worktrees", "plan-staging"].includes(name)) continue;
                 if (
                     base === getRunWieldRuntimeDir(root) &&
-                    !LEGACY_PROJECT_RUNTIME_HAZARD_PATHS.includes(`.wld/${entry.name}`)
+                    !LEGACY_PROJECT_RUNTIME_HAZARD_PATHS.includes(`.wld/${name}`)
                 )
                     continue;
-                const source = join(base, entry.name);
+                const source = join(base, name);
                 const destination =
-                    named[entry.name] ??
+                    named[name] ??
                     join(
                         primary.internalRoot,
                         "legacy-recovery",
                         selectedIdentity.checkoutId,
                         base.endsWith("internal") ? "internal" : "flat",
-                        entry.name,
+                        name,
                     );
                 mappings.push({
                     source,
                     destination,
-                    repository: entry.name === "worktrees" || entry.name === "plan-staging",
+                    repository: name === "worktrees" || name === "plan-staging",
                 });
             }
         }
@@ -480,7 +489,7 @@ async function inventory(
         if (isRuntimeLock(mapping, path) && Date.now() - stat.mtimeMs < 30_000)
             refuse("active_legacy_writer", [path], "A legacy publication writer is active. Retry after it settles.");
         const inRepository = repository || (mapping.repository && Boolean(await info(join(path, ".git"))));
-        for (const entry of await fs.readdir(path)) {
+        for (const entry of await directoryEntries(path)) {
             // Checkout-owned runtime is inventoried separately, never carried as a second authority with code.
             if (
                 inRepository &&
@@ -527,8 +536,14 @@ async function readTransfer(
 ): Promise<RuntimeTransfer | null> {
     const path = layout.primary.layoutMigrationJournalPath;
     await assertSafePath(path, projectHome(identity));
-    if (!(await info(path))) return null;
-    const journal: RuntimeTransfer = JSON.parse(await fs.readFile(path, "utf8"));
+    let journal: RuntimeTransfer;
+    try {
+        journal = JSON.parse(await fs.readFile(path, "utf8"));
+    } catch (error) {
+        // A concurrent transfer removes its journal after publishing the completed marker.
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
+        throw error;
+    }
     if (
         journal.version !== 2 ||
         journal.projectId !== identity.projectId ||
@@ -596,7 +611,6 @@ export async function inspectHomeProjectRuntime(identity: ProjectIdentity): Prom
         await assertSafePath(projectHome(identity), identity.executionAccountHome);
         const roots = await checkoutRoots(identity);
         await assertUntracked(roots);
-        const marker = await readMarker(layout, identity);
         // An unbound linked checkout is pending until deliberate entry admits it.
         const identities: ProjectIdentity[] = [];
         for (const root of roots) {
@@ -614,6 +628,7 @@ export async function inspectHomeProjectRuntime(identity: ProjectIdentity): Prom
         }
         const mappings = await sourceMappings(identity, identities);
         const journal = await readTransfer(layout, identity, mappings);
+        const marker = await readMarker(layout, identity);
         await validateHomeAuthorities(identity, layout, journal);
         await validateLegacyEvidence(mappings, roots, journal);
         const files: RuntimeFile[] = [];

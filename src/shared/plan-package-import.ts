@@ -64,6 +64,11 @@ export interface ImportMember {
     documents: PackageDocuments;
     evidence: LegacyImportEvidence;
 }
+interface SelectedImportSource {
+    source: ImportFileEvidence;
+    authority: ImportFileEvidence;
+    authorityKind: LegacyImportEvidence["authorityKind"];
+}
 export interface PreparedPlanImport {
     selection: string;
     membership: string[];
@@ -220,6 +225,17 @@ function planName(value: string): string {
         .replace(/\.md$/i, "");
 }
 
+function namesCollide(left: string, right: string): boolean {
+    if (left.toLowerCase() === right.toLowerCase()) return true;
+    const leftParts = left.split("/"),
+        rightParts = right.split("/");
+    for (let index = 0; index < Math.min(leftParts.length, rightParts.length); index++) {
+        if (leftParts[index] !== rightParts[index])
+            return leftParts[index].toLowerCase() === rightParts[index].toLowerCase();
+    }
+    return false;
+}
+
 /** Capture is repeated before the store writes its durable publication intent. It never enters runtime or repairs it. */
 export async function preparePlanPackageImport(
     identity: ProjectIdentity,
@@ -275,15 +291,11 @@ export async function preparePlanPackageImport(
     for (const allocation of allocations)
         if (catalog.some((p) => p.metadata.planId === allocation.planId))
             rememberName(allocation.name, allocation.planId);
-    const selectedIds = new Map<string, string | null>();
-    const artifacts: ImportFileEvidence[] = [];
+    const selectedIds = new Map<string, SelectedImportSource>();
+    const artifacts = new Map<ImportFileEvidence, string>();
     for (const path of membership) {
         const source = virtualSource || (await inspectImportFile(path));
         result.observations.push(source);
-        if (EPIC_ARTIFACT_FILE_NAMES.includes(basename(path))) {
-            artifacts.push(source);
-            continue;
-        }
         let sourceRoot = identity.checkoutRoot;
         let sourcePlansRoot = plansRoot;
         if (path.replaceAll("\\", "/").includes("/docs/plans/")) {
@@ -295,6 +307,11 @@ export async function preparePlanPackageImport(
                 sourceRoot = candidate;
                 sourcePlansRoot = join(candidate, "docs", "plans");
             }
+        }
+        const sourceRelativePath = relative(within(sourcePlansRoot, path) ? sourcePlansRoot : selectedDirectory, path);
+        if (EPIC_ARTIFACT_FILE_NAMES.includes(basename(path))) {
+            artifacts.set(source, planName(dirname(sourceRelativePath)));
+            continue;
         }
         const repositoryRelativePath = within(sourceRoot, path)
             ? relative(sourceRoot, path).replaceAll("\\", "/")
@@ -311,7 +328,7 @@ export async function preparePlanPackageImport(
         const id = selected.attrs.planId || previous?.planId || randomUUID();
         if (previous && previous.planId !== id)
             throw new PlanPackageError("collision", `Source identity changed: ${path}`);
-        const name = planName(relative(within(sourcePlansRoot, path) ? sourcePlansRoot : selectedDirectory, path));
+        const name = planName(sourceRelativePath);
         const allocation = previous || {
             locator,
             name,
@@ -322,13 +339,6 @@ export async function preparePlanPackageImport(
         };
         result.allocations.push(allocation);
         rememberName(name, id);
-        if (catalog.some((item) => item.metadata.planId === id)) {
-            if (selectedIds.has(id) && selectedIds.get(id) !== source.digest)
-                throw new PlanPackageError("collision", `Conflicting selected sources for existing Plan ID: ${id}`);
-            selectedIds.set(id, source.digest);
-            result.existingPlanIds.push(id);
-            continue;
-        }
         let authority = virtualAuthority || source;
         let authorityKind: LegacyImportEvidence["authorityKind"] = virtualAuthority ? "target-snapshot" : "selected";
         let controller: ControllerRecord | null = null;
@@ -354,10 +364,21 @@ export async function preparePlanPackageImport(
                     readOnly: true,
                     loadFromTarget: true,
                 });
-                if (!located.plan || located.missingExecutionCheckout)
+                const archivedPath =
+                    located.archived && within(join(sourcePlansRoot, "archived"), path)
+                        ? join(located.documentRoot, "docs", "plans", "archived", `${name}.md`)
+                        : null;
+                if ((!located.plan && !archivedPath) || located.missingExecutionCheckout)
                     pending(`The authoritative Plan document is unavailable: ${name}`);
-                if (located.plan.readAvailability?.kind === "pending") pending(`Workflow evidence is pending: ${name}`);
-                if (located.plan.attrs.planId && located.plan.attrs.planId !== id)
+                if (located.plan?.readAvailability?.kind === "pending")
+                    pending(`Workflow evidence is pending: ${name}`);
+                if (
+                    (located.plan?.attrs.planId && located.plan.attrs.planId !== id) ||
+                    (archivedPath &&
+                        attempts.some(
+                            (entry) => entry.path === located.documentRoot && entry.planId && entry.planId !== id,
+                        ))
+                )
                     pending(`The authoritative Plan identity differs: ${name}`);
                 if (
                     !located.publishedSnapshot &&
@@ -366,11 +387,11 @@ export async function preparePlanPackageImport(
                 )
                     pending(`The authoritative document is not bound to this repository: ${name}`);
                 if (located.publishedSnapshot) {
-                    const bytes = Buffer.from(located.plan.markdown);
-                    authority = { path: located.plan.path, bytes: bytes.toString("base64"), digest: hash(bytes) };
+                    const bytes = Buffer.from(located.plan!.markdown);
+                    authority = { path: located.plan!.path, bytes: bytes.toString("base64"), digest: hash(bytes) };
                     authorityKind = "target-snapshot";
                 } else {
-                    authority = await inspectImportFile(located.plan.path);
+                    authority = await inspectImportFile(archivedPath || located.plan!.path);
                     authorityKind = authority.path === source.path ? "selected" : "registered";
                 }
             }
@@ -388,6 +409,20 @@ export async function preparePlanPackageImport(
         const parsed = document(text(authority));
         if (selected.legacy && (!parsed.legacy || (parsed.attrs.planId && parsed.attrs.planId !== id)))
             pending(`Authoritative document changed identity: ${name}`);
+        if (catalog.some((item) => item.metadata.planId === id)) {
+            const duplicate = selectedIds.get(id);
+            if (
+                duplicate &&
+                duplicate.source.digest !== source.digest &&
+                ((authorityKind !== "registered" && duplicate.authorityKind !== "registered") ||
+                    duplicate.authority.path !== authority.path ||
+                    duplicate.authority.digest !== authority.digest)
+            )
+                throw new PlanPackageError("collision", `Conflicting selected sources for existing Plan ID: ${id}`);
+            selectedIds.set(id, { source, authority, authorityKind });
+            result.existingPlanIds.push(id);
+            continue;
+        }
         const definition: PackageDefinition = {
             classification: parsed.legacy
                 ? parsed.attrs.classification === "PROJECT"
@@ -480,11 +515,7 @@ export async function preparePlanPackageImport(
     const all = [...catalog.map((item) => item.metadata), ...result.members.map((item) => item.metadata)];
     for (const member of result.members) {
         const name = member.metadata.name;
-        if (
-            all.some(
-                (other) => other.planId !== member.metadata.planId && other.name.toLowerCase() === name.toLowerCase(),
-            )
-        )
+        if (all.some((other) => other.planId !== member.metadata.planId && namesCollide(other.name, name)))
             throw new PlanPackageError("collision", `Plan name already exists: ${name}`);
         const parsed = document(text(member.evidence.authority));
         const relationship = (value: string): string => {
@@ -509,18 +540,19 @@ export async function preparePlanPackageImport(
         member.metadata.parentPlanId = parsed.attrs.parentPlan ? relationship(parsed.attrs.parentPlan) : null;
         member.metadata.dependencyPlanIds = [...new Set((parsed.attrs.dependencies || []).map(relationship))];
     }
-    for (const artifact of artifacts) {
-        const owner = planName(
-            relative(within(plansRoot, artifact.path) ? plansRoot : selectedDirectory, dirname(artifact.path)),
-        );
+    for (const [artifact, owner] of artifacts) {
+        const ownerIds = names.get(owner);
+        if (!ownerIds || ownerIds.size !== 1)
+            refused(`Epic resource has no unambiguous selected or existing Epic: ${artifact.path}`);
+        const [ownerId] = ownerIds;
         const member = result.members.find(
-            (item) => item.metadata.name === owner && item.metadata.definition.classification === "PROJECT",
+            (item) => item.metadata.planId === ownerId && item.metadata.definition.classification === "PROJECT",
         );
         if (member)
             member.documents[basename(artifact.path) as "manual-qa.md" | "integration-report.md"] = text(artifact);
         else if (
             !catalog.some(
-                (item) => item.metadata.name === owner && item.metadata.definition.classification === "PROJECT",
+                (item) => item.metadata.planId === ownerId && item.metadata.definition.classification === "PROJECT",
             )
         )
             refused(`Epic resource has no selected or existing Epic: ${artifact.path}`);

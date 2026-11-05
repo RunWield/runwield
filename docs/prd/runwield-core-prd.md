@@ -438,6 +438,8 @@ conditions for reconsideration. Routine choices receive brief treatment; individ
 
 - Given a selected Epic family with archived children and resources, import preserves exact originals, age, Tickets,
   statuses and ID relationships; generic YAML remains complete draft prose.
+- Given a registered linked worktree root selected from the primary checkout, import attaches QA and integration
+  resources to their Epic; repeated imports preserve the package's current name and edited resources.
 - Given an imported ID or ID-less locator, a restarted or overlapping import returns the same package. Later package
   edits and rename survive repeats; changed ID-less source bytes require an explicit content decision.
 - Given stale primary prose and a registered execution document, import retains the execution prose and exact
@@ -853,6 +855,11 @@ point. Commands are copy-ready with real values. Waiting for the user's action s
   or request publication again. A real active document or unfinished attempt still requires inspection.
 - Given an action after a successful read, the action repeats runtime admission and current evidence checks. Read
   availability cannot authorize execution, publication, or a lifecycle change.
+- Given runtime transfer completing during passive inspection, journal retirement does not crash the read. Inspection
+  uses the completed marker without performing repair; malformed or unreadable evidence remains an error.
+- Given publication or transfer cleanup retiring a directory during passive enumeration, inspection continues over
+  the remaining authority without recreating the directory or repairing runtime state. Unreadable directories,
+  unexpected file types and authority symlinks remain errors.
 - Given one Plan publishing while another removes its completed worktrees, a temporarily pending authority read
   releases the publishing Plan's lock before a bounded retry. Publication re-enters runtime admission and resumes
   its durable attempt without repeating completed checks or requesting a manual reload. Malformed authority remains

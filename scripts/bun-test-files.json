@@ -327,6 +327,7 @@
     "src/shared/project-directory.test.ts",
     "src/shared/project-runtime-entry.integration.test.ts",
     "src/shared/project-runtime-home-recovery.test.ts",
+    "src/shared/project-runtime-home-inspection.test.ts",
     "src/shared/project-runtime-home.integration.test.ts",
     "src/shared/project-runtime-layout.test.ts",
     "src/shared/project-runtime-passive-access.test.ts",

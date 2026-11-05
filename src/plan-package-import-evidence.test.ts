@@ -9,10 +9,11 @@ import {
     readPlanImportEvidence,
     renamePlanPackage,
     savePlanPackageDocument,
+    archivePlan,
 } from "./plan-store.js";
 import { git } from "./shared/git-test-fixture.ts";
 import { enterProjectRuntime } from "./shared/project-runtime-layout.ts";
-import { addEntry, getWorktreeRegistryPath } from "./shared/worktree-registry.js";
+import { addEntry, getWorktreeRegistryPath, updateEntry } from "./shared/worktree-registry.js";
 import { writeControllerState, controllerRecordPath } from "./shared/workflow/controller-registry.ts";
 import { createPublicationAttempt } from "./shared/workflow/publication-attempt.ts";
 import { validationCheckpointCanResume, type ValidationCheckpoint } from "./shared/workflow/validation-checkpoint.ts";
@@ -142,6 +143,54 @@ for (const status of ["planning", "active"] as const)
             equal(restarted.code, 0, restarted.errors);
             ok(restarted.output.includes('"repairGeneration":"repair-one"'));
             ok(restarted.output.includes('"recordId":"record"'));
+        } finally {
+            await f.cleanup();
+        }
+    });
+
+for (const status of ["planning", "active"] as const)
+    test(`registered ${status} worktree root import attaches Epic resources and preserves renamed repeats`, async () => {
+        const f = await execution(status);
+        try {
+            await write(
+                f.path,
+                "active",
+                markdown("# Current Epic\n").replace("classification: PLANNED_CHANGE", "classification: PROJECT"),
+            );
+            await write(f.path, "active/manual-qa", "# Original QA\n");
+            await write(f.path, "active/integration-report", "# Original report\n");
+            const sources = await tree(f.path);
+            const registry = await fs.readFile(getWorktreeRegistryPath(f.root), "utf8");
+            const imported = await importPlanPackages(f.identity, f.path);
+            equal(imported.kind, "committed", JSON.stringify(imported));
+            const p = await read(f.identity, "active-plan");
+            equal(p.metadata.name, "active");
+            equal(p.metadata.definition.classification, "PROJECT");
+            deepEqual(
+                p.documents.map((document) => [document.name, Buffer.from(document.bytes).toString()]),
+                [
+                    ["context.md", "# Current Epic\n"],
+                    ["validation.md", "Use the verification instructions in context.md.\n"],
+                    ["manual-qa.md", "# Original QA\n"],
+                    ["integration-report.md", "# Original report\n"],
+                ],
+            );
+            deepEqual((await listPlanPackages(f.identity)).packages.map((item) => item.metadata.name).sort(), [
+                "README",
+                "active",
+            ]);
+            deepEqual(await tree(f.path), sources);
+
+            await renamePlanPackage(f.identity, "active-plan", p.metadata.revision, "renamed-epic");
+            const qa = p.documents.find((document) => document.name === "manual-qa.md")!;
+            await savePlanPackageDocument(f.identity, "active-plan", "manual-qa.md", qa.hash, "# Edited QA\n");
+            await write(f.path, "active/integration-report", "# Changed source report\n");
+            const beforeRepeat = await read(f.identity, "active-plan");
+            const repeated = await driver({ identity: f.identity, command: "import", selection: f.path });
+            equal(repeated.code, 0, repeated.errors);
+            ok(repeated.output.includes('"kind":"existing"'), repeated.output);
+            deepEqual(await read(f.identity, "active-plan"), beforeRepeat);
+            equal(await fs.readFile(getWorktreeRegistryPath(f.root), "utf8"), registry);
         } finally {
             await f.cleanup();
         }
@@ -334,7 +383,62 @@ test("selected primary and registered worktree copies resolve through one proven
             (await listPlanPackages(f.identity)).packages.filter((p) => p.metadata.planId === "active-plan").length,
             1,
         );
+        const repeated = await driver({ identity: f.identity, command: "import", selection: f.root });
+        equal(repeated.code, 0, repeated.errors);
+        ok(repeated.output.includes('"kind":"existing"'), repeated.output);
+        deepEqual(await read(f.identity, "active-plan"), p);
     } finally {
         await f.cleanup();
     }
 });
+
+for (const foreignId of [false, true])
+    test(`registered archived authority ${foreignId ? "rejects a mismatched identity" : "preserves archive and continuation evidence"}`, async () => {
+        const f = await execution();
+        try {
+            await updateEntry(f.root, "attempt", { status: "completed" });
+            await write(
+                f.path,
+                "active",
+                markdown("# Completed execution\n").replace("status: implemented", "status: verified"),
+            );
+            const archived = await archivePlan(f.root, "active", { now: "2026-01-01", reason: "complete" });
+            const controller = await writeControllerState(
+                f.root,
+                { planId: "active-plan", planName: "active" },
+                { publicationReceipt: { validatedCommit: f.commit, publishedCommit: f.commit, targetBranch: "main" } },
+            );
+            if (foreignId) {
+                const bytes = await fs.readFile(archived.toPath, "utf8");
+                await fs.writeFile(archived.toPath, bytes.replace("active-plan", "foreign-plan"));
+            }
+            const sources = await tree(join(f.path, "docs"));
+            const registry = await fs.readFile(getWorktreeRegistryPath(f.root), "utf8");
+            const result = await importPlanPackages(f.identity, archived.toPath);
+            if (foreignId) {
+                ok(["pending", "unavailable"].includes(result.kind), JSON.stringify(result));
+                equal((await listPlanPackages(f.identity, true)).packages.length, 0);
+            } else {
+                equal(result.kind, "committed", JSON.stringify(result));
+                const p = await read(f.identity, "active-plan");
+                equal(p.metadata.name, "active");
+                equal(p.metadata.archive?.archivedAt, "2026-01-01");
+                equal(p.metadata.archive?.reason, "complete");
+                equal(p.metadata.definition.status, "verified");
+                equal(Buffer.from(p.documents[0].bytes).toString(), "# Completed execution\n");
+                const evidence = await readPlanImportEvidence(f.identity, p.metadata.references.legacyImport!);
+                equal(evidence.authority.path, archived.toPath);
+                equal(evidence.attempts[0].status, "completed");
+                deepEqual(evidence.controller, controller);
+                equal((await listPlanPackages(f.identity)).packages.length, 0);
+                const repeated = await driver({ identity: f.identity, command: "import", selection: archived.toPath });
+                equal(repeated.code, 0, repeated.errors);
+                ok(repeated.output.includes('"kind":"existing"'), repeated.output);
+                deepEqual(await read(f.identity, "active-plan"), p);
+            }
+            equal(await fs.readFile(getWorktreeRegistryPath(f.root), "utf8"), registry);
+            deepEqual(await tree(join(f.path, "docs")), sources);
+        } finally {
+            await f.cleanup();
+        }
+    });

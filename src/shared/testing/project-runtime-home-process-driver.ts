@@ -1,7 +1,9 @@
 import { withWorktreeRegistryLockAtPath } from "../worktree-registry.js";
 import fs from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { enterProjectRuntime } from "../project-runtime-layout.ts";
+import { enterProjectRuntime, inspectProjectRuntimeReadAccess } from "../project-runtime-layout.ts";
+import { spawnSync } from "node:child_process";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { openNativeFileLock } from "../native-file-lock.ts";
 import { getRunWieldRuntimeDir } from "../../constants.js";
 
@@ -30,6 +32,46 @@ if (command === "hold-registry") {
     console.log("held");
     setInterval(() => {}, 1000);
     await new Promise(() => {});
+} else if (command === "inspect-after-directory-change") {
+    const originalRead = fs.readdir;
+    let changed = false;
+    Object.defineProperty(fs, "readdir", {
+        value: async (...args: Parameters<typeof fs.readdir>) => {
+            if (!changed && String(args[0]) === boundary) {
+                changed = true;
+                if (process.argv[5] === "unreadable") await fs.chmod(boundary, 0);
+                else {
+                    await fs.rm(boundary, { recursive: true });
+                    if (process.argv[5] === "file") await fs.writeFile(boundary, "not a directory");
+                }
+                console.log("directory-changed-before-read");
+            }
+            return await originalRead(...args);
+        },
+    });
+    const result = await inspectProjectRuntimeReadAccess(root);
+    if (!changed) throw new Error("Reader never reached the directory");
+    console.log(JSON.stringify(result));
+} else if (command === "inspect-after-transfer") {
+    const originalRead = fs.readFile;
+    let completed = false;
+    Object.defineProperty(fs, "readFile", {
+        value: async (...args: Parameters<typeof fs.readFile>) => {
+            if (!completed && String(args[0]).endsWith("/layout-migration.json")) {
+                // Finish the real writer after the reader observes the journal, before its open.
+                completed = true;
+                const writer = spawnSync(process.execPath, runtimeSourceArgs(["run", process.argv[1], "enter", root]), {
+                    encoding: "utf8",
+                });
+                if (writer.status !== 0) throw new Error(`Transfer failed: ${writer.stdout} ${writer.stderr}`);
+                console.log("transfer-completed-before-read");
+            }
+            return await originalRead(...args);
+        },
+    });
+    const result = await inspectProjectRuntimeReadAccess(root);
+    if (!completed) throw new Error("Reader never reached the transfer journal");
+    console.log(JSON.stringify(result));
 } else {
     const originalCopy = fs.copyFile;
     const originalRename = fs.rename;

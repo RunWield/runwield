@@ -305,3 +305,47 @@ test("later child imports resolve original parent names after the package is ren
         await f.cleanup();
     }
 });
+
+test("conflicting directory casing refuses the whole import before publishing a family", async () => {
+    const f = await packageFixture();
+    try {
+        const existing = await create(f.identity);
+        await source(f.root, "Family", legacy("parent"));
+        await source(f.root, "family/child", legacy("child"));
+        const before = await tree(join(f.root, "docs"));
+        const result = await importPlanPackages(f.identity, join(f.root, "docs/plans"));
+        equal(result.kind, "conflict", JSON.stringify(result));
+        const catalog = await listPlanPackages(f.identity, true);
+        deepEqual(catalog.packages, [existing]);
+        deepEqual(catalog.issues, []);
+        deepEqual(await tree(join(f.root, "docs")), before);
+    } finally {
+        await f.cleanup();
+    }
+});
+
+test("renamed Epic retains resources on repeat folder import", async () => {
+    const f = await packageFixture();
+    try {
+        const markdown = legacy("parent", "classification: PROJECT\n").replace("classification: PLANNED_CHANGE\n", "");
+        await source(f.root, "family", markdown);
+        await source(f.root, "family/manual-qa", "# Original QA\n");
+        await source(f.root, "family/integration-report", "# Original report\n");
+        const selection = join(f.root, "docs/plans");
+        const initial = await importPlanPackages(f.identity, selection);
+        ok(initial.kind === "committed", JSON.stringify(initial));
+        const id = initial.planIds[0];
+        await renamePlanPackage(f.identity, id, 1, "renamed-family");
+        const p = await read(f.identity, id);
+        const qa = p.documents.find((document) => document.name === "manual-qa.md")!;
+        await savePlanPackageDocument(f.identity, id, "manual-qa.md", qa.hash, "# Edited QA\n");
+        await source(f.root, "family/integration-report", "# Changed source report\n");
+        const before = await read(f.identity, id);
+        const repeated = await driver({ identity: f.identity, command: "import", selection });
+        equal(repeated.code, 0, repeated.errors);
+        ok(repeated.output.includes('"kind":"existing"'), repeated.output);
+        deepEqual(await read(f.identity, id), before);
+    } finally {
+        await f.cleanup();
+    }
+});
