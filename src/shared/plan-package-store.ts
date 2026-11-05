@@ -12,6 +12,16 @@ import {
 } from "./private-json-file.ts";
 import { EPIC_ARTIFACT_FILE_NAMES } from "./epic-artifacts.ts";
 import { canonicalPlanStatus, normalizePlanId, StalePlanWriteError } from "../plan-store.js";
+import {
+    preparePlanPackageImport,
+    revalidatePlanImport,
+    type ImportAllocation,
+    type LegacyImportEvidence,
+    type PlanImportResult,
+    type PreparedPlanImport,
+} from "./plan-package-import.ts";
+import type { TicketReference } from "./ticket-references.ts";
+import { normalizePlanDeviations, type PlanDeviation } from "./plan-deviations.ts";
 import type { WorkflowControllerState } from "./workflow/controller-state.ts";
 
 export type PackageResource = "context.md" | "validation.md" | "manual-qa.md" | "integration-report.md";
@@ -25,13 +35,32 @@ export interface PackageDocuments {
 /** Version 1 stores continuation references, not copies of execution registries/checkpoints. */
 export interface PackageReferences {
     sessionIds: string[];
+    legacyImport?: LegacyImportReference;
     executionAttemptId?: string;
     worktreeId?: string;
     validationCheckpointId?: string;
     workRecordId?: string;
 }
+export interface LegacyImportReference {
+    recordId: string;
+    locator: string;
+    format: "legacy-markdown";
+}
 export interface PackageDefinition {
     classification: "PLANNED_CHANGE" | "PROJECT";
+    type?: "epic" | "sequence";
+    tickets?: TicketReference[];
+    supersedes?: string[];
+    planDeviations?: PlanDeviation[];
+    deliveryBranch?: string;
+    closedWithoutVerificationReason?: string;
+    closedWithoutVerificationAt?: string;
+    epicCompletionMode?: "done_enough";
+    epicDoneEnoughAt?: string;
+    epicDoneEnoughSummary?: string;
+    epicBaseCommit?: string;
+    epicDeliveryTargetBranch?: string;
+    epicIntegrationReport?: string;
     status: string;
     summary?: string;
     workKind?: string;
@@ -80,6 +109,9 @@ export interface PackageArchive {
     archivedAt: string;
     reason: string;
     restoredAt?: string;
+    fromStatus?: string;
+    fromPath?: string;
+    restoredFromPath?: string;
 }
 export interface PlanPackageMetadata {
     version: 1;
@@ -172,6 +204,22 @@ interface PackageLayout {
     inputs: string;
     intent: string;
     locks: string;
+    imports: string;
+    batch: string;
+    allocations: string;
+}
+interface ImportRecord {
+    version: 1;
+    recordId: string;
+    projectId: string;
+    prepared: PreparedPlanImport;
+}
+interface ImportBatch {
+    version: 1;
+    recordId: string;
+    phase: "pending" | "committed";
+    members: PackageSelector[];
+    record?: ImportRecord;
 }
 interface PackageIntent {
     version: 1;
@@ -259,6 +307,9 @@ function layout(identity: ProjectIdentity): PackageLayout {
         inputs: join(internal, "inputs"),
         intent: join(internal, "intent.json"),
         locks: join(internal, "locks"),
+        imports: join(internal, "imports"),
+        batch: join(internal, "batch.json"),
+        allocations: join(internal, "allocations.json"),
     };
 }
 async function stat(path: string) {
@@ -300,6 +351,16 @@ function strings(value: JsonValue): boolean {
     return Array.isArray(value) && value.every((v) => typeof v === "string");
 }
 const definitionStrings = [
+    "type",
+    "deliveryBranch",
+    "closedWithoutVerificationReason",
+    "closedWithoutVerificationAt",
+    "epicCompletionMode",
+    "epicDoneEnoughAt",
+    "epicDoneEnoughSummary",
+    "epicBaseCommit",
+    "epicDeliveryTargetBranch",
+    "epicIntegrationReport",
     "summary",
     "workKind",
     "complexity",
@@ -374,6 +435,9 @@ function metadataFrom(value: PlanPackageMetadata): PlanPackageMetadata {
         "order",
         "frontend",
         "devServerHmr",
+        "tickets",
+        "supersedes",
+        "planDeviations",
         ...definitionStrings,
     ]);
     if (
@@ -386,6 +450,32 @@ function metadataFrom(value: PlanPackageMetadata): PlanPackageMetadata {
         ["frontend", "devServerHmr"].some((key) => key in definition && typeof definition[key] !== "boolean")
     )
         fail("malformed_metadata", "Invalid package definition.");
+    if (
+        ("type" in definition && !["epic", "sequence"].includes(String(definition.type))) ||
+        ("epicCompletionMode" in definition && definition.epicCompletionMode !== "done_enough") ||
+        ("supersedes" in definition && !strings(definition.supersedes))
+    )
+        fail("malformed_metadata", "Invalid package definition facts.");
+    if (
+        "tickets" in definition &&
+        (!Array.isArray(definition.tickets) ||
+            definition.tickets.some(
+                (ticket) =>
+                    !ticket ||
+                    typeof ticket !== "object" ||
+                    Array.isArray(ticket) ||
+                    typeof ticket.url !== "string" ||
+                    !ticket.url.trim(),
+            ))
+    )
+        fail("malformed_metadata", "Invalid package Tickets.");
+    if ("planDeviations" in definition) {
+        try {
+            normalizePlanDeviations(value.definition.planDeviations);
+        } catch {
+            fail("malformed_metadata", "Invalid package deviations.");
+        }
+    }
     const controller = fields(data.controller, [
         ...controllerStrings,
         ...controllerNumbers,
@@ -410,18 +500,41 @@ function metadataFrom(value: PlanPackageMetadata): PlanPackageMetadata {
         "worktreeId",
         "validationCheckpointId",
         "workRecordId",
+        "legacyImport",
     ]);
     if (
         !strings(refs.sessionIds) ||
-        Object.entries(refs).some(([key, value]) => key !== "sessionIds" && (typeof value !== "string" || !value))
+        Object.entries(refs).some(
+            ([key, value]) => !["sessionIds", "legacyImport"].includes(key) && (typeof value !== "string" || !value),
+        )
     )
         fail("malformed_metadata", "Invalid package references.");
+    if (refs.legacyImport !== undefined) {
+        const retained = fields(refs.legacyImport, ["recordId", "locator", "format"]);
+        if (
+            typeof retained.recordId !== "string" ||
+            !/^[0-9a-f-]{36}$/.test(retained.recordId) ||
+            typeof retained.locator !== "string" ||
+            !retained.locator ||
+            retained.format !== "legacy-markdown"
+        )
+            fail("malformed_metadata", "Invalid legacy import reference.");
+    }
     if (data.archive !== null) {
-        const archive = fields(data.archive, ["archivedAt", "reason", "restoredAt"]);
+        const archive = fields(data.archive, [
+            "archivedAt",
+            "reason",
+            "restoredAt",
+            "fromStatus",
+            "fromPath",
+            "restoredFromPath",
+        ]);
         if (
             typeof archive.archivedAt !== "string" ||
             typeof archive.reason !== "string" ||
-            ("restoredAt" in archive && typeof archive.restoredAt !== "string")
+            ["restoredAt", "fromStatus", "fromPath", "restoredFromPath"].some(
+                (key) => key in archive && typeof archive[key] !== "string",
+            )
         )
             fail("malformed_metadata", "Invalid archive facts.");
     }
@@ -496,7 +609,7 @@ async function inspectAt(paths: PackageLayout, name: string): Promise<PackageIns
         throw error;
     }
 }
-async function scan(paths: PackageLayout): Promise<PackageCatalog> {
+async function scanOnce(paths: PackageLayout): Promise<PackageCatalog> {
     const catalog: PackageCatalog = { packages: [], issues: [] };
     let intent: PackageIntent | null;
     try {
@@ -568,6 +681,60 @@ async function scan(paths: PackageLayout): Promise<PackageCatalog> {
     });
     return catalog;
 }
+async function readBatch(paths: PackageLayout): Promise<ImportBatch | null> {
+    const bytes = await file(paths.home, paths.batch);
+    if (!bytes) return null;
+    try {
+        const batch: ImportBatch = JSON.parse(new TextDecoder().decode(bytes));
+        if (
+            batch.version !== 1 ||
+            !/^[0-9a-f-]{36}$/.test(batch.recordId) ||
+            !["pending", "committed"].includes(batch.phase) ||
+            !Array.isArray(batch.members) ||
+            !batch.members.length
+        )
+            throw new Error("batch");
+        for (const member of batch.members) {
+            requireId(member.planId!);
+            normalizeName(member.name!);
+        }
+        return batch;
+    } catch {
+        return fail("pending_recovery", "Import batch evidence is damaged; preserving its packages.");
+    }
+}
+async function scan(paths: PackageLayout): Promise<PackageCatalog> {
+    for (let retry = 0; retry < 3; retry++) {
+        const before = await readBatch(paths);
+        const catalog = await scanOnce(paths);
+        const after = await readBatch(paths);
+        if (JSON.stringify(before) !== JSON.stringify(after)) continue;
+        if (after?.phase === "pending") {
+            catalog.packages = catalog.packages.filter(
+                (p) =>
+                    !after.members.some(
+                        (member) => member.planId === p.metadata.planId || member.name === p.metadata.name,
+                    ),
+            );
+            catalog.issues.push({
+                kind: "pending_recovery",
+                path: paths.batch,
+                message: "The selected import batch is pending recovery.",
+            });
+        }
+        return catalog;
+    }
+    return {
+        packages: [],
+        issues: [
+            {
+                kind: "pending_recovery",
+                path: paths.batch,
+                message: "The package catalog changed during inspection; retry the read.",
+            },
+        ],
+    };
+}
 export async function listPlanPackages(identity: ProjectIdentity, includeArchived = false): Promise<PackageCatalog> {
     try {
         const catalog = await scan(layout(identity));
@@ -605,13 +772,20 @@ async function select(paths: PackageLayout, selector: PackageSelector): Promise<
             (!selector.name || p.metadata.name === selector.name),
     );
     if (match) return match;
+    const batch = await readBatch(paths);
+    if (
+        batch?.phase === "pending" &&
+        batch.members.some((member) => member.planId === selector.planId || member.name === selector.name)
+    )
+        return { kind: "pending_recovery", path: paths.batch, message: "This import is pending recovery." };
+    if (catalog.issues.some((entry) => entry.kind === "pending_recovery"))
+        return catalog.issues.find((entry) => entry.kind === "pending_recovery")!;
     if (selector.name) {
         const path = join(paths.plans, selector.name);
+        await safe(paths.home, path);
         const problem = catalog.issues.find((entry) => entry.path === path);
         if (problem) return problem;
-        const named = await inspectAt(paths, selector.name);
-        if (named.kind !== "loaded") return named;
-        return { kind: "missing", path, message: "Plan ID does not match the selected package." };
+        return { kind: "missing", path, message: "No committed package matches the selected identity and name." };
     }
     return catalog.issues[0] ?? { kind: "missing", path: paths.plans, message: "Plan package is missing." };
 }
@@ -641,6 +815,7 @@ async function directory(paths: PackageLayout, path: string): Promise<void> {
     for (const entry of created) syncParentDirectory(entry);
 }
 async function recover(paths: PackageLayout): Promise<void> {
+    await recoverImportBatch(paths);
     const intent = await readIntent(paths);
     if (intent) {
         const source = join(intent.operation === "create" ? paths.stages : paths.plans, intent.from);
@@ -706,11 +881,11 @@ async function recover(paths: PackageLayout): Promise<void> {
 }
 async function mutate<T>(
     identity: ProjectIdentity,
-    planId: string,
+    planId: string | null,
     action: (paths: PackageLayout) => Promise<T>,
 ): Promise<T> {
     const paths = layout(identity);
-    requireId(planId);
+    if (planId !== null) requireId(planId);
     await directory(paths, paths.locks);
     const catalogPath = join(paths.locks, "catalog.lock");
     await safe(paths.home, catalogPath);
@@ -719,7 +894,14 @@ async function mutate<T>(
     try {
         await catalog.lock(true);
         const intent = await readIntent(paths);
-        for (const id of [...new Set([planId, ...(intent ? [intent.planId] : [])])].sort()) {
+        const batch = await readBatch(paths);
+        for (const id of [
+            ...new Set([
+                ...(planId === null ? [] : [planId]),
+                ...(intent ? [intent.planId] : []),
+                ...(batch?.phase === "pending" ? batch.members.map((member) => member.planId!) : []),
+            ]),
+        ].sort()) {
             const path = join(paths.locks, `${digest(new TextEncoder().encode(id))}.lock`);
             await safe(paths.home, path);
             const lock = openNativeFileLock(path);
@@ -727,6 +909,10 @@ async function mutate<T>(
             await lock.lock(true);
         }
         await recover(paths);
+        if (planId === null) {
+            for (const lock of plans.reverse()) lock.close();
+            plans.length = 0;
+        }
         return await action(paths);
     } finally {
         for (const lock of plans.reverse()) lock.close();
@@ -734,7 +920,7 @@ async function mutate<T>(
     }
 }
 export async function recoverPlanPackages(identity: ProjectIdentity): Promise<void> {
-    await mutate(identity, "catalog-recovery", async () => {});
+    await mutate(identity, null, async () => {});
 }
 function expectedRevision(metadata: PlanPackageMetadata, expected: number): void {
     if (metadata.revision !== expected) throw new StalePlanWriteError(String(expected), String(metadata.revision));
@@ -993,4 +1179,287 @@ export async function readPlanPackageInput(
     )
         fail("malformed_metadata", "Retained-input bytes or membership do not match the committed manifest.");
     return { manifest, documents };
+}
+
+function validateImportRecord(record: ImportRecord): ImportRecord {
+    if (
+        record.version !== 1 ||
+        !/^[0-9a-f-]{36}$/.test(record.recordId) ||
+        !record.projectId ||
+        !Array.isArray(record.prepared?.members) ||
+        !Array.isArray(record.prepared.allocations)
+    )
+        fail("pending_recovery", "Invalid retained import record.");
+    for (const member of record.prepared.members) {
+        metadataFrom(member.metadata);
+        if (
+            member.metadata.planId !== member.allocation.planId ||
+            member.evidence.format !== "legacy-markdown" ||
+            member.metadata.references.legacyImport?.recordId !== record.recordId
+        )
+            fail("pending_recovery", "Import identity or provenance does not match its record.");
+        for (const evidence of [
+            member.evidence.source,
+            member.evidence.authority,
+            member.evidence.controllerFile,
+            member.evidence.registryFile,
+        ]) {
+            if (
+                evidence &&
+                (evidence.bytes === null
+                    ? evidence.digest !== null
+                    : typeof evidence.bytes !== "string" ||
+                      digest(Buffer.from(evidence.bytes, "base64")) !== evidence.digest)
+            )
+                fail("pending_recovery", "Retained import evidence does not match its digest.");
+        }
+        if (
+            typeof member.documents["context.md"] !== "string" ||
+            typeof member.documents["validation.md"] !== "string" ||
+            Object.keys(member.documents).some((name) => !resources.includes(name as PackageResource))
+        )
+            fail("pending_recovery", "Invalid retained import documents.");
+    }
+    return record;
+}
+async function importRecord(paths: PackageLayout, recordId: string): Promise<ImportRecord> {
+    if (!/^[0-9a-f-]{36}$/.test(recordId)) fail("unsafe_path", "Invalid import record reference.");
+    const bytes = await file(paths.home, join(paths.imports, recordId, "record.json"));
+    if (!bytes) fail("pending_recovery", "Retained import record is unavailable.");
+    try {
+        return validateImportRecord(JSON.parse(new TextDecoder().decode(bytes)));
+    } catch (error) {
+        if (error instanceof PlanPackageError) throw error;
+        return fail("pending_recovery", "Retained import record is unreadable.");
+    }
+}
+async function readAllocations(paths: PackageLayout): Promise<ImportAllocation[]> {
+    const bytes = await file(paths.home, paths.allocations);
+    if (!bytes) return [];
+    try {
+        const entries: ImportAllocation[] = JSON.parse(new TextDecoder().decode(bytes));
+        if (
+            !Array.isArray(entries) ||
+            entries.some(
+                (entry) =>
+                    !entry.locator ||
+                    typeof entry.idless !== "boolean" ||
+                    !entry.createdAt ||
+                    !/^[0-9a-f]{64}$/.test(entry.digest),
+            )
+        )
+            throw new Error("allocations");
+        for (const entry of entries) {
+            requireId(entry.planId);
+            normalizeName(entry.name);
+        }
+        if (new Set(entries.map((entry) => entry.locator)).size !== entries.length)
+            throw new Error("duplicate allocation");
+        return entries;
+    } catch {
+        return fail("pending_recovery", "Import allocations need recovery; their evidence is invalid.");
+    }
+}
+async function recoverImportBatch(paths: PackageLayout): Promise<void> {
+    const batch = await readBatch(paths);
+    if (!batch || batch.phase === "committed") return;
+    // The intent is also the durable ID reservation. It retains every byte needed after source deletion.
+    const record = validateImportRecord(batch.record!);
+    if (
+        record.recordId !== batch.recordId ||
+        JSON.stringify(batch.members) !==
+            JSON.stringify(
+                record.prepared.members.map((member) => ({
+                    planId: member.metadata.planId,
+                    name: member.metadata.name,
+                })),
+            )
+    )
+        fail("pending_recovery", "Import batch membership disagrees with its retained inputs.");
+    const root = join(paths.imports, record.recordId);
+    await directory(paths, root);
+    const recordPath = join(root, "record.json");
+    const previousRecord = await file(paths.home, recordPath);
+    if (previousRecord) {
+        if (JSON.stringify(await importRecord(paths, record.recordId)) !== JSON.stringify(record))
+            fail("pending_recovery", "Retained import record changed.");
+    } else writeJsonAtomically(recordPath, record);
+    const allocations = await readAllocations(paths);
+    for (const allocation of record.prepared.allocations) {
+        const previous = allocations.find((entry) => entry.locator === allocation.locator);
+        if (previous && JSON.stringify(previous) !== JSON.stringify(allocation))
+            fail("pending_recovery", "Import source allocation conflicts with retained evidence.");
+        if (!previous) allocations.push(allocation);
+    }
+    const previousAllocations = await file(paths.home, paths.allocations);
+    if (
+        !previousAllocations ||
+        JSON.stringify(JSON.parse(new TextDecoder().decode(previousAllocations))) !== JSON.stringify(allocations)
+    )
+        writeJsonAtomically(paths.allocations, allocations);
+    for (const member of record.prepared.members) {
+        const stage = join(root, "staging", digest(new TextEncoder().encode(member.metadata.planId)));
+        const destination = join(paths.plans, member.metadata.name);
+        await directory(paths, stage);
+        await directory(paths, destination);
+        for (const name of resources.filter((name) => member.documents[name] !== undefined)) {
+            const from = join(stage, name),
+                to = join(destination, name);
+            const published = await file(paths.home, to);
+            const expected = new TextEncoder().encode(member.documents[name]!);
+            if (published) {
+                if (digest(published) !== digest(expected))
+                    fail("pending_recovery", "Import destination changed; retaining both versions.");
+                continue;
+            }
+            const staged = await file(paths.home, from);
+            if (staged && digest(staged) !== digest(expected))
+                fail("pending_recovery", "Import stage changed; retaining its evidence.");
+            if (!staged) writeTextAtomically(from, expected);
+        }
+        const stageMetadata = join(stage, "plan.wld.json");
+        if (!(await file(paths.home, stageMetadata))) writeJsonAtomically(stageMetadata, member.metadata);
+    }
+    for (const member of record.prepared.members) {
+        const stage = join(root, "staging", digest(new TextEncoder().encode(member.metadata.planId)));
+        const destination = join(paths.plans, member.metadata.name);
+        for (const name of resources.filter((name) => member.documents[name] !== undefined)) {
+            const from = join(stage, name),
+                to = join(destination, name);
+            if (!(await file(paths.home, to))) {
+                await fs.rename(from, to);
+                syncParentDirectory(from);
+                syncParentDirectory(to);
+            }
+        }
+        const metadataPath = join(destination, "plan.wld.json");
+        const published = await file(paths.home, metadataPath);
+        if (published) {
+            if (JSON.stringify(parseMetadata(published)) !== JSON.stringify(member.metadata))
+                fail("pending_recovery", "Import destination metadata changed.");
+        } else writeJsonAtomically(metadataPath, member.metadata);
+    }
+    // Persistent generation evidence detects an entire batch starting and finishing during a passive scan.
+    writeJsonAtomically(paths.batch, {
+        version: 1,
+        recordId: batch.recordId,
+        phase: "committed",
+        members: batch.members,
+    } satisfies ImportBatch);
+}
+
+/** Explicit internal import; ordinary load/save/discovery never calls this operation. */
+export async function importPlanPackages(identity: ProjectIdentity, selection: string): Promise<PlanImportResult> {
+    try {
+        return await mutate(identity, null, async (paths) => {
+            const catalog = await scan(paths);
+            if (catalog.issues.length) fail(catalog.issues[0].kind, catalog.issues[0].message);
+            const allocations = await readAllocations(paths);
+            if (!(await stat(selection))) {
+                const recordedIds = new Set<string>();
+                if (await stat(paths.imports)) {
+                    await safe(paths.home, paths.imports);
+                    for (const id of await fs.readdir(paths.imports)) {
+                        const record = await importRecord(paths, id);
+                        if (record.prepared.selection === selection) {
+                            for (const member of record.prepared.members) recordedIds.add(member.metadata.planId);
+                            for (const planId of record.prepared.existingPlanIds) recordedIds.add(planId);
+                        } else {
+                            for (const member of record.prepared.members)
+                                if (member.evidence.source.path === selection) recordedIds.add(member.metadata.planId);
+                        }
+                    }
+                }
+                if (recordedIds.size) {
+                    const planIds = [...recordedIds];
+                    if (planIds.some((id) => !catalog.packages.some((p) => p.metadata.planId === id)))
+                        fail("pending_recovery", "A previously imported package is unavailable.");
+                    return { kind: "existing", planIds, importedPlanIds: [], existingPlanIds: planIds };
+                }
+            }
+            const prepared = await preparePlanPackageImport(
+                identity,
+                selection,
+                allocations,
+                catalog.packages,
+                new Date().toISOString(),
+            );
+            if (!prepared.members.length)
+                return {
+                    kind: "existing",
+                    planIds: prepared.existingPlanIds,
+                    importedPlanIds: [],
+                    existingPlanIds: prepared.existingPlanIds,
+                };
+            const locks: NativeFileLock[] = [];
+            try {
+                for (const id of prepared.members.map((member) => member.metadata.planId).sort()) {
+                    const path = join(paths.locks, `${digest(new TextEncoder().encode(id))}.lock`);
+                    await safe(paths.home, path);
+                    const lock = openNativeFileLock(path);
+                    locks.push(lock);
+                    await lock.lock(true);
+                }
+                for (const member of prepared.members) {
+                    metadataFrom(member.metadata);
+                    await assertDestination(paths, member.metadata.name);
+                }
+                await revalidatePlanImport(identity, prepared, catalog.packages, allocations);
+                const recordId = randomUUID();
+                for (const member of prepared.members)
+                    member.metadata.references.legacyImport = {
+                        recordId,
+                        locator: member.allocation.locator,
+                        format: "legacy-markdown",
+                    };
+                const record = validateImportRecord({ version: 1, recordId, projectId: identity.projectId, prepared });
+                writeJsonAtomically(paths.batch, {
+                    version: 1,
+                    recordId,
+                    phase: "pending",
+                    members: prepared.members.map((member) => ({
+                        planId: member.metadata.planId,
+                        name: member.metadata.name,
+                    })),
+                    record,
+                } satisfies ImportBatch);
+                await recoverImportBatch(paths);
+                const importedPlanIds = prepared.members.map((member) => member.metadata.planId);
+                return {
+                    kind: "committed",
+                    planIds: [...new Set([...importedPlanIds, ...prepared.existingPlanIds])],
+                    importedPlanIds,
+                    existingPlanIds: prepared.existingPlanIds,
+                };
+            } finally {
+                for (const lock of locks.reverse()) lock.close();
+            }
+        });
+    } catch (error) {
+        return {
+            kind:
+                error instanceof PlanPackageError
+                    ? error.kind === "collision"
+                        ? "conflict"
+                        : ["pending_recovery", "changed_input"].includes(error.kind)
+                          ? "pending"
+                          : ["malformed_metadata", "unsupported_metadata", "unsafe_path"].includes(error.kind)
+                            ? "invalid"
+                            : "unavailable"
+                    : "unavailable",
+            message: error instanceof Error ? error.message : String(error),
+        };
+    }
+}
+/** Resolve immutable evidence independently of source availability or later package edits/renames. */
+export async function readPlanImportEvidence(
+    identity: ProjectIdentity,
+    reference: LegacyImportReference,
+): Promise<LegacyImportEvidence> {
+    const record = await importRecord(layout(identity), reference.recordId);
+    if (record.projectId !== identity.projectId || reference.format !== "legacy-markdown")
+        fail("malformed_metadata", "Import evidence belongs to a different Project or format.");
+    const member = record.prepared.members.find((member) => member.allocation.locator === reference.locator);
+    if (!member) fail("missing", "Import source evidence is missing.");
+    return member.evidence;
 }

@@ -16,6 +16,8 @@ import { pid, platform } from "node:process";
 import { isProjectPlan } from "./shared/project-plan.ts";
 export { isEpicPlan, isProjectPlan, isSequencePlan } from "./shared/project-plan.ts";
 export {
+    importPlanPackages,
+    readPlanImportEvidence,
     createPlanPackage,
     readPlanPackage,
     listPlanPackages,

@@ -9,12 +9,16 @@ import { fileURLToPath } from "node:url";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
 import { runtimeSourceArgs } from "../testing/runtime-source-args.ts";
 import { getHomeDir, getRunWieldRuntimeDir } from "../constants.js";
-import { enterProjectRuntime, resolveProjectRuntimeLayout } from "./project-runtime-layout.ts";
+import {
+    enterProjectRuntime,
+    resolveProjectRuntimeLayout,
+    inspectProjectRuntimeReadAccess,
+} from "./project-runtime-layout.ts";
 
 const fixture = defineCommittedGitFixture();
 const driver = fileURLToPath(new URL("./testing/project-runtime-home-process-driver.ts", import.meta.url));
-async function run(root: string, boundary = "") {
-    const child = spawn(process.execPath, runtimeSourceArgs(["run", driver, "enter", root, boundary]), {
+async function run(root: string, boundary = "", command = "enter") {
+    const child = spawn(process.execPath, runtimeSourceArgs(["run", driver, command, root, boundary]), {
         stdio: ["ignore", "pipe", "pipe"],
     });
     let output = "";
@@ -53,6 +57,56 @@ for (const boundary of ["copy", "copying", "verified", "published", "retirement"
         }
     });
 }
+for (const boundary of ["copying", "marker"]) {
+    test(`passive inspection survives transfer completion after observing the ${boundary} journal`, async () => {
+        const root = await realpath(await fixture.checkout());
+        try {
+            const source = join(getRunWieldRuntimeDir(root), "internal", "debug", "trace");
+            await mkdir(dirname(source), { recursive: true });
+            await writeFile(source, "retained during read");
+            const interrupted = await run(root, boundary);
+            equal(interrupted.code, 86, interrupted.output);
+            equal((await inspectProjectRuntimeReadAccess(root)).kind, "pending");
+            const inspected = await run(root, "", "inspect-after-transfer");
+            ok(inspected.output.includes("transfer-completed-before-read"), inspected.output);
+            equal(inspected.code, 0, inspected.output);
+            equal(JSON.parse(inspected.output.trim().split("\n").at(-1)!).kind, "ready");
+            const layout = resolveProjectRuntimeLayout(root);
+            equal(await readFile(join(layout.primary.debugRoot, "trace"), "utf8"), "retained during read");
+            await rejects(() => lstat(layout.primary.layoutMigrationJournalPath), { code: "ENOENT" });
+            equal((await inspectProjectRuntimeReadAccess(root)).kind, "ready");
+        } finally {
+            await rm(root, { recursive: true, force: true });
+        }
+    });
+}
+
+for (const problem of ["malformed", "unreadable"]) {
+    test(`passive inspection preserves ${problem} transfer journal errors`, async () => {
+        const root = await realpath(await fixture.checkout());
+        try {
+            const source = join(getRunWieldRuntimeDir(root), "internal", "debug", "trace");
+            await mkdir(dirname(source), { recursive: true });
+            await writeFile(source, "preserved");
+            equal((await run(root, "copying")).code, 86);
+            const path = resolveProjectRuntimeLayout(root).primary.layoutMigrationJournalPath;
+            if (problem === "malformed") {
+                await writeFile(path, "{");
+                await rejects(() => inspectProjectRuntimeReadAccess(root), SyntaxError);
+                equal(await readFile(path, "utf8"), "{");
+            } else {
+                await rm(path);
+                await mkdir(path);
+                await rejects(() => inspectProjectRuntimeReadAccess(root), { code: "EISDIR" });
+                ok((await lstat(path)).isDirectory());
+            }
+            equal(await readFile(source, "utf8"), "preserved");
+        } finally {
+            await rm(root, { recursive: true, force: true });
+        }
+    });
+}
+
 for (const resource of [
     "controller/plans/one.json.lock",
     "plan-locks/one.lock",

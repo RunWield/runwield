@@ -409,9 +409,12 @@ no longer in the repository is skipped silently and never stops pruning.
 
 ### Plan import
 
-**Scope and maturity:** Target. Replaces
-[External Markdown Plans are first-class](runwield-core-prd.md#plan-authoring-and-external-adoption). This is a one-time
-breaking change for existing users.
+**Scope and maturity:** Public behavior below remains target. The explicit internal file/folder import capability is
+current under [Core authoring](runwield-core-prd.md#plan-authoring-and-external-adoption) and
+[Core recovery](runwield-core-prd.md#execution-validation-and-recovery): complete batch visibility, durable identity
+allocation, unchanged originals and retained legacy continuation evidence. Public import, path-loading activation,
+store-only discovery, the delivery-copy question and managed-remote transfer remain pending. Their activation replaces
+the existing external-Markdown adoption journey and is a one-time breaking change for existing users.
 
 **Requirement: RunWield lists Plans from the store only.** Nothing outside the store is found, listed, or imported
 automatically. A file in `docs/plans/`, from this project or anyone else's, is an ordinary file until the user imports
