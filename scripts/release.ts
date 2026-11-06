@@ -1,4 +1,5 @@
 import { captureScriptProcess } from "./script-process.ts";
+import type { ScriptProcessOptions, ScriptProcessTextOutput } from "./script-process.ts";
 import process from "node:process";
 /**
  * @module scripts/release
@@ -12,50 +13,62 @@ const RELEASE_TAG_PATTERN = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-rc\.(
 const WLD_RELEASE_ASSET_SUFFIXES = Object.freeze(["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64"]);
 const LEGACY_CANDIDATE_SERIES = new Set(["v0.8.16", "v0.9.0", "v0.9.2", "v0.9.3", "v0.9.4", "v0.9.6", "v0.10.1"]);
 
-/**
- * @typedef {"candidate" | "stable"} ReleaseKind
- */
+export type ReleaseKind = "candidate" | "stable";
 
-/**
- * @typedef {Object} ReleaseTag
- * @property {string} tag
- * @property {number} major
- * @property {number} minor
- * @property {number} patch
- * @property {number | undefined} rc
- * @property {ReleaseKind} kind
- * @property {string} stableTag
- */
+export interface ReleaseTag {
+    tag: string;
+    major: number;
+    minor: number;
+    patch: number;
+    rc: number | undefined;
+    kind: ReleaseKind;
+    stableTag: string;
+}
 
-/**
- * @typedef {Object} CommandResult
- * @property {boolean} success
- * @property {number} code
- * @property {string} stdout
- * @property {string} stderr
- */
+type ReleaseVersionField = keyof Pick<ReleaseTag, "major" | "minor" | "patch">;
+export type CommandResult = ScriptProcessTextOutput;
 
-/**
- * @typedef {(command: string, args: string[], options?: { cwd?: string, env?: Record<string, string> }) => Promise<CommandResult>} CommandRunner
- */
+export interface CommandOptions extends Pick<ScriptProcessOptions, "cwd"> {
+    env?: Record<string, string>;
+}
 
-/**
- * @typedef {Object} ReleasePort
- * @property {CommandRunner} run
- * @property {(message: string) => void} log
- */
+export type CommandRunner = (command: string, args: string[], options?: CommandOptions) => Promise<CommandResult>;
 
-/**
- * @typedef {Object} CandidateSource
- * @property {string} commit
- * @property {string} branch
- * @property {"legacy-head" | "new-branch" | "remote-branch"} mode
- */
+export interface ReleasePort {
+    run: CommandRunner;
+    log: (message: string) => void;
+}
 
-/**
- * @param {string} value
- */
-function assertSafeTagText(value) {
+export interface CandidateSource {
+    commit: string;
+    branch: string;
+    mode: "legacy-head" | "new-branch" | "remote-branch";
+}
+
+export interface ReleaseMetadata extends Pick<ReleaseTag, "tag" | "kind"> {
+    buildVersion: string;
+    prerelease: boolean;
+    makeLatest: boolean;
+}
+
+interface PublishedReleaseAsset {
+    name: string;
+}
+
+interface PublishedRelease {
+    isDraft?: boolean;
+    isPrerelease?: boolean;
+    assets?: PublishedReleaseAsset[];
+}
+
+export interface ReleaseArgs {
+    command: string;
+    tag?: string;
+    candidate?: string;
+    dryRun: boolean;
+}
+
+function assertSafeTagText(value: string) {
     if (!value) throw new Error(`Unsafe release tag: ${JSON.stringify(value)}`);
     for (const character of value) {
         const code = character.charCodeAt(0);
@@ -65,11 +78,7 @@ function assertSafeTagText(value) {
     }
 }
 
-/**
- * @param {string} tag
- * @returns {ReleaseTag}
- */
-export function parseReleaseTag(tag) {
+export function parseReleaseTag(tag: string): ReleaseTag {
     assertSafeTagText(tag);
     const match = tag.match(RELEASE_TAG_PATTERN);
     if (!match) throw new Error(`Unsupported release tag: ${tag}`);
@@ -82,22 +91,14 @@ export function parseReleaseTag(tag) {
     return { tag, major, minor, patch, rc, kind: rc === undefined ? "stable" : "candidate", stableTag };
 }
 
-/**
- * @param {string} candidateTag
- * @returns {string}
- */
-export function stableTagForCandidate(candidateTag) {
+export function stableTagForCandidate(candidateTag: string) {
     const parsed = parseReleaseTag(candidateTag);
     if (parsed.kind !== "candidate") throw new Error(`Not a Candidate tag: ${candidateTag}`);
     return parsed.stableTag;
 }
 
-/**
- * @param {ReleaseTag} left
- * @param {ReleaseTag} right
- */
-export function compareReleaseTags(left, right) {
-    for (const key of /** @type {const} */ (["major", "minor", "patch"])) {
+export function compareReleaseTags(left: ReleaseTag, right: ReleaseTag) {
+    for (const key of ["major", "minor", "patch"] satisfies ReleaseVersionField[]) {
         if (left[key] !== right[key]) return left[key] - right[key];
     }
     const leftRc = left.rc ?? Number.POSITIVE_INFINITY;
@@ -105,11 +106,7 @@ export function compareReleaseTags(left, right) {
     return leftRc - rightRc;
 }
 
-/**
- * @param {string[]} tags
- * @returns {string | undefined}
- */
-export function nextCandidateTag(tags) {
+export function nextCandidateTag(tags: string[]) {
     const parsed = tags
         .map((tag) => {
             try {
@@ -118,44 +115,32 @@ export function nextCandidateTag(tags) {
                 return null;
             }
         })
-        .filter((tag) => tag !== null);
-    const stableTags = /** @type {ReleaseTag[]} */ (parsed).filter((tag) => tag.kind === "stable");
+        .filter((tag): tag is ReleaseTag => tag !== null);
+    const stableTags = parsed.filter((tag) => tag.kind === "stable");
     stableTags.sort(compareReleaseTags);
     const lastStable = stableTags.at(-1);
     if (!lastStable) return undefined;
     const base = `v${lastStable.major}.${lastStable.minor}.${lastStable.patch + 1}`;
-    const candidates = /** @type {ReleaseTag[]} */ (parsed).filter(
-        (tag) => tag.stableTag === base && tag.rc !== undefined,
-    );
+    const candidates = parsed.filter((tag) => tag.stableTag === base && tag.rc !== undefined);
     const nextRc = Math.max(0, ...candidates.map((tag) => tag.rc || 0)) + 1;
     return `${base}-rc.${nextRc}`;
 }
 
-/**
- * @param {string[]} tags
- * @returns {string | undefined}
- */
-export function previousStableTag(tags) {
-    const stable = /** @type {ReleaseTag[]} */ (
-        tags
-            .map((tag) => {
-                try {
-                    return parseReleaseTag(tag);
-                } catch {
-                    return null;
-                }
-            })
-            .filter((tag) => tag?.kind === "stable")
-    );
+export function previousStableTag(tags: string[]) {
+    const stable = tags
+        .map((tag) => {
+            try {
+                return parseReleaseTag(tag);
+            } catch {
+                return null;
+            }
+        })
+        .filter((tag): tag is ReleaseTag => tag?.kind === "stable");
     stable.sort(compareReleaseTags);
     return stable.at(-1)?.tag;
 }
 
-/**
- * @param {string} tag
- * @returns {{ tag: string, kind: ReleaseKind, buildVersion: string, prerelease: boolean, makeLatest: boolean }}
- */
-export function releaseMetadataForTag(tag) {
+export function releaseMetadataForTag(tag: string): ReleaseMetadata {
     const parsed = parseReleaseTag(tag);
     return {
         tag: parsed.tag,
@@ -166,10 +151,7 @@ export function releaseMetadataForTag(tag) {
     };
 }
 
-/**
- * @returns {CommandRunner}
- */
-function defaultRun() {
+function defaultRun(): CommandRunner {
     return async (command, args, options = {}) => {
         const output = await captureScriptProcess(command, {
             args,
@@ -188,30 +170,24 @@ function defaultRun() {
     };
 }
 
-/**
-/** @type {ReleasePort} */
-const SYSTEM_RELEASE_PORT = Object.freeze({ run: defaultRun(), log: console.log });
+const SYSTEM_RELEASE_PORT: ReleasePort = Object.freeze({ run: defaultRun(), log: console.log });
 
-/**
- * @param {ReleasePort} deps
- * @param {string} command
- * @param {string[]} args
- * @param {{ cwd?: string, env?: Record<string, string> }} [options]
- * @returns {Promise<CommandResult>}
- */
-export async function runGit(deps, command, args, options = {}) {
+export async function runGit(
+    deps: ReleasePort,
+    command: string,
+    args: string[],
+    options: CommandOptions = {},
+): Promise<CommandResult> {
     return await deps.run(command, args, options);
 }
 
-/**
- * @param {ReleasePort} deps
- * @param {string} label
- * @param {string} command
- * @param {string[]} args
- * @param {{ cwd?: string, env?: Record<string, string> }} [options]
- * @returns {Promise<CommandResult>}
- */
-async function mustRun(deps, label, command, args, options = {}) {
+async function mustRun(
+    deps: ReleasePort,
+    label: string,
+    command: string,
+    args: string[],
+    options: CommandOptions = {},
+) {
     const result = await deps.run(command, args, options);
     if (!result.success) {
         throw new Error(`${label} failed with exit code ${result.code}: ${result.stderr || result.stdout}`.trim());
@@ -219,38 +195,26 @@ async function mustRun(deps, label, command, args, options = {}) {
     return result;
 }
 
-/**
- * @param {string} stdout
- * @returns {string[]}
- */
-function splitLines(stdout) {
+function splitLines(stdout: string) {
     return stdout
         .split("\n")
         .map((line) => line.trim())
         .filter(Boolean);
 }
 
-/**
- * @param {ReleasePort} deps
- * @returns {Promise<string[]>}
- */
-export async function listTags(deps) {
+export async function listTags(deps: ReleasePort) {
     const result = await mustRun(deps, "List release tags", "git", ["tag", "--list", "v*"]);
     return splitLines(result.stdout);
 }
 
-/**
- * @param {ReleasePort} deps
- * @returns {Promise<string[]>}
- */
-export async function listRemoteTags(deps) {
+export async function listRemoteTags(deps: ReleasePort) {
     const result = await mustRun(deps, "List remote release tags", "git", [
         "ls-remote",
         "--tags",
         "origin",
         "refs/tags/v*",
     ]);
-    const tags = new Set();
+    const tags = new Set<string>();
     for (const line of splitLines(result.stdout)) {
         const ref = line.split(/\s+/)[1];
         if (!ref?.startsWith("refs/tags/")) continue;
@@ -260,32 +224,18 @@ export async function listRemoteTags(deps) {
     return [...tags];
 }
 
-/**
- * @param {ReleasePort} deps
- * @returns {Promise<string[]>}
- */
-export async function listAllReleaseTags(deps) {
+export async function listAllReleaseTags(deps: ReleasePort) {
     return [...new Set([...(await listTags(deps)), ...(await listRemoteTags(deps))])];
 }
 
-/**
- * @param {ReleasePort} deps
- * @param {string} tag
- * @returns {Promise<string | undefined>}
- */
-export async function resolveLocalTagCommit(deps, tag) {
+export async function resolveLocalTagCommit(deps: ReleasePort, tag: string) {
     assertSafeTagText(tag);
     const result = await deps.run("git", ["rev-parse", `${tag}^{commit}`]);
     if (!result.success) return undefined;
     return result.stdout.trim() || undefined;
 }
 
-/**
- * @param {ReleasePort} deps
- * @param {string} tag
- * @returns {Promise<string | undefined>}
- */
-export async function resolveRemoteTagCommit(deps, tag) {
+export async function resolveRemoteTagCommit(deps: ReleasePort, tag: string) {
     assertSafeTagText(tag);
     const result = await deps.run("git", ["ls-remote", "--tags", "origin", `refs/tags/${tag}*`]);
     if (!result.success) throw new Error(`Failed to inspect remote tag ${tag}: ${result.stderr || result.stdout}`);
@@ -299,12 +249,7 @@ export async function resolveRemoteTagCommit(deps, tag) {
     return peeledCommit || tagObject || undefined;
 }
 
-/**
- * @param {ReleasePort} deps
- * @param {string} branch
- * @returns {Promise<string | undefined>}
- */
-async function resolveRemoteBranchCommit(deps, branch) {
+async function resolveRemoteBranchCommit(deps: ReleasePort, branch: string) {
     const ref = `refs/heads/${branch}`;
     const result = await deps.run("git", ["ls-remote", "--heads", "origin", ref]);
     if (!result.success) {
@@ -317,13 +262,7 @@ async function resolveRemoteBranchCommit(deps, branch) {
     return undefined;
 }
 
-/**
- * Fetch one remote ref's objects without moving local branches, tags, or remote-tracking refs.
- *
- * @param {ReleasePort} deps
- * @param {string} ref
- */
-async function fetchRemoteObjects(deps, ref) {
+async function fetchRemoteObjects(deps: ReleasePort, ref: string) {
     await mustRun(deps, `Fetch ${ref}`, "git", [
         "fetch",
         "--no-tags",
@@ -334,20 +273,11 @@ async function fetchRemoteObjects(deps, ref) {
     ]);
 }
 
-/**
- * @param {ReleasePort} deps
- * @param {string} commit
- */
-async function assertCommitAvailable(deps, commit) {
+async function assertCommitAvailable(deps: ReleasePort, commit: string) {
     await mustRun(deps, `Read commit ${commit}`, "git", ["cat-file", "-e", `${commit}^{commit}`]);
 }
 
-/**
- * @param {ReleasePort} deps
- * @param {string} branch
- * @returns {Promise<string | undefined>}
- */
-async function loadRemoteBranchCommit(deps, branch) {
+async function loadRemoteBranchCommit(deps: ReleasePort, branch: string) {
     const commit = await resolveRemoteBranchCommit(deps, branch);
     if (!commit) return undefined;
 
@@ -367,12 +297,7 @@ async function loadRemoteBranchCommit(deps, branch) {
     throw new Error(`Could not read remote release branch commit during preflight: ${branch} at ${commit}`);
 }
 
-/**
- * @param {ReleasePort} deps
- * @param {string} branch
- * @param {string | undefined} expectedCommit
- */
-async function assertRemoteBranchUnchanged(deps, branch, expectedCommit) {
+async function assertRemoteBranchUnchanged(deps: ReleasePort, branch: string, expectedCommit: string | undefined) {
     const current = await resolveRemoteBranchCommit(deps, branch);
     if (current !== expectedCommit) {
         throw new Error(
@@ -383,14 +308,12 @@ async function assertRemoteBranchUnchanged(deps, branch, expectedCommit) {
     }
 }
 
-/**
- * @param {ReleasePort} deps
- * @param {string} tag
- * @param {string | undefined} branch
- * @param {Error} cause
- * @returns {Promise<Error>}
- */
-async function describePushFailure(deps, tag, branch, cause) {
+async function describePushFailure(
+    deps: ReleasePort,
+    tag: string,
+    branch: string | undefined,
+    cause: Error,
+): Promise<Error> {
     try {
         const remoteTag = await resolveRemoteTagCommit(deps, tag);
         const remoteBranch = branch ? await resolveRemoteBranchCommit(deps, branch) : undefined;
@@ -408,27 +331,16 @@ async function describePushFailure(deps, tag, branch, cause) {
     }
 }
 
-/**
- * @param {ReleasePort} deps
- * @param {string} tag
- */
-async function assertTagAvailable(deps, tag) {
+async function assertTagAvailable(deps: ReleasePort, tag: string) {
     if (await resolveLocalTagCommit(deps, tag)) throw new Error(`Local tag already exists: ${tag}`);
     if (await resolveRemoteTagCommit(deps, tag)) throw new Error(`Remote tag already exists: ${tag}`);
 }
 
-/**
- * @param {string} stderr
- */
-function isMissingGitHubReleaseError(stderr) {
+function isMissingGitHubReleaseError(stderr: string) {
     return /not\s+found|could\s+not\s+resolve|release\s+.*\s+does\s+not\s+exist/i.test(stderr);
 }
 
-/**
- * @param {ReleasePort} deps
- * @param {string} tag
- */
-async function assertHostReleaseAbsent(deps, tag) {
+async function assertHostReleaseAbsent(deps: ReleasePort, tag: string) {
     const result = await deps.run("gh", ["release", "view", tag, "--json", "id"]);
     if (result.success) throw new Error(`GitHub release already exists for ${tag}.`);
     const output = `${result.stderr}\n${result.stdout}`;
@@ -437,10 +349,7 @@ async function assertHostReleaseAbsent(deps, tag) {
     }
 }
 
-/**
- * @param {string} stdout
- */
-function parseJson(stdout) {
+function parseJson(stdout: string): PublishedRelease | null {
     try {
         return JSON.parse(stdout || "null");
     } catch (error) {
@@ -449,12 +358,7 @@ function parseJson(stdout) {
     }
 }
 
-/**
- * @param {string} tag
- * @returns {string[]}
- */
-export function expectedReleaseAssetNames(tag) {
-    /** @type {string[]} */
+export function expectedReleaseAssetNames(tag: string) {
     const names = ["SHA256SUMS", "config.schema.json"];
     for (const suffix of WLD_RELEASE_ASSET_SUFFIXES) {
         names.push(
@@ -467,11 +371,7 @@ export function expectedReleaseAssetNames(tag) {
     return names;
 }
 
-/**
- * @param {ReleasePort} deps
- * @param {string} candidateTag
- */
-export async function assertCandidatePublished(deps, candidateTag) {
+export async function assertCandidatePublished(deps: ReleasePort, candidateTag: string) {
     parseReleaseTag(candidateTag);
     const result = await mustRun(deps, "Read Candidate release", "gh", [
         "release",
@@ -480,9 +380,7 @@ export async function assertCandidatePublished(deps, candidateTag) {
         "--json",
         "isPrerelease,isDraft,assets",
     ]);
-    const release =
-        /** @type {{ isDraft?: boolean, isPrerelease?: boolean, assets?: Array<{ name: string }> }} */
-        (parseJson(result.stdout));
+    const release = parseJson(result.stdout);
     if (!release || release.isDraft) throw new Error(`Candidate release is not published: ${candidateTag}`);
     if (!release.isPrerelease) throw new Error(`Candidate release is not marked as a prerelease: ${candidateTag}`);
     const names = new Set((release.assets || []).map((asset) => asset.name));
@@ -491,14 +389,13 @@ export async function assertCandidatePublished(deps, candidateTag) {
     }
 }
 
-/**
- * @param {ReleasePort} deps
- * @param {string} tag
- * @param {string} targetCommit
- * @param {string} message
- * @param {boolean} dryRun
- */
-async function createAndPushTag(deps, tag, targetCommit, message, dryRun) {
+async function createAndPushTag(
+    deps: ReleasePort,
+    tag: string,
+    targetCommit: string,
+    message: string,
+    dryRun: boolean,
+) {
     const { log } = deps;
     if (dryRun) {
         log(`[dry-run] would create annotated tag ${tag} at ${targetCommit}`);
@@ -514,21 +411,12 @@ async function createAndPushTag(deps, tag, targetCommit, message, dryRun) {
     }
 }
 
-/**
- * @param {ReleasePort} deps
- * @returns {Promise<string>}
- */
-async function headCommit(deps) {
+async function headCommit(deps: ReleasePort) {
     const result = await mustRun(deps, "Read HEAD", "git", ["rev-parse", "HEAD"]);
     return result.stdout.trim();
 }
 
-/**
- * @param {ReleasePort} deps
- * @param {ReleaseTag} parsed
- * @returns {Promise<CandidateSource>}
- */
-async function selectCandidateSource(deps, parsed) {
+async function selectCandidateSource(deps: ReleasePort, parsed: ReleaseTag): Promise<CandidateSource> {
     const branch = `release/${parsed.stableTag}`;
     if (LEGACY_CANDIDATE_SERIES.has(parsed.stableTag)) {
         return { commit: await headCommit(deps), branch, mode: "legacy-head" };
@@ -560,13 +448,7 @@ async function selectCandidateSource(deps, parsed) {
     return { commit: branchCommit, branch, mode: "remote-branch" };
 }
 
-/**
- * @param {ReleasePort} deps
- * @param {string} tag
- * @param {CandidateSource} source
- * @param {boolean} dryRun
- */
-async function publishCandidate(deps, tag, source, dryRun) {
+async function publishCandidate(deps: ReleasePort, tag: string, source: CandidateSource, dryRun: boolean) {
     const message = `Release Candidate ${tag}`;
     deps.log(`Candidate source: ${source.mode === "legacy-head" ? "HEAD" : source.branch} at ${source.commit}`);
     deps.log(`Candidate target tag: ${tag}`);
@@ -612,12 +494,7 @@ async function publishCandidate(deps, tag, source, dryRun) {
     }
 }
 
-/**
- * @param {ReleasePort} deps
- * @param {string} tag
- * @param {boolean} dryRun
- */
-export async function createCandidate(deps, tag, dryRun = false) {
+export async function createCandidate(deps: ReleasePort, tag: string, dryRun = false) {
     const parsed = parseReleaseTag(tag);
     if (parsed.kind !== "candidate") throw new Error(`Candidate release requires an rc tag: ${tag}`);
     const existingTags = await listAllReleaseTags(deps);
@@ -648,12 +525,7 @@ export async function createCandidate(deps, tag, dryRun = false) {
     await publishCandidate(deps, tag, source, dryRun);
 }
 
-/**
- * @param {ReleasePort} deps
- * @param {string} tag
- * @param {boolean} dryRun
- */
-export async function createStable(deps, tag, dryRun = false) {
+export async function createStable(deps: ReleasePort, tag: string, dryRun = false) {
     const parsed = parseReleaseTag(tag);
     if (parsed.kind !== "stable") throw new Error(`Stable release requires a stable tag: ${tag}`);
     const commit = await headCommit(deps);
@@ -680,12 +552,7 @@ export async function createStable(deps, tag, dryRun = false) {
     await createAndPushTag(deps, tag, commit, `Stable release ${tag}`, dryRun);
 }
 
-/**
- * @param {ReleasePort} deps
- * @param {string} candidateTag
- * @param {boolean} dryRun
- */
-export async function promoteCandidate(deps, candidateTag, dryRun = false) {
+export async function promoteCandidate(deps: ReleasePort, candidateTag: string, dryRun = false) {
     const parsed = parseReleaseTag(candidateTag);
     if (parsed.kind !== "candidate") throw new Error(`Promotion requires a Candidate tag: ${candidateTag}`);
     const stableTag = parsed.stableTag;
@@ -717,14 +584,9 @@ export async function promoteCandidate(deps, candidateTag, dryRun = false) {
     );
 }
 
-/**
- * @param {string[]} args
- * @returns {{ command: string, tag?: string, candidate?: string, dryRun: boolean }}
- */
-export function parseReleaseArgs(args) {
+export function parseReleaseArgs(args: string[]): ReleaseArgs {
     const [command, ...rest] = args;
-    /** @type {{ command: string, tag?: string, candidate?: string, dryRun: boolean }} */
-    const options = { command: command || "", dryRun: false };
+    const options: ReleaseArgs = { command: command || "", dryRun: false };
     for (let index = 0; index < rest.length; index += 1) {
         const arg = rest[index];
         if (arg === "--dry-run") options.dryRun = true;
@@ -735,11 +597,7 @@ export function parseReleaseArgs(args) {
     return options;
 }
 
-/**
- * @param {string[]} args
- * @param {ReleasePort} deps
- */
-export async function main(args, deps) {
+export async function main(args: string[], deps: ReleasePort) {
     const options = parseReleaseArgs(args);
     if (options.command === "metadata") {
         if (!options.tag) throw new Error("release metadata requires --tag <tag>");
@@ -762,7 +620,7 @@ export async function main(args, deps) {
         return;
     }
     throw new Error(
-        "Usage: release.js metadata --tag <tag> | candidate --tag <tag> [--dry-run] | stable --tag <tag> [--dry-run] | promote --candidate <tag> [--dry-run]",
+        "Usage: release.ts metadata --tag <tag> | candidate --tag <tag> [--dry-run] | stable --tag <tag> [--dry-run] | promote --candidate <tag> [--dry-run]",
     );
 }
 

@@ -155,7 +155,7 @@ test("original compound task names preserve argument boundaries and prerequisite
         {
             task: "release:candidate",
             args: ["--version", "v1.2.3-rc.1"],
-            last: { path: "scripts/release.js", args: ["candidate", "--version", "v1.2.3-rc.1"] },
+            last: { path: "scripts/release.ts", args: ["candidate", "--version", "v1.2.3-rc.1"] },
         },
         {
             task: "package:windows",

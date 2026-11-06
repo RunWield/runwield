@@ -23,7 +23,7 @@ import {
     promoteCandidate,
     releaseMetadataForTag,
     stableTagForCandidate,
-} from "./release.js";
+} from "./release.ts";
 
 test("release command rejects unsafe or unsupported tags before external operations", async () => {
     for (const tag of [
