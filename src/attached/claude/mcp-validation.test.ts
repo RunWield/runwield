@@ -441,7 +441,6 @@ test("MCP status waits for a browser decision without polling full workflow cont
         );
         assertEquals(timedOut.workflow.revision, initial.workflow.revision);
 
-        const startedAt = Date.now();
         const waiting = client.callTool({
             name: "status",
             arguments: {
@@ -463,6 +462,7 @@ test("MCP status waits for a browser decision without polling full workflow cont
         });
         assertEquals(decision.status, 200);
         await decision.text();
+        const decisionAcknowledgedAt = Date.now();
         const completed = await waiting;
         const result: { workflow: { revision: number; state: string; nextAction: { kind: string } } } = JSON.parse(
             JSON.stringify(completed.structuredContent),
@@ -470,7 +470,7 @@ test("MCP status waits for a browser decision without polling full workflow cont
         assert(result.workflow.revision > initial.workflow.revision);
         assertEquals(result.workflow.state, "plan_ready");
         assertEquals(result.workflow.nextAction.kind, "plan_ready");
-        assert(Date.now() - startedAt < 5000, "Long-poll did not return soon after the browser decision.");
+        assert(Date.now() - decisionAcknowledgedAt < 5000, "Long-poll did not return soon after the browser decision.");
     } finally {
         await client.close().catch(() => {});
         await transport.close().catch(() => {});

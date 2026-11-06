@@ -6,8 +6,7 @@ import {
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,
     readFile as fsReadFile,
-    realpath as fsRealpath,
-    rename as fsRename,
+    cp as fsCp,
     rm as fsRm,
     stat as fsStat,
     writeFile as fsWriteFile,
@@ -325,11 +324,12 @@ test("named pull and push use a linked checkout's migrated 0.10 capability", asy
                         ),
                         2,
                     );
-                    await fsRename(
-                        join(projectRoot, ".wld", "internal", "controller"),
+                    await fsCp(
+                        join(resolveProjectRuntimeLayout(projectRoot).primary.internalRoot, "controller"),
                         join(projectRoot, ".wld", "controller"),
+                        { recursive: true },
                     );
-                    await fsRm(join(projectRoot, ".wld", "internal"), { recursive: true });
+                    await fsRm(join(projectRoot, ".wld", "internal"), { recursive: true, force: true });
                     await fsRm(join(alternateRoot, ".wld", "internal"), { recursive: true }).catch(() => {});
 
                     const recordKey = `${planId}:${created.spaceId}`;
@@ -468,7 +468,7 @@ test("project-local collaboration commands share one primary store across linked
                         projectSecrets: true,
                     });
                     const maintainer = parseCollaborationUrl(shared.maintainerUrl);
-                    const primaryStorePath = join(projectRoot, ".wld", "internal", "collaboration-secrets.json");
+                    const primaryStorePath = resolveProjectRuntimeLayout(projectRoot).primary.projectSecretStorePath;
                     assertEquals(getProjectSecretStorePath(alternateRoot), primaryStorePath);
                     const projectStore = await readSecretStore(await getProjectSecretStoreLocation(alternateRoot));
                     const recordKey = `${shared.planId}:${shared.spaceId}`;
@@ -584,12 +584,7 @@ test("project maintainer URL import writes only the fresh primary store and keep
                 assert(importedPlan);
                 assertEquals(importedPlan.path?.startsWith(freshLinked), true);
                 assertEquals(pulled.secretImported, true);
-                const freshStorePath = join(
-                    await fsRealpath(freshPrimary),
-                    ".wld",
-                    "internal",
-                    "collaboration-secrets.json",
-                );
+                const freshStorePath = resolveProjectRuntimeLayout(freshPrimary).primary.projectSecretStorePath;
                 assertEquals(getProjectSecretStorePath(freshLinked), freshStorePath);
                 const maintainer = parseCollaborationUrl(shared.maintainerUrl);
                 assertEquals(

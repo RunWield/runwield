@@ -15,6 +15,22 @@ import {
 import { pid, platform } from "node:process";
 import { isProjectPlan } from "./shared/project-plan.ts";
 export { isEpicPlan, isProjectPlan, isSequencePlan } from "./shared/project-plan.ts";
+export {
+    importPlanPackages,
+    readPlanImportEvidence,
+    createPlanPackage,
+    readPlanPackage,
+    listPlanPackages,
+    updatePlanPackageMetadata,
+    savePlanPackageDocument,
+    renamePlanPackage,
+    archivePlanPackage,
+    restorePlanPackage,
+    recoverPlanPackages,
+    capturePlanPackageInput,
+    readPlanPackageInput,
+    PlanPackageError,
+} from "./shared/plan-package-store.ts";
 /**
  * @module plan-store
  * Manages plan persistence: front matter injection, save/load/list, and
@@ -844,7 +860,7 @@ function optionalExecutionPolicyValue(overrides, existingFm, key) {
  * @param {unknown} value
  * @returns {string | undefined}
  */
-function normalizePlanId(value) {
+export function normalizePlanId(value) {
     if (typeof value !== "string") return undefined;
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : undefined;

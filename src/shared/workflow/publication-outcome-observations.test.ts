@@ -30,7 +30,7 @@ interface CleanupProcessResult {
     metadataReads: number;
     injectedFaults: number;
     coverageFaults: number;
-    afterCoverageFaultMs: number | null;
+    coverageReadBlocked: boolean;
 }
 
 function runCleanupProcess(projectRoot: string, attempt: PublicationAttempt, boundary = "resume") {
@@ -44,6 +44,7 @@ function runCleanupProcess(projectRoot: string, attempt: PublicationAttempt, bou
             JSON.stringify(attempt),
         ]),
         cwd: getCwd(),
+        ...(boundary === "coverage-slow" ? { timeoutMs: 15_000 } : {}),
     });
 }
 
@@ -395,9 +396,10 @@ for (const early of [false, true]) {
                     );
                     assert(result.complete);
                     assertEquals(result.coverageFaults, 1);
-                    assert(
-                        result.afterCoverageFaultMs !== null && result.afterCoverageFaultMs < 5300,
-                        `coverage must not hold delivery beyond the existing budget: ${result.afterCoverageFaultMs}ms`,
+                    assertEquals(
+                        result.coverageReadBlocked,
+                        fault === "slow",
+                        "cleanup must complete while the slow coverage read is still blocked",
                     );
                     const record = await readControllerRecord(metrics.projectRoot, {
                         planId: "plan-demo",

@@ -1,3 +1,4 @@
+import { enterProjectRuntime } from "./shared/project-runtime-layout.ts";
 import { defineCommittedGitFixture, git } from "./shared/git-test-fixture.ts";
 import { makeTempDirectory } from "./testing/temp-file.ts";
 import { hostname } from "node:os";
@@ -2927,19 +2928,10 @@ testWithFs("withPlanLock serializes concurrent same-process tasks while allowing
             releaseFirst = () => resolve(null);
         });
         const resolvedCwd = fsRealpathSync(cwd);
-        const lockPath = join(
-            getRunWieldRuntimeDir(resolvedCwd),
-            PROJECT_INTERNAL_RUNTIME_DIR_NAME,
-            "plan-locks",
-            "demo.lock",
-        );
+        const layout = await enterProjectRuntime(cwd);
+        const lockPath = join(layout.selected.planLocksDir, "demo.lock");
         const legacyLockPath = join(getRunWieldRuntimeDir(resolvedCwd), "plan-locks", "demo.lock");
-        const catalogPath = join(
-            getRunWieldRuntimeDir(resolvedCwd),
-            PROJECT_INTERNAL_RUNTIME_DIR_NAME,
-            "plan-locks",
-            "catalog.lock",
-        );
+        const catalogPath = layout.selected.planCatalogLockPath;
         const firstEntered = new Promise((resolve) => {
             void withPlanLock(cwd, "demo", async () => {
                 events.push("first-enter");

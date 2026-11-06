@@ -73,6 +73,8 @@ interface DiagnosticChildFailure extends Error {
     childPayload?: { artifactDir?: string };
 }
 interface NativeFailureDiagnostics {
+    concurrentSessions: Record<string, { runtime: { id: string }; screenText: string }>;
+    errorStack: string;
     nativeFailureEvidence: {
         projectRoot: string;
         status: { code: number; stdout: string };
@@ -90,7 +92,7 @@ test("composed Golden child failures retain read-only native evidence for their 
             name: "native-evidence",
             composedTui: true,
             initialProjectFiles: [{ path: "diagnostic-dirty.txt", text: "retained evidence" }],
-            actions: [],
+            actions: [{ type: "startConcurrentSession", name: "secondary" }],
             assertions: [() => { throw new Error("intentional native evidence failure"); }],
         };
 `,
@@ -115,6 +117,9 @@ test("composed Golden child failures retain read-only native evidence for their 
         assertEquals(diagnostic.nativeFailureEvidence.planDiff.code, 0);
         assertStringIncludes(diagnostic.nativeFailureEvidence.status.stdout, "diagnostic-dirty.txt");
         assertStringIncludes(diagnostic.nativeFailureEvidence.projectRoot, "runwield-golden-tui-");
+        assert(diagnostic.concurrentSessions.secondary.runtime.id);
+        assertEquals(typeof diagnostic.concurrentSessions.secondary.screenText, "string");
+        assertStringIncludes(diagnostic.errorStack, "intentional native evidence failure");
     } finally {
         await fsRm(fixtureRoot, { recursive: true });
     }

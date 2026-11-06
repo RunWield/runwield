@@ -40,7 +40,7 @@ const seed = defineCommittedGitFixture({
 const driver = fromFileUrl(new URL("../../shared/workflow/testing/publication-process-driver.ts", import.meta.url));
 
 for (const repair of [false, true]) {
-    test(`load-plan adopts legacy ${repair ? "repair" : "publication"} without moving saved work`, async () => {
+    test(`load-plan adopts legacy ${repair ? "repair" : "publication"} while preserving saved work`, async () => {
         await withRuntimeCommandFixture("legacy-publication-", async () => {
             const sandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
             delete process.env["WLD_TEST_SANDBOX_HOME"];
@@ -145,10 +145,20 @@ for (const repair of [false, true]) {
                 }
                 assertEquals(menus, 2);
                 assertStringIncludes(messages.join("\n"), "Plan loaded: demo");
-                assertEquals((await findById(root, "attempt-1"))?.publication, publication);
+                const relocatedRoot = join(
+                    resolveProjectRuntimeLayout(root).primary.publicationStagingRoot,
+                    "attempt-1",
+                );
+                assertEquals((await findById(root, "attempt-1"))?.publication, {
+                    ...publication,
+                    publicationRoot: relocatedRoot,
+                    ...(publication.failure ? { failure: { ...publication.failure, repairRoot: relocatedRoot } } : {}),
+                });
                 await fsStat(resolveProjectRuntimeLayout(root).primary.worktreeRegistryPath);
                 assertEquals(
-                    await fsStat(join(legacyBase, "worktrees.json")).then(() => true).catch(() => false),
+                    await fsStat(join(legacyBase, "worktrees.json"))
+                        .then(() => true)
+                        .catch(() => false),
                     false,
                 );
                 assertEquals(await git(root, ["rev-parse", "HEAD"]), targetHead);
@@ -160,8 +170,8 @@ for (const repair of [false, true]) {
                         await git(root, ["check-ignore", ".wld/plan-staging/attempt-1"]),
                         ".wld/plan-staging/attempt-1",
                     );
-                    assertEquals(await fsReadFile(join(publicationRoot, "README.md"), "utf8"), "Uncommitted repair\n");
-                    assertEquals(await git(publicationRoot, ["rev-parse", "HEAD"]), targetHead);
+                    assertEquals(await fsReadFile(join(relocatedRoot, "README.md"), "utf8"), "Uncommitted repair\n");
+                    assertEquals(await git(relocatedRoot, ["rev-parse", "HEAD"]), targetHead);
                 } else {
                     const configPath = join(directory, "resume.json");
                     await fsWriteFile(
