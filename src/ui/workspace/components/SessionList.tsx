@@ -1,49 +1,57 @@
 import { useEffect, useRef, useState } from "react";
 import { RunWieldButton, RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.tsx";
+import type {
+    CatalogDiagnostic,
+    CatalogedSession,
+    SessionListResult,
+} from "../../../shared/session/file-session-store.ts";
+import type { JsonValue } from "../../../shared/jsonc.ts";
 
-/** @param {string} projectId @param {string} sessionId */
-function sessionHref(projectId, sessionId) {
+export interface SessionListRow
+    extends Pick<CatalogedSession, "runwieldSessionId">, Partial<Pick<CatalogedSession, "displayName" | "archivedAt">> {
+    state?: string;
+}
+
+export type SessionListDiagnostic = CatalogDiagnostic | JsonValue | undefined;
+
+export interface SessionListData extends Partial<Omit<SessionListResult, "sessions" | "diagnostics">> {
+    sessions: SessionListRow[];
+    diagnostics?: SessionListDiagnostic[];
+}
+
+export interface SessionListProps {
+    projectId: string;
+    data?: SessionListData | null;
+    loading?: boolean;
+    error?: string;
+    archived?: boolean;
+    preserveArchived?: boolean;
+    onRetry?: () => void;
+    onPageChange?: (page: number) => void;
+    onSessionChanged?: (sessionId: string) => void;
+}
+
+interface SessionArchiveResponse extends Partial<Pick<CatalogedSession, "archivedAt">> {
+    error?: string;
+}
+
+type SessionActionErrors = Record<string, string>;
+type SessionArchiveOverrides = Record<string, string | null | undefined>;
+
+function sessionHref(projectId: string, sessionId: string) {
     return `/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(sessionId)}`;
 }
 
-/** @param {string} projectId */
-function newSessionHref(projectId) {
+function newSessionHref(projectId: string) {
     return `/projects/${encodeURIComponent(projectId)}/sessions/new`;
 }
 
-/** @param {unknown} value */
-function safeDiagnosticText(value) {
+function safeDiagnosticText(value: SessionListDiagnostic) {
     if (!value || typeof value !== "object") return String(value || "");
-    const record = /** @type {Record<string, unknown>} */ (value);
+    const record = value as Partial<CatalogDiagnostic>;
     return [record.code, record.message].filter((part) => typeof part === "string" && part).join(": ");
 }
 
-/**
- * @typedef {Object} SessionListRow
- * @property {string} runwieldSessionId
- * @property {string} [displayName]
- * @property {string} [state]
- * @property {string | null} [archivedAt]
- * @typedef {Object} SessionListData
- * @property {SessionListRow[]} sessions
- * @property {number} [page]
- * @property {number} [pageSize]
- * @property {number} [total]
- * @property {boolean} [hasNext]
- * @property {boolean} [hasPrevious]
- * @property {unknown[]} [diagnostics]
- * @typedef {Object} SessionListProps
- * @property {string} projectId
- * @property {SessionListData | null} [data]
- * @property {boolean} [loading]
- * @property {string} [error]
- * @property {boolean} [archived]
- * @property {boolean} [preserveArchived]
- * @property {() => void} [onRetry]
- * @property {(page: number) => void} [onPageChange]
- * @property {(sessionId: string) => void} [onSessionChanged]
- * @param {SessionListProps} props
- */
 export function SessionList({
     projectId,
     data,
@@ -54,44 +62,50 @@ export function SessionList({
     archived = false,
     preserveArchived = false,
     onSessionChanged,
-}) {
-    const pendingIds = useRef(new Set());
-    const [pending, setPending] = useState([]);
-    const [removed, setRemoved] = useState([]);
-    const [actionErrors, setActionErrors] = useState({});
-    const knownBusy = useRef(new Set());
-    const [archiveOverrides, setArchiveOverrides] = useState({});
+}: SessionListProps) {
+    const pendingIds = useRef(new Set<string>());
+    const [pending, setPending] = useState<string[]>([]);
+    const [removed, setRemoved] = useState<string[]>([]);
+    const [actionErrors, setActionErrors] = useState<SessionActionErrors>({});
+    const knownBusy = useRef(new Set<string>());
+    const [archiveOverrides, setArchiveOverrides] = useState<SessionArchiveOverrides>({});
     useEffect(() => {
         setRemoved([]);
         setArchiveOverrides({});
     }, [data]);
-    const sessions = (Array.isArray(data?.sessions) ? data.sessions : []).filter((row) =>
-        !removed.includes(row.runwieldSessionId)
-    ).map((row) =>
-        archiveOverrides[row.runwieldSessionId] === undefined
-            ? row
-            : { ...row, archivedAt: archiveOverrides[row.runwieldSessionId] }
-    );
-    async function changeArchive(session) {
+    const sessions = (Array.isArray(data?.sessions) ? data.sessions : [])
+        .filter((row) => !removed.includes(row.runwieldSessionId))
+        .map((row) =>
+            archiveOverrides[row.runwieldSessionId] === undefined
+                ? row
+                : { ...row, archivedAt: archiveOverrides[row.runwieldSessionId] },
+        );
+    async function changeArchive(session: SessionListRow) {
         const id = session.runwieldSessionId;
         if (pendingIds.current.has(id)) return;
         const isArchived = Boolean(session.archivedAt);
         const busy = session.state === "active" || session.state === "busy" || knownBusy.current.has(id);
         if (
-            !isArchived && busy &&
+            !isArchived &&
+            busy &&
             !globalThis.confirm(
                 `Stop current work and archive “${
                     session.displayName || "Untitled Session"
                 }”? The transcript and Plan associations will be kept.`,
             )
-        ) return;
+        )
+            return;
         pendingIds.current.add(id);
         setPending([...pendingIds.current]);
         setActionErrors((errors) => ({ ...errors, [id]: "" }));
         try {
-            const csrf = document.cookie.split("; ").find((value) =>
-                value.startsWith("rw_owner_csrf=")
-            )?.split("=").slice(1).join("=") || "";
+            const csrf =
+                document.cookie
+                    .split("; ")
+                    .find((value) => value.startsWith("rw_owner_csrf="))
+                    ?.split("=")
+                    .slice(1)
+                    .join("=") || "";
             const response = await fetch(
                 `/api/owner/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(id)}/${
                     isArchived ? "unarchive" : "archive"
@@ -102,7 +116,7 @@ export function SessionList({
                     body: JSON.stringify(isArchived ? {} : { confirmed: busy }),
                 },
             );
-            const payload = await response.json().catch(() => ({}));
+            const payload: SessionArchiveResponse = await response.json().catch(() => ({}));
             if (!response.ok || payload.error) {
                 if (/busy.*confirm/i.test(payload.error || "")) knownBusy.current.add(id);
                 throw new Error(payload.error || `Request failed (${response.status}).`);
@@ -127,13 +141,14 @@ export function SessionList({
             setPending([...pendingIds.current]);
         }
     }
-    const page = Number.isInteger(data?.page) ? data.page : 0;
-    const pageSize = Number.isInteger(data?.pageSize) ? data.pageSize : 30;
+    // Number.isInteger proves these optional numbers exist but does not narrow their types.
+    const page = Number.isInteger(data?.page) ? data!.page! : 0;
+    const pageSize = Number.isInteger(data?.pageSize) ? data!.pageSize! : 30;
     const total = Number.isInteger(data?.total)
         ? Math.max(
-            0,
-            data.total - removed.filter((id) => data.sessions?.some((row) => row.runwieldSessionId === id)).length,
-        )
+              0,
+              data!.total! - removed.filter((id) => data!.sessions?.some((row) => row.runwieldSessionId === id)).length,
+          )
         : sessions.length;
     const hasNext = data?.hasNext === true;
     const hasPrevious = page > 0 || data?.hasPrevious === true;
@@ -151,15 +166,21 @@ export function SessionList({
             <section className="error-panel session-list-state" role="alert">
                 <h2>Sessions failed to load</h2>
                 <p>{error}</p>
-                {onRetry ? <RunWieldButton type="button" onClick={onRetry}>Retry</RunWieldButton> : null}
+                {onRetry ? (
+                    <RunWieldButton type="button" onClick={onRetry}>
+                        Retry
+                    </RunWieldButton>
+                ) : null}
             </section>
         );
     }
-    const diagnostics = Array.isArray(data?.diagnostics) ? /** @type {unknown[]} */ (data.diagnostics) : [];
+    const diagnostics = Array.isArray(data?.diagnostics) ? data.diagnostics : [];
     const newSessionAction = archived ? null : (
         <section className="session-create-panel" aria-label="Session actions">
             <a className="rw-toolbar-button" href={newSessionHref(projectId)}>
-                <span className="rw-toolbar-plus" aria-hidden="true">+</span>
+                <span className="rw-toolbar-plus" aria-hidden="true">
+                    +
+                </span>
                 <span>New Session</span>
             </a>
         </section>
@@ -176,40 +197,38 @@ export function SessionList({
                             : "Start a new browser Session or run a full Session rescan from the Project card."}
                     </p>
                 </section>
-                {hasPrevious
-                    ? (
-                        <nav className="session-pagination" aria-label="Session pages">
-                            <RunWieldButton
-                                type="button"
-                                disabled={loading || pending.length > 0}
-                                onClick={() => onPageChange?.(page - 1)}
-                            >
-                                Previous
-                            </RunWieldButton>
-                        </nav>
-                    )
-                    : null}
+                {hasPrevious ? (
+                    <nav className="session-pagination" aria-label="Session pages">
+                        <RunWieldButton
+                            type="button"
+                            disabled={loading || pending.length > 0}
+                            onClick={() => onPageChange?.(page - 1)}
+                        >
+                            Previous
+                        </RunWieldButton>
+                    </nav>
+                ) : null}
             </section>
         );
     }
     return (
         <section className="session-list-surface" aria-label="Project Sessions">
             {newSessionAction}
-            {error
-                ? (
-                    <p className="notice warning" role="alert">
-                        {error} <RunWieldButton onClick={onRetry}>Retry</RunWieldButton>
-                    </p>
-                )
-                : null}
-            {diagnostics.length
-                ? (
-                    <details className="notice warning session-diagnostics">
-                        <summary>Catalog diagnostics ({diagnostics.length})</summary>
-                        <ul>{diagnostics.map((item, index) => <li key={index}>{safeDiagnosticText(item)}</li>)}</ul>
-                    </details>
-                )
-                : null}
+            {error ? (
+                <p className="notice warning" role="alert">
+                    {error} <RunWieldButton onClick={onRetry}>Retry</RunWieldButton>
+                </p>
+            ) : null}
+            {diagnostics.length ? (
+                <details className="notice warning session-diagnostics">
+                    <summary>Catalog diagnostics ({diagnostics.length})</summary>
+                    <ul>
+                        {diagnostics.map((item, index) => (
+                            <li key={index}>{safeDiagnosticText(item)}</li>
+                        ))}
+                    </ul>
+                </details>
+            ) : null}
             <section className="session-catalog" aria-label="Existing Sessions">
                 <header className="session-catalog-header">
                     <div>
@@ -238,16 +257,18 @@ export function SessionList({
                                 onClick={() => changeArchive(session)}
                             >
                                 {pending.includes(session.runwieldSessionId)
-                                    ? (session.archivedAt ? "Unarchiving…" : "Archiving…")
-                                    : (session.archivedAt ? "Unarchive" : "Archive")}
+                                    ? session.archivedAt
+                                        ? "Unarchiving…"
+                                        : "Archiving…"
+                                    : session.archivedAt
+                                      ? "Unarchive"
+                                      : "Archive"}
                             </RunWieldButton>
-                            {actionErrors[session.runwieldSessionId]
-                                ? (
-                                    <p className="notice warning session-archive-error" role="alert">
-                                        {actionErrors[session.runwieldSessionId]}
-                                    </p>
-                                )
-                                : null}
+                            {actionErrors[session.runwieldSessionId] ? (
+                                <p className="notice warning session-archive-error" role="alert">
+                                    {actionErrors[session.runwieldSessionId]}
+                                </p>
+                            ) : null}
                         </div>
                     ))}
                 </div>
