@@ -317,7 +317,7 @@ flowchart LR
 
 Core review logic lives in workflow modules and knows only the semantic request and response. Browser-aware plan/code
 review implementations live under `src/ui/review/`. The TUI maps interactions in
-`src/ui/tui/runtime-interaction-adapter.ts`; ACP maps them in `src/acp/interaction-mapper.js`.
+`src/ui/tui/runtime-interaction-adapter.ts`; ACP maps them in `src/acp/interaction-mapper.ts`.
 
 ## Root cause of the duplicated TUI blocks
 

@@ -4,6 +4,50 @@
  */
 
 import { methods } from "@agentclientprotocol/sdk";
+import type {
+    ClientCapabilities,
+    CreateElicitationRequest,
+    ElicitationAcceptAction,
+    ElicitationSchema,
+    SessionNotification,
+} from "@agentclientprotocol/sdk";
+import type {
+    RuntimeInteractionAdapter,
+    RuntimeInteractionRequest,
+    RuntimeInteractionResponse,
+} from "../shared/session/session-runtime-interactions.ts";
+
+export interface AcpElicitationResponse extends ElicitationAcceptAction {
+    action?: string;
+}
+
+export interface AcpInteractionClient {
+    request?(method: string, params: CreateElicitationRequest): Promise<AcpElicitationResponse | null | undefined>;
+    notify?(method: string, params: SessionNotification): void | Promise<void>;
+}
+
+export interface AcpInteractionContext extends AcpInteractionClient {
+    client?: AcpInteractionClient;
+}
+
+export interface AcpInteractionAdapterOptions {
+    context: AcpInteractionContext;
+    acpSessionId: string;
+    clientCapabilities?: Pick<ClientCapabilities, "elicitation"> | null;
+    presentChatQuestion?: (
+        interaction: RuntimeInteractionRequest,
+        signal?: AbortSignal,
+    ) => Promise<RuntimeInteractionResponse>;
+}
+
+interface BrowserQuestionOptions extends Pick<AcpInteractionAdapterOptions, "context" | "acpSessionId"> {
+    interaction: RuntimeInteractionRequest;
+    signal?: AbortSignal;
+}
+
+interface ReviewSurface {
+    url: string;
+}
 import {
     isApprovalAcceptedValue,
     RuntimeInteractionOutcomes,
@@ -12,29 +56,22 @@ import {
 import { startBrowserQuestionServer } from "../shared/session/browser-question.ts";
 import { requestLocalReviewInteraction } from "../shared/session/local-review-interactions.ts";
 
-/** @param {unknown} capabilities */
-function supportsFormElicitation(capabilities) {
-    const value = /** @type {any} */ (capabilities || {});
+function supportsFormElicitation(capabilities: AcpInteractionAdapterOptions["clientCapabilities"]) {
+    const value = capabilities || {};
     return Boolean(value.elicitation?.form);
 }
 
-/**
- * @param {{ request?: Function, client?: { request?: Function } }} context
- * @param {string} method
- * @param {unknown} params
- */
-function requestClient(context, method, params) {
+function requestClient(
+    context: AcpInteractionContext,
+    method: string,
+    params: CreateElicitationRequest,
+): Promise<AcpElicitationResponse | null | undefined> {
     if (typeof context.request === "function") return context.request(method, params);
     if (context.client && typeof context.client.request === "function") return context.client.request(method, params);
     return Promise.resolve({ action: "cancel" });
 }
 
-/**
- * @param {{ notify?: Function, client?: { notify?: Function } }} context
- * @param {string} method
- * @param {unknown} params
- */
-function notifyClient(context, method, params) {
+function notifyClient(context: AcpInteractionContext, method: string, params: SessionNotification) {
     if (typeof context.notify === "function") return Promise.resolve(context.notify(method, params));
     if (context.client && typeof context.client.notify === "function") {
         return Promise.resolve(context.client.notify(method, params));
@@ -42,16 +79,12 @@ function notifyClient(context, method, params) {
     return Promise.resolve();
 }
 
-/**
- * @param {{ context: any, acpSessionId: string, interaction: import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest, signal?: AbortSignal }} options
- */
-async function requestBrowserQuestion(options) {
-    /** @type {PromiseWithResolvers<import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionResponse>} */
-    const answered = Promise.withResolvers();
+async function requestBrowserQuestion(options: BrowserQuestionOptions): Promise<RuntimeInteractionResponse> {
+    const answered = Promise.withResolvers<RuntimeInteractionResponse>();
     let used = false;
     let origin = "";
-    /** @param {Request} request */
-    const answerQuestion = async (request) => {
+
+    const answerQuestion = async (request: Request) => {
         const requestOrigin = request.headers.get("origin");
         if (!requestOrigin || requestOrigin !== origin) return new Response("Wrong origin", { status: 403 });
         if (used) return new Response("This question is already answered.", { status: 409 });
@@ -144,10 +177,7 @@ async function requestBrowserQuestion(options) {
     }
 }
 
-/**
- * @param {import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest} interaction
- */
-function buildSchema(interaction) {
+function buildSchema(interaction: RuntimeInteractionRequest): ElicitationSchema {
     if (interaction.type === RuntimeInteractionTypes.SELECT || interaction.type === RuntimeInteractionTypes.APPROVAL) {
         const oneOf = (interaction.options || []).map((option) => ({ const: option.value, title: option.label }));
         return {
@@ -187,11 +217,12 @@ function buildSchema(interaction) {
     };
 }
 
-/**
- * @param {{ context: any, acpSessionId: string, clientCapabilities?: unknown, presentChatQuestion?: (interaction: import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest, signal?: AbortSignal) => Promise<import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionResponse> }} options
- * @returns {import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionAdapter}
- */
-export function createAcpInteractionAdapter({ context, acpSessionId, clientCapabilities, presentChatQuestion }) {
+export function createAcpInteractionAdapter({
+    context,
+    acpSessionId,
+    clientCapabilities,
+    presentChatQuestion,
+}: AcpInteractionAdapterOptions): RuntimeInteractionAdapter {
     return {
         supportsInteraction(type) {
             return (
@@ -210,8 +241,8 @@ export function createAcpInteractionAdapter({ context, acpSessionId, clientCapab
                     message: "Pair checkpoints use ordinary ACP prompts, not structured interactions.",
                 };
             }
-            /** @param {string | { url: string }} surface */
-            const notifySurfaceReady = async (surface) => {
+
+            const notifySurfaceReady = async (surface: string | ReviewSurface) => {
                 const reviewUrl = typeof surface === "string" ? surface : surface.url;
                 await notifyClient(context, methods.client.session.update, {
                     sessionId: acpSessionId,
@@ -232,7 +263,7 @@ export function createAcpInteractionAdapter({ context, acpSessionId, clientCapab
                 return await requestLocalReviewInteraction(interaction, signal, {
                     onSurfaceReady: notifySurfaceReady,
                     requestArtifactDecision: async () => {
-                        const decision = {
+                        const decision: RuntimeInteractionRequest = {
                             ...interaction,
                             type: RuntimeInteractionTypes.TEXT,
                             prompt: interaction.prompt,

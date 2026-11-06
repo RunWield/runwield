@@ -101,7 +101,7 @@ The implementation evidence comes from these source files:
 - `src/acp/server.js`
 - `src/acp/session-map.ts`
 - `src/acp/event-mapper.ts`
-- `src/acp/interaction-mapper.js`
+- `src/acp/interaction-mapper.ts`
 - `src/shared/session/session-runtime.ts`
 - `src/shared/session/session-runtime-events.js`
 - `src/shared/session/session-runtime-interactions.ts`
@@ -126,7 +126,7 @@ The implementation evidence comes from these source files:
     including command menus, when forms are not supported.
 
 Evidence: `src/acp/server.js` (`createInitializeResponse`, `createRunWieldAcpServer`), `event-mapper.ts`,
-`interaction-mapper.js`, and `server.test.js` under `src/acp/`.
+`interaction-mapper.ts`, and `server.test.js` under `src/acp/`.
 
 **Still missing:** Session listing/resume, a native Agent selector, embedded resources, audio prompts, additional roots,
 HTTP/SSE MCP, client filesystem/terminal use, standard Plan and Session-info updates, and rich tool diffs/locations.
@@ -189,7 +189,7 @@ and settled before the Hosted Session is disposed.
 
 The adapter stores `clientCapabilities` from `initialize` for later interaction mapping. Current production use covers
 Terminal Auth capability detection during `initialize` and `clientCapabilities.elicitation.form` in
-`src/acp/interaction-mapper.js`.
+`src/acp/interaction-mapper.ts`.
 
 Terminal Auth is out of band. The ACP Client starts RunWield, reads the terminal auth method, launches the configured
 command with `login` appended, waits for that terminal process to finish, and reconnects to `wld acp`. `wld login` uses
@@ -498,7 +498,7 @@ RunWield does not provide an ACP-native Plan editor. Review stays in RunWield br
 [ACP PRD](prd/runwield-acp-protocol-prd.md#product-decisions) intends. Standard ACP `plan` updates are progress lists,
 not a replacement for RunWield Plan Feedback and approval.
 
-Evidence: `src/acp/interaction-mapper.js` (`createAcpInteractionAdapter`, `requestBrowserQuestion`, `buildSchema`),
+Evidence: `src/acp/interaction-mapper.ts` (`createAcpInteractionAdapter`, `requestBrowserQuestion`, `buildSchema`),
 `src/acp/chat-interaction.ts` (`formatChatQuestion`, `parseChatReply`), `src/acp/server.js` (`createLiveOperation`), and
 `src/shared/session/browser-question.ts` (`startBrowserQuestionServer`).
 
@@ -559,7 +559,7 @@ used. Once supported, that feature's protocol rules apply.
 | Boolean/grouped config controls        | Not exposed by the model-and-reasoning option builder.                | Optional presentation choices, not a need by themselves.                                                                   |
 
 Implementation evidence: `src/acp/server.js` capability declarations and unsupported handlers,
-`src/acp/model-options.ts`, `src/acp/event-mapper.ts`, and `src/acp/interaction-mapper.js`. Protocol basis:
+`src/acp/model-options.ts`, `src/acp/event-mapper.ts`, and `src/acp/interaction-mapper.ts`. Protocol basis:
 [schema](https://agentclientprotocol.com/protocol/v1/schema),
 [content](https://agentclientprotocol.com/protocol/v1/content),
 [Session setup](https://agentclientprotocol.com/protocol/v1/session-setup),
@@ -582,7 +582,7 @@ management, Session fork, and NES are not counted as missing stable v1 requireme
 - Browser Plan review remains separate from standard ACP Plan progress and tool permissions. Adding either standard
   feature would not replace the browser approval workflow.
 
-Evidence: `src/acp/server.js`, `event-mapper.ts`, and `interaction-mapper.js`; current
+Evidence: `src/acp/server.js`, `event-mapper.ts`, and `interaction-mapper.ts`; current
 [elicitation](https://agentclientprotocol.com/protocol/v1/elicitation) and
 [extensibility](https://agentclientprotocol.com/protocol/v1/extensibility) docs.
 
