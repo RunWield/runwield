@@ -16,7 +16,7 @@ import { createSessionRuntime, SessionTurnInProgressError } from "../shared/sess
 import { RuntimeEventTypes } from "../shared/session/session-runtime-events.js";
 import { AcpSessionMap, normalizeAcpSessionIdForLoad } from "./session-map.ts";
 import { mapRuntimeContextToAcpUpdate, mapRuntimeEventToAcpSessionNotification } from "./event-mapper.ts";
-import { createAcpInteractionAdapter } from "./interaction-mapper.js";
+import { createAcpInteractionAdapter } from "./interaction-mapper.ts";
 import { formatChatQuestion, parseChatReply } from "./chat-interaction.ts";
 import { buildAcpModelOptions } from "./model-options.ts";
 import { getCommandDefinition, getSlashCommandDefinition, getSlashCommandDefinitions } from "../cmd/registry.js";
@@ -86,11 +86,7 @@ function isAuthenticationSetupFailure(message) {
 /** @typedef {import('@agentclientprotocol/sdk').Stream} AcpStream */
 /** @typedef {import('../shared/session/session-runtime.ts').SessionRuntime} SessionRuntime */
 
-/**
- * @typedef {Object} AcpNotificationContext
- * @property {{ notify?: Function }} [client]
- * @property {Function} [notify]
- */
+/** @typedef {import('./interaction-mapper.ts').AcpInteractionContext} AcpNotificationContext */
 
 /**
  * @typedef {Object} RunWieldAcpServerOptions
@@ -601,7 +597,7 @@ function createAcpCommandUiAPI(options) {
 }
 
 /**
- * @param {{ context: any, runtime: SessionRuntime, sessionMap: AcpSessionMap, acpSessionId: string, runtimeSessionId: string, clientCapabilities: unknown, commandName: string, args: string[], requestId?: string, releasePromptAfterResponse?: (requestId: string, release: () => void) => void, onOperation: (operation: ReturnType<typeof createLiveOperation>) => void }} options
+ * @param {{ context: any, runtime: SessionRuntime, sessionMap: AcpSessionMap, acpSessionId: string, runtimeSessionId: string, clientCapabilities: import("@agentclientprotocol/sdk").ClientCapabilities | null, commandName: string, args: string[], requestId?: string, releasePromptAfterResponse?: (requestId: string, release: () => void) => void, onOperation: (operation: ReturnType<typeof createLiveOperation>) => void }} options
  * @returns {Promise<import('@agentclientprotocol/sdk').PromptResponse>}
  */
 async function dispatchAcpBuiltinCommand(options) {
@@ -898,7 +894,7 @@ async function replaySetupEvents(context, runtime, sessionMap, runtimeSessionId,
 /**
  * One live Runtime turn may serve several ACP prompt requests. Only the request's
  * response owns activePrompt; the operation owns its adapter and event subscription.
- * @param {{ runtime: SessionRuntime, sessionMap: AcpSessionMap, acpSessionId: string, runtimeSessionId: string, clientCapabilities: unknown, releasePromptAfterResponse?: (id: string, release: () => void) => void }} options
+ * @param {{ runtime: SessionRuntime, sessionMap: AcpSessionMap, acpSessionId: string, runtimeSessionId: string, clientCapabilities: import("@agentclientprotocol/sdk").ClientCapabilities | null, releasePromptAfterResponse?: (id: string, release: () => void) => void }} options
  */
 function createLiveOperation(options) {
     const { runtime, sessionMap, acpSessionId, clientCapabilities, releasePromptAfterResponse } = options;
@@ -1315,7 +1311,7 @@ function createRunWieldAcpServer(context) {
     const app = agent({ name: "RunWield ACP MVP" });
     const { runtime, sessionMap, releasePromptAfterResponse } = context;
     const operations = context.operations;
-    /** @type {unknown} */
+    /** @type {import("@agentclientprotocol/sdk").ClientCapabilities | null} */
     let clientCapabilities = null;
 
     app.onRequest(methods.agent.initialize, (context) => {

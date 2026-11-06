@@ -239,7 +239,7 @@ justify shipping speculative services, mock authentication, remote transport imp
 ## Reuse Opportunities
 
 - Existing Workspace components and `src/ui/design-system/` for workbench UX, themes, documents, editors, and diffs.
-- `src/acp/server.js`, `event-mapper.ts`, `interaction-mapper.js`, and `session-map.ts` for standard protocol behavior.
+- `src/acp/server.js`, `event-mapper.ts`, `interaction-mapper.ts`, and `session-map.ts` for standard protocol behavior.
 - `src/shared/session/session-runtime.ts` and file Session stores for turns, writer ownership, persistence, and recovery.
 - `src/shared/workflow/plan-actions.ts` and current Plan-store services for revision-checked workflow operations.
 - Existing Workspace receipt/generation checks, moved behind their authoritative boundary rather than duplicated.
