@@ -29,8 +29,8 @@ dependencies:
     - "external-plan-store/import-plans-with-workflow-evidence"
 targetBranch: "epic/external-plan-store"
 userVerifiedAt: null
-status: "reviewed"
 validatedCommit: "e2d1e25ff692e607b556762d9ea5353b6ad379d3"
+status: "verified"
 ---
 
 # Run Lifecycle from Canonical Plans
