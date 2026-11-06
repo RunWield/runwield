@@ -32,7 +32,7 @@ import {
     updatePlanFrontMatter,
 } from "../plan-store.js";
 import { assertNotReservedEpicArtifactPlanName } from "../shared/epic-artifacts.ts";
-import { recordPlanEvent } from "../shared/workflow/plan-lifecycle.js";
+import { recordPlanEvent } from "../shared/workflow/plan-lifecycle.ts";
 import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";
 import { resolveWorkflowPlanLocation } from "../shared/workflow/plan-location.ts";
 import { normalizePlanApprovalAction, PLAN_APPROVAL_ACTIONS } from "../shared/workflow/plan-approval.ts";

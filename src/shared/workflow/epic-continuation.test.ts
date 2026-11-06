@@ -10,7 +10,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { dirname, join } from "node:path";
 import { type PlanFrontMatterInput, loadPlan, updatePlanStatus } from "../../plan-store.js";
 import { presentEpicChildPlan, resolveEpicContinuation } from "./epic-continuation.ts";
-import { recordPlanEvent } from "./plan-lifecycle.js";
+import { recordPlanEvent } from "./plan-lifecycle.ts";
 
 import type { HostedSession } from "../session/hosted-session.js";
 import type { RuntimeSystemStatusEvent } from "../session/session-runtime-events.js";

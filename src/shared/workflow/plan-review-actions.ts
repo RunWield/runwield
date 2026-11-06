@@ -14,7 +14,7 @@ import {
     StalePlanWriteError,
     writePlanMarkdownWithRevision,
 } from "../../plan-store.js";
-import { buildPlanEventUpdates, isPlanReviewableWithoutReopen, recordPlanEvent } from "./plan-lifecycle.js";
+import { buildPlanEventUpdates, isPlanReviewableWithoutReopen, recordPlanEvent } from "./plan-lifecycle.ts";
 import { runPlanReviewDecisionTransition } from "./state-transition.ts";
 import { PLAN_APPROVAL_ACTIONS } from "./plan-approval.ts";
 import { pickControllerState, stripRuntimeFields } from "./controller-state.ts";

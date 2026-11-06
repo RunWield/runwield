@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { loadPlan, updatePlanFrontMatter } from "../../plan-store.js";
 import { listEntries } from "../worktree-registry.js";
 import { executionInput } from "./execution-test-fixture.ts";
-import { recordPlanEvent } from "../workflow/plan-lifecycle.js";
+import { recordPlanEvent } from "../workflow/plan-lifecycle.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows, writeAttachedWorkflowRecord } from "./record-store.ts";
 import { readAttachedAction, applyAttachedReviewDecision, openAttachedReviewRound } from "./coordinator.ts";
 import {

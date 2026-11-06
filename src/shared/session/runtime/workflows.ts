@@ -458,7 +458,7 @@ ${outcome.feedback || ""}`,
                 session.getManagedOperationCapability?.()?.assertLive();
                 const { executePlan } = await import("../../workflow/workflow.ts");
                 const { resolveWorkflowPlanLocation } = await import("../../workflow/plan-location.ts");
-                const { recordPlanEvent } = await import("../../workflow/plan-lifecycle.js");
+                const { recordPlanEvent } = await import("../../workflow/plan-lifecycle.ts");
                 const location = await resolveWorkflowPlanLocation(session.cwd, options.planName || "", {
                     readOnly: true,
                 });

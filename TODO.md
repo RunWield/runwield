@@ -72,7 +72,7 @@ Plans and current uncommitted work before creating new ones. Explicit future PRD
        for unpublished validated work. End only after proven publication or deliberate abandonment; preserve unmerged
        work. Evidence: [recovery actions](src/cmd/load-plan/plan-recovery-actions.ts),
        [validation recovery](src/shared/workflow/validation-recovery.ts),
-       [lifecycle](src/shared/workflow/plan-lifecycle.js).
+       [lifecycle](src/shared/workflow/plan-lifecycle.ts).
 
 5. [ ] **Needs Plan — Recover malformed Plan metadata without blocking other Plans.** Preserve the latest user body and
        existing decisions. One damaged Plan must not disable the entire listing or require users to edit internal

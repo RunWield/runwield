@@ -28,7 +28,7 @@ import { join } from "node:path";
 import type { PlanFrontMatter } from "../../plan-store.js";
 import { EPIC_ARTIFACT_FILE_NAMES } from "../epic-artifacts.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
-import { buildPlanEventUpdates } from "./plan-lifecycle.js";
+import { buildPlanEventUpdates } from "./plan-lifecycle.ts";
 import { assertControllerDocumentAvailable, listControllerDocumentWorktrees } from "./controller-registry.ts";
 
 /** Sibling statuses Planner may still reshape. */

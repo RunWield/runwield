@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { retryWorkRecordForPlan } from "../work-records/auto-generation.ts";
 import { listWorkRecords } from "../work-records/index.ts";
-import { recordPlanEvent, stageValidationPassedInExecutionWorktree } from "./plan-lifecycle.js";
+import { recordPlanEvent, stageValidationPassedInExecutionWorktree } from "./plan-lifecycle.ts";
 import { autoGenerateWorkRecordForCompletedPlan } from "../work-records/auto-generation.ts";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
 import { advancePublicationAttempt, createPublicationAttempt } from "./publication-attempt.ts";

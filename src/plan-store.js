@@ -1023,7 +1023,7 @@ function normalizeWorkRecordBacklink(value) {
  * If front matter already exists, merge with existing values.
  *
  * @param {string} markdown - The plan content (may or may not have front matter)
- * @param {Partial<PlanFrontMatter>} overrides - Fields to inject/override
+ * @param {PlanFrontMatterInput} overrides - Fields to inject/override
  * @returns {string} The markdown with front matter
  */
 export function injectFrontMatter(markdown, overrides = {}) {

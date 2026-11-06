@@ -19,7 +19,7 @@ import type { PlanFrontMatter } from "../../plan-store.js";
 import { HostedSession } from "../session/hosted-session.js";
 import { startActiveExecutionWorkflow } from "./workflow.ts";
 import { createExecutionStartPorts } from "./execution-start.ts";
-import { recordPlanEvent } from "./plan-lifecycle.js";
+import { recordPlanEvent } from "./plan-lifecycle.ts";
 import { listEntries, updateEntry } from "../worktree-registry.js";
 import { findReusableWorktree } from "../worktree.js";
 

@@ -39,7 +39,7 @@ import { discardWorktreeGitArtifacts } from "../../shared/worktree.js";
 import { addEntry, findById, removeEntry, updateEntry } from "../../shared/worktree-registry.js";
 import { setCustomSetting } from "../../shared/settings.js";
 import { executePlanAction, loadPlanActionEvidence } from "../../shared/workflow/plan-actions.ts";
-import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
+import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
 import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";

@@ -10,7 +10,7 @@
 import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
 import { loadPlan, resolvePlanExecutionPolicy } from "../../plan-store.js";
 import { isGitRepositoryRequiredError } from "../../shared/git.ts";
-import { isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
+import { isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
 import { decidePostExecution } from "../../shared/workflow/decisions.ts";
 import { finalizePlanImplementation } from "../../shared/workflow/workflow.ts";
 import { listCommitsTouchingPathsSince } from "../../shared/workflow/git-snapshot.ts";

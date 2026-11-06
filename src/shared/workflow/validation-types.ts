@@ -17,8 +17,8 @@ import type { ValidationRecoveryResult } from "./validation-recovery.ts";
 type PlanFrontMatter = import("../../plan-store.js").PlanFrontMatter;
 type GitPort = import("../git-port.ts").GitPort;
 type WorkRecordMnemotecaPort = import("../work-records/mnemoteca-port.ts").WorkRecordMnemotecaPort;
-type RecordPlanEventArgs = Parameters<typeof import("./plan-lifecycle.js").recordPlanEvent>[0];
-type RecordPlanEventResult = Awaited<ReturnType<typeof import("./plan-lifecycle.js").recordPlanEvent>>;
+type RecordPlanEventArgs = Parameters<typeof import("./plan-lifecycle.ts").recordPlanEvent>[0];
+type RecordPlanEventResult = Awaited<ReturnType<typeof import("./plan-lifecycle.ts").recordPlanEvent>>;
 type EpicContinuationResolution = import("./epic-continuation.ts").EpicContinuationResolution;
 
 /** The engine's result shape, mirroring the public entry's `WorkflowValidationResult`. */

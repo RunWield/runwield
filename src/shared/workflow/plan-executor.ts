@@ -10,7 +10,7 @@ import {
     RuntimeInteractionOutcomes,
     RuntimeInteractionTypes,
 } from "../session/session-runtime-interactions.ts";
-import { isExecutablePlanStatus, isProjectPlan, recordPlanEvent } from "./plan-lifecycle.js";
+import { isExecutablePlanStatus, isProjectPlan, recordPlanEvent } from "./plan-lifecycle.ts";
 import { normalizePlanApprovalAction, PLAN_APPROVAL_ACTIONS } from "./plan-approval.ts";
 import {
     appendSessionCompleteGuidance,
@@ -84,7 +84,7 @@ export interface ExecuteSingleEngineerPlanOptions {
     approvalEvidence?: PlanActionEvidence;
     triageMeta: Partial<PlanFrontMatter>;
     sessionManager?: SessionManager;
-    currentStatus: import("./plan-lifecycle.js").PlanStatus;
+    currentStatus: import("./plan-lifecycle.ts").PlanStatus;
     hostedSession: HostedSession;
     routerMessage?: string;
     reviewFeedback?: string;

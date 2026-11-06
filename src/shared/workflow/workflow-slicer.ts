@@ -23,7 +23,7 @@ import { emitSystemStatus } from "../session/session-runtime-events.js";
 import { runActiveAgentTurn, switchActiveAgent } from "../session/agent-switching.ts";
 import { SUBAGENT_DEFINITIONS } from "../session/subagent-definitions.ts";
 import { buildSlicerRequest } from "./workflow-prompts.ts";
-import { recordPlanEvent } from "./plan-lifecycle.js";
+import { recordPlanEvent } from "./plan-lifecycle.ts";
 import { isEpicPlan } from "../project-plan.ts";
 import { runEpicDecompositionFinalizeTransition } from "./state-transition.ts";
 import { ensureEpicBranch } from "./epic-branch.ts";
@@ -370,7 +370,7 @@ export function createSlicerFinalizeTool({ planName, cwd }) {
                                 planName,
                                 event: "decomposition_finalized",
                                 currentStatus:
-                                    /** @type {import('./plan-lifecycle.js').PlanStatus} */ epic.attrs.status,
+                                    /** @type {import('./plan-lifecycle.ts').PlanStatus} */ epic.attrs.status,
                                 details: { triageMeta: epic.attrs },
                             });
                             return { updated, children, childNames, writeResults, writeSummary, alreadyReady: false };

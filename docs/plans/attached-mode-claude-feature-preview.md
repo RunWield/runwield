@@ -286,7 +286,7 @@ baseline, lifecycle position, and completion contract.
 
 ## Vertical Slice Findings
 
-- `src/shared/workflow/plan-lifecycle.js` and `state-transition.ts` already centralize Plan Events and guarded Plan
+- `src/shared/workflow/plan-lifecycle.ts` and `state-transition.ts` already centralize Plan Events and guarded Plan
   Status transitions. This is the authority the coordinator must call rather than a Claude-specific lifecycle.
 - `src/plan-store.js`, `src/shared/worktree.js`, `worktree-registry.js`, review-ledger logic, merge verification, and
   Work Record generation are largely session-independent and reusable.
@@ -351,7 +351,7 @@ child decomposition. If discovery changes approved scope or ownership, return th
   to prevent semantic drift; tools remain Session carriers, not sources of workflow policy.
 - `src/shared/session/agent-assets.ts`, `agents.js`, and related asset-resolution modules — resolve the effective
   layered role instructions for Attached responses. Attached code may import them; it must not start a model turn.
-- `src/shared/workflow/plan-lifecycle.js`, `state-transition.ts`, and `controller-registry.ts` — reused unchanged for
+- `src/shared/workflow/plan-lifecycle.ts`, `state-transition.ts`, and `controller-registry.ts` — reused unchanged for
   Plan transitions, revision checks, and transition guards.
 - `src/shared/worktree.js`, `src/shared/worktree-registry.js`, and execution-context services — support a host worker
   handoff and recovery packet without transferring worktree lifecycle ownership to Claude.
@@ -371,7 +371,7 @@ child decomposition. If discovery changes approved scope or ownership, return th
 
 ## Reuse Opportunities
 
-- `src/shared/workflow/plan-lifecycle.js` and `src/shared/workflow/state-transition.ts` — reuse canonical Plan Event
+- `src/shared/workflow/plan-lifecycle.ts` and `src/shared/workflow/state-transition.ts` — reuse canonical Plan Event
   guards, atomic transition behavior, locks, recovery actions, and Verified semantics.
 - `src/plan-store.js` — reuse canonical Plan parsing, atomic writes, front-matter normalization, and project-root
   resolution.

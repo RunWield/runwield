@@ -9,7 +9,7 @@ import { preparePlanDependencies } from "../../shared/workflow/plan-preparation.
 
 import { isPlannedChangeClassification } from "../../constants.js";
 import { resolveSiblingChildPlanDependencies as resolveSiblingChildPlanDependenciesFn } from "../../plan-store.js";
-import { isInValidation } from "../../shared/workflow/plan-lifecycle.js";
+import { isInValidation } from "../../shared/workflow/plan-lifecycle.ts";
 import { buildPlanSummary, type SummarisablePlan } from "../../shared/plan-presentation.ts";
 import type { PlanFrontMatter } from "../../plan-store.js";
 import type { SelectOption, UiAPI } from "../../ui/tui/types.js";

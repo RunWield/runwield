@@ -14,7 +14,7 @@ import type { LocalCIPort, LocalCIResult } from "./validation-local-ci.ts";
 import { parseDiffFiles } from "./review-diff-tool.ts";
 import { makeRecordedSession, makeUi } from "./validation-test-helpers.js";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
-import { buildPlanEventUpdates, recordPlanEvent } from "./plan-lifecycle.js";
+import { buildPlanEventUpdates, recordPlanEvent } from "./plan-lifecycle.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { createPlanDeviationTool } from "../../tools/plan-deviation.ts";
 import { checkpointExecutionWorktree } from "../worktree.js";

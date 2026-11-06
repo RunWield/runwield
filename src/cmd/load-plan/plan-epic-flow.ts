@@ -11,7 +11,7 @@ import { isSequencePlan, projectPlanType } from "../../shared/project-plan.ts";
 
 import { isPlannedChangeClassification } from "../../constants.js";
 import { compareChildPlansByOrder, findPlansByParent, isTerminalArchivableStatus } from "../../plan-store.js";
-import { isInValidation, isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
+import { isInValidation, isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
 import { resolveWorkRecordSupersessionProposalsWithUi } from "../../shared/workflow/validation-helpers.ts";
 import {
     autoGenerateWorkRecordForCompletedPlan,

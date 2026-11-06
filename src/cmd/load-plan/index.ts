@@ -58,7 +58,7 @@ import { resolvePrimaryCheckoutRoot } from "../../shared/primary-checkout.ts";
 import { confirmChildFeatureDependencies, formatTopLevelPlanOption } from "./plan-epic-children.ts";
 import { reopenPlanForReview, resolveRecoveryWorktree } from "./plan-recovery-worktree.ts";
 import { healSettledTransitionRecords } from "../../shared/workflow/transition-recovery.ts";
-import { isExecutablePlanStatus, isInValidation } from "../../shared/workflow/plan-lifecycle.js";
+import { isExecutablePlanStatus, isInValidation } from "../../shared/workflow/plan-lifecycle.ts";
 import { getPlanContentStatus } from "../../shared/workflow/validation-engine.ts";
 import { loadPlanActionEvidence } from "../../shared/workflow/plan-actions.ts";
 import { printCommandHelp } from "../help/index.js";

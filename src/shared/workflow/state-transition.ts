@@ -1143,7 +1143,7 @@ async function runPlanTransition<T>({
 }
 
 /**
- * Semantic boundary for lifecycle Plan Events owned by plan-lifecycle.js.
+ * Semantic boundary for lifecycle Plan Events owned by plan-lifecycle.ts.
  */
 export async function runPlanLifecycleEventTransition<T>(
     opts: TransitionOptionsBase & {

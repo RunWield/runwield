@@ -23,7 +23,7 @@ import {
     getPlanLifecycleActionMetadata,
     ON_HOLD_PLAN_STATUSES,
     PLAN_STATUSES,
-} from "../../../shared/workflow/plan-lifecycle.js";
+} from "../../../shared/workflow/plan-lifecycle.ts";
 import {
     isSharedPlanLocked,
     SHARED_PLAN_LOCK_REPAIR,

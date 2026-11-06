@@ -1,3 +1,7 @@
+import type { PlanEventDetails } from "./plan-lifecycle.ts";
+import type { PlanFrontMatterInput, DeliveryEvidence } from "../../plan-store.js";
+import type { ValidationCheckpoint } from "./validation-checkpoint.ts";
+
 import { makeTempDirectory } from "../../testing/temp-file.ts";
 import { testWithFsPermissions } from "../../testing/file-test.ts";
 import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
@@ -12,21 +16,15 @@ import {
     isManualBoardStatusChangeAllowed,
     recordPlanEvent,
     stageValidationPassedInExecutionWorktree,
-} from "./plan-lifecycle.js";
+} from "./plan-lifecycle.ts";
 import { injectFrontMatter, loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
 import { COLLABORATION_STATE_REMOTE_CANONICAL, SharedPlanLockError } from "../collaboration/lock.ts";
 
-/**
- * @param {string} cwd
- * @param {string} planName
- * @param {Partial<import('../../plan-store.js').PlanFrontMatter>} updates
- */
-async function updatePlanFrontMatterForTest(cwd, planName, updates) {
+async function updatePlanFrontMatterForTest(cwd: string, planName: string, updates: PlanFrontMatterInput) {
     const plan = await loadPlan(cwd, planName);
     return await updatePlanFrontMatter(cwd, planName, updates, undefined, { expectedRevision: plan?.revision });
 }
 
-/** @type {import('./plan-lifecycle.js').PlanEventDetails} */
 const TEST_DELIVERY_DETAILS = {
     executionMode: "worktree",
     deliveryEvidence: {
@@ -36,7 +34,7 @@ const TEST_DELIVERY_DETAILS = {
         targetBranch: "main",
         targetHeadBeforeMerge: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     },
-};
+} satisfies PlanEventDetails;
 
 test("validation lifecycle phase transitions are ordered", () => {
     const ciPassed = buildPlanEventUpdates("mechanical_validation_passed", "implemented");
@@ -754,19 +752,16 @@ test("stageValidationPassedInExecutionWorktree validates only the execution Plan
         await fsMkdir(`${projectRoot}/docs/plans`, { recursive: true });
         await fsWriteFile(
             canonicalPath,
-            injectFrontMatter(
-                "# Feature",
-                /** @type {any} */ ({
-                    status: "implemented",
-                    implementedAt: "2026-01-01T00:00:00.000Z",
-                    worktreeId: "wt-1",
-                    worktreePath: executionCwd,
-                    worktreeBranch: "runwield/worktree/feature-wt-1",
-                    worktreeBaseBranch: "main",
-                    worktreeStatus: "completed",
-                    customFlag: true,
-                }),
-            ),
+            injectFrontMatter("# Feature", {
+                status: "implemented",
+                implementedAt: "2026-01-01T00:00:00.000Z",
+                worktreeId: "wt-1",
+                worktreePath: executionCwd,
+                worktreeBranch: "runwield/worktree/feature-wt-1",
+                worktreeBaseBranch: "main",
+                worktreeStatus: "completed",
+                customFlag: true,
+            }),
         );
         await savePlan(executionCwd, "feature", "# Execution Feature", {
             planId: "fixture-feature",
@@ -832,11 +827,11 @@ test("stageValidationPassedInExecutionWorktree keeps reviewed evidence immutable
             deliveryEvidence: TEST_DELIVERY_DETAILS.deliveryEvidence,
         });
 
-        const suppliedDeliveryEvidence = /** @type {import('../../plan-store.js').DeliveryEvidence} */ ({
+        const suppliedDeliveryEvidence: DeliveryEvidence = {
             ...TEST_DELIVERY_DETAILS.deliveryEvidence,
             executionCommit: "dddddddddddddddddddddddddddddddddddddddd",
             targetHeadBeforeMerge: "cccccccccccccccccccccccccccccccccccccccc",
-        });
+        };
         const result = await stageValidationPassedInExecutionWorktree({
             projectRoot,
             executionCwd,
@@ -927,11 +922,11 @@ test("stageValidationPassedInExecutionWorktree advances the execution-worktree p
     const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
     const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
-        const epicAttrs = /** @type {any} */ ({
+        const epicAttrs: PlanFrontMatterInput = {
             planId: "fixture-epic",
             status: "ready_for_work",
             classification: "PROJECT",
-        });
+        };
         await savePlan(projectRoot, "epic", "# Epic", epicAttrs);
         await savePlan(projectRoot, "child-a", "# Child A", {
             planId: "fixture-child-a",
@@ -967,7 +962,7 @@ test("stageValidationPassedInExecutionWorktree advances the execution-worktree p
             planName: "child-b",
             details: { ...TEST_DELIVERY_DETAILS, now: () => new Date("2026-01-03T00:00:00.000Z") },
         });
-        await updatePlanFrontMatterForTest(projectRoot, "epic", /** @type {any} */ ({ customFlag: true }));
+        await updatePlanFrontMatterForTest(projectRoot, "epic", { customFlag: true });
         const retried = await stageValidationPassedInExecutionWorktree({
             projectRoot,
             executionCwd,
@@ -979,7 +974,7 @@ test("stageValidationPassedInExecutionWorktree advances the execution-worktree p
         assertEquals((await loadPlan(executionCwd, "child-a"))?.attrs.status, "verified");
         assertEquals(retriedParent?.attrs.status, "reviewed");
         assertEquals(retriedParent?.attrs.validatedAt, "2026-01-03T00:00:00.000Z");
-        assertEquals(/** @type {any} */ (retriedParent?.attrs).customFlag, undefined);
+        assertEquals((retriedParent?.attrs as PlanFrontMatterInput).customFlag, undefined);
         assertEquals(retriedParent?.body, "# Stale Epic");
         assertEquals(result.planPaths, ["docs/plans/child-b.md", "docs/plans/epic.md"]);
         assertEquals(retried.planPaths, result.planPaths);
@@ -993,11 +988,11 @@ test("stageValidationPassedInExecutionWorktree idempotent retry does not reread 
     const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
     const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
-        const epicAttrs = /** @type {any} */ ({
+        const epicAttrs: PlanFrontMatterInput = {
             planId: "fixture-epic",
             status: "ready_for_work",
             classification: "PROJECT",
-        });
+        };
         await savePlan(projectRoot, "epic", "# Epic", epicAttrs);
         await savePlan(projectRoot, "child-a", "# Child A", {
             planId: "fixture-child-a",
@@ -1055,11 +1050,11 @@ test("stageValidationPassedInExecutionWorktree ignores a sibling reopened only i
     const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
     const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
-        const epicAttrs = /** @type {any} */ ({
+        const epicAttrs: PlanFrontMatterInput = {
             planId: "fixture-epic",
             status: "ready_for_work",
             classification: "PROJECT",
-        });
+        };
         await savePlan(projectRoot, "epic", "# Epic", epicAttrs);
         await savePlan(projectRoot, "child-a", "# Child A", {
             planId: "fixture-child-a",
@@ -1118,11 +1113,11 @@ test("stageValidationPassedInExecutionWorktree does not import a newer primary p
     const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
     const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
-        const epicAttrs = /** @type {any} */ ({
+        const epicAttrs: PlanFrontMatterInput = {
             planId: "fixture-epic",
             status: "ready_for_work",
             classification: "PROJECT",
-        });
+        };
         await savePlan(projectRoot, "epic", "# Epic", epicAttrs);
         await savePlan(projectRoot, "child-a", "# Child A", {
             planId: "fixture-child-a",
@@ -1338,8 +1333,7 @@ testWithFsPermissions("recordPlanEvent blocks shared Plan lifecycle writes witho
 
 test("passing CI retains durable semantic review state across a fresh Plan load", async () => {
     const root = await makeTempDirectory({ prefix: "lifecycle-ci-review-state-" });
-    /** @type {import("./validation-checkpoint.ts").ValidationCheckpoint} */
-    const checkpoint = {
+    const checkpoint: ValidationCheckpoint = {
         version: 1,
         attemptId: "attempt-review",
         generation: "generation-review",

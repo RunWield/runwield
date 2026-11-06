@@ -66,7 +66,7 @@ import {
     emitReusingExecutionWorktree,
     emitUpdatingPlanStatusToInProgress,
 } from "./execution-preparation-progress.ts";
-import { recordPlanEvent, buildPlanEventUpdates } from "./plan-lifecycle.js";
+import { recordPlanEvent, buildPlanEventUpdates } from "./plan-lifecycle.ts";
 import { recordWorkflowMetric } from "./metrics.js";
 import { listTransitionRecoveryRecords, runExecutionPreparationTransition } from "./state-transition.ts";
 import { healSettledTransitionRecords } from "./transition-recovery.ts";
@@ -289,7 +289,7 @@ export async function reconcileExecutionPreparationLocation(
 interface ExecutionStartOptions {
     planName: string;
     triageMeta: Partial<import("../../plan-store.js").PlanFrontMatter>;
-    currentStatus: import("./plan-lifecycle.js").PlanStatus;
+    currentStatus: import("./plan-lifecycle.ts").PlanStatus;
     cwd?: string;
     existingExecution?: import("../session/hosted-session.js").ActiveExecutionWorkflow | null;
     hostedSession?: import("../session/hosted-session.js").HostedSession;

@@ -3,7 +3,7 @@ import { writeFile as fsWriteFile } from "node:fs/promises";
 import { createWorktreeGitArtifacts, settleWorktreeAttempt } from "./worktree.js";
 import { defineGitFixture } from "./git-test-fixture.ts";
 import type { WorktreeRegistryEntry } from "./worktree-registry.js";
-import type { PlanEventDetails } from "./workflow/plan-lifecycle.js";
+import type { PlanEventDetails } from "./workflow/plan-lifecycle.ts";
 
 export interface TestWorktreeAttemptOptions {
     projectRoot: string;

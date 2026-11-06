@@ -1,3 +1,127 @@
+import type { PlanFrontMatter, PlanFrontMatterInput, DeliveryEvidence, ExecutionMode } from "../../plan-store.js";
+import type { TransitionResult, TransitionResource } from "./state-transition.ts";
+import type { ValidationCheckpoint } from "./validation-checkpoint.ts";
+
+export type PlanStatus = PlanFrontMatter["status"];
+export type PlanEvent =
+    | "review_feedback"
+    | "review_approved"
+    | "readiness_passed"
+    | "epic_readiness_passed"
+    | "decomposition_finalized"
+    | "execution_started"
+    | "execution_failed"
+    | "implementation_finished"
+    | "mechanical_validation_failed"
+    | "mechanical_validation_passed"
+    | "semantic_review_feedback"
+    | "semantic_review_passed"
+    | "validation_failed"
+    | "validation_passed"
+    | "recovery_continue"
+    | "recovery_reset"
+    | "review_reopened"
+    | "epic_done_enough"
+    | "epic_children_delivered"
+    | "epic_integration_passed"
+    | "epic_integration_failed"
+    | "epic_integration_stale"
+    | "epic_publication_confirmed"
+    | "manual_status_change"
+    | "manual_closed_without_verification"
+    | "manual_user_verified"
+    | "plan_held"
+    | "hold_resumed"
+    | "hold_reset_to_draft";
+
+export interface PlanEventDetails {
+    triageMeta?: Partial<PlanFrontMatter>;
+    epicDeliveryTargetBranch?: string;
+    pendingPublication?: boolean;
+    failureReason?: string;
+    executionBaselineTree?: string;
+    worktreeId?: string;
+    worktreePath?: string;
+    worktreeBranch?: string;
+    worktreeBaseBranch?: string;
+    worktreeStatus?: PlanFrontMatter["worktreeStatus"];
+    nonGitInPlace?: boolean;
+    cleanupMergedWorktrees?: boolean;
+    executionReport?: string;
+    humanReviewMode?: PlanFrontMatter["humanReviewMode"];
+    humanReviewDecision?: PlanFrontMatter["humanReviewDecision"];
+    humanReviewedAt?: string | null;
+    validationCiAttempts?: number;
+    validationSemanticRounds?: number;
+    mechanicalFailureKind?: "ci";
+    validationCheckpoint?: ValidationCheckpoint | null;
+    epicDoneEnoughSummary?: string;
+    integrationCommit?: string;
+    integrationReport?: string | null;
+    executionMode?: ExecutionMode;
+    deliveryEvidence?: DeliveryEvidence;
+    manualTargetStatus?: PlanStatus;
+    holdReason?: string;
+    closedWithoutVerificationReason?: string;
+    closedWithoutVerificationAt?: string;
+    userVerificationNote?: string;
+    holdStalenessBaseline?: string;
+    heldFromStatus?: PlanStatus;
+    now?: () => Date;
+}
+
+interface PlanStatusList extends Array<PlanStatus> {
+    includes(status: string | null | undefined, fromIndex?: number): boolean;
+}
+
+export type PlanLifecycleBlockedReasons = Record<string, string>;
+
+export interface PlanLifecycleActionMetadata {
+    canCloseWithoutVerification: boolean;
+    canUserVerify: boolean;
+    canPutOnHold: boolean;
+    canResumeFromHold: boolean;
+    canResetToDraft: boolean;
+    allowedManualTargetStatuses: PlanStatus[];
+    blockedReasons: PlanLifecycleBlockedReasons;
+}
+
+export interface RecordPlanEventOptions {
+    cwd: string;
+    planName: string;
+    event: PlanEvent;
+    currentStatus: PlanStatus;
+    details?: PlanEventDetails;
+    expectedRevision?: string;
+}
+
+interface AdvanceParentEpicOptions extends Omit<RecordPlanEventOptions, "currentStatus" | "expectedRevision"> {
+    updatedAttrs: PlanFrontMatter;
+}
+
+interface RecordedPlanEvent {
+    attrs: PlanFrontMatter;
+    details: PlanEventDetails;
+}
+
+interface CompletionChildSnapshot {
+    name: string;
+    revision: string | undefined;
+    attrs: PlanFrontMatter;
+}
+
+export interface ValidationPassedStagingResult {
+    attrs: PlanFrontMatter;
+    planPaths: string[];
+}
+
+export interface ValidationPassedStagingOptions {
+    projectRoot: string;
+    executionCwd: string;
+    planName: string;
+    details?: PlanEventDetails;
+}
+
 import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { isEpicPlan, isProjectPlan } from "../project-plan.ts";
 export { isEpicPlan, isProjectPlan, isSequencePlan } from "../project-plan.ts";
@@ -26,11 +150,11 @@ import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { findCompletionSiblings, prepareCompletionSiblings } from "./plan-family.ts";
 
 export class PlanLifecycleTransitionError extends Error {
-    /**
-     * @param {import('./state-transition.ts').TransitionResult} transition
-     * @param {string} [message]
-     */
-    constructor(transition, message) {
+    declare transition: TransitionResult;
+    declare status: TransitionResult["status"];
+    declare recoveryActions: NonNullable<TransitionResult["recoveryActions"]>;
+
+    constructor(transition: TransitionResult, message?: string) {
         super(message || transition.message || `Plan Lifecycle transition ${transition.operation} did not commit.`);
         this.name = "PlanLifecycleTransitionError";
         this.transition = transition;
@@ -39,12 +163,7 @@ export class PlanLifecycleTransitionError extends Error {
     }
 }
 
-/**
- * @typedef {"draft"|"approved"|"ready_for_decomposition"|"ready_for_work"|"in_progress"|"failed"|"implemented"|"validated_ci"|"reviewed"|"validated"|"verified"|"user_verified"|"closed_without_verification"|"on_hold"} PlanStatus
- */
-
-/** @type {Record<PlanStatus, string>} */
-const PLAN_STATUS_HELP_TEXT = {
+const PLAN_STATUS_HELP_TEXT: Record<PlanStatus, string> = {
     draft: "it is still a draft",
     approved: "it is approved",
     ready_for_decomposition: "it is ready to split into smaller work",
@@ -61,21 +180,11 @@ const PLAN_STATUS_HELP_TEXT = {
     on_hold: "it is on hold",
 };
 
-/**
- * @param {PlanStatus} status
- * @returns {string}
- */
-function describePlanStatus(status) {
+function describePlanStatus(status: PlanStatus) {
     return PLAN_STATUS_HELP_TEXT[status] || status;
 }
 
-/**
- * @param {string} planName
- * @param {PlanStatus} currentStatus
- * @param {PlanStatus} canonicalStatus
- * @returns {string}
- */
-function buildStalePlanStatusMessage(planName, currentStatus, canonicalStatus) {
+function buildStalePlanStatusMessage(planName: string, currentStatus: PlanStatus, canonicalStatus: PlanStatus) {
     return [
         `RunWield had old status data for Plan ${planName}.`,
         `It thought the Plan was at ${currentStatus} (${describePlanStatus(
@@ -86,55 +195,11 @@ function buildStalePlanStatusMessage(planName, currentStatus, canonicalStatus) {
     ].join(" ");
 }
 
-/**
- * @typedef {"review_feedback"|"review_approved"|"readiness_passed"|"epic_readiness_passed"|"decomposition_finalized"|"execution_started"|"execution_failed"|"implementation_finished"|"mechanical_validation_failed"|"mechanical_validation_passed"|"semantic_review_feedback"|"semantic_review_passed"|"validation_failed"|"validation_passed"|"recovery_continue"|"recovery_reset"|"review_reopened"|"epic_done_enough"|"epic_children_delivered"|"epic_integration_passed"|"epic_integration_failed"|"epic_integration_stale"|"epic_publication_confirmed"|"manual_status_change"|"manual_closed_without_verification"|"manual_user_verified"|"plan_held"|"hold_resumed"|"hold_reset_to_draft"} PlanEvent
- */
+const MANUAL_BOARD_STATUSES: PlanStatusList = ["draft", "approved", "ready_for_work"];
 
-/**
- * @typedef {Object} PlanEventDetails
- * @property {Partial<import('../../plan-store.js').PlanFrontMatter>} [triageMeta]
- * @property {string} [epicDeliveryTargetBranch]
- * @property {boolean} [pendingPublication] - Prepare artifacts without claiming delivery
- * @property {string} [failureReason]
- * @property {string} [executionBaselineTree]
- * @property {string} [worktreeId]
- * @property {string} [worktreePath]
- * @property {string} [worktreeBranch]
- * @property {string} [worktreeBaseBranch]
- * @property {import('../../plan-store.js').PlanFrontMatter['worktreeStatus']} [worktreeStatus]
- * @property {boolean} [nonGitInPlace]
- * @property {boolean} [cleanupMergedWorktrees]
- * @property {string} [executionReport]
- * @property {import('../../plan-store.js').PlanFrontMatter['humanReviewMode']} [humanReviewMode]
- * @property {import('../../plan-store.js').PlanFrontMatter['humanReviewDecision']} [humanReviewDecision]
- * @property {string|null} [humanReviewedAt]
- * @property {number} [validationCiAttempts]
- * @property {number} [validationSemanticRounds]
- * @property {"ci"} [mechanicalFailureKind]
- * @property {import('./validation-checkpoint.ts').ValidationCheckpoint|null} [validationCheckpoint]
- * @property {string} [epicDoneEnoughSummary]
- * @property {string} [integrationCommit] - Epic branch commit the integration gate checked
- * @property {string|null} [integrationReport] - Project-relative path of a failing integration gate report
- * @property {import('../../plan-store.js').ExecutionMode} [executionMode]
- * @property {import('../../plan-store.js').DeliveryEvidence} [deliveryEvidence]
- * @property {PlanStatus} [manualTargetStatus]
- * @property {string} [holdReason]
- * @property {string} [closedWithoutVerificationReason]
- * @property {string} [closedWithoutVerificationAt]
- * @property {string} [userVerificationNote]
- * @property {string} [holdStalenessBaseline]
- * @property {PlanStatus} [heldFromStatus]
- * @property {() => Date} [now]
- */
+const MANUAL_BOARD_SOURCE_STATUSES: PlanStatusList = [...MANUAL_BOARD_STATUSES, "in_progress", "implemented"];
 
-/** @type {PlanStatus[]} */
-const MANUAL_BOARD_STATUSES = ["draft", "approved", "ready_for_work"];
-
-/** @type {PlanStatus[]} */
-const MANUAL_BOARD_SOURCE_STATUSES = [...MANUAL_BOARD_STATUSES, "in_progress", "implemented"];
-
-/** @type {PlanStatus[]} */
-export const PLAN_STATUSES = [
+export const PLAN_STATUSES: PlanStatusList = [
     "draft",
     "approved",
     "ready_for_decomposition",
@@ -149,8 +214,7 @@ export const PLAN_STATUSES = [
     "on_hold",
 ];
 
-/** @type {PlanStatus[]} */
-export const ACTIVE_PLAN_STATUSES = [
+export const ACTIVE_PLAN_STATUSES: PlanStatusList = [
     "draft",
     "approved",
     "ready_for_decomposition",
@@ -161,46 +225,37 @@ export const ACTIVE_PLAN_STATUSES = [
     "reviewed",
 ];
 
-/** @type {PlanStatus[]} */
-export const VALIDATION_PLAN_STATUSES = ["implemented", "validated_ci", "reviewed", "validated"];
+export const VALIDATION_PLAN_STATUSES: PlanStatusList = ["implemented", "validated_ci", "reviewed", "validated"];
 
-/** @param {string | undefined | null} status */
-export function isInValidation(status) {
-    return VALIDATION_PLAN_STATUSES.includes(/** @type {PlanStatus} */ (status));
+export function isInValidation(status: string | null | undefined) {
+    return VALIDATION_PLAN_STATUSES.includes(status);
 }
 
-/** @type {PlanStatus[]} */
-export const CLOSED_PLAN_STATUSES = ["verified", "user_verified", "closed_without_verification"];
+export const CLOSED_PLAN_STATUSES: PlanStatusList = ["verified", "user_verified", "closed_without_verification"];
 
-/** @type {PlanStatus[]} */
-export const ON_HOLD_PLAN_STATUSES = ["on_hold"];
+export const ON_HOLD_PLAN_STATUSES: PlanStatusList = ["on_hold"];
 
-/** @param {string | undefined | null} status */
-export function isRunWieldVerifiedPlanStatus(status) {
+export function isRunWieldVerifiedPlanStatus(status: string | null | undefined) {
     return status === "validated" || status === "verified";
 }
 
-/** @param {string | undefined | null} status */
-export function isUserVerifiedPlanStatus(status) {
+export function isUserVerifiedPlanStatus(status: string | null | undefined) {
     return status === "user_verified";
 }
 
-/** @param {string | undefined | null} status */
-export function isTerminalPlanStatus(status) {
-    return CLOSED_PLAN_STATUSES.includes(/** @type {any} */ (status));
+export function isTerminalPlanStatus(status: string | null | undefined) {
+    return CLOSED_PLAN_STATUSES.includes(status);
 }
 
-/** @param {string | undefined | null} status */
-export function isArchiveEligiblePlanStatus(status) {
+export function isArchiveEligiblePlanStatus(status: string | null | undefined) {
     return isTerminalPlanStatus(status);
 }
 
 export { isPlanDependencySatisfiedStatus as isDependencySatisfiedPlanStatus };
 
-const ALL_KNOWN_STATUSES = /** @type {PlanStatus[]} */ ([...PLAN_STATUSES, "validated_ci", "validated"]);
+const ALL_KNOWN_STATUSES: PlanStatusList = [...PLAN_STATUSES, "validated_ci", "validated"];
 
-/** @type {Record<PlanEvent, PlanStatus[]>} */
-const ALLOWED_FROM = {
+const ALLOWED_FROM: Record<PlanEvent, PlanStatusList> = {
     review_feedback: ["draft", "approved"],
     review_approved: ["draft", "approved"],
     readiness_passed: ["approved"],
@@ -253,8 +308,7 @@ const EPIC_ONLY_EVENTS = new Set([
     "epic_publication_confirmed",
 ]);
 
-/** @type {Record<PlanEvent, PlanStatus>} */
-const EVENT_STATUS = {
+const EVENT_STATUS: Record<PlanEvent, PlanStatus> = {
     review_feedback: "draft",
     review_approved: "approved",
     readiness_passed: "ready_for_work",
@@ -286,28 +340,15 @@ const EVENT_STATUS = {
     hold_reset_to_draft: "draft",
 };
 
-/**
- * @param {Date} date
- * @returns {string}
- */
-function iso(date) {
+function iso(date: Date) {
     return date.toISOString();
 }
 
-/**
- * @param {string} status
- * @returns {status is PlanStatus}
- */
-function isKnownPlanStatus(status) {
-    return ALL_KNOWN_STATUSES.includes(/** @type {PlanStatus} */ (status));
+function isKnownPlanStatus(status: string): status is PlanStatus {
+    return ALL_KNOWN_STATUSES.includes(status);
 }
 
-/**
- * @param {PlanStatus} status
- * @param {import('../../plan-store.js').PlanFrontMatterInput | undefined} attrs
- * @returns {boolean}
- */
-function isManualBoardStatus(status, attrs) {
+function isManualBoardStatus(status: PlanStatus, attrs: PlanFrontMatterInput | undefined) {
     return MANUAL_BOARD_SOURCE_STATUSES.includes(status) || (status === "ready_for_decomposition" && isEpicPlan(attrs));
 }
 
@@ -317,27 +358,16 @@ function isManualBoardStatus(status, attrs) {
  * `manual_user_verified` keeps that history and does not synthesize Delivery
  * Evidence or `verifiedAt`.
  *
- * @param {PlanStatus} status
- * @param {import('../../plan-store.js').PlanFrontMatterInput | undefined} attrs
- * @returns {boolean}
  */
-function isManualUserVerificationStatus(status, attrs) {
+function isManualUserVerificationStatus(status: PlanStatus, attrs: PlanFrontMatterInput | undefined) {
     return isManualBoardStatus(status, attrs) || status === "validated_ci" || status === "reviewed";
 }
 
-/**
- * @param {PlanStatus} status
- * @param {import('../../plan-store.js').PlanFrontMatterInput | undefined} attrs
- * @returns {boolean}
- */
-function isManualBoardTargetStatus(status, attrs) {
+function isManualBoardTargetStatus(status: PlanStatus, attrs: PlanFrontMatterInput | undefined) {
     return MANUAL_BOARD_STATUSES.includes(status) || (status === "ready_for_decomposition" && isEpicPlan(attrs));
 }
 
-/**
- * @param {PlanStatus} event
- */
-function assertKnownHoldResumeStatus(event) {
+function assertKnownHoldResumeStatus(event: PlanStatus) {
     if (
         event === "on_hold" ||
         event === "verified" ||
@@ -350,11 +380,7 @@ function assertKnownHoldResumeStatus(event) {
     }
 }
 
-/**
- * @param {PlanEvent} event
- * @param {PlanStatus} currentStatus
- */
-function assertAllowedTransition(event, currentStatus) {
+function assertAllowedTransition(event: PlanEvent, currentStatus: PlanStatus) {
     const allowed = ALLOWED_FROM[event];
     if (!allowed.includes(currentStatus)) {
         throw new Error(
@@ -364,34 +390,27 @@ function assertAllowedTransition(event, currentStatus) {
     }
 }
 
-/**
- * @param {PlanStatus} currentStatus
- * @param {Partial<import('../../plan-store.js').PlanFrontMatter> | undefined} attrs
- * @returns {PlanStatus[]}
- */
-export function getAllowedManualPlanStatuses(currentStatus, attrs = {}) {
+export function getAllowedManualPlanStatuses(
+    currentStatus: PlanStatus,
+    attrs: Partial<PlanFrontMatter> = {},
+): PlanStatus[] {
     if (!isManualBoardStatus(currentStatus, attrs)) return [];
     return isEpicPlan(attrs) ? [...MANUAL_BOARD_STATUSES, "ready_for_decomposition"] : [...MANUAL_BOARD_STATUSES];
 }
 
-/**
- * @param {PlanStatus} currentStatus
- * @param {PlanStatus} targetStatus
- * @param {Partial<import('../../plan-store.js').PlanFrontMatter> | undefined} attrs
- * @returns {boolean}
- */
-export function isManualBoardStatusChangeAllowed(currentStatus, targetStatus, attrs = {}) {
+export function isManualBoardStatusChangeAllowed(
+    currentStatus: PlanStatus,
+    targetStatus: PlanStatus,
+    attrs: Partial<PlanFrontMatter> = {},
+) {
     return isManualBoardStatus(currentStatus, attrs) && isManualBoardTargetStatus(targetStatus, attrs);
 }
 
-/**
- * @param {PlanStatus} currentStatus
- * @param {Partial<import('../../plan-store.js').PlanFrontMatter> | undefined} attrs
- * @returns {{ canCloseWithoutVerification: boolean, canUserVerify: boolean, canPutOnHold: boolean, canResumeFromHold: boolean, canResetToDraft: boolean, allowedManualTargetStatuses: PlanStatus[], blockedReasons: Record<string, string> }}
- */
-export function getPlanLifecycleActionMetadata(currentStatus, attrs = {}) {
-    /** @type {Record<string, string>} */
-    const blockedReasons = {};
+export function getPlanLifecycleActionMetadata(
+    currentStatus: PlanStatus,
+    attrs: Partial<PlanFrontMatter> = {},
+): PlanLifecycleActionMetadata {
+    const blockedReasons: PlanLifecycleBlockedReasons = {};
     const allowedManualTargetStatuses = getAllowedManualPlanStatuses(currentStatus, attrs).filter(
         (status) => status !== currentStatus,
     );
@@ -439,12 +458,7 @@ export function getPlanLifecycleActionMetadata(currentStatus, attrs = {}) {
     };
 }
 
-/**
- * @param {PlanStatus} currentStatus
- * @param {PlanEventDetails} details
- * @returns {PlanStatus}
- */
-function getManualTargetStatus(currentStatus, details) {
+function getManualTargetStatus(currentStatus: PlanStatus, details: PlanEventDetails): PlanStatus {
     const target = details.manualTargetStatus;
     if (!target) {
         throw new Error("Invalid Plan Lifecycle transition: manual_status_change requires manualTargetStatus.");
@@ -460,13 +474,11 @@ function getManualTargetStatus(currentStatus, details) {
     return target;
 }
 
-/**
- * @param {PlanEvent} event
- * @param {PlanStatus} currentStatus
- * @param {PlanEventDetails} details
- * @returns {Partial<import('../../plan-store.js').PlanFrontMatter>}
- */
-export function buildPlanEventUpdates(event, currentStatus, details = {}) {
+export function buildPlanEventUpdates(
+    event: PlanEvent,
+    currentStatus: PlanStatus,
+    details: PlanEventDetails = {},
+): Partial<PlanFrontMatter> {
     assertAllowedTransition(event, currentStatus);
     if (EPIC_ONLY_EVENTS.has(event) && !isProjectPlan(details.triageMeta)) {
         throw new Error(`Invalid Plan Lifecycle transition: ${event} can only apply to PROJECT Epic plans.`);
@@ -478,8 +490,7 @@ export function buildPlanEventUpdates(event, currentStatus, details = {}) {
     const now = iso(details.now ? details.now() : new Date());
     const targetStatus =
         event === "manual_status_change" ? getManualTargetStatus(currentStatus, details) : EVENT_STATUS[event];
-    /** @type {Partial<import('../../plan-store.js').PlanFrontMatter>} */
-    const updates = {
+    const updates: Partial<PlanFrontMatter> = {
         ...(details.triageMeta || {}),
         status: targetStatus,
         updatedAt: now,
@@ -940,8 +951,7 @@ export function buildPlanEventUpdates(event, currentStatus, details = {}) {
     return updates;
 }
 
-/** @param {import('../../plan-store.js').PlanFrontMatter} attrs */
-function hasModeAppropriateDeliveryEvidence(attrs) {
+function hasModeAppropriateDeliveryEvidence(attrs: PlanFrontMatter) {
     if (!isPlannedChangeClassification(attrs.classification)) return true;
     const executionMode = normalizeExecutionMode(attrs.executionMode);
     const deliveryEvidence = normalizeDeliveryEvidence(attrs.deliveryEvidence);
@@ -956,24 +966,19 @@ function hasModeAppropriateDeliveryEvidence(attrs) {
  * integration gate (`epic-integration.ts`), never from child statuses alone.
  * Epics without one, and Sequences, keep the legacy status-based completion.
  *
- * @param {Partial<import('../../plan-store.js').PlanFrontMatter>} attrs
- * @returns {boolean}
  */
-function hasEpicBranch(attrs) {
+function hasEpicBranch(attrs: Partial<PlanFrontMatter>) {
     if (attrs.type === "sequence") return false;
     return typeof attrs.targetBranch === "string" && attrs.targetBranch.trim() !== "";
 }
 
-/**
- * @param {Object} opts
- * @param {string} opts.cwd
- * @param {string} opts.planName
- * @param {PlanEvent} opts.event
- * @param {import('../../plan-store.js').PlanFrontMatter} opts.updatedAttrs
- * @param {PlanEventDetails} [opts.details]
- * @returns {Promise<void>}
- */
-async function advanceParentEpicWhenAllChildrenVerified({ cwd, planName, event, updatedAttrs, details = {} }) {
+async function advanceParentEpicWhenAllChildrenVerified({
+    cwd,
+    planName,
+    event,
+    updatedAttrs,
+    details = {},
+}: AdvanceParentEpicOptions) {
     if (event !== "validation_passed" && event !== "manual_user_verified") return;
     if (isProjectPlan(updatedAttrs)) return;
 
@@ -1013,27 +1018,23 @@ async function advanceParentEpicWhenAllChildrenVerified({ cwd, planName, event, 
 /**
  * Record a Plan Event and persist the resulting Plan Front Matter.
  *
- * @param {Object} opts
- * @param {string} opts.cwd
- * @param {string} opts.planName
- * @param {PlanEvent} opts.event
- * @param {PlanStatus} opts.currentStatus
- * @param {PlanEventDetails} [opts.details]
- * @param {string} [opts.expectedRevision]
- * @returns {Promise<import('../../plan-store.js').PlanFrontMatter>}
  */
-export async function recordPlanEvent({ cwd, planName, event, currentStatus, details = {}, expectedRevision }) {
+export async function recordPlanEvent({
+    cwd,
+    planName,
+    event,
+    currentStatus,
+    details = {},
+    expectedRevision,
+}: RecordPlanEventOptions): Promise<PlanFrontMatter> {
     await preparePlanWorkflow(cwd, planName);
     // The caller's project root locates the controller, not necessarily the Plan.
     // Resolve once before the transaction, then keep that document locked even
     // if the event retires its execution attempt.
     const location = await resolveWorkflowPlanLocation(cwd, planName);
     cwd = location.documentRoot;
-    /**
-     * @param {Awaited<ReturnType<typeof loadPlan>>} beforePlan
-     * @returns {Promise<{ attrs: import('../../plan-store.js').PlanFrontMatter, details: Record<string, unknown> }>}
-     */
-    const applyChildEvent = async (beforePlan) => {
+
+    const applyChildEvent = async (beforePlan: Awaited<ReturnType<typeof loadPlan>>): Promise<RecordedPlanEvent> => {
         if (!beforePlan) throw new Error(`Plan not found: ${planName}`);
         const canonicalStatus = beforePlan.attrs.status;
         if (currentStatus && currentStatus !== canonicalStatus) {
@@ -1068,15 +1069,13 @@ export async function recordPlanEvent({ cwd, planName, event, currentStatus, det
                 transition.message || `Plan Lifecycle transition ${event} did not commit for ${planName}.`,
             );
         }
-        const value =
-            /** @type {{ attrs: import('../../plan-store.js').PlanFrontMatter, details: Record<string, unknown> }} */
-            (transition.value);
+        const value = transition.value as RecordedPlanEvent;
         await advanceParentEpicWhenAllChildrenVerified({
             cwd,
             planName,
             event,
             updatedAttrs: value.attrs,
-            details: /** @type {any} */ (value.details),
+            details: value.details,
         });
         return value.attrs;
     };
@@ -1092,15 +1091,14 @@ export async function recordPlanEvent({ cwd, planName, event, currentStatus, det
             if (parentPlanName) await preparePlanWorkflow(cwd, parentPlanName);
             const siblings = parentPlanName ? await prepareCompletionSiblings(cwd, parentPlanName) : [];
             const siblingPaths = new Map(siblings.map((child) => [child.name, child.path]));
-            /** @type {import('./state-transition.ts').TransitionResource[]} */
-            const resources = [
+            const resources: TransitionResource[] = [
                 { kind: "catalog", root: location.registryRoot },
                 { kind: "plan", id: planName },
-                ...(parentPlanName ? [{ kind: /** @type {const} */ ("plan"), id: parentPlanName }] : []),
+                ...(parentPlanName ? [{ kind: "plan", id: parentPlanName } satisfies TransitionResource] : []),
                 ...siblings
                     .filter((child) => child.name !== planName && !child.path.includes(":docs/plans/"))
-                    .map((child) => ({
-                        kind: /** @type {const} */ ("plan"),
+                    .map<TransitionResource>((child) => ({
+                        kind: "plan",
                         id: child.name,
                         root: getPlanDocumentRoot(child.path),
                     })),
@@ -1128,12 +1126,9 @@ export async function recordPlanEvent({ cwd, planName, event, currentStatus, det
                         throw new Error(`Plan hierarchy changed while applying ${event} for ${planName}.`);
                     }
 
-                    /** @type {{ name: string, revision: string | undefined, attrs: import('../../plan-store.js').PlanFrontMatter }[]} */
-                    let childrenBeforeWrite = [];
-                    /** @type {Awaited<ReturnType<typeof loadPlan>>} */
-                    let lockedParent = null;
-                    /** @type {Record<string, unknown> | null} */
-                    let parentUpdates = null;
+                    let childrenBeforeWrite: CompletionChildSnapshot[] = [];
+                    let lockedParent: Awaited<ReturnType<typeof loadPlan>> = null;
+                    let parentUpdates: Partial<PlanFrontMatter> | null = null;
                     if (parentPlanName && !isProjectPlan(beforePlan.attrs)) {
                         const lockedSiblings = await findCompletionSiblings(cwd, parentPlanName);
                         if (
@@ -1229,7 +1224,7 @@ export async function recordPlanEvent({ cwd, planName, event, currentStatus, det
                     transition.message || `Plan Lifecycle transition ${event} did not commit for ${planName}.`,
                 );
             }
-            return /** @type {{ attrs: import('../../plan-store.js').PlanFrontMatter }} */ (transition.value).attrs;
+            return (transition.value as RecordedPlanEvent).attrs;
         }
         return await run();
     } catch (error) {
@@ -1244,29 +1239,17 @@ export async function recordPlanEvent({ cwd, planName, event, currentStatus, det
 }
 
 /**
- * @typedef {Object} ValidationPassedStagingResult
- * @property {import('../../plan-store.js').PlanFrontMatter} attrs
- * @property {string[]} planPaths
- */
-
-/**
  * Record validation_passed in the authoritative execution-worktree Plan. A
  * previously validated copy is returned unchanged so publication retries keep
  * its original evidence and never dirty the Plan again.
  *
- * @param {Object} opts
- * @param {string} opts.projectRoot
- * @param {string} opts.executionCwd
- * @param {string} opts.planName
- * @param {PlanEventDetails} [opts.details]
- * @returns {Promise<ValidationPassedStagingResult>}
  */
 export async function stageValidationPassedInExecutionWorktree({
     projectRoot: _projectRoot,
     executionCwd,
     planName,
     details = {},
-}) {
+}: ValidationPassedStagingOptions): Promise<ValidationPassedStagingResult> {
     await preparePlanWorkflow(executionCwd, planName);
     const planPath = `docs/plans/${planName}.md`;
     const executionPlan = await loadPlan(executionCwd, planName);
@@ -1308,11 +1291,7 @@ export async function stageValidationPassedInExecutionWorktree({
     return { attrs, planPaths };
 }
 
-/**
- * @param {string} status
- * @returns {boolean}
- */
-export function isExecutablePlanStatus(status) {
+export function isExecutablePlanStatus(status: string) {
     return status === "ready_for_work";
 }
 
@@ -1327,9 +1306,7 @@ export function isExecutablePlanStatus(status) {
  * and two modules keeping private copies of it is how the reopen came to run
  * twice, once against a stale status.
  *
- * @param {string} status
- * @returns {boolean}
  */
-export function isPlanReviewableWithoutReopen(status) {
-    return /** @type {readonly string[]} */ (ALLOWED_FROM.review_approved).includes(status);
+export function isPlanReviewableWithoutReopen(status: string) {
+    return ALLOWED_FROM.review_approved.includes(status);
 }

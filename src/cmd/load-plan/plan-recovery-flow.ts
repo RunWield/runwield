@@ -20,7 +20,7 @@ import {
     buildValidationUserMessage,
     validationUserMessage,
 } from "../../shared/workflow/validation-user-messages.ts";
-import { isInValidation } from "../../shared/workflow/plan-lifecycle.js";
+import { isInValidation } from "../../shared/workflow/plan-lifecycle.ts";
 import { recordWorkflowMetric } from "../../shared/workflow/metrics.js";
 import { healSettledTransitionRecords } from "../../shared/workflow/transition-recovery.ts";
 import { verifyRecordedPublication } from "../../shared/workflow/validation-merge-verification.ts";

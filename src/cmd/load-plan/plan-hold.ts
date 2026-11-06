@@ -8,7 +8,7 @@
 
 import { CLI_BIN } from "../../constants.js";
 import { findPlansByParent } from "../../plan-store.js";
-import { isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
+import { isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
 import { listCommitsTouchingPathsSince } from "../../shared/workflow/git-snapshot.ts";
 import { runRecoveryTransition } from "../../shared/workflow/state-transition.ts";
 import { resolveWorkRecordSupersessionProposalsWithUi } from "../../shared/workflow/validation-helpers.ts";
