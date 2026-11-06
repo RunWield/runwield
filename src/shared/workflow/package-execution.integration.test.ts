@@ -1,5 +1,6 @@
 import { updatePlanPackageMetadata } from "../plan-package-store.ts";
 import { getWorktreeRegistryPath } from "../worktree-registry.js";
+import { settleDiscardedRecoveryAttempt } from "../../cmd/load-plan/plan-recovery-discard.ts";
 import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { createGitPort } from "../git-port.ts";
 import { systemLocalCIPort } from "./validation-local-ci.ts";
@@ -169,6 +170,17 @@ test("two linked clones racing execution retain one package attempt and one code
         const binding = (await read(f.identity)).metadata.workflow?.attempt;
         equal(entries[0].id, binding?.attemptId);
         equal(entries[0].planId, p.metadata.planId);
+        await settleDiscardedRecoveryAttempt(binding!.repositoryRoot, "one", p.metadata.planId, entries[0], true);
+        const otherIdentity = binding!.repositoryId === f.identity.repositoryId ? linked.identity : f.identity;
+        const current = await read(f.identity);
+        const prepared = await preparePlanWorkflow(otherIdentity.checkoutRoot, "one", {
+            identity: otherIdentity,
+            planId: p.metadata.planId,
+            expectedRevision: current.metadata.revision,
+        });
+        equal(prepared.plan?.attrs.worktreeId, undefined);
+        equal((await read(f.identity)).metadata.workflow?.attempt, undefined);
+        equal(await fs.readFile(join(entries[0].path, "README.md"), "utf8"), "latest remote code\n");
         await git(binding!.repositoryRoot, ["worktree", "remove", "--force", entries[0].path]);
     } finally {
         await fs.rm(clone, { recursive: true, force: true });
@@ -358,3 +370,89 @@ test("attempt authority rejects owner, repository and Plan substitution while a 
         await f.cleanup();
     }
 });
+
+for (const scenario of ["default-target", "reset-abandoned"] as const) {
+    test(`package execution completes after ${scenario}`, async () => {
+        const f = await packageFixture();
+        const paths: string[] = [];
+        try {
+            const p = await create(f.identity, {
+                definition: {
+                    classification: "PLANNED_CHANGE",
+                    status: "draft",
+                    executionAgent: "engineer",
+                    collaborationRecommendation: "autonomous",
+                },
+            });
+            await withPackageWorkflow(
+                f.root,
+                { identity: f.identity, planId: p.metadata.planId, expectedRevision: 1 },
+                async () => {
+                    const start = async () => {
+                        await recordPlanEvent({
+                            cwd: f.root,
+                            planName: "one",
+                            event: "review_approved",
+                            currentStatus: "draft",
+                        });
+                        await recordPlanEvent({
+                            cwd: f.root,
+                            planName: "one",
+                            event: "readiness_passed",
+                            currentStatus: "approved",
+                        });
+                        const retained = (await read(f.identity)).metadata.workflow!.readiness!;
+                        const workflow = await startActiveExecutionWorkflow({
+                            cwd: f.root,
+                            planName: "one",
+                            triageMeta: (await loadPackageWorkflowPlan("one")).attrs,
+                            currentStatus: "ready_for_work",
+                            ports: createExecutionStartPorts(),
+                        });
+                        deepEqual(workflow.packageInput!.inputs, retained.inputs);
+                        equal((await read(f.identity)).metadata.definition.targetBranch, "main");
+                        paths.push(workflow.executionCwd!);
+                        return workflow;
+                    };
+                    let workflow = await start();
+                    if (scenario === "reset-abandoned") {
+                        const oldId = workflow.worktreeId;
+                        await recordPlanEvent({
+                            cwd: f.root,
+                            planName: "one",
+                            event: "plan_held",
+                            currentStatus: "in_progress",
+                        });
+                        const entry = (await inspectWorktreeRegistry(f.root)).entries.find(
+                            (entry) => entry.id === oldId,
+                        )!;
+                        await settleDiscardedRecoveryAttempt(f.root, "one", p.metadata.planId, entry, true);
+                        await recordPlanEvent({
+                            cwd: f.root,
+                            planName: "one",
+                            event: "hold_reset_to_draft",
+                            currentStatus: "on_hold",
+                        });
+                        equal((await read(f.identity)).metadata.workflow?.attempt, undefined);
+                        workflow = await start();
+                        ok(workflow.worktreeId !== oldId);
+                        equal(
+                            (await inspectWorktreeRegistry(f.root)).entries.find((entry) => entry.id === oldId)?.status,
+                            "abandoned",
+                        );
+                    }
+                    await fs.writeFile(join(workflow.executionCwd!, "result.txt"), "implemented\n");
+                    await finalizePlanImplementation({
+                        projectRoot: f.root,
+                        planName: "one",
+                        executionContext: workflow,
+                    });
+                    equal((await read(f.identity)).metadata.definition.status, "implemented");
+                },
+            );
+        } finally {
+            for (const path of paths) await git(f.root, ["worktree", "remove", "--force", path]);
+            await f.cleanup();
+        }
+    });
+}

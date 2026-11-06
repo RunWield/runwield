@@ -1703,6 +1703,19 @@ export async function reconcileTransitionRecoveryRecords(
                 continue;
             }
             const writes = record.packageWrites as PackageMetadataWrite[] | undefined;
+            if (
+                !writes?.length &&
+                planName &&
+                (operation?.startsWith("plan_review_") || operation?.startsWith("sequence_review_"))
+            ) {
+                const current = await selectedPackage(planName);
+                reconciliations.push({
+                    ...base,
+                    resolvable: current.metadata.revision === source.expectedRevision,
+                    reason: "review recorded no metadata write; current editor documents are preserved",
+                });
+                continue;
+            }
             if (operation?.startsWith("sequence_review_") && writes?.length && state !== "committed") {
                 const accepted =
                     Array.isArray(record.completedEffects) &&

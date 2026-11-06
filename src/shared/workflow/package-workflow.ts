@@ -239,7 +239,7 @@ export async function capturePackageWorkflowInput(
 export async function assertPackageWorkflowInput(
     planName: string,
     input: PackageWorkflowInput,
-    equivalent?: (left: string, right: string) => boolean,
+    equivalent?: (left: string, right: string, documentName: string, planId: string) => boolean,
 ): Promise<void> {
     const selection = currentPackageSelection()!;
     const packages = await requiredPackages((await selectedPackage(planName))!);
@@ -258,12 +258,60 @@ export async function assertPackageWorkflowInput(
                     !before ||
                     (before.hash !== doc.hash &&
                         (!equivalent ||
-                            !equivalent(new TextDecoder().decode(before.bytes), new TextDecoder().decode(doc.bytes))))
+                            !equivalent(
+                                new TextDecoder().decode(before.bytes),
+                                new TextDecoder().decode(doc.bytes),
+                                doc.name,
+                                plan.metadata.planId,
+                            )))
                 );
             })
         )
             throw new Error("Required Plan documents changed; review the current input.");
     }
+}
+
+/** Bind a resolved default before reserving the attempt, preserving the reviewed document references. */
+export async function resolvePackageExecutionTarget(planName: string, targetBranch: string): Promise<void> {
+    const plan = await selectedPackage(planName);
+    if (plan.metadata.definition.targetBranch) return;
+    const workflow = { ...plan.metadata.workflow };
+    if (!workflow.readiness) throw new Error("Execution requires retained package readiness input.");
+    await assertPackageWorkflowInput(planName, workflow.readiness);
+    const packages = await requiredPackages(plan);
+    const input = {
+        ...workflow.readiness,
+        definitionHash: definitionHash(
+            packages.map((item, index) =>
+                index === 0
+                    ? {
+                          ...item,
+                          metadata: { ...item.metadata, definition: { ...item.metadata.definition, targetBranch } },
+                      }
+                    : item,
+            ),
+        ),
+    };
+    workflow.review = input;
+    workflow.readiness = input;
+    if (workflow.attempt) workflow.attempt = { ...workflow.attempt, input };
+    await updatePackageWorkflowMetadata(
+        planName,
+        { targetBranch },
+        (await loadPackageWorkflowPlan(planName)).revision,
+        workflow,
+    );
+}
+
+/** Only positive settlement evidence releases the personal owner's attempt guard. */
+export async function releaseSettledPackageAttempt(planName: string): Promise<void> {
+    await packageWorkflowLocks([planName], async () => {
+        await loadPackageWorkflowPlan(planName);
+        const plan = await selectedPackage(planName);
+        const binding = plan.metadata.workflow?.attempt;
+        const entry = binding ? await findById(binding.repositoryRoot, binding.attemptId) : null;
+        if (entry && ["merged", "abandoned"].includes(entry.status)) await updatePackageWorkflowMetadata(planName, {});
+    });
 }
 
 export async function packageController(plan: LoadedPlanPackage): Promise<WorkflowControllerState> {
@@ -365,6 +413,10 @@ export async function updatePackageWorkflowMetadata(
         const view = (await loadPackageWorkflowPlan(planName))!;
         if (expectedRevision !== undefined && view.revision !== expectedRevision)
             throw new Error("Package input changed before the metadata write.");
+        const workflow = { ...current.metadata.workflow, ...workflowUpdate };
+        const binding = workflow.attempt;
+        const entry = binding ? await findById(binding.repositoryRoot, binding.attemptId) : null;
+        if (entry && ["merged", "abandoned"].includes(entry.status)) workflow.attempt = undefined;
         const definition: PackageDefinition = { ...current.metadata.definition };
         const controller: PackageControllerState = { ...current.metadata.controller };
         const state = { ...(await packageController(current)), ...pickControllerState(updates) };
@@ -389,7 +441,7 @@ export async function updatePackageWorkflowMetadata(
                     revision: current.metadata.revision + 1,
                     definition,
                     controller,
-                    workflow: { ...current.metadata.workflow, ...workflowUpdate, controller: ref },
+                    workflow: { ...workflow, controller: ref },
                 }),
             ),
         );
@@ -400,7 +452,7 @@ export async function updatePackageWorkflowMetadata(
             {
                 definition,
                 controller,
-                workflow: { ...current.metadata.workflow, ...workflowUpdate, controller: ref },
+                workflow: { ...workflow, controller: ref },
             },
         );
         return (await loadPackageWorkflowPlan(planName))!.attrs;

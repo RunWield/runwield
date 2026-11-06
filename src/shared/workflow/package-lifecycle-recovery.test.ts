@@ -1,3 +1,5 @@
+import { getTransitionJournalDir } from "./state-transition.ts";
+import { planPackageJournalDirectory } from "../plan-package-store.ts";
 import { importPlanPackages } from "../../plan-store.js";
 import { addEntry } from "../worktree-registry.js";
 import { writeControllerState, readControllerRecord } from "./controller-registry.ts";
@@ -40,7 +42,13 @@ for (const boundary of ["lifecycle-intent", "metadata"]) {
     });
 }
 
-for (const boundary of ["attempt-reserved", "registry-reserved", "git-created", "attempt-started"]) {
+for (const boundary of [
+    "attempt-reserved",
+    "registry-reserved",
+    "git-created",
+    "attempt-started",
+    "default-target-started",
+]) {
     test(`execution restart after ${boundary} preserves one exact attempt`, async () => {
         const f = await packageFixture();
         try {
@@ -50,7 +58,7 @@ for (const boundary of ["attempt-reserved", "registry-reserved", "git-created", 
                     status: "draft",
                     executionAgent: "engineer",
                     collaborationRecommendation: "autonomous",
-                    targetBranch: "main",
+                    ...(boundary === "default-target-started" ? {} : { targetBranch: "main" }),
                 },
             });
             await withPackageWorkflow(
@@ -71,7 +79,11 @@ for (const boundary of ["attempt-reserved", "registry-reserved", "git-created", 
                     });
                 },
             );
-            const stopped = await driver({ identity: f.identity, command: "execution", boundary });
+            const stopped = await driver({
+                identity: f.identity,
+                command: "execution",
+                boundary: boundary === "default-target-started" ? "attempt-started" : boundary,
+            });
             equal(stopped.code, 86, stopped.output + stopped.errors);
             const reserved = (await read(f.identity)).metadata.workflow?.attempt;
             const restarted = await driver({ identity: f.identity, command: "execution" });
@@ -307,3 +319,161 @@ test("a newer metadata revision supersedes an interrupted metadata-only intent w
         await f.cleanup();
     }
 });
+
+for (const changed of ["validation.md", "manual-qa.md", "parent"] as const) {
+    test(`review rejects an editor race in ${changed} after its initial input check`, async () => {
+        const f = await packageFixture();
+        try {
+            const parent = await create(f.identity, {
+                planId: "parent",
+                name: "parent",
+                definition: { classification: "PROJECT", status: "draft" },
+            });
+            const p = await create(f.identity, { parentPlanId: "parent" });
+            const result = await driver({
+                identity: f.identity,
+                command: "review-race",
+                mutateEvidenceDestination:
+                    changed === "parent" ? join(parent.path, "context.md") : join(p.path, changed),
+            });
+            equal(result.code, 0, result.output + result.errors);
+            const outcome = JSON.parse(result.output.trim().split("\n").at(-1)!).result;
+            equal(
+                await fs.readFile(
+                    changed === "parent" ? join(parent.path, "context.md") : join(p.path, changed),
+                    "utf8",
+                ),
+                "Unreviewed requirements\n",
+            );
+            ok((await fs.readFile(join(p.path, "context.md"), "utf8")).includes("Reviewed edit"));
+            equal(outcome.cancellationReason, "stale_plan_review", result.output);
+            equal((await read(f.identity)).metadata.definition.status, "draft");
+            equal((await read(f.identity)).metadata.workflow?.review, undefined);
+            const retry = await driver({ identity: f.identity, command: "review" });
+            equal(retry.code, 0, retry.output + retry.errors);
+            equal(JSON.parse(retry.output.trim().split("\n").at(-1)!).result.approved, true, retry.output);
+            equal((await read(f.identity)).metadata.definition.status, "approved");
+            ok((await fs.readFile(join(p.path, "context.md"), "utf8")).includes("Reviewed edit"));
+            equal((await fs.readdir(planPackageJournalDirectory(f.identity))).length, 0);
+            equal(
+                await fs.readFile(
+                    changed === "parent" ? join(parent.path, "context.md") : join(p.path, changed),
+                    "utf8",
+                ),
+                "Unreviewed requirements\n",
+            );
+        } finally {
+            await f.cleanup();
+        }
+    });
+}
+
+test("implementation interrupted after its Git commit retains the journal in its execution repository", async () => {
+    const f = await packageFixture();
+    try {
+        const p = await create(f.identity, {
+            definition: {
+                classification: "PLANNED_CHANGE",
+                status: "draft",
+                executionAgent: "engineer",
+                collaborationRecommendation: "autonomous",
+                targetBranch: "main",
+            },
+        });
+        await withPackageWorkflow(
+            f.root,
+            { identity: f.identity, planId: p.metadata.planId, expectedRevision: 1 },
+            async () => {
+                await recordPlanEvent({
+                    cwd: f.root,
+                    planName: "one",
+                    event: "review_approved",
+                    currentStatus: "draft",
+                });
+                await recordPlanEvent({
+                    cwd: f.root,
+                    planName: "one",
+                    event: "readiness_passed",
+                    currentStatus: "approved",
+                });
+            },
+        );
+        const stopped = await driver({
+            identity: f.identity,
+            command: "finalize",
+            executionContextPath: join(f.root, "execution-context.json"),
+            boundary: "implementation-committed",
+        });
+        equal(stopped.code, 86, stopped.output + stopped.errors);
+        const journals = await fs.readdir(getTransitionJournalDir(f.root));
+        const records = await Promise.all(
+            journals.map((path) =>
+                fs.readFile(join(getTransitionJournalDir(f.root), path), "utf8").then((text) => JSON.parse(text)),
+            ),
+        );
+        ok(records.some((record) => record.operation === "implementation_checkpoint"));
+        const personal = await fs.readdir(planPackageJournalDirectory(f.identity));
+        equal(personal.length, 0);
+        const entries = (await inspectWorktreeRegistry(f.root)).entries;
+        equal(await git(entries[0].path, ["show", "HEAD:implemented.txt"]), "implementation");
+        const head = await git(entries[0].path, ["rev-parse", "HEAD"]);
+        const restarted = await driver({
+            identity: f.identity,
+            command: "resume-finalize",
+            executionContextPath: join(f.root, "execution-context.json"),
+        });
+        equal(restarted.code, 0, restarted.output + restarted.errors);
+        equal(await git(entries[0].path, ["rev-parse", "HEAD"]), head);
+        equal((await inspectWorktreeRegistry(f.root)).entries[0].status, "completed");
+        equal((await fs.readdir(getTransitionJournalDir(f.root))).length, 0);
+        await git(f.root, ["worktree", "remove", "--force", entries[0].path]);
+    } finally {
+        await f.cleanup();
+    }
+});
+
+for (const boundary of ["review-documents", "review-metadata"])
+    for (const changed of ["validation.md", "manual-qa.md", "parent"] as const) {
+        test(`Sequence refuses an editor race in ${changed} at ${boundary} and fresh review succeeds`, async () => {
+            const f = await packageFixture();
+            try {
+                const parent = await create(f.identity, {
+                    planId: "sequence",
+                    name: "sequence",
+                    definition: { classification: "PROJECT", type: "sequence", status: "draft" },
+                });
+                const child = await create(f.identity, {
+                    planId: "child",
+                    name: "child",
+                    parentPlanId: "sequence",
+                    definition: {
+                        classification: "PLANNED_CHANGE",
+                        status: "draft",
+                        order: 1,
+                        executionAgent: "engineer",
+                        collaborationRecommendation: "autonomous",
+                    },
+                });
+                const editedPath = changed === "parent" ? join(parent.path, "context.md") : join(child.path, changed);
+                const refused = await driver({
+                    identity: f.identity,
+                    command: "sequence-race",
+                    boundary,
+                    planId: "sequence",
+                    mutateEvidenceDestination: editedPath,
+                });
+                equal(refused.code, 0, refused.output + refused.errors);
+                equal(JSON.parse(refused.output.trim().split("\n").at(-1)!).result.approved, false, refused.output);
+                equal(await fs.readFile(editedPath, "utf8"), "Unreviewed requirements\n");
+                const retry = await driver({ identity: f.identity, command: "sequence", planId: "sequence" });
+                equal(retry.code, 0, retry.output + retry.errors);
+                equal(JSON.parse(retry.output.trim().split("\n").at(-1)!).result.approved, true, retry.output);
+                equal((await read(f.identity, "child")).metadata.definition.status, "ready_for_work");
+                ok((await fs.readFile(join(child.path, "context.md"), "utf8")).includes("Reviewed edit"));
+                equal((await fs.readdir(planPackageJournalDirectory(f.identity))).length, 0);
+                equal(await fs.readFile(editedPath, "utf8"), "Unreviewed requirements\n");
+            } finally {
+                await f.cleanup();
+            }
+        });
+    }

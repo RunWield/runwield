@@ -1,6 +1,7 @@
 import { isValidationCheckpoint } from "./validation-checkpoint.ts";
 import {
     currentPackageSelection,
+    packageWorkflowLocks,
     selectedPackage,
     packageController,
     updatePackageWorkflowMetadata,
@@ -281,12 +282,14 @@ export async function writeControllerState(
     options: ControllerWriteOptions = {},
 ): Promise<ControllerRecord> {
     if (currentPackageSelection()) {
-        const before = await readControllerRecord(cwd, identity);
-        if (options.initializeOnly) return before!;
-        if (options.expectedRevision !== undefined && options.expectedRevision !== before?.revision)
-            throw new StaleControllerWriteError();
-        await updatePackageWorkflowMetadata(identity.planName, updates);
-        return (await readControllerRecord(cwd, identity))!;
+        return await packageWorkflowLocks([identity.planName], async () => {
+            const before = await readControllerRecord(cwd, identity);
+            if (options.initializeOnly) return before!;
+            if (options.expectedRevision !== undefined && options.expectedRevision !== before?.revision)
+                throw new StaleControllerWriteError();
+            await updatePackageWorkflowMetadata(identity.planName, updates);
+            return (await readControllerRecord(cwd, identity))!;
+        });
     }
     invalidateProjectRuntimeReadScope();
     try {

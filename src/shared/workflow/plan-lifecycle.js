@@ -1083,6 +1083,10 @@ export async function recordPlanEvent({
                 if (!input) throw new Error("Current package review/readiness evidence is required.");
                 await assertPackageWorkflowInput(planName, input);
             }
+            if (event === "hold_reset_to_draft") {
+                workflow.review = undefined;
+                workflow.readiness = undefined;
+            }
             if (event === "implementation_finished" && workflow.attempt)
                 await assertPackageWorkflowInput(planName, workflow.readiness || workflow.attempt.input);
             if (event === "review_approved") workflow.review = await capturePackageWorkflowInput(planName);

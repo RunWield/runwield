@@ -1,6 +1,8 @@
 // @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
 import {
     currentPackageSelection,
+    releaseSettledPackageAttempt,
+    resolvePackageExecutionTarget,
     withPackageExecutionJournal,
     withPackageWorkflow,
     packageWorkflowLocks,
@@ -329,6 +331,7 @@ export async function startActiveExecutionWorkflow(
         await prepareWorktreeRegistry(cwd);
         return await withPackageExecutionJournal(() =>
             packageWorkflowLocks([options.planName], async () => {
+                await releaseSettledPackageAttempt(options.planName);
                 const binding = (await selectedPackage(options.planName)).metadata.workflow?.attempt;
                 if (binding && binding.repositoryId !== currentPackageSelection()!.identity.repositoryId)
                     throw new PackageExecutionContinuation(binding);
@@ -585,6 +588,7 @@ async function startActiveExecutionWorkflowInScope({
         : adoptPlanBranch
           ? defaultPlanBranchName(planName)
           : deliveryBranch;
+    if (currentPackageSelection()) await resolvePackageExecutionTarget(planName, resolvedTargetBranch);
     const packageAttempt = currentPackageSelection()
         ? (await selectedPackage(planName)).metadata.workflow?.attempt
         : undefined;

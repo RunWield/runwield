@@ -45,7 +45,7 @@ export async function finalizePlanImplementation(options: FinalizePlanImplementa
         return await withPackageWorkflow(
             projectRoot,
             { ...selection, expectedRevision: current.metadata.revision },
-            () => withPackageExecutionJournal(() => finalizePlanImplementation(options)),
+            () => finalizePlanImplementation(options),
         );
     }
     if (!executionContext) {
@@ -57,7 +57,9 @@ export async function finalizePlanImplementation(options: FinalizePlanImplementa
             : projectRoot;
     const resources = [{ kind: "plan", id: planName }];
     if (executionContext.worktreeId) resources.push({ kind: "attempt", id: executionContext.worktreeId });
-    return await withOrderedTransitionResources(planCwd, resources, () => finalizeLockedImplementation(options));
+    return await withPackageExecutionJournal(() =>
+        withOrderedTransitionResources(planCwd, resources, () => finalizeLockedImplementation(options)),
+    );
 }
 
 async function finalizeLockedImplementation({

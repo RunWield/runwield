@@ -1,6 +1,7 @@
 import {
     currentPackageSelection,
     selectedPackage,
+    loadPackageWorkflowPlan,
     capturePackageWorkflowInput,
     assertPackageWorkflowInput,
     updatePackageWorkflowMetadata,
@@ -242,7 +243,9 @@ export async function validateSequenceReviewDecision(
         const original = documents[index];
         if (currentPackageSelection()) {
             if (!original.packageInput) throw new Error("Sequence review requires complete package inputs.");
-            await assertPackageWorkflowInput(doc.planName, original.packageInput);
+            await assertPackageWorkflowInput(doc.planName, original.packageInput, (left, right) =>
+                reviewSourceStillMatches({ attrs: original.frontmatter, body: right }, original.frontmatter, left),
+            );
         }
         if (
             !reviewSourceStillMatches(
@@ -361,7 +364,10 @@ export async function applySequenceReviewDecision({
                     const edited = currentPackageSelection()
                         ? {
                               body: decision.approved
-                                  ? resolvePlanQuestions(edit.plan, edit.questionAnswers)
+                                  ? resolvePlanQuestions(
+                                        edit.plan === original.plan ? currentBody : edit.plan,
+                                        edit.questionAnswers,
+                                    )
                                   : edit.plan,
                               attrs: doc.frontmatter,
                           }
@@ -461,6 +467,8 @@ export async function applySequenceReviewDecision({
                 if (currentPackageSelection()) {
                     const selected = await selectedPackage(write.doc.planName);
                     const doc = selected.documents.find((entry) => entry.name === "context.md")!;
+                    if (new TextDecoder().decode(doc.bytes) !== write.doc.plan)
+                        throw new Error(`Plan ${write.doc.planName} changed before saving review edits.`);
                     if (write.markdown !== write.doc.plan)
                         await savePlanPackageDocument(
                             currentPackageSelection()!.identity,
@@ -469,22 +477,6 @@ export async function applySequenceReviewDecision({
                             doc.hash,
                             write.markdown,
                         );
-                    const definition = {
-                        ...selected.metadata.definition,
-                        status: write.attrs.status,
-                        ...(typeof write.attrs.executionAgent === "string"
-                            ? { executionAgent: write.attrs.executionAgent }
-                            : {}),
-                        ...(typeof write.attrs.collaborationRecommendation === "string"
-                            ? { collaborationRecommendation: write.attrs.collaborationRecommendation }
-                            : {}),
-                    };
-                    const input = await capturePackageWorkflowInput(write.doc.planName, definition);
-                    await updatePackageWorkflowMetadata(write.doc.planName, write.attrs, undefined, {
-                        review: decision.approved ? input : undefined,
-                        readiness: decision.approved ? input : undefined,
-                    });
-                    write.revision = (await loadPlan(cwd, write.doc.planName))!.revision;
                     continue;
                 }
                 registerRollback(`Restore ${write.doc.planName}`, async () => {
@@ -497,7 +489,52 @@ export async function applySequenceReviewDecision({
                 });
                 await writePlanMarkdownWithRevision(write.doc.planPath, write.markdown, write.doc.revision);
             }
-            if (currentPackageSelection())
+            if (currentPackageSelection()) {
+                // Every intended document edit lands before any approval metadata. Compare
+                // against the opened review, permitting only these explicit context edits.
+                const matchesReviewedDocument = (left: string, right: string, name: string, id: string) => {
+                    const edited = writes.find((item) => item.doc.planId === id);
+                    return name === "context.md" && edited
+                        ? right === edited.markdown
+                        : reviewSourceStillMatches(
+                              { attrs: parent.frontmatter, body: right },
+                              parent.frontmatter,
+                              left,
+                          );
+                };
+                for (const [index, write] of writes.entries())
+                    await assertPackageWorkflowInput(
+                        write.doc.planName,
+                        documents[index].packageInput!,
+                        matchesReviewedDocument,
+                    );
+                for (const write of writes) {
+                    if (decision.conversationTurn && write.markdown === write.doc.plan) continue;
+                    const selected = await selectedPackage(write.doc.planName);
+                    const writeRevision = (await loadPackageWorkflowPlan(write.doc.planName)).revision;
+                    const definition = {
+                        ...selected.metadata.definition,
+                        status: write.attrs.status,
+                        ...(typeof write.attrs.executionAgent === "string"
+                            ? { executionAgent: write.attrs.executionAgent }
+                            : {}),
+                        ...(typeof write.attrs.collaborationRecommendation === "string"
+                            ? { collaborationRecommendation: write.attrs.collaborationRecommendation }
+                            : {}),
+                    };
+                    const input = await capturePackageWorkflowInput(write.doc.planName, definition);
+                    const original = documents.find((doc) => doc.planId === write.doc.planId)!;
+                    await assertPackageWorkflowInput(
+                        write.doc.planName,
+                        original.packageInput!,
+                        matchesReviewedDocument,
+                    );
+                    await updatePackageWorkflowMetadata(write.doc.planName, write.attrs, writeRevision, {
+                        review: decision.approved ? input : undefined,
+                        readiness: decision.approved ? input : undefined,
+                    });
+                    write.revision = (await loadPlan(cwd, write.doc.planName))!.revision;
+                }
                 await markEffect("sequence_review_prepared", {
                     plans: writes.map((write) => ({
                         planName: write.doc.planName,
@@ -505,6 +542,7 @@ export async function applySequenceReviewDecision({
                         afterRevision: write.revision,
                     })),
                 });
+            }
             const feedback = [
                 decision.feedback,
                 ...edits
@@ -539,6 +577,18 @@ export async function applySequenceReviewDecision({
                 feedback,
                 ...(images.length ? { images } : {}),
             };
+            if (currentPackageSelection() && decision.approved) {
+                const members = await sequenceMembers(cwd, parent.planName);
+                if (
+                    members.length !== documents.length ||
+                    members.some((member, index) => member.attrs.planId !== documents[index].planId)
+                )
+                    throw new Error("Sequence membership or order changed before approval.");
+                for (const write of writes) {
+                    const selected = await selectedPackage(write.doc.planName);
+                    await assertPackageWorkflowInput(write.doc.planName, selected.metadata.workflow!.review!);
+                }
+            }
             await markEffect("sequence_review_accepted", { planIds: documents.map((doc) => doc.planId), toolCallId });
             result = {
                 approved: decision.approved === true,

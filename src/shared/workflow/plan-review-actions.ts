@@ -302,9 +302,16 @@ async function applySharedPlanReviewDecisionInScope({
                     ...(approved && approvedPolicy ? approvedPolicy : {}),
                     status: nextAttrs.status!,
                 };
+                const writeRevision = (await loadPackageWorkflowPlan(planName)).revision;
                 const retained = await capturePackageWorkflowInput(planName, nextDefinition);
+                await assertPackageWorkflowInput(planName, packageInput, (left, right, documentName, planId) =>
+                    documentName === "context.md" && planId === current.metadata.planId
+                        ? right === text
+                        : reviewMarkdown.parse(left, { async: false }) ===
+                          reviewMarkdown.parse(right, { async: false }),
+                );
                 if (!conversationTurn)
-                    await updatePackageWorkflowMetadata(planName, nextAttrs, undefined, {
+                    await updatePackageWorkflowMetadata(planName, nextAttrs, writeRevision, {
                         review: approved ? retained : undefined,
                         readiness: undefined,
                     });

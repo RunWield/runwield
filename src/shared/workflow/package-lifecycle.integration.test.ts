@@ -483,3 +483,92 @@ test("strict package workflow references reject unsupported fields and another P
         await f.cleanup();
     }
 });
+
+test("two controller writers using the same package revision cannot both commit", async () => {
+    const f = await packageFixture();
+    try {
+        const p = await create(f.identity);
+        await withPackageWorkflow(
+            f.root,
+            { identity: f.identity, planId: p.metadata.planId, expectedRevision: 1 },
+            async () => {
+                const identity = { planName: "one", planId: p.metadata.planId };
+                const results = await Promise.allSettled([
+                    writeControllerState(f.root, identity, { failureReason: "first" }, { expectedRevision: 1 }),
+                    writeControllerState(f.root, identity, { failureReason: "second" }, { expectedRevision: 1 }),
+                ]);
+                equal(results.filter((result) => result.status === "fulfilled").length, 1);
+                const winner = results.find((result) => result.status === "fulfilled")!;
+                ok(winner.status === "fulfilled");
+                equal(
+                    (await readControllerRecord(f.root, identity))?.state.failureReason,
+                    winner.value.state.failureReason,
+                );
+                equal((await read(f.identity)).metadata.revision, 2);
+            },
+        );
+    } finally {
+        await f.cleanup();
+    }
+});
+
+for (const resource of ["context.md", "validation.md"] as const) {
+    test(`Sequence preserves formatting-only ${resource} bytes in its approved input`, async () => {
+        const f = await packageFixture();
+        try {
+            const parent = await create(f.identity, {
+                planId: "sequence",
+                name: "sequence",
+                definition: { classification: "PROJECT", type: "sequence", status: "draft" },
+            });
+            const child = await create(f.identity, {
+                planId: "child",
+                name: "child",
+                parentPlanId: "sequence",
+                documents: {
+                    "context.md": "# Plan\n\nA sentence with words.\n",
+                    "validation.md": "# Plan\n\nA sentence with words.\n",
+                },
+                definition: {
+                    classification: "PLANNED_CHANGE",
+                    status: "draft",
+                    order: 1,
+                    executionAgent: "engineer",
+                    collaborationRecommendation: "autonomous",
+                },
+            });
+            await withPackageWorkflow(
+                f.root,
+                { identity: f.identity, planId: parent.metadata.planId, expectedRevision: 1 },
+                async () => {
+                    const documents = await prepareSequenceReview(f.root, "sequence");
+                    const formatted = "# Plan\n\nA sentence\nwith words.\n";
+                    await fs.writeFile(join(child.path, resource), formatted);
+                    const result = await applySequenceReviewDecision({
+                        cwd: f.root,
+                        documents,
+                        decision: {
+                            approved: true,
+                            approvalAction: "later",
+                            documents: documents.map((doc) => ({ planId: doc.planId, plan: doc.plan })),
+                        },
+                    });
+                    equal(result.approved, true, result.feedback || "Expected Sequence approval");
+                    const current = await read(f.identity, "child");
+                    const input = current.metadata.workflow!.readiness!;
+                    const retained = await readPlanPackageInput(
+                        f.identity,
+                        input.inputs.find((ref) => ref.planId === "child")!,
+                    );
+                    equal(
+                        new TextDecoder().decode(retained.documents.find((doc) => doc.name === resource)!.bytes),
+                        formatted,
+                    );
+                    equal(await fs.readFile(join(child.path, resource), "utf8"), formatted);
+                },
+            );
+        } finally {
+            await f.cleanup();
+        }
+    });
+}

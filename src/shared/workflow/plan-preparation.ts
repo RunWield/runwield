@@ -2,6 +2,7 @@ import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { healSettledTransitionRecords } from "./transition-recovery.ts";
 import {
     LegacyPackageContinuation,
+    releaseSettledPackageAttempt,
     packageWorkflowLocks,
     currentPackageSelection,
     withPackageWorkflow,
@@ -84,6 +85,7 @@ async function preparePlanWorkflowInScope(projectRoot: string, planName: string)
         );
         const pending = recovery.remaining[0];
         if (pending) throw new Error(`Package transition needs current evidence: ${pending.reason}`);
+        await releaseSettledPackageAttempt(planName);
         return await resolveWorkflowPlanLocation(projectRoot, planName, { readOnly: true });
     }
     await preparePlanController(projectRoot, planName);

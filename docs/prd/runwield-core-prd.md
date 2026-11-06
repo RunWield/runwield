@@ -281,7 +281,9 @@ the current Plan.
 same approval/readiness rules over every required document and parent context. Changes to resource membership,
 validation content or execution policy require current review. Formatting-only review captures the new exact bytes;
 controller timestamps and unrelated sibling edits do not invalidate unchanged required input. Reply-only review keeps
-status unchanged. Ordinary public review source selection remains the legacy baseline.
+status unchanged. Single-Plan and Sequence decisions recheck the complete input after saving reviewed edits and before
+acceptance. A refused stale review preserves editor bytes and permits a fresh review after restart without manual
+journal repair. Ordinary public review source selection remains the legacy baseline.
 
 **Requirement: Reply or revise in Plan review.** Planner or Architect replies in chat to explain, clarify, or ask back.
 It revises the Plan and calls `plan_written` when the answer changes scope, behavior, a decision, or verification; when
@@ -865,6 +867,8 @@ point. Commands are copy-ready with real values. Waiting for the user's action s
   documents and metadata; ordinary public selection remains unchanged.
 - Given a reviewed package, changing required resource membership, parent context or policy rejects old readiness;
   formatting-only review preserves the decision and retains the new bytes, while reply-only leaves status unchanged.
+- Given an editor changes a required document during single-Plan or Sequence approval, the decision is refused;
+  restart preserves both saved review edits and editor changes, and a fresh review can approve the current input.
 - Given simultaneous starts in two linked clones, one exact unfinished attempt wins. Fresh-process retry after intent,
   registry reservation or Git creation reuses it and preserves editor changes; a held native lock is waited on.
 - Given an imported dirty unfinished legacy attempt, internal selection returns its original owner and checkpoint;
