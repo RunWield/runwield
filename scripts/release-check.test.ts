@@ -18,7 +18,7 @@ import {
     smokeTestBundledAgentReferenceExtraction,
     smokeTestBinaryPlansUiSurface,
     smokeTestBinaryReviewSurface,
-} from "./release-check.js";
+} from "./release-check.ts";
 import { captureScriptProcess } from "./script-process.ts";
 import { fileURLToPath } from "node:url";
 import { runtimeSourceArgs } from "../src/testing/runtime-source-args.ts";
