@@ -16,7 +16,7 @@ import {
     readPersistedPendingSegmentContinuationEntry,
     recordPendingSegmentContinuation,
     recordNormalizedWorkflowContext,
-} from "../session/workflow-context-session.js";
+} from "../session/workflow-context-session.ts";
 import { recordTutorialContext } from "../session/tutorial-context-session.ts";
 import { appendExecutionWorkflowSnapshot } from "../session/execution-workflow-session.ts";
 import { parseRemoteSessionTranscript } from "./session-protocol.ts";

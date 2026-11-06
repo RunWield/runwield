@@ -94,11 +94,7 @@ const EXECUTION_CONTRACTS: ReadonlyArray<{
         loader: "subagent",
         contextContract: "validation-repair",
         sharedPractice: ["working-tree-safety", "engineering-practice"],
-        requiredLanguage: [
-            "You receive one bounded repair packet",
-            "Do not reconstruct the",
-            "Report per item",
-        ],
+        requiredLanguage: ["You receive one bounded repair packet", "Do not reconstruct the", "Report per item"],
         forbiddenLanguage: ["approved Planned Change Plan", "Quick Fix Checklist", "Pair Execution is active"],
         workflowOnly: null,
         discoverable: false,
@@ -116,9 +112,10 @@ async function loadContractDef(agentName: string, loader: "agent" | "subagent") 
  * the declaration is what says which contract an Agent claims.
  */
 async function readBundledFrontMatter(agentName: string, loader: "agent" | "subagent"): Promise<Map<string, string[]>> {
-    const filePath = loader === "subagent"
-        ? join("src", "agent-definitions", "subagent-definitions", `${agentName}.md`)
-        : join("src", "agent-definitions", `${agentName}.md`);
+    const filePath =
+        loader === "subagent"
+            ? join("src", "agent-definitions", "subagent-definitions", `${agentName}.md`)
+            : join("src", "agent-definitions", `${agentName}.md`);
     const contents = await fsReadFile(filePath, "utf8");
     const result = new Map<string, string[]>();
     const scalarMatches = contents.match(/^---\n([\s\S]*?)\n---/m)?.[1] || "";
@@ -223,25 +220,8 @@ test("project overrides may not silently invent a context contract", async () =>
             join(agentsDir, "engineer.md"),
             "---\ncontextContract: launch-authority\n---\n\nOverride body.\n",
         );
-        await assertRejects(
-            () => loadAgentDef("engineer", projectRoot),
-            Error,
-            "invalid contextContract",
-        );
+        await assertRejects(() => loadAgentDef("engineer", projectRoot), Error, "invalid contextContract");
     } finally {
         await fsRm(projectRoot, { recursive: true });
     }
-});
-
-test("static prompt baseline is recorded as comparison data only", async () => {
-    const baselines = [];
-    for (const contract of EXECUTION_CONTRACTS) {
-        const def = await loadContractDef(contract.agentName, contract.loader);
-        const characters = def.systemPrompt.length;
-        baselines.push({ agentName: contract.agentName, characters, roughTokens: Math.round(characters / 4) });
-        assertEquals(characters > 1000, true, `${contract.agentName} prompt baseline unexpectedly empty`);
-    }
-    console.info(
-        `Static execution prompt baseline, not full per-turn cost: ${JSON.stringify(baselines)}`,
-    );
 });

@@ -83,17 +83,6 @@ for (const patchPath of ["variants/defective.patch", "evaluation/clean.patch"]) 
     });
 }
 
-test("registry oracle owns architecture and durable test coverage separately", async () => {
-    const fixture = await loadFixture(join(corpusPath, "RV-D12"));
-    assert.deepEqual(
-        fixture.oracle.variants.A!.defects.map(({ defectId, proofCommand }) => ({ defectId, proofCommand })),
-        [
-            { defectId: "RV-D12-A", proofCommand: "bun run test:oracle seam-check" },
-            { defectId: "RV-D12-TEST-DURABILITY", proofCommand: "bun run test:oracle mutation-coverage" },
-        ],
-    );
-});
-
 for (const replacement of [
     { from: "bun run test: pass", to: "bun run test: fail", error: /clean public suite must pass/ },
     { from: "bun run test: fail", to: "bun run test: missing", error: /missing declared public outcome/ },

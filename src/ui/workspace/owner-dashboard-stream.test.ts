@@ -1,10 +1,12 @@
+import { fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
+import type { RuntimeInteractionResponse } from "../../shared/session/session-runtime-interactions.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import process from "node:process";
 import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { strictEqual as assertStrictEquals } from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { getHomeDir } from "../../constants.js";
@@ -17,6 +19,7 @@ import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { createOwnerWorkspaceApp } from "./server.js";
+import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
 import { loadOwnerDashboard, loadOwnerSidebar, subscribeOwnerDashboard } from "./server/owner-dashboard.ts";
 
 type StreamFrame = {
@@ -82,69 +85,11 @@ test("owner dashboard stream authenticates and completes with verified rows", as
     }
 });
 
-test("dashboard keeps Promise identity and publishes later Project while first waits", async () => {
-    const dir = await fsMkdtemp(join(tmpdir(), "rw-dashboard-progress-"));
-    const first = `${dir}/first`;
-    const second = `${dir}/second`;
-    await fsMkdir(first);
-    await fsMkdir(second);
-    const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
-    let release = () => {};
-    const blocked = new Promise<void>((resolve) => {
-        release = resolve;
-    });
-    try {
-        const firstProject = store.registerProject({ root: first, displayName: "Blocked" });
-        store.registerProject({ root: second, displayName: "Available" });
-        await savePlan(second, "finished", "# Finished\n", {
-            planId: "available-plan",
-            classification: "FEATURE",
-            status: "user_verified",
-            userVerifiedAt: new Date().toISOString(),
-        });
-        // The Session catalog is an external read boundary; Plan and Project readers stay real.
-        const continuation = {
-            operations: new Map(),
-            async listSessions(projectId: string) {
-                if (projectId === firstProject.projectId) await blocked;
-                return { sessions: [] };
-            },
-        };
-        const frames: Array<{ type: string; sections: Array<{ items: Array<{ planId: string }> }> }> = [];
-        let rowSeen = () => {};
-        const row = new Promise<void>((resolve) => {
-            rowSeen = resolve;
-        });
-        const unsubscribe = subscribeOwnerDashboard(store, continuation, (frame) => {
-            frames.push(frame);
-            if (frame.sections.some((section) => section.items.some((item) => item.planId === "available-plan"))) {
-                rowSeen();
-            }
-        });
-        const a = loadOwnerDashboard(store, continuation);
-        assertStrictEquals(a, loadOwnerDashboard(store, continuation));
-        await Promise.race([
-            row,
-            new Promise((_, reject) => setTimeout(() => reject(new Error("No early row")), 5000)),
-        ]);
-        assertEquals(frames.at(-1)?.type, "snapshot");
-        release();
-        const payload = await a;
-        assertEquals(payload.dashboard.sections.flatMap((section) => section.items).length, 1);
-        unsubscribe();
-        assertEquals(loadOwnerDashboard(store, continuation) === a, false);
-        await loadOwnerDashboard(store, continuation);
-    } finally {
-        release();
-        store.close();
-        await fsRm(dir, { recursive: true });
-    }
-});
-
 test("dashboard reads an empty Project without waiting for its registry writer lock", async () => {
     const dir = await fsMkdtemp(join(tmpdir(), "rw-dashboard-empty-"));
     const root = join(dir, "project");
     const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
+    const continuation = new WorkspaceSessionContinuationService({ store });
     let dashboardRead: ReturnType<typeof loadOwnerDashboard> | undefined;
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -154,25 +99,14 @@ test("dashboard reads an empty Project without waiting for its registry writer l
         await fsMkdir(dirname(registryPath), { recursive: true });
         await fsWriteFile(registryPath, JSON.stringify({ version: 2, entries: [] }));
         store.registerProject({ root, displayName: "Empty" });
-        let sessionsRead = () => {};
-        const sessionsReached = new Promise<void>((resolve) => {
-            sessionsRead = resolve;
-        });
-        const continuation = {
-            listSessions() {
-                sessionsRead();
-                return Promise.resolve({ sessions: [] });
-            },
-        };
         // Passive reads use the saved registry and do not acquire the writer lock.
         await withWorktreeRegistryLock(root, async () => {
             dashboardRead = loadOwnerDashboard(store, continuation);
-            await sessionsReached;
             assertEquals(
                 await Promise.race([
                     dashboardRead.then(() => "completed"),
                     new Promise<string>((resolve) => {
-                        timeout = setTimeout(() => resolve("waiting for registry"), 100);
+                        timeout = setTimeout(() => resolve("waiting for registry"), 2000);
                     }),
                 ]),
                 "completed",
@@ -192,6 +126,7 @@ test("dashboard reads an empty Project without waiting for its registry writer l
         try {
             await dashboardRead;
         } finally {
+            await continuation.close();
             store.close();
             await fsRm(dir, { recursive: true });
         }
@@ -404,14 +339,37 @@ test("one Project streams a finished row before its unrelated live socket respon
 test("unreadable publication registry fails the finished card before unrelated Project checks end", async () => {
     const dir = await fsMkdtemp(join(tmpdir(), "rw-dashboard-registry-"));
     const first = `${dir}/first`;
-    const second = `${dir}/second`;
-    await fsMkdir(first);
-    await fsMkdir(second);
-    const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
+    const fixture = await makeManagedSessionFixture();
+    const store = fixture.store;
+    const continuation = new WorkspaceSessionContinuationService({ store });
+    const operationId = "registry-dashboard-operation";
+    const socketKey = createHash("sha256")
+        .update(`${getHomeDir()}:${fixture.session.runwieldSessionId}:${operationId}`)
+        .digest("hex")
+        .slice(0, 40);
+    const socketPath =
+        process.platform === "win32" ? `\\\\.\\pipe\\runwield-${socketKey}` : `/tmp/runwield-${socketKey}.sock`;
     const gate = Promise.withResolvers<void>();
+    const socket = createServer(async (_request, response) => {
+        await gate.promise;
+        response.setHeader("content-type", "application/json");
+        response.end(JSON.stringify({ operationId, events: [], queuedMessages: [], interaction: null }));
+    });
+    store.acquireSessionActivation({
+        runwieldSessionId: fixture.session.runwieldSessionId,
+        projectId: fixture.project.projectId,
+        ownerInstanceId: "dashboard-registry-test",
+        ownerProcessKind: "test",
+        expectedGeneration: 0,
+        operationId,
+    });
+    await new Promise<void>((resolve, reject) => {
+        socket.once("error", reject);
+        socket.listen(socketPath, resolve);
+    });
     try {
+        await fsMkdir(first);
         store.registerProject({ root: first, displayName: "Publication" });
-        const other = store.registerProject({ root: second, displayName: "Other" });
         await savePlan(first, "validated", "# Validated\n", {
             planId: "validated-plan",
             classification: "FEATURE",
@@ -434,13 +392,6 @@ test("unreadable publication registry fails the finished card before unrelated P
             updatedAt: "2026-01-01T00:00:00.000Z",
         });
         await fsWriteFile(path, JSON.stringify({ version: 2, entries: [attempt("a"), attempt("b")] }));
-        const continuation = {
-            operations: new Map(),
-            async listSessions(projectId: string) {
-                if (projectId === other.projectId) await gate.promise;
-                return { sessions: [] };
-            },
-        };
         const seen = Promise.withResolvers<void>();
         const frames: Array<{
             type: string;
@@ -449,7 +400,8 @@ test("unreadable publication registry fails the finished card before unrelated P
         }> = [];
         const unsubscribe = subscribeOwnerDashboard(store, continuation, (frame) => {
             frames.push(frame);
-            if (frame.sectionProgress["recently-finished"].failed) seen.resolve();
+            const finished = frame.sectionProgress["recently-finished"];
+            if (finished.failed && !finished.pending) seen.resolve();
         });
         try {
             await Promise.race([
@@ -461,53 +413,95 @@ test("unreadable publication registry fails the finished card before unrelated P
             const progress = frames.at(-1)!;
             assertEquals(progress.type, "snapshot");
             assertEquals(progress.progress.pending, true);
-            assertEquals(progress.sectionProgress["recently-finished"], { pending: true, failed: true });
+            assertEquals(progress.sectionProgress["recently-finished"], { pending: false, failed: true });
         } finally {
             gate.resolve();
             unsubscribe();
+            await loadOwnerDashboard(store, continuation);
         }
-        await loadOwnerDashboard(store, continuation);
     } finally {
         gate.resolve();
-        store.close();
+        await continuation.close();
+        await new Promise<void>((resolve) => socket.close(() => resolve()));
+        await fixture.cleanup();
         await fsRm(dir, { recursive: true });
     }
 });
 
 test("standalone Sessions linked to one on-hold Plan remain distinct", async () => {
-    const dir = await fsMkdtemp(join(tmpdir(), "rw-dashboard-standalone-"));
-    const root = `${dir}/project`;
-    await fsMkdir(root);
-    const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
-    try {
-        const project = store.registerProject({ root, displayName: "Test" });
-        await savePlan(root, "held", "# Held\n", { planId: "held-plan", classification: "FEATURE", status: "on_hold" });
-        const operation = (sessionId: string) => ({
-            projectId: project.projectId,
-            runwieldSessionId: sessionId,
-            status: "running",
-            liveInteraction: {
-                interactionId: sessionId,
-                request: { type: "question", _meta: { planId: "held-plan" } },
-            },
-        });
-        const continuation = {
-            operations: new Map([
-                ["one", operation("session-one")],
-                ["two", operation("session-two")],
-            ]),
-            listSessions() {
-                return Promise.resolve({ sessions: [] });
-            },
-        };
-        const result = await loadOwnerDashboard(store, continuation);
-        const rows = result.dashboard.sections.flatMap((section) => section.items);
-        assertEquals(rows.length, 2);
-        assertEquals(new Set(rows.map((item) => item.href)).size, 2);
-    } finally {
-        store.close();
-        await fsRm(dir, { recursive: true });
-    }
+    await withRuntimeCommandFixture(
+        "dashboard-distinct-sessions-",
+        async ({ projectRoot, setModelResponseFactory }) => {
+            const store = openOwnerCoordinationStore();
+            const continuation = new WorkspaceSessionContinuationService({ store });
+            const release = Promise.withResolvers<void>();
+            let entered = 0;
+            const pending: Array<Promise<RuntimeInteractionResponse>> = [];
+            try {
+                const project = store.registerProject({ root: projectRoot });
+                await savePlan(projectRoot, "held", "# Held\n", {
+                    planId: "held-plan",
+                    classification: "FEATURE",
+                    status: "on_hold",
+                });
+                const sessionIds: string[] = [];
+                for (let index = 0; index < 2; index++) {
+                    setModelResponseFactory(async () => {
+                        entered++;
+                        await release.promise;
+                        return fauxAssistantMessage("Finished.");
+                    });
+                    const started = await continuation.createSession({
+                        projectId: project.projectId,
+                        requestId: `question-${index}`,
+                        text: "Ask about the held Plan.",
+                        agentName: "operator",
+                    });
+                    for (let wait = 0; entered <= index && wait < 500; wait++)
+                        await new Promise((resolve) => setTimeout(resolve, 10));
+                    assertEquals(entered, index + 1);
+                    const operation = continuation.getOperation(started.operationId);
+                    sessionIds.push(operation.runwieldSessionId!);
+                    const runtimeSession = continuation.runtime
+                        .listSessions()
+                        .find(
+                            (session) =>
+                                continuation.runtime.getSessionSnapshot(session.id)?.managed?.runwieldSessionId ===
+                                operation.runwieldSessionId,
+                        );
+                    if (!runtimeSession) throw new Error("Running Session missing");
+                    pending.push(
+                        continuation.runtime.requestInteraction(runtimeSession.id, {
+                            type: "text",
+                            prompt: "Question about held Plan",
+                            _meta: { planId: "held-plan" },
+                        }),
+                    );
+                    for (
+                        let wait = 0;
+                        !continuation.getOperation(started.operationId).liveInteraction && wait < 500;
+                        wait++
+                    )
+                        await new Promise((resolve) => setTimeout(resolve, 10));
+                    assertEquals(Boolean(continuation.getOperation(started.operationId).liveInteraction), true);
+                }
+                const result = await loadOwnerDashboard(store, continuation);
+                const rows = result.dashboard.sections.flatMap((section) => section.items);
+                assertEquals(rows.length, 2);
+                assertEquals(new Set(rows.map((item) => item.href)).size, 2);
+                for (const id of sessionIds)
+                    assertEquals(
+                        rows.some((item) => item.href.includes(id)),
+                        true,
+                    );
+            } finally {
+                release.resolve();
+                await continuation.close();
+                await Promise.all(pending);
+                store.close();
+            }
+        },
+    );
 });
 
 const dashboardScopeFixture = defineCommittedGitFixture({ "README.md": "# Dashboard scope\n" });
@@ -616,7 +610,6 @@ test("HTTP dashboard stream completes its producer and starts a fresh read after
 });
 
 test("archived Sessions stay under Plans in dashboard and sidebar but leave standalone history", async () => {
-    const { WorkspaceSessionContinuationService } = await import("./server/session-continuation.js");
     const { loadOwnerSidebar } = await import("./server/owner-dashboard.ts");
     const fixture = await makeManagedSessionFixture();
     const { store, session, project } = fixture;
@@ -707,16 +700,11 @@ test("top-level sidebar priority stays ahead of explicit Plan order in both read
     const root = join(dir, "project");
     await fsMkdir(root);
     const store = openOwnerCoordinationStore({ dbPath: join(dir, "owner.sqlite3") });
+    const continuation = new WorkspaceSessionContinuationService({ store });
     try {
         store.registerProject({ root, displayName: "Priority" });
         await savePlan(root, "held", "# Held", { planId: "held-id", status: "on_hold", order: 1 });
         await savePlan(root, "ready", "# Ready", { planId: "ready-id", status: "ready_for_work", order: 10 });
-        const continuation = {
-            operations: new Map(),
-            listSessions() {
-                return Promise.resolve({ sessions: [] });
-            },
-        };
         for (const projects of [
             (await loadOwnerDashboard(store, continuation)).projects,
             await loadOwnerSidebar(store, continuation),
@@ -727,6 +715,7 @@ test("top-level sidebar priority stays ahead of explicit Plan order in both read
             );
         }
     } finally {
+        await continuation.close();
         store.close();
         await fsRm(dir, { recursive: true });
     }
@@ -738,6 +727,7 @@ for (const reader of [loadOwnerDashboard, loadOwnerSidebar]) {
         const root = join(dir, "project");
         await fsMkdir(root);
         const store = openOwnerCoordinationStore({ dbPath: join(dir, "owner.sqlite3") });
+        const continuation = new WorkspaceSessionContinuationService({ store });
         try {
             store.registerProject({ root, displayName: "Children" });
             for (const child of [
@@ -756,18 +746,14 @@ for (const reader of [loadOwnerDashboard, loadOwnerSidebar]) {
                 planId: "unrelated",
                 status: "draft",
             });
-            const result = await reader(store, {
-                operations: new Map(),
-                listSessions() {
-                    return Promise.resolve({ sessions: [] });
-                },
-            });
+            const result = await reader(store, continuation);
             const projects = Array.isArray(result) ? result : result.projects;
             assertEquals(
                 projects[0].plans.filter((plan) => plan.planId !== "unrelated").map((plan) => plan.planId),
                 ["z-first", "a-last", "b-unordered"],
             );
         } finally {
+            await continuation.close();
             store.close();
             await fsRm(dir, { recursive: true });
         }

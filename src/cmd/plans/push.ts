@@ -17,7 +17,7 @@ import {
     getGlobalSecretStoreLocation,
     getProjectSecretStoreLocation,
     resolvePullSecretRecord,
-} from "../../shared/collaboration/secrets.js";
+} from "../../shared/collaboration/secrets.ts";
 import { buildCollaborationUrl } from "../../shared/collaboration/urls.ts";
 import { normalizePlanServerUrl } from "../../shared/collaboration/urls.ts";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";

@@ -63,29 +63,34 @@ async function captureLogs(run: () => Promise<unknown>): Promise<string[]> {
 }
 
 test("runModelsCommand switches an explicit configured model through the real registry", async () => {
-    await withRuntimeCommandFixture("runwield-model-command-", async ({ projectRoot }) => {
-        const ui = makeUi();
-        const runtime = createSessionRuntime();
-        try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+    await withRuntimeCommandFixture(
+        "runwield-model-command-",
+        async ({ projectRoot }) => {
+            const ui = makeUi();
+            const runtime = createSessionRuntime();
+            try {
+                const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                assertEquals(getSettingsManager(projectRoot).getDefaultModel(), undefined);
 
-            await runModelsCommand([FIXTURE_MODEL], {
-                uiAPI: ui.uiAPI,
-                sessionId,
-                sessionRuntime: runtime,
-            });
+                await runModelsCommand([FIXTURE_MODEL], {
+                    uiAPI: ui.uiAPI,
+                    sessionId,
+                    sessionRuntime: runtime,
+                });
 
-            assertEquals(runtime.getSessionSnapshot(sessionId)?.activeModel, {
-                model: "fixture-model",
-                provider: "runtime-command-fixture",
-            });
-            assertEquals(getSettingsManager(projectRoot).getDefaultModel(), "fixture-model");
-            assertEquals(getSettingsManager(projectRoot).getDefaultProvider(), "runtime-command-fixture");
-            assertEquals(ui.messages, [{ text: `Switched model to ${FIXTURE_MODEL}`, isError: false }]);
-        } finally {
-            runtime.closeAllSessions();
-        }
-    });
+                assertEquals(runtime.getSessionSnapshot(sessionId)?.activeModel, {
+                    model: "fixture-model",
+                    provider: "runtime-command-fixture",
+                });
+                assertEquals(getSettingsManager(projectRoot).getDefaultModel(), "fixture-model");
+                assertEquals(getSettingsManager(projectRoot).getDefaultProvider(), "runtime-command-fixture");
+                assertEquals(ui.messages, [{ text: `Switched model to ${FIXTURE_MODEL}`, isError: false }]);
+            } finally {
+                runtime.closeAllSessions();
+            }
+        },
+        { providerState: "provider-no-model" },
+    );
 });
 
 test("runModelsCommand switches a new in-memory Session before its first message", async () => {
@@ -293,33 +298,41 @@ test("runModelsCommand reports CLI usage without reading user configuration", as
 });
 
 test("runModelsCommand sets the fixture-scoped default from the standalone CLI", async () => {
-    await withRuntimeCommandFixture("runwield-model-command-", async ({ alternateRoot }) => {
-        const logs = await captureLogs(() => runModelsCommand([FIXTURE_MODEL]));
-        assertEquals(logs, [`Set default model to ${FIXTURE_MODEL}`]);
-        assertEquals(getSettingsManager(alternateRoot).getDefaultModel(), "fixture-model");
-        assertEquals(getSettingsManager(alternateRoot).getDefaultProvider(), "runtime-command-fixture");
-    }, { providerState: "provider-no-model" });
+    await withRuntimeCommandFixture(
+        "runwield-model-command-",
+        async ({ alternateRoot }) => {
+            const logs = await captureLogs(() => runModelsCommand([FIXTURE_MODEL]));
+            assertEquals(logs, [`Set default model to ${FIXTURE_MODEL}`]);
+            assertEquals(getSettingsManager(alternateRoot).getDefaultModel(), "fixture-model");
+            assertEquals(getSettingsManager(alternateRoot).getDefaultProvider(), "runtime-command-fixture");
+        },
+        { providerState: "provider-no-model" },
+    );
 });
 
 test("runModelsCommand completes and accepts only supported Agy CLI base models", async () => {
-    await withRuntimeCommandFixture("runwield-model-command-agy-cli-", async ({ alternateRoot }) => {
-        const completions = await getModelCompletions("agy-cli/");
-        assertEquals(completions.map((completion) => completion.value), [
-            "agy-cli/gemini-3.1-pro",
-            "agy-cli/gemini-3.8-flash",
-        ]);
+    await withRuntimeCommandFixture(
+        "runwield-model-command-agy-cli-",
+        async ({ alternateRoot }) => {
+            const completions = await getModelCompletions("agy-cli/");
+            assertEquals(
+                completions.map((completion) => completion.value),
+                ["agy-cli/gemini-3.1-pro", "agy-cli/gemini-3.8-flash"],
+            );
 
-        const logs = await captureLogs(() => runModelsCommand(["agy-cli/gemini-3.8-flash"]));
-        assertEquals(logs, ["Set default model to agy-cli/gemini-3.8-flash"]);
-        assertEquals(getSettingsManager(alternateRoot).getDefaultModel(), "gemini-3.8-flash");
-        assertEquals(getSettingsManager(alternateRoot).getDefaultProvider(), "agy-cli");
+            const logs = await captureLogs(() => runModelsCommand(["agy-cli/gemini-3.8-flash"]));
+            assertEquals(logs, ["Set default model to agy-cli/gemini-3.8-flash"]);
+            assertEquals(getSettingsManager(alternateRoot).getDefaultModel(), "gemini-3.8-flash");
+            assertEquals(getSettingsManager(alternateRoot).getDefaultProvider(), "agy-cli");
 
-        const rejected = await captureLogs(() => runModelsCommand(["agy-cli/gemini-3.8-flash-high"]));
-        assertEquals(rejected, [
-            "Unsupported Antigravity CLI model: agy-cli/gemini-3.8-flash-high. Select agy-cli/gemini-3.8-flash or agy-cli/gemini-3.1-pro.",
-        ]);
-        assertEquals(getSettingsManager(alternateRoot).getDefaultModel(), "gemini-3.8-flash");
-    }, { providerState: "provider-no-model" });
+            const rejected = await captureLogs(() => runModelsCommand(["agy-cli/gemini-3.8-flash-high"]));
+            assertEquals(rejected, [
+                "Unsupported Antigravity CLI model: agy-cli/gemini-3.8-flash-high. Select agy-cli/gemini-3.8-flash or agy-cli/gemini-3.1-pro.",
+            ]);
+            assertEquals(getSettingsManager(alternateRoot).getDefaultModel(), "gemini-3.8-flash");
+        },
+        { providerState: "provider-no-model" },
+    );
 });
 
 test("runModelsCommand rejects unsupported Agy CLI model selection for the current Session", async () => {
@@ -349,11 +362,12 @@ test("runModelsCommand rejects unsupported Agy CLI model selection for the curre
                 model: "fixture-model",
                 provider: "runtime-command-fixture",
             });
-            assertEquals(ui.messages, [{
-                text:
-                    "Unsupported Antigravity CLI model: agy-cli/fixture-model. Select agy-cli/gemini-3.8-flash or agy-cli/gemini-3.1-pro.",
-                isError: true,
-            }]);
+            assertEquals(ui.messages, [
+                {
+                    text: "Unsupported Antigravity CLI model: agy-cli/fixture-model. Select agy-cli/gemini-3.8-flash or agy-cli/gemini-3.1-pro.",
+                    isError: true,
+                },
+            ]);
         } finally {
             runtime.closeAllSessions();
         }

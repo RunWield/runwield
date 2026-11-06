@@ -1,11 +1,5 @@
 import { tmpdir } from "node:os";
-import {
-    mkdtemp as fsMkdtemp,
-    mkdir as fsMkdir,
-    rm as fsRm,
-    writeFile as fsWriteFile,
-    rename as fsRename,
-} from "node:fs/promises";
+import { mkdtemp as fsMkdtemp, mkdir as fsMkdir, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -33,38 +27,6 @@ async function withDiscoveryProject(run: (root: string, agentsDir: string) => Pr
         await fsRm(root, { recursive: true });
     }
 }
-
-test("one discovery shares a consistent practice body despite concurrent real resource edits", async () => {
-    await withDiscoveryProject(async (root, agentsDir) => {
-        const names = Array.from({ length: 48 }, (_, index) => `discovery-${String(index).padStart(2, "0")}`);
-        for (const [index, name] of names.entries()) {
-            await fsWriteFile(
-                join(agentsDir, `${name}.md`),
-                definition(name, index % 2 ? [" discovery-practice ", "discovery-practice"] : ["discovery-practice"]),
-            );
-        }
-        const path = join(agentsDir, "shared-practice", "discovery-practice.md");
-        await fsWriteFile(path, fragment("DISCOVERY_VERSION_0"));
-        let finished = false;
-        let edits = 0;
-        const discovery = listAllAgentDefinitions(root).finally(() => (finished = true));
-        // Atomic replacement gives each real read a complete valid fragment.
-        // Keep editing until discovery ends; no mocked filesystem or timer race.
-        while (!finished) {
-            await fsWriteFile(`${path}.next`, fragment(`DISCOVERY_VERSION_${++edits}`));
-            await fsRename(`${path}.next`, path);
-        }
-        const definitions = (await discovery).filter((agent) => names.includes(agent.name));
-        assertEquals(definitions.length, names.length);
-        assertEquals(edits > 1, true, "The fixture must edit during discovery");
-        const versions = definitions.map((agent) => agent.systemPrompt.match(/DISCOVERY_VERSION_\d+/g));
-        assertEquals(
-            versions.every((matches) => matches?.length === 1),
-            true,
-        );
-        assertEquals(new Set(versions.map((matches) => matches?.[0])).size, 1);
-    });
-});
 
 test("the next discovery and individual loads observe direct edits to practices and definitions", async () => {
     await withDiscoveryProject(async (root, agentsDir) => {

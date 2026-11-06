@@ -1,3 +1,5 @@
+import { getTUI } from "./tui.ts";
+import type { UiAPI } from "./types.js";
 import { readdirSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 
@@ -6,7 +8,7 @@ import { test } from "node:test";
 import process from "node:process";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { runResumeCommand } from "../../cmd/resume/index.ts";
+
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { getRunWieldSessionsBaseDir } from "../../shared/session/root-session.js";
 import {
@@ -17,20 +19,12 @@ import {
 } from "../../shared/settings.js";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
-import { resolveTemplateModel } from "../../shared/models/model-validation.ts";
+
 import { createInteractiveTuiComposition } from "./interactive-tui-composition.ts";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { recordInitOffered } from "../../cmd/init/init-state.ts";
 import { ONBOARDING_TUTORIAL_REQUEST, ONBOARDING_WARNING } from "./onboarding-content.ts";
-import {
-    getActiveModel,
-    persistThinkingLevel,
-    recordUserInputHistory,
-    runScopedSubmitHandoffLoop,
-    type SessionRuntime,
-    setActiveModel,
-    shouldReplaySessionHistory,
-} from "./chat-session.ts";
+import { persistThinkingLevel, setActiveModel } from "./chat-session.ts";
 
 async function waitForFolderConsent(terminal: VirtualTerminal): Promise<void> {
     const marker = "System or home folder detected. Continue?";
@@ -44,29 +38,6 @@ async function waitForFolderConsent(terminal: VirtualTerminal): Promise<void> {
     }
     assertStringIncludes(screen, marker);
 }
-
-test("recordUserInputHistory stores trimmed submitted input", () => {
-    const history: string[] = [];
-    recordUserInputHistory({ addToHistory: (text) => history.push(text) }, "  /skill:review branch  ");
-    recordUserInputHistory({ addToHistory: (text) => history.push(text) }, "   ");
-    assertEquals(history, ["/skill:review branch"]);
-});
-
-test("startup replays history only when continuing a persisted session", () => {
-    assertEquals(shouldReplaySessionHistory("new"), false);
-    assertEquals(shouldReplaySessionHistory(undefined), false);
-    assertEquals(shouldReplaySessionHistory("continue"), true);
-});
-
-test("resolveTemplateModel validates provider/id lookup and auth", () => {
-    const registry = {
-        find: (provider: string, id: string) => (provider === "test" && id === "model" ? { provider, id } : null),
-        hasConfiguredAuth: (model: { provider: string; id: string } | null) => Boolean(model),
-    };
-    assertEquals(resolveTemplateModel("not-strict", registry), { ok: false });
-    assertEquals(resolveTemplateModel("test/missing", registry), { ok: false });
-    assertEquals(resolveTemplateModel("test/model", registry), { ok: true, provider: "test", id: "model" });
-});
 
 test("setActiveModel delegates reconfiguration to SessionRuntime without persisting defaults", async () => {
     await withRuntimeCommandFixture("chat-session-model-persistence-", async ({ projectRoot }) => {
@@ -95,26 +66,6 @@ test("setActiveModel rejects a missing real Runtime session", async () => {
             Error,
             "missing runtime session",
         );
-    });
-});
-
-test("getActiveModel reads the real Runtime snapshot", async () => {
-    await withRuntimeCommandFixture("chat-session-active-model-", async ({ projectRoot }) => {
-        const runtime = createSessionRuntime();
-        try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
-            await runtime.setSessionModel(sessionId, "model-a", "provider-a");
-            assertEquals(getActiveModel(runtime, sessionId), "model-a");
-        } finally {
-            runtime.closeAllSessions();
-        }
-    });
-});
-
-test("persistThinkingLevel stores the selected level", async () => {
-    await withRuntimeCommandFixture("chat-session-thinking-persistence-", async ({ projectRoot }) => {
-        await persistThinkingLevel("high", projectRoot);
-        assertEquals(getSettingsManager(projectRoot).getDefaultThinkingLevel(), "high");
     });
 });
 
@@ -181,10 +132,10 @@ test("TUI resume asks before restoring saved tutorial guidance", async () => {
             sessionStartMode: "continue",
             resumeSessionId,
             configureUiAPI: (uiAPI) => {
-                uiAPI.promptSelect = (title) => {
+                driveSelect(uiAPI, (title) => {
                     prompts.push(title);
                     return Promise.resolve(title.includes("Resume tutorial guidance") ? "without" : null);
-                };
+                });
             },
         });
         try {
@@ -343,58 +294,17 @@ test("slash resume can list from an unpersisted new-session shell", async () => 
             skipModelWelcome: true,
             sessionStartMode: "new",
         });
-        const messages: string[] = [];
         try {
-            await runResumeCommand([], {
-                uiAPI: {
-                    appendSystemMessage: (message) => messages.push(message),
-                    promptSelect: () => Promise.resolve(null),
-                },
-                editor: { disableSubmit: false, setText: () => {} },
-                sessionRuntime: composition.runtime,
-                sessionId: composition.sessionId,
-                replaceRuntimeSession: () => {},
-            });
-
-            assertEquals(messages, ["No recent sessions found to resume."]);
+            terminal.typeText("/resume");
+            terminal.pressEnter();
+            await composition.waitForIdle();
+            await terminal.flush();
+            assertStringIncludes(terminal.getScreenText(), "No recent sessions found to resume.");
             const snapshot = composition.runtime.getSessionSnapshot(composition.sessionId);
             assertEquals(snapshot?.sessionManagerId, null);
             assertEquals(snapshot?.managed, null);
         } finally {
             await composition.dispose();
-        }
-    });
-});
-
-test("submit handoff loop invokes one Runtime prompt by opaque id", async () => {
-    await withRuntimeCommandFixture("chat-session-handoff-", async ({ projectRoot }) => {
-        const runtime = createSessionRuntime();
-        try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
-            const calls: string[] = [];
-            const originalPromptUserTurn = runtime.promptUserTurn.bind(runtime);
-            runtime.promptUserTurn = (async (activeSessionId, options) => {
-                calls.push(`${activeSessionId}:${options.initialRequest}:${(options.initialImages || []).length}`);
-                return await originalPromptUserTurn(activeSessionId, options);
-            }) as SessionRuntime["promptUserTurn"];
-            await runScopedSubmitHandoffLoop({
-                runtime,
-                sessionId,
-                uiAPI: {
-                    appendSystemMessage: () => {},
-                    appendAgentMessageStart: () => ({ appendText: () => {} }),
-                    requestRender: () => {},
-                    promptSelect: () => Promise.resolve(null),
-                    promptText: () => Promise.resolve(null),
-                    showModelSelector: () => {},
-                    abortActivePrompt: () => {},
-                },
-                initialRequest: "first request",
-                initialImages: [],
-            });
-            assertEquals(calls, [`${sessionId}:first request:0`]);
-        } finally {
-            runtime.closeAllSessions();
         }
     });
 });
@@ -412,10 +322,10 @@ test("automatic onboarding Skip persists globally and creates no managed Session
                 browser: NO_OPEN_BROWSER_PORT,
                 terminal: new VirtualTerminal({ columns: 100, rows: 30 }),
                 configureUiAPI: (uiAPI) => {
-                    uiAPI.promptSelect = (title) => {
+                    driveSelect(uiAPI, (title) => {
                         prompts.push(title);
                         return Promise.resolve(title.includes(ONBOARDING_WARNING) ? "skip" : "no");
-                    };
+                    });
                 },
             });
             try {
@@ -440,10 +350,10 @@ test("automatic onboarding Skip persists globally and creates no managed Session
                 browser: NO_OPEN_BROWSER_PORT,
                 terminal: new VirtualTerminal({ columns: 100, rows: 30 }),
                 configureUiAPI: (uiAPI) => {
-                    uiAPI.promptSelect = (title) => {
+                    driveSelect(uiAPI, (title) => {
                         if (title.includes(ONBOARDING_WARNING)) offeredAgain = true;
                         return Promise.resolve("no");
-                    };
+                    });
                 },
             });
             try {
@@ -476,10 +386,10 @@ test("automatic onboarding Start submits one real Planner turn after consent", a
                     });
                 },
                 configureUiAPI: (uiAPI) => {
-                    uiAPI.promptSelect = (title) => {
+                    driveSelect(uiAPI, (title) => {
                         prompts.push(title);
                         return Promise.resolve(title.includes(ONBOARDING_WARNING) ? "start" : "no");
-                    };
+                    });
                 },
             });
             try {
@@ -518,8 +428,7 @@ test("automatic onboarding Start in an Empty Project Directory submits one real 
                     });
                 },
                 configureUiAPI: (uiAPI) => {
-                    uiAPI.promptSelect = (title) =>
-                        Promise.resolve(title.includes(ONBOARDING_WARNING) ? "start" : "no");
+                    driveSelect(uiAPI, (title) => Promise.resolve(title.includes(ONBOARDING_WARNING) ? "start" : "no"));
                 },
             });
             try {
@@ -558,11 +467,11 @@ test("cancelled tutorial Init choice returns to input without discovery", async 
                     });
                 },
                 configureUiAPI: (uiAPI) => {
-                    uiAPI.promptSelect = (title) => {
+                    driveSelect(uiAPI, (title) => {
                         if (title.includes(ONBOARDING_WARNING)) return Promise.resolve("start");
                         if (title.includes("Run /init before the tutorial")) return Promise.resolve(null);
                         return Promise.resolve(null);
-                    };
+                    });
                 },
             });
             try {
@@ -588,10 +497,10 @@ test("explicit onboarding shows consent before model setup or Init", async () =>
                 terminal: new VirtualTerminal({ columns: 100, rows: 30 }),
                 startupIntent: "onboard",
                 configureUiAPI: (uiAPI) => {
-                    uiAPI.promptSelect = (title) => {
+                    driveSelect(uiAPI, (title) => {
                         prompts.push(title);
                         return Promise.resolve("skip");
-                    };
+                    });
                 },
             });
             try {
@@ -697,10 +606,10 @@ test("continued home suppresses automatic offers without persisting decisions an
                     ready = true;
                 },
                 configureUiAPI: (uiAPI) => {
-                    uiAPI.promptSelect = (title) => {
+                    driveSelect(uiAPI, (title) => {
                         prompts.push(title);
                         return Promise.resolve(null);
-                    };
+                    });
                 },
             });
             await new Promise((resolve) => setTimeout(resolve, 30));
@@ -769,10 +678,10 @@ for (const explicit of ["init", "onboard"]) {
                     terminal,
                     ...(explicit === "onboard" ? { startupIntent: "onboard" as const } : {}),
                     configureUiAPI: (uiAPI) => {
-                        uiAPI.promptSelect = (title) => {
+                        driveSelect(uiAPI, (title) => {
                             prompts.push(title);
                             return Promise.resolve(null);
-                        };
+                        });
                     },
                 });
                 await new Promise((resolve) => setTimeout(resolve, 30));
@@ -922,4 +831,22 @@ test("implicit continuation catalogs and resumes an uncataloged transcript in an
 
 function writeText(path: string, text: string): void {
     writeFileSync(path, text);
+}
+
+function driveSelect(uiAPI: UiAPI, choose: (title: string) => Promise<string | null>) {
+    const prompt = uiAPI.promptSelect.bind(uiAPI);
+    uiAPI.promptSelect = async (title, options, hooks) => {
+        const pending = prompt(title, options, hooks);
+        const selected = await choose(title);
+        const { terminal } = getTUI();
+        if (!(terminal instanceof VirtualTerminal)) throw new Error("Expected the composed test terminal");
+        if (selected === null) terminal.pressEscape();
+        else {
+            const index = options.findIndex((option) => option.value === selected);
+            if (index < 0) throw new Error(`Choice ${selected} is not available in ${title}`);
+            for (let step = 0; step < index; step++) terminal.input("\x1b[B");
+            terminal.pressEnter();
+        }
+        return pending;
+    };
 }

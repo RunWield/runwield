@@ -10,7 +10,7 @@ import { isPathInside, openPersistedRootSession } from ".././root-session.js";
 import { RuntimeEventTypes } from ".././session-runtime-events.js";
 import { captureTranscriptEvidence, syncTranscriptFileAndParent } from ".././session-transcript-projection.js";
 import { openLiveSessionConnection } from ".././live-session-connection.ts";
-import { recordSegmentLineageEvidence } from ".././workflow-context-session.js";
+import { recordSegmentLineageEvidence } from ".././workflow-context-session.ts";
 import { parseProviderModel } from "../../models/model-validation.ts";
 import { sessionDirForRoot } from ".././file-session-storage.ts";
 import { AsyncLocalStorage } from "node:async_hooks";

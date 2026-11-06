@@ -180,6 +180,8 @@ export class VirtualTerminal {
         this.write("\x1b[?25h");
     }
 
+    setProgramStatus(_status: import("@earendil-works/pi-tui").ProgramStatus) {}
+
     setTitle(title: string) {
         this.title = title;
     }

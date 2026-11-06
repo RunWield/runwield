@@ -10,8 +10,8 @@ import { readFileSync as fsReadFileSync } from "node:fs";
  */
 
 import { dirname, join } from "node:path";
-import { getOwnerCoordinationDatabaseEpoch } from "./database.js";
-import type { OwnerCoordinationDatabase } from "./database.js";
+import { getOwnerCoordinationDatabaseEpoch } from "./database.ts";
+import type { OwnerCoordinationDatabase } from "./database.ts";
 
 export const SESSION_ACTIVATION_PROTOCOL_VERSION = 1;
 export const SESSION_ACTIVATION_MARKER_FILENAME = "session-activation-protocol.json";

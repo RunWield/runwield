@@ -21,7 +21,7 @@ and retained context. It is not evidence that every other journey works. No comp
 
 - **Observed during this audit:** Work Record search failed with
   `Invalid Work Record: Markdown body must include a
-  non-empty ## Summary section.`
+non-empty ## Summary section.`
 - **Source-confirmed paths:** The remaining findings come from source, prompts, and test inspection. Their examples are
   proposed reproductions, not claims that a runtime test was executed.
 - **Existing coverage:** A cited test shows what the repository currently asserts. It was not run in this audit.
@@ -177,7 +177,7 @@ preserving unmerged work. Checking a status or message alone will not prove cont
 
 - `fix-recovery-worktree-discard-cleanup.md`: dirty, `feedback`; overlaps work preservation and cleanup.
 - `guided-validation-repair.md`: `draft`; contains references to a Plan Workflow Lease. That is obsolete under
-  [ADR-015](../adr/015-file-authoritative-session-bundles.md), not a requirement to restore.
+  [ADR-014](../adr/014-file-authoritative-session-bundles.md), not a requirement to restore.
 - `offer-semantic-review-intervention.md`: `draft`; overlaps stalled-review choices.
 - `fix-validation-repair-followup.md`: `ready_for_work`; covers repair handoff and subsequent messages.
 - `archived/classify-validation-operational-errors.md`: historical explanation, not current acceptance evidence.

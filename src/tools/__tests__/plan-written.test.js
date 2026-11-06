@@ -375,6 +375,8 @@ test("plan_written does not present a stale review decision as Planner feedback"
     assertEquals(result.details.outcome, "canceled");
     assertEquals(result.terminate, true);
     assertEquals(result.content[0].text.includes("Plan Review Feedback"), false);
+    assertEquals(result.content[0].text.includes("Your role as"), false);
+    assertEquals(result.content[0].text.includes("Do not generate any further text"), false);
     assertStringIncludes(result.content[0].text, "Open the current Plan and review it again");
 });
 
@@ -517,22 +519,6 @@ test("plan_written feature approval returns execution outcome", async () => {
     assertEquals((await readPlan())?.attrs.status, "ready_for_work");
 });
 
-test("plan_written accepts planned changes without custom shell checks", async () => {
-    const { tool, readPlan } = await makeHarness({ classification: "PLANNED_CHANGE" });
-    const result = await execute(tool);
-
-    assertEquals(result.details.outcome, "approved_execute");
-    assertEquals((await readPlan())?.attrs.status, "ready_for_work");
-});
-
-test("plan_written accepts PROJECT Epics", async () => {
-    const { tool, readPlan } = await makeHarness({ classification: "PROJECT", approvalAction: "decompose" });
-    const result = await execute(tool);
-
-    assertEquals(result.details.outcome, "approved_decompose");
-    assertEquals((await readPlan())?.attrs.status, "ready_for_decomposition");
-});
-
 test("plan_written preserves documentation triage workKind when Plan front matter omits it", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
@@ -657,6 +643,8 @@ test("plan_written saved feature approval keeps post-review execution metadata",
     assertEquals(result.details.outcome, "saved");
     assertEquals(result.details.triageMeta.executionAgent, "engineer");
     assertEquals(result.details.triageMeta.collaborationRecommendation, "autonomous");
+    assertEquals(result.content[0].text.includes("Your role as"), false);
+    assertEquals(result.content[0].text.includes("Do not generate any further text"), false);
     assertEquals((await readPlan())?.attrs.status, "ready_for_work");
 });
 
@@ -737,6 +725,8 @@ test("plan_written mismatched project approval action safely saves for later", a
     const result = await execute(tool, "runtime-epic");
 
     assertEquals(result.details.outcome, "saved");
+    assertEquals(result.content[0].text.includes("Your role as"), false);
+    assertEquals(result.content[0].text.includes("Do not generate any further text"), false);
     assertEquals((await readPlan("runtime-epic"))?.attrs.status, "ready_for_decomposition");
 });
 

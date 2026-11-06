@@ -15,7 +15,7 @@ import {
     readPersistedPendingSegmentContinuation,
     recordPendingSegmentContinuation,
     recordSegmentLineageEvidence,
-} from "./workflow-context-session.js";
+} from "./workflow-context-session.ts";
 import { readExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
 import type { ActiveExecutionWorkflow } from "../types.js";
 import { type TutorialContext, readPersistedTutorialContext } from "./tutorial-context-session.ts";
@@ -219,19 +219,17 @@ test("segment rollover does not dehydrate a hosted manager when activation acqui
     await withProcessGlobalTestLock(async () => {
         const fixture = await createManagedFixture();
         try {
-            let disposed = false;
             const managed = fixture.hosted.getManagedMetadata();
             assert(managed);
+            const { sessionManager } = await openPersistedRootSession({
+                cwd: fixture.root,
+                sessionId: managed.piSessionId,
+                sessionPath: managed.transcriptPath,
+            });
             const hosted = new HostedSession({
                 id: "runtime-session-with-manager",
                 cwd: fixture.root,
-                sessionManager: {
-                    getSessionId: () => managed.piSessionId,
-                    getCwd: () => fixture.root,
-                    dispose: () => {
-                        disposed = true;
-                    },
-                },
+                sessionManager,
                 managed,
             });
             await assertRejects(
@@ -246,8 +244,9 @@ test("segment rollover does not dehydrate a hosted manager when activation acqui
                         expectedGeneration: 99,
                     }),
             );
-            assertEquals(disposed, false);
-            assert(hosted.getRootSessionManager());
+            assertEquals(hosted.getRootSessionManager(), sessionManager);
+            assertEquals(hosted.getRootSessionManager()?.getSessionId?.(), managed.piSessionId);
+            await hosted.dispose();
         } finally {
             await cleanupFixture(fixture);
         }

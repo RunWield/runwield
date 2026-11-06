@@ -1,5 +1,5 @@
 // @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
-import { switchActiveAgent } from "../session/agent-switching.js";
+import { switchActiveAgent } from "../session/agent-switching.ts";
 import { runRootTurnUntilRootWorkflowEvent } from "../session/root-workflow-turn.ts";
 import { claimWorkflowToolEvent, settleWorkflowToolEvent } from "./workflow-tool-events.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";

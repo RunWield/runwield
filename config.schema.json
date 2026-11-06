@@ -89,7 +89,9 @@
         "workflowMetrics": {
             "description": "Opt-in local-only workflow metrics recording. When disabled or unset, no metrics are written. Records are stored under ~/.wld/workflow-metrics/<encoded-project-root>/metrics.jsonl. Linked worktrees write to the primary project file.",
             "oneOf": [
-                { "type": "boolean" },
+                {
+                    "type": "boolean"
+                },
                 {
                     "type": "object",
                     "additionalProperties": false,
@@ -339,6 +341,23 @@
                     }
                 }
             }
+        },
+        "codemode": {
+            "type": "object",
+            "description": "Pi-backed codemode presentation; availability follows the Agent tool list.",
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": ["on", "only"],
+                    "default": "on"
+                },
+                "inlineBudget": {
+                    "type": "number",
+                    "minimum": 0,
+                    "default": 3000
+                }
+            },
+            "additionalProperties": true
         }
     },
     "$defs": {

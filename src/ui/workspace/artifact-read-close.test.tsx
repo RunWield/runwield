@@ -1,4 +1,5 @@
 // @ts-nocheck: browser tests install happy-dom globals around React.
+// @ts-nocheck: browser tests install happy-dom globals around React.
 import { test } from "node:test";
 import { importTestBundle } from "../../testing/import-test-bundle.ts";
 import { ok as assert } from "node:assert/strict";
@@ -256,5 +257,28 @@ test("IDless Plan home shows pending workflow notice in the main document pane",
         },
         200,
         true,
+    );
+});
+
+test("artifact reader presents document contents and notices without editing or review actions", async () => {
+    await withReader(
+        { ...linkedDocument, title: "Delivered change", notices: ["User verification was recorded."] },
+        async ({ container, requests }) => {
+            assertStringIncludes(container.querySelector("main")?.textContent, "A linked document.");
+            assertStringIncludes(container.textContent, "User verification was recorded.");
+            assertEquals(container.querySelector("h1")?.textContent, "Delivered change");
+            assertEquals(container.querySelector('textarea, [contenteditable="true"]'), null);
+            const buttons = [...container.querySelectorAll("button")];
+            assertEquals(
+                buttons.some((button) => /Approve|Feedback|Send Annotations/.test(button.textContent)),
+                false,
+            );
+            const toggle = container.querySelector('button[aria-controls="artifact-contents"]');
+            assert(toggle);
+            await act(() => toggle.click());
+            assertStringIncludes(container.querySelector("#artifact-contents")?.textContent, "Reference");
+            assertEquals(container.querySelector('[role="tab"][title="Files"]'), null);
+            assertEquals(requests, []);
+        },
     );
 });

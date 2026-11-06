@@ -12,11 +12,7 @@ import {
 } from "../../cmd/testing/runtime-command-fixture.ts";
 import { getSettingsManager } from "../../shared/settings.js";
 import { getModelRegistry } from "../../shared/models/model-registry.ts";
-import {
-    detectModelAvailability,
-    getConfiguredModelAvailability,
-    getSelectedDefaultModelAvailability,
-} from "./model-welcome.ts";
+import { getConfiguredModelAvailability, getSelectedDefaultModelAvailability } from "./model-welcome.ts";
 import {
     createInteractiveCompositionHarness,
     type InteractiveCompositionHarness,
@@ -27,24 +23,6 @@ const WELCOME_TITLE = "Welcome to RunWield";
 const MODEL_SELECTOR_MARKER = "Only showing models from configured providers";
 const REDIRECT_URL = "https://fixture.example/callback";
 const SCRIPTED_PROVIDER_FILTER = "Aardvark";
-
-interface RegistryValueModel {
-    id: string;
-    provider: string;
-}
-
-interface RegistryValue {
-    getAvailable(): RegistryValueModel[];
-    find(provider: string, id: string): RegistryValueModel | undefined;
-}
-
-function registryValue(available: RegistryValueModel[]): RegistryValue {
-    return {
-        getAvailable: () => available,
-        find: (provider: string, id: string) =>
-            available.find((model) => model.id === id && (!provider || model.provider === provider)),
-    };
-}
 
 /** Drive the onboarding completion path through the scripted OAuth provider. */
 async function chooseSubscriptionLogin(harness: InteractiveCompositionHarness): Promise<void> {
@@ -72,23 +50,6 @@ async function waitForWelcomeRePrompt(harness: InteractiveCompositionHarness): P
         `Login cancellation did not return to the welcome prompt. Screen:\n${harness.terminal.getScreenText()}`,
     );
 }
-
-test("detectModelAvailability treats at least one available model as usable", () => {
-    assertEquals(detectModelAvailability(registryValue([])), { available: false, error: null });
-    assertEquals(detectModelAvailability(registryValue([{ id: "model", provider: "fixture" }])), {
-        available: true,
-        error: null,
-    });
-});
-
-test("detectModelAvailability captures registry errors as no model", () => {
-    const result = detectModelAvailability({
-        getAvailable: () => {
-            throw new Error("broken registry");
-        },
-    });
-    assertEquals(result, { available: false, error: "broken registry" });
-});
 
 test("a malformed models.json in the fixture HOME degrades to no configured models without throwing", async () => {
     await withRuntimeCommandFixture(

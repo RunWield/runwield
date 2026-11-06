@@ -1,4 +1,5 @@
 ---
+planId: "ef41ec9b-f1ff-4184-aeb1-56c22224469e"
 classification: "PROJECT"
 complexity: "HIGH"
 affectedPaths:
@@ -12,14 +13,13 @@ affectedPaths:
     - "scripts/"
     - "docs/prd/runwield-workspace-prd.md"
     - "docs/prd/runwield-acp-protocol-prd.md"
-    - "docs/adr/0021-electron-workspace-acp-client.md"
-devServerCommand: null
-devServerUrl: null
-devServerHmr: null
-targetBranch: "epic/local-workspace-desktop"
+    - "docs/adr/020-electron-workspace-acp-client.md"
 createdAt: "2026-11-01"
-status: "draft"
-planId: "ef41ec9b-f1ff-4184-aeb1-56c22224469e"
+origin: "internal"
+epicBaseCommit: "8363344cdfb4bcf6715a5aac6ed24d06c6437ec7"
+targetBranch: "epic/local-workspace-desktop"
+status: "ready_for_decomposition"
+userVerifiedAt: null
 ---
 
 # Local Workspace Desktop
@@ -32,9 +32,9 @@ Workspace sign-in for identity and cloud services. Start with the local applicat
 not yet exist. Mobile app development is deferred.
 
 This is an architecture and implementation proposal, not implementation authorization or delivery evidence. The
-desktop target is Windows, macOS, and Linux. The existing browser Workspace remains supported and shares the product
-components. Current self-hosted Shared Plan collaboration is not evidence that hosted Workspace accounts/cloud
-features are available.
+desktop target is Windows, macOS, and Linux. Electron replaces the standalone local browser Workspace. Shared product
+components serve desktop now and the future hosted SaaS; maintaining a third, local web application is not a goal.
+The treatment of browser review links used by TUI, Connect, and external ACP clients remains an open review decision.
 
 Owning requirements:
 
@@ -51,19 +51,19 @@ Owning requirements:
 
 Deliver an installable local Workspace application that works without a RunWield account or a separately installed CLI.
 It reuses existing provider setup and canonical work, carries the existing local workbench through a managed `wld`
-process, and preserves the same outcomes in the browser and TUI. Its local work must remain available when Workspace
+process, and preserves Core behavior and TUI continuity. Its local work must remain available when Workspace
 cloud endpoints are unreachable; a model provider may still require its own connection and credentials.
 
-The selected approach is [proposed ADR-0021](../adr/0021-electron-workspace-acp-client.md). Wrapping the existing server
+The selected approach is [proposed ADR-020](../adr/020-electron-workspace-acp-client.md). Wrapping the existing server
 would ship a window sooner but retain runtime ownership in the UI host. Flutter would require replacing the existing
 frontend and adopting Flutter web to preserve hosted-client reuse. The meaningful commitment here is the ACP-backed
 client contract and shared UI, not the choice of installer generator.
 
 The first release includes Project registration, attention/dashboard navigation, Sessions and existing history,
 configuration, questions/approvals, Plan boards and editing, Plan/Code Review, workflow progress/actions, document and
-knowledge views, usage/settings, and native desktop essentials. Existing browser-only sharing links can remain browser
-links where appropriate; this Epic does not create an account-based collaboration service. Any proposed reduction in
-existing local Workspace capability must be identified during contract inventory rather than silently dropped.
+knowledge views, usage/settings, and native desktop essentials. This Epic does not create an account-based collaboration service. Existing local
+workbench capabilities move to desktop; local browser access is deliberately removed. Review and sharing links must
+receive an explicit compatibility decision rather than be removed as an incidental result of retiring the workbench.
 
 ## Vertical Slice Findings
 
@@ -85,24 +85,31 @@ Source inspected on 2026-11-01:
    That is distinct from the future Workspace account. A clean desktop install needs an actual provider-setup journey.
 6. `package.json` pins Bun 1.4.3, ACP SDK 1.4.0, Astro, React, Vite, CodeMirror, and Pierre diffs. Existing compiled CLI
    and Workspace release scripts can supply assets, but no Electron package/runtime boundary exists yet.
-7. [ADR-018](../adr/018-remote-ssh-local-personal-authority.md) governs a different remote SSH product with laptop-owned
+7. [ADR-017](../adr/017-remote-ssh-local-personal-authority.md) governs a different remote SSH product with laptop-owned
    personal state. It does not establish an authenticated remote ACP endpoint or the lifetime of an attached worker.
+
+Additional retirement findings, checked during this review:
+
+- `src/ui/review/review-launcher.ts` calls `startReviewWorkspaceServer`, which creates `createReviewWorkspaceApp`
+  in `src/ui/workspace/server.js`. This is a token-scoped review host, not the full owner workbench. TUI, Connect,
+  standalone Code Review, and external ACP review links use this path. Review-only support can survive workbench removal.
+- Shared Plan links use `/p/<spaceId>` URLs from `src/shared/collaboration/urls.ts` and a separate remote collaboration
+  host. They are not owner-workbench routes. Their removal or migration is a separate product decision.
 
 ```mermaid
 flowchart TD
     Current[Workspace HTTP handlers] --> InProcess[Workspace-owned SessionRuntime and domain calls]
     Shared[Shared Workspace application] --> Desktop[Electron host]
-    Shared --> Browser[Existing browser host]
+    Future[Future hosted SaaS] -.-> Shared
     Desktop --> Client[ACP client and capability mapping]
-    Browser --> Client
     Client --> Process[Managed local wld process]
     Process --> Authority[Existing Core services and canonical stores]
 ```
 
-## Implementation Sequence
+### Architecture and Delivery Outcomes
 
-These are delivery outcomes to turn into independently reviewable child Plans. This Epic remains draft and does not
-create executable child work or claim any milestone complete.
+These outcomes define the architecture, not executable child work. Decomposition belongs to Slicer. This Epic remains
+draft while the browser review-link decision is open; no outcome below claims delivery.
 
 ### 1. Establish the workbench contract and a real protocol slice
 
@@ -132,20 +139,26 @@ checkout-only paths or changes to another in-progress Plan's scope.
 Mutations retain Project admission, expected revision/generation, request identity, durable receipts, and single-writer
 rules. History and observations are bounded and can rebuild from canonical state after a gap. Unknown capabilities,
 oversized content, stale review decisions, wrong Project/session references, and duplicate requests have explicit
-outcomes. Review payloads include resource identity and versioned decisions so desktop can render them directly; links
-required by existing external clients continue to work. Live event data never becomes storage authority.
+outcomes. Review payloads include resource identity and versioned decisions so desktop can render them directly.
+External-client review links follow the pending compatibility decision below. Live event data never becomes storage
+authority.
 
-### 3. Route the browser Workspace through the same client
+### 3. Extract shared UI and retire the standalone local web workbench
 
-The existing browser host retains its authentication, device pairing, origin checks, routes, and shared UI behavior,
-while its workbench execution uses the ACP client and a separate `wld` process. HTTP adapters only translate authorized
-client requests and observations; they no longer construct a runtime or perform authoritative workflow mutations.
-Core owns authoritative runtime operations even where browser transport receipts remain useful.
+Shared React composition, interaction handling, and subscriptions consume the Workspace client. Shared components
+import no Astro server data loaders, Electron APIs, or Core execution/storage implementation. Electron supplies the
+local client adapter now. Future hosted SaaS can reuse the components and client models without requiring a local
+browser application or committing to its server architecture in this Epic.
 
-Shared React composition, interaction handling, and subscriptions consume the common Workspace client. Server-only
-Astro data-loading boundaries stay in the browser host, not shared interactive components. Browser and future desktop
-reuse the same components, model, and semantic tokens. The currently supported browser paths keep their user outcomes;
-tests asserting in-process runtime ownership are replaced with real-process protocol coverage.
+Do not migrate the old browser workbench to ACP merely to preserve it. Its dashboard, Session navigation, Plan boards,
+and settings move into the desktop product. The final release removes the standalone local workbench entrypoints and
+their dedicated hosting code, tests, release assets, and support instructions. Existing browser code can remain during
+development, but it is not a second supported product after cutover. Session, Plan, and provider data survive removal.
+
+Browser review pages and Shared Plan links are distinct from the full workbench. Their callers, access rules, and
+hosting dependencies must be separated before removal. Whether to retain narrow browser review support or move these
+journeys to desktop is an open owner decision. No child may infer permission to break those callers from workbench
+retirement alone.
 
 ### 4. Deliver the local Electron application
 
@@ -168,7 +181,7 @@ No placeholder login/cloud/remote controls appear in the first local product.
 ### 5. Preserve work across windows, clients, and failures
 
 One desktop supervisor keeps its local runtime alive when the window closes; reopening reconstructs the current view.
-Separate Projects progress independently. The same persisted Session remains usable from an idle TUI or browser under
+Separate Projects progress independently. The same persisted Session remains usable from an idle TUI under
 Core's normal writer rules, with configuration and completed work hydrated from current evidence.
 
 Explicit Quit distinguishes staying open from stopping owned work and quitting. Cancellation settles before process
@@ -210,20 +223,23 @@ justify shipping speculative services, mock authentication, remote transport imp
 - `src/acp/`, `src/cmd/acp/` — protocol handlers, negotiation, workbench extensions, process lifetime, compatibility.
 - `src/shared/session/`, `src/shared/owner-coordination/`, and existing Plan/workflow owners — reusable authoritative
   workbench services extracted from the UI server, without replacing storage and lifecycle policy.
-- `src/ui/workspace/server/`, `routes/`, `components/`, `browser/`, `static/`, and Astro pages — client boundary,
-  shared composition, HTTP transport adaptation, and removal of direct runtime ownership.
+- `src/ui/workspace/server/`, `routes/`, `components/`, `browser/`, `static/`, and Astro pages — extract shared
+  composition and runtime services; remove standalone local workbench hosting after desktop cutover. Separate review
+  hosting from workbench-only code before any removal.
 - New shared ACP client and desktop boundaries — exact paths follow the first contract slice; `src/ui/desktop/` is
   the proposed desktop package, not an existing implementation.
 - `src/ui/design-system/`, `docs/design-system.md` — reuse existing primitives; any necessary new desktop pattern
   enters the shared system with documentation.
 - `package.json`, Bun locks, existing build/release scripts and CI — explicit Electron build and platform artifacts.
-- Workspace/ACP/root PRDs, ADR-010, ADR-0021, `docs/domain-language.md`, and user documentation — target/current
-  reconciliation at the milestone that actually delivers each capability.
+- Workspace/ACP/root PRDs, applicable accepted ADRs, proposed ADR-020, `docs/domain-language.md`, and user
+  documentation — record desktop as the local Workspace and hosted SaaS as future scope. The delivery that retires
+  local browser hosting must update its owning requirements and scenarios, including paired-device, installable web
+  app, and container-hosting guidance. Preserve separate review requirements until their replacement is agreed.
 
 ## Reuse Opportunities
 
 - Existing Workspace components and `src/ui/design-system/` for workbench UX, themes, documents, editors, and diffs.
-- `src/acp/server.js`, `event-mapper.js`, `interaction-mapper.js`, and `session-map.ts` for standard protocol behavior.
+- `src/acp/server.js`, `event-mapper.ts`, `interaction-mapper.ts`, and `session-map.ts` for standard protocol behavior.
 - `src/shared/session/session-runtime.ts` and file Session stores for turns, writer ownership, persistence, and recovery.
 - `src/shared/workflow/plan-actions.ts` and current Plan-store services for revision-checked workflow operations.
 - Existing Workspace receipt/generation checks, moved behind their authoritative boundary rather than duplicated.
@@ -249,7 +265,8 @@ Each new process/desktop suite must execute the built host boundary and real run
 would also pass if IPC never reached `wld`. Add exact commands, desktop dev entrypoints, and artifacts when those child
 Plans define them. A plain browser test cannot verify Electron preload isolation, native integration, or child lifetime.
 
-Headed checks use both the existing browser Workspace and the packaged Electron app, with a real disposable Project.
+Use the current browser Workspace as a migration reference, not a second release target. Headed acceptance checks use
+the packaged Electron app with a real disposable Project.
 Exercise registration, a streamed Session, question/answer, review, approval-for-later, run, Code Review, cancellation,
 restart, and TUI continuation. Use a controlled provider for deterministic state checks and a separately configured
 provider for end-to-end acceptance. Verify long histories/diffs, keyboard and screen-reader access, attachments, and
@@ -258,25 +275,27 @@ same representative workload; no framework marketing estimate substitutes for me
 
 ### Outcome Evidence
 
-| Outcome                           | Observable evidence                                                                                                                                                                      |
-| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Free local application            | Fresh install launches and registers a Project with Workspace cloud endpoints unavailable and no account; configured model work succeeds without Workspace authentication.               |
-| Real runtime separation           | A process trace shows desktop main and a distinct bundled `wld acp`; desktop/browser host imports do not construct `SessionRuntime` or perform canonical workflow writes.                |
-| Full workbench contract           | Every inventory row has a passing real-process parity scenario; standard methods remain standard and unknown required capabilities prevent dependent actions.                            |
-| Shared web/desktop implementation | Both hosts import the same workbench components and client models; the desktop renderer imports no server-only modules or Core execution/storage implementation.                         |
-| Canonical review and lifecycle    | Stale revision/generation and wrong-Project decisions are rejected by Core; retrying the same request does not execute it twice.                                                         |
-| TUI/browser/desktop continuity    | The same persisted Session ID and committed history continue across all three with idle views left open and one writer per operation.                                                    |
-| Window and process lifetime       | Window close/reopen preserves running work; renderer crash leaves it running; full Quit waits for cancellation settlement; unexpected process exit can resume without repeating effects. |
-| Stable observation                | Long streams stay bounded; reconnect loads a current snapshot/generation and does not duplicate transcript entries or turn incomplete work into success.                                 |
-| Native installation               | Installed artifacts on all three OSes run without Bun/Node/global `wld`, preserve saved data across a compatible update, and record signing/publication status accurately.               |
-| Authority and privacy             | Generated content cannot invoke arbitrary preload methods; unregistered roots are refused; runtime paths are scoped to their connection; local work is not uploaded by app launch.       |
-| Honest product documentation      | Workspace/ACP scenarios describe proven local behavior and retain future labels for remote attachment and hosted identity.                                                               |
+| Outcome                             | Observable evidence                                                                                                                                                                                     |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Free local application              | Fresh install launches and registers a Project with Workspace cloud endpoints unavailable and no account; configured model work succeeds without Workspace authentication.                              |
+| Real runtime separation             | A process trace shows desktop main and a distinct bundled `wld acp`; desktop host imports do not construct `SessionRuntime` or perform canonical workflow writes.                                       |
+| Full workbench contract             | Every inventory row has a passing real-process parity scenario; standard methods remain standard and unknown required capabilities prevent dependent actions.                                           |
+| Reusable UI without a third product | Desktop uses shared workbench components and client models with no server-only, Electron, or Core storage imports in those shared modules. No hosted SaaS delivery is claimed.                          |
+| Local browser retirement            | The standalone local web workbench cannot be launched after cutover; its dedicated build/release paths and support instructions are gone. Existing canonical work remains available in desktop and TUI. |
+| Canonical review and lifecycle      | Stale revision/generation and wrong-Project decisions are rejected by Core; retrying the same request does not execute it twice.                                                                        |
+| TUI/desktop continuity              | The same persisted Session ID and committed history continue across both with idle views left open and one writer per operation.                                                                        |
+| Window and process lifetime         | Window close/reopen preserves running work; renderer crash leaves it running; full Quit waits for cancellation settlement; unexpected process exit can resume without repeating effects.                |
+| Stable observation                  | Long streams stay bounded; reconnect loads a current snapshot/generation and does not duplicate transcript entries or turn incomplete work into success.                                                |
+| Native installation                 | Installed artifacts on all three OSes run without Bun/Node/global `wld`, preserve saved data across a compatible update, and record signing/publication status accurately.                              |
+| Authority and privacy               | Generated content cannot invoke arbitrary preload methods; unregistered roots are refused; runtime paths are scoped to their connection; local work is not uploaded by app launch.                      |
+| Honest product documentation        | Workspace/ACP scenarios describe proven local behavior and retain future labels for remote attachment and hosted identity.                                                                              |
 
-The entire Epic protects ordinary TUI use, working external ACP clients, existing browser journeys, private transcripts,
-Plan-store ownership, writer exclusion, passive reads, provider configuration, review conflict checks, and Core's
-publication/recovery semantics. Expected removals are Workspace-hosted runtime execution, renderer/server bypasses of
-the runtime contract for authoritative operations, and platform-specific copies of shared workbench UI. Existing HTTP
-routes and Astro hosting need not disappear.
+The entire Epic protects ordinary TUI use, private transcripts, Plan-store ownership, writer exclusion, passive reads,
+provider configuration, review conflict checks, and Core's publication/recovery semantics. External-client protocol
+behavior remains protected; the browser review-link policy is still open. Expected removals are the standalone local
+browser workbench, its runtime hosting, bypasses of the runtime contract for authoritative desktop operations, and
+platform-specific copies of shared workbench UI. Future hosted SaaS reuses UI, not a promise to maintain the old local
+web server. Any retained review-only routes need an explicit purpose and owner.
 
 ## Edge Cases & Considerations
 
@@ -288,8 +307,11 @@ routes and Astro hosting need not disappear.
 - A runtime must support multiple explicit Project contexts without caching process cwd/home as authority.
 - Resource transfer, large diffs, and replay need bounds/backpressure. Versioned snapshots preserve correctness when a
   consumer falls behind instead of retaining unlimited events.
-- The local browser gateway may use its own managed runtime process. Core's existing single-writer protocol coordinates
-  it with Electron and TUI; a new global lease or cross-process fake lock is not introduced.
+- Electron and TUI coordinate through Core's existing single-writer protocol. A new global lease or cross-process fake
+  lock is not introduced. This Epic does not build a replacement local browser gateway.
+- Open decision: browser Plan/Code Review and Shared Plan links are used outside the standalone workbench. Retaining
+  narrow review pages preserves those callers without preserving the workbench; requiring desktop instead removes
+  more web hosting but changes external-host and remote reviewer journeys. Resolve this before final review.
 - Target OS/architecture support, signing credentials, updater hosting, and the release channel must be resolved in the
   packaging Plan. Missing publication prerequisites are recorded, never replaced with claims that a release shipped.
 - The first app's background lifetime ends on explicit Quit. Unattended service behavior and remote-worker disconnect

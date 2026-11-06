@@ -1,16 +1,11 @@
-import {
-    mkdir as fsMkdir,
-    mkdtemp as fsMkdtemp,
-    readFile as fsReadFile,
-    rm as fsRm,
-    writeFile as fsWriteFile,
-} from "node:fs/promises";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertExists } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { createTaskCompletedTool } from "../../tools/task-completed.ts";
 import { makeToolProjectFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { HostedSession } from "./hosted-session.js";
@@ -41,56 +36,6 @@ function executionWorkflow(planName: string): import("../types.js").ActiveExecut
     };
 }
 
-test("task completion claim survives process resume until validation handles it", async () => {
-    const sessionManager = SessionManager.inMemory(TASK_COMPLETION_PROJECT_ROOT);
-    const original = new HostedSession({
-        id: "durable-completion-original",
-        cwd: TASK_COMPLETION_PROJECT_ROOT,
-        sessionManager: hostedSessionManager(sessionManager),
-    });
-    original.setActiveExecutionWorkflow(executionWorkflow("durable-plan"));
-    const tool = createTaskCompletedTool({
-        hostedSession: original,
-        agentName: "plan-engineer",
-        now: () => 1234,
-    });
-
-    await tool.execute(
-        "completion-call",
-        { message: "- Completed before restart." },
-        undefined,
-        undefined,
-        EXTENSION_CONTEXT,
-    );
-
-    assertEquals(listPendingTaskCompletions(original).length, 1);
-
-    // A new HostedSession has no volatile pending record. It recovers solely from
-    // the root SessionManager's append-only JSONL entries.
-    const resumed = new HostedSession({
-        id: "durable-completion-resumed",
-        cwd: TASK_COMPLETION_PROJECT_ROOT,
-        sessionManager: hostedSessionManager(sessionManager),
-    });
-    const resumedRoot = { dispose: () => {} };
-    resumed.setRootAgentSession(resumedRoot);
-    const completion = claimPendingTaskCompletion(resumed, resumedRoot);
-
-    assertExists(completion);
-    assertEquals(completion.report, "- Completed before restart.");
-    assertEquals(completion.workflow?.planName, "durable-plan");
-    assertEquals(completion.durable, true);
-
-    acknowledgeTaskCompletion(resumed, completion, 2345);
-
-    assertEquals(listPendingTaskCompletions(resumed), []);
-    assertEquals(claimPendingTaskCompletion(resumed, resumedRoot), null);
-    const journalEntries = sessionManager
-        .getBranch()
-        .filter((entry) => entry.type === "custom" && entry.customType === TASK_COMPLETION_CUSTOM_TYPE);
-    assertEquals(journalEntries.length, 2);
-});
-
 test("accepted task completion is recovered from a reopened session JSONL", async () => {
     const fixtureRoot = await fsMkdtemp(join(tmpdir(), "runwield-task-completion-jsonl-"));
     const projectRoot = join(fixtureRoot, "project");
@@ -103,6 +48,7 @@ test("accepted task completion is recovered from a reopened session JSONL", asyn
             timestamp: Date.now(),
             content: [{ type: "text", text: "Start the durable completion fixture." }],
         });
+        sessionManager.appendMessage(fauxAssistantMessage(fauxText("Ready for the task.")));
         const original = new HostedSession({
             id: "durable-jsonl-original",
             cwd: projectRoot,
@@ -122,12 +68,6 @@ test("accepted task completion is recovered from a reopened session JSONL", asyn
         );
         const sessionPath = sessionManager.getSessionFile();
         assertExists(sessionPath);
-        await fsWriteFile(
-            sessionPath,
-            [sessionManager.getHeader(), ...sessionManager.getEntries()]
-                .map((entry) => JSON.stringify(entry))
-                .join("\n") + "\n",
-        );
         assertEquals((await fsReadFile(sessionPath, "utf8")).includes(TASK_COMPLETION_CUSTOM_TYPE), true);
 
         const reopenedManager = SessionManager.open(sessionPath, sessionDir, projectRoot);
@@ -144,13 +84,6 @@ test("accepted task completion is recovered from a reopened session JSONL", asyn
         assertEquals(completion.report, "- Persisted to JSONL.");
         acknowledgeTaskCompletion(resumed, completion);
         assertEquals(listPendingTaskCompletions(resumed), []);
-        await fsWriteFile(
-            sessionPath,
-            [reopenedManager.getHeader(), ...reopenedManager.getEntries()]
-                .map((entry) => JSON.stringify(entry))
-                .join("\n") + "\n",
-        );
-
         const reopenedAfterAcknowledgment = SessionManager.open(sessionPath, sessionDir, projectRoot);
         const afterAcknowledgment = new HostedSession({
             id: "durable-jsonl-after-acknowledgment",

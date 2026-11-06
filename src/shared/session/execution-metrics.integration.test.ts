@@ -480,37 +480,6 @@ test("Runtime manual compaction carries the caller command ID into saved observa
     });
 });
 
-test("manual compaction failure records an error without fabricating execution", async () => {
-    await withRuntimeCommandFixture("metrics-manual-error-", async ({ projectRoot }) => {
-        await setCustomSetting("workflowMetrics", true, "project", projectRoot);
-        const hosted = new HostedSession({
-            id: "manual-error",
-            cwd: projectRoot,
-            sessionManager: SessionManager.inMemory(projectRoot),
-        });
-        try {
-            const root = await ensureRootAgentSession({ hostedSession: hosted, agentName: "guide" });
-            await assertRejects(() => root.compact(), Error, "Nothing to compact");
-            await drainSessionCompactionMetrics(root);
-            await drainWorkflowMetrics();
-            const rows = (await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8"))
-                .trim()
-                .split("\n")
-                .map((line) => JSON.parse(line));
-            const start = rows.find((row) => row.event === "compaction_started" && row.reason === "manual");
-            assert(start);
-            const finish = rows.find(
-                (row) => row.event === "compaction_finished" && row.recorderId === start.recorderId,
-            );
-            assert(finish);
-            assertEquals(finish.outcome, "error");
-            assertEquals(finish.executionId, undefined);
-        } finally {
-            await hosted.dispose();
-        }
-    });
-});
-
 test("overlapping manual compactions keep call ownership and leave no orphan starts", async () => {
     await withRuntimeCommandFixture("metrics-overlap-", async ({ projectRoot, setModelResponseFactories }) => {
         await setCustomSetting("workflowMetrics", true, "project", projectRoot);

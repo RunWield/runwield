@@ -14,7 +14,7 @@ import {
 } from "node:fs/promises";
 import process from "node:process";
 import { ok as assert } from "node:assert/strict";
-import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import {
     hashPlanBody,
@@ -37,15 +37,15 @@ import {
     getProjectSecretStoreLocation,
     getProjectSecretStorePath,
     readSecretStore,
-} from "../../shared/collaboration/secrets.js";
+} from "../../shared/collaboration/secrets.ts";
 import { parseCollaborationUrl } from "../../shared/collaboration/urls.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { withCollaborationServer } from "./collaboration-command-test-fixture.ts";
-import { parsePlansPullArgs, pullPlanForRevision, runPlansPullCommand } from "./pull.ts";
-import { parsePlansPushArgs, pushPlanRevision, runPlansPushCommand } from "./push.ts";
-import { parsePlansShareArgs, runPlansShareCommand, sharePlanForReview } from "./share.ts";
-import { parsePlansUnshareArgs, runPlansUnshareCommand, unsharePlan } from "./unshare.ts";
+import { pullPlanForRevision, runPlansPullCommand } from "./pull.ts";
+import { pushPlanRevision, runPlansPushCommand } from "./push.ts";
+import { runPlansShareCommand, sharePlanForReview } from "./share.ts";
+import { runPlansUnshareCommand, unsharePlan } from "./unshare.ts";
 
 interface CapturedConsole {
     errors: string[];
@@ -102,26 +102,17 @@ async function createLinkedCheckout(projectRoot: string, linkedRoot: string): Pr
     }
 }
 
-test("Plan collaboration argument parsers accept their public command forms", () => {
-    assertEquals(parsePlansShareArgs(["demo", "--plan-server", "https://plans.example", "--project-secrets"]), {
-        planServer: "https://plans.example",
-        projectSecrets: true,
-        help: false,
-        target: "demo",
+test("Plan collaboration commands reject incomplete arguments without changing stored Plans", async () => {
+    await withRuntimeCommandFixture("collaboration-invalid-command-", async ({ projectRoot }) => {
+        await seedPlan(projectRoot);
+        const before = await loadPlan(projectRoot, "demo-plan");
+        await assertRejects(() => runPlansShareCommand([]), Error, "Missing Plan");
+        await assertRejects(() => runPlansPullCommand(["one", "two"]), Error, "Unexpected pull argument");
+        await assertRejects(() => runPlansPushCommand([]), Error, "Missing Plan");
+        await assertRejects(() => runPlansUnshareCommand([]), Error, "Missing Plan");
+        assertEquals(await loadPlan(projectRoot, "demo-plan"), before);
+        assertEquals(Object.keys((await readSecretStore(getGlobalSecretStoreLocation())).records), []);
     });
-    assertEquals(parsePlansPullArgs(["https://plans.example/p/space#key=k&cap=c&role=maintainer", "--to", "copy"]), {
-        target: "https://plans.example/p/space#key=k&cap=c&role=maintainer",
-        planServer: undefined,
-        projectSecrets: false,
-        to: "copy",
-        help: false,
-    });
-    assertEquals(parsePlansPushArgs(["demo", "--project-secrets"]).projectSecrets, true);
-    assertEquals(parsePlansUnshareArgs(["demo", "--force"]).force, true);
-    assertThrows(() => parsePlansShareArgs([]), Error, "Missing Plan");
-    assertThrows(() => parsePlansPullArgs(["one", "two"]), Error, "Unexpected pull argument");
-    assertThrows(() => parsePlansPushArgs([]), Error, "Missing Plan");
-    assertThrows(() => parsePlansUnshareArgs([]), Error, "Missing Plan");
 });
 
 test("share, push, pull, and unshare compose through real Plan, crypto, secret, runtime, and HTTP machinery", async () => {

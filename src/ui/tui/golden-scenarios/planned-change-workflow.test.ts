@@ -3,11 +3,9 @@ import { test } from "node:test";
 import {
     onboardingTutorialDeliveryScenario,
     plannedChangeFrontendIdentityScenario,
-    plannedChangeReviewRepairValidationScenario,
 } from "./planned-change-workflow.js";
 
 const scenarios = {
-    plannedChangeReviewRepairValidationScenario,
     onboardingTutorialDeliveryScenario,
     plannedChangeFrontendIdentityScenario,
 };

@@ -275,7 +275,7 @@ test("development Board carries the same safe catalog warnings through its cache
     try {
         await put(root, "broken", broken);
         const built = await Bun.build({
-            entrypoints: [new URL("./ui/workspace/server/astro-canonical-data.js", import.meta.url).pathname],
+            entrypoints: [new URL("./ui/workspace/server/astro-canonical-data.ts", import.meta.url).pathname],
             outdir: output,
             target: "bun",
             define: { "import.meta.env.DEV": "true" },

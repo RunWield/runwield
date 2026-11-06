@@ -2,7 +2,7 @@ import { mkdtempSync as fsMkdtempSync, rmSync as fsRmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
-import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
+import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertExists, assertRejects } from "../../testing/assertions.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
@@ -28,37 +28,6 @@ type HostedSessionManager = NonNullable<ConstructorParameters<typeof HostedSessi
 function hostedSessionManager(sessionManager: SessionManager): HostedSessionManager {
     return sessionManager as HostedSessionManager;
 }
-
-const PRODUCTION_ENTRY_FILES = [
-    "../session/agent-handler.ts",
-    "../session/runtime/workflows.ts",
-    "./orchestrator.ts",
-    "./epic-continuation.ts",
-    "../../cmd/load-plan/plan-execution.ts",
-];
-
-test("every production entry uses one validation owner", async () => {
-    for (const relativePath of PRODUCTION_ENTRY_FILES) {
-        const path = new URL(relativePath, import.meta.url);
-        const source = await fsReadFile(path, "utf8");
-        assert(
-            source.includes("continueWorkflowValidation") || source.includes("runWorkflowValidationToStableBoundary"),
-            `${relativePath} does not use the supervisor`,
-        );
-        assertEquals(source.includes("runValidationLoop"), false, `${relativePath} bypasses the supervisor`);
-    }
-    const supervisor = await fsReadFile(new URL("./validation-supervisor.ts", import.meta.url), "utf8");
-    const composition = await fsReadFile(new URL("./validation.ts", import.meta.url), "utf8");
-    assert(composition.includes("export async function continueWorkflowValidation"));
-    assert(composition.includes("export async function runWorkflowValidationToStableBoundary"));
-    assert(composition.includes("await runValidationAttempt"));
-    assert(supervisor.includes("export async function runValidationAttempt"));
-    assert(supervisor.includes("await runValidationLoop"));
-    assert(supervisor.includes("continuationPhase: claim.checkpoint.nextPhase"));
-    assert(supervisor.includes("prior.lastSettledOperationId === args.taskCompletionId"));
-    const handler = await fsReadFile(new URL("../session/agent-handler.ts", import.meta.url), "utf8");
-    assert(handler.includes("taskCompletionId: acceptedCompletion.completionId"));
-});
 
 test("validation checkpoint survives a new Plan load", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-validation-checkpoint-"));

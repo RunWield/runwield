@@ -15,13 +15,13 @@ import { getSelectedDefaultModelAvailability } from "../shared/session/model-rea
 import { createSessionRuntime, SessionTurnInProgressError } from "../shared/session/session-runtime.ts";
 import { RuntimeEventTypes } from "../shared/session/session-runtime-events.js";
 import { AcpSessionMap, normalizeAcpSessionIdForLoad } from "./session-map.ts";
-import { mapRuntimeContextToAcpUpdate, mapRuntimeEventToAcpSessionNotification } from "./event-mapper.js";
-import { createAcpInteractionAdapter } from "./interaction-mapper.js";
+import { mapRuntimeContextToAcpUpdate, mapRuntimeEventToAcpSessionNotification } from "./event-mapper.ts";
+import { createAcpInteractionAdapter } from "./interaction-mapper.ts";
 import { formatChatQuestion, parseChatReply } from "./chat-interaction.ts";
 import { buildAcpModelOptions } from "./model-options.ts";
 import { getCommandDefinition, getSlashCommandDefinition, getSlashCommandDefinitions } from "../cmd/registry.js";
 import { ProjectRuntimeEntryRefusedError } from "../shared/project-runtime-layout.ts";
-import { RuntimeInteractionOutcomes, RuntimeInteractionTypes } from "../shared/session/session-runtime-interactions.js";
+import { RuntimeInteractionOutcomes, RuntimeInteractionTypes } from "../shared/session/session-runtime-interactions.ts";
 import {
     applyUserModelSelection,
     listUserModelOptions,
@@ -86,11 +86,7 @@ function isAuthenticationSetupFailure(message) {
 /** @typedef {import('@agentclientprotocol/sdk').Stream} AcpStream */
 /** @typedef {import('../shared/session/session-runtime.ts').SessionRuntime} SessionRuntime */
 
-/**
- * @typedef {Object} AcpNotificationContext
- * @property {{ notify?: Function }} [client]
- * @property {Function} [notify]
- */
+/** @typedef {import('./interaction-mapper.ts').AcpInteractionContext} AcpNotificationContext */
 
 /**
  * @typedef {Object} RunWieldAcpServerOptions
@@ -526,7 +522,7 @@ async function notifyAcpContextUsage(context, runtime, sessionMap, runtimeSessio
  */
 function createAcpCommandUiAPI(options) {
     /**
-     * @param {import('../shared/session/session-runtime-interactions.js').RuntimeInteractionRequest['type']} type
+     * @param {import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest['type']} type
      * @param {string} title
      * @param {AcpCommandSelectOption[]} choices
      * @param {{ defaultValue?: string, placeholder?: string, allowEmpty?: boolean }} [requestOptions]
@@ -601,7 +597,7 @@ function createAcpCommandUiAPI(options) {
 }
 
 /**
- * @param {{ context: any, runtime: SessionRuntime, sessionMap: AcpSessionMap, acpSessionId: string, runtimeSessionId: string, clientCapabilities: unknown, commandName: string, args: string[], requestId?: string, releasePromptAfterResponse?: (requestId: string, release: () => void) => void, onOperation: (operation: ReturnType<typeof createLiveOperation>) => void }} options
+ * @param {{ context: any, runtime: SessionRuntime, sessionMap: AcpSessionMap, acpSessionId: string, runtimeSessionId: string, clientCapabilities: import("@agentclientprotocol/sdk").ClientCapabilities | null, commandName: string, args: string[], requestId?: string, releasePromptAfterResponse?: (requestId: string, release: () => void) => void, onOperation: (operation: ReturnType<typeof createLiveOperation>) => void }} options
  * @returns {Promise<import('@agentclientprotocol/sdk').PromptResponse>}
  */
 async function dispatchAcpBuiltinCommand(options) {
@@ -898,7 +894,7 @@ async function replaySetupEvents(context, runtime, sessionMap, runtimeSessionId,
 /**
  * One live Runtime turn may serve several ACP prompt requests. Only the request's
  * response owns activePrompt; the operation owns its adapter and event subscription.
- * @param {{ runtime: SessionRuntime, sessionMap: AcpSessionMap, acpSessionId: string, runtimeSessionId: string, clientCapabilities: unknown, releasePromptAfterResponse?: (id: string, release: () => void) => void }} options
+ * @param {{ runtime: SessionRuntime, sessionMap: AcpSessionMap, acpSessionId: string, runtimeSessionId: string, clientCapabilities: import("@agentclientprotocol/sdk").ClientCapabilities | null, releasePromptAfterResponse?: (id: string, release: () => void) => void }} options
  */
 function createLiveOperation(options) {
     const { runtime, sessionMap, acpSessionId, clientCapabilities, releasePromptAfterResponse } = options;
@@ -917,7 +913,7 @@ function createLiveOperation(options) {
     let tail = Promise.resolve();
     /** @type {PromiseWithResolvers<void>} */
     let wake = Promise.withResolvers();
-    /** @type {{ interaction: import('../shared/session/session-runtime-interactions.js').RuntimeInteractionRequest, delivered: boolean, queued: boolean } | null} */
+    /** @type {{ interaction: import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest, delivered: boolean, queued: boolean } | null} */
     let question = null;
     let settled = false;
     let cancelled = false;
@@ -984,7 +980,7 @@ function createLiveOperation(options) {
                             message: "Interaction canceled.",
                         });
                     }
-                    /** @type {PromiseWithResolvers<import('../shared/session/session-runtime-interactions.js').RuntimeInteractionResponse>} */
+                    /** @type {PromiseWithResolvers<import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionResponse>} */
                     const answered = Promise.withResolvers();
                     const current = { interaction, delivered: false, queued: false };
                     question = current;
@@ -1235,7 +1231,7 @@ function createLiveOperation(options) {
         cancel() {
             cancelled = true;
         },
-        /** @param {AcpNotificationContext & { requestId?: string | number | null }} context @param {string | undefined} expectedInteractionId @param {import('../shared/session/session-runtime-interactions.js').RuntimeInteractionResponse | null | undefined} reply @param {string} [feedback]
+        /** @param {AcpNotificationContext & { requestId?: string | number | null }} context @param {string | undefined} expectedInteractionId @param {import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionResponse | null | undefined} reply @param {string} [feedback]
          * @returns {Promise<import('@agentclientprotocol/sdk').PromptResponse>} */
         async attach(context, expectedInteractionId, reply, feedback) {
             attachRequest(context);
@@ -1315,7 +1311,7 @@ function createRunWieldAcpServer(context) {
     const app = agent({ name: "RunWield ACP MVP" });
     const { runtime, sessionMap, releasePromptAfterResponse } = context;
     const operations = context.operations;
-    /** @type {unknown} */
+    /** @type {import("@agentclientprotocol/sdk").ClientCapabilities | null} */
     let clientCapabilities = null;
 
     app.onRequest(methods.agent.initialize, (context) => {
@@ -1323,8 +1319,10 @@ function createRunWieldAcpServer(context) {
         return createInitializeResponse(context.params);
     });
 
-    app.onRequest(methods.agent.session.new, async (context) => {
-        const request = validateNewSessionParams(context.params);
+    // The SDK's default parser silently drops malformed MCP definitions. Validate
+    // the original request so a client never receives a Session missing its tools.
+    app.onRequest(methods.agent.session.new, validateNewSessionParams, async (context) => {
+        const request = context.params;
         const readiness = getSelectedDefaultModelAvailability(request.cwd);
         if (!readiness.available) throwAuthenticationRequired(request.cwd);
         let runtimeSessionId;
@@ -1362,8 +1360,8 @@ function createRunWieldAcpServer(context) {
         };
     });
 
-    app.onRequest(methods.agent.session.load, async (context) => {
-        const request = validateLoadSessionParams(context.params);
+    app.onRequest(methods.agent.session.load, validateLoadSessionParams, async (context) => {
+        const request = context.params;
         const persistedSessionId = normalizeAcpSessionIdForLoad(request.sessionId);
         if (
             sessionMap

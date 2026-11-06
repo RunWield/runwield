@@ -266,6 +266,12 @@ export interface AttachedPlanningAction extends PendingHostAction {
     planId?: string;
 }
 
+export interface AttachedValidationProgress {
+    phase: import("../workflow/validation-checkpoint.ts").ValidationCheckpointPhase;
+    checkpointState: import("../workflow/validation-checkpoint.ts").ValidationCheckpointState;
+    updatedAt: string;
+}
+
 export type AttachedNextAction = (
     | ({ kind: "triage" } & PendingHostAction)
     | AttachedPlanningAction
@@ -287,6 +293,14 @@ export type AttachedNextAction = (
           kind: "validation";
           actionId: string;
           request: import("../workflow/validation-host-contract.ts").ValidationHostRequest;
+      }
+    | {
+          kind: "validation_running";
+          operationId?: string;
+          operation?: AttachedOperationName;
+          startedAt?: string;
+          progress?: AttachedValidationProgress;
+          guidance: string;
       }
     | {
           kind: "validation_recovery";
@@ -1100,7 +1114,7 @@ for (const name of ["start_validation", "review_diff", "review_complete", "valid
             name === "start_validation"
                 ? "Continue shared Core validation and publication or recover an interrupted call."
                 : name === "review_diff"
-                  ? "Read the pending reviewer candidate. Only show records coverage; list does not."
+                  ? "Read the pending reviewer candidate or the current repair checkout's full diff. Only reviewer show calls record coverage; repair reads and list calls do not."
                   : name === "review_complete"
                     ? "Submit the fresh reviewer's structured outcome. Core checks coverage and candidate identity."
                     : "Submit the user's answer to the pending Core validation decision.",
@@ -1233,7 +1247,7 @@ ATTACHED_OPERATIONS.push(
     {
         name: "get_artifact",
         description:
-            "Read a bounded UTF-8 page of the current action's prompt, execution report, or repair report. Continue with nextOffsetBytes until truncated is false. Use review_diff for diff inspection receipts.",
+            "Read a bounded UTF-8 page of the current action's prompt, execution report, or repair report. Continue with nextOffsetBytes until truncated is false. Use review_diff for diff inspection; only reviewer reads record coverage.",
         inputSchema: {
             type: "object",
             additionalProperties: false,

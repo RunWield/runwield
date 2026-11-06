@@ -99,7 +99,7 @@ a versioned committed transcript entry and a shared effective-location resolver.
 checks remain intact. Restore the saved location before root activation, preserve it through compaction, and retain
 workflow-owned execution-location precedence. Legacy Sessions without the entry retain their current behavior.
 
-This is a proposed internal design. Update ADR-010 and ADR-015 with the distinction between Project ownership, transcript
+This is a proposed internal design. Update ADR-011 and ADR-015 with the distinction between Project ownership, transcript
 origin, and selected working location. A new transcript segment for each folder move was set aside because movement
 should not reset model context or require execution-handoff payloads.
 
@@ -119,7 +119,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   working folder from Project or checkout ownership where the current code conflates them.
 - `src/agent-definitions/planner.md`, Router guidance, and shared tool descriptions — explain inspection and movement
   without promising that cwd changes fix Plan storage.
-- Core PRD, the transient proposal, glossary, ADR-010/015, and relevant user documentation — record delivered behavior,
+- Core PRD, the transient proposal, glossary, ADR-011/015, and relevant user documentation — record delivered behavior,
   preserve deferred scope, and update references together.
 
 No Plan Store migration, cross-Project move, worktree creation, external-host cwd control, new visual UI, or new workflow
@@ -216,7 +216,7 @@ pause mechanism is included. TUI, ACP, and Workspace use the same Core operation
    transition, storage, registry, or lock behavior is allowed.
 
 9. **Documentation describes the delivered capability in the same change.** Update Core's owning capabilities and
-   acceptance scenarios, `docs/domain-language.md` Session/Project relationships and avoided aliases, ADR-010's Session
+   acceptance scenarios, `docs/domain-language.md` Session/Project relationships and avoided aliases, ADR-011's Session
    root model, ADR-015's committed location evidence and restoration precedence, and `docs/user-documentation/sessions.md`.
    Consolidate fulfilled requirements from `docs/prd/session-working-directory-prd.md` into Core, remove the completed
    transient proposal, and update references (including this Plan's requirements links). Preserve any unmet intent as
@@ -241,7 +241,7 @@ Focused commands:
 
 ```sh
 bun scripts/run-tests.js src/tools/session-directory.test.ts src/shared/session/session-directory.test.ts src/shared/session/checkout-context.test.ts
-bun scripts/run-tests.js src/shared/session/session-runtime.test.js src/shared/session/agent-switching.test.js src/shared/session/session-prompt.test.js src/shared/session/__tests__/session-tools-policy.test.js
+bun scripts/run-tests.js src/shared/session/session-runtime.test.js src/shared/session/agent-switching.test.ts src/shared/session/session-prompt.test.js src/shared/session/__tests__/session-tools-policy.test.js
 bun scripts/run-tests.js src/shared/workflow/planning-worktree-inspection.test.ts src/shared/workflow/controller-registry.integration.test.ts src/acp/managed-session.integration.test.ts
 bun scripts/run-tests.js src/shared/session/execution-segment-runtime.test.ts src/shared/session/segment-rollover.test.ts src/cmd/load-plan/plan-review-conversation.integration.test.ts src/shared/workflow/plan-execution-runtime-boundaries.integration.test.ts src/shared/workflow/validation-tool-continuation.integration.test.ts
 bun run seams:check

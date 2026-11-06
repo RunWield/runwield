@@ -5,10 +5,14 @@ import { test } from "node:test";
  * @module acp/interaction-mapper.test
  */
 
-import { createAcpInteractionAdapter } from "./interaction-mapper.js";
-import type { RuntimeInteractionRequest } from "../shared/session/session-runtime-interactions.js";
+import { createAcpInteractionAdapter } from "./interaction-mapper.ts";
+import type { RuntimeInteractionRequest } from "../shared/session/session-runtime-interactions.ts";
 
-interface QuestionNotification {
+import type { SessionNotification } from "@agentclientprotocol/sdk";
+
+type QuestionNotification = SessionNotification & QuestionNotificationFields;
+
+interface QuestionNotificationFields {
     update: {
         _meta: {
             runwield: {

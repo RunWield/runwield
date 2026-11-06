@@ -15,7 +15,7 @@ import {
     getOwnerCoordinationDatabaseEpoch,
     openOwnerCoordinationDatabase,
     type OpenOwnerDatabaseOptions,
-} from "./database.js";
+} from "./database.ts";
 import { openFileSessionStore, type FileSessionStore } from "../session/file-session-store.ts";
 import { getOwnerCoordinationDatabasePath, OWNER_COORDINATION_DB_FILENAME } from "./paths.ts";
 import { OWNER_COORDINATION_SCHEMA_VERSION } from "./schema.ts";
@@ -29,14 +29,14 @@ import {
     removeProject,
     requireEnabledProjectRoot,
     setProjectEnabled,
-} from "./projects.js";
+} from "./projects.ts";
 import { listDevices, revokeDevice, verifyDeviceCredential, verifyDeviceCsrf } from "./devices.ts";
 import {
     approvePairingRequest,
     claimPairingRequest,
     createPairingRequest,
     getPairingRequestByProof,
-} from "./pairing.js";
+} from "./pairing.ts";
 import {
     createOrGetOperationReceipt,
     findOperationReceiptByRequest,
@@ -319,3 +319,26 @@ export function openOwnerCoordinationStore(options: OpenOwnerCoordinationStoreOp
         getOperationReceipt: (operationId) => getOperationReceipt(database, operationId),
     };
 }
+
+export type {
+    PairingRequestState,
+    PairingRequest,
+    PairingRequestClockOptions,
+    CreatePairingRequestOptions,
+    CreatedPairingRequest,
+    ClaimPairingRequestOptions,
+    ClaimedPairingRequest,
+} from "./pairing.ts";
+
+export type { OwnerCoordinationDatabase, OpenOwnerDatabaseOptions } from "./database.ts";
+
+export type {
+    ProjectLifecycle,
+    ProjectHealthStatus,
+    RegisteredProject,
+    ProjectHealth,
+    ProjectClockOptions,
+    RegisterProjectOptions,
+    RelinkProjectOptions,
+    ProjectRootEvidence,
+} from "./projects.ts";

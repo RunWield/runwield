@@ -11,7 +11,7 @@ import {
     parseGuidedReviewMetadataLine,
     parseGuidedReviewUsageEventLine,
 } from "../../../../cmd/guided-review/protocol.ts";
-import { buildGuidedReviewPrompt, validateGuidedReviewExplainer } from "../../../../shared/workflow/guided-review.js";
+import { buildGuidedReviewPrompt, validateGuidedReviewExplainer } from "../../../../shared/workflow/guided-review.ts";
 import { RuntimeUsageTotals } from "../../../../shared/session/runtime-usage-totals.ts";
 import { ExecutionMetricsRecorder } from "../../../../shared/workflow/execution-metrics.ts";
 import { buildAiReviewPrompt, validateAiReviewResult } from "../../../../shared/standalone-review/ai-review.ts";
@@ -827,7 +827,16 @@ export async function runWldJobCommand(
             stderrResult.value.stderr.trim() || `${subcommand} provider exited with ${statusResult.value.code}`,
         );
     }
-    if (inputResult.status === "rejected") throw inputResult.reason;
+    if (inputResult.status === "rejected") {
+        // Custom commands may produce a result without consuming all of stdin.
+        // Built-in jobs must still confirm prompt delivery, and other I/O errors remain failures.
+        const ignoredCustomInput =
+            configured &&
+            inputResult.reason instanceof Error &&
+            "code" in inputResult.reason &&
+            inputResult.reason.code === "EPIPE";
+        if (!ignoredCustomInput) throw inputResult.reason;
+    }
     return {
         stdout: stdoutResult.value,
         stderr: stderrResult.value.stderr,

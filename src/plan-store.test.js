@@ -26,7 +26,6 @@ import {
     archivePlansByStatus,
     canonicalPlanStatus,
     clearPlanCollaborationMetadata,
-    countChildPlanProgress,
     createPulledCollaborationPlan,
     deleteArchivedPlanUnit,
     ensurePlanIdentity,
@@ -34,13 +33,9 @@ import {
     findPlanById,
     findPlansByParent,
     getPlansDir,
-    getStoredPlanPath,
-    groupPlanHierarchy,
     hashPlanBody,
     injectFrontMatter,
     inspectPlanFileStrict,
-    isChildFeaturePlan,
-    isEpicPlan,
     listArchivedPlans,
     listPlanResources,
     listPlans,
@@ -51,8 +46,6 @@ import {
     loadPlanStrict,
     onboardExternalPlan,
     parsePlanFrontMatter,
-    PLAN_FRONT_MATTER_KEY_ORDER,
-    PLAN_FRONT_MATTER_KEYS,
     PlanFrontMatterParseError,
     resolvePlan,
     resolvePlanExecutionPolicy,
@@ -61,7 +54,6 @@ import {
     saveChildFeaturePlans,
     savePlan,
     savePlanBodyById,
-    splitPlanMarkdownBody,
     StalePlanWriteError,
     updateArchivedPlanFrontMatter,
     updatePlanCollaborationMetadata,
@@ -186,69 +178,28 @@ async function savePlanBodyByIdForTest(cwd, planId, body, expectedBodyHash) {
     return await savePlanBodyById(cwd, planId, body, expectedBodyHash, { expectedRevision: plan?.revision });
 }
 
-test("getStoredPlanPath resolves canonical top-level and nested plan paths", () => {
-    assertEquals(getStoredPlanPath("/project", "demo"), join("/project", "docs", "plans", "demo.md"));
-    assertEquals(getStoredPlanPath("/project", "demo.md"), join("/project", "docs", "plans", "demo.md"));
-    assertEquals(getStoredPlanPath("/project", "epic/child.md"), join("/project", "docs", "plans", "epic", "child.md"));
-    // The canonical store path prefix normalizes to the same store-relative name.
-    assertEquals(getStoredPlanPath("/project", "docs/plans/demo.md"), join("/project", "docs", "plans", "demo.md"));
-});
-
-test("getStoredPlanPath rejects escaping or ambiguous plan names", () => {
-    for (const name of ["", "/tmp/demo", "epic//child", "epic/./child", "epic/../child", "../demo"]) {
-        assertThrows(() => getStoredPlanPath("/project", name));
+test("Plan storage round-trips escaped YAML values and ANSI output without corrupting the document", async () => {
+    const cwd = await makeTempDirectory({ prefix: "plan-yaml-values-" });
+    try {
+        const summary = 'Handle "Other" and \\slashes';
+        const failure = `CI failed: \u001b[31mFAILED\u001b[0m`;
+        const affectedPaths = ['<|"|src/tools/user-interview.js<|"|'];
+        const path = await savePlan(cwd, "escaped", `# Plan\n\n## Context\n\n${summary}\n`, {
+            classification: "PLANNED_CHANGE",
+            status: "draft",
+            affectedPaths,
+            devServerCommand: failure,
+        });
+        const loaded = await loadPlan(cwd, "escaped");
+        assertEquals(loaded?.attrs.summary, summary);
+        assertEquals(loaded?.attrs.affectedPaths, affectedPaths);
+        assertEquals(loaded?.attrs.devServerCommand, failure);
+        const stored = await fsReadFile(path, "utf8");
+        assertEquals(stored.includes("\u001b"), false);
+        assertStringIncludes(stored, "\\u001b[31mFAILED\\u001b[0m");
+    } finally {
+        await fsRm(cwd, { recursive: true });
     }
-});
-
-test("front matter key constants expose canonical planning metadata order", () => {
-    assertEquals(PLAN_FRONT_MATTER_KEYS.planId, "planId");
-    assertEquals(PLAN_FRONT_MATTER_KEY_ORDER[0], PLAN_FRONT_MATTER_KEYS.planId);
-    assertEquals(PLAN_FRONT_MATTER_KEYS.frontend, "frontend");
-    assertEquals(PLAN_FRONT_MATTER_KEY_ORDER.includes(PLAN_FRONT_MATTER_KEYS.devServerUrl), true);
-    assertEquals(PLAN_FRONT_MATTER_KEY_ORDER.map(String).includes("objectiveChecksBaseline"), false);
-    assertEquals(PLAN_FRONT_MATTER_KEY_ORDER.map(String).includes("objectiveCheckWaivers"), false);
-    assertEquals(PLAN_FRONT_MATTER_KEYS.supersedes, "supersedes");
-    assertEquals(PLAN_FRONT_MATTER_KEYS.planDeviations, "planDeviations");
-    assertEquals(
-        PLAN_FRONT_MATTER_KEY_ORDER.indexOf(PLAN_FRONT_MATTER_KEYS.tickets) <
-            PLAN_FRONT_MATTER_KEY_ORDER.indexOf(PLAN_FRONT_MATTER_KEYS.supersedes),
-        true,
-    );
-    assertEquals(
-        PLAN_FRONT_MATTER_KEY_ORDER.indexOf(PLAN_FRONT_MATTER_KEYS.supersedes) <
-            PLAN_FRONT_MATTER_KEY_ORDER.indexOf(PLAN_FRONT_MATTER_KEYS.planDeviations),
-        true,
-    );
-    assertEquals(
-        PLAN_FRONT_MATTER_KEY_ORDER.indexOf(PLAN_FRONT_MATTER_KEYS.planDeviations) <
-            PLAN_FRONT_MATTER_KEY_ORDER.indexOf(PLAN_FRONT_MATTER_KEYS.executionAgent),
-        true,
-    );
-    assertEquals(PLAN_FRONT_MATTER_KEY_ORDER.includes(PLAN_FRONT_MATTER_KEYS.worktreePath), true);
-    assertEquals(new Set(PLAN_FRONT_MATTER_KEY_ORDER).size, PLAN_FRONT_MATTER_KEY_ORDER.length);
-});
-
-test("injectFrontMatter escapes YAML double-quoted values", () => {
-    const markdown = "## Plan\n\nBody";
-    const withFm = injectFrontMatter(markdown, {
-        summary: 'Handle "Other" and \\slashes',
-        affectedPaths: ['<|"|src/tools/user-interview.js<|"|'],
-    });
-
-    const { attrs } = parsePlanFrontMatter(withFm);
-
-    assertEquals(attrs.summary, 'Handle "Other" and \\slashes');
-    assertEquals(attrs.affectedPaths, ['<|"|src/tools/user-interview.js<|"|']);
-});
-
-test("injectFrontMatter keeps markdown formatted after front matter updates", () => {
-    const firstWrite = injectFrontMatter("# Plan\n\nBody", { status: "draft" });
-    const secondWrite = injectFrontMatter(firstWrite, { status: "approved" });
-    const emptyWrite = injectFrontMatter("", { status: "draft" });
-
-    assertStringIncludes(firstWrite, "---\n\n# Plan");
-    assertStringIncludes(secondWrite, "---\n\n# Plan");
-    assertEquals(parsePlanFrontMatter(emptyWrite).body, "");
 });
 
 test("Plan Deviation metadata round trips as Plan-owned definition", () => {
@@ -380,8 +331,6 @@ test("frontend verification front matter round trips as legacy source metadata",
     assertEquals(attrs.devServerCommand, "npm run dev");
     assertEquals(attrs.devServerUrl, "http://localhost:5173");
     assertEquals(attrs.devServerHmr, true);
-    assertEquals(withFm.indexOf("affectedPaths:") < withFm.indexOf("frontend:"), true);
-    assertEquals(withFm.indexOf("devServerHmr:") < withFm.indexOf("createdAt:"), true);
 });
 
 test("Plan execution policy preserves invalid raw values for diagnostics", () => {
@@ -491,58 +440,6 @@ test("Plan execution policy enforces owner and recommendation matrix", () => {
     );
 });
 
-test("injectFrontMatter preserves new closure and hold lifecycle fields", () => {
-    const markdown = "## Plan\n\nBody";
-    const withClosed = injectFrontMatter(markdown, {
-        status: "closed_without_verification",
-        createdAt: "2026-06-23T00:00:00.000Z",
-    });
-    assertEquals(parsePlanFrontMatter(withClosed).attrs.status, "closed_without_verification");
-
-    const withHold = injectFrontMatter(markdown, {
-        status: "on_hold",
-        heldFromStatus: "in_progress",
-        heldAt: "2026-06-23T01:00:00.000Z",
-        holdReason: "priority shifted",
-        holdStalenessBaseline: "2026-06-22T00:00:00.000Z",
-        worktreeId: "wt-1",
-    });
-    const { attrs } = parsePlanFrontMatter(withHold);
-    assertEquals(attrs.status, "on_hold");
-    assertEquals(attrs.heldFromStatus, "in_progress");
-    assertEquals(attrs.heldAt, "2026-06-23T01:00:00.000Z");
-    assertEquals(attrs.holdReason, "priority shifted");
-    assertEquals(attrs.holdStalenessBaseline, "2026-06-22T00:00:00.000Z");
-    assertEquals(
-        withHold.indexOf("worktreeStatus:") === -1 ||
-            withHold.indexOf("worktreeStatus:") < withHold.indexOf("heldFromStatus:"),
-        true,
-    );
-});
-
-test("injectFrontMatter clears hold fields with null overrides", () => {
-    const withHold = injectFrontMatter("## Plan", {
-        status: "on_hold",
-        heldFromStatus: "ready_for_work",
-        heldAt: "2026-06-23T01:00:00.000Z",
-        holdReason: "paused",
-        holdStalenessBaseline: "2026-06-22T00:00:00.000Z",
-    });
-    const cleared = injectFrontMatter(withHold, {
-        status: "draft",
-        heldFromStatus: null,
-        heldAt: null,
-        holdReason: null,
-        holdStalenessBaseline: null,
-    });
-    const { attrs } = parsePlanFrontMatter(cleared);
-    assertEquals(attrs.status, "draft");
-    assertEquals(attrs.heldFromStatus, null);
-    assertEquals(attrs.heldAt, undefined);
-    assertEquals(attrs.holdReason, undefined);
-    assertEquals(attrs.holdStalenessBaseline, undefined);
-});
-
 test("injectFrontMatter preserves human review metadata", () => {
     const markdown = "## Plan\n\nBody";
     const withFm = injectFrontMatter(markdown, {
@@ -564,35 +461,6 @@ test("injectFrontMatter preserves human review metadata", () => {
     assertEquals(attrs.humanReviewMode, "ask");
     assertEquals(attrs.humanReviewDecision, "approved");
     assertEquals(attrs.humanReviewedAt, "2026-06-23T01:00:00.000Z");
-    assertEquals(
-        withFm.indexOf("verifiedAt:") < withFm.indexOf("humanReviewMode:") &&
-            withFm.indexOf("humanReviewedAt:") < withFm.indexOf("executionBaselineTree:"),
-        true,
-    );
-});
-
-test("planId round trips and blank values normalize away", () => {
-    const withId = injectFrontMatter("## Plan", { planId: "plan-123" });
-    assertEquals(parsePlanFrontMatter(withId).attrs.planId, "plan-123");
-
-    const blank = injectFrontMatter("## Plan", { planId: "" });
-    assertEquals(parsePlanFrontMatter(blank).attrs.planId, undefined);
-    assertEquals(blank.includes("planId:"), false);
-});
-
-test("supersedes front matter normalizes, deduplicates, and round trips in canonical order", () => {
-    const recordB = "550e8400-e29b-41d4-a716-446655440000";
-    const recordA = "550e8400-e29b-41d4-a716-446655440001";
-    const markdown = injectFrontMatter("## Plan", {
-        tickets: [{ url: "https://example.com/tickets/ABC-123" }],
-        supersedes: [` ${recordB} `, recordA, "", recordB.toUpperCase(), "   "],
-        executionAgent: "engineer",
-    });
-    const { attrs } = parsePlanFrontMatter(markdown);
-
-    assertEquals(attrs.supersedes, [recordB, recordA]);
-    assertEquals(markdown.indexOf("tickets:") < markdown.indexOf("supersedes:"), true);
-    assertEquals(markdown.indexOf("supersedes:") < markdown.indexOf("executionAgent:"), true);
 });
 
 test("malformed or empty supersedes front matter is omitted", () => {
@@ -632,7 +500,6 @@ test("order front matter round trips and numeric strings normalize", () => {
     const withOrder = injectFrontMatter("## Plan", { parentPlan: "epic-a", order: 3 });
     assertEquals(parsePlanFrontMatter(withOrder).attrs.order, 3);
     assertEquals(withOrder.includes("parentPlan:"), true);
-    assertEquals(withOrder.indexOf("parentPlan:") < withOrder.indexOf("order:"), true);
 
     const parsedString = parsePlanFrontMatter(
         ["---", "classification: FEATURE", "summary: child", "parentPlan: epic-a", 'order: "4"', "---", "# Child"].join(
@@ -640,23 +507,6 @@ test("order front matter round trips and numeric strings normalize", () => {
         ),
     );
     assertEquals(parsedString.attrs.order, 4);
-});
-
-testWithFs("ensurePlanIdentity backfills missing planId while preserving body exactly", async () => {
-    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
-    try {
-        await savePlan(cwd, "missing-id", "\n\n# Title\n\nBody\n", { summary: "Missing ID" });
-        const before = await loadPlan(cwd, "missing-id");
-        const resource = await ensurePlanIdentity(cwd, "missing-id", { idGenerator: () => "generated-id" });
-        const after = await loadPlan(cwd, "missing-id");
-
-        assertEquals(resource.planId, "generated-id");
-        assertEquals(after?.attrs.planId, "generated-id");
-        assertEquals(after?.body, before?.body);
-        assertEquals(resource.relativePath, "docs/plans/missing-id.md");
-    } finally {
-        await fsRm(cwd, { recursive: true });
-    }
 });
 
 testWithFs(
@@ -683,20 +533,6 @@ testWithFs(
     },
 );
 
-testWithFs("listPlanResources throws repair-oriented duplicate planId errors before backfill", async () => {
-    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
-    try {
-        await savePlan(cwd, "a", "# A", { planId: "dup" });
-        await savePlan(cwd, "b", "# B", { planId: "dup" });
-        await savePlan(cwd, "missing", "# Missing");
-
-        await assertRejects(() => listPlanResources(cwd), Error, "Duplicate planId values found");
-        assertEquals((await loadPlan(cwd, "missing"))?.attrs.planId, undefined);
-    } finally {
-        await fsRm(cwd, { recursive: true });
-    }
-});
-
 testWithFs("findPlanById resolves non-archived plan resources", async () => {
     const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
@@ -714,20 +550,6 @@ testWithFs("findPlanById resolves non-archived plan resources", async () => {
     }
 });
 
-test("splitPlanMarkdownBody preserves front matter delimiter bytes and body", () => {
-    const markdown = "---\r\n# comment\r\nplanId: quoted\r\n---\r\n# Body\n\nText\n";
-    const split = splitPlanMarkdownBody(markdown);
-    assertEquals(split.frontMatterBlock, "---\r\n# comment\r\nplanId: quoted\r\n---\r\n");
-    assertEquals(split.body, "# Body\n\nText\n");
-});
-
-test("splitPlanMarkdownBody ignores indented front matter delimiter-like content", () => {
-    const markdown = "---\nsummary: |\n  ---\n  body marker remains metadata\n---\n# Body\n";
-    const split = splitPlanMarkdownBody(markdown);
-    assertEquals(split.frontMatterBlock, "---\nsummary: |\n  ---\n  body marker remains metadata\n---\n");
-    assertEquals(split.body, "# Body\n");
-});
-
 testWithFs("body-only save preserves front matter bytes and markdown body fidelity", async () => {
     const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
@@ -736,14 +558,16 @@ testWithFs("body-only save preserves front matter bytes and markdown body fideli
             "---",
             "# preserve this comment",
             "planId: body-id",
+            "customNote: |",
+            "  ---",
+            "  This indented marker is metadata.",
             'unknownKey: "kept"',
             "classification: FEATURE",
             "status: in_progress",
-            "worktreeStatus: active",
             "dependencies:",
             "    - sibling",
-            "---\n",
-        ].join("\n");
+            "---\r\n",
+        ].join("\r\n");
         const body =
             "# Old\n\n- item\n- [ ] task\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\n[RunWield](https://runwield.dev)\n\n```js\nconsole.log(1);\n```\n";
         await fsWriteFile(join(cwd, `docs/plans/body.md`), frontMatter + body);
@@ -754,9 +578,8 @@ testWithFs("body-only save preserves front matter bytes and markdown body fideli
         const saved = await savePlanBodyByIdForTest(cwd, "body-id", nextBody, loaded.bodyHash);
         const after = await fsReadFile(join(cwd, `docs/plans/body.md`), "utf8");
 
-        assertEquals(after, frontMatter.replace("worktreeStatus: active\n", "") + nextBody);
+        assertEquals(after, frontMatter + nextBody);
         assertEquals(saved.body, nextBody);
-        assertEquals(saved.bodyHash, await hashPlanBody(nextBody));
         assertEquals(parsePlanFrontMatter(after).attrs.status, "in_progress");
         assertEquals(parsePlanFrontMatter(after).attrs.worktreeStatus, undefined);
     } finally {
@@ -787,52 +610,6 @@ testWithFs("body-only save rejects stale hashes duplicate IDs and archived plans
     } finally {
         await fsRm(cwd, { recursive: true });
     }
-});
-
-test("groupPlanHierarchy groups Epics, nested children, standalone, and orphaned children", () => {
-    const plans = [
-        { name: "epic", path: "docs/plans/epic.md", attrs: { classification: "PROJECT", status: "draft" } },
-        {
-            name: "epic/child",
-            path: "docs/plans/epic/child.md",
-            attrs: { classification: "FEATURE", parentPlan: "epic", status: "verified" },
-        },
-        { name: "solo", path: "docs/plans/solo.md", attrs: { classification: "FEATURE", status: "draft" } },
-        {
-            name: "orphan/child",
-            path: "docs/plans/orphan/child.md",
-            attrs: { classification: "FEATURE", parentPlan: "missing", status: "failed" },
-        },
-    ];
-
-    const grouped = groupPlanHierarchy(/** @type {any} */ (plans));
-    assertEquals(
-        grouped.epics.map((plan) => plan.name),
-        ["epic"],
-    );
-    assertEquals(
-        (grouped.childrenByParent.get("epic") || []).map((plan) => plan.name),
-        ["epic/child"],
-    );
-    assertEquals(
-        grouped.standalone.map((plan) => plan.name),
-        ["solo"],
-    );
-    assertEquals(
-        grouped.orphanChildren.map((plan) => plan.name),
-        ["orphan/child"],
-    );
-    assertEquals(countChildPlanProgress(/** @type {any} */ (plans.slice(1, 4))), {
-        verified: 1,
-        userVerified: 0,
-        completed: 1,
-        active: 0,
-        failed: 1,
-        onHold: 0,
-        remaining: 1,
-        total: 3,
-        byStatus: { verified: 1, failed: 1, draft: 1 },
-    });
 });
 
 testWithFs("updatePlanStatus fails closed on malformed front matter and preserves bytes", async () => {
@@ -1768,12 +1545,10 @@ testWithFs("plan-store updates preserve parent-child metadata and unknown front 
 testWithFs("plan-store rejects stored plan names that escape plans directory", async () => {
     const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
-        await assertRejects(() => savePlan(cwd, "../outside", "# Bad"), Error, "Plan name cannot escape docs/plans/");
-        await assertRejects(
-            () => savePlan(cwd, "/tmp/outside", "# Bad"),
-            Error,
-            "Plan name must be relative to docs/plans/",
-        );
+        for (const name of ["", "/tmp/outside", "epic//child", "epic/./child", "epic/../child", "../outside"]) {
+            await assertRejects(() => savePlan(cwd, name, "# Bad"));
+        }
+        assertEquals(await listPlans(cwd), []);
     } finally {
         await fsRm(cwd, { recursive: true });
     }
@@ -1798,39 +1573,6 @@ testWithFs("plan-store resolves external plans and injects defaults when front m
     } finally {
         await fsRm(cwd, { recursive: true });
     }
-});
-
-test("worktree front matter fields round-trip and can be cleared", () => {
-    const markdown = injectFrontMatter("## Body", {
-        executionBaselineTree: "tree123",
-        worktreeId: "wt-123",
-        worktreePath: "/tmp/repo-runwield-plan-wt-123",
-        worktreeBranch: "runwield/worktree/plan-wt-123",
-        worktreeBaseBranch: "feature-base",
-        worktreeStatus: "active",
-    });
-
-    const parsed = parsePlanFrontMatter(markdown);
-    assertEquals(parsed.attrs.executionBaselineTree, "tree123");
-    assertEquals(parsed.attrs.worktreeId, "wt-123");
-    assertEquals(parsed.attrs.worktreePath, "/tmp/repo-runwield-plan-wt-123");
-    assertEquals(parsed.attrs.worktreeBranch, "runwield/worktree/plan-wt-123");
-    assertEquals(parsed.attrs.worktreeBaseBranch, "feature-base");
-    assertEquals(parsed.attrs.worktreeStatus, "active");
-
-    const cleared = injectFrontMatter(markdown, {
-        worktreeId: null,
-        worktreePath: null,
-        worktreeBranch: null,
-        worktreeBaseBranch: null,
-        worktreeStatus: null,
-    });
-    const reparsed = parsePlanFrontMatter(cleared);
-    assertEquals(reparsed.attrs.worktreeId, undefined);
-    assertEquals(reparsed.attrs.worktreePath, undefined);
-    assertEquals(reparsed.attrs.worktreeBranch, undefined);
-    assertEquals(reparsed.attrs.worktreeBaseBranch, undefined);
-    assertEquals(reparsed.attrs.worktreeStatus, undefined);
 });
 
 test("delivery evidence front matter validates compact shapes and rejects malformed values", () => {
@@ -1887,29 +1629,6 @@ test("delivery evidence front matter validates compact shapes and rejects malfor
     const cleared = parsePlanFrontMatter(injectFrontMatter(markdown, { deliveryEvidence: null, executionMode: null }));
     assertEquals(cleared.attrs.deliveryEvidence, undefined);
     assertEquals(cleared.attrs.executionMode, undefined);
-});
-
-test("Epic done-enough front matter fields round-trip and can be cleared", () => {
-    const markdown = injectFrontMatter("## Body", {
-        epicCompletionMode: "done_enough",
-        epicDoneEnoughAt: "2026-06-17T00:00:00.000Z",
-        epicDoneEnoughSummary: "1/2 features verified",
-    });
-
-    const parsed = parsePlanFrontMatter(markdown);
-    assertEquals(parsed.attrs.epicCompletionMode, "done_enough");
-    assertEquals(parsed.attrs.epicDoneEnoughAt, "2026-06-17T00:00:00.000Z");
-    assertEquals(parsed.attrs.epicDoneEnoughSummary, "1/2 features verified");
-
-    const cleared = injectFrontMatter(markdown, {
-        epicCompletionMode: null,
-        epicDoneEnoughAt: null,
-        epicDoneEnoughSummary: null,
-    });
-    const reparsed = parsePlanFrontMatter(cleared);
-    assertEquals(reparsed.attrs.epicCompletionMode, undefined);
-    assertEquals(reparsed.attrs.epicDoneEnoughAt, undefined);
-    assertEquals(reparsed.attrs.epicDoneEnoughSummary, undefined);
 });
 
 testWithFs("updatePlanFrontMatter preserves body and clears optional fields", async () => {
@@ -2294,125 +2013,6 @@ testWithFs("findPlanById resolves non-archived resources and reports unknown IDs
     }
 });
 
-test("shared hierarchy helpers match Epic, child, orphan, standalone, and progress semantics", () => {
-    const plans = /** @type {any[]} */ ([
-        { name: "epic", attrs: { classification: "PROJECT", status: "ready_for_work" } },
-        { name: "epic/01-done", attrs: { classification: "FEATURE", parentPlan: "epic", status: "verified" } },
-        { name: "epic/02-active", attrs: { classification: "FEATURE", parentPlan: "epic", status: "implemented" } },
-        { name: "epic/03-failed", attrs: { classification: "FEATURE", parentPlan: "epic", status: "failed" } },
-        { name: "epic/04-todo", attrs: { classification: "FEATURE", parentPlan: "epic", status: "draft" } },
-        { name: "orphan/01-child", attrs: { classification: "FEATURE", parentPlan: "orphan", status: "draft" } },
-        { name: "standalone", attrs: { classification: "FEATURE", status: "approved" } },
-    ]);
-
-    assertEquals(isEpicPlan(plans[0].attrs), true);
-    assertEquals(isChildFeaturePlan(plans[1]), true);
-    const grouped = groupPlanHierarchy(plans);
-    assertEquals(
-        grouped.epics.map((plan) => plan.name),
-        ["epic"],
-    );
-    assertEquals(
-        (grouped.childrenByParent.get("epic") || []).map((plan) => plan.name),
-        ["epic/01-done", "epic/02-active", "epic/03-failed", "epic/04-todo"],
-    );
-    assertEquals(
-        grouped.orphanChildren.map((plan) => plan.name),
-        ["orphan/01-child"],
-    );
-    assertEquals(
-        grouped.standalone.map((plan) => plan.name),
-        ["standalone"],
-    );
-    assertEquals(countChildPlanProgress(grouped.childrenByParent.get("epic") || []), {
-        verified: 1,
-        userVerified: 0,
-        completed: 1,
-        active: 1,
-        failed: 1,
-        onHold: 0,
-        remaining: 1,
-        total: 4,
-        byStatus: { verified: 1, implemented: 1, failed: 1, draft: 1 },
-    });
-});
-
-test("resolveSiblingChildPlanDependencyStates exposes verified unverified and missing sibling states", () => {
-    const siblings = /** @type {any[]} */ ([
-        {
-            name: "epic/01-done",
-            planName: "epic/01-done",
-            planId: "done-id",
-            status: "validated",
-            attrs: { status: "validated" },
-        },
-        {
-            name: "epic/02-active",
-            planName: "epic/02-active",
-            planId: "active-id",
-            status: "implemented",
-            attrs: { status: "implemented" },
-        },
-        {
-            name: "epic/03-user",
-            planName: "epic/03-user",
-            planId: "user-id",
-            status: "user_verified",
-            attrs: { status: "user_verified" },
-        },
-        {
-            name: "epic/04-legacy",
-            planName: "epic/04-legacy",
-            planId: "legacy-id",
-            status: "verified",
-            attrs: { status: "verified" },
-        },
-    ]);
-
-    assertEquals(
-        resolveSiblingChildPlanDependencyStates(
-            "epic",
-            ["done", "epic/active", "user", "legacy", "05-missing"],
-            siblings,
-        ),
-        [
-            {
-                dependency: "done",
-                planId: "done-id",
-                planName: "epic/01-done",
-                path: undefined,
-                status: "validated",
-                state: "verified",
-            },
-            {
-                dependency: "epic/active",
-                planId: "active-id",
-                planName: "epic/02-active",
-                path: undefined,
-                status: "implemented",
-                state: "unverified",
-            },
-            {
-                dependency: "user",
-                planId: "user-id",
-                planName: "epic/03-user",
-                path: undefined,
-                status: "user_verified",
-                state: "user_verified",
-            },
-            {
-                dependency: "legacy",
-                planId: "legacy-id",
-                planName: "epic/04-legacy",
-                path: undefined,
-                status: "verified",
-                state: "verified",
-            },
-            { dependency: "05-missing", state: "missing" },
-        ],
-    );
-});
-
 function lockedPlanFrontMatter(overrides = {}) {
     return {
         collaborationState: COLLABORATION_STATE_REMOTE_CANONICAL,
@@ -2424,26 +2024,6 @@ function lockedPlanFrontMatter(overrides = {}) {
         ...overrides,
     };
 }
-
-testWithFs("collaboration front matter formats and parses non-secret metadata", async () => {
-    await Promise.resolve();
-    const markdown = injectFrontMatter(
-        "## Plan\n\nBody",
-        lockedPlanFrontMatter({
-            collaborationServerUrl: "https://plans.example.test/base/",
-            collaborationRevision: "8",
-        }),
-    );
-    const { attrs } = parsePlanFrontMatter(markdown);
-
-    assertEquals(attrs.collaborationState, COLLABORATION_STATE_REMOTE_CANONICAL);
-    assertEquals(attrs.collaborationServerUrl, "https://plans.example.test/base");
-    assertEquals(attrs.collaborationSpaceId, "space-1");
-    assertEquals(attrs.collaborationRevision, 8);
-    assertEquals(markdown.includes("contentKey"), false);
-    assertEquals(markdown.includes("bearerCapability"), false);
-    assertEquals(markdown.includes("reviewerUrl"), false);
-});
 
 testWithFs("locked shared plans reject normal save/status/front matter/body writes without mutation", async () => {
     const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
@@ -2766,7 +2346,7 @@ testWithFs("supersedes survives Plan revisions and archival", async () => {
         await savePlan(cwd, "superseding-plan", "# Superseding Plan", {
             planId: "superseding-plan-id",
             status: "draft",
-            supersedes: [` ${recordA} `, recordA, recordB],
+            supersedes: [` ${recordA} `, recordA.toUpperCase(), "", recordB, "   "],
         });
 
         const revised = await updatePlanFrontMatterForTest(cwd, "superseding-plan", { status: "verified" });

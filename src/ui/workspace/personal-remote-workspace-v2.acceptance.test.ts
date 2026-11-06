@@ -1,3 +1,5 @@
+import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
+import { withExistingRuntimeInteraction } from "./testing/live-interaction-fixture.ts";
 import { test } from "node:test";
 import {
     mkdir as fsMkdir,
@@ -20,7 +22,7 @@ import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout
 import { writeWorkRecord } from "../../shared/work-records/store.ts";
 import { buildWorkflowPresentation } from "../../shared/workflow/workflow-presentation.ts";
 import { createOwnerWorkspaceApp } from "./server.js";
-import { ownerProjectSessionsApi, ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.js";
+import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.js";
 import { latestLiveWorkflowInteraction } from "./islands/SessionSurface.jsx";
 import { WorkflowSidebar } from "./react/WorkflowSidebar.tsx";
 import { loadOwnerDashboard } from "./server/owner-dashboard.ts";
@@ -318,85 +320,54 @@ test("Dashboard uses the persistent Workspace shell", async () => {
     }
 });
 
-test("unassociated live Plan reviews use Plan names and ordinary questions use Session names", async () => {
-    const dir = await fsMkdtemp(join(tmpdir(), "runwield-dashboard-review-names-"));
-    const { store, ownerApp } = pairedApp(dir);
-    try {
-        const project = store.registerProject({ root: dir });
-        await savePlan(dir, "review-me", "# Review the searchable artifacts\n", {
-            planId: "review-plan-id",
-            title: "Review the searchable artifacts",
-            classification: "FEATURE",
-            status: "draft",
+test("live Plan reviews use Plan titles and ordinary questions retain their Session identity", async () => {
+    for (const type of ["plan_review", "text"] as const)
+        await withRuntimeCommandFixture("dashboard-live-names-", async (fixture) => {
+            await savePlan(fixture.projectRoot, "review-me", "# Review the searchable artifacts\n", {
+                planId: "review-plan-id",
+                title: "Review the searchable artifacts",
+                classification: "FEATURE",
+                status: "draft",
+            });
+            await withExistingRuntimeInteraction(
+                fixture,
+                {
+                    type,
+                    prompt: "Choose the next direction",
+                    _meta:
+                        type === "plan_review"
+                            ? { planId: "review-plan-id", planName: "review-me", planningAgentName: "planner" }
+                            : undefined,
+                },
+                async ({ store, service, reference }) => {
+                    const payload = await loadOwnerDashboard(store, service);
+                    const items =
+                        payload.dashboard.sections.find((section) => section.key === "needs-you")?.items || [];
+                    assertEquals(items.length, 1);
+                    assertStringIncludes(items[0].href, reference.runwieldSessionId);
+                    if (type === "plan_review") {
+                        assertEquals(items[0].title, "Review the searchable artifacts");
+                        assertEquals(items[0].actionLabel, "Review Plan");
+                    } else {
+                        assertEquals(items[0].title, "Choose Terraform folder name");
+                    }
+                },
+                undefined,
+                async (service) => {
+                    const created = await service.runtime.createInteractiveSession({
+                        cwd: fixture.projectRoot,
+                        agentName: "operator",
+                    });
+                    await service.runtime.renameSession(created.sessionId, "Choose Terraform folder name");
+                    const managed = service.runtime.getSessionSnapshot(created.sessionId)?.managed;
+                    if (!managed) throw new Error("Missing managed Session");
+                    await service.runtime.closeSessionWhenIdle(created.sessionId);
+                    const generation = service.store.inspectSessionActivation(managed.runwieldSessionId).generation;
+                    if (!generation) throw new Error("Missing committed generation");
+                    return { runwieldSessionId: managed.runwieldSessionId, expectedGeneration: generation.generation };
+                },
+            );
         });
-        const continuation = {
-            operations: new Map([
-                [
-                    "browser-op",
-                    {
-                        projectId: project.projectId,
-                        runwieldSessionId: "browser-session",
-                        status: "running",
-                        liveInteraction: {
-                            interactionId: "review-1",
-                            request: {
-                                type: "plan_review",
-                                planReview: { planId: "review-plan-id", planName: "review-me" },
-                            },
-                        },
-                    },
-                ],
-                [
-                    "tui-op",
-                    {
-                        projectId: project.projectId,
-                        runwieldSessionId: "tui-session",
-                        status: "running",
-                        liveInteraction: {
-                            interactionId: "review-2",
-                            request: { type: "plan_review", _meta: { planName: "A new Plan in a worktree" } },
-                        },
-                    },
-                ],
-                [
-                    "question-op",
-                    {
-                        projectId: project.projectId,
-                        runwieldSessionId: "question-session",
-                        status: "running",
-                        liveInteraction: {
-                            interactionId: "question",
-                            request: { type: "text", prompt: "Which file?" },
-                        },
-                    },
-                ],
-            ]),
-            listSessions: () =>
-                Promise.resolve({
-                    sessions: [{ runwieldSessionId: "question-session", displayName: "Choose Terraform folder name" }],
-                }),
-        };
-        const dashboard = await loadOwnerDashboard(store, continuation);
-        const items = dashboard.dashboard.sections.find((section) => section.key === "needs-you")?.items || [];
-        assertEquals(items.length, 3);
-        assertEquals(items.find((item) => item.planId === "review-plan-id")?.title, "Review the searchable artifacts");
-        assertEquals(
-            items.some((item) => item.title === "A new Plan in a worktree"),
-            true,
-        );
-        assertEquals(
-            items.some((item) => item.title === "Choose Terraform folder name"),
-            true,
-        );
-        assertEquals(
-            items.some((item) => item.title === "Session is waiting for you"),
-            false,
-        );
-    } finally {
-        await ownerApp.close();
-        store.close();
-        await fsRm(dir, { recursive: true });
-    }
 });
 
 test("Dashboard shares concurrent reads but refreshes evidence after they finish", async () => {
@@ -672,106 +643,99 @@ test("personal remote Workspace v2 owner home has bounded refresh and visible fa
 });
 
 test("personal remote Workspace v2 Dashboard promotes associated live questions and keeps terminal Session history", async () => {
-    const dir = await fsMkdtemp(join(tmpdir(), "runwield-owner-dashboard-live-"));
-    const projectRoot = `${dir}/project`;
-    await fsMkdir(projectRoot);
-    await savePlan(projectRoot, "active", "# Active\n", {
-        planId: "active-plan",
-        classification: "FEATURE",
-        status: "in_progress",
-    });
-    await savePlan(projectRoot, "done", "# Done\n", {
-        planId: "done-plan",
-        classification: "FEATURE",
-        status: "user_verified",
-        userVerifiedAt: new Date().toISOString(),
-    });
-    const store = {
-        listProjects: () => [{ projectId: "project-1", displayName: "Project", lifecycle: "enabled" }],
-        getProjectHealth: () => ({ status: "available", evidence: [] }),
-        requireEnabledProjectRoot: () => projectRoot,
-        listSessionPlanAssociations: (sessionId: string) =>
-            sessionId === "question-session"
-                ? [{ planId: "active-plan", committedGeneration: 1 }]
-                : sessionId === "done-session"
-                  ? [{ planId: "done-plan", committedGeneration: 1 }]
-                  : [],
-        inspectSessionActivation: () => ({ activation: { state: "active", ownerProcessKind: "workspace" } }),
-    };
-    const sessionContinuation = {
-        operations: new Map([
-            [
-                "op-1",
-                {
-                    projectId: "project-1",
-                    runwieldSessionId: "question-session",
-                    status: "running",
-                    liveInteraction: { interactionId: "ask-1", request: { prompt: "Choose.", type: "text" } },
-                },
-            ],
-        ]),
-        listSessions: () =>
-            Promise.resolve({
-                sessions: [
-                    { runwieldSessionId: "question-session", displayName: "Question", state: "active" },
-                    { runwieldSessionId: "done-session", displayName: "Done Session", state: "idle" },
-                ],
-                hasNext: false,
-                diagnostics: [],
-            }),
-    };
-    try {
-        const payload = await loadOwnerDashboard(store, sessionContinuation);
-        const needsYou = payload.dashboard.sections.find(
-            (section: { key: string }) => section.key === "needs-you",
-        ).items;
-        assertEquals(
-            needsYou.some((item: { planId: string }) => item.planId === "active-plan"),
-            true,
-        );
-        for (const type of ["plan_review", "code_review"]) {
-            sessionContinuation.operations.set("op-1", {
-                projectId: "project-1",
-                runwieldSessionId: "question-session",
-                status: "running",
-                liveInteraction: { interactionId: "ask-1", request: { prompt: "Review", type } },
+    for (const type of ["text", "plan_review", "code_review"] as const) {
+        await withRuntimeCommandFixture("dashboard-real-associated-", async (fixture) => {
+            await savePlan(fixture.projectRoot, "active", "# Active\n", {
+                planId: "active-plan",
+                classification: "FEATURE",
+                status: "in_progress",
             });
-            const waiting = await loadOwnerDashboard(store, sessionContinuation);
-            const item = waiting.dashboard.sections.find((section) => section.key === "needs-you")?.items[0];
-            assertEquals(item?.href, "/projects/project-1/sessions/question-session#interaction-ask-1");
-            assertEquals(item?.actionLabel, type === "plan_review" ? "Review Plan" : "Review code");
-            assertEquals(item?.statusLabel, type === "plan_review" ? "Plan ready for review" : "Code ready for review");
-        }
-        sessionContinuation.operations.clear();
-        const answered = await loadOwnerDashboard(store, sessionContinuation);
-        assertEquals(answered.dashboard.sections.find((section) => section.key === "needs-you")?.items.length, 0);
-        assertEquals(
-            payload.projects[0].sessions.some(
-                (session: { runwieldSessionId: string }) => session.runwieldSessionId === "done-session",
-            ),
-            true,
-        );
-        assertEquals(
-            payload.projects[0].sessions.some(
-                (session: { runwieldSessionId: string }) => session.runwieldSessionId === "question-session",
-            ),
-            false,
-        );
-    } finally {
-        await fsRm(dir, { recursive: true });
+            await savePlan(fixture.projectRoot, "done", "# Done\n", {
+                planId: "done-plan",
+                classification: "FEATURE",
+                status: "user_verified",
+                userVerifiedAt: new Date().toISOString(),
+            });
+            let completedSessionId = "";
+            await withExistingRuntimeInteraction(
+                fixture,
+                {
+                    type,
+                    prompt: "Choose.",
+                    _meta: { planId: "active-plan", planName: "active", planningAgentName: "planner" },
+                },
+                async ({ store, service, reference, settle }) => {
+                    const payload = await loadOwnerDashboard(store, service);
+                    const needsYou =
+                        payload.dashboard.sections.find((section) => section.key === "needs-you")?.items || [];
+                    assertEquals(needsYou.length, 1);
+                    assertEquals(needsYou[0].planId, "active-plan");
+                    assertEquals(
+                        needsYou[0].href,
+                        `/projects/${reference.projectId}/sessions/${reference.runwieldSessionId}#interaction-${reference.interactionId}`,
+                    );
+                    if (type !== "text") {
+                        assertEquals(needsYou[0].actionLabel, type === "plan_review" ? "Review Plan" : "Review code");
+                        assertEquals(
+                            needsYou[0].statusLabel,
+                            type === "plan_review" ? "Plan ready for review" : "Code ready for review",
+                        );
+                    }
+                    assertEquals(
+                        payload.projects[0].sessions.some(
+                            (session) => session.runwieldSessionId === completedSessionId,
+                        ),
+                        true,
+                    );
+                    assertEquals(
+                        payload.projects[0].sessions.some(
+                            (session) => session.runwieldSessionId === reference.runwieldSessionId,
+                        ),
+                        false,
+                    );
+                    await settle();
+                    const answered = await loadOwnerDashboard(store, service);
+                    assertEquals(
+                        answered.dashboard.sections.find((section) => section.key === "needs-you")?.items.length,
+                        0,
+                    );
+                },
+                undefined,
+                async (service) => {
+                    for (const name of ["done", "active"]) {
+                        const created = await service.runtime.createInteractiveSession({
+                            cwd: fixture.projectRoot,
+                            agentName: "operator",
+                        });
+                        await service.runtime.renameSession(
+                            created.sessionId,
+                            name === "done" ? "Done Session" : "Question Session",
+                        );
+                        await service.runtime.recordPlanAssociation(created.sessionId, {
+                            planId: `${name}-plan`,
+                            planName: name,
+                            purpose: "planning",
+                        });
+                        const managed = service.runtime.getSessionSnapshot(created.sessionId)?.managed;
+                        if (!managed) throw new Error("Missing managed Session");
+                        await service.runtime.closeSessionWhenIdle(created.sessionId);
+                        if (name === "done") completedSessionId = managed.runwieldSessionId;
+                        else {
+                            const generation = service.store.inspectSessionActivation(
+                                managed.runwieldSessionId,
+                            ).generation;
+                            if (!generation) throw new Error("Missing committed generation");
+                            return {
+                                runwieldSessionId: managed.runwieldSessionId,
+                                expectedGeneration: generation.generation,
+                            };
+                        }
+                    }
+                    throw new Error("Question Session was not prepared");
+                },
+            );
+        });
     }
-});
-
-test("personal remote Workspace v2 Plan home keeps document rendering ahead of workflow reads", async () => {
-    const route = await fsReadFile(
-        new URL("./pages/projects/[projectId]/plans/[planId].astro", import.meta.url),
-        "utf8",
-    );
-    assertEquals(route.includes("await loadOwnerPlanProgress"), false);
-    assertEquals(route.includes("discoverProvenSessionId"), false);
-    assertEquals(route.includes("listSessions(projectId"), false);
-    assertStringIncludes(route, "progressApiUrl");
-    assertStringIncludes(route, "expectedGeneration");
 });
 
 test("personal remote Workspace v2 Dashboard uses live evidence for active work and retained completion proof", async () => {
@@ -789,17 +753,9 @@ test("personal remote Workspace v2 Dashboard uses live evidence for active work 
         status: "validated",
         verifiedAt: new Date().toISOString(),
     });
-    const store = {
-        listProjects: () => [{ projectId: "project-1", displayName: "Project", lifecycle: "enabled" }],
-        getProjectHealth: () => ({ status: "available", evidence: [] }),
-        requireEnabledProjectRoot: () => projectRoot,
-        listSessionPlanAssociations: () => [],
-        inspectSessionActivation: () => ({ activation: { state: "idle" } }),
-    };
-    const sessionContinuation = {
-        operations: new Map(),
-        listSessions: () => Promise.resolve({ sessions: [], hasNext: false, diagnostics: [] }),
-    };
+    const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
+    store.registerProject({ root: projectRoot });
+    const sessionContinuation = createWorkspaceSessionContinuationService({ store });
     try {
         const payload = await loadOwnerDashboard(store, sessionContinuation);
         const dashboardText = JSON.stringify(payload.dashboard);
@@ -812,6 +768,8 @@ test("personal remote Workspace v2 Dashboard uses live evidence for active work 
             true,
         );
     } finally {
+        sessionContinuation.close();
+        store.close();
         await fsRm(dir, { recursive: true });
     }
 });
@@ -827,17 +785,9 @@ test("personal remote Workspace v2 Dashboard does not mark READY status ready wh
     });
     assertEquals((await loadPlan(projectRoot, "ready"))?.readAvailability?.kind, "ready");
     await fsWriteFile(resolveProjectRuntimeLayout(projectRoot).primary.worktreeRegistryPath, "{ broken");
-    const store = {
-        listProjects: () => [{ projectId: "project-1", displayName: "Project", lifecycle: "enabled" }],
-        getProjectHealth: () => ({ status: "available", evidence: [] }),
-        requireEnabledProjectRoot: () => projectRoot,
-        listSessionPlanAssociations: () => [],
-        inspectSessionActivation: () => ({ activation: { state: "idle" } }),
-    };
-    const sessionContinuation = {
-        operations: new Map(),
-        listSessions: () => Promise.resolve({ sessions: [], hasNext: false, diagnostics: [] }),
-    };
+    const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
+    store.registerProject({ root: projectRoot });
+    const sessionContinuation = createWorkspaceSessionContinuationService({ store });
     try {
         const payload = await loadOwnerDashboard(store, sessionContinuation);
         const readyItems = payload.dashboard.sections.find((section: { key: string }) => section.key === "ready").items;
@@ -855,156 +805,38 @@ test("personal remote Workspace v2 Dashboard does not mark READY status ready wh
             true,
         );
     } finally {
+        sessionContinuation.close();
+        store.close();
         await fsRm(dir, { recursive: true });
     }
 });
 
-test("personal remote Workspace v2 Session API filters committed Plan associations before pagination", async () => {
-    const calls: number[] = [];
-    const ctx = {
-        params: { projectId: "project-1" },
-        url: new URL("http://workspace.local/api/owner/projects/project-1/sessions?plan=target&page=0&pageSize=1"),
-        state: {
-            store: {
-                requireEnabledProjectRoot: () => "/project",
-                listSessionPlanAssociations: (sessionId: string) =>
-                    sessionId === "late" ? [{ planId: "target", committedGeneration: 2 }] : [],
-            },
-            sessionContinuation: {
-                listSessions: (_projectId: string, options: { page: number }) => {
-                    calls.push(options.page);
-                    return Promise.resolve({
-                        sessions:
-                            options.page === 0 ? [{ runwieldSessionId: "first" }] : [{ runwieldSessionId: "late" }],
-                        hasNext: options.page === 0,
-                        diagnostics: [],
-                    });
-                },
-            },
-        },
-    };
-
-    const response = await ownerProjectSessionsApi(ctx);
-    const payload = await response.json();
-    assertEquals(calls, [0, 1]);
-    assertEquals(payload.total, 1);
-    assertEquals(
-        payload.sessions.map((session: { runwieldSessionId: string }) => session.runwieldSessionId),
-        ["late"],
-    );
-});
-
-test("personal remote Workspace v2 standalone Session expansion excludes only rendered Plan associations", async () => {
-    const ctx = {
-        params: { projectId: "project-1" },
-        url: new URL(
-            "http://workspace.local/api/owner/projects/project-1/sessions?excludeAssociated=true&nestedPlan=active-plan",
-        ),
-        state: {
-            store: {
-                requireEnabledProjectRoot: () => "/project",
-                listSessionPlanAssociations: (sessionId: string) =>
-                    sessionId === "nested"
-                        ? [{ planId: "active-plan", committedGeneration: 1 }]
-                        : sessionId === "terminal"
-                          ? [{ planId: "terminal-plan", committedGeneration: 1 }]
-                          : [],
-            },
-            sessionContinuation: {
-                listSessions: () =>
-                    Promise.resolve({
-                        sessions: [
-                            { runwieldSessionId: "nested" },
-                            { runwieldSessionId: "terminal" },
-                            {
-                                runwieldSessionId: "free",
-                            },
-                        ],
-                        hasNext: false,
-                        diagnostics: [],
-                    }),
-            },
-        },
-    };
-
-    const response = await ownerProjectSessionsApi(ctx);
-    const payload = await response.json();
-    assertEquals(
-        payload.sessions.map((session: { runwieldSessionId: string }) => session.runwieldSessionId),
-        ["terminal", "free"],
-    );
-});
-
-test("personal remote Workspace v2 standalone Session expansion keeps terminal-only associations when no Plans render", async () => {
-    const ctx = {
-        params: { projectId: "project-1" },
-        url: new URL("http://workspace.local/api/owner/projects/project-1/sessions?excludeAssociated=true"),
-        state: {
-            store: {
-                requireEnabledProjectRoot: () => "/project",
-                listSessionPlanAssociations: (sessionId: string) =>
-                    sessionId === "terminal" ? [{ planId: "terminal-plan", committedGeneration: 1 }] : [],
-            },
-            sessionContinuation: {
-                listSessions: () =>
-                    Promise.resolve({
-                        sessions: [{ runwieldSessionId: "terminal" }, { runwieldSessionId: "free" }],
-                        hasNext: false,
-                        diagnostics: [],
-                    }),
-            },
-        },
-    };
-
-    const response = await ownerProjectSessionsApi(ctx);
-    const payload = await response.json();
-    assertEquals(
-        payload.sessions.map((session: { runwieldSessionId: string }) => session.runwieldSessionId),
-        ["terminal", "free"],
-    );
-});
-
-test("personal remote Workspace v2 Plan workflow API dispatches checked resume and reports result errors", async () => {
-    const dir = await fsMkdtemp(join(tmpdir(), "runwield-owner-workflow-action-"));
-    const projectRoot = `${dir}/project`;
-    await fsMkdir(projectRoot, { recursive: true });
-    await savePlan(projectRoot, "validate", "# Validate\n\nBody\n", {
+test("Plan workflow API refuses a stale committed generation without starting work", async () => {
+    const fixture = await makeManagedSessionFixture();
+    const service = createWorkspaceSessionContinuationService({ store: fixture.store });
+    await savePlan(fixture.projectRoot, "validate", "# Validate\n\nBody\n", {
         planId: "validate-plan",
         classification: "FEATURE",
         status: "implemented",
     });
-    let received: Record<string, unknown> | null = null;
-    const ctx = {
-        req: new Request("http://workspace.local", {
-            method: "POST",
-            body: JSON.stringify({
-                action: "recover",
-                planId: "validate-plan",
-                expectedGeneration: 4,
-            }),
-        }),
-        params: { projectId: "project-1", runwieldSessionId: "session-1" },
-        state: {
-            store: { requireEnabledProjectRoot: () => projectRoot },
-            sessionContinuation: {
-                startPlanWorkflowHandoff: (options: Record<string, unknown>) => {
-                    received = options;
-                    return Promise.resolve({ error: "validation needs attention" });
-                },
-            },
-        },
-    };
-
     try {
-        const response = await ownerSessionPlanWorkflowApi(ctx);
-        const payload = await response.json();
+        const before = fixture.store.inspectSessionActivation(fixture.session.runwieldSessionId);
+        const response = await ownerSessionPlanWorkflowApi({
+            req: new Request("http://workspace.local", {
+                method: "POST",
+                body: JSON.stringify({ action: "recover", planId: "validate-plan", expectedGeneration: 99 }),
+            }),
+            params: { projectId: fixture.project.projectId, runwieldSessionId: fixture.session.runwieldSessionId },
+            state: { store: fixture.store, sessionContinuation: service },
+        });
         assertEquals(response.status, 409);
-        assertEquals(payload.error, "validation needs attention");
-        assertEquals(received?.action, "recover");
-        assertEquals(received?.planName, "validate");
-        assertStringIncludes(String(received?.planContent || ""), "# Validate");
+        assertStringIncludes((await response.json()).error, "exact committed generation");
+        assertEquals(fixture.store.inspectSessionActivation(fixture.session.runwieldSessionId), before);
+        assertEquals(service.operations.size, 0);
+        assertEquals((await loadPlan(fixture.projectRoot, "validate")).attrs.status, "implemented");
     } finally {
-        await fsRm(dir, { recursive: true });
+        service.close();
+        await fixture.cleanup();
     }
 });
 

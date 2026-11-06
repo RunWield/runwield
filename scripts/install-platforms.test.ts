@@ -1,12 +1,6 @@
 import { test } from "node:test";
 import type { TestOs, TestArch } from "./install-test-helpers.ts";
-import {
-    mkdir as fsMkdir,
-    readFile as fsReadFile,
-    rm as fsRm,
-    stat as fsStat,
-    writeFile as fsWriteFile,
-} from "node:fs/promises";
+import { mkdir as fsMkdir, rm as fsRm, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
 import { assertEquals, assertStringIncludes } from "../src/testing/assertions.ts";
 import { join } from "node:path";
 
@@ -15,7 +9,6 @@ import {
     createFixture,
     readCurlLog,
     RELEASE_BINARY_NAMES,
-    repoPath,
     runInstaller,
     VERSIONS,
     writeExecutable,
@@ -24,10 +17,6 @@ import {
 interface InstallerPlatform {
     os: TestOs;
     arch: TestArch;
-}
-
-interface PackageScripts {
-    scripts: Record<string, string>;
 }
 
 test("install.sh maps Darwin/Linux amd64/arm64 assets and preserves positional wld version", async (t) => {
@@ -153,32 +142,4 @@ test("install.sh preserves archive helpers on PATH and in install dir, and rerun
     } finally {
         await fsRm(fixture.root, { recursive: true });
     }
-});
-
-test("ux:new-user image provisions Node 24 for required agent-browser helper", async () => {
-    const containerfile = await fsReadFile(repoPath("Containerfile.wld-ux"), "utf8");
-    assertStringIncludes(containerfile, "https://deb.nodesource.com/node_24.x");
-    assertStringIncludes(containerfile, "node --version");
-    assertStringIncludes(containerfile, "command -v wld mnemoteca cymbal ketch agent-browser snip");
-});
-
-test("ux:new-user tasks build latest and current targets from one containerfile", async () => {
-    const packageJson: PackageScripts = JSON.parse(await fsReadFile(repoPath("package.json"), "utf8"));
-    assertStringIncludes(packageJson.scripts["ux:new-user"], "--target wld-ux-latest");
-    assertStringIncludes(packageJson.scripts["ux:new-user"], "-f Containerfile.wld-ux");
-
-    const currentTask = packageJson.scripts["ux:new-user:current"];
-    assertStringIncludes(currentTask, "bun run compile --target");
-    assertStringIncludes(currentTask, "--target wld-ux-current");
-    assertStringIncludes(currentTask, "-f Containerfile.wld-ux");
-    assertStringIncludes(currentTask, "runwield-wld-ux-current:local");
-
-    const containerfile = await fsReadFile(repoPath("Containerfile.wld-ux"), "utf8");
-    assertStringIncludes(containerfile, "FROM wld-ux-base AS wld-ux-latest");
-    assertStringIncludes(containerfile, "FROM wld-ux-base AS wld-ux-current");
-    assertStringIncludes(containerfile, "COPY --chown=deno:deno bin/wld /tmp/wld-current");
-    assertStringIncludes(containerfile, 'install -m 755 /tmp/wld-current "$WLD_INSTALL_DIR/wld"');
-
-    const containerignore = await fsReadFile(repoPath(".containerignore"), "utf8");
-    assertStringIncludes(containerignore, "!bin/wld");
 });

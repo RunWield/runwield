@@ -1,7 +1,7 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { AGENTS } from "../../constants.js";
+import { AGENTS, getCwd } from "../../constants.js";
 import {
     ACTIVE_AGENT_CUSTOM_TYPE,
     readPersistedActiveAgentName,
@@ -13,11 +13,9 @@ import {
     type ModelChangeEntry,
     type PersistedActiveAgentState,
     type PersistedModelState,
-    type SessionEntryReader,
 } from "./active-agent-session.ts";
 
 type FixtureEntryData = Partial<PersistedActiveAgentState & PersistedModelState>;
-type SessionBranch = ReturnType<NonNullable<SessionEntryReader["getBranch"]>>;
 
 interface FixtureSessionEntry extends ModelChangeEntry {
     customType?: string;
@@ -25,12 +23,12 @@ interface FixtureSessionEntry extends ModelChangeEntry {
 }
 
 function makeSessionManager(entries: FixtureSessionEntry[] = []) {
-    return {
-        getBranch: (): SessionBranch => entries,
-        appendCustomEntry: (customType: string, data: FixtureEntryData) => {
-            entries.push({ type: "custom", customType, data });
-        },
-    } as SessionManager;
+    const session = SessionManager.inMemory(getCwd());
+    for (const entry of entries) {
+        if (entry.type === "model_change") session.appendModelChange(entry.provider ?? "", entry.modelId ?? "");
+        else session.appendCustomEntry(entry.customType ?? "", entry.data);
+    }
+    return session;
 }
 
 test("recordActiveAgent stores and reads the latest active root agent", () => {
@@ -48,13 +46,19 @@ test("recordActiveAgent persists display name with canonical root agent", () => 
 
     recordActiveAgent(sessionManager, "project-operator", "Project Operator");
 
-    assertEquals(entries, [
-        {
-            type: "custom",
-            customType: ACTIVE_AGENT_CUSTOM_TYPE,
-            data: { agentName: "project-operator", displayName: "Project Operator" },
-        },
-    ]);
+    assertEquals(
+        sessionManager
+            .getBranch()
+            .filter((entry) => entry.type === "custom")
+            .map(({ type, customType, data }) => ({ type, customType, data })),
+        [
+            {
+                type: "custom",
+                customType: ACTIVE_AGENT_CUSTOM_TYPE,
+                data: { agentName: "project-operator", displayName: "Project Operator" },
+            },
+        ],
+    );
     assertEquals(readPersistedActiveAgentName(sessionManager), "project-operator");
 });
 
@@ -65,8 +69,9 @@ test("recordActiveAgent skips duplicate adjacent markers", () => {
     recordActiveAgent(sessionManager, AGENTS.PLANNER);
     recordActiveAgent(sessionManager, AGENTS.PLANNER);
 
-    assertEquals(entries.length, 1);
-    assertEquals(entries[0].customType, ACTIVE_AGENT_CUSTOM_TYPE);
+    const markers = sessionManager.getBranch().filter((entry) => entry.type === "custom");
+    assertEquals(markers.length, 1);
+    assertEquals(markers[0].customType, ACTIVE_AGENT_CUSTOM_TYPE);
 });
 
 test("readPersistedModelState returns the latest persisted model", () => {
@@ -118,7 +123,7 @@ test("readPersistedManualModelState ignores malformed markers", () => {
 });
 
 test("manual model belongs to the active Agent and does not return after switching away and back", () => {
-    const sessionManager = SessionManager.inMemory("/tmp");
+    const sessionManager = SessionManager.inMemory(getCwd());
     recordActiveAgent(sessionManager, "router");
     recordManualModelSelection(sessionManager, "test-provider", "manual");
     assertEquals(readPersistedManualModelState(sessionManager, "router"), {
@@ -137,7 +142,7 @@ test("manual model belongs to the active Agent and does not return after switchi
 });
 
 test("manual model selected before the first Agent marker survives initial activation only", () => {
-    const sessionManager = SessionManager.inMemory("/tmp");
+    const sessionManager = SessionManager.inMemory(getCwd());
     recordManualModelSelection(sessionManager, "test-provider", "manual");
     recordActiveAgent(sessionManager, "router");
     assertEquals(readPersistedManualModelState(sessionManager)?.model, "manual");

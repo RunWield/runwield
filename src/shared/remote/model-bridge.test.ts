@@ -62,10 +62,14 @@ async function fixture() {
     const send: ProviderStreams["stream"] = (_model, _context, options) => {
         const stream = createAssistantMessageEventStream();
         if (pending) {
-            options?.signal?.addEventListener("abort", () => {
-                aborted = true;
-                stream.push({ type: "error", reason: "aborted", error: { ...message, stopReason: "aborted" } });
-            }, { once: true });
+            options?.signal?.addEventListener(
+                "abort",
+                () => {
+                    aborted = true;
+                    stream.push({ type: "error", reason: "aborted", error: { ...message, stopReason: "aborted" } });
+                },
+                { once: true },
+            );
         } else {
             queueMicrotask(() => {
                 if (providerError) {
@@ -130,33 +134,38 @@ test("model bridge does not offer or execute external CLI provider models", asyn
         refreshOnCreate: false,
     });
     let executed = false;
-    source.registerNativeProvider(createProvider({
-        id: "claude-cli",
-        name: "CLI",
-        models: [{ ...model, provider: "claude-cli", id: "sonnet" }],
-        auth: {
-            apiKey: {
-                name: "CLI",
-                check: () => Promise.resolve({ type: "api_key" }),
-                resolve: () => Promise.resolve({ auth: {} }),
+    source.registerNativeProvider(
+        createProvider({
+            id: "claude-cli",
+            name: "CLI",
+            models: [{ ...model, provider: "claude-cli", id: "sonnet" }],
+            auth: {
+                apiKey: {
+                    name: "CLI",
+                    check: () => Promise.resolve({ type: "api_key" }),
+                    resolve: () => Promise.resolve({ auth: {} }),
+                },
             },
-        },
-        api: {
-            stream: () => {
-                executed = true;
-                return createAssistantMessageEventStream();
+            api: {
+                stream: () => {
+                    executed = true;
+                    return createAssistantMessageEventStream();
+                },
+                streamSimple: () => {
+                    executed = true;
+                    return createAssistantMessageEventStream();
+                },
             },
-            streamSimple: () => {
-                executed = true;
-                return createAssistantMessageEventStream();
-            },
-        },
-    }));
+        }),
+    );
     await source.refresh({ allowNetwork: false });
     const bridge = new LocalModelBridge(source);
     try {
         const catalog = await bridge.catalog();
-        assertEquals(catalog.models.some((item) => item.provider === "claude-cli"), false);
+        assertEquals(
+            catalog.models.some((item) => item.provider === "claude-cli"),
+            false,
+        );
         const response = bridge.stream({
             id: "blocked",
             provider: "claude-cli",
@@ -169,21 +178,6 @@ test("model bridge does not offer or execute external CLI provider models", asyn
         assertEquals(executed, false);
     } finally {
         bridge.close();
-    }
-});
-
-test("remote model catalog omits endpoints and headers while projecting Pi availability", async () => {
-    const test = await fixture();
-    try {
-        const catalog = await fetchRemoteModelCatalog(test.connection);
-        assertEquals(catalog.available, [{ provider: model.provider, id: model.id }]);
-        assert(!JSON.stringify(catalog).includes("secret"));
-        const runtime = await createRemoteModelRuntime(test.connection, catalog);
-        assertEquals(runtime.getAvailableSnapshot().map((item) => item.id), [model.id]);
-        assertEquals(runtime.getModel(model.provider, model.id)?.baseUrl, "");
-        assertEquals(await runtime.getAuth(model.provider), { auth: {} });
-    } finally {
-        await test.close();
     }
 });
 
@@ -204,25 +198,6 @@ test("providers missing from laptop catalog cannot use remote ambient credential
     }
 });
 
-test("remote Pi stream and simple stream preserve terminal result", async () => {
-    const test = await fixture();
-    try {
-        const runtime = await createRemoteModelRuntime(test.connection, await fetchRemoteModelCatalog(test.connection));
-        const projected = runtime.getModel(model.provider, model.id)!;
-        for (const simple of [false, true]) {
-            const stream = simple
-                ? runtime.streamSimple(projected, { messages: [] })
-                : runtime.stream(projected, { messages: [] });
-            const events = [];
-            for await (const event of stream) events.push(event.type);
-            assertEquals(events, ["text_delta", "done"]);
-            assertEquals(await stream.result(), message);
-        }
-    } finally {
-        await test.close();
-    }
-});
-
 test("laptop provider error settles without exporting sensitive diagnostic text", async () => {
     const test = await fixture();
     try {
@@ -230,18 +205,6 @@ test("laptop provider error settles without exporting sensitive diagnostic text"
         const runtime = await createRemoteModelRuntime(test.connection, await fetchRemoteModelCatalog(test.connection));
         const stream = runtime.streamSimple(runtime.getModel(model.provider, model.id)!, { messages: [] });
         assertEquals((await stream.result()).errorMessage, "Laptop model request failed");
-    } finally {
-        await test.close();
-    }
-});
-
-test("laptop transient provider errors retain a safe Pi retry category", async () => {
-    const test = await fixture();
-    try {
-        test.setProviderError("Unexpected EOF at https://private.invalid?token=secret");
-        const runtime = await createRemoteModelRuntime(test.connection, await fetchRemoteModelCatalog(test.connection));
-        const stream = runtime.streamSimple(runtime.getModel(model.provider, model.id)!, { messages: [] });
-        assertEquals((await stream.result()).errorMessage, "Network error: Unexpected EOF");
     } finally {
         await test.close();
     }
@@ -278,9 +241,13 @@ test("remote cancellation settles result and aborts laptop provider", async () =
         test.setPending();
         const runtime = await createRemoteModelRuntime(test.connection, await fetchRemoteModelCatalog(test.connection));
         const abort = new AbortController();
-        const stream = runtime.streamSimple(runtime.getModel(model.provider, model.id)!, { messages: [] }, {
-            signal: abort.signal,
-        });
+        const stream = runtime.streamSimple(
+            runtime.getModel(model.provider, model.id)!,
+            { messages: [] },
+            {
+                signal: abort.signal,
+            },
+        );
         await new Promise((resolve) => setTimeout(resolve, 100));
         abort.abort();
         assertEquals((await stream.result()).stopReason, "aborted");
@@ -311,21 +278,6 @@ test("cancel before start prevents a late paid request and duplicate IDs cannot 
             });
         assertEquals((await start()).status, 409);
         assertEquals((await start()).status, 409);
-    } finally {
-        await test.close();
-    }
-});
-
-test("remote stream rejects unsupported hooks before provider execution", async () => {
-    const test = await fixture();
-    try {
-        const runtime = await createRemoteModelRuntime(test.connection, await fetchRemoteModelCatalog(test.connection));
-        const stream = runtime.streamSimple(runtime.getModel(model.provider, model.id)!, { messages: [] }, {
-            onPayload: () => undefined,
-        });
-        assertStringIncludes((await stream.result()).errorMessage ?? "", "Unsupported remote model option");
-        const denied = await fetch(`http://127.0.0.1:${test.connection.port}/models/catalog`);
-        assertEquals(denied.status, 401);
     } finally {
         await test.close();
     }

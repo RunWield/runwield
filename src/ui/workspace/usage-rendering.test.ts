@@ -4,8 +4,15 @@ import { openOwnerCoordinationStore } from "../../shared/owner-coordination/inde
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { createOwnerWorkspaceApp } from "./server.js";
 import { test } from "node:test";
-import { readFile as fsReadFile } from "node:fs/promises";
+
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { createRoot } from "react-dom/client";
+import { act } from "react";
+import { loadOwnerUsage } from "./server/owner-usage.ts";
+import { UsageReport } from "./react/UsageReport.tsx";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
+import { getWorkflowMetricsFilePath } from "../../shared/workflow/metrics.js";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { UsageTrend } from "../design-system/components/react/UsageTrend.tsx";
@@ -31,18 +38,108 @@ test("usage trend breaks at a gap and draws covered zero as a baseline point", (
     assertStringIncludes(html, "See the daily table for values.");
 });
 
-test("usage page exposes readable daily costs and completeness without raw activity or downloads", async () => {
-    const page = await fsReadFile(new URL("./react/UsageReport.tsx", import.meta.url), "utf8");
-    assertStringIncludes(page, "Daily values and data completeness");
-    assertStringIncludes(page, '<th scope="col">Estimated cost (USD)</th>');
-    assertStringIncludes(page, '<th scope="col">Data Complete</th>');
-    assertStringIncludes(page, 'day.gaps.length ? "Partial" : "Complete"');
-    assertStringIncludes(page, "Known subtotal:");
-    assertStringIncludes(page, 'role="status"');
-    assertStringIncludes(page, 'role="alert"');
-    for (const control of ["Recorded activity", "Download"]) {
-        assertEquals(page.includes(control), false, control);
-    }
+test("usage page renders daily costs and completeness from the real report and recovers from a failed fetch", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot: cwd }) => {
+        const journal = getWorkflowMetricsFilePath(cwd);
+        await mkdir(dirname(journal), { recursive: true });
+        await writeFile(
+            journal,
+            [
+                { v: 2, eventId: "on", event: "collection_epoch", ts: "2026-09-01T00:00:00Z", enabled: true },
+                {
+                    v: 2,
+                    eventId: "cost",
+                    event: "model_usage",
+                    ts: "2026-09-01T12:00:00Z",
+                    inputTokens: 10,
+                    outputTokens: 2,
+                    cacheReadTokens: 0,
+                    cacheWriteTokens: 0,
+                    inputCacheBasis: "excludes_cache",
+                    aggregationBasis: "turn",
+                    costAmount: 0.5,
+                    costCurrency: "USD",
+                    costSource: "calculated",
+                    backend: "pi",
+                    provider: "fixture",
+                    model: "fixture",
+                },
+                { v: 2, eventId: "off", event: "collection_epoch", ts: "2026-09-03T00:00:00Z", enabled: false },
+            ]
+                .map((row) => JSON.stringify(row))
+                .join("\n") + "\n",
+        );
+        const store = openOwnerCoordinationStore();
+        store.registerProject({ root: cwd });
+        const report = await loadOwnerUsage(store, new URLSearchParams({ start: "2026-09-01", end: "2026-09-04" }));
+        const browser = new Window({ url: "http://workspace.local/usage" });
+        let failed = true;
+        const globals = {
+            window: browser,
+            document: browser.document,
+            HTMLElement: browser.HTMLElement,
+            Node: browser.Node,
+            navigator: browser.navigator,
+            IS_REACT_ACT_ENVIRONMENT: true,
+            fetch: () =>
+                Promise.resolve(
+                    failed
+                        ? Response.json({ error: "Usage source unavailable" }, { status: 503 })
+                        : Response.json(report),
+                ),
+        };
+        const previous = new Map(
+            Object.keys(globals).map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]),
+        );
+        for (const [name, value] of Object.entries(globals))
+            Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
+        const container = document.createElement("div");
+        document.body.append(container);
+        const root = createRoot(container);
+        try {
+            await act(() => root.render(createElement(UsageReport)));
+            assertStringIncludes(
+                container.querySelector('[role="alert"]')?.textContent || "",
+                "Usage source unavailable",
+            );
+            failed = false;
+            const retry = [...container.querySelectorAll("button")].find((button) => button.textContent === "Retry");
+            if (!retry) throw new Error("Missing retry control");
+            await act(() => retry.click());
+            const summary = [...container.querySelectorAll("summary")].find(
+                (node) => node.textContent === "Daily values and data completeness",
+            );
+            if (!summary) throw new Error("Missing daily usage disclosure");
+            await act(() => summary.click());
+            const daily = [...container.querySelectorAll("table")].find((table) =>
+                table.querySelector("caption")?.textContent?.startsWith("Daily values in "),
+            );
+            if (!daily) throw new Error("Missing accessible daily usage table");
+            assertStringIncludes(daily.textContent || "", "Estimated cost (USD)");
+            assertStringIncludes(daily.textContent || "", "Data Complete");
+            assertStringIncludes(daily.textContent || "", "$0.50");
+            assertStringIncludes(daily.textContent || "", "Partial");
+            const firstDay = [...daily.querySelectorAll("tbody tr")].find(
+                (row) => row.querySelector("th")?.textContent === "2026-09-01",
+            );
+            assertEquals(firstDay?.querySelectorAll("td")[2]?.textContent, "Complete");
+            assertEquals(container.querySelector('[role="alert"]'), null);
+            assertEquals(
+                [...container.querySelectorAll("button,a")].some((node) =>
+                    /Download|Recorded activity/.test(node.textContent || ""),
+                ),
+                false,
+            );
+        } finally {
+            await act(() => root.unmount());
+            for (const [name, descriptor] of previous) {
+                if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+                else Reflect.deleteProperty(globalThis, name);
+            }
+            await browser.happyDOM.close();
+            store.close();
+        }
+    });
 });
 
 test("usage strip shows recording states and all Core delivery counts with a Settings link", () => {

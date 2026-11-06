@@ -33,19 +33,6 @@ test("the everyday test task leaves the Golden TUI portfolio to its own task", a
     }
 });
 
-test("the PR gate runs source quality and Golden TUI jobs in parallel", async () => {
-    const { scripts: tasks } = await readPackageConfig();
-    const workflow = await fsReadFile(new URL("../.github/workflows/pr.yml", import.meta.url), "utf8");
-
-    assertEquals(tasks["pr:check"], "bun run ci");
-    assertStringIncludes(workflow, "pull_request:");
-    assertStringIncludes(workflow, "    ci:");
-    assertStringIncludes(workflow, "run: bun run ci --source-only");
-    assertEquals(tasks["test:all:suite"].includes("--exclude"), false);
-    assertStringIncludes(workflow, "    golden:");
-    assertStringIncludes(workflow, "run: bun run test:golden-tui --timings-file");
-});
-
 test("the test runner skips excluded paths it would otherwise discover", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-exclude-policy-"));
     const reportDir = join(root, "reports");

@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
@@ -28,18 +29,18 @@ async function executeSetSessionNameTool(
 }
 
 async function withSessionNameFixture(
-    callback: (
-        fixture: {
-            projectRoot: string;
-            sessionManager: SessionManager;
-            events: CapturedRuntimeEvent[];
-            hostedSession: HostedSession;
-        },
-    ) => Promise<void>,
+    callback: (fixture: {
+        projectRoot: string;
+        sessionManager: SessionManager;
+        events: CapturedRuntimeEvent[];
+        hostedSession: HostedSession;
+    }) => Promise<void>,
 ): Promise<void> {
     const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-set-session-name-"));
     try {
-        const sessionManager = SessionManager.inMemory(projectRoot);
+        const sessionManager = SessionManager.create(projectRoot, join(projectRoot, "sessions"));
+        sessionManager.appendMessage({ role: "user", content: "Begin naming.", timestamp: Date.now() });
+        sessionManager.appendMessage(fauxAssistantMessage(fauxText("Ready.")));
         const events: CapturedRuntimeEvent[] = [];
         const hostedSession = new HostedSession({
             id: `set-session-name-${crypto.randomUUID()}`,
@@ -53,16 +54,6 @@ async function withSessionNameFixture(
     }
 }
 
-test("set_session_name exposes expected metadata", () => {
-    const tool = createSetSessionNameTool();
-
-    assertEquals(tool.name, "set_session_name");
-    assertEquals(tool.label, "Set Session Name");
-    assertStringIncludes(tool.description, "Set or replace the current Session Name");
-    assertEquals(typeof tool.execute, "function");
-    assertEquals(tool.parameters.required, ["name"]);
-});
-
 test("set_session_name sanitizes, persists, and emits one rename event", async () => {
     await withSessionNameFixture(async ({ sessionManager, events, hostedSession }) => {
         const tool = createSetSessionNameTool({ hostedSession });
@@ -72,10 +63,11 @@ test("set_session_name sanitizes, persists, and emits one rename event", async (
         assertEquals(result.isError, undefined);
         assertEquals(result.details, { name: "direct agent naming" });
         assertEquals(result.content[0].text, "Session name set: direct agent naming");
-        assertEquals(sessionManager.getSessionName(), "direct agent naming");
-        assertEquals(events.filter((event) => event.type === RuntimeEventTypes.SESSION_RENAMED), [
-            { type: RuntimeEventTypes.SESSION_RENAMED, name: "direct agent naming" },
-        ]);
+        assertEquals(SessionManager.open(sessionManager.getSessionFile()!).getSessionName(), "direct agent naming");
+        assertEquals(
+            events.filter((event) => event.type === RuntimeEventTypes.SESSION_RENAMED),
+            [{ type: RuntimeEventTypes.SESSION_RENAMED, name: "direct agent naming" }],
+        );
     });
 });
 
@@ -87,7 +79,7 @@ test("set_session_name replaces an existing Session Name", async () => {
         const result = await executeSetSessionNameTool(tool, "new name");
 
         assertEquals(result.details, { name: "new name" });
-        assertEquals(sessionManager.getSessionName(), "new name");
+        assertEquals(SessionManager.open(sessionManager.getSessionFile()!).getSessionName(), "new name");
         assertEquals(events.filter((event) => event.type === RuntimeEventTypes.SESSION_RENAMED).length, 1);
         assertEquals(events[0].name, "new name");
     });

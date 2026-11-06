@@ -2,7 +2,7 @@
 import { loadPlan } from "../../plan-store.js";
 import { findWorkRecordById, replaceWorkRecord } from "./store.js";
 import { approveWorkRecord } from "./lifecycle.ts";
-import { formatWorkRecordMarkdown } from "./markdown.js";
+import { formatWorkRecordMarkdown } from "./markdown.ts";
 import { syncWorkRecordToIndex } from "./index-adapter.ts";
 import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
 

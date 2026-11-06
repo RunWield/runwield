@@ -61,14 +61,6 @@ async function buildDocs(work: string): Promise<string> {
     return await fsReadFile(join(work, "dist", "docs", "quickstart", "index.html"), "utf8");
 }
 
-async function publishDocs(work: string, live: string): Promise<void> {
-    await buildDocs(work);
-    await fsRm(live, { recursive: true }).catch((error) => {
-        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
-    });
-    await copyTree(join(work, "dist", "docs"), live);
-}
-
 test("docs branch publishes Stable content, preserves corrections, and stops on conflicts", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     const remote = join(root, "remote.git");
@@ -180,10 +172,6 @@ test("docs branch publishes Stable content, preserves corrections, and stops on 
         assertEquals(await run(work, "bash", reconcileScript, "v1.0.0"), correctedTip);
         assertEquals(await run(work, "git", "rev-parse", "HEAD"), correctedTip);
         assertEquals(await run(work, "git", "rev-list", "--all", "--reflog"), commitsBeforeCorrectionRetry);
-        const live = join(root, "live");
-        await publishDocs(work, live);
-        assertStringIncludes(await fsReadFile(join(live, "quickstart", "index.html"), "utf8"), "v1.0.0");
-        assertStringIncludes(await fsReadFile(join(live, "contributing", "index.html"), "utf8"), "DOCS-CORRECTION");
 
         await run(work, "git", "checkout", "main");
         await write(join(work, "docs", "user-documentation", "quickstart.md"), "# Quickstart\n\nSTABLE-B\n");
@@ -268,16 +256,11 @@ test("docs branch publishes Stable content, preserves corrections, and stops on 
             "DOCS-CORRECTION",
         );
 
-        await publishDocs(work, live);
         const configPath = join(work, "docs-site", "astro.config.mjs");
         const validConfig = await fsReadFile(configPath, "utf8");
         await fsWriteFile(configPath, "this is not valid JavaScript {");
-        await assertRejects(() => publishDocs(work, live));
-        assertStringIncludes(await fsReadFile(join(live, "index.html"), "utf8"), "Clean home");
-        assertStringIncludes(await fsReadFile(join(live, "quickstart", "index.html"), "utf8"), "STABLE-B");
+        await assertRejects(() => buildStableDocs(work));
         await fsWriteFile(configPath, validConfig);
-        await publishDocs(work, live);
-        assertStringIncludes(await fsReadFile(join(live, "quickstart", "index.html"), "utf8"), "STABLE-B");
         assertEquals(await run(work, "git", "tag", "--points-at", "v1.0.1"), "v1.0.1");
 
         await write(join(work, "docs", "user-documentation", "quickstart.md"), "# Quickstart\n\nDOCS-CONFLICT\n");

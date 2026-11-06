@@ -1,4 +1,5 @@
 // @ts-nocheck: Deno test imports are checked by scripts/run-tests.js, not Astro check.
+// @ts-nocheck: Deno test imports are checked by scripts/run-tests.js, not Astro check.
 import {
     mkdtemp as fsMkdtemp,
     readFile as fsReadFile,
@@ -15,34 +16,23 @@ import { addEntry, getWorktreeRegistryPath } from "../../shared/worktree-registr
 import { createPublicationAttempt, recordPublicationFailure } from "../../shared/workflow/publication-attempt.ts";
 import { makeValidationCheckpoint } from "../../shared/workflow/validation-checkpoint.ts";
 import { loadOwnerPlanProgress } from "./server/owner-plan-progress.ts";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { makeManagedSessionFixture, readTranscriptEvidence } from "../../testing/managed-session-fixture.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 
 const publicationFixture = defineCommittedGitFixture({ "README.md": "Before publication\n" });
 
-type StoreProject = { currentRoot: string };
-type StoreSession = { runwieldSessionId: string; projectId: string; displayName: string; transcriptCwd: string };
-
-function makeStore(projectRoot: string) {
-    return {
-        getProjectById(projectId: string): StoreProject | null {
-            return projectId === "project-1" ? { currentRoot: projectRoot } : null;
-        },
-        requireEnabledProjectRoot(projectId: string): string {
-            if (projectId !== "project-1") throw new Error("Project not found.");
-            return projectRoot;
-        },
-        getSessionById(_runwieldSessionId: string): StoreSession | null {
-            return null;
-        },
-        inspectSessionActivation(_runwieldSessionId: string) {
-            return {};
-        },
-        listSessionTranscriptSegments(_runwieldSessionId: string) {
-            return [];
-        },
-    };
+async function loadProgress(projectRoot: string, options: Parameters<typeof loadOwnerPlanProgress>[1]) {
+    const directory = await fsMkdtemp(join(tmpdir(), "progress-owner-store-"));
+    const store = openOwnerCoordinationStore({ dbPath: join(directory, "owner.sqlite3") });
+    try {
+        const project = store.registerProject({ root: projectRoot });
+        return await loadOwnerPlanProgress(store, { ...options, projectId: project.projectId });
+    } finally {
+        store.close();
+        await fsRm(directory, { recursive: true, force: true });
+    }
 }
 
 async function readIfExists(path: string) {
@@ -80,19 +70,19 @@ test("Workspace progress does not infer publication from a remote or tracking re
             },
         });
         const options = { projectId: "project-1", planId: "wording-id" };
-        const before = await loadOwnerPlanProgress(makeStore(projectRoot), options);
+        const before = await loadProgress(projectRoot, options);
         assertEquals(before.overall.settled, false);
         const planPath = `${projectRoot}/docs/plans/wording.md`;
         const originalPlan = await fsReadFile(planPath, "utf8");
         await git(projectRoot, ["push", "origin", "candidate:main"]);
 
-        const after = await loadOwnerPlanProgress(makeStore(projectRoot), options);
+        const after = await loadProgress(projectRoot, options);
         assertEquals(after.overall.state, before.overall.state);
         assertEquals(after.overall.settled, false);
         assertEquals(after.plan.status, "ready_for_work");
         // Even a refreshed local ref cannot establish fresh remote publication proof.
         await git(projectRoot, ["fetch", "origin"]);
-        assertEquals((await loadOwnerPlanProgress(makeStore(projectRoot), options)).overall.settled, false);
+        assertEquals((await loadProgress(projectRoot, options)).overall.settled, false);
         assertEquals(await git(projectRoot, ["rev-parse", "HEAD"]), originalHead);
         assertEquals(await fsReadFile(`${projectRoot}/README.md`, "utf8"), "Before publication\n");
         assertEquals(await fsReadFile(planPath, "utf8"), originalPlan);
@@ -218,7 +208,7 @@ test("Workspace progress uses the authoritative execution Plan and never mutates
         registry: await readIfExists(registryPath),
     };
     try {
-        const progress = await loadOwnerPlanProgress(makeStore(projectRoot), {
+        const progress = await loadProgress(projectRoot, {
             projectId: "project-1",
             planId: "feature-a-id",
         });
@@ -226,7 +216,6 @@ test("Workspace progress uses the authoritative execution Plan and never mutates
         assertEquals(progress.stages.find((stage) => stage.id === "execution")?.state, "passed");
         assertEquals(progress.stages.find((stage) => stage.id === "mechanical")?.state, "passed");
         assertEquals(progress.stages.find((stage) => stage.id === "semantic")?.state, "needs_attention");
-        assertEquals(progress.stages.find((stage) => stage.id === "mechanical")?.state, "passed");
         assertEquals(
             progress.progressFacts.some((fact) => fact.kind === "validation_checkpoint" && fact.phase === "semantic"),
             true,
@@ -303,7 +292,7 @@ test("Workspace progress shows publication states without treating reviewed work
         updatedAt: "2026-01-01T00:00:01.000Z",
     });
     try {
-        const progress = await loadOwnerPlanProgress(makeStore(projectRoot), {
+        const progress = await loadProgress(projectRoot, {
             projectId: "project-1",
             planId: "feature-b-id",
         });
@@ -340,7 +329,7 @@ test("Workspace progress retains saved publication proof after cleanup and inval
         const before = await fsReadFile(`${projectRoot}/docs/plans/receipt.md`, "utf8");
         const options = { projectId: "project-1", planId: "receipt-id" };
         for (let repeat = 0; repeat < 2; repeat++) {
-            const progress = await loadOwnerPlanProgress(makeStore(projectRoot), options);
+            const progress = await loadProgress(projectRoot, options);
             assertEquals(progress.overall.state, "completed");
             assertEquals(progress.plan.status, "verified");
         }
@@ -351,7 +340,7 @@ test("Workspace progress retains saved publication proof after cleanup and inval
             event: "review_reopened",
             currentStatus: "verified",
         });
-        const reopened = await loadOwnerPlanProgress(makeStore(projectRoot), options);
+        const reopened = await loadProgress(projectRoot, options);
         assertEquals(reopened.overall.settled, false);
         assertEquals(reopened.plan.status, "draft");
         await recordPlanEvent({
@@ -373,7 +362,7 @@ test("Workspace progress retains saved publication proof after cleanup and inval
             currentStatus: "ready_for_work",
             details: { nonGitInPlace: true },
         });
-        const execution = await loadOwnerPlanProgress(makeStore(projectRoot), options);
+        const execution = await loadProgress(projectRoot, options);
         assertEquals(execution.plan.status, "in_progress");
         assertEquals(execution.overall.settled, false);
         const { findPlanById } = await import("../../plan-store.js");
@@ -399,7 +388,7 @@ test("raw verified status without publication proof stays unconfirmed and unsett
                 targetHeadBeforeMerge: commit,
             },
         });
-        const progress = await loadOwnerPlanProgress(makeStore(projectRoot), {
+        const progress = await loadProgress(projectRoot, {
             projectId: "project-1",
             planId: "unconfirmed-id",
         });

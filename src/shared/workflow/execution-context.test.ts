@@ -74,7 +74,11 @@ test("resolveValidationExecutionContext preserves active QUICK_FIX non-Git execu
 });
 
 test("resolveValidationExecutionContext preserves an explicit QUICK_FIX worktree", async () => {
-    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
+    const cwd = await baseRepo.checkout();
+    const parent = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
+    const worktreePath = join(parent, "execution");
+    await git(cwd, ["worktree", "add", "-b", "worktree/p", worktreePath, "HEAD"]);
+    const baselineTree = await git(worktreePath, ["rev-parse", "HEAD^{tree}"]);
     try {
         await savePlan(cwd, "p", "# Plan", { classification: "QUICK_FIX", status: "validated_ci" });
         const result = await resolveValidationExecutionContext({
@@ -84,8 +88,8 @@ test("resolveValidationExecutionContext preserves an explicit QUICK_FIX worktree
             explicitContext: {
                 planName: "p",
                 executionMode: "worktree",
-                executionCwd: "/worktree-p",
-                baselineTree: "tree-p",
+                executionCwd: worktreePath,
+                baselineTree: baselineTree,
                 worktreeId: "wt-p",
                 worktreeBranch: "worktree/p",
                 worktreeBaseBranch: "main",
@@ -94,11 +98,12 @@ test("resolveValidationExecutionContext preserves an explicit QUICK_FIX worktree
         assertEquals(result.kind, "ok");
         if (result.kind === "ok") assertEquals(result.context.executionMode, "worktree");
         if (result.kind === "ok" && result.context.executionMode === "worktree") {
-            assertEquals(result.context.executionCwd, "/worktree-p");
-            assertEquals(result.context.baselineTree, "tree-p");
+            assertEquals(result.context.executionCwd, worktreePath);
+            assertEquals(result.context.baselineTree, baselineTree);
             assertEquals(result.context.worktreeId, "wt-p");
         }
     } finally {
+        await fsRm(parent, { recursive: true });
         await fsRm(cwd, { recursive: true });
     }
 });

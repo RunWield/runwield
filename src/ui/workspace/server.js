@@ -7,7 +7,7 @@ import { readWorkspaceStyles } from "./workspace-styles.ts";
 import { sessionArtifactKindLabel } from "../../shared/session/session-sidebar.ts";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { pathToFileURL as toFileUrl } from "node:url";
-import { parseWorkRecordMarkdown } from "../../shared/work-records/markdown.js";
+import { parseWorkRecordMarkdown } from "../../shared/work-records/markdown.ts";
 import { workRecordNotices } from "../../shared/work-records/list.ts";
 import { isEpicArtifactPlanName } from "../../shared/epic-artifacts.ts";
 import { RUNWIELD_ROOT, RUNWIELD_SOURCE_ROOT } from "../../../runtime-root.js";
@@ -29,8 +29,8 @@ import {
     reviewDenyApi,
     reviewExitApi,
     reviewFeedbackApi,
-} from "./routes/api/review-handlers.js";
-import { openRemoteWorkspaceAdapter } from "./server/remote-adapter.js";
+} from "./routes/api/review-handlers.ts";
+import { openRemoteWorkspaceAdapter } from "./server/remote-adapter.ts";
 import { escapeReviewPayloadJson } from "./server/review-payload-json.ts";
 import { withAccessLogger } from "./server-access-logger.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../../shared/work-records/mnemoteca-port.ts";
@@ -148,7 +148,7 @@ const WORKSPACE_PLAN_ADAPTER_URL_KEY = Symbol.for("runwield.workspace.plan-adapt
 ).href;
 
 /** @typedef {{ handler: () => (request: Request) => Promise<Response> }} WorkspaceApp */
-/** @typedef {WorkspaceApp & { adapter: import("./server/remote-adapter.js").RemoteWorkspaceAdapter }} RemoteWorkspaceApp */
+/** @typedef {WorkspaceApp & { adapter: import("./server/remote-adapter.ts").RemoteWorkspaceAdapter }} RemoteWorkspaceApp */
 const REVIEW_PAYLOAD_HEADER = "x-runwield-review-payload";
 const QUESTION_PAYLOAD_HEADER = "x-runwield-question-payload";
 
@@ -1553,7 +1553,7 @@ export function startSessionQuestionWorkspaceServer(options) {
  * @property {number} [port]
  * @property {AbortSignal} [signal]
  * @property {ReviewServerOutputListener} [onOutput]
- * @property {import("./routes/api/review-handlers.js").ReviewDecisionSink} [onDecision]
+ * @property {import("./routes/api/review-handlers.ts").ReviewDecisionSink} [onDecision]
  * @property {ReviewPageOpenListener} [onReviewOpen]
  */
 

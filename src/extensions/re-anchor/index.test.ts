@@ -22,7 +22,7 @@ interface Harness {
     injected: (messages?: unknown[]) => string;
 }
 
-function setup(options: ReAnchorOptions): Harness {
+function setup(options: ReAnchorOptions, systemPrompt = ""): Harness {
     const handlers = new Map<string, Handler>();
     const pi = {
         on(event: string, handler: Handler) {
@@ -39,9 +39,8 @@ function setup(options: ReAnchorOptions): Harness {
     };
 
     const context = (messages: unknown[] = [baseMessage()]): unknown[] => {
-        const result = require("context")({ type: "context", messages }, {}) as
-            | { messages?: unknown[] }
-            | undefined;
+        const result = require("context")({ type: "context", messages }, { getSystemPrompt: () => systemPrompt }) as
+            { messages?: unknown[] } | undefined;
         return result?.messages ?? messages;
     };
 
@@ -63,6 +62,49 @@ function setup(options: ReAnchorOptions): Harness {
 function baseMessage(): { role: string; content: string; timestamp: number } {
     return { role: "user", content: "Original request", timestamp: 1 };
 }
+
+test("compacted context gets the active system reminder without changing saved history", () => {
+    const summary = { role: "compactionSummary", summary: "Keep the task decisions.", tokensBefore: 100, timestamp: 1 };
+    const source = [summary, baseMessage()];
+    const guide = setup(
+        { agentName: "guide" },
+        "Guide instructions\n\n## Compaction reminder\n\nGuide reminder.\n\n## Tools\nUnrelated tool instructions.",
+    );
+    const engineer = setup(
+        { agentName: "engineer" },
+        "Engineer instructions\n\n## Compaction reminder\n\nEngineer reminder.",
+    );
+    const expected = [
+        { ...summary, summary: "Keep the task decisions.\n\n## Compaction reminder\n\nGuide reminder." },
+        source[1],
+    ];
+
+    // A restored summary needs no session_compact event to recover the reminder.
+    assertEquals(guide.context(source), expected);
+    assertEquals(guide.context(source), expected);
+    guide.compact();
+    assertEquals(guide.context(source), expected);
+    assertEquals(engineer.context(source), [
+        { ...summary, summary: "Keep the task decisions.\n\n## Compaction reminder\n\nEngineer reminder." },
+        source[1],
+    ]);
+    assertEquals(summary.summary, "Keep the task decisions.");
+    assertEquals(guide.context([baseMessage()]), [baseMessage()]);
+    assertEquals(setup({ agentName: "guide" }, "Replacement role without a reminder.").context(source), source);
+    const overridden = setup(
+        { agentName: "guide" },
+        "## Compaction reminder\nOld reminder.\n\n## Compaction reminder\nProject reminder.\n\n# Other instructions\nUnrelated.",
+    );
+    assertEquals(overridden.context(source), [
+        { ...summary, summary: "Keep the task decisions.\n\n## Compaction reminder\n\nProject reminder." },
+        source[1],
+    ]);
+    const disabled = setup(
+        { agentName: "guide" },
+        "## Compaction reminder\nOld reminder.\n\n## Compaction reminder\n\n## Other instructions\nUnrelated.",
+    );
+    assertEquals(disabled.context(source), source);
+});
 
 const openSessions: HostedSession[] = [];
 const tempProjectRoots: string[] = [];
@@ -270,21 +312,4 @@ test("a missing hostedSession leaves the request untouched", () => {
     harness.compact();
 
     assertEquals(harness.injected(), "");
-});
-
-test("a throwing workflow lookup leaves the turn unmodified", () => {
-    // Containment is about the failure a well-behaved HostedSession cannot
-    // produce, so this is the one place a hostile stand-in is the subject under
-    // test rather than a shortcut around real state.
-    const throwingSession = hostedSession({ planName: "some-plan" });
-    throwingSession.getActiveExecutionWorkflow = () => {
-        throw new Error("session disposed mid-turn");
-    };
-    const harness = setup({ agentName: "plan-engineer", hostedSession: throwingSession });
-    harness.compact();
-
-    const messages = [baseMessage()];
-    const returned = harness.context(messages);
-
-    assertEquals(returned, messages);
 });

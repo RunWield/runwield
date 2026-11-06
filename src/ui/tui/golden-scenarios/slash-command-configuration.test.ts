@@ -14,7 +14,6 @@ import {
     slashMcpScenario,
     slashModelScenario,
     slashModelUnavailableOverrideRecoveryScenario,
-    slashSettingsScenario,
     slashThemeScenario,
 } from "./slash-command-tree-configuration.ts";
 
@@ -40,5 +39,4 @@ registerSlashCommandGoldenTests("src/ui/tui/golden-scenarios/slash-command-tree-
         exportName: "slashModelUnavailableOverrideRecoveryScenario",
     },
     { scenario: slashThemeScenario, exportName: "slashThemeScenario" },
-    { scenario: slashSettingsScenario, exportName: "slashSettingsScenario" },
 ]);

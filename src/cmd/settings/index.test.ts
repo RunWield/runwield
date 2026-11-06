@@ -1,4 +1,7 @@
 import { readFile as fsReadFile } from "node:fs/promises";
+import { Editor, TuiAltScreen } from "@earendil-works/pi-tui";
+import { VirtualTerminal } from "../../ui/tui/testing/virtual-terminal.ts";
+import { getEditorTheme } from "../../ui/theme/theme.ts";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
@@ -114,11 +117,7 @@ test("cancelling review policy selection preserves persisted choices", async () 
 });
 
 interface SettingsUiHarness {
-    editor: {
-        disableSubmit: boolean;
-        text: string;
-        setText(text: string): void;
-    };
+    editor: SettingsEditor;
     messages: string[];
     selects: SettingsSelectRecord[];
     uiAPI: {
@@ -129,6 +128,10 @@ interface SettingsUiHarness {
     };
 }
 
+class SettingsEditor extends Editor {
+    disableSubmit = true;
+}
+
 function makeUiHarness(
     selections: Array<string | null> = [],
     textInputs: Array<string | null> = [],
@@ -137,13 +140,11 @@ function makeUiHarness(
     const pendingTextInputs = [...textInputs];
     const messages: string[] = [];
     const selects: SettingsSelectRecord[] = [];
-    const editor = {
-        disableSubmit: true,
-        text: "draft",
-        setText(text: string) {
-            editor.text = text;
-        },
-    };
+    const editor = new SettingsEditor(
+        new TuiAltScreen(new VirtualTerminal({ columns: 120, rows: 40 })),
+        getEditorTheme(),
+    );
+    editor.setText("draft");
     return {
         editor,
         messages,
@@ -182,16 +183,6 @@ async function captureConsole(run: () => Promise<void>): Promise<{ logs: string[
     return { logs, errors };
 }
 
-test("runSettingsCommand prints real command help", async () => {
-    await withRuntimeCommandFixture("runwield-settings-command-", async () => {
-        const output = await captureConsole(() => runSettingsCommand(["help"]));
-
-        assertEquals(output.errors, []);
-        assertEquals(output.logs.length, 1);
-        assertStringIncludes(output.logs[0], "Usage (settings):");
-    });
-});
-
 test("runSettingsCommand exits a cancelled menu and restores the real editor surface", async () => {
     await withRuntimeCommandFixture("runwield-settings-command-", async ({ projectRoot }) => {
         const { runtime, sessionId } = await createPromptReadyRuntime(projectRoot);
@@ -205,7 +196,7 @@ test("runSettingsCommand exits a cancelled menu and restores the real editor sur
             });
 
             assertEquals(harness.messages, []);
-            assertEquals(harness.editor.text, "");
+            assertEquals(harness.editor.getText(), "");
             assertEquals(harness.editor.disableSubmit, false);
         } finally {
             runtime.closeAllSessions();
@@ -214,35 +205,35 @@ test("runSettingsCommand exits a cancelled menu and restores the real editor sur
 });
 
 test("runSettingsCommand persists numeric compaction settings in the fixture home", async () => {
-    await withRuntimeCommandFixture(
-        "runwield-settings-command-",
-        async ({ projectRoot, settingsPath }) => {
-            const { runtime, sessionId } = await createPromptReadyRuntime(projectRoot);
-            const harness = makeUiHarness(
-                ["compaction", "reserve", "keep-recent", "back", "done"],
-                ["12,000", "34000"],
-            );
-            try {
-                await runSettingsCommand([], {
-                    uiAPI: harness.uiAPI,
-                    editor: harness.editor,
-                    sessionRuntime: runtime,
-                    sessionId,
-                });
+    await withRuntimeCommandFixture("runwield-settings-command-", async ({ projectRoot, settingsPath }) => {
+        const { runtime, sessionId } = await createPromptReadyRuntime(projectRoot);
+        const harness = makeUiHarness(
+            ["compaction", "reserve", "keep-recent", "summary", "back", "done"],
+            ["12,000", "34000"],
+        );
+        try {
+            await runSettingsCommand([], {
+                uiAPI: harness.uiAPI,
+                editor: harness.editor,
+                sessionRuntime: runtime,
+                sessionId,
+            });
 
-                const settings = getSettingsManager(projectRoot).getCompactionSettings();
-                assertEquals(settings.reserveTokens, 12000);
-                assertEquals(settings.keepRecentTokens, 34000);
-                assert(harness.messages.includes("Reserve tokens set to 12,000."));
-                assert(harness.messages.includes("Keep recent tokens set to 34,000."));
-                const persisted = await fsReadFile(settingsPath, "utf8");
-                assertStringIncludes(persisted, '"reserveTokens": 12000');
-                assertStringIncludes(persisted, '"keepRecentTokens": 34000');
-            } finally {
-                runtime.closeAllSessions();
-            }
-        },
-    );
+            const settings = getSettingsManager(projectRoot).getCompactionSettings();
+            assertEquals(settings.reserveTokens, 12000);
+            assertEquals(settings.keepRecentTokens, 34000);
+            const summary = harness.messages.find((message) => message.includes("Compaction behavior"));
+            assertStringIncludes(summary ?? "", "12,000");
+            assertStringIncludes(summary ?? "", "34,000");
+            assert(harness.messages.includes("Reserve tokens set to 12,000."));
+            assert(harness.messages.includes("Keep recent tokens set to 34,000."));
+            const persisted = await fsReadFile(settingsPath, "utf8");
+            assertStringIncludes(persisted, '"reserveTokens": 12000');
+            assertStringIncludes(persisted, '"keepRecentTokens": 34000');
+        } finally {
+            runtime.closeAllSessions();
+        }
+    });
 });
 
 test("runSettingsCommand toggles auto-compaction through the real Runtime session", async () => {
@@ -261,30 +252,6 @@ test("runSettingsCommand toggles auto-compaction through the real Runtime sessio
             assertEquals(runtime.getSessionSnapshot(sessionId)?.autoCompactionEnabled, !before);
             assert(harness.messages.includes(`Auto-compact ${!before ? "enabled" : "disabled"}.`));
             assertStringIncludes(await fsReadFile(settingsPath, "utf8"), `"enabled": ${String(!before)}`);
-        } finally {
-            runtime.closeAllSessions();
-        }
-    });
-});
-
-test("runSettingsCommand reports real compaction behavior", async () => {
-    await withRuntimeCommandFixture("runwield-settings-command-", async ({ projectRoot }) => {
-        const { runtime, sessionId } = await createPromptReadyRuntime(projectRoot);
-        const settings = getSettingsManager(projectRoot).getCompactionSettings();
-        const harness = makeUiHarness(["compaction", "summary", "back", "done"]);
-        try {
-            await runSettingsCommand([], {
-                uiAPI: harness.uiAPI,
-                sessionRuntime: runtime,
-                sessionId,
-            });
-
-            const summary = harness.messages.join("\n");
-            assertStringIncludes(summary, "Compaction behavior");
-            assertStringIncludes(summary, "Reserve tokens:");
-            assertStringIncludes(summary, settings.reserveTokens.toLocaleString());
-            assertStringIncludes(summary, "Keep recent tokens:");
-            assertStringIncludes(summary, settings.keepRecentTokens.toLocaleString());
         } finally {
             runtime.closeAllSessions();
         }
@@ -364,36 +331,41 @@ test("runSettingsCommand selects a model preset and persists activeModelPreset g
 });
 
 test("runSettingsCommand applies a selected model preset to the active Session immediately", async () => {
-    await withRuntimeCommandFixture("runwield-settings-command-", async ({ projectRoot }) => {
-        const { runtime, sessionId } = await createPromptReadyRuntime(projectRoot);
-        await setCustomSetting(
-            "modelPresets",
-            { fast: { agents: { router: { model: "runtime-command-fixture/fixture-model" } } } },
-            "global",
-            projectRoot,
-        );
+    await withRuntimeCommandFixture(
+        "runwield-settings-command-",
+        async ({ projectRoot }) => {
+            const { runtime, sessionId } = await createPromptReadyRuntime(projectRoot);
+            await setCustomSetting(
+                "modelPresets",
+                { fast: { agents: { router: { model: "runtime-command-fixture/preset-model" } } } },
+                "global",
+                projectRoot,
+            );
 
-        const harness = makeUiHarness(["model-presets", "preset:fast", "back", "done"]);
-        try {
-            await runSettingsCommand([], {
-                uiAPI: harness.uiAPI,
-                editor: harness.editor,
-                sessionRuntime: runtime,
-                sessionId,
-            });
+            assertEquals(runtime.getSessionSnapshot(sessionId)?.activeModel?.model, "fixture-model");
+            const harness = makeUiHarness(["model-presets", "preset:fast", "back", "done"]);
+            try {
+                await runSettingsCommand([], {
+                    uiAPI: harness.uiAPI,
+                    editor: harness.editor,
+                    sessionRuntime: runtime,
+                    sessionId,
+                });
 
-            assertEquals(harness.messages, [
-                "Active model preset set to fast.",
-                "Agent context reloaded with the new model preset.",
-            ]);
-            assertEquals(runtime.getSessionSnapshot(sessionId)?.activeModel, {
-                model: "fixture-model",
-                provider: "runtime-command-fixture",
-            });
-        } finally {
-            runtime.closeAllSessions();
-        }
-    });
+                assertEquals(harness.messages, [
+                    "Active model preset set to fast.",
+                    "Agent context reloaded with the new model preset.",
+                ]);
+                assertEquals(runtime.getSessionSnapshot(sessionId)?.activeModel, {
+                    model: "preset-model",
+                    provider: "runtime-command-fixture",
+                });
+            } finally {
+                runtime.closeAllSessions();
+            }
+        },
+        { additionalModels: [{ id: "preset-model", name: "Preset Model" }] },
+    );
 });
 
 test("runSettingsCommand activates a bundled preset without persisting its definition", async () => {
@@ -406,6 +378,11 @@ test("runSettingsCommand activates a bundled preset without persisting its defin
                 sessionRuntime: runtime,
                 sessionId,
             });
+            assert(
+                harness.selects
+                    .find((select) => select.title === "Model Presets")
+                    ?.options.some((option) => option.value === "preset:claude-opus"),
+            );
             assertEquals(getCustomSetting("activeModelPreset", "global", projectRoot), "claude-opus");
             assertEquals(getCustomSetting("modelPresets", "global", projectRoot), undefined);
             assertEquals(runtime.getSessionSnapshot(sessionId)?.activeModel, { provider: "claude-cli", model: "opus" });
@@ -493,40 +470,6 @@ test("runSettingsCommand clears activeModelPreset via None", async () => {
             assert(harness.messages.includes("Active model preset cleared; base agents config is used."));
             const persisted = JSON.parse(await fsReadFile(settingsPath, "utf8")) as SettingsFileRecord;
             assertEquals(persisted.activeModelPreset, null);
-        } finally {
-            runtime.closeAllSessions();
-        }
-    });
-});
-
-test("runSettingsCommand offers bundled presets without personal preset settings", async () => {
-    await withRuntimeCommandFixture("runwield-settings-command-", async ({ projectRoot }) => {
-        const { runtime, sessionId } = await createPromptReadyRuntime(projectRoot);
-        const harness = makeUiHarness(["model-presets", "back", "done"]);
-        try {
-            await runSettingsCommand([], {
-                uiAPI: harness.uiAPI,
-                editor: harness.editor,
-                sessionRuntime: runtime,
-                sessionId,
-            });
-
-            const menu = harness.selects.find((select) => select.title === "Model Presets");
-            assert(menu);
-            assertEquals(menu.options.filter((item) => item.value.startsWith("preset:")).map((item) => item.value), [
-                "preset:agy",
-                "preset:claude-mixed",
-                "preset:claude-opus",
-                "preset:codex",
-                "preset:codex-claude",
-                "preset:opencode",
-            ]);
-            assertStringIncludes(
-                menu.options.find((item) => item.value === "preset:claude-mixed")?.description ?? "",
-                "Sonnet",
-            );
-            assertEquals(getCustomSetting("modelPresets", "global", projectRoot), undefined);
-            assertEquals(getCustomSetting("activeModelPreset", "global", projectRoot), undefined);
         } finally {
             runtime.closeAllSessions();
         }

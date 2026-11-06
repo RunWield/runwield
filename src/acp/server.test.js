@@ -18,7 +18,14 @@ import process from "node:process";
 
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes, assertThrows } from "../testing/assertions.ts";
-import { fauxAssistantMessage, fauxText, fauxToolCall, getSystemMessageText } from "@earendil-works/pi-ai";
+import {
+    createAssistantMessageEventStream,
+    fauxAssistantMessage,
+    fauxText,
+    fauxToolCall,
+    getSystemMessageText,
+} from "@earendil-works/pi-ai";
+import { registerApiProvider, unregisterApiProviders } from "@earendil-works/pi-ai/compat";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
@@ -29,16 +36,10 @@ import { __resetSettingsForTests, setCustomSetting } from "../shared/settings.js
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../shared/workflow/metrics.js";
 import { createRootSessionManager, resolveCreatedRootSessionPath } from "../shared/session/root-session.js";
 import { VERSION } from "../shared/version.js";
-import { mapRuntimeEventToAcpUpdate } from "./event-mapper.js";
-import { createAcpInteractionAdapter } from "./interaction-mapper.js";
+import { mapRuntimeEventToAcpUpdate } from "./event-mapper.ts";
+/** @typedef {import("@agentclientprotocol/sdk").ContentChunk} AcpContentChunk */
 import { assertAcpFrameSchema, assertAcpSchema } from "./schema-conformance.ts";
-import { AcpSessionMap } from "./session-map.ts";
-import {
-    createInitializeResponse,
-    mapEventWithSessionCost,
-    startRunWieldAcpServer,
-    validateNewSessionParams,
-} from "./server.js";
+import { startRunWieldAcpServer } from "./server.js";
 
 /**
  * @typedef {Object} TestServerHandle
@@ -445,51 +446,6 @@ async function createIdleUngeneratedPersistedSession(cwd) {
     }
 }
 
-test("createInitializeResponse advertises only implemented ACP capabilities", () => {
-    const response = createInitializeResponse({ protocolVersion: 1 });
-    const capabilities = /** @type {any} */ (response.agentCapabilities);
-
-    assertEquals(response.protocolVersion, 1);
-    assertEquals(capabilities.promptCapabilities.image, true);
-    assertEquals(capabilities.promptCapabilities._meta.runwield.contentTypes, ["text", "image", "resource_link"]);
-    assertEquals(capabilities.loadSession, true);
-    assertEquals(capabilities.sessionCapabilities.close, {});
-    assertEquals(capabilities.sessionCapabilities.delete, {});
-    assertEquals(capabilities.sessionCapabilities._meta.runwield.implementedMethods, [
-        "session/new",
-        "session/load",
-        "session/prompt",
-        "_session/steering",
-        "session/cancel",
-        "session/close",
-        "session/delete",
-        "session/set_config_option",
-    ]);
-    assertEquals(response.authMethods, []);
-    assertEquals(response.agentInfo?.name, "RunWield");
-});
-
-test("createInitializeResponse advertises Terminal Auth only to capable clients", () => {
-    assertEquals(
-        createInitializeResponse({ protocolVersion: 1, clientCapabilities: { auth: { terminal: true } } }).authMethods,
-        [TERMINAL_AUTH_METHOD],
-    );
-    assertEquals(
-        createInitializeResponse({ protocolVersion: 1, clientCapabilities: { _meta: { "terminal-auth": true } } })
-            .authMethods,
-        [TERMINAL_AUTH_METHOD],
-    );
-    assertEquals(createInitializeResponse({ protocolVersion: 1, clientCapabilities: {} }).authMethods, []);
-    assertEquals(
-        createInitializeResponse({ protocolVersion: 1, clientCapabilities: { auth: { terminal: false } } }).authMethods,
-        [],
-    );
-    assertEquals(
-        createInitializeResponse({ protocolVersion: 1, clientCapabilities: { terminal: true } }).authMethods,
-        [],
-    );
-});
-
 test("ACP server handles the registry initialize request with one Terminal Auth method", async () => {
     const handle = startTestServer();
     try {
@@ -498,6 +454,35 @@ test("ACP server handles the registry initialize request with one Terminal Auth 
         assertEquals(response.id, "registry-initialize");
         assertEquals(response.result.agentInfo.name, "RunWield");
         assertEquals(response.result.authMethods, [TERMINAL_AUTH_METHOD]);
+        const capabilities = response.result.agentCapabilities;
+        assertEquals(capabilities.promptCapabilities.image, true);
+        assertEquals(capabilities.loadSession, true);
+        assertEquals(capabilities.sessionCapabilities.close, {});
+        assertEquals(capabilities.sessionCapabilities.delete, {});
+        assertEquals(capabilities.promptCapabilities._meta.runwield.contentTypes, ["text", "image", "resource_link"]);
+    } finally {
+        await closeTestServer(handle);
+    }
+});
+
+test("ACP initialize negotiates Terminal Auth with supported client capabilities", async () => {
+    const handle = startTestServer();
+    try {
+        for (const [clientCapabilities, supported] of [
+            [{ auth: { terminal: true } }, true],
+            [{ _meta: { "terminal-auth": true } }, true],
+            [{}, false],
+            [{ auth: { terminal: false } }, false],
+            [{ terminal: true }, false],
+        ]) {
+            const response = await request(handle, {
+                jsonrpc: "2.0",
+                id: "auth-capability",
+                method: "initialize",
+                params: { protocolVersion: 1, clientCapabilities },
+            });
+            assertEquals(response.result.authMethods, supported ? [TERMINAL_AUTH_METHOD] : []);
+        }
     } finally {
         await closeTestServer(handle);
     }
@@ -1206,6 +1191,11 @@ test("ACP session/new and session/prompt can invoke a real MCP fixture tool", as
             const { response, messages } = await readThroughResponse(handle, "prompt-mcp");
             assertEquals(response.result, { stopReason: "end_turn" });
             assertStringIncludes(joinedAgentText(messages), "ACP MCP turn complete.");
+            const toolUpdates = messages
+                .map((message) => message.params?.update)
+                .filter((update) => update?._meta?.runwield?.toolName === "mcp__fixture__fixture_echo");
+            assert(toolUpdates.some((update) => update.rawInput?.marker === "acp-root"));
+            assert(toolUpdates.some((update) => typeof update._meta?.runwield?.durationMs === "number"));
             assertStringIncludes(await fsReadFile(logPath, "utf8"), '"marker":"acp-root"');
         } finally {
             await closeTestServer(handle);
@@ -1412,39 +1402,6 @@ for (const ending of ["cancel", "decline", "expired", "other", "choice", "empty-
         });
     });
 }
-
-test("ACP /session reports real Runtime totals", async () => {
-    await withRuntimeCommandFixture("runwield-acp-session-command-", async (fixture) => {
-        fixture.setModelResponse("session command fixture response");
-        const handle = startTestServer();
-        try {
-            const { sessionId } = await createSession(handle, fixture.projectRoot);
-            await sendMessage(handle, {
-                jsonrpc: "2.0",
-                id: "normal-before-session",
-                method: "session/prompt",
-                params: { sessionId, prompt: [{ type: "text", text: "count this" }] },
-            });
-            await readThroughResponse(handle, "normal-before-session");
-
-            await sendMessage(handle, {
-                jsonrpc: "2.0",
-                id: "session-command",
-                method: "session/prompt",
-                params: { sessionId, prompt: [{ type: "text", text: "/session" }] },
-            });
-            const result = await readThroughResponse(handle, "session-command");
-            const text = joinedAgentText(result.messages);
-            assertStringIncludes(text, "Session Info");
-            assertStringIncludes(text, "Messages");
-            assertStringIncludes(text, "Tool Calls:");
-            assertStringIncludes(text, "Total:");
-            assertEquals(result.response.result.stopReason, "end_turn");
-        } finally {
-            await closeTestServer(handle);
-        }
-    });
-});
 
 test("ACP /plan-review reports when this Session has no saved review", async () => {
     await withRuntimeCommandFixture("runwield-acp-plan-review-", async (fixture) => {
@@ -2284,94 +2241,12 @@ test("ACP rejects a prompt sent before the Client receives the cancelled respons
     });
 });
 
-/**
- * A Runtime usage event carrying one message's cost, as the Runtime emits it.
- *
- * @param {number} costUsd
- */
-function usageEvent(costUsd) {
-    return /** @type {any} */ ({
-        type: "usage",
-        sessionId: "runtime-1",
-        timestamp: "now",
-        usage: {
-            inputTokens: 10,
-            outputTokens: 5,
-            cacheReadTokens: 7,
-            cacheWriteTokens: 3,
-            contextWindow: 100,
-            costUsd,
-        },
-    });
-}
-
-test("ACP usage_update reports the Session's cumulative cost, not the last turn's", () => {
-    const sessionMap = new AcpSessionMap();
-    sessionMap.createRecord(/** @type {any} */ ({ sessionId: "runtime-1", cwd: "/repo" }), { acpSessionId: "acp-1" });
-
-    // The Runtime prices each message on its own; ACP wants the running Session total.
-    const notifications = [0.25, 0.25, 0.5].map((costUsd) =>
-        mapEventWithSessionCost(sessionMap, "acp-1", usageEvent(costUsd), { tokens: 48_000, contextWindow: 128_000 }),
-    );
-
-    assertEquals(
-        notifications.map((notification) => /** @type {any} */ (notification).update.cost),
-        [
-            { amount: 0.25, currency: "USD" },
-            { amount: 0.5, currency: "USD" },
-            { amount: 1, currency: "USD" },
-        ],
-    );
-    for (const notification of notifications) {
-        assertAcpSchema("SessionNotification", JSON.parse(JSON.stringify(notification)));
-    }
-    const costedUsageFrame = JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: notifications[2] });
-    assertAcpFrameSchema("SessionNotification", costedUsageFrame, (message) => message.params);
-});
-
-test("ACP replayed usage events keep adding to the same Session total", () => {
-    const sessionMap = new AcpSessionMap();
-    sessionMap.createRecord(/** @type {any} */ ({ sessionId: "runtime-1", cwd: "/repo" }), { acpSessionId: "acp-1" });
-
-    // session/load replays the transcript's priced turns before the next prompt runs.
-    for (const costUsd of [0.25, 0.25]) {
-        mapEventWithSessionCost(sessionMap, "acp-1", usageEvent(costUsd), { tokens: 48_000, contextWindow: 128_000 });
-    }
-    sessionMap.replaceRuntimeSession("acp-1", { sessionId: "runtime-2", cwd: "/repo" });
-    const afterLoad = mapEventWithSessionCost(sessionMap, "acp-1", usageEvent(0.25), {
-        tokens: 48_000,
-        contextWindow: 128_000,
-    });
-
-    assertEquals(/** @type {any} */ (afterLoad).update.cost, { amount: 0.75, currency: "USD" });
-});
-
-test("ACP non-usage events do not disturb the Session cost total", () => {
-    const sessionMap = new AcpSessionMap();
-    sessionMap.createRecord(/** @type {any} */ ({ sessionId: "runtime-1", cwd: "/repo" }), { acpSessionId: "acp-1" });
-
-    mapEventWithSessionCost(sessionMap, "acp-1", usageEvent(0.25), { tokens: 48_000, contextWindow: 128_000 });
-    mapEventWithSessionCost(
-        sessionMap,
-        "acp-1",
-        /** @type {any} */ ({
-            type: "assistant_text_delta",
-            sessionId: "runtime-1",
-            timestamp: "now",
-            messageId: "m1",
-            delta: "hello",
-        }),
-    );
-
-    assertEquals(sessionMap.getRecord("acp-1")?.usageCostUsd, 0.25);
-});
-
 test("ACP streams exact current context usage from a real Runtime turn", async () => {
     await withRuntimeCommandFixture("runwield-acp-usage-", async (fixture) => {
         let latestInputTokens = 0;
         fixture.setModelResponseFactory((context) => {
             latestInputTokens = estimateFauxPromptTokens(context);
-            const outputTokens = 52_000 - latestInputTokens * 2;
+            const outputTokens = 52_000 - latestInputTokens;
             assert(outputTokens > 0, "fixture prompt must leave room for a 52k exact context total");
             return fauxAssistantMessage(fauxText("x".repeat(outputTokens * 4)));
         });
@@ -2506,21 +2381,6 @@ test("ACP live wire suppresses unknown post-compaction context and restores exac
     );
 });
 
-test("ACP usage_update uses exact Runtime context and suppresses unknown capacity", () => {
-    const event = usageEvent(0);
-    const exact = mapRuntimeEventToAcpUpdate(event, 0, { tokens: 48_000, contextWindow: 128_000 });
-    assertEquals(exact, { sessionUpdate: "usage_update", used: 48_000, size: 128_000 });
-    assertEquals(Object.hasOwn(/** @type {any} */ (exact), "cost"), false);
-    assertEquals(mapRuntimeEventToAcpUpdate(event, 0, { tokens: null, contextWindow: 128_000 }), null);
-    assertEquals(mapRuntimeEventToAcpUpdate(event, 0, { tokens: 48_000, contextWindow: 0 }), null);
-    assertEquals(mapRuntimeEventToAcpUpdate(event, 0), null);
-
-    assertEquals(
-        /** @type {any} */ (mapRuntimeEventToAcpUpdate(event, 0.25, { tokens: 48_000, contextWindow: 128_000 })).cost,
-        { amount: 0.25, currency: "USD" },
-    );
-});
-
 test("ACP session/close disposes a real Runtime session and rejects later prompts", async () => {
     await withRuntimeCommandFixture("runwield-acp-close-", async (fixture) => {
         const handle = startTestServer();
@@ -2548,38 +2408,29 @@ test("ACP session/close disposes a real Runtime session and rejects later prompt
 });
 
 test("ACP validates new/load inputs and maps missing persisted Sessions", async () => {
-    assertThrows(() => validateNewSessionParams({ cwd: "relative", mcpServers: [] }));
-    assertThrows(() => validateNewSessionParams({ cwd: REPO_ROOT }));
-    assertThrows(() => validateNewSessionParams({ cwd: REPO_ROOT, mcpServers: { local: { command: "secret" } } }));
-    assertThrows(() =>
-        validateNewSessionParams({
-            cwd: REPO_ROOT,
-            mcpServers: [{ type: "http", name: "web", url: "https://example.test", headers: [] }],
-        }),
-    );
-    assertThrows(() =>
-        validateNewSessionParams({
-            cwd: REPO_ROOT,
-            mcpServers: [{ name: "stdio", command: "/bin/echo", args: ["ok"] }],
-        }),
-    );
-    const validMcp = validateNewSessionParams({
-        cwd: REPO_ROOT,
-        mcpServers: [{ name: "stdio", command: "/bin/echo", args: ["ok"], env: [{ name: "TOKEN", value: "secret" }] }],
-    });
-    assertEquals(validMcp.runwieldMcpServers, [
-        {
-            name: "stdio",
-            command: "/bin/echo",
-            args: ["ok"],
-            env: { TOKEN: "secret" },
-            source: "request",
-        },
-    ]);
-
     await withRuntimeCommandFixture("runwield-acp-invalid-", async (fixture) => {
         const handle = startTestServer();
         try {
+            for (const params of [
+                { cwd: "relative", mcpServers: [] },
+                { cwd: fixture.projectRoot },
+                { cwd: fixture.projectRoot, mcpServers: { local: { command: "secret" } } },
+                {
+                    cwd: fixture.projectRoot,
+                    mcpServers: [{ type: "http", name: "web", url: "https://example.test", headers: [] }],
+                },
+                { cwd: fixture.projectRoot, mcpServers: [{ name: "stdio", command: "/bin/echo", args: ["ok"] }] },
+            ]) {
+                for (const method of ["session/new", "session/load"]) {
+                    const rejected = await request(handle, {
+                        jsonrpc: "2.0",
+                        id: crypto.randomUUID(),
+                        method,
+                        params: { ...params, sessionId: "acp-missing" },
+                    });
+                    assertEquals(rejected.error?.code, -32602, JSON.stringify({ params, rejected }));
+                }
+            }
             const badCwd = await request(handle, {
                 jsonrpc: "2.0",
                 id: "bad-cwd",
@@ -2629,51 +2480,6 @@ test("ACP session/load maps a persisted Session with no configured model to auth
     );
 });
 
-test("ACP agent notices suppress activation and same-Agent rebuilds", () => {
-    const event = {
-        type: /** @type {const} */ ("agent_changed"),
-        sessionId: "session-1",
-        messageId: "agent-1",
-        timestamp: "2026-09-15T00:00:00.000Z",
-        agentName: "guide",
-    };
-    assertEquals(mapRuntimeEventToAcpUpdate(event), null);
-    assertEquals(mapRuntimeEventToAcpUpdate({ ...event, rootHandoff: false }), null);
-    assertEquals(mapRuntimeEventToAcpUpdate({ ...event, rootHandoff: true })?.content, {
-        type: "text",
-        text: "Active agent: guide",
-    });
-});
-
-test("ACP event mapper forwards canonical Runtime tool metadata", () => {
-    const toolStart = mapRuntimeEventToAcpUpdate({
-        type: "tool_start",
-        sessionId: "session-1",
-        timestamp: "now",
-        toolCallId: "tool-1",
-        toolName: "bash",
-        title: "$ echo safe",
-        kind: "execute",
-        args: { token: "secret" },
-    });
-    const toolEnd = mapRuntimeEventToAcpUpdate({
-        type: "tool_end",
-        sessionId: "session-1",
-        timestamp: "now",
-        toolCallId: "tool-1",
-        toolName: "bash",
-        title: "$ echo safe",
-        kind: "execute",
-        content: [{ type: "text", text: "safe output" }],
-        output: "safe output",
-        details: { truncated: false },
-        isError: false,
-        durationMs: 25,
-    });
-    assertEquals(/** @type {any} */ (toolStart).rawInput, { token: "secret" });
-    assertEquals(/** @type {any} */ (toolEnd)._meta?.runwield?.durationMs, 25);
-});
-
 test("ACP event mapper forwards structured validation progress", () => {
     const progress = /** @type {import('../shared/session/session-runtime-events.js').RuntimeValidationProgress} */ ({
         kind: "workflow",
@@ -2697,151 +2503,6 @@ test("ACP event mapper forwards structured validation progress", () => {
         validationProgress: progress,
     });
     assertEquals(/** @type {any} */ (update)._meta?.runwield?.validationProgress, progress);
-});
-
-test("ACP production modules do not import TUI adapter code", async () => {
-    /** @type {string[]} */
-    const violations = [];
-    for await (const entry of await fsReaddir(new URL(".", import.meta.url), { withFileTypes: true })) {
-        if (!entry.isFile() || !entry.name.endsWith(".js") || entry.name.endsWith(".test.js")) continue;
-        const path = `src/acp/${entry.name}`;
-        const source = await fsReadFile(path, "utf8");
-        if (/from\s+["'][^"']*(?:\/ui\/|shared\/interactive)/.test(source)) violations.push(path);
-        if (/import\(["'][^"']*(?:\/ui\/|shared\/interactive)/.test(source)) violations.push(path);
-    }
-    assertEquals(violations, []);
-});
-
-test("ACP interaction adapter does not expose the obsolete Pair form", async () => {
-    /** @type {unknown[]} */
-    const requests = [];
-    const adapter = createAcpInteractionAdapter({
-        acpSessionId: "acp-1",
-        clientCapabilities: { elicitation: { form: {} } },
-        context: {
-            request: (/** @type {unknown} */ request) => {
-                requests.push(request);
-                return Promise.resolve({ action: "accept", content: { answer: "continue" } });
-            },
-        },
-    });
-    assertEquals(adapter.supportsInteraction?.("pair_checkpoint"), false);
-    assertEquals(
-        await adapter.requestInteraction({
-            id: "interaction-pair",
-            type: "pair_checkpoint",
-            prompt: "Review the increment",
-        }),
-        {
-            outcome: "unsupported",
-            message: "Pair checkpoints use ordinary ACP prompts, not structured interactions.",
-        },
-    );
-    assertEquals(requests, []);
-});
-
-test("ACP interaction adapter maps valid selections and rejects invalid ones", async () => {
-    const accepted = createAcpInteractionAdapter({
-        acpSessionId: "acp-1",
-        clientCapabilities: { elicitation: { form: {} } },
-        context: { request: () => Promise.resolve({ action: "accept", content: { answer: "yes" } }) },
-    });
-    assertEquals(
-        await accepted.requestInteraction({
-            id: "interaction-1",
-            type: "select",
-            prompt: "Proceed?",
-            options: [
-                { value: "yes", label: "Yes" },
-                { value: "no", label: "No" },
-            ],
-        }),
-        { outcome: "selected", value: "yes", valueLabel: "Yes" },
-    );
-
-    const invalid = createAcpInteractionAdapter({
-        acpSessionId: "acp-1",
-        clientCapabilities: { elicitation: { form: {} } },
-        context: { request: () => Promise.resolve({ action: "accept", content: { answer: "invalid" } }) },
-    });
-    const response = await invalid.requestInteraction({
-        id: "interaction-2",
-        type: "select",
-        prompt: "Proceed?",
-        options: [{ value: "yes", label: "Yes" }],
-    });
-    assertEquals(response.outcome, "unsupported");
-    assertEquals(response.message, "ACP elicitation returned invalid option: invalid");
-});
-
-test("ACP interaction adapter distinguishes approval acceptance from decline", async () => {
-    const makeAdapter = (/** @type {string} */ answer) =>
-        createAcpInteractionAdapter({
-            acpSessionId: "acp-1",
-            clientCapabilities: { elicitation: { form: {} } },
-            context: { request: () => Promise.resolve({ action: "accept", content: { answer } }) },
-        });
-    const request = {
-        id: "interaction-1",
-        type: /** @type {'approval'} */ ("approval"),
-        prompt: "Approve?",
-        options: [
-            { value: "approve", label: "Approve" },
-            { value: "deny", label: "Deny" },
-        ],
-    };
-    assertEquals(await makeAdapter("approve").requestInteraction(request), {
-        outcome: "accepted",
-        value: true,
-    });
-    assertEquals(await makeAdapter("deny").requestInteraction(request), {
-        outcome: "canceled",
-        value: false,
-        valueLabel: "Deny",
-        message: "Approval was not accepted.",
-    });
-});
-
-test("ACP interaction adapter presents a chat selection without form capabilities", async () => {
-    const adapter = createAcpInteractionAdapter({
-        acpSessionId: "acp-1",
-        clientCapabilities: {},
-        context: {
-            notify: () => {
-                throw new Error("No browser question should open");
-            },
-        },
-        presentChatQuestion: (interaction) =>
-            Promise.resolve({
-                outcome: "selected",
-                value: interaction.options?.[0].value,
-                valueLabel: interaction.options?.[0].label,
-            }),
-    });
-    assertEquals(
-        await adapter.requestInteraction({
-            type: "select",
-            prompt: "Choose Agent",
-            options: [{ value: "guide", label: "Guide" }],
-        }),
-        { outcome: "selected", value: "guide", valueLabel: "Guide" },
-    );
-});
-
-test("ACP event mapper maps Plan review links without maintainer secrets", () => {
-    const update = mapRuntimeEventToAcpUpdate({
-        type: "plan_review_link",
-        sessionId: "s1",
-        timestamp: "2026-07-07T00:00:00.000Z",
-        messageId: "review-link-1",
-        planName: "p",
-        reviewerUrl: "https://plans.example/#key=review&cap=reviewer&role=reviewer",
-        spaceId: "space-1",
-        message: "review it",
-    });
-    assertEquals(update?.sessionUpdate, "agent_message_chunk");
-    assertStringIncludes(JSON.stringify(update), "reviewer");
-    assertEquals(JSON.stringify(update).includes("maintainer"), false);
 });
 
 for (const [reply, expectedValue, expectedOther] of [
@@ -4098,6 +3759,70 @@ test("ACP steering preserves the waiting chat question for the next prompt", asy
             assertStringIncludes(joinedAgentText(completion.messages), "Interview complete.");
         } finally {
             await closeTestServer(handle);
+        }
+    });
+});
+
+test("ACP accumulates priced turns across transcript replay and a continued conversation", async () => {
+    await withRuntimeCommandFixture("acp-cost-replay-", async (fixture) => {
+        /** @type {import('@earendil-works/pi-ai').ProviderStreams['streamSimple']} */
+        const stream = (model) => {
+            const output = createAssistantMessageEventStream();
+            const message = {
+                ...fauxAssistantMessage(fauxText("A priced answer.")),
+                api: model.api,
+                provider: model.provider,
+                model: model.id,
+                usage: {
+                    input: 10,
+                    output: 5,
+                    cacheRead: 0,
+                    cacheWrite: 0,
+                    totalTokens: 15,
+                    cost: { input: 0.2, output: 0.05, cacheRead: 0, cacheWrite: 0, total: 0.25 },
+                },
+            };
+            queueMicrotask(() => {
+                output.push({ type: "done", reason: "stop", message });
+                output.end();
+            });
+            return output;
+        };
+        registerApiProvider({ api: "runtime-command-faux", stream, streamSimple: stream }, "acp-priced-model");
+        let handle = startTestServer();
+        try {
+            const created = await createSession(handle, fixture.projectRoot);
+            for (const { text, total } of [
+                { text: "First question", total: 0.25 },
+                { text: "Another question", total: 0.5 },
+            ]) {
+                const result = await chatPrompt(handle, created.sessionId, text);
+                const usage = result.messages
+                    .filter((message) => message.params?.update?.sessionUpdate === "usage_update")
+                    .at(-1);
+                assertEquals(usage?.params.update.cost, { amount: total, currency: "USD" });
+            }
+            await closeTestServer(handle);
+            handle = startTestServer();
+            await sendMessage(handle, {
+                jsonrpc: "2.0",
+                id: "priced-load",
+                method: "session/load",
+                params: { sessionId: created.sessionId, cwd: fixture.projectRoot, mcpServers: [] },
+            });
+            const loaded = await readThroughResponse(handle, "priced-load", 1000);
+            assert(loaded.response.result, JSON.stringify(loaded.response));
+            const next = await chatPrompt(handle, created.sessionId, "Continue after restart");
+            const usage = next.messages
+                .filter((message) => message.params?.update?.sessionUpdate === "usage_update")
+                .at(-1);
+            assertEquals(usage?.params.update.cost, { amount: 0.75, currency: "USD" });
+            for (const frame of sessionUpdateFrames(handle, "usage_update")) {
+                assertAcpFrameSchema("SessionNotification", frame, (message) => message.params);
+            }
+        } finally {
+            await closeTestServer(handle);
+            unregisterApiProviders("acp-priced-model");
         }
     });
 });

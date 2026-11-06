@@ -4,37 +4,17 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ResolvedResource } from "../package-resources.ts";
-import {
-    filterWldCompatibleExtensionResources,
-    findPackageRootForExtensionResource,
-    getWldExtensionPaths,
-    isWldCompatibleExtensionManifest,
-} from "./wld-extension-manifest.ts";
-
-test("isWldCompatibleExtensionManifest recognizes the WLD code-extension marker", () => {
-    assertEquals(
-        isWldCompatibleExtensionManifest({
-            pi: {
-                wld: {
-                    compatible: true,
-                    extensionApi: 1,
-                    kind: "code-extension",
-                },
-            },
-        }),
-        true,
-    );
-    assertEquals(isWldCompatibleExtensionManifest({ pi: { harns: { compatible: true } } }), false);
-    assertEquals(isWldCompatibleExtensionManifest({ pi: { wld: { compatible: true } } }), false);
-});
+import { filterWldCompatibleExtensionResources, getWldExtensionPaths } from "./wld-extension-manifest.ts";
 
 test("filterWldCompatibleExtensionResources returns enabled package resources with compatible package metadata", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-wld-extension-"));
-    const compatiblePath = join(root, "compatible.js");
+    const nested = join(root, "src", "extensions");
+    const compatiblePath = join(nested, "compatible.js");
     const incompatibleRoot = join(root, "incompatible");
     const incompatiblePath = join(incompatibleRoot, "index.js");
 
     try {
+        await fsMkdir(nested, { recursive: true });
         await fsWriteFile(
             join(root, "package.json"),
             JSON.stringify({
@@ -57,12 +37,12 @@ test("filterWldCompatibleExtensionResources returns enabled package resources wi
             {
                 path: compatiblePath,
                 enabled: true,
-                metadata: { source: "npm:ok", scope: "user", origin: "package", baseDir: root },
+                metadata: { source: "npm:ok", scope: "user", origin: "package", baseDir: nested },
             },
             {
                 path: compatiblePath,
                 enabled: false,
-                metadata: { source: "npm:ok", scope: "user", origin: "package", baseDir: root },
+                metadata: { source: "npm:ok", scope: "user", origin: "package", baseDir: nested },
             },
             {
                 path: incompatiblePath,
@@ -72,35 +52,20 @@ test("filterWldCompatibleExtensionResources returns enabled package resources wi
             {
                 path: compatiblePath,
                 enabled: true,
-                metadata: { source: "local", scope: "user", origin: "top-level", baseDir: root },
+                metadata: { source: "local", scope: "user", origin: "top-level", baseDir: nested },
             },
         ];
 
         const compatible = await filterWldCompatibleExtensionResources(resources);
         assertEquals(getWldExtensionPaths(compatible), [compatiblePath]);
-    } finally {
-        await fsRm(root, { recursive: true }).catch(() => {});
-    }
-});
-
-test("findPackageRootForExtensionResource ascends from nested extension files", async () => {
-    const root = await fsMkdtemp(join(tmpdir(), "runwield-wld-extension-root-"));
-    const nested = join(root, "src", "extensions");
-    const extensionPath = join(nested, "index.js");
-
-    try {
-        await fsMkdir(nested, { recursive: true });
-        await fsWriteFile(join(root, "package.json"), JSON.stringify({ pi: { wld: {} } }));
-        await fsWriteFile(extensionPath, "export default () => ({});\n");
-
-        const resource: ResolvedResource = {
-            path: extensionPath,
-            enabled: true,
-            metadata: { source: "npm:nested", scope: "user", origin: "package", baseDir: nested },
-        };
-        const packageRoot = await findPackageRootForExtensionResource(resource);
-
-        assertEquals(packageRoot, root);
+        for (const pi of [
+            { harns: { compatible: true } },
+            { wld: { compatible: true } },
+            { wld: { compatible: true, extensionApi: 2, kind: "code-extension" } },
+        ]) {
+            await fsWriteFile(join(root, "package.json"), JSON.stringify({ pi }));
+            assertEquals(await filterWldCompatibleExtensionResources(resources), []);
+        }
     } finally {
         await fsRm(root, { recursive: true }).catch(() => {});
     }

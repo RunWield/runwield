@@ -14,7 +14,7 @@ affectedPaths:
     - "src/attached/claude/"
     - "docs/prd/runwield-connect-prd.md"
     - "docs/prd/runwield-core-prd.md"
-    - "docs/adr/014-attached-workflow-coordination-boundary.md"
+    - "docs/adr/013-attached-workflow-coordination-boundary.md"
     - "docs/"
     - "docs/domain-language.md"
     - "README.md"
@@ -64,7 +64,7 @@ This Epic must make pending host actions, accepted outcomes, and fresh-process c
 shared engine's sequencing and gates. This is remaining Connect integration work, not an uncompleted extraction
 prerequisite. The historical Work Record is delivery evidence; current source remains the implementation baseline.
 
-[ADR-014](../adr/014-attached-workflow-coordination-boundary.md) records the accepted boundary: an
+[ADR-013](../adr/013-attached-workflow-coordination-boundary.md) records the accepted boundary: an
 `AttachedWorkflowCoordinator` is a sibling runtime to `SessionRuntime`. Short-lived `wld attached ...` commands are the
 canonical Core boundary, and Model Context Protocol (MCP) is a thin model-facing adapter over those same operations. The
 existing TUI, Agent Client Protocol (ACP), and SessionRuntime paths remain RunWield-executed Session surfaces and do not
@@ -191,7 +191,7 @@ review from canonical state; review need not remain available while Claude is cl
   or requests host turns through its external-action protocol; it does not reimplement validation policy. The
   [validation authority matrix](../validation-authority.md#authority-matrix) owns the current division of Plan,
   controller, review, worktree, and publication facts. Attached records reference these authorities rather than copy
-  their checkpoints or receipts. [ADR-016](../adr/016-proof-bearing-publication-state-machine.md) governs publication
+  their checkpoints or receipts. [ADR-015](../adr/015-proof-bearing-publication-state-machine.md) governs publication
   evidence, restart reconciliation, and cleanup; a successful validation result alone does not prove delivery.
 - **Compatibility Matrix** — owns tested capability claims for supported Claude Code and adapter/Core version ranges.
   Preview preflight uses this versioned data and fails before relying on an unsupported worker, permission, or worktree
@@ -308,8 +308,8 @@ baseline, lifecycle position, and completion contract.
 - `src/ui/review/review-launcher.ts` exposes Plannotator through the Workspace review server. In
   `src/ui/workspace/server.js`, `startReviewWorkspaceServer()` starts a server in the calling process and returns an
   in-memory decision promise. Durable reviewed-revision decisions and browser-process ownership must both be covered.
-- ADR-010 makes TUI and ACP sibling adapters over SessionRuntime. Attached is not another such adapter because the
-  External Agent Host executes the model turns. ADR-014 preserves ADR-010's dependency direction by introducing a
+- ADR-011 makes TUI and ACP sibling adapters over SessionRuntime. Attached is not another such adapter because the
+  External Agent Host executes the model turns. ADR-014 preserves ADR-011's dependency direction by introducing a
   sibling runtime over shared domain authorities instead.
 - The [Claude CLI backend Work Record](../work-records/2026-08-06-claude-cli-execution-backend-completed.md) and current
   `src/shared/session/backends/claude-cli/` describe Core invoking Claude as an Execution Backend. Connect reverses that
@@ -479,7 +479,7 @@ Existing behavior that must remain protected after every child lands:
 
 - Core TUI/Workspace Sessions continue to use SessionRuntime, existing transcript segmentation, interaction/event
   semantics, routing, planning, execution, validation, and recovery behavior.
-- ACP remains a client of RunWield-executed Sessions and preserves ADR-010's dependency direction.
+- ACP remains a client of RunWield-executed Sessions and preserves ADR-011's dependency direction.
 - Existing Plan statuses, Plan Events, readiness rules, validation convergence, worktree publication safeguards, and
   Work Record provenance retain their current meaning.
 - Existing layered agent customization continues to resolve project-local, then home, then bundled assets.

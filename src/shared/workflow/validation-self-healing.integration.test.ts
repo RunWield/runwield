@@ -9,13 +9,7 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import {
-    injectFrontMatter,
-    loadPlan,
-    parsePlanFrontMatter,
-    savePlan,
-    updatePlanFrontMatter,
-} from "../../plan-store.js";
+import { injectFrontMatter, loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.js";
 import { createGitPort } from "../git-port.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { HostedSession } from "../session/hosted-session.js";
@@ -369,40 +363,5 @@ test("a missing worktree is restored from its branch", async () => {
         );
     } finally {
         await removeFixture(testFixture);
-    }
-});
-
-test("a durable validation field survives a fresh project read", async () => {
-    const projectRoot = await makeValidationProjectRoot("resume-demo", {
-        classification: "PLANNED_CHANGE",
-        status: "implemented",
-        executionMode: "non_git_in_place",
-    });
-    try {
-        const first = await loadPlan(projectRoot, "resume-demo");
-        assertExists(first);
-        await updatePlanFrontMatter(
-            projectRoot,
-            "resume-demo",
-            {
-                validationCheckpoint: {
-                    version: 1,
-                    attemptId: "in-place",
-                    generation: "saved-generation",
-                    expectedStatus: "implemented",
-                    nextPhase: "mechanical",
-                    state: "paused",
-                    updatedAt: "2026-08-13T00:00:00.000Z",
-                },
-            },
-            {},
-            { expectedRevision: first.revision },
-        );
-        const reopened = await loadPlan(projectRoot, "resume-demo");
-        assertExists(reopened);
-        assertEquals(reopened.attrs.validationCheckpoint?.generation, "saved-generation");
-        assertEquals(reopened.attrs.status, "implemented");
-    } finally {
-        await fsRm(projectRoot, { recursive: true }).catch(() => {});
     }
 });

@@ -17,7 +17,7 @@ import {
     getCurrentValidationProgress,
 } from "../../shared/workflow/validation-progress.ts";
 import { createChatView } from "./chat-view.ts";
-import { attachTuiRuntimeAdapter } from "./runtime-adapter.js";
+import { attachTuiRuntimeAdapter } from "./runtime-adapter.ts";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
 import { tuiSessionSidebarProjection } from "./session-sidebar.ts";

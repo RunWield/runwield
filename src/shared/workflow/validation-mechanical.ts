@@ -29,7 +29,9 @@ import {
     waitForValidationRetryWithSessionCancellation,
 } from "./validation-recovery.ts";
 
-import { renderOpenItems } from "./review-ledger.ts";
+import type { CiRunEvidence } from "./validation-checkpoint.ts";
+import { candidateIdentity } from "./validation-scope.ts";
+import { getWorktreeReviewDiff } from "./git-snapshot.ts";
 import { runValidationCommand, saveValidationCommand } from "./validation-local-ci.ts";
 import { ValidationHostShutdown } from "./validation-host-contract.ts";
 import { requestHostRepair, saveHostCheckpoint } from "./validation-host-state.ts";
@@ -123,31 +125,31 @@ async function continueLastRepairSession(
     context: PhaseContext,
     prompt: string,
     defaultValue: string,
+    evidence?: CiRunEvidence,
 ) {
     const feedback = await requestEngineerFollowUpFeedback(args, prompt, defaultValue);
     if (feedback === null) return null;
+    const repairPrompt = buildValidationRepairPrompt({
+        executionCwd: context.executionCwd,
+        repairCwd: context.executionCwd,
+        worktreeId: context.worktreeId,
+        worktreeBranch: context.worktreeBranch,
+        worktreeBaseBranch: context.worktreeBaseBranch,
+        repairsNeeded: [
+            "Latest failed CI run:",
+            ...(evidence ? [`Run ID: ${evidence.runId}`] : []),
+            ...(evidence?.candidateIdentity ? [`Candidate: ${evidence.candidateIdentity}`] : []),
+            defaultValue,
+            "User follow-up:",
+            feedback,
+        ].join("\n\n"),
+        completionInstruction:
+            "Inspect the current files before editing. After completing the repair, call task_completed. RunWield will rerun the complete configured CI command; full validation remains pending.",
+    });
     if (args.hostTurn) {
-        const plan = await loadPlan(context.executionCwd, args.planName);
-        const review = args.validationCheckpoint?.reviewState;
-        return await requestHostRepair(
-            args,
-            context,
-            [
-                "Continue the interrupted validation repair in this checkout. Inspect the current files before editing.",
-                plan?.markdown || "",
-                review ? renderOpenItems(review.reviewLedger) : "",
-                review?.lastRepairReport || "",
-                String(plan?.attrs.failureReason || ""),
-                "User follow-up:",
-                feedback,
-                "After completing the repair, call task_completed. RunWield will rerun CI.",
-            ]
-                .filter(Boolean)
-                .join("\n\n"),
-            "engineer_follow_up",
-        );
+        return await requestHostRepair(args, context, repairPrompt, "engineer_follow_up");
     }
-    return await args.session.continueLastRepairTurn(feedback);
+    return await args.session.continueLastRepairTurn(repairPrompt);
 }
 
 async function reloadValidationPlanSnapshot(args: ValidationLoopArgs): Promise<ValidationPhaseResult | null> {
@@ -200,6 +202,22 @@ export async function runMechanicalValidationPhase(args: ValidationLoopArgs): Pr
         const operationId = crypto.randomUUID();
         const pending = args.hostTurn && args.validationCheckpoint?.pendingCiDecision;
         const resumePending = pending && args.hostTurn?.resume?.kind === "decision" && !args.hostTurn.consumed;
+        let ciEvidence: CiRunEvidence | undefined = resumePending ? pending.evidence : undefined;
+        const captureCiEvidence = async () => {
+            ciEvidence = {
+                runId: operationId,
+                ...(!phase.context.nonGitInPlace && {
+                    candidateIdentity: candidateIdentity(
+                        await getWorktreeReviewDiff(
+                            phase.context.executionCwd,
+                            phase.context.worktreeBaseBranch || "",
+                            phase.context.worktreeBaseRef,
+                        ),
+                        args.planName,
+                    ),
+                }),
+            };
+        };
         let ciResult: ValidationLocalCIResult;
         if (resumePending) {
             ciResult = { kind: "completed", exitCode: 1, output: pending.failureReason };
@@ -215,6 +233,7 @@ export async function runMechanicalValidationPhase(args: ValidationLoopArgs): Pr
                 cwd: phase.context.executionCwd,
                 settingsPolicy: "exact-project",
                 signal: args.hostTurn.signal,
+                onCommandStart: captureCiEvidence,
             });
             if (commandResult.kind === "command_missing") {
                 const response = await requestInteraction(args, {
@@ -227,6 +246,7 @@ export async function runMechanicalValidationPhase(args: ValidationLoopArgs): Pr
                     cwd: phase.context.executionCwd,
                     settingsPolicy: "exact-project",
                     signal: args.hostTurn.signal,
+                    onCommandStart: captureCiEvidence,
                 });
             }
             if (commandResult.kind === "command_missing") throw new Error("Validation command is still missing.");
@@ -240,7 +260,11 @@ export async function runMechanicalValidationPhase(args: ValidationLoopArgs): Pr
                 phase.context.worktreeId || "in-place",
                 "ci",
                 ciResult.kind === "completed" ? `Exit ${ciResult.exitCode}` : ciResult.kind,
-                ciResult.output ? "````text\n" + ciResult.output + "\n````" : "No command output recorded.",
+                [
+                    ...(ciEvidence ? [`Run ID: ${ciEvidence.runId}`] : []),
+                    ...(ciEvidence?.candidateIdentity ? [`Candidate: ${ciEvidence.candidateIdentity}`] : []),
+                    ciResult.output ? "````text\n" + ciResult.output + "\n````" : "No command output recorded.",
+                ].join("\n\n"),
             );
             await recordWorkflowOutcome(phase.context.projectRoot, {
                 category: "validation",
@@ -321,7 +345,9 @@ export async function runMechanicalValidationPhase(args: ValidationLoopArgs): Pr
                 options: ENGINEER_FOLLOW_UP_OPTIONS,
             };
             if (args.hostTurn && !resumePending) {
-                await saveHostCheckpoint(args, { pendingCiDecision: { ciAttempts, failureReason } });
+                await saveHostCheckpoint(args, {
+                    pendingCiDecision: { ciAttempts, failureReason, evidence: ciEvidence },
+                });
             }
             const action = await pauseForUserAction(args, pause);
             if (args.hostTurn && action !== "engineer_follow_up") {
@@ -340,6 +366,7 @@ export async function runMechanicalValidationPhase(args: ValidationLoopArgs): Pr
                     phase.context,
                     "Tell the Validation Repair Engineer what to try next.",
                     failureReason,
+                    ciEvidence,
                 );
                 if (followUp?.completed) continue;
                 return pausedResult(

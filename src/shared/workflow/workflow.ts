@@ -35,7 +35,7 @@ export {
     readLatestReviewOutcome,
     readLatestTaskCompletedOutcome,
     readLatestTaskCompletedReport,
-} from "./workflow-results.js";
+} from "./workflow-results.ts";
 export { CollaborationStyles, PairCheckpointDecisions, PairPauseReasons } from "./execution-collaboration.ts";
 
 import type { PlanFrontMatter, PlanExecutionPolicy } from "../../plan-store.js";
@@ -126,3 +126,11 @@ export function startActiveExecutionWorkflow(
         existingExecution: options.existingExecution ?? options.hostedSession?.getActiveExecutionWorkflow?.(),
     });
 }
+
+export type {
+    ReviewOutcome,
+    ReviewOutcomeResult,
+    PlanOutcome as LegacyPlanOutcome,
+    PlanOutcomeResult as LegacyPlanOutcomeResult,
+    WorkflowTaskCompletedReport,
+} from "./workflow-results.ts";

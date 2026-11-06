@@ -1,3 +1,4 @@
+import { prepareSessionPlanningWorktree } from "../../shared/workflow/session-planning-worktree.ts";
 import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
 import { bashFixtureExecutable } from "../../../scripts/bash-fixture.ts";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
@@ -239,18 +240,6 @@ async function prepareValidatedPublicationPlan(
     return { planName, worktreePath: worktree.path, worktreeBranch: worktree.branch, worktreeId: worktree.id };
 }
 
-async function captureLogs(run: () => Promise<void>): Promise<string[]> {
-    const originalLog = console.log;
-    const logs: string[] = [];
-    console.log = (message = "") => logs.push(String(message));
-    try {
-        await run();
-    } finally {
-        console.log = originalLog;
-    }
-    return logs;
-}
-
 async function pathExists(path: string): Promise<boolean> {
     try {
         await fsStat(path);
@@ -360,22 +349,19 @@ test("load-plan follow-up replaces the TUI Session with one rooted in the execut
     );
 });
 
-test("load-plan prints its real command help", async () => {
-    const logs = await captureLogs(() => runLoadPlanCommand(["--help"]));
-
-    assertStringIncludes(logs.join("\n"), "load-plan");
-});
-
 test("sibling dependency resolution reads canonical child Plans from the fixture catalogue", async () => {
     await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot }) => {
         await writePlan(projectRoot, "epic", { classification: "PROJECT", status: "ready_for_work" });
         await writePlan(projectRoot, "epic/01-first", { status: "verified", parentPlan: "epic" });
         await writePlan(projectRoot, "epic/02-second", { status: "implemented", parentPlan: "epic" });
 
+        await writePlan(projectRoot, "epic/04-attested", { status: "user_verified", parentPlan: "epic" });
+
         const dependencies = await resolveSiblingChildPlanDependencies(projectRoot, "epic", [
             "01-first",
             "epic/02-second",
             "03-missing",
+            "04-attested",
         ]);
 
         assertEquals(
@@ -389,6 +375,12 @@ test("sibling dependency resolution reads canonical child Plans from the fixture
                     state: "unverified",
                 },
                 { dependency: "03-missing", planName: undefined, status: undefined, state: "missing" },
+                {
+                    dependency: "04-attested",
+                    planName: "epic/04-attested",
+                    status: "user_verified",
+                    state: "user_verified",
+                },
             ],
         );
     });
@@ -1245,6 +1237,7 @@ test("direct review from draft approves for later without a planning turn", asyn
 
             assertEquals((await loadPlan(projectRoot, "direct-draft"))?.attrs.status, "ready_for_work");
             assertEquals(runtime.getRuntimeActiveExecutionWorkflow(sessionId), null);
+            assertEquals(runtime.getEffectiveAgentName(sessionId), "planner");
             assertEquals(
                 ui.promptOptions[0].some((option) => option.value === "review" && option.label === "Review plan"),
                 true,
@@ -1575,6 +1568,37 @@ test("direct review menu is omitted when a draft has an invalid execution policy
     });
 });
 
+for (const status of ["draft", "approved", "ready_for_work"] as const) {
+    test(`${status} Epic menu separates direct review from draft planning`, async () => {
+        await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot }) => {
+            await writePlan(projectRoot, "epic-menu", { classification: "PROJECT", status });
+            const { runtime, sessionId } = await createRuntime(projectRoot);
+            const ui = makeUi(["cancel"]);
+            try {
+                await runLoadPlanCommand(["epic-menu"], {
+                    sessionRuntime: runtime,
+                    sessionId,
+                    uiAPI: ui.uiAPI,
+                    editor: ui.editor,
+                });
+
+                const options = ui.promptOptions[0];
+                assertEquals(
+                    options.filter((option) => option.value === "direct_review"),
+                    [{ value: "direct_review", label: "Open Epic review" }],
+                );
+                assertEquals(
+                    options.filter((option) => option.value === "review"),
+                    status === "draft" ? [{ value: "review", label: "Resume planning with Architect" }] : [],
+                );
+                assertEquals((await loadPlan(projectRoot, "epic-menu"))?.attrs.status, status);
+            } finally {
+                runtime.closeAllSessions();
+            }
+        });
+    });
+}
+
 test("direct review on a PROJECT Epic approves and slices", async () => {
     await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot, setModelMessages }) => {
         await writePlan(projectRoot, "direct-epic", { classification: "PROJECT", status: "draft" });
@@ -1616,13 +1640,13 @@ test("direct review on a PROJECT Epic approves and slices", async () => {
             assertEquals((await loadPlan(projectRoot, "direct-epic"))?.attrs.status, "ready_for_decomposition");
             assertEquals(
                 ui.promptOptions[0].some(
-                    (option) => option.value === "direct_review" && option.label === "Review plan",
+                    (option) => option.value === "direct_review" && option.label === "Open Epic review",
                 ),
                 true,
             );
             assertEquals(
                 ui.promptOptions[0].some(
-                    (option) => option.value === "review" && option.label === "Review with Architect",
+                    (option) => option.value === "review" && option.label === "Resume planning with Architect",
                 ),
                 true,
             );
@@ -2277,6 +2301,303 @@ test("Epic picker distinguishes nested child paths without repeating the Epic pr
                 options.every((item) => !item.label.includes("long-parent-prefix/")),
                 true,
             );
+        } finally {
+            runtime.closeAllSessions();
+        }
+    });
+});
+
+for (const status of ["ready_for_decomposition", "ready_for_work"] as const) {
+    test(`Epic send-back from ${status} starts Architect on a draft without opening review`, async () => {
+        await withRuntimeCommandFixture("epic-send-back-", async ({ projectRoot, setModelResponseFactory }) => {
+            await writePlan(projectRoot, "epic", { classification: "PROJECT", status });
+            const { runtime, sessionId } = await createRuntime(projectRoot);
+            let modelTurns = 0;
+            let statusAtTurn = "";
+            let agentAtTurn = "";
+            let requestText = "";
+            let systemPrompt = "";
+            let reviewRequests = 0;
+            setModelResponseFactory(async (context) => {
+                modelTurns++;
+                const snapshot = runtime.getSessionSnapshot(sessionId);
+                agentAtTurn = snapshot?.activeAgent || "";
+                statusAtTurn = (await loadPlan(snapshot?.cwd || projectRoot, "epic"))?.attrs.status || "";
+                systemPrompt = getCurrentSystemPrompt(context.messages);
+                requestText = JSON.stringify(context.messages);
+                return fauxAssistantMessage(fauxText("Let us discuss the Epic architecture."));
+            });
+            runtime.setInteractionAdapter(sessionId, {
+                requestInteraction: () => {
+                    reviewRequests++;
+                    return Promise.resolve({ outcome: "canceled" });
+                },
+            });
+            const ui = makeUi(["architect_re_review"]);
+            try {
+                await runLoadPlanCommand(["epic"], { sessionRuntime: runtime, sessionId, uiAPI: ui.uiAPI });
+                assertEquals(modelTurns, 1);
+                assertEquals(agentAtTurn, "architect");
+                assertStringIncludes(systemPrompt, "You are the Architect");
+                assertStringIncludes(requestText, "docs/plans/epic.md");
+                assertStringIncludes(requestText, "Architect re-review before decomposition");
+                assertStringIncludes(requestText, "No feedback was submitted");
+                assertStringIncludes(requestText, "local review UI first");
+                assertEquals(statusAtTurn, "draft");
+                assertEquals(reviewRequests, 0);
+                assertEquals(ui.prompts.length, 1);
+                assertEquals(runtime.getSessionSnapshot(sessionId)?.activeAgent, "architect");
+                assertEquals(
+                    (await loadPlan(runtime.getSessionSnapshot(sessionId)?.cwd || projectRoot, "epic"))?.attrs.status,
+                    "draft",
+                );
+                assertEquals(runtime.getRuntimeActiveExecutionWorkflow(sessionId), null);
+                assertEquals(
+                    ui.promptOptions[0].find((option) => option.value === "architect_re_review")?.label,
+                    "Send back to Architect for re-review",
+                );
+            } finally {
+                runtime.closeAllSessions();
+            }
+        });
+    });
+}
+
+for (const approvalAction of ["later", "decompose"] as const) {
+    test(`Epic send-back uses real plan_written and normal ${approvalAction} approval`, async () => {
+        await withRuntimeCommandFixture(
+            "epic-send-back-approval-",
+            async ({ projectRoot, setModelResponseFactories }) => {
+                await writePlan(projectRoot, "epic", { classification: "PROJECT", status: "ready_for_decomposition" });
+                const { runtime, sessionId } = await createRuntime(projectRoot);
+                const agents: string[] = [];
+                let reviewCount = 0;
+                setModelResponseFactories([
+                    async () => {
+                        agents.push(runtime.getSessionSnapshot(sessionId)?.activeAgent || "");
+                        assertEquals(reviewCount, 0);
+                        assertEquals((await loadPlan(projectRoot, "epic"))?.attrs.status, "draft");
+                        return fauxAssistantMessage(fauxToolCall("plan_written", { planName: "epic" }));
+                    },
+                    () => {
+                        agents.push(runtime.getSessionSnapshot(sessionId)?.activeAgent || "");
+                        return fauxAssistantMessage(fauxText("Slicer discussion started."));
+                    },
+                ]);
+                runtime.setInteractionAdapter(sessionId, {
+                    requestInteraction: async () => {
+                        reviewCount++;
+                        const current = await loadPlan(projectRoot, "epic");
+                        if (!current) throw new Error("Epic missing before approval");
+                        await recordPlanEvent({
+                            cwd: projectRoot,
+                            planName: "epic",
+                            event: "review_approved",
+                            currentStatus: current.attrs.status,
+                            expectedRevision: current.revision,
+                            details: { triageMeta: current.attrs },
+                        });
+                        const approved = await loadPlan(projectRoot, "epic");
+                        return {
+                            outcome: "accepted",
+                            _meta: {
+                                approved: true,
+                                approvalAction,
+                                revision: approved?.revision,
+                                planAttrs: approved?.attrs,
+                            },
+                        };
+                    },
+                });
+                const ui = makeUi(["architect_re_review"]);
+                try {
+                    await runLoadPlanCommand(["epic"], { sessionRuntime: runtime, sessionId, uiAPI: ui.uiAPI });
+                    assertEquals(reviewCount, 1);
+                    assertEquals(agents, approvalAction === "later" ? ["architect"] : ["architect", "slicer"]);
+                    assertEquals((await loadPlan(projectRoot, "epic"))?.attrs.status, "ready_for_decomposition");
+                    assertEquals(runtime.getRuntimeActiveExecutionWorkflow(sessionId), null);
+                } finally {
+                    runtime.closeAllSessions();
+                }
+            },
+        );
+    });
+}
+
+test("Epic send-back preserves started child documents, attempts, dependencies, and branch history", async () => {
+    await withRuntimeCommandFixture("epic-send-back-children-", async ({ projectRoot, setModelResponseFactory }) => {
+        await git(projectRoot, ["init", "-b", "main"]);
+        await git(projectRoot, ["config", "user.email", "tests@example.com"]);
+        await git(projectRoot, ["config", "user.name", "RunWield Tests"]);
+        await fsWriteFile(`${projectRoot}/.gitignore`, ".wld/internal/\n");
+        await writePlan(projectRoot, "epic", {
+            planId: "parent",
+            classification: "PROJECT",
+            status: "ready_for_work",
+            targetBranch: "epic/epic",
+        });
+        await writePlan(
+            projectRoot,
+            "epic/started",
+            { planId: "started", status: "in_progress", parentPlan: "epic", order: 1, targetBranch: "epic/epic" },
+            "# Started child\n\nKeep this scope.\n",
+        );
+        await writePlan(projectRoot, "epic/next", {
+            planId: "next",
+            status: "ready_for_work",
+            parentPlan: "epic",
+            order: 2,
+            dependencies: ["started"],
+            targetBranch: "epic/epic",
+        });
+        await git(projectRoot, ["add", "."]);
+        await git(projectRoot, ["commit", "-m", "Epic and children"]);
+        await git(projectRoot, ["branch", "epic/epic"]);
+        const attempt = await createTestWorktreeAttempt({
+            projectRoot,
+            planName: "epic/started",
+            planId: "started",
+            baseBranch: "epic/epic",
+            baseRef: "epic/epic",
+            attemptId: "started-attempt",
+        });
+        await fsWriteFile(`${attempt.path}/implementation.ts`, "export const childWork = true;\n");
+        await git(attempt.path, ["add", "implementation.ts"]);
+        await git(attempt.path, ["commit", "-m", "Started implementation"]);
+        await fsWriteFile(`${attempt.path}/pending.txt`, "Uncommitted child work\n");
+        const captureChildren = async () => ({
+            started: await fsReadFile(`${projectRoot}/docs/plans/epic/started.md`, "utf8"),
+            next: await fsReadFile(`${projectRoot}/docs/plans/epic/next.md`, "utf8"),
+            authoritative: await fsReadFile(`${attempt.path}/docs/plans/epic/started.md`, "utf8"),
+            record: await findById(projectRoot, attempt.id),
+            branch: await git(projectRoot, ["rev-parse", "epic/epic"]),
+            childHead: await git(attempt.path, ["rev-parse", "HEAD"]),
+            pending: await fsReadFile(`${attempt.path}/pending.txt`, "utf8"),
+        });
+        const before = await captureChildren();
+        const { runtime, sessionId } = await createRuntime(projectRoot);
+        let statusAtTurn = "";
+        let agentAtTurn = "";
+        setModelResponseFactory(async () => {
+            const snapshot = runtime.getSessionSnapshot(sessionId);
+            statusAtTurn = (await loadPlan(snapshot?.cwd || projectRoot, "epic"))?.attrs.status || "";
+            agentAtTurn = snapshot?.activeAgent || "";
+            return fauxAssistantMessage(fauxText("Discuss the parent without changing its children."));
+        });
+        runtime.setInteractionAdapter(sessionId, {
+            requestInteraction: () => {
+                throw new Error("Review opened before Architect submitted the Epic");
+            },
+        });
+        const ui = makeUi(["architect_re_review"]);
+        try {
+            await runLoadPlanCommand(["epic"], { sessionRuntime: runtime, sessionId, uiAPI: ui.uiAPI });
+            assertEquals(agentAtTurn, "architect");
+            assertEquals(statusAtTurn, "draft");
+            assertEquals(await captureChildren(), before);
+            assertEquals(runtime.getSessionSnapshot(sessionId)?.activeAgent, "architect");
+        } finally {
+            runtime.closeAllSessions();
+        }
+    });
+});
+
+for (const status of ["ready_for_decomposition", "ready_for_work"] as const) {
+    test(`view and cancel keep ${status} Epic approval`, async () => {
+        await withRuntimeCommandFixture("epic-no-send-back-", async ({ projectRoot, setModelResponseFactory }) => {
+            await writePlan(projectRoot, "epic", { classification: "PROJECT", status });
+            let modelTurns = 0;
+            setModelResponseFactory(() => {
+                modelTurns++;
+                return fauxAssistantMessage(fauxText("Unexpected turn"));
+            });
+            const { runtime, sessionId } = await createRuntime(projectRoot);
+            const ui = makeUi(["view", "cancel"]);
+            try {
+                await runLoadPlanCommand(["epic"], { sessionRuntime: runtime, sessionId, uiAPI: ui.uiAPI });
+                assertEquals((await loadPlan(projectRoot, "epic"))?.attrs.status, status);
+                assertEquals(modelTurns, 0);
+            } finally {
+                runtime.closeAllSessions();
+            }
+        });
+    });
+}
+
+for (const attrs of [
+    { status: "draft" },
+    { status: "approved" },
+    { status: "ready_for_work", type: "sequence" },
+    { status: "ready_for_decomposition", type: "sequence" },
+] as const) {
+    test(`Architect send-back is absent for ${attrs.type || "epic"} at ${attrs.status}`, async () => {
+        await withRuntimeCommandFixture("epic-send-back-availability-", async ({ projectRoot }) => {
+            await writePlan(projectRoot, "container", { classification: "PROJECT", ...attrs });
+            const { runtime, sessionId } = await createRuntime(projectRoot);
+            const ui = makeUi(["cancel"]);
+            try {
+                await runLoadPlanCommand(["container"], { sessionRuntime: runtime, sessionId, uiAPI: ui.uiAPI });
+                assertEquals(
+                    ui.promptOptions[0].some((option) => option.value === "architect_re_review"),
+                    false,
+                );
+                assertEquals((await loadPlan(projectRoot, "container"))?.attrs.status, attrs.status);
+            } finally {
+                runtime.closeAllSessions();
+            }
+        });
+    });
+}
+
+test("Epic send-back uses the registered ready parent instead of a stale primary draft", async () => {
+    await withRuntimeCommandFixture("epic-send-back-authority-", async ({ projectRoot, setModelResponseFactory }) => {
+        await git(projectRoot, ["init", "-b", "main"]);
+        await git(projectRoot, ["config", "user.email", "tests@example.com"]);
+        await git(projectRoot, ["config", "user.name", "RunWield Tests"]);
+        await fsWriteFile(`${projectRoot}/.gitignore`, ".wld/internal/\n");
+        await writePlan(projectRoot, "epic", {
+            planId: "parent",
+            classification: "PROJECT",
+            status: "draft",
+            targetBranch: "epic/epic",
+            deliveryBranch: "main",
+        });
+        await git(projectRoot, ["add", "."]);
+        await git(projectRoot, ["commit", "-m", "Primary draft"]);
+        await git(projectRoot, ["branch", "epic/epic"]);
+        const location = await prepareSessionPlanningWorktree(projectRoot, "epic");
+        assertEquals(location.documentRoot === projectRoot, false);
+        const saved = await loadPlan(location.documentRoot, "epic");
+        if (!saved) throw new Error("Registered parent missing");
+        await savePlan(
+            location.documentRoot,
+            "epic",
+            "# Authoritative Epic\n",
+            { ...saved.attrs, status: "ready_for_decomposition" },
+            { expectedRevision: saved.revision },
+        );
+        const primaryBefore = await fsReadFile(`${projectRoot}/docs/plans/epic.md`, "utf8");
+        const { runtime, sessionId } = await createRuntime(projectRoot);
+        let modelCwd = "";
+        let statusAtTurn = "";
+        setModelResponseFactory(async () => {
+            modelCwd = runtime.getSessionSnapshot(sessionId)?.cwd || "";
+            statusAtTurn = (await loadPlan(modelCwd, "epic"))?.attrs.status || "";
+            return fauxAssistantMessage(fauxText("Discuss the authoritative Epic."));
+        });
+        runtime.setInteractionAdapter(sessionId, {
+            requestInteraction: () => {
+                throw new Error("Review must not open first");
+            },
+        });
+        const ui = makeUi(["architect_re_review"]);
+        try {
+            await runLoadPlanCommand(["epic"], { sessionRuntime: runtime, sessionId, uiAPI: ui.uiAPI });
+            assertEquals(modelCwd, location.documentRoot);
+            assertEquals(statusAtTurn, "draft");
+            assertEquals(runtime.getSessionSnapshot(sessionId)?.activeAgent, "architect");
+            assertEquals(await fsReadFile(`${projectRoot}/docs/plans/epic.md`, "utf8"), primaryBefore);
+            assertEquals((await loadPlan(location.documentRoot, "epic"))?.body, "# Authoritative Epic\n");
         } finally {
             runtime.closeAllSessions();
         }

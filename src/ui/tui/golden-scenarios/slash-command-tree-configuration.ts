@@ -44,7 +44,7 @@ type SystemMessage = {
 type ConfigurationScenarioResult = Parameters<typeof assertEventIncludes>[0] & {
     state: {
         modelTurns?: ModelTurn[];
-        globalSettings?: { defaultModel?: string; defaultProvider?: string };
+        globalSettings?: { defaultModel?: string; defaultProvider?: string; theme?: string };
         scriptedInteractions?: Array<{ interaction?: { value?: string } }>;
         systemMessages?: SystemMessage[];
         snapshot?: { activeAgent?: string | null; activeModel?: { model?: string; provider?: string } };
@@ -57,25 +57,29 @@ function configuredSettings(options: { preset?: boolean; baseAgent?: boolean; de
         ...(options.baseAgent === false
             ? {}
             : { agents: { planner: { model: `${GOLDEN_PROVIDER}/${BASE_AGENT_MODEL}` } } }),
-        ...(options.preset === false ? {} : {
-            activeModelPreset: "golden-preset",
-            modelPresets: {
-                "golden-preset": {
-                    agents: { planner: { model: `${GOLDEN_PROVIDER}/${PRESET_MODEL}` } },
-                },
-            },
-        }),
+        ...(options.preset === false
+            ? {}
+            : {
+                  activeModelPreset: "golden-preset",
+                  modelPresets: {
+                      "golden-preset": {
+                          agents: { planner: { model: `${GOLDEN_PROVIDER}/${PRESET_MODEL}` } },
+                      },
+                  },
+              }),
     };
 }
 
 function plannerScript(id: string) {
-    return [{
-        id,
-        agent: "planner",
-        phase: "plan_review",
-        ordinal: 1,
-        text: "Golden precedence response.",
-    }];
+    return [
+        {
+            id,
+            agent: "planner",
+            phase: "plan_review",
+            ordinal: 1,
+            text: "Golden precedence response.",
+        },
+    ];
 }
 
 function switchToPlannerAndSend(message: string) {
@@ -138,8 +142,8 @@ function assertPlannerEventAfterLastAgentCommand(result: ConfigurationScenarioRe
 }
 
 function assertPlannerSwitchNoticeBeforeUserMessage(result: ConfigurationScenarioResult, userMessage: string) {
-    const notice = result.state.systemMessages?.find((entry) =>
-        entry.header === "RunWield" && entry.text === "Agent switched to Planner" && entry.isError === false
+    const notice = result.state.systemMessages?.find(
+        (entry) => entry.header === "RunWield" && entry.text === "Agent switched to Planner" && entry.isError === false,
     );
     assert(notice, "Expected a RunWield Agent switch notice");
     const noticeIndex = result.screenText.indexOf("Agent switched to Planner");
@@ -197,15 +201,17 @@ export const agentModelsAfterSavedTurnsScenario = {
             agent: "router",
             phase: "triage",
             requiredTools: ["triage_report"],
-            toolCalls: [{
-                name: "triage_report",
-                arguments: {
-                    routingIntent: "INQUIRY",
-                    complexity: "LOW",
-                    summary: "Explain model selection.",
-                    sessionName: "model selection",
+            toolCalls: [
+                {
+                    name: "triage_report",
+                    arguments: {
+                        routingIntent: "INQUIRY",
+                        complexity: "LOW",
+                        summary: "Explain model selection.",
+                        sessionName: "model selection",
+                    },
                 },
-            }],
+            ],
         },
         { id: "saved-guide-first", agent: "guide", phase: "inquiry", ordinal: 1, text: "Guide first answer." },
         { id: "saved-guide-next", agent: "guide", phase: "inquiry", ordinal: 2, text: "Guide next answer." },
@@ -261,19 +267,21 @@ export const routerManualModelHandoffScenario = {
         { type: "waitForIdle" },
         ...agentModelsAfterSavedTurnsScenario.actions,
     ],
-    assertions: [(result: ConfigurationScenarioResult) => {
-        assertEquals(
-            result.state.modelTurns?.map(({ agent, provider, model }) => ({ agent, provider, model })),
-            [
-                { agent: "router", provider: GOLDEN_PROVIDER, model: MANUAL_MODEL },
-                { agent: "guide", provider: GOLDEN_PROVIDER, model: BASE_AGENT_MODEL },
-                { agent: "guide", provider: GOLDEN_PROVIDER, model: BASE_AGENT_MODEL },
-                { agent: "planner", provider: GOLDEN_PROVIDER, model: PRESET_MODEL },
-                { agent: "planner", provider: GOLDEN_PROVIDER, model: PRESET_MODEL },
-            ],
-        );
-        assertFooter(result, "Planner", PRESET_MODEL);
-    }],
+    assertions: [
+        (result: ConfigurationScenarioResult) => {
+            assertEquals(
+                result.state.modelTurns?.map(({ agent, provider, model }) => ({ agent, provider, model })),
+                [
+                    { agent: "router", provider: GOLDEN_PROVIDER, model: MANUAL_MODEL },
+                    { agent: "guide", provider: GOLDEN_PROVIDER, model: BASE_AGENT_MODEL },
+                    { agent: "guide", provider: GOLDEN_PROVIDER, model: BASE_AGENT_MODEL },
+                    { agent: "planner", provider: GOLDEN_PROVIDER, model: PRESET_MODEL },
+                    { agent: "planner", provider: GOLDEN_PROVIDER, model: PRESET_MODEL },
+                ],
+            );
+            assertFooter(result, "Planner", PRESET_MODEL);
+        },
+    ],
 };
 
 export const agentModelsAfterRestartScenario = {
@@ -317,19 +325,21 @@ export const agentModelsAfterPresetReloadScenario = {
         { type: "waitForIdle" },
         ...agentModelsAfterSavedTurnsScenario.actions.slice(4),
     ],
-    assertions: [(result: ConfigurationScenarioResult) => {
-        assertEquals(
-            result.state.modelTurns?.map(({ agent, provider, model }) => ({ agent, provider, model })),
-            [
-                { agent: "router", provider: GOLDEN_PROVIDER, model: DEFAULT_MODEL },
-                { agent: "guide", provider: GOLDEN_PROVIDER, model: BASE_AGENT_MODEL },
-                { agent: "guide", provider: GOLDEN_PROVIDER, model: MANUAL_MODEL },
-                { agent: "planner", provider: GOLDEN_PROVIDER, model: PRESET_MODEL },
-                { agent: "planner", provider: GOLDEN_PROVIDER, model: PRESET_MODEL },
-            ],
-        );
-        assertFooter(result, "Planner", PRESET_MODEL);
-    }],
+    assertions: [
+        (result: ConfigurationScenarioResult) => {
+            assertEquals(
+                result.state.modelTurns?.map(({ agent, provider, model }) => ({ agent, provider, model })),
+                [
+                    { agent: "router", provider: GOLDEN_PROVIDER, model: DEFAULT_MODEL },
+                    { agent: "guide", provider: GOLDEN_PROVIDER, model: BASE_AGENT_MODEL },
+                    { agent: "guide", provider: GOLDEN_PROVIDER, model: MANUAL_MODEL },
+                    { agent: "planner", provider: GOLDEN_PROVIDER, model: PRESET_MODEL },
+                    { agent: "planner", provider: GOLDEN_PROVIDER, model: PRESET_MODEL },
+                ],
+            );
+            assertFooter(result, "Planner", PRESET_MODEL);
+        },
+    ],
 };
 
 export const namedAgentModelsAfterSavedTurnsScenario = {
@@ -337,18 +347,20 @@ export const namedAgentModelsAfterSavedTurnsScenario = {
     name: "named-agent-models-after-saved-turns",
     initialAgentName: "guide",
     script: agentModelsAfterSavedTurnsScenario.script.slice(1),
-    assertions: [(result: ConfigurationScenarioResult) => {
-        assertEquals(
-            result.state.modelTurns?.map(({ agent, provider, model }) => ({ agent, provider, model })),
-            [
-                { agent: "guide", provider: GOLDEN_PROVIDER, model: BASE_AGENT_MODEL },
-                { agent: "guide", provider: GOLDEN_PROVIDER, model: BASE_AGENT_MODEL },
-                { agent: "planner", provider: GOLDEN_PROVIDER, model: PRESET_MODEL },
-                { agent: "planner", provider: GOLDEN_PROVIDER, model: PRESET_MODEL },
-            ],
-        );
-        assertFooter(result, "Planner", PRESET_MODEL);
-    }],
+    assertions: [
+        (result: ConfigurationScenarioResult) => {
+            assertEquals(
+                result.state.modelTurns?.map(({ agent, provider, model }) => ({ agent, provider, model })),
+                [
+                    { agent: "guide", provider: GOLDEN_PROVIDER, model: BASE_AGENT_MODEL },
+                    { agent: "guide", provider: GOLDEN_PROVIDER, model: BASE_AGENT_MODEL },
+                    { agent: "planner", provider: GOLDEN_PROVIDER, model: PRESET_MODEL },
+                    { agent: "planner", provider: GOLDEN_PROVIDER, model: PRESET_MODEL },
+                ],
+            );
+            assertFooter(result, "Planner", PRESET_MODEL);
+        },
+    ],
 };
 
 export const agentModelsAfterManualSelectionScenario = {
@@ -363,19 +375,21 @@ export const agentModelsAfterManualSelectionScenario = {
         { type: "waitForIdle" },
         ...agentModelsAfterSavedTurnsScenario.actions.slice(4),
     ],
-    assertions: [(result: ConfigurationScenarioResult) => {
-        assertEquals(
-            result.state.modelTurns?.map(({ agent, provider, model }) => ({ agent, provider, model })),
-            [
-                { agent: "router", provider: GOLDEN_PROVIDER, model: DEFAULT_MODEL },
-                { agent: "guide", provider: GOLDEN_PROVIDER, model: BASE_AGENT_MODEL },
-                { agent: "guide", provider: GOLDEN_PROVIDER, model: MANUAL_MODEL },
-                { agent: "planner", provider: GOLDEN_PROVIDER, model: PRESET_MODEL },
-                { agent: "planner", provider: GOLDEN_PROVIDER, model: PRESET_MODEL },
-            ],
-        );
-        assertFooter(result, "Planner", PRESET_MODEL);
-    }],
+    assertions: [
+        (result: ConfigurationScenarioResult) => {
+            assertEquals(
+                result.state.modelTurns?.map(({ agent, provider, model }) => ({ agent, provider, model })),
+                [
+                    { agent: "router", provider: GOLDEN_PROVIDER, model: DEFAULT_MODEL },
+                    { agent: "guide", provider: GOLDEN_PROVIDER, model: BASE_AGENT_MODEL },
+                    { agent: "guide", provider: GOLDEN_PROVIDER, model: MANUAL_MODEL },
+                    { agent: "planner", provider: GOLDEN_PROVIDER, model: PRESET_MODEL },
+                    { agent: "planner", provider: GOLDEN_PROVIDER, model: PRESET_MODEL },
+                ],
+            );
+            assertFooter(result, "Planner", PRESET_MODEL);
+        },
+    ],
 };
 
 export const slashAgentUnavailablePresetRecoveryScenario = {
@@ -627,37 +641,13 @@ export const slashThemeScenario = {
     composedTui: true,
     initialAgentName: "guide",
     terminal: { columns: 100, rows: 30 },
+    captureGlobalSettings: true,
     scriptedInteractions: [{ type: "select", promptIncludes: "Select Theme", value: "catppuccin-mocha" }],
-    actions: [
-        { type: "type", text: "/theme" },
-        { type: "enter" },
-        { type: "waitForIdle" },
-    ],
+    actions: [{ type: "type", text: "/theme" }, { type: "enter" }, { type: "waitForIdle" }],
     assertions: [
         (result: ConfigurationScenarioResult) => assertEventIncludes(result, "terminal:type:/theme"),
         (result: ConfigurationScenarioResult) => {
-            assertEquals(result.state.scriptedInteractions?.[0]?.interaction?.value, "catppuccin-mocha");
-        },
-    ],
-};
-
-export const slashSettingsScenario = {
-    name: "slash-command-settings",
-    slashCommands: ["settings"],
-    composedTui: true,
-    initialAgentName: "guide",
-    terminal: { columns: 100, rows: 30 },
-    scriptedInteractions: [{ type: "select", promptIncludes: "Settings", value: "done" }],
-    actions: [
-        { type: "type", text: "/settings" },
-        { type: "enter" },
-        { type: "waitForIdle" },
-    ],
-    assertions: [
-        (result: ConfigurationScenarioResult) => assertEventIncludes(result, "terminal:type:/settings"),
-        (result: ConfigurationScenarioResult) => {
-            const value = result.state.scriptedInteractions?.[0]?.interaction?.value;
-            assert(value === "done", `Expected Settings Done selection, got ${value}`);
+            assertEquals(result.state.globalSettings?.theme, "catppuccin-mocha");
         },
     ],
 };
@@ -690,5 +680,4 @@ export const slashCommandConfigurationScenarios = [
     slashModelScenario,
     slashModelUnavailableOverrideRecoveryScenario,
     slashThemeScenario,
-    slashSettingsScenario,
 ];

@@ -1,5 +1,5 @@
 /** Pi tool wrapper for host-neutral review diff reads. */
-import { StringEnum, Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { publishWorkflowToolEvent } from "./workflow-tool-events.ts";
 import { createReviewDiffReader } from "./review-diff.ts";
@@ -15,6 +15,7 @@ export type {
     DiffInspectionOptions,
     ReviewDiffTexts,
     ReviewDiffDetails,
+    ReviewDiffParams,
 } from "./review-diff.ts";
 
 export interface ReviewDiffToolOptions {
@@ -66,9 +67,9 @@ export function createReviewDiffTool(diffs: string | ReviewDiffTexts, options: R
         promptSnippet:
             "review_diff(list|show): List changed files or read the diff for one file. Prefer 'list' first to see what changed, then 'show <path>' to inspect specific files.",
         parameters: Type.Object({
-            command: StringEnum(["list", "show"]),
+            command: Type.Enum(["list", "show"]),
             scope: Type.Optional(
-                StringEnum(["full", "repair"], {
+                Type.Enum(["full", "repair"], {
                     description:
                         "Which diff to inspect. 'full' (default) shows the proposed branch patch from its common ancestor with the recorded target through current worktree files. 'repair' is only what the most recent repair changed, and is available from the second review round onward.",
                 }),

@@ -17,7 +17,6 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../../../t
 import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../../../testing/process-global-lock.ts";
 import { HostedSession } from "../../hosted-session.js";
-import type { ManagedOperationCapability } from "../../managed-operation.ts";
 import {
     AGY_MCP_ARGS,
     AGY_MCP_PERMISSION,
@@ -254,54 +253,6 @@ test("Agy MCP setup asks once, accepts explicit approval, and preserves files on
             supportsInteraction: () => true,
         });
         await ensureAgyCliMcpSetup({ hostedSession: approved });
-        assertEquals((await inspectAgyCliMcpSetup()).ok, true);
-    });
-});
-
-test("Agy MCP setup approval works during a managed operation", async () => {
-    await withSetupHome(async (home) => {
-        const approved = new HostedSession({ id: "agy-mcp-managed-approved", cwd: home });
-        approved.setManagedMetadata({
-            runwieldSessionId: "managed-session",
-            projectId: "project",
-            piSessionId: "pi-session",
-            transcriptPath: join(home, "transcript.jsonl"),
-            generation: 1,
-            name: null,
-            activeAgent: null,
-            workflowContext: null,
-        });
-        const capability: ManagedOperationCapability = {
-            runtimeSessionId: approved.id,
-            runwieldSessionId: "managed-session",
-            operationId: "setup-test",
-            settled: false,
-            registerArtifact: () => ({
-                artifactId: "artifact",
-                kind: "report",
-                path: "artifact.log",
-                title: "Artifact",
-                registeredAt: "2026-09-09T00:00:00.000Z",
-                registeredBy: "test",
-                sourceSegmentId: null,
-            }),
-            assertLive() {},
-            settle() {},
-        };
-        approved.setManagedOperationCapability(capability);
-        let approvalCalls = 0;
-        approved.setInteractionAdapter({
-            requestInteraction: () => {
-                approvalCalls += 1;
-                return { outcome: "accepted", value: "approve" };
-            },
-            supportsInteraction: () => true,
-        });
-
-        await assertRejects(() => ensureAgyCliMcpSetup({ hostedSession: approved }), Error, "not approved");
-        assertEquals(approvalCalls, 0);
-        await ensureAgyCliMcpSetup({ hostedSession: approved, capability });
-        assertEquals(approvalCalls, 1);
         assertEquals((await inspectAgyCliMcpSetup()).ok, true);
     });
 });

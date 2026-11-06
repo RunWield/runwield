@@ -203,7 +203,7 @@ for (const scenario of [
 for (const boundary of ["handoff", "validation", "repair", "publication"] as const) {
     test(`a local Session still performs ${boundary} effects through the same workflow boundary`, async () => {
         await withRemoteRuntimeFixture(async (f) => {
-            const { Type } = await import("@earendil-works/pi-ai");
+            const { Type } = await import("typebox");
             const { SessionRuntime } = await import("../session/session-runtime.ts");
             const { SessionHost } = await import("../session/session-host.ts");
             const { openFileSessionStore } = await import("../session/file-session-store.ts");

@@ -17,13 +17,24 @@ test("compiled review jobs use their owning executable instead of wld on PATH", 
             entry,
             `
 import { runWldJobCommand } from ${JSON.stringify(handler)};
+import { closeSync } from "node:fs";
+import { strict as assert } from "node:assert";
 if (process.argv[2]) {
-    for await (const chunk of process.stdin) {}
+    if (process.env.FIXTURE_CLOSE_STDIN === "1") closeSync(0);
+    else for await (const chunk of process.stdin) {}
     console.log(JSON.stringify({ owner: "parent", command: process.argv[2] }));
 } else {
     for (const command of ["ai-review", "guided-review"]) {
         const result = await runWldJobCommand("review patch", new AbortController().signal, process.cwd(), {}, command);
         console.log(result.stdout.trim());
+    }
+    process.env.FIXTURE_CLOSE_STDIN = "1";
+    for (const command of ["ai-review", "guided-review"]) {
+        await assert.rejects(
+            () => runWldJobCommand("review patch".repeat(262144), new AbortController().signal, process.cwd(), {}, command),
+            { code: "EPIPE" },
+        );
+        console.log(command + " rejects incomplete prompt delivery");
     }
 }
 `,
@@ -56,5 +67,7 @@ if (process.argv[2]) {
         assertStringIncludes(stdout, '{"owner":"parent","command":"ai-review"}');
         assertStringIncludes(stdout, '{"owner":"parent","command":"guided-review"}');
         assertEquals(stdout.includes("stale installation"), false);
+        assertStringIncludes(stdout, "ai-review rejects incomplete prompt delivery");
+        assertStringIncludes(stdout, "guided-review rejects incomplete prompt delivery");
     });
 });

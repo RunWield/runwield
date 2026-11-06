@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { TuiMainScreen } from "@earendil-works/pi-tui";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { initTUIWithPair, stopTUI } from "./tui.ts";
-import { formatTerminalTitle, sanitizeSessionName, setTerminalTitleForName } from "./terminal-title.ts";
+import { setTerminalTitleForName } from "./terminal-title.ts";
 
 class CompatibleVirtualTerminal extends VirtualTerminal {
     override drainInput(): Promise<void> {
@@ -19,26 +19,19 @@ class CompatibleVirtualTerminal extends VirtualTerminal {
     }
 }
 
-test("sanitizeSessionName trims, collapses whitespace, and strips control characters", () => {
-    assertEquals(sanitizeSessionName("  fix\n\tmodel\u0007 routing  "), "fix model routing");
-});
-
-test("sanitizeSessionName truncates to a tab-friendly length", () => {
-    assertEquals(sanitizeSessionName("a".repeat(50)), "a".repeat(40));
-});
-
-test("formatTerminalTitle prefixes sanitized names and falls back to W.", () => {
-    assertEquals(formatTerminalTitle(" terminal titles "), "W. terminal titles");
-    assertEquals(formatTerminalTitle("\n\t"), "W.");
-});
-
-test("setTerminalTitleForName updates the active terminal", () => {
+test("active terminal titles sanitize control characters, limit length, and support empty names", () => {
     const terminal = new CompatibleVirtualTerminal();
     const tui = new TuiMainScreen(terminal);
     initTUIWithPair({ terminal, tui });
     try {
-        assertEquals(setTerminalTitleForName("  plan\nboard  "), "W. plan board");
-        assertEquals(terminal.title, "W. plan board");
+        for (const [name, expected] of [
+            ["  fix\n\tmodel\u0007 routing  ", "W. fix model routing"],
+            ["a".repeat(50), "W. " + "a".repeat(40)],
+            ["\n\t", "W."],
+        ]) {
+            assertEquals(setTerminalTitleForName(name), expected);
+            assertEquals(terminal.title, expected);
+        }
     } finally {
         stopTUI();
     }

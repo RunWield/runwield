@@ -5,14 +5,16 @@ import { test } from "node:test";
  */
 
 import { ok as assert } from "node:assert/strict";
-import { AcpSessionMap, type AcpRuntimeSession } from "./session-map.ts";
+import { AcpSessionMap } from "./session-map.ts";
 
 test("AcpSessionMap correlates runtime-owned turns without enforcing exclusion", () => {
     const sessionMap = new AcpSessionMap();
-    // Preserve the legacy id-only fixture; this test exercises ACP prompt bookkeeping.
-    sessionMap.createRecord({ id: "hosted-1", cwd: "/repo" } as Partial<AcpRuntimeSession> as AcpRuntimeSession, {
-        acpSessionId: "acp-1",
-    });
+    sessionMap.createRecord(
+        { sessionId: "hosted-1", cwd: "/repo" },
+        {
+            acpSessionId: "acp-1",
+        },
+    );
 
     const first = sessionMap.beginPrompt("acp-1", "turn-1", "request-1");
     const second = sessionMap.beginPrompt("acp-1", "turn-2", "request-2");
@@ -32,25 +34,12 @@ test("AcpSessionMap leaves prompt completion to the caller, not a cancellation p
 
     const prompt = sessionMap.beginPrompt("acp-1", "turn-1", "request-1");
     assert(prompt);
-    assertEquals(Object.keys(prompt).sort(), ["cancelled", "requestId", "turnId"]);
-
     assertEquals(sessionMap.markCancelled("acp-1"), true);
     assertEquals(sessionMap.markCancelled("acp-1"), true);
     assertEquals(prompt.cancelled, true);
-});
-
-test("AcpSessionMap accumulates usage cost across a Session's turns", () => {
-    const sessionMap = new AcpSessionMap();
-    const record = sessionMap.createRecord(
-        { sessionId: "runtime-1", cwd: "/repo" },
-        {
-            acpSessionId: "acp-1",
-        },
-    );
-
-    assertEquals(record.usageCostUsd, 0);
-    assertEquals(sessionMap.addUsageCost("acp-1", 0.25), 0.25);
-    assertEquals(sessionMap.addUsageCost("acp-1", 0.25), 0.5);
+    assertEquals(sessionMap.isCurrentPrompt("acp-1", prompt), true);
+    assertEquals(sessionMap.endPrompt("acp-1", prompt), true);
+    assertEquals(sessionMap.isCurrentPrompt("acp-1", prompt), false);
 });
 
 test("AcpSessionMap keeps the cost total with the ACP session, not the runtime session", () => {

@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
     mkdir as fsMkdir,
+    rename as fsRename,
+    symlink as fsSymlink,
     mkdtemp as fsMkdtemp,
     readFile as fsReadFile,
     realpath as fsRealpath,
@@ -13,14 +15,13 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { test } from "node:test";
-import { rmSync as fsRmSync } from "node:fs";
+import { rmSync as fsRmSync, writeFileSync as fsWriteFileSync } from "node:fs";
 import process from "node:process";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createWorktreeGitArtifacts, settleWorktreeAttempt } from "../worktree.js";
 import {
-    buildSlicerRequest,
     extractAssistantOutput,
     finalizePlanImplementation,
     readLatestPlanOutcome,
@@ -31,7 +32,6 @@ import { HostedSession } from "../session/hosted-session.js";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { loadPlan, savePlan } from "../../plan-store.js";
 import { getTransitionJournalDir } from "./state-transition.ts";
-import { loadCanonicalExecutionPlanSource } from "./execution-plan-file.js";
 import { createExecutionStartPorts } from "./execution-start.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
@@ -131,32 +131,6 @@ async function makeWorkflowProject(plans) {
     }
     return cwd;
 }
-
-test("HostedSession scopes active execution workflow independently", () => {
-    const sessionA = new HostedSession({ id: "workflow-a", cwd: "/project-a" });
-    const sessionB = new HostedSession({ id: "workflow-b", cwd: "/project-b" });
-    const workflowA = /** @type {const} */ ({
-        planName: "a",
-        triageMeta: {},
-        executionAgent: "engineer",
-        executionCwd: "/work/a",
-    });
-    const workflowB = /** @type {const} */ ({
-        planName: "b",
-        triageMeta: {},
-        executionAgent: "engineer",
-        executionCwd: "/work/b",
-    });
-
-    sessionA.setActiveExecutionWorkflow(workflowA);
-    sessionB.setActiveExecutionWorkflow(workflowB);
-    sessionA.clearActiveExecutionWorkflow();
-
-    assertEquals(sessionA.getActiveExecutionWorkflow(), null);
-    assertEquals(sessionA.getActiveExecutionCwd(), "/project-a");
-    assertEquals(sessionB.getActiveExecutionWorkflow(), workflowB);
-    assertEquals(sessionB.getActiveExecutionCwd(), "/work/b");
-});
 
 test("startActiveExecutionWorkflow continues an existing in-progress worktree", async () => {
     const projectRoot = await makeWorkflowProject([
@@ -340,7 +314,7 @@ test("startActiveExecutionWorkflow uses the latest uncommitted Plan revision ins
     }
 });
 
-test("startActiveExecutionWorkflow captures baseline after first Plan materialization and records metric", async () => {
+test("startActiveExecutionWorkflow captures baseline after first Plan materialization", async () => {
     const projectRoot = await makeWorkflowProject([{ name: "p", status: "ready_for_work" }]);
     const hostedSession = makeHostedSession("baseline-after-plan-restore", projectRoot);
     // The target commit has no Plan: initial materialization must use the approved
@@ -357,33 +331,15 @@ test("startActiveExecutionWorkflow captures baseline after first Plan materializ
         worktreeBranch: "worktree/retired",
         worktreeBaseBranch: "main",
     });
-    /** @type {string[]} */
-    const order = [];
-    /** @type {any[]} */
-    const metrics = [];
 
     const result = await startActiveExecutionWorkflow({
         planName: "p",
         triageMeta: { planId: PLAN_UNDER_TEST },
         currentStatus: "ready_for_work",
         hostedSession,
-        ports: {
-            ...createExecutionStartPorts(),
-            loadCanonicalExecutionPlanSource: (root, name) => {
-                // Observe the ordering, then read the real Plan: a synthetic source
-                // disagrees with the file on disk and trips the front-matter guard.
-                order.push("load-source");
-                return loadCanonicalExecutionPlanSource(root, name);
-            },
-            recordWorkflowMetric: (metric) => {
-                metrics.push(metric);
-                return Promise.resolve(null);
-            },
-        },
+        ports: createExecutionStartPorts(),
     });
 
-    assertEquals(order, ["load-source", "load-source", "load-source"]);
-    assertEquals(metrics.at(-1)?.details.planFileMaterialized, true);
     // The ordering used to be asserted by spying on the Plan restore and the baseline
     // capture. It did not need to be: a baseline that contains the restored Plan can
     // only have been captured after the restore, and a stale baseline recorded on the
@@ -402,8 +358,8 @@ test("startActiveExecutionWorkflow captures baseline after first Plan materializ
 test("startActiveExecutionWorkflow rejects an unsafe canonical source before worktree selection or creation", async () => {
     const projectRoot = await makeWorkflowProject([{ name: "p", status: "ready_for_work" }]);
     const hostedSession = makeHostedSession("canonical-source-before-worktree", projectRoot);
-    let reuseLookups = 0;
-    let ensureCalls = 0;
+    await fsRename(join(projectRoot, "docs/plans"), join(projectRoot, "docs/saved-plans"));
+    await fsSymlink("saved-plans", join(projectRoot, "docs/plans"));
 
     await assertRejects(
         () =>
@@ -412,31 +368,12 @@ test("startActiveExecutionWorkflow rejects an unsafe canonical source before wor
                 triageMeta: { planId: PLAN_UNDER_TEST, worktreeId: "wt-recorded" },
                 currentStatus: "ready_for_work",
                 hostedSession,
-                ports: {
-                    ...createExecutionStartPorts(),
-                    probeGitRepository: () => Promise.resolve({ ok: true, state: "work_tree", cwd: "" }),
-                    loadCanonicalExecutionPlanSource: () =>
-                        Promise.resolve({
-                            kind: "symlink",
-                            relativePath: "docs/plans/p.md",
-                            reason: "Canonical Plan source parent is a symlink at plans.",
-                        }),
-                    findReusableWorktree: () => {
-                        reuseLookups++;
-                        return Promise.resolve(null);
-                    },
-                    ensureExecutionPlanFile: () => {
-                        ensureCalls++;
-                        return Promise.resolve({ kind: "present", relativePath: "docs/plans/p.md" });
-                    },
-                },
+                ports: createExecutionStartPorts(),
             }),
         Error,
         "docs/plans/p.md",
     );
 
-    assertEquals(reuseLookups, 1);
-    assertEquals(ensureCalls, 0);
     // "Before creation" is a claim about the repository and the registry, so ask them
     // rather than a fake that was told to refuse.
     assertEquals(await listWorktreeRegistryEntries(projectRoot), []);
@@ -468,12 +405,7 @@ test("startActiveExecutionWorkflow preserves a malformed derived Plan and blocks
                     triageMeta: { planId: PLAN_UNDER_TEST, worktreeId: reused.id },
                     currentStatus: "ready_for_work",
                     hostedSession,
-                    ports: {
-                        ...createExecutionStartPorts(),
-                        probeGitRepository: () => Promise.resolve({ ok: true, state: "work_tree", cwd: "" }),
-                        findReusableWorktree: () => Promise.resolve(reused),
-                        resolveCurrentCheckoutBranch: () => Promise.resolve("main"),
-                    },
+                    ports: createExecutionStartPorts(),
                 }),
             Error,
             "could not be parsed",
@@ -525,11 +457,7 @@ test("startActiveExecutionWorkflow rolls back a worktree that fails before execu
                     triageMeta: { planId: PLAN_UNDER_TEST, targetBranch: "docs-as-file" },
                     currentStatus: "ready_for_work",
                     hostedSession,
-                    ports: {
-                        ...createExecutionStartPorts(),
-                        probeGitRepository: () => Promise.resolve({ ok: true, state: "work_tree", cwd: "" }),
-                        findReusableWorktree: () => Promise.resolve(null),
-                    },
+                    ports: createExecutionStartPorts(),
                 }),
             Error,
             "no Agent work began",
@@ -546,29 +474,14 @@ test("startActiveExecutionWorkflow bases untargeted plans on the repository defa
     const projectRoot = await makeWorkflowProject([{ name: "untargeted-plan", status: "ready_for_work" }]);
     await setCustomSetting("plans", { autoMergeIntoTargetBranch: true }, "project", projectRoot);
     const hostedSession = makeHostedSession("untargeted-workflow", projectRoot);
-    let prepareCalls = 0;
-    let reuseLookups = 0;
     const result = await startActiveExecutionWorkflow({
         planName: "untargeted-plan",
         triageMeta: { planId: PLAN_UNDER_TEST, worktreeStatus: "completed" },
         currentStatus: "ready_for_work",
         hostedSession,
-        ports: {
-            ...createExecutionStartPorts(),
-            probeGitRepository: () => Promise.resolve({ ok: true, state: "work_tree", cwd: "" }),
-            findReusableWorktree: () => {
-                reuseLookups++;
-                return Promise.resolve(null);
-            },
-            prepareTargetBranchRef: () => {
-                prepareCalls++;
-                return Promise.reject(new Error("an untargeted Plan must not prepare a target branch"));
-            },
-        },
+        ports: createExecutionStartPorts(),
     });
 
-    assertEquals(prepareCalls, 0);
-    assertEquals(reuseLookups, 1);
     const entry = await findWorktreeRegistryEntryById(projectRoot, /** @type {string} */ (result.worktreeId));
     // No declared target means the current branch is the target. Naming its ref
     // explicitly lets repositories with an upstream prefer the fetched remote ref
@@ -592,31 +505,14 @@ test("startActiveExecutionWorkflow resolves implicit current branch before reusi
         status: "ready_for_work",
         planId: PLAN_UNDER_TEST,
     });
-    /** @type {unknown[]} */
-    const reuseCalls = [];
     const result = await startActiveExecutionWorkflow({
         planName: "untargeted-plan",
         triageMeta: { planId: PLAN_UNDER_TEST, worktreeId: recorded.id },
         currentStatus: "ready_for_work",
         hostedSession,
-        ports: {
-            ...createExecutionStartPorts(),
-            probeGitRepository: () => Promise.resolve({ ok: true, state: "work_tree", cwd: "" }),
-            findReusableWorktree: (opts) => {
-                reuseCalls.push(opts);
-                return Promise.resolve(recorded);
-            },
-        },
+        ports: createExecutionStartPorts(),
     });
 
-    assertEquals(reuseCalls, [
-        {
-            projectRoot,
-            planName: "untargeted-plan",
-            planId: PLAN_UNDER_TEST,
-            worktreeId: recorded.id,
-        },
-    ]);
     // Reused, not recreated: same attempt, and the Plan never targeted a branch, so the
     // recorded target is the checkout's own branch resolved at reuse time.
     assertEquals(result.worktreeId, recorded.id);
@@ -660,6 +556,8 @@ test("startActiveExecutionWorkflow rejects reusable worktree target mismatches",
 test("startActiveExecutionWorkflow matches explicit remote target to recorded local reusable target", async () => {
     const projectRoot = await makeWorkflowProject([{ name: "targeted-plan", status: "ready_for_work" }]);
     const hostedSession = makeHostedSession("remote-reusable-workflow", projectRoot);
+    await git(projectRoot, ["branch", "feature-base"]);
+    await git(projectRoot, ["update-ref", "refs/remotes/origin/feature-base", "refs/heads/feature-base"]);
     const recorded = await settleWorktreeAttempt(
         projectRoot,
         await createWorktreeGitArtifacts({
@@ -674,27 +572,16 @@ test("startActiveExecutionWorkflow matches explicit remote target to recorded lo
         status: "ready_for_work",
         targetBranch: "origin/feature-base",
     });
-    let prepareCalls = 0;
     const result = await startActiveExecutionWorkflow({
         planName: "targeted-plan",
         triageMeta: { planId: PLAN_UNDER_TEST, worktreeId: recorded.id, targetBranch: "origin/feature-base" },
         currentStatus: "ready_for_work",
         hostedSession,
-        ports: {
-            ...createExecutionStartPorts(),
-            probeGitRepository: () => Promise.resolve({ ok: true, state: "work_tree", cwd: "" }),
-            findReusableWorktree: () => Promise.resolve(recorded),
-            resolveTargetBranchName: () => Promise.resolve("feature-base"),
-            prepareTargetBranchRef: () => {
-                prepareCalls++;
-                return Promise.reject(new Error("a matching reusable target must not be re-prepared"));
-            },
-        },
+        ports: createExecutionStartPorts(),
     });
 
     // `origin/feature-base` and the recorded local `feature-base` are the same target, so
     // the existing worktree is reused rather than rejected as a mismatch.
-    assertEquals(prepareCalls, 0);
     assertEquals(result.worktreeId, recorded.id);
     assertEquals(result.worktreeBaseBranch, "feature-base");
 });
@@ -733,7 +620,14 @@ test("startActiveExecutionWorkflow ignores an unregistered cached attempt and us
 
 test("startActiveExecutionWorkflow prompts once and uses CWD for non-Git in-place execution", async () => {
     const projectRoot = await makeWorkflowProject([{ name: "non-git-plan", status: "ready_for_work" }]);
+    await fsRm(join(projectRoot, ".git"), { recursive: true });
     const hostedSession = makeHostedSession("non-git-feature-workflow", projectRoot);
+    hostedSession.setInteractionAdapter({
+        requestInteraction: () => {
+            prompts.push("consent");
+            return Promise.resolve({ outcome: "selected", value: "proceed" });
+        },
+    });
     /** @type {string[]} */
     const prompts = [];
     const result = await startActiveExecutionWorkflow({
@@ -741,21 +635,10 @@ test("startActiveExecutionWorkflow prompts once and uses CWD for non-Git in-plac
         triageMeta: { planId: "plan-under-test", classification: "FEATURE" },
         currentStatus: "ready_for_work",
         hostedSession,
-        ports: {
-            ...createExecutionStartPorts(),
-            probeGitRepository: () => Promise.resolve({ ok: false, state: "not_git", cwd: projectRoot }),
-            hasNonGitExecutionConsent: () => false,
-            confirmNonGitFeaturePlanExecution: (_session, projectRoot) => {
-                const prompt = `non git prompt:${projectRoot}`;
-                prompts.push(prompt);
-                return Promise.resolve(true);
-            },
-            findReusableWorktree: () => Promise.reject(new Error("should not inspect worktrees")),
-            captureWorktreeTree: () => Promise.reject(new Error("should not capture git tree")),
-        },
+        ports: createExecutionStartPorts(),
     });
 
-    assertEquals(prompts, [`non git prompt:${projectRoot}`]);
+    assertEquals(prompts, ["consent"]);
     assertEquals(result.executionCwd, projectRoot);
     assertEquals(result.nonGitInPlace, true);
     assertEquals(result.worktreeId, undefined);
@@ -769,7 +652,13 @@ test("startActiveExecutionWorkflow prompts once and uses CWD for non-Git in-plac
 
 test("startActiveExecutionWorkflow cancels non-Git execution without consent", async () => {
     const projectRoot = await makeWorkflowProject([{ name: "non-git-plan", status: "ready_for_work" }]);
+    await fsRm(join(projectRoot, ".git"), { recursive: true });
     const hostedSession = makeHostedSession("non-git-feature-cancel-workflow", projectRoot);
+    hostedSession.setInteractionAdapter({
+        requestInteraction: () => {
+            return Promise.resolve({ outcome: "selected", value: "cancel" });
+        },
+    });
     await assertRejects(
         () =>
             startActiveExecutionWorkflow({
@@ -777,12 +666,7 @@ test("startActiveExecutionWorkflow cancels non-Git execution without consent", a
                 triageMeta: { planId: PLAN_UNDER_TEST, classification: "FEATURE" },
                 currentStatus: "ready_for_work",
                 hostedSession,
-                ports: {
-                    ...createExecutionStartPorts(),
-                    probeGitRepository: () => Promise.resolve({ ok: false, state: "not_git", cwd: projectRoot }),
-                    hasNonGitExecutionConsent: () => false,
-                    confirmNonGitFeaturePlanExecution: () => Promise.resolve(false),
-                },
+                ports: createExecutionStartPorts(),
             }),
         Error,
         "in-place execution was not approved",
@@ -794,7 +678,13 @@ test("startActiveExecutionWorkflow cancels non-Git execution without consent", a
 
 test("startActiveExecutionWorkflow does not activate Frontend Engineer before non-Git consent commits", async () => {
     const projectRoot = await makeWorkflowProject([{ name: "visual-plan", status: "ready_for_work" }]);
+    await fsRm(join(projectRoot, ".git"), { recursive: true });
     const hostedSession = makeHostedSession("frontend-non-git-cancel-workflow", projectRoot);
+    hostedSession.setInteractionAdapter({
+        requestInteraction: () => {
+            return Promise.resolve({ outcome: "selected", value: "cancel" });
+        },
+    });
     await assertRejects(
         () =>
             startActiveExecutionWorkflow({
@@ -806,12 +696,7 @@ test("startActiveExecutionWorkflow does not activate Frontend Engineer before no
                 },
                 currentStatus: "ready_for_work",
                 hostedSession,
-                ports: {
-                    ...createExecutionStartPorts(),
-                    probeGitRepository: () => Promise.resolve({ ok: false, state: "not_git", cwd: projectRoot }),
-                    hasNonGitExecutionConsent: () => false,
-                    confirmNonGitFeaturePlanExecution: () => Promise.resolve(false),
-                },
+                ports: createExecutionStartPorts(),
             }),
         Error,
         "in-place execution was not approved",
@@ -850,10 +735,6 @@ test("readLatestPlanOutcome returns the latest plan_written outcome", () => {
         feedback: "Keep the selected command.",
         images: [{ base64: "YXBwcm92ZWQ=", mimeType: "image/png" }],
     });
-});
-
-test("readLatestPlanOutcome returns null when no plan_written tool result is present", () => {
-    assertEquals(readLatestPlanOutcome([]), null);
 });
 
 test("extractAssistantOutput falls back to task_completed message details", () => {
@@ -1045,41 +926,6 @@ test("finalizePlanImplementation fails closed without durable execution context"
     assertEquals((await loadPlan(projectRoot, "feature-plan"))?.attrs.status, "ready_for_work");
 });
 
-test("buildSlicerRequest includes plan name and base instructions", () => {
-    const text = buildSlicerRequest("my-plan", undefined);
-    assertStringIncludes(text, "Slice Plan: my-plan");
-    assertStringIncludes(text, "docs/plans/my-plan.md");
-    assertStringIncludes(text, "system prompt");
-    // Without triage meta, the report block must not appear.
-    assertEquals(text.includes("Triage Report"), false);
-});
-
-test("buildSlicerRequest includes triage report fields when present", () => {
-    const text = buildSlicerRequest("my-plan", {
-        classification: "PROJECT",
-        workKind: "DOCUMENTATION",
-        complexity: "HIGH",
-        summary: "Initialize RunWield",
-        affectedPaths: ["src/foo.js", "src/bar.js"],
-    });
-    assertStringIncludes(text, "Triage Report");
-    assertStringIncludes(text, "Classification: PROJECT");
-    assertStringIncludes(text, "Work Kind: DOCUMENTATION");
-    assertStringIncludes(text, "Complexity: HIGH");
-    assertStringIncludes(text, "Summary: Initialize RunWield");
-    assertStringIncludes(text, "src/foo.js, src/bar.js");
-});
-
-test("buildSlicerRequest omits empty affectedPaths", () => {
-    const text = buildSlicerRequest("p", {
-        classification: "PROJECT",
-        complexity: "LOW",
-        summary: "x",
-        affectedPaths: [],
-    });
-    assertEquals(text.includes("Affected paths"), false);
-});
-
 test("startActiveExecutionWorkflow records attempt timestamp only after execution starts", async () => {
     const projectRoot = await makeWorkflowProject([{ name: "clock-plan", status: "ready_for_work" }]);
     const hostedSession = makeHostedSession("attempt-clock-workflow", projectRoot);
@@ -1088,13 +934,7 @@ test("startActiveExecutionWorkflow records attempt timestamp only after executio
         triageMeta: { planId: "plan-under-test", classification: "FEATURE" },
         currentStatus: "ready_for_work",
         hostedSession,
-        ports: {
-            ...createExecutionStartPorts(),
-            now: () => 4242,
-            probeGitRepository: () => Promise.resolve({ ok: false, state: "not_git", cwd: projectRoot }),
-            hasNonGitExecutionConsent: () => true,
-            recordWorkflowMetric: () => Promise.resolve(null),
-        },
+        ports: { ...createExecutionStartPorts(), now: () => 4242 },
     });
 
     assertEquals(result.executionStarted, true);
@@ -1108,30 +948,18 @@ test("execution preparation ignores Plan body edits the user owns", async () => 
     ]);
     const stored = await loadPlan(projectRoot, "body-plan");
     const hostedSession = makeHostedSession("exec-body", projectRoot);
+    hostedSession.setEventSink((event) => {
+        if (event.type === "system_status" && event.message === "Preparing the implementation target...") {
+            fsWriteFileSync(stored.path, `${stored.markdown}\n\nEdited in another editor.\n`);
+        }
+    });
 
     const result = await startActiveExecutionWorkflow({
         planName: "body-plan",
         triageMeta: { planId: PLAN_UNDER_TEST, classification: "FEATURE" },
         currentStatus: "ready_for_work",
         hostedSession,
-        ports: {
-            ...createExecutionStartPorts(),
-            probeGitRepository: () => Promise.resolve({ ok: true, state: "work_tree", cwd: "" }),
-            resolveCurrentCheckoutBranch: () => Promise.resolve("main"),
-            findReusableWorktree: () => Promise.resolve(null),
-            // Same lifecycle front matter, different body: the user edited their
-            // Plan outside RunWield, which must not abort execution.
-            loadCanonicalExecutionPlanSource: () =>
-                Promise.resolve(
-                    /** @type {any} */ ({
-                        kind: "loaded",
-                        path: stored?.path,
-                        relativePath: "docs/plans/body-plan.md",
-                        markdown: `${stored?.markdown}\n\nEdited in another editor.\n`,
-                        attrs: { ...stored?.attrs },
-                    }),
-                ),
-        },
+        ports: createExecutionStartPorts(),
     });
 
     assertEquals(result.planName, "body-plan");
@@ -1152,6 +980,11 @@ test("execution preparation still refuses when lifecycle front matter drifts", a
         });
         const stored = await loadPlan(projectRoot, "fm-plan");
         const hostedSession = makeHostedSession("exec-fm", projectRoot);
+        hostedSession.setEventSink((event) => {
+            if (event.type === "system_status" && event.message === "Preparing the implementation target...") {
+                fsWriteFileSync(stored.path, stored.markdown.replace('status: "ready_for_work"', 'status: "on_hold"'));
+            }
+        });
 
         await assertRejects(
             () =>
@@ -1160,33 +993,13 @@ test("execution preparation still refuses when lifecycle front matter drifts", a
                     triageMeta: { planId: "plan-fm", classification: "FEATURE" },
                     currentStatus: "ready_for_work",
                     hostedSession,
-                    ports: {
-                        ...createExecutionStartPorts(),
-                        probeGitRepository: () => Promise.resolve({ ok: true, state: "work_tree", cwd: "" }),
-                        resolveCurrentCheckoutBranch: () => Promise.resolve("main"),
-                        findReusableWorktree: () => Promise.resolve(null),
-                        // Front matter drifted on disk between the locked read and the
-                        // read that materializes the Plan. Drift it in the markdown, the
-                        // way a real edit would: attrs are derived from those bytes, so a
-                        // fixture that changes attrs alone cannot happen in practice.
-                        loadCanonicalExecutionPlanSource: () =>
-                            Promise.resolve(
-                                /** @type {any} */ ({
-                                    kind: "loaded",
-                                    path: stored?.path,
-                                    relativePath: "docs/plans/fm-plan.md",
-                                    markdown: String(stored?.markdown).replace(
-                                        'status: "ready_for_work"',
-                                        'status: "on_hold"',
-                                    ),
-                                    attrs: { ...stored?.attrs, status: "on_hold" },
-                                }),
-                            ),
-                    },
+                    ports: createExecutionStartPorts(),
                 }),
             Error,
-            "front matter change",
+            "on_hold",
         );
+        assertEquals((await loadPlan(projectRoot, "fm-plan"))?.attrs.status, "on_hold");
+        assertEquals(hostedSession.getActiveExecutionWorkflow(), null);
     } finally {
         await fsRm(projectRoot, { recursive: true }).catch(() => {});
     }

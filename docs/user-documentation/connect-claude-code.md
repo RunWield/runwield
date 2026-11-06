@@ -21,6 +21,11 @@ and code review chat, repair, interruption recovery, publication, Work Records, 
 privacy checks. It records a dirty source snapshot and bypassed permissions **only in its throwaway repository**.
 It is not evidence for every later source change or for a released binary.
 
+Claude `2.x` shares policy coverage, subject to the `2.1.303` minimum. Minor and patch updates need no individual
+acceptance entry; a new major requires qualification. Prerelease and build suffixes retain their numeric family, while
+a prerelease below the minimum still rejects. Coverage does not claim an exact-version run. Unqualified or unreported
+versions continue quietly, with internal assessments retained. Pre-1.0 hosts use a minor qualification boundary.
+
 ### Permissions
 
 Use Claude Code's normal permission settings for your work. Claude may ask for permission to run tools or access an
@@ -168,12 +173,12 @@ Update Core with the installer or package manager you used. For example, rerun t
 `brew upgrade gandazgul/tap/wld` or `winget upgrade --id Gandazgul.RunWield --exact`. Use `claude update` for Claude Code.
 
 Core checks current host evidence on worker instructions, artifact and chat reads, and lifecycle operations, not just
-activation. A rejected host gets no new worker instructions. Status reports the compatibility assessment and stays
+activation. A rejected host gets no new worker instructions. Status preserves blocking compatibility diagnostics and stays
 available for recovery, but does not continue validation for a rejected host:
 
-- **Compatible:** the host version and adapter contract are in the matrix.
-- **Newer, not yet tested:** continue with a visible notice; this does not add a tested version.
-- **Version not reported:** continue with a notice; the version floor cannot be checked.
+- **Compatible:** the host release family and adapter contract are covered by policy; continue quietly.
+- **Unqualified family:** continue quietly; expanding coverage requires qualification.
+- **Version not reported:** continue quietly; the version floor cannot be checked.
 - **Older than the tested floor:** update Claude Code before continuing.
 - **Incompatible adapter:** follow Core's exact plugin or Core update guidance. The rejected operation changes no
   workflow, Plan, or execution checkout. Status remains available for recovery.

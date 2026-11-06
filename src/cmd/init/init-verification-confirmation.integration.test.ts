@@ -14,7 +14,7 @@ import type { InteractiveSessionPort } from "../../ui/tui/interactive-session-po
 import type {
     RuntimeInteractionRequest,
     RuntimeInteractionResponse,
-} from "../../shared/session/session-runtime-interactions.js";
+} from "../../shared/session/session-runtime-interactions.ts";
 
 interface InitUi {
     messages: Array<{ message: string; error?: boolean }>;

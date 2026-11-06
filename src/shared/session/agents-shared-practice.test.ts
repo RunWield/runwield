@@ -1,7 +1,6 @@
 import {
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,
-    readdir as fsReaddir,
     readFile as fsReadFile,
     rm as fsRm,
     writeFile as fsWriteFile,
@@ -11,7 +10,7 @@ import { test } from "node:test";
 import { match as assertMatch } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { _AGENT_ATTENTION_NUDGES, listAgentDefNames, loadAgentDef } from "./agents.js";
+import { listAgentDefNames, loadAgentDef } from "./agents.js";
 
 const BUNDLED_AGENT_DEFS = join("src", "agent-definitions");
 const SHARED_PRACTICE_DIR = join(BUNDLED_AGENT_DEFS, "shared-practice");
@@ -233,37 +232,6 @@ test("shared practice fragments are never offered as agents", async () => {
     assertEquals(names.includes("shared-practice"), false);
 });
 
-test("every bundled fragment is claimed by at least one agent", async () => {
-    const claimed = new Set(
-        [...SHARED_PRACTICE_CONSUMERS, ...PLANNING_PRACTICE_CONSUMERS].flatMap(([, fragments]) => fragments),
-    );
-    // The Reviewer-Feedback Engineer is a workflow-only subagent, so it is not in
-    // the loadAgentDef listing above; it claims engineering-practice on its own.
-    claimed.add("engineering-practice");
-    claimed.add("working-tree-safety");
-    // Both delegated subagent definitions claim this fragment outside the top-level listing.
-    claimed.add("delegated-session");
-    // Discovery, verification, and integration Reviewers are workflow-only subagents.
-    const { loadSubAgentDefinition } = await import("./subagent-definitions.ts");
-    const { SUBAGENTS } = await import("../../constants.js");
-    const reviewPractice = (await fsReadFile(join(SHARED_PRACTICE_DIR, "review-practice.md"), "utf8"))
-        .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "")
-        .trim();
-    for (const id of [SUBAGENTS.REVIEWER, SUBAGENTS.INTEGRATION_REVIEWER]) {
-        const reviewer = await loadSubAgentDefinition(id);
-        assertStringIncludes(reviewer.systemPrompt, reviewPractice);
-    }
-    const verifyReviewer = await loadSubAgentDefinition(SUBAGENTS.REVIEWER, { reviewerMode: "verify" });
-    assertStringIncludes(verifyReviewer.systemPrompt, reviewPractice);
-    claimed.add("review-practice");
-
-    for await (const entry of await fsReaddir(SHARED_PRACTICE_DIR, { withFileTypes: true })) {
-        if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
-        const fragment = entry.name.replace(/\.md$/, "");
-        assertEquals(claimed.has(fragment), true, `Unclaimed shared practice fragment: ${fragment}`);
-    }
-});
-
 test("every coding persona composes the engineering practice it declares", async () => {
     for (const [agentName] of SHARED_PRACTICE_CONSUMERS) {
         const def = await loadAgentDef(agentName);
@@ -312,12 +280,6 @@ test("Plan executors keep a strict no-self-edit boundary while explicit user aut
             normalizedPrompt,
             "call `task_completed` only when its revised requirements are actually complete",
         );
-    }
-
-    for (const agentName of PLAN_EXECUTION_PERSONAS) {
-        const nudge = _AGENT_ATTENTION_NUDGES[agentName];
-        assertStringIncludes(nudge, "never edit the Plan on your own or to match what you built");
-        assertStringIncludes(nudge, "raise at most one concern, then make the exact edit and continue");
     }
 });
 

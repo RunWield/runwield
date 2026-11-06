@@ -22,7 +22,10 @@ test("Claude CLI aliases are selectable with external backend metadata but not r
     const { registry, tempDir } = await makeRegistry();
     try {
         const selectable = registry.getSelectable().filter((model) => model.provider === "claude-cli");
-        assertEquals(selectable.map((model) => model.id), ["sonnet", "opus", "haiku", "fable"]);
+        assertEquals(
+            selectable.map((model) => model.id),
+            ["sonnet", "opus", "haiku", "fable"],
+        );
         assertEquals(new Set(selectable.map((model) => `${model.provider}/${model.id}`)).size, 4);
         for (const model of selectable) {
             assertObjectMatch(model, {
@@ -33,7 +36,10 @@ test("Claude CLI aliases are selectable with external backend metadata but not r
             assertEquals(registry.isSelectable(model), true);
             assertEquals(registry.hasConfiguredAuth(model), false);
         }
-        assertEquals(registry.getAvailable().some((model) => model.provider === "claude-cli"), false);
+        assertEquals(
+            registry.getAvailable().some((model) => model.provider === "claude-cli"),
+            false,
+        );
     } finally {
         await fsRm(tempDir, { recursive: true });
     }
@@ -92,32 +98,19 @@ test("Claude CLI remains outside API auth even when files contain a misleading p
             healthCheck: "execution-preflight",
         });
         assertEquals(
-            registry.getAll().filter((entry) => entry.provider === "claude-cli").map((entry) => entry.id),
+            registry
+                .getAll()
+                .filter((entry) => entry.provider === "claude-cli")
+                .map((entry) => entry.id),
             ["sonnet", "opus", "haiku", "fable"],
         );
         assertEquals(
-            registry.getSelectable().filter((entry) => entry.provider === "claude-cli").map((entry) => entry.id),
+            registry
+                .getSelectable()
+                .filter((entry) => entry.provider === "claude-cli")
+                .map((entry) => entry.id),
             ["sonnet", "opus", "haiku", "fable"],
         );
-    } finally {
-        await fsRm(tempDir, { recursive: true });
-    }
-});
-
-test("Claude CLI stored credentials are hidden from credential provider listings", async () => {
-    const tempDir = await fsMkdtemp(join(tmpdir(), "runwield-claude-cli-credentials-"));
-    try {
-        const store = new RunWieldCredentialStore(join(tempDir, "auth.json"));
-        await fsWriteFile(
-            join(tempDir, "auth.json"),
-            JSON.stringify({
-                "claude-cli": { type: "api_key", key: "fake" },
-                openai: { type: "api_key", key: "real" },
-            }),
-        );
-
-        assertEquals(await store.read("claude-cli"), undefined);
-        assertEquals(await store.list(), [{ providerId: "openai", type: "api_key" }]);
     } finally {
         await fsRm(tempDir, { recursive: true });
     }

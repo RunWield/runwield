@@ -14,6 +14,7 @@ import {
     loadPlan,
 } from "../../plan-store.js";
 import { runArchiveTransition } from "../../shared/workflow/state-transition.ts";
+import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
 import { startBackgroundArchive } from "./archive-background.ts";
 import { formatEpicProgressSummary } from "./plan-epic-children.ts";
 import { transitionFailureError } from "./transition-failure.ts";
@@ -62,7 +63,7 @@ async function archiveOnePlan(
     now: string,
     force: boolean,
 ): Promise<ArchivedPlanResult> {
-    const loaded = await loadPlan(projectRoot, planName);
+    const loaded = (await resolveWorkflowPlanLocation(projectRoot, planName, { readOnly: true })).plan;
     if (!loaded) throw new Error(`Plan not found: ${planName}`);
     let archived: ArchivedPlanResult | null = null;
     const transition = await runArchiveTransition({

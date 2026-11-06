@@ -4,12 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import {
-    ensureRemoteProject,
-    listProjectsFromDisk,
-    recordRemoteHostAnswer,
-    sessionDirForProject,
-} from "../session/file-session-storage.ts";
+import { ensureRemoteProject, listProjectsFromDisk, sessionDirForProject } from "../session/file-session-storage.ts";
 import { confirmRemoteHost } from "./host-confirmation.ts";
 import { LaptopSessionControl } from "./laptop-session-control.ts";
 import { bindRemoteMemory, remoteMemoryIdentity } from "./memory-binding.ts";
@@ -269,14 +264,3 @@ for (const choice of ["0", "2"]) {
             equal(confirmRemoteHost(f.address, f.baseDir), result);
         }));
 }
-
-test("retaining a duplicate answer leaves the project identity and bytes unchanged", () =>
-    fixture(async (f) => {
-        recordRemoteHostAnswer(f.baseDir, f.project, f.address.host, "acceptedHosts");
-        const bytes = await readFile(f.projectFile, "utf8");
-        recordRemoteHostAnswer(f.baseDir, f.project, f.address.host, "acceptedHosts");
-        equal(await readFile(f.projectFile, "utf8"), bytes);
-        const saved = listProjectsFromDisk(f.baseDir)[0];
-        equal(saved.projectId, f.project.projectId);
-        equal(saved.remote, { ...f.project.remote, acceptedHosts: [f.address.host] });
-    }));

@@ -17,7 +17,7 @@ affectedPaths:
     - "src/shared/workflow/state-transition.ts"
     - "src/shared/session/session-runtime.js"
     - "src/cmd/load-plan/"
-    - "docs/adr/005-concurrent-worktree-isolation.md"
+    - "docs/adr/004-concurrent-worktree-isolation.md"
     - "docs/domain-language.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
@@ -198,7 +198,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   failed-execution reports, missing-document fallback or stale primary resurrection.
 - Workflow, registry, load-plan, catalog and Session integration tests — prove the complete journey with real Git
   branches.
-- `docs/adr/005-concurrent-worktree-isolation.md`, `docs/domain-language.md`, `docs/usage.md` — document the new
+- `docs/adr/004-concurrent-worktree-isolation.md`, `docs/domain-language.md`, `docs/usage.md` — document the new
   pre-execution document ownership and branch-independent loading. Do not change unrelated lifecycle meanings.
 
 Plan Packages, integrated Epic validation, Epic-to-primary publication, Sequence-specific features, non-Git planning,
@@ -241,7 +241,7 @@ must continue to work. Do not rewrite the user's example Plan as a substitute fo
       planning as an execution failure or deleting the sole saved Plan. No new browser layout is required.
 - [ ] Real-Git regression tests prove the journeys below and retain existing authority, validation, recovery and
       publication protections. The new full-journey test fails on the current implementation before the runtime fix.
-- [ ] ADR-005 and usage guidance explain retained child worktrees before execution and branch-owned Epic progress. The
+- [ ] ADR-004 and usage guidance explain retained child worktrees before execution and branch-owned Epic progress. The
       glossary's Epic, Child PLANNED_CHANGE Plan, In-Progress Plan and Plan Action Evidence Check definitions and
       relationships agree: a worktree can exist during planning without making the child In-Progress, and actions select
       its authoritative document. Avoid aliases that imply active execution or a permanent Epic worktree. Do not add

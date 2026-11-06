@@ -29,7 +29,7 @@ async function within<T>(promise: Promise<T>, label: string): Promise<T> {
     }
 }
 
-test("LIVE proof cancels a pending provider turn when its connection closes", async () => {
+test("LIVE proof never starts after connection closure and cancels an active provider turn", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     const project = join(root, "project");
     const personal = join(root, "personal");
@@ -38,22 +38,28 @@ test("LIVE proof cancels a pending provider turn when its connection closes", as
     await fsWriteFile(join(personal, "settings.json"), "{}");
     await fsWriteFile(join(project, "sentinel.txt"), "remote-test");
     let started = () => {};
-    const providerStarted = new Promise<void>((resolve) => started = resolve);
+    const providerStarted = new Promise<void>((resolve) => (started = resolve));
     let upstreamAborts = 0;
+    let providerRequests = 0;
     let upstreamStopped = () => {};
-    const upstreamDone = new Promise<void>((resolve) => upstreamStopped = resolve);
+    const upstreamDone = new Promise<void>((resolve) => (upstreamStopped = resolve));
     const stream: ProviderStreams["streamSimple"] = (_model, _context, options) => {
+        providerRequests++;
         const events = createAssistantMessageEventStream();
-        options?.signal?.addEventListener("abort", () => {
-            upstreamAborts++;
-            events.push({
-                type: "error",
-                reason: "aborted",
-                error: { ...fauxAssistantMessage(""), stopReason: "aborted" },
-            });
-            events.end();
-            upstreamStopped();
-        }, { once: true });
+        options?.signal?.addEventListener(
+            "abort",
+            () => {
+                upstreamAborts++;
+                events.push({
+                    type: "error",
+                    reason: "aborted",
+                    error: { ...fauxAssistantMessage(""), stopReason: "aborted" },
+                });
+                events.end();
+                upstreamStopped();
+            },
+            { once: true },
+        );
         started();
         return events;
     };
@@ -63,42 +69,59 @@ test("LIVE proof cancels a pending provider turn when its connection closes", as
         allowModelNetwork: false,
         refreshOnCreate: false,
     });
-    runtime.registerNativeProvider(createProvider({
-        id: "proof-local",
-        name: "Proof",
-        models: [{
-            provider: "proof-local",
-            id: "test",
-            name: "Test",
-            api: "openai-completions",
-            baseUrl: "https://private-laptop.invalid",
-            reasoning: false,
-            input: ["text"],
-            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-            contextWindow: 1000,
-            maxTokens: 100,
-        }],
-        auth: {
-            apiKey: {
-                name: "Local",
-                check: () => Promise.resolve({ type: "api_key" }),
-                resolve: () => Promise.resolve({ auth: {} }),
+    runtime.registerNativeProvider(
+        createProvider({
+            id: "proof-local",
+            name: "Proof",
+            models: [
+                {
+                    provider: "proof-local",
+                    id: "test",
+                    name: "Test",
+                    api: "openai-completions",
+                    baseUrl: "https://private-laptop.invalid",
+                    reasoning: false,
+                    input: ["text"],
+                    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                    contextWindow: 1000,
+                    maxTokens: 100,
+                },
+            ],
+            auth: {
+                apiKey: {
+                    name: "Local",
+                    check: () => Promise.resolve({ type: "api_key" }),
+                    resolve: () => Promise.resolve({ auth: {} }),
+                },
             },
-        },
-        api: { stream, streamSimple: stream },
-    }));
+            api: { stream, streamSimple: stream },
+        }),
+    );
     await runtime.refresh({ allowNetwork: false });
     const bridge = new LocalModelBridge(runtime);
     const credential = "a".repeat(64);
-    const server = serveHttp(
-        { hostname: "127.0.0.1", port: 0, onListen() {} },
-        (request) =>
-            request.headers.get("Authorization") === `Bearer ${credential}`
-                ? handleModelRequest(bridge, request, new URL(request.url).pathname)
-                : new Response(null, { status: 401 }),
+    const server = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, (request) =>
+        request.headers.get("Authorization") === `Bearer ${credential}`
+            ? handleModelRequest(bridge, request, new URL(request.url).pathname)
+            : new Response(null, { status: 401 }),
     );
     const controller = new AbortController();
     try {
+        const closed = new AbortController();
+        closed.abort();
+        await assertRejects(
+            () =>
+                runRemoteModelProof({
+                    proof: { provider: "proof-local", modelId: "test", sentinelFile: "sentinel.txt" },
+                    mount: { globalRoot: personal, lost: new Promise<void>(() => {}), close: () => Promise.resolve() },
+                    connection: { port: server.addr.transport === "tcp" ? server.addr.port : 0, credential },
+                    cwd: project,
+                    signal: closed.signal,
+                }),
+            DOMException,
+            "aborted",
+        );
+        assertEquals(providerRequests, 0, "An already-closed connection cannot start a paid provider request");
         const proof = runRemoteModelProof({
             proof: { provider: "proof-local", modelId: "test", sentinelFile: "sentinel.txt" },
             mount: { globalRoot: personal, lost: new Promise<void>(() => {}), close: () => Promise.resolve() },
@@ -108,7 +131,10 @@ test("LIVE proof cancels a pending provider turn when its connection closes", as
         });
         await within(providerStarted, "Provider did not start");
         controller.abort();
-        await within(assertRejects(() => proof, Error), "Proof did not stop");
+        await within(
+            assertRejects(() => proof, Error),
+            "Proof did not stop",
+        );
         await within(upstreamDone, "Upstream request did not stop");
         assertEquals(upstreamAborts, 1);
     } finally {

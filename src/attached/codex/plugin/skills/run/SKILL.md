@@ -37,7 +37,7 @@ start checks, or dispatch a worker before showing this summary. A workflow start
 in Codex with the same Plan, action, revision, and execution directory. The explicit resume already authorizes that
 handoff; no additional host-switch confirmation is needed. Do not import the other host's conversation.
 
-Show any returned `compatibility` notice before continuing. For `unsupported_host`, `incompatible_adapter`, or
+Continue quietly on nonblocking compatibility assessments, including legacy notices from older Core. For `unsupported_host`, `incompatible_adapter`, or
 `unsupported_host_version`, show Core's explanation and update guidance and stop. Never claim a host version is tested
 when Core describes it as untested.
 
@@ -46,11 +46,11 @@ when Core describes it as untested.
 After every tool result, follow `workflow.nextAction`, including a result that rejects a stale call. Read the relevant
 reference before handling its actions; move to another reference when the returned action changes.
 
-| Current action                                                                             | Reference                                           |
-| ------------------------------------------------------------------------------------------ | --------------------------------------------------- |
-| `triage`, `plan`, `review`                                                                 | [Planning and Plan review](references/planning.md)  |
-| `plan_ready`, `plan_saved`, `consent`, `implementation`                                    | [Implementation](references/implementation.md)      |
-| `implemented`, `validation_recovery`, `validation`, `code_review`, `recorder`, `delivered` | [Validation and delivery](references/validation.md) |
+| Current action                                                                                                   | Reference                                           |
+| ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `triage`, `plan`, `review`                                                                                       | [Planning and Plan review](references/planning.md)  |
+| `plan_ready`, `plan_saved`, `consent`, `implementation`                                                          | [Implementation](references/implementation.md)      |
+| `implemented`, `validation_running`, `validation_recovery`, `validation`, `code_review`, `recorder`, `delivered` | [Validation and delivery](references/validation.md) |
 
 For `return_to_host`, report Core's outcome and return to ordinary Codex work. Unsupported request types do not become
 FEATURE workflows by changing their classification. An unrecognized action or role contract is a recoverable

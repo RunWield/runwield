@@ -32,7 +32,7 @@ archivedFromPath: "docs/plans/runtime-migration.md"
 Current contributor commands retain the original task names; use `bun run compile --output <path>` and `bun run ci`.
 Dated checkpoints below record the transitional names used at the time. See [the task compatibility audit](../../bun-task-compatibility.md).
 Carlos subsequently approved Bun-only test container definitions without equivalent Deno permissions; see
-[the phase-2 plan](bun-only-toolchain.md) for the current container scope.
+[the phase-2 plan](https://github.com/RunWield/runwield/blob/4f5732749dbb0bf86a1f55de61728948efb14faa/docs/plans/archived/bun-only-toolchain.md) for the current container scope.
 
 ## Context and recovered decisions
 
@@ -57,7 +57,7 @@ production and tests subsystem by subsystem; qualify and switch distribution. Th
 ## Objective and scope
 
 Preserve current Session identity, files, recovery, writer exclusion, CLI/TUI behavior and Workspace journeys while
-replacing Deno-specific runtime dependencies. Follow [ADR-015](../../adr/015-file-authoritative-session-bundles.md) and the
+replacing Deno-specific runtime dependencies. Follow [ADR-014](../../adr/014-file-authoritative-session-bundles.md) and the
 Core [execution, validation and recovery requirements](../../prd/runwield-core-prd.md#execution-validation-and-recovery).
 No current PRD requirement is added or removed by the first portable storage slice.
 

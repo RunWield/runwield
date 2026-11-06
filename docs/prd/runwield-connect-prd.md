@@ -545,6 +545,10 @@ QUICK_FIX, and safe-handoff fallback beyond non-Git consent remain targets.
 - A fresh repair worker receives the current focused repair instructions and existing execution checkout. It returns its
   per-item report; the coordinating conversation submits `task_completed`. A user-decision request is asked in Claude
   and returned through `validation_decision`, not guessed by the host.
+- Repair workers can call MCP `review_diff` directly for their current action to inspect the checkout's full
+  target-relative diff, including after restoring a pending repair. Instructions and compact artifact references expose
+  this capability. Workers finish paged reads before editing and return the latest revision with their report. Repair
+  reads never satisfy independent reviewer coverage; obsolete actions remain rejected.
 - `/runwield:validate` restores this flow. An active MCP call sends progress every 30 seconds, stopping when it returns.
   The plugin sets a one-hour per-server timeout as a backup. Start Claude with `MCP_TOOL_TIMEOUT=600000` or a higher
   value suitable for the configured check (milliseconds).
@@ -566,6 +570,9 @@ QUICK_FIX, and safe-handoff fallback beyond non-Git consent remain targets.
   conversation reports completion. Core reruns CI before issuing a fresh reviewer request.
 - Given a reviewer that lists files but does not read every required diff byte, Core requests a correction instead of
   accepting approval. A stale action or changed candidate cannot advance review.
+- Given fresh review findings and a repair packet requiring full-diff inspection, the repair worker fetches its own
+  instructions and reads every diff page directly through MCP. It can complete the repair without coordinator-proxied
+  reads or shell-diff workarounds. The next reviewer must independently inspect the repaired candidate.
 - Given a Core process lost during CI, another conversation reads status and resumes validation from durable claims. A
   live validation call does not block reading Attached status. Replaying an accepted completion repeats no effects.
 - Given Core advances its checkpoint but the final Attached write is lost, retry reconciles the durable claim without
@@ -670,6 +677,12 @@ start or resume from the user's intent; a resume first presents the latest open 
 [Cross-host continuation](#compatibility-and-honest-availability) owns the required originating-host disclosure and
 artifact-based handoff. Shared runtime tests do not qualify either Codex surface's complete live journey.
 
+**Requirement: Distinguish active validation from recovery.** Read-only inspection identifies an owned, unsettled
+validation operation as running, with its operation identity, start time, and available checkpoint progress. It does
+not suggest starting another validation operation. Recovery guidance appears after the operation has settled or its
+owner is gone; elapsed time alone does not establish interruption. Shared Core owns
+[latest-failure repair context](runwield-core-prd.md#validation) and full validation before publication.
+
 **Requirement: Start with necessary setup and preserve work after interruption.**
 
 - A user must be able to run the first Attached Workflow in an uninitialized trusted repository.
@@ -711,6 +724,9 @@ artifact-based handoff. Shared runtime tests do not qualify either Codex surface
   `/runwield:plan-review` restores browser review; `/runwield:implement` restores the execution handoff described in
   [Isolated implementation](#isolated-implementation), including the same registered worktree after worker loss.
   Codex uses its single RunWield skill for the saved step instead of requiring separate commands or an internal ID.
+- Given CI held at an external boundary during a validation call, concurrent inspect-only status reports running and
+  leaves durable records unchanged. A duplicate start is rejected. After actual interruption, native recovery resumes
+  safely and replay does not duplicate completed CI or receipt application.
 - **Saved planning context:** Given process loss before Triage or planning completes, `/runwield:plan-review` restores
   the pending action. `get_instructions` returns the saved explicit request and, for the Planner, the saved Triage
   outcome. A new conversation does not need the old conversation's text.
@@ -742,13 +758,14 @@ artifact-based handoff. Shared runtime tests do not qualify either Codex surface
 **Scope and maturity:** The Core-owned [Compatibility Matrix](../../src/shared/attached/compatibility.ts) recognizes
 Claude Code and Codex. Claude's tested entries and [host guide](../user-documentation/connect-claude-code.md) retain the
 source and permission limits in [Preview Acceptance](#preview-acceptance). Codex has no tested-version entries yet;
-recognized versions continue with an explicit untested notice. Protocol probes do not qualify a complete desktop or CLI
+policy coverage includes Codex `0.164.x` separately from its exact-run ledger. Protocol probes do not qualify a complete desktop or CLI
 workflow. Other hosts and stable support remain targets.
 
 Core checks every evidence-carrying operation before dispatch. Unrecognized hosts reject with `unsupported_host`.
 An incompatible adapter contract or host below its tested floor also rejects without changing the workflow, Plan, or
-worktree. Newer or unreported host versions continue with a visible notice, not a tested-support claim. Prerelease
-versions remain distinct from stable versions. Current-action instruction, artifact, and pending-chat reads require
+worktree. Unqualified or unreported versions continue quietly. Core retains internal assessments and evidence, while
+model-facing results omit nonblocking compatibility assessments, including saved legacy notices. Prerelease
+ordering still applies to the minimum-version check. Current-action instruction, artifact, and pending-chat reads require
 current host evidence and reject under these same rules without returning work content.
 
 Both adapters use the shared MCP carrier. It derives host identity from recognized MCP initialization names. Claude
@@ -787,7 +804,13 @@ Planner is told to write only Plan files; neither Core nor Connect blocks its ot
 instructions as a hard restriction, and do not claim independent verification when review lacks independence. Preserve
 the user's host permissions. A model's claim of completion cannot replace actual validation and delivery evidence.
 
-Maintain tested host-version ranges and clear Preview or stable labels. Architecture and implementation Plans choose
+Maintain qualified release families separately from exact acceptance-run entries and clear Preview or stable labels.
+Stable hosts (`1.0.0` and later) share coverage within a major; pre-1.0 hosts share coverage within a minor. Claude
+major `2` and Codex minor `0.164` are covered. Claude’s minimum remains `2.1.303`; Codex has no minimum. Prerelease and
+build suffixes retain their numeric family. New stable majors and pre-1.0 minors need acceptance qualification before
+coverage expands; stable minor/patch and pre-1.0 patch updates need no individual acceptance entry. Coverage never
+claims an exact-version run or a completed desktop/CLI journey. Routine compatibility notices are suppressed in both
+plugins, including notices from older compatible Core. Actionable blocking diagnostics remain visible. Architecture and implementation Plans choose
 transports, role dispatch, tool contracts, and host-specific hooks; this PRD defines the outcomes those choices support.
 
 - The README must position RunWield as the planning, verification, and organizational-memory layer for AI software
@@ -806,8 +829,11 @@ transports, role dispatch, tool contracts, and host-specific hooks; this PRD def
 - Given an unrecognized host with a tested version number and supported adapter contract, activation rejects with
   `unsupported_host` before changing any workflow, Plan, or worktree. Selecting the Codex adapter or supplying claimed
   Codex evidence in tool arguments does not bypass the host check. Status remains readable for recovery.
-- Given a recognized Codex prerelease without saved live acceptance, activation discloses untested support and never
-  reports that the version or its desktop/CLI journey is tested.
+- Given Claude `2.1.304` or `2.99.0`, or Codex `0.164.0-alpha.11.1`, `0.164.0`, or `0.164.1`, Core records
+  compatible family coverage and returns no routine compatibility material. The exact acceptance ledger stays unchanged.
+- Given Claude `3.0.0`, Codex `0.165.0`, or an unreported version, work continues quietly with an internal unqualified
+  or unreported assessment. Codex `0.165.0` requires separate qualification; it does not inherit `0.164.x` coverage.
+- Given a prerelease below Claude’s `2.1.303` minimum, Core rejects with actionable update guidance.
 - Given an open workflow from either supported host, the other host restores its same identity, Plan and pending action,
   shows the handoff summary, and continues with current-host instructions. Stale outcomes remain rejected, and a host
   change neither creates a new workflow nor resets approval.
@@ -1066,8 +1092,8 @@ host-version compatibility audit:
 - [Pi extensions](https://pi.dev/docs/latest/extensions) and [Pi packages](https://pi.dev/docs/latest/packages) provide
   broad command, tool, event, UI, and package extension surfaces.
 
-These are feasibility facts, not a guarantee of parity. Every supported host/version combination still requires tested
-capability evidence.
+These are feasibility facts, not a guarantee of parity. Each qualified host release family requires capability
+evidence under the [compatibility policy](#compatibility-and-honest-availability); coverage does not imply an exact-version run.
 
 ## Out of Scope
 

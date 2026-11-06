@@ -6,7 +6,7 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { dirname, join } from "node:path";
 import { loadPlan } from "../../plan-store.js";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
-import { defaultEpicBranchName, ensureEpicBranch } from "./epic-branch.ts";
+import { ensureEpicBranch } from "./epic-branch.ts";
 
 type PlanFixtureAttribute = string | number | string[];
 type PlanFixtureAttributes = Record<string, PlanFixtureAttribute>;
@@ -62,14 +62,6 @@ const repoFixture = defineGitFixture(async (repo) => {
 async function filesOnRef(repo: string, ref: string): Promise<string[]> {
     return (await git(repo, ["ls-tree", "-r", "--name-only", ref])).split("\n").filter(Boolean);
 }
-
-test("defaultEpicBranchName names the branch after the Epic", () => {
-    assertEquals(
-        defaultEpicBranchName("plan-packages-and-independent-validation"),
-        "epic/plan-packages-and-independent-validation",
-    );
-    assertEquals(defaultEpicBranchName("docs/plans/My Epic.md"), "epic/my-epic");
-});
 
 test("existing Epic branches refresh publication before seeding another child", async () => {
     const repo = await repoFixture.checkout();

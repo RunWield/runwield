@@ -27,8 +27,10 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { createAssistantMessageEventStream, getCurrentSystemMessage } from "@earendil-works/pi-ai";
 import { formatProviderError, formatProviderRetryExhaustion, normalizeProviderStream } from "./provider-errors.ts";
+import { projectProviderSystemPrompt } from "./provider-system-prompt.ts";
 import { completeSimple } from "@earendil-works/pi-ai/compat";
 import { getRemoteSessionSaveBridge } from "./root-session.js";
+import { createRunWieldCodemodeExtension } from "./codemode.ts";
 import { WorkflowStepCompleted } from "../workflow/workflow-tool-events.ts";
 import { createSingleEditToolDefinition } from "../../tools/edit.ts";
 import { createEditDocsToolDefinition, createWriteDocsToolDefinition } from "../../tools/docs-file-tools.ts";
@@ -106,8 +108,6 @@ import { readCurrentPairCheckpoint, recordPairCheckpointSnapshot } from "./pair-
 import { recordExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
 import { directoryExists, fileExists } from "../helpers.ts";
 import {
-    _AGENT_ATTENTION_NUDGES,
-    ATTENTION_NUDGE_TURN_INTERVAL,
     loadAgentDef,
     normalizeAgentInternalName,
     resolveAgentDefsDir as _resolveAgentDefsDir,
@@ -1663,7 +1663,11 @@ export async function assembleFinalSystemPromptWithContextProjection(
     }
 
     const toolItems = tools.map((t) => {
-        const desc = customToolMap.get(t) || "Built-in tool";
+        const desc =
+            customToolMap.get(t) ||
+            (t === "codemode"
+                ? "Run JavaScript against authorized tools; discover tools with ALL_TOOLS and emit filtered output with text(). Workflow decisions remain direct calls."
+                : "Built-in tool");
         const line = `- ${t} - ${desc}`;
         const schemaText = serializeToolContextForProjection(t, effectiveToolMap.get(t), desc);
         return { line, item: createContextProjectionItem(t, schemaText, { name: t }) };
@@ -2106,9 +2110,10 @@ export async function buildAgentSession({
             }),
         );
     }
-    const effectiveMcpRootTools = mcpRootTools || targetHostedSession?.getMcpRootTools?.() || [];
     const effectiveMcpIntegration =
         mcpIntegration || (mcpRootTools?.length === 0 ? undefined : targetHostedSession?.getMcpIntegration?.());
+    const effectiveMcpRootTools =
+        mcpRootTools || effectiveMcpIntegration?.getTools() || targetHostedSession?.getMcpRootTools?.() || [];
     for (const tool of effectiveMcpRootTools) {
         if (!effectiveMcpIntegration && !finalCustomTools.find((existing) => existing.name === tool.name)) {
             finalCustomTools.push(tool);
@@ -2356,6 +2361,7 @@ export async function buildAgentSession({
     });
     const packageExtensionResources = await resolveInstalledWldExtensionResources({ cwd: sessionCwd }).catch(() => []);
     const extensionFactories = [
+        createRunWieldCodemodeExtension(effectiveSessionManager),
         mnemotecaExtension,
         cymbalExtension,
         ketchExtension,
@@ -2455,6 +2461,13 @@ export async function buildAgentSession({
     installPairCheckpointAutoCompactionPreservation(session, targetHostedSession);
 
     const agent = session.agent;
+    const convertToLlm = agent.convertToLlm.bind(agent);
+    agent.convertToLlm = async (messages) => {
+        // Enforce the active prompt after context extensions and before provider
+        // normalization. Compaction calls streamFunction directly with its own
+        // summarization prompt and must not receive the Agent's task instructions.
+        return projectProviderSystemPrompt(await convertToLlm(messages), session.systemPrompt);
+    };
     const providerStream = agent.streamFunction;
     agent.streamFunction = (model, context, options) => {
         // Extensions can register new handlers during lifecycle events after construction.
@@ -2592,7 +2605,7 @@ export async function composeClaudeCliBridgedTools({
         agentDef.tools,
         undefined,
         finalCustomTools.map((tool) => tool.name),
-    );
+    ).filter((name) => name !== "codemode");
     const declared = new Set(declaredTools);
     /** @param {string} name */
     const hasTool = (name) => finalCustomTools.find((tool) => tool.name === name);
@@ -2813,7 +2826,7 @@ export async function buildExecutionSession(opts) {
         agentDef.tools,
         opts.toolNames,
         finalCustomTools.map((tool) => tool.name),
-    );
+    ).filter((name) => name !== "codemode");
     const {
         prompt: finalSystemPrompt,
         projection: contextProjection,
@@ -3816,6 +3829,7 @@ export function attachSessionEventSubscribers(
                 emitRuntimeEvent({
                     type: RuntimeEventTypes.TOOL_START,
                     toolCallId: event.toolCallId,
+                    ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
                     ...runtimeTool,
                     args: event.args,
                 });
@@ -3840,6 +3854,7 @@ export function attachSessionEventSubscribers(
                 emitRuntimeEvent({
                     type: RuntimeEventTypes.TOOL_UPDATE,
                     toolCallId: event.toolCallId,
+                    ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
                     ...(runtimeTools.get(event.toolCallId) || describeRuntimeTool(event.toolName, event.args)),
                     ...normalizeRuntimeToolResult(event.partialResult),
                 });
@@ -3877,6 +3892,7 @@ export function attachSessionEventSubscribers(
                 emitRuntimeEvent({
                     type: RuntimeEventTypes.TOOL_END,
                     toolCallId: event.toolCallId,
+                    ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
                     ...(runtimeTools.get(event.toolCallId) || describeRuntimeTool(event.toolName, undefined)),
                     isError: Boolean(event.isError),
                     ...normalizeRuntimeToolResult(event.result),
@@ -4235,24 +4251,10 @@ export async function runPrompt({
     return session.agent.state.messages;
 }
 
-/**
- * @param {string} agentName
- * @param {string} userRequest
- * @param {number} rootTurnCount
- * @returns {string}
- */
-export function applyAttentionNudge(agentName, userRequest, rootTurnCount) {
-    const nudge = _AGENT_ATTENTION_NUDGES[agentName];
-    if (!nudge) return userRequest;
-    if (rootTurnCount <= 1 || rootTurnCount % ATTENTION_NUDGE_TURN_INTERVAL !== 0) return userRequest;
-
-    return ["<attention_nudge>", nudge, "</attention_nudge>", "", userRequest].join("\n");
-}
-
 /** @type {WeakMap<import('@earendil-works/pi-coding-agent').AgentSession, ExecutionMetricsRecorder>} */
 const executionMetricsForSession = new WeakMap();
 
-/** @type {WeakMap<import('@earendil-works/pi-coding-agent').AgentSession, { agentDef: import('./types.js').AgentDefinition, subAgentDefinition?: { id: import('./subagent-definitions.ts').SubAgentDefinitionId, options?: import('./subagent-definitions.ts').LoadSubAgentDefinitionOptions }, promptState: { text: string }, subscriberState: SubscriberState, unsubscribeMetrics: () => void, agentName: string, tools: string[], finalCustomTools: import('@earendil-works/pi-coding-agent').ToolDefinition[], callerCustomTools?: import('@earendil-works/pi-coding-agent').ToolDefinition[], effectiveToolDefinitions: import('@earendil-works/pi-coding-agent').ToolDefinition[], mcpToolNames?: string[], rootTurnCount: number, projectStateContext: string, cwd: string, model?: string, resolvedModel?: import('../models/model-registry.ts').RunWieldModel, contextProjection?: import('./session-context-report.ts').SessionContextProjection, imageMode?: string, visionFallbackModelRef?: string, steeringTargetId?: string }>} */
+/** @type {WeakMap<import('@earendil-works/pi-coding-agent').AgentSession, { agentDef: import('./types.js').AgentDefinition, subAgentDefinition?: { id: import('./subagent-definitions.ts').SubAgentDefinitionId, options?: import('./subagent-definitions.ts').LoadSubAgentDefinitionOptions }, promptState: { text: string }, subscriberState: SubscriberState, unsubscribeMetrics: () => void, agentName: string, tools: string[], finalCustomTools: import('@earendil-works/pi-coding-agent').ToolDefinition[], callerCustomTools?: import('@earendil-works/pi-coding-agent').ToolDefinition[], effectiveToolDefinitions: import('@earendil-works/pi-coding-agent').ToolDefinition[], mcpToolNames?: string[], projectStateContext: string, cwd: string, model?: string, resolvedModel?: import('../models/model-registry.ts').RunWieldModel, contextProjection?: import('./session-context-report.ts').SessionContextProjection, imageMode?: string, visionFallbackModelRef?: string, steeringTargetId?: string }>} */
 const rootSessionMetadata = new WeakMap();
 
 /** @type {WeakMap<import('./hosted-session.js').HostedSession, { agentName: string, debugLogPath?: string }>} */
@@ -4303,7 +4305,7 @@ export function getRootSessionSwitchState(hostedSession) {
 
 /**
  * @param {import('./hosted-session.js').HostedSession} hostedSession
- * @returns {Partial<import('./agent-switching.js').AgentSwitchOptions>}
+ * @returns {Partial<import('./agent-switching.ts').AgentSwitchOptions>}
  */
 export function getRootSessionRebuildOptions(hostedSession) {
     const session = /** @type {any} */ (hostedSession?.getRootAgentSession?.());
@@ -4540,7 +4542,6 @@ export async function ensureRootAgentSession(opts) {
         callerCustomTools: opts.customTools || [],
         effectiveToolDefinitions,
         mcpToolNames: (opts.mcpRootTools || hostedSession.getMcpRootTools?.() || []).map((tool) => tool.name),
-        rootTurnCount: 0,
         projectStateContext: rootProjectStateContext,
         cwd: opts.cwd || hostedSession.cwd,
         model: finalModelForUi,
@@ -4760,11 +4761,7 @@ export async function runRootTurn({
         });
         const userInitiated = targetHostedSession.metricsHumanInputPending && !targetHostedSession.generatedTaskTurnId;
         targetHostedSession.metricsHumanInputPending = false;
-        meta.rootTurnCount += 1;
-        const finalRequest =
-            dispatch.promptMode === "continuation"
-                ? dispatch.userRequest
-                : applyAttentionNudge(agentName, dispatch.userRequest, meta.rootTurnCount);
+        const finalRequest = dispatch.userRequest;
         let messages;
         if (isExecutionSession(session) && (session.kind === "claude-cli" || session.kind === "agy-cli")) {
             publishTransitionSteeringConsumption(targetHostedSession, transitionSteering);

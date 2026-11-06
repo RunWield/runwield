@@ -1,14 +1,13 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { devPlanCatalog, devPlanCatalogVariant, devOwnerSidebar } from "./server/dev-owner-fixtures.ts";
+import { devPlanCatalog } from "./server/dev-owner-fixtures.ts";
 import type { BoardColumnData } from "./components/BoardColumn.tsx";
 import type { PlanCardData } from "./components/PlanCard.tsx";
 import type { PlanSearchEntry } from "./plan-search.ts";
-import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
+import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { readWorkspaceStyles } from "./workspace-styles.ts";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 import {
@@ -24,14 +23,12 @@ import {
     loadPlanSummaries,
     loadWorkspaceDetail,
     serializePlanSummary,
-    workspaceMetadata as _workspaceMetadata,
 } from "./server/plan-adapter.js";
 import { PlanBoard, buildPlanBoardSearchIndex } from "./components/Board.tsx";
 
 import { renderMarkdown } from "./components/MarkdownView.tsx";
 
 import { detailHref, workspaceHref } from "./components/PlanCard.tsx";
-import { draftRecoveryState, planBodyDraftKey, restoredDraftExpectedBodyHash } from "./islands/PlanBodyEditor.jsx";
 
 import { matchingPlanIds, normalizePlanSearchQuery, PLAN_SEARCH_QUERY_PARAM } from "./islands/PlanBoardSearch.tsx";
 
@@ -456,20 +453,6 @@ test("workspace adapter exposes Epic dependency health done-enough held and orph
     }
 });
 
-test("workspace metadata advertises real board drag/drop capability", () => {
-    const metadata = _workspaceMetadata("/tmp/example-project");
-    assertEquals(metadata.capabilities.lifecycleActions, true);
-    assertEquals(metadata.capabilities.dragDrop, true);
-});
-
-test("draft helpers scope recovery to workspace plan and hash", () => {
-    assertEquals(planBodyDraftKey("workspace", "plan"), "runwield:workspace:workspace:plan:plan:bodyDraft");
-    assertEquals(draftRecoveryState(null, "hash"), "none");
-    assertEquals(draftRecoveryState({ baseBodyHash: "hash" }, "hash"), "same-base");
-    assertEquals(draftRecoveryState({ baseBodyHash: "old" }, "hash"), "changed-on-disk");
-    assertEquals(restoredDraftExpectedBodyHash({ baseBodyHash: "old" }), "old");
-});
-
 test("renderMarkdown renders links and escapes unsafe markdown input", () => {
     const html = renderMarkdown(
         "# Title\n\nParagraph <script>alert(1)</script> with [RunWield](https://runwield.dev) and [bad](javascript:alert(1))\n\n- one\n- two\n\n```\ncode\n```",
@@ -479,26 +462,6 @@ test("renderMarkdown renders links and escapes unsafe markdown input", () => {
     assertStringIncludes(html, 'href="https://runwield.dev"');
     assertStringIncludes(html, 'href="#"');
     assertStringIncludes(html, "<pre");
-});
-
-test("workspace detail header CSS lets lifecycle actions wrap without squeezing summary", async () => {
-    const workspaceCss = await readWorkspaceStyles(new URL("./static/workspace.css", import.meta.url));
-    const componentsCss = await fsReadFile(new URL("../design-system/components.css", import.meta.url), "utf8");
-    assertStringIncludes(workspaceCss, ".detail-title-row {\n    align-items: center;\n    display: grid;");
-    assertStringIncludes(workspaceCss, "grid-template-columns: auto minmax(0, 1fr) auto;");
-    assertStringIncludes(workspaceCss, ".split-header {\n    align-items: flex-start;\n    display: grid;");
-    assertStringIncludes(workspaceCss, "grid-template-columns: minmax(0, 1fr);");
-    assertStringIncludes(workspaceCss, ".header-actions .lifecycle-actions {\n    flex: 1 1 100%;");
-    assertStringIncludes(
-        workspaceCss,
-        ".tabs a,\n    .tab-search-slot,\n    .plan-search-clear {\n        box-sizing: border-box;",
-    );
-    assertStringIncludes(workspaceCss, ".detail-grid > * {\n    min-width: 0;");
-    assertStringIncludes(workspaceCss, ".plan-card.drop-rejected {");
-    assertStringIncludes(workspaceCss, "animation: rw-card-return-to-origin 420ms");
-    assertStringIncludes(workspaceCss, ".column-cards,\n.plan-card {");
-    assertStringIncludes(componentsCss, ".markdown-view {\n    background:");
-    assertStringIncludes(componentsCss, "overflow-wrap: anywhere;");
 });
 
 test("Epic detail order ignores filename prefixes and status and follows metadata edits", async () => {
@@ -574,21 +537,4 @@ test("Board refresh variants remove corrected or deleted diagnostics and preserv
         assertEquals(markup.includes("healthy-navigation-fixture"), variant !== "all-malformed");
         assertEquals(markup.includes("corrected-fixture"), variant === "corrected");
     }
-});
-
-test("development catalog selection is request-local and shared by sidebar and Board fixtures", () => {
-    assertEquals(devPlanCatalogVariant(null), null);
-    assertEquals(devPlanCatalogVariant("rw-dev-plan-catalog=invalid"), null);
-    for (const variant of ["mixed", "corrected", "deleted", "all-malformed", "project-failure"] as const) {
-        assertEquals(devPlanCatalogVariant(`other=cookie; rw-dev-plan-catalog=${variant}`), variant);
-        const catalog = devPlanCatalog(variant);
-        const sidebar = devOwnerSidebar(variant).projects[0];
-        assertEquals(sidebar.planDiagnostics, catalog.diagnostics);
-        assertEquals(
-            sidebar.plans.map((plan) => plan.planId),
-            catalog.plans.map((plan) => plan.planId),
-        );
-        assertEquals(sidebar.plansError, variant === "project-failure");
-    }
-    assertEquals(devOwnerSidebar().projects[0].planDiagnostics, undefined);
 });

@@ -30,7 +30,7 @@ import { ensurePlansDir, loadPlan } from "../../plan-store.js";
 import { probeGitRepository } from "../git.ts";
 import { hasNonGitExecutionConsent, rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
 import { resolvePlanExecutionRuntimeAgent } from "./execution-agent.ts";
-import { switchActiveAgent } from "../session/agent-switching.js";
+import { switchActiveAgent } from "../session/agent-switching.ts";
 import { runRootTurn } from "../session/session.js";
 import { getAgentDisplayName } from "../session/agents.js";
 import { sanitizeSessionName } from "../session-name.ts";
@@ -40,11 +40,11 @@ import {
     emitSystemStatus,
     RuntimeEventTypes,
 } from "../session/session-runtime-events.js";
-import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.js";
+import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.ts";
 import { decidePostExecution, decidePostPlanning, summarizeWorkflowDecision } from "./decisions.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { recordWorkflowMetric } from "./metrics.js";
-import { buildAgentHandoffRequest } from "./workflow-prompts.ts";
+import { buildPostTriageRequest } from "./workflow-prompts.ts";
 import {
     executePlan,
     extractAssistantOutput,
@@ -332,11 +332,7 @@ export async function dispatchPostTriage({
                   : isPlannedChangeClassification(normalizedTriage.routingIntent)
                     ? AGENTS.PLANNER
                     : AGENTS.ARCHITECT;
-    const decoratedRequest = buildAgentHandoffRequest(
-        getAgentDisplayName(dispatchTarget, projectRoot),
-        userRequest,
-        normalizedTriage,
-    );
+    const decoratedRequest = buildPostTriageRequest(userRequest, normalizedTriage);
     await recordMetric({
         category: "routing",
         event: "dispatch_selected",

@@ -165,7 +165,7 @@ export const RuntimeEventTypes = Object.freeze({
  */
 
 /**
- * @typedef {RuntimeEventBase & { type: "workflow_context_changed", workflowContext: import('./workflow-context-session.js').WorkflowContext }} RuntimeWorkflowContextChangedEvent
+ * @typedef {RuntimeEventBase & { type: "workflow_context_changed", workflowContext: import('./workflow-context-session.ts').WorkflowContext }} RuntimeWorkflowContextChangedEvent
  */
 
 /**

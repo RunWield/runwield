@@ -8,26 +8,11 @@ import { setCustomSetting } from "../settings.js";
 import { git } from "../git-test-fixture.ts";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import {
-    classifyToolSubUsage,
     getWorkflowMetricsFilePath,
-    isWorkflowMetricsEnabled,
     recordToolCallFinished,
     recordToolCallStarted,
     recordWorkflowMetric,
-    sanitizeMetricDetails,
 } from "./metrics.js";
-
-interface SanitizedNestedDetails {
-    diffText: string;
-    value: string;
-}
-
-type SanitizedSensitiveDetails = {
-    prompt: string;
-    token: string;
-    cwd: string;
-    nested: SanitizedNestedDetails;
-};
 
 type SanitizedPathDetails = {
     path: string;
@@ -40,22 +25,23 @@ type SanitizedPlainDetails = {
     items: string[];
 };
 
-test("isWorkflowMetricsEnabled honors boolean and object opt-in settings", () => {
-    assertEquals(isWorkflowMetricsEnabled(undefined), false);
-    assertEquals(isWorkflowMetricsEnabled(false), false);
-    assertEquals(isWorkflowMetricsEnabled({ enabled: false }), false);
-    assertEquals(isWorkflowMetricsEnabled(true), true);
-    assertEquals(isWorkflowMetricsEnabled({ enabled: true }), true);
-});
-
-test("recordWorkflowMetric skips writes when disabled", async () => {
+test("metrics persist only for explicit boolean or object opt-in", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
-        await setCustomSetting("workflowMetrics", false, "project", projectRoot);
-        await recordWorkflowMetric(
-            { category: "routing", event: "triage_reported", details: { routingIntent: "INQUIRY" } },
-            projectRoot,
-        );
-        assertEquals(await readMetrics(), []);
+        const settings = [
+            { value: null, saved: 0 },
+            { value: false, saved: 0 },
+            { value: { enabled: false }, saved: 0 },
+            { value: true, saved: 1 },
+            { value: { enabled: true }, saved: 2 },
+        ];
+        for (const { value, saved } of settings) {
+            await setCustomSetting("workflowMetrics", value, "project", projectRoot);
+            await recordWorkflowMetric(
+                { category: "routing", event: "triage_reported", details: { routingIntent: "INQUIRY" } },
+                projectRoot,
+            );
+            assertEquals((await readMetrics()).length, saved);
+        }
     });
 });
 
@@ -139,43 +125,77 @@ test("recordWorkflowMetric reports write failures without throwing", async () =>
     });
 });
 
-test("sanitizeMetricDetails redacts sensitive keys, paths, and long strings", () => {
-    const long = "x".repeat(400);
-    const sanitized = sanitizeMetricDetails({
-        prompt: "secret prompt",
-        token: "abc",
-        cwd: "/Users/example/project",
-        nested: { diffText: "patch", value: long },
-    }) as SanitizedSensitiveDetails;
-    assertEquals(sanitized.prompt, "[redacted]");
-    assertEquals(sanitized.token, "[redacted]");
-    assertEquals(sanitized.cwd, "[path-redacted]");
-    assertEquals(sanitized.nested.diffText, "[redacted]");
-    assert(sanitized.nested.value.length < long.length);
+test("persisted metrics redacts sensitive keys, paths, and long strings", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
+        const long = "x".repeat(400);
+        await recordWorkflowMetric(
+            {
+                category: "routing",
+                event: "triage_reported",
+                details: {
+                    prompt: "secret prompt",
+                    token: "abc",
+                    cwd: "/Users/example/project",
+                    nested: { diffText: "patch", value: long },
+                },
+            },
+            projectRoot,
+        );
+        const sanitized = (await readMetrics())[0].details;
+        assert(sanitized);
+        assertEquals(sanitized.prompt, "[redacted]");
+        assertEquals(sanitized.token, "[redacted]");
+        assertEquals(sanitized.cwd, "[path-redacted]");
+        const nested = sanitized.nested;
+        assert(nested && typeof nested === "object" && !Array.isArray(nested));
+        assertEquals(nested.diffText, "[redacted]");
+        assert(typeof nested.value === "string");
+        assert(nested.value.length < long.length);
+    });
 });
 
-test("sanitizeMetricDetails redacts generic relative paths but preserves affectedPaths metadata", () => {
-    const sanitized = sanitizeMetricDetails({
-        path: "src/private/file.js",
-        file: "docs/plans/secret.md",
-        affectedPaths: ["src/visible.js", "docs/visible.md", "/Users/example/project/secret.js"],
-    }) as SanitizedPathDetails;
-    assertEquals(sanitized.path, "[path-redacted]");
-    assertEquals(sanitized.file, "[path-redacted]");
-    assertEquals(sanitized.affectedPaths, ["src/visible.js", "docs/visible.md", "[path-redacted]"]);
+test("persisted metrics redacts generic relative paths but preserves affectedPaths metadata", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
+        await recordWorkflowMetric(
+            {
+                category: "routing",
+                event: "triage_reported",
+                details: {
+                    path: "src/private/file.js",
+                    file: "docs/plans/secret.md",
+                    affectedPaths: ["src/visible.js", "docs/visible.md", "/Users/example/project/secret.js"],
+                },
+            },
+            projectRoot,
+        );
+        const sanitized = (await readMetrics())[0].details as SanitizedPathDetails;
+        assertEquals(sanitized.path, "[path-redacted]");
+        assertEquals(sanitized.file, "[path-redacted]");
+        assertEquals(sanitized.affectedPaths, ["src/visible.js", "docs/visible.md", "[path-redacted]"]);
+    });
 });
 
-test("sanitizeMetricDetails omits non-plain objects instead of stringifying them", () => {
-    const sanitized = sanitizeMetricDetails({
-        ok: true,
-        error: new Error("/Users/example/project/secret.js failed with private output"),
-        url: new URL("file:///Users/example/project/secret.js"),
-        items: ["safe", new Error("unsafe output")],
-    }) as SanitizedPlainDetails;
-    assertEquals(sanitized.ok, true);
-    assertEquals("error" in sanitized, false);
-    assertEquals("url" in sanitized, false);
-    assertEquals(sanitized.items, ["safe"]);
+test("persisted metrics omits non-plain objects instead of stringifying them", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
+        await recordWorkflowMetric(
+            {
+                category: "routing",
+                event: "triage_reported",
+                details: {
+                    ok: true,
+                    error: new Error("/Users/example/project/secret.js failed with private output"),
+                    url: new URL("file:///Users/example/project/secret.js"),
+                    items: ["safe", new Error("unsafe output")],
+                },
+            },
+            projectRoot,
+        );
+        const sanitized = (await readMetrics())[0].details as SanitizedPlainDetails;
+        assertEquals(sanitized.ok, true);
+        assertEquals("error" in sanitized, false);
+        assertEquals("url" in sanitized, false);
+        assertEquals(sanitized.items, ["safe"]);
+    });
 });
 
 test("recordWorkflowMetric accepts each workflow metric category", async () => {
@@ -204,17 +224,31 @@ test("recordWorkflowMetric accepts each workflow metric category", async () => {
     });
 });
 
-test("classifyToolSubUsage returns coarse categories only", () => {
-    assertEquals(classifyToolSubUsage("bash", { command: "deno task ci --filter secret" }), "validation_command");
-    assertEquals(classifyToolSubUsage("bash", { command: "git status --short" }), "git");
-    assertEquals(classifyToolSubUsage("code_search", { query: "private query" }), "search");
-    assertEquals(classifyToolSubUsage("memory", { action: "recall", query: "private query" }), "read");
-    assertEquals(classifyToolSubUsage("memory", { action: "store", content: "private memory text" }), "write");
-    assertEquals(classifyToolSubUsage("memory", { action: "delete", id: 42 }), "delete");
-    assertEquals(classifyToolSubUsage("memory_store", { content: "private memory text" }), "write");
-    assertEquals(classifyToolSubUsage("write", { content: "file contents" }), "write");
-    assertEquals(classifyToolSubUsage("write_docs", { content: "file contents" }), "write");
-    assertEquals(classifyToolSubUsage("edit_docs", { oldText: "before", newText: "after" }), "edit");
+test("saved tool calls retain only coarse usage categories", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
+        const cases = [
+            { tool: "bash", args: { command: "deno task ci --filter secret" }, expected: "validation_command" },
+            { tool: "bash", args: { command: "git status --short" }, expected: "git" },
+            { tool: "code_search", args: { query: "private query" }, expected: "search" },
+            { tool: "memory", args: { action: "recall", query: "private query" }, expected: "read" },
+            { tool: "memory", args: { action: "store", content: "private memory text" }, expected: "write" },
+            { tool: "memory", args: { action: "delete", id: 42 }, expected: "delete" },
+            { tool: "memory_store", args: { content: "private memory text" }, expected: "write" },
+            { tool: "write", args: { content: "file contents" }, expected: "write" },
+            { tool: "write_docs", args: { content: "file contents" }, expected: "write" },
+            { tool: "edit_docs", args: { oldText: "before", newText: "after" }, expected: "edit" },
+        ];
+        for (const [index, sample] of cases.entries()) {
+            await recordToolCallStarted("category-" + index, sample.tool, sample.args, projectRoot, "Engineer");
+            await recordToolCallFinished("category-" + index, sample.tool, false, projectRoot, "Engineer");
+        }
+        const rows = await readMetrics();
+        assertEquals(
+            rows.filter((row) => row.event === "tool_call_started").map((row) => row.details?.subUsage),
+            cases.map((sample) => sample.expected),
+        );
+        assertEquals(JSON.stringify(rows).includes("private"), false);
+    });
 });
 
 test("tool usage metrics omit raw commands, queries, file contents, messages, and results", async () => {

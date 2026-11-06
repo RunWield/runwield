@@ -2,7 +2,6 @@ import { assertEquals } from "../src/testing/assertions.ts";
 import { test } from "node:test";
 import {
     assertPlanServerImageFileList,
-    isProhibitedImageFile,
     REQUIRED_IMAGE_DIRECTORIES,
     REQUIRED_IMAGE_FILES,
 } from "./assert-plan-server-image.ts";
@@ -50,11 +49,26 @@ test("assertPlanServerImageFileList rejects repository source state and secret a
     ]);
 });
 
-test("isProhibitedImageFile allows only passive assets below /app/src", () => {
-    assertEquals(isProhibitedImageFile("/app/src/agent-definitions/router.md"), false);
-    assertEquals(isProhibitedImageFile("/app/src/agent-definitions/subagent-definitions/reviewer-prompt.md"), true);
-    assertEquals(isProhibitedImageFile("/app/src/ui/design-system/tokens.css"), false);
-    assertEquals(isProhibitedImageFile("/app/src/ui/theme/catppuccin-mocha.json"), false);
-    assertEquals(isProhibitedImageFile("/app/src/shared/collaboration/secrets.js"), true);
-    assertEquals(isProhibitedImageFile("/app/src/ui/theme/unlisted-theme.json"), true);
+test("image admission permits passive assets but rejects executable or unlisted source", () => {
+    const result = assertPlanServerImageFileList(
+        [
+            ...REQUIRED_IMAGE_FILES,
+            "/app/src/agent-definitions/router.md",
+            "/app/src/agent-definitions/subagent-definitions/reviewer-prompt.md",
+            "/app/src/ui/design-system/tokens.css",
+            "/app/src/ui/theme/catppuccin-mocha.json",
+            "/app/src/shared/collaboration/secrets.ts",
+            "/app/src/ui/theme/unlisted-theme.json",
+        ],
+        [...REQUIRED_IMAGE_DIRECTORIES],
+    );
+    assertEquals(result, {
+        missingRequired: [],
+        missingRequiredDirectories: [],
+        prohibited: [
+            "/app/src/agent-definitions/subagent-definitions/reviewer-prompt.md",
+            "/app/src/shared/collaboration/secrets.ts",
+            "/app/src/ui/theme/unlisted-theme.json",
+        ],
+    });
 });

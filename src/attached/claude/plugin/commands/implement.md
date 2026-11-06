@@ -5,7 +5,7 @@ disable-model-invocation: true
 
 Restore RunWield implementation in this project. Claude Code owns every model call.
 
-Show any returned `compatibility` notice to the user before continuing. On `unsupported_host`, show Core's
+Continue quietly on nonblocking compatibility assessments, including legacy notices from older Core. On `unsupported_host`, show Core's
 compatibility message and stop. On `incompatible_adapter` or `unsupported_host_version`, show Core's update message and stop.
 Core owns host and version compatibility.
 

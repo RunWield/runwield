@@ -11,6 +11,7 @@ import { createSessionRuntime } from "./session-runtime.ts";
 import { buildAgentSession, expandSkillCommand, listSkills } from "./session.js";
 import { listVisibleSkillCatalog } from "./skill-catalog.ts";
 import { resolveNamedInvocation } from "./named-invocation.ts";
+import { extractYaml } from "../front-matter.ts";
 
 async function writeSkill(
     root: string,
@@ -58,6 +59,41 @@ async function assertPublicSelection(
     assertEquals(resolved.payload.source.layer, expectedSource);
 }
 
+test("installed write-tests selects and expands the bundled portable instructions", async () => {
+    await withRuntimeCommandFixture("skill-catalog-write-tests-", async ({ projectRoot, homeDir }) => {
+        const skills = (await listSkills({ cwd: projectRoot })).filter((skill) => skill.name === "write-tests");
+        const expectedPath = join(homeDir, ".wld", "bundled-skills", "write-tests", "SKILL.md");
+        assertEquals(skills.length, 1);
+        assertEquals(skills[0].source, "bundled");
+        assertEquals(skills[0].path, expectedPath);
+
+        const runtime = await fsReadFile(new URL("../../skills/write-tests/SKILL.md", import.meta.url), "utf8");
+        const portable = await fsReadFile(new URL("../../../skills/write-tests/SKILL.md", import.meta.url), "utf8");
+        assertEquals(
+            runtime,
+            portable.replace("license: MIT; complete terms in ../LICENSE", "license: MIT; complete terms in LICENSE"),
+        );
+        assertEquals(await fsReadFile(expectedPath, "utf8"), runtime);
+        const license = await fsReadFile(new URL("../../skills/write-tests/LICENSE", import.meta.url), "utf8");
+        assertEquals(license, await fsReadFile(new URL("../../../skills/LICENSE", import.meta.url), "utf8"));
+        assertEquals(await fsReadFile(join(dirname(expectedPath), "LICENSE"), "utf8"), license);
+
+        const resolved = await resolveNamedInvocation({
+            cwd: projectRoot,
+            text: "/skill:write-tests check the recovery contract",
+        });
+        assertEquals(resolved.kind, "skill");
+        if (resolved.kind !== "skill") return;
+        assertEquals(resolved.payload.source.layer, "bundled");
+        assertEquals(resolved.additionalInstructions, "check the recovery contract");
+        assertStringIncludes(resolved.expandedRequest, "check the recovery contract");
+        assertStringIncludes(resolved.expandedRequest, `location="${expectedPath}"`);
+        assertStringIncludes(resolved.expandedRequest, "## Decide Whether a Test Is Warranted");
+        assertStringIncludes(resolved.expandedRequest, "### Fake the environment, never your own machinery");
+        assertStringIncludes(resolved.expandedRequest, extractYaml(runtime).body.trim());
+    });
+});
+
 test("installed review skill is user-invokable with its portable instructions and support files", async () => {
     await withRuntimeCommandFixture("skill-catalog-review-", async ({ projectRoot }) => {
         const review = (await listSkills({ cwd: projectRoot })).find((skill) => skill.name === "review");
@@ -74,14 +110,12 @@ test("installed review skill is user-invokable with its portable instructions an
         for (const file of ["SKILL.md", "github.md", "gitlab.md", "pull-requests.md"]) {
             assertEquals(
                 await fsReadFile(join(bundledDir, file), "utf8"),
-                (
-                    await fsReadFile(fromFileUrl(new URL(`../../../skills/review/${file}`, import.meta.url)), "utf8")
-                ).replace("license: MIT; complete terms in ../LICENSE", "license: MIT; complete terms in LICENSE"),
+                await fsReadFile(fromFileUrl(new URL(`../../skills/review/${file}`, import.meta.url)), "utf8"),
             );
         }
         assertEquals(
             await fsReadFile(join(bundledDir, "LICENSE"), "utf8"),
-            await fsReadFile(fromFileUrl(new URL("../../../skills/LICENSE", import.meta.url)), "utf8"),
+            await fsReadFile(fromFileUrl(new URL("../../skills/review/LICENSE", import.meta.url)), "utf8"),
         );
     });
 });

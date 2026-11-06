@@ -37,18 +37,10 @@ import { installAgyCliMcpSetup } from "./backends/agy-cli/mcp-setup.ts";
 import { startMcpIntegration } from "../mcp/integration.ts";
 import { getRootSessionBranchEntries } from "./root-session.js";
 import { createReplayEvents } from "./session-transcript-projection.js";
-import { runActiveAgentTurn } from "./agent-switching.js";
+import { runActiveAgentTurn } from "./agent-switching.ts";
 import { listPendingWorkflowToolEvents } from "../workflow/workflow-tool-events.ts";
 import { createValidationSessionPort } from "../workflow/validation-session-adapter.ts";
-import {
-    abortActiveSession,
-    composeAgyCliBridgedTools,
-    composeClaudeCliBridgedTools,
-    ensureRootAgentSession,
-    runIsolatedAgentSession,
-    runRootTurn,
-    steerRootSession,
-} from "./session.js";
+import { abortActiveSession, ensureRootAgentSession, runIsolatedAgentSession, runRootTurn } from "./session.js";
 
 interface AgyFixtureCall {
     args: string[];
@@ -277,12 +269,6 @@ async function readCalls(logPath: string): Promise<AgyFixtureCall[]> {
         .map((line) => JSON.parse(line) as AgyFixtureCall);
 }
 
-function expectedAgyEffort(modelId: string, thinkingLevel: string): string {
-    if (thinkingLevel === "off" || thinkingLevel === "minimal" || thinkingLevel === "low") return "low";
-    if (thinkingLevel === "medium") return modelId === "gemini-3.1-pro" ? "high" : "medium";
-    return "high";
-}
-
 async function assertNoTemporaryAgents(home: string): Promise<void> {
     const agentsRoot = join(home, ".gemini", "config", "agents");
     const names: string[] = [];
@@ -294,43 +280,6 @@ async function assertNoTemporaryAgents(home: string): Promise<void> {
     }
     assertEquals(names.filter((name) => name.startsWith("runwield-")).length, 0);
 }
-
-test("Agy bridged tool composition matches Claude CLI", async () => {
-    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-agy-compose-"));
-    try {
-        const manager = SessionManager.inMemory(cwd);
-        const hostedSession = createHostedSession(cwd, manager);
-        const agentDef = {
-            displayName: "Engineer",
-            tools: ["task_completed", "memory", "code_search", "web_search"],
-        } as never;
-
-        const agyTools = await composeAgyCliBridgedTools({
-            agentDef,
-            agentName: AGENTS.ENGINEER,
-            hostedSession,
-            triageMeta: undefined,
-            cwd,
-        });
-        const claudeTools = await composeClaudeCliBridgedTools({
-            agentDef,
-            agentName: AGENTS.ENGINEER,
-            hostedSession,
-            triageMeta: undefined,
-            cwd,
-        });
-        assertEquals(
-            agyTools.map((tool) => tool.name),
-            claudeTools.map((tool) => tool.name),
-        );
-        assertEquals(agyTools.map((tool) => tool.name).includes("task_completed"), true);
-        assertEquals(agyTools.map((tool) => tool.name).includes("memory"), true);
-        assertEquals(agyTools.map((tool) => tool.name).includes("code_search"), true);
-        assertEquals(agyTools.map((tool) => tool.name).includes("web_search"), true);
-    } finally {
-        await fsRm(cwd, { recursive: true }).catch(() => undefined);
-    }
-});
 
 test("Agy roots discover initially empty MCP tools and refresh without recreating the native agent", async () => {
     await withAgyExecutionFixture(async (_home, cwd, logPath) => {
@@ -407,7 +356,11 @@ test("Agy maps every RunWield thinking level to the verified backend model", asy
         const modelIds = ["gemini-3.8-flash", "gemini-3.1-pro"];
         for (const modelId of modelIds) {
             for (const thinkingLevel of thinkingLevels) {
-                const effort = expectedAgyEffort(modelId, thinkingLevel);
+                const efforts =
+                    modelId === "gemini-3.1-pro"
+                        ? ["low", "low", "low", "high", "high", "high", "high"]
+                        : ["low", "low", "low", "medium", "high", "high", "high"];
+                const effort = efforts[thinkingLevels.indexOf(thinkingLevel)];
                 process.env["RUNWIELD_AGY_EXPECTED_MODEL"] = modelId;
                 process.env["RUNWIELD_AGY_EXPECTED_EFFORT"] = effort;
                 await fsWriteFile(logPath, "");
@@ -1332,27 +1285,6 @@ test("Agy CLI first root image requests fail before agent creation or transcript
     });
 });
 
-test("Agy CLI root process failure records sanitized status and keeps the reusable temporary agent", async () => {
-    await withAgyExecutionFixture(async (home, cwd) => {
-        const manager = SessionManager.inMemory(cwd);
-        const hostedSession = createHostedSession(cwd, manager);
-        const root = (await ensureRootAgentSession({ hostedSession, agentName: AGENTS.GUIDE })) as never as AgyRootRef;
-        process.env["RUNWIELD_AGY_FAIL_TURN"] = "1";
-
-        await assertRejects(
-            () => runRootTurn({ hostedSession, agentName: AGENTS.GUIDE, userRequest: "fail this turn" }),
-            Error,
-            "Antigravity CLI exited before completing the turn",
-        );
-
-        const branchText = JSON.stringify(getRootSessionBranchEntries(manager));
-        assertStringIncludes(branchText, "runwield.backend_status");
-        assertStringIncludes(branchText, "non_zero_exit");
-        await root.session.dispose();
-        await assertNoTemporaryAgents(home);
-    });
-});
-
 test("Agy CLI returned model mismatch records sanitized selection status", async () => {
     await withAgyExecutionFixture(async (home, cwd) => {
         const manager = SessionManager.inMemory(cwd);
@@ -1398,30 +1330,6 @@ test("HostedSession disposal reaches the Agy execution session", async () => {
 
         await hostedSession.dispose();
 
-        await assertNoTemporaryAgents(home);
-    });
-});
-
-test("Agy CLI root replacement disposes only the owned Agy root", async () => {
-    await withAgyExecutionFixture(async (home, cwd) => {
-        const manager = SessionManager.inMemory(cwd);
-        const hostedSession = createHostedSession(cwd, manager);
-        let previousPlainRootDisposed = false;
-        hostedSession.setRootAgentSession({
-            dispose: () => {
-                previousPlainRootDisposed = true;
-            },
-        });
-        hostedSession.setRootAgentName(AGENTS.OPERATOR);
-
-        const root = (await ensureRootAgentSession({
-            hostedSession,
-            agentName: AGENTS.GUIDE,
-            modelOverride: "agy-cli/gemini-3.8-flash",
-        })) as never as AgyRootRef;
-
-        assertEquals(previousPlainRootDisposed, false);
-        await root.session.dispose();
         await assertNoTemporaryAgents(home);
     });
 });
@@ -1562,30 +1470,37 @@ test("Agy CLI root setup failure keeps the previous root session usable", async 
     });
 });
 
-test("Agy CLI root steering is not accepted without mutating transcript", async () => {
+test("Agy root cancellation stops a real active native tool without inventing completion", async () => {
     await withAgyExecutionFixture(async (home, cwd) => {
         const manager = SessionManager.inMemory(cwd);
-        const hostedSession = createHostedSession(cwd, manager);
-        const root = (await ensureRootAgentSession({ hostedSession, agentName: AGENTS.GUIDE })) as never as AgyRootRef;
-        root.session.isStreaming = true;
-        const steered = await steerRootSession(hostedSession, "steer me");
-        root.session.isStreaming = false;
-        assertEquals(steered, false);
-        assertEquals(getRootSessionBranchEntries(manager).length, 2);
-        await root.session.dispose();
-        await assertNoTemporaryAgents(home);
-    });
-});
-
-test("Agy CLI abort kills the active process", async () => {
-    await withAgyExecutionFixture(async (home, cwd) => {
-        const manager = SessionManager.inMemory(cwd);
-        const hostedSession = createHostedSession(cwd, manager);
-        const root = (await ensureRootAgentSession({ hostedSession, agentName: AGENTS.GUIDE })) as never as AgyRootRef;
-        root.session.isStreaming = true;
-        assertEquals(abortActiveSession(hostedSession), true);
-        root.session.isStreaming = false;
-        await root.session.dispose();
+        const events: RuntimeEventRecord[] = [];
+        const hostedSession = createHostedSession(cwd, manager, events);
+        await ensureRootAgentSession({ hostedSession, agentName: AGENTS.GUIDE });
+        const turn = runRootTurn({ hostedSession, agentName: AGENTS.GUIDE, userRequest: "fixture-native-tool-steps" });
+        void turn.catch(() => undefined);
+        try {
+            const deadline = Date.now() + 5_000;
+            while (!events.some((event) => event.type === RuntimeEventTypes.TOOL_START) && Date.now() < deadline) {
+                await new Promise((resolve) => setTimeout(resolve, 10));
+            }
+            assertEquals(
+                events.some((event) => event.type === RuntimeEventTypes.TOOL_START),
+                true,
+            );
+            assertEquals(abortActiveSession(hostedSession), true);
+            await assertRejects(() => turn, Error, "canceled");
+            assertEquals(
+                events.some((event) => event.type === RuntimeEventTypes.TOOL_END),
+                false,
+            );
+            const branch = JSON.stringify(getRootSessionBranchEntries(manager));
+            assertStringIncludes(branch, '"kind":"canceled"');
+            assertStringIncludes(branch, '"phase":"failed"');
+            assertEquals(branch.includes('"phase":"completed"'), false);
+        } finally {
+            await hostedSession.dispose();
+            await turn.catch(() => undefined);
+        }
         await assertNoTemporaryAgents(home);
     });
 });

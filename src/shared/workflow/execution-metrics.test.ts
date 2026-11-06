@@ -14,107 +14,83 @@ import { join } from "node:path";
 import { setWorkflowMetricsRecording } from "./metrics-journal.ts";
 import { setCustomSetting } from "../settings.js";
 import { SlashCommandMetricsTracker } from "./command-metrics.ts";
-import {
-    classifyMemoryOperation,
-    estimateToolSchemaTokens,
-    ExecutionMetricsRecorder,
-    extractCodeBatchOperations,
-    normalizeBashCommand,
-    SessionContextMetricsRecorder,
-} from "./execution-metrics.ts";
+import { ExecutionMetricsRecorder, SessionContextMetricsRecorder } from "./execution-metrics.ts";
 
-test("normalizeBashCommand normalizes simple and subcommand structures", () => {
-    assertEquals(normalizeBashCommand("git status"), ["git status"]);
-    assertEquals(normalizeBashCommand("git commit -m 'Initial commit'"), ["git commit"]);
-    assertEquals(normalizeBashCommand("git diff HEAD~1"), ["git diff"]);
-    assertEquals(normalizeBashCommand("git checkout -b feature/test"), ["git checkout"]);
-    assertEquals(normalizeBashCommand("deno task test --filter abc"), ["deno task test"]);
-    assertEquals(normalizeBashCommand("deno test -A --filter foo"), ["deno test"]);
-    assertEquals(normalizeBashCommand("npm run build --prod"), ["npm run build"]);
-    assertEquals(normalizeBashCommand("npm test"), ["npm test"]);
-    assertEquals(normalizeBashCommand("cargo test --release"), ["cargo test"]);
-    assertEquals(normalizeBashCommand("cargo build"), ["cargo build"]);
-    assertEquals(normalizeBashCommand("pnpm run lint"), ["pnpm run lint"]);
-    assertEquals(normalizeBashCommand("yarn build"), ["yarn build"]);
-    assertEquals(normalizeBashCommand("ls -la /tmp"), ["ls"]);
-    assertEquals(normalizeBashCommand("cat package.json"), ["cat"]);
-});
-
-test("normalizeBashCommand handles pipelines, logical chains, and redirects", () => {
-    assertEquals(normalizeBashCommand("git status | grep modified"), ["git status", "grep"]);
-    assertEquals(normalizeBashCommand("mkdir -p build && cd build && cmake .. || echo failed"), [
-        "mkdir",
-        "cd",
-        "cmake",
-        "echo",
-    ]);
-    assertEquals(normalizeBashCommand("cat input.txt > output.txt 2>&1 ; rm -f input.txt"), ["cat", "rm"]);
-});
-
-test("normalizeBashCommand classifies command substitution and unbalanced quotes as unknown", () => {
-    assertEquals(normalizeBashCommand("echo $(whoami)"), ["unknown"]);
-    assertEquals(normalizeBashCommand("env sh -c 'git status'"), ["unknown"]);
-    assertEquals(normalizeBashCommand("cat `pwd`/file"), ["unknown"]);
-    assertEquals(normalizeBashCommand("echo 'unterminated quote"), ["unknown"]);
-    assertEquals(normalizeBashCommand('echo "unterminated double quote'), ["unknown"]);
-    assertEquals(normalizeBashCommand(""), ["unknown"]);
-    assertEquals(normalizeBashCommand("   "), ["unknown"]);
-});
-
-test("classifyMemoryOperation identifies action and scope", () => {
-    assertEquals(classifyMemoryOperation("memory", { action: "recall", query: "auth secret" }), {
-        action: "recall",
-        scope: "unified",
-    });
-    assertEquals(classifyMemoryOperation("memory", { action: "store", content: "config key", scope: "global" }), {
-        action: "store",
-        scope: "global",
-    });
-    assertEquals(classifyMemoryOperation("memory", { action: "delete", id: "mem-123" }), {
-        action: "delete",
-        scope: "project",
-    });
-    assertEquals(classifyMemoryOperation({ CommandLine: "mnemoteca search -g some text" }), {
-        action: "recall",
-        scope: "global",
-    });
-    assertEquals(classifyMemoryOperation({ CommandLine: "mnemoteca add 'remember this'" }), {
-        action: "store",
-        scope: "project",
-    });
-    assertEquals(classifyMemoryOperation({ CommandLine: "mnemoteca delete abc-1" }), {
-        action: "delete",
-        scope: "project",
+test("saved command observations retain safe command structure and reject ambiguous shell input", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
+        const recorder = new ExecutionMetricsRecorder({ projectRoot, sessionId: "command-contract" });
+        const cases = [
+            { command: "git status", labels: ["git status"] },
+            { command: "git commit -m 'Initial commit'", labels: ["git commit"] },
+            { command: "git diff HEAD~1", labels: ["git diff"] },
+            { command: "git checkout -b feature/test", labels: ["git checkout"] },
+            { command: "deno task test --filter abc", labels: ["deno task test"] },
+            { command: "deno test -A --filter foo", labels: ["deno test"] },
+            { command: "npm run build --prod", labels: ["npm run build"] },
+            { command: "npm test", labels: ["npm test"] },
+            { command: "cargo test --release", labels: ["cargo test"] },
+            { command: "cargo build", labels: ["cargo build"] },
+            { command: "pnpm run lint", labels: ["pnpm run lint"] },
+            { command: "yarn build", labels: ["yarn build"] },
+            { command: "ls -la /tmp", labels: ["ls"] },
+            { command: "cat package.json", labels: ["cat"] },
+            { command: "git status | grep modified", labels: ["git status", "grep"] },
+            {
+                command: "mkdir -p build && cd build && cmake .. || echo failed",
+                labels: ["mkdir", "cd", "cmake", "echo"],
+            },
+            { command: "cat input.txt > output.txt 2>&1 ; rm -f input.txt", labels: ["cat", "rm"] },
+            { command: "echo $(whoami)", labels: ["unknown"] },
+            { command: "env sh -c 'git status'", labels: ["unknown"] },
+            { command: "cat `pwd`/file", labels: ["unknown"] },
+            { command: "echo 'unterminated quote", labels: ["unknown"] },
+            { command: 'echo "unterminated double quote', labels: ["unknown"] },
+            { command: "", labels: ["unknown"] },
+            { command: "   ", labels: ["unknown"] },
+            { command: "echo $[1+1]", labels: ["unknown"] },
+            { command: "git status |", labels: ["unknown"] },
+            { command: "git status && ; echo done", labels: ["unknown"] },
+        ];
+        for (const [index, sample] of cases.entries()) {
+            await recorder.recordToolStart("call-" + index, "bash", { command: sample.command });
+            await recorder.recordToolFinish("call-" + index, "bash");
+        }
+        await recorder.settleExecution("succeeded");
+        const rows = await readMetrics();
+        for (const [index, sample] of cases.entries())
+            assertEquals(
+                rows
+                    .filter((row) => row.event === "tool_operation" && row.parentCallId === "call-" + index)
+                    .map((row) => row.commandLabel),
+                sample.labels,
+            );
+        assertEquals(JSON.stringify(rows).includes("Initial commit"), false);
+        assertEquals(JSON.stringify(rows).includes("input.txt"), false);
     });
 });
-
-test("extractCodeBatchOperations parses show and outline child operations", () => {
-    const rawArgs = {
-        operations: [
-            { op: "show", target: "MyClass" },
-            { op: "outline", file: "src/utils.ts" },
-        ],
-    };
-    const rawResult = {
-        content: [{ type: "text", text: "batch result" }],
-        details: {
-            results: [
-                { status: "success", truncated: false },
-                { status: "error", error: "file not found" },
+test("saved memory observations retain action and scope without private request content", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
+        const recorder = new ExecutionMetricsRecorder({ projectRoot, sessionId: "memory-contract" });
+        const cases = [
+            { action: "recall", scope: "project", query: "private-query" },
+            { action: "store", scope: "global", content: "private-content" },
+            { action: "delete", scope: "project", id: "private-id" },
+        ];
+        for (const [index, args] of cases.entries()) {
+            await recorder.recordToolStart("memory-" + index, "memory", args);
+            await recorder.recordToolFinish("memory-" + index, "memory");
+        }
+        await recorder.settleExecution("succeeded");
+        const rows = await readMetrics();
+        assertEquals(
+            rows.filter((row) => row.operationKind === "memory").map((row) => [row.action, row.scope]),
+            [
+                ["recall", "unified"],
+                ["store", "global"],
+                ["delete", "project"],
             ],
-        },
-    };
-    const ops = extractCodeBatchOperations(rawArgs, rawResult);
-    assertEquals(ops.length, 2);
-    assertEquals(ops[0], {
-        batchKind: "show",
-        status: "success",
-        truncated: false,
-    });
-    assertEquals(ops[1], {
-        batchKind: "outline",
-        status: "error",
-        truncated: null,
+        );
+        assertEquals(JSON.stringify(rows).includes("private-"), false);
     });
 });
 
@@ -152,33 +128,15 @@ test("interrupted code_batch preserves known child results and marks unobserved 
         assertEquals(
             rows
                 .filter((row) => row.event === "tool_operation")
-                .map((row) => [row.parentCallId, row.operationIndex, row.batchKind, row.status]),
+                .map((row) => [row.parentCallId, row.operationIndex, row.batchKind, row.status, row.truncated]),
             [
-                ["batch-interrupted", 0, "show", "success"],
-                ["batch-interrupted", 1, "outline", "unavailable"],
-                ["batch-interrupted", 2, "show", "unavailable"],
+                ["batch-interrupted", 0, "show", "success", null],
+                ["batch-interrupted", 1, "outline", "unavailable", null],
+                ["batch-interrupted", 2, "show", "unavailable", null],
             ],
         );
         assertEquals(rows.find((row) => row.event === "tool_call_finished")?.outcome, "canceled");
     });
-});
-
-test("estimateToolSchemaTokens calculates non-zero schema and resident tokens", () => {
-    const tool = {
-        name: "test_tool",
-        description: "A test tool for demonstration purposes",
-        parameters: {
-            type: "object",
-            properties: {
-                arg1: { type: "string", description: "First argument description" },
-                arg2: { type: "number", description: "Second argument description" },
-            },
-            required: ["arg1"],
-        },
-    };
-    const estimates = estimateToolSchemaTokens(tool);
-    assert(estimates.schemaTokens > 0, "schemaTokens must be greater than zero");
-    assert(estimates.residentTokens >= estimates.schemaTokens, "residentTokens must be >= schemaTokens");
 });
 
 test("ExecutionMetricsRecorder writes exposure, tool start/finish, usage, snapshots, and settlement", async () => {
@@ -502,20 +460,6 @@ test("CLI detail usage remains explicitly non-additive and repeated sources do n
             "complete",
         );
     });
-});
-
-test("shell normalization rejects dynamic arithmetic and unfinished chains", () => {
-    assertEquals(normalizeBashCommand("echo $[1+1]"), ["unknown"]);
-    assertEquals(normalizeBashCommand("git status |"), ["unknown"]);
-    assertEquals(normalizeBashCommand("git status && ; echo done"), ["unknown"]);
-});
-
-test("unified Memory recall and absent batch truncation preserve unknown measurements", () => {
-    assertEquals(classifyMemoryOperation("memory", { action: "recall", scope: "project" }), {
-        action: "recall",
-        scope: "unified",
-    });
-    assertEquals(extractCodeBatchOperations({ operations: [{ op: "show" }] })[0].truncated, null);
 });
 
 test("reconciled Pi tool-result usage retains zero cost and observed turn identity", async () => {

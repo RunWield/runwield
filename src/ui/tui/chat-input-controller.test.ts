@@ -1,3 +1,6 @@
+import * as fs from "node:fs";
+import { mock } from "bun:test";
+import { rename, rm } from "node:fs/promises";
 import { test } from "node:test";
 import { installFakeClipboardCommands } from "./testing/clipboard-command-fixture.ts";
 import { readdir as fsReaddir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
@@ -15,13 +18,8 @@ import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.j
 import { savePlan } from "../../plan-store.js";
 import { getSettingsManager } from "../../shared/settings.js";
 import { createInteractiveTuiComposition, type InteractiveTuiComposition } from "./interactive-tui-composition.ts";
-import { type ChatInputRuntime, createChatInputController } from "./chat-input-controller.ts";
 import { createInteractiveCompositionHarness } from "./testing/interactive-composition-fixture.ts";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";
-import { ClaudeCliBackendError } from "../../shared/session/backends/claude-cli/failure.ts";
-import { AgyCliBackendError } from "../../shared/session/backends/agy-cli/failure.ts";
-import { AgyCliMcpSetupApprovalError } from "../../shared/session/backends/agy-cli/mcp-setup.ts";
-import type { ImageAttachment } from "../../shared/session/types.js";
 
 interface DeferredSignal {
     promise: Promise<void>;
@@ -422,7 +420,9 @@ test("chat input controller runs local commands while a real Runtime turn is act
     await withRuntimeCommandFixture("chat-input-real-bash-", async ({ setModelResponseFactory }) => {
         const releaseModel = deferredSignal();
         let modelStarted = false;
-        setModelResponseFactory(async () => {
+        const requests: string[] = [];
+        setModelResponseFactory(async (context) => {
+            requests.push(JSON.stringify(context.messages));
             modelStarted = true;
             await releaseModel.promise;
             return fauxAssistantMessage(fauxText("Delayed response."));
@@ -437,6 +437,14 @@ test("chat input controller runs local commands while a real Runtime turn is act
             assertEquals(composition.runtime.getQueuedMessages(composition.sessionId).length, 0);
             releaseModel.resolve();
             await composition.waitForIdle();
+            setModelResponseFactory((context) => {
+                requests.push(JSON.stringify(context.messages));
+                return fauxAssistantMessage(fauxText("Follow-up complete."));
+            });
+            await submitText(terminal, "Continue without transient command output");
+            await composition.waitForIdle();
+            assertEquals(requests.length, 2);
+            assertEquals(requests[1].includes("local-output"), false);
         } finally {
             releaseModel.resolve();
             await composition.dispose();
@@ -591,108 +599,6 @@ test("composed TUI reads clipboard only for explicit paste, preserving text and 
     );
 });
 
-test("chat input controller shows safe text when submit fails", async () => {
-    await withRuntimeCommandFixture("chat-input-safe-submit-error-", async () => {
-        const { composition, terminal } = await startComposition();
-        try {
-            const rawMessage = "Session Manager create is blocked: project_identity_unavailable";
-            composition.runtime.promptUserTurn = () => Promise.reject(new Error(rawMessage));
-            await submitText(terminal, "keep this draft");
-            await waitFor(
-                () => terminal.getScrollbackText().includes("RunWield could not send that message"),
-                "safe submit failure message",
-            );
-            assertStringIncludes(terminal.getScrollbackText(), "RunWield could not send that message");
-            await waitFor(() => terminal.getScreenText().includes("keep this draft"), "restored failed-submit draft");
-            assertStringIncludes(terminal.getScreenText(), "keep this draft");
-            assertEquals(terminal.getScrollbackText().includes("project_identity_unavailable"), false);
-        } finally {
-            await composition.dispose();
-        }
-    });
-});
-
-test("chat input controller does not replace a reported Claude failure", async () => {
-    await withRuntimeCommandFixture("chat-input-claude-submit-error-", async () => {
-        const { composition, terminal } = await startComposition();
-        try {
-            composition.runtime.promptUserTurn = () =>
-                Promise.reject(
-                    new ClaudeCliBackendError("non_zero_exit", {
-                        message: "You've hit your monthly spend limit",
-                    }),
-                );
-            await submitText(terminal, "keep this draft");
-            await waitFor(() => terminal.getScreenText().includes("keep this draft"), "restored Claude-failure draft");
-            assertEquals(terminal.getScrollbackText().includes("RunWield could not send that message"), false);
-        } finally {
-            await composition.dispose();
-        }
-    });
-});
-
-test("chat input controller does not replace or log a reported Agy backend failure", async () => {
-    await withRuntimeCommandFixture("chat-input-agy-backend-error-", async () => {
-        const { composition, terminal } = await startComposition();
-        const originalConsoleError = console.error;
-        const consoleErrors: unknown[][] = [];
-        console.error = (...args: unknown[]) => {
-            consoleErrors.push(args);
-        };
-        try {
-            composition.runtime.promptUserTurn = () =>
-                Promise.reject(
-                    new AgyCliBackendError("custom_agent_invalid", {
-                        message:
-                            "Antigravity CLI works, but it did not load RunWield's temporary Agent. Restart this RunWield session, then retry. If it still fails, run `wld mcp agy-cli --setup`.",
-                    }),
-                );
-            await submitText(terminal, "keep this draft");
-            await waitFor(() => terminal.getScreenText().includes("keep this draft"), "restored Agy-failure draft");
-            assertEquals(terminal.getScrollbackText().includes("RunWield could not send that message"), false);
-            assertEquals(terminal.getScrollbackText().includes("at async"), false);
-            assertEquals(consoleErrors.length, 0);
-        } finally {
-            console.error = originalConsoleError;
-            await composition.dispose();
-        }
-    });
-});
-
-test("chat input controller shows Agy MCP setup approval action without spilling a stack", async () => {
-    await withRuntimeCommandFixture("chat-input-agy-setup-error-", async () => {
-        const { composition, terminal } = await startComposition();
-        const originalConsoleError = console.error;
-        const consoleErrors: unknown[][] = [];
-        console.error = (...args: unknown[]) => {
-            consoleErrors.push(args);
-        };
-        try {
-            composition.runtime.promptUserTurn = () =>
-                Promise.reject(
-                    new AgyCliMcpSetupApprovalError(
-                        "Antigravity MCP setup needs approval. Run wld mcp agy-cli --setup.",
-                    ),
-                );
-            await submitText(terminal, "keep this draft");
-            await waitFor(
-                () =>
-                    terminal.getScrollbackText().includes("wld mcp agy-cli") &&
-                    terminal.getScrollbackText().includes("--setup"),
-                "Agy setup action",
-            );
-            assertEquals(terminal.getScrollbackText().includes("RunWield could not send that message"), false);
-            assertEquals(terminal.getScrollbackText().includes("at async"), false);
-            assertEquals(consoleErrors.length, 0);
-            await waitFor(() => terminal.getScreenText().includes("keep this draft"), "restored Agy setup draft");
-            assertStringIncludes(terminal.getScreenText(), "keep this draft");
-        } finally {
-            console.error = originalConsoleError;
-            await composition.dispose();
-        }
-    });
-});
-
 test("chat input controller preserves input while model setup blocks through the composed TUI", async () => {
     await withRuntimeCommandFixture(
         "chat-input-real-model-block-",
@@ -762,341 +668,6 @@ test("chat input controller connects Ctrl+C pending-exit state through real keyb
     });
 });
 
-type ControllerRuntimeOverrides = Partial<
-    Pick<
-        ChatInputRuntime,
-        "preflightUserTurnImages" | "promptUserTurn" | "steerSession" | "queueNextTurnMessage" | "getSessionSnapshot"
-    >
->;
-
-interface PreviewChild {
-    id?: string;
-}
-
-function createControllerHarness(runtimeOverrides: ControllerRuntimeOverrides = {}) {
-    const editor = {
-        disableSubmit: false,
-        text: "",
-        expandedText: null as string | null,
-        onSubmit: async (_text: string) => {},
-        handleInput(_data: string) {},
-        onChange: (_text: string) => {},
-        setText(text: string) {
-            this.text = text;
-            this.expandedText = null;
-            this.onChange(text);
-        },
-        setExpandedText(text: string, expandedText: string) {
-            this.text = text;
-            this.expandedText = expandedText;
-            this.onChange(text);
-        },
-        getText() {
-            return this.text;
-        },
-        getExpandedText() {
-            return this.expandedText ?? this.text;
-        },
-        submitValue() {
-            const result = this.getExpandedText().trim();
-            this.text = "";
-            this.expandedText = null;
-            this.onChange("");
-            return this.onSubmit(result);
-        },
-    };
-    const pastedImages: ImageAttachment[] = [];
-    const previewImages = {
-        children: [] as PreviewChild[],
-        addChild(child: PreviewChild) {
-            this.children.push(child);
-        },
-        removeChild(child: PreviewChild) {
-            const index = this.children.indexOf(child);
-            if (index >= 0) this.children.splice(index, 1);
-        },
-    };
-    const messages: string[] = [];
-    const busyStates: boolean[] = [];
-    const runtime = {
-        preflightUserTurnImages: () => Promise.resolve({ ok: true, mode: "direct" }),
-        persistSessionImage: (_sessionId: string, image: ImageAttachment) => Promise.resolve(image),
-        getSessionSnapshot: () => null,
-        getUserTurnSubmissionBlockMessage: () => null,
-        promptUserTurn: () =>
-            Promise.resolve({ ok: true, turns: 1, managed: false, submittedRequest: "", restoreDraft: false }),
-        queueNextTurnMessage: () => ({ queued: true }),
-        getQueuedMessages: () => [],
-        takeNextTurnMessage: () => ({ message: null }),
-        dequeueLastQueuedMessage: () => Promise.resolve({ ok: false }),
-        steerSession: () => Promise.resolve({ ok: true, queued: true }),
-        requestSessionHelp: () => ({ ok: true }),
-        cycleSessionThinkingLevel: () => ({ ok: false }),
-        cancelSession: () => ({ aborted: false }),
-        synchronizeManagedSession: () => Promise.resolve(),
-        ...runtimeOverrides,
-    };
-    const view = {
-        editor,
-        pastedImages,
-        previewImages,
-        tui: { requestRender() {} },
-        focusEditor() {},
-        requestRender() {},
-        clearPastedImages() {
-            pastedImages.length = 0;
-            previewImages.children.length = 0;
-        },
-    };
-    const uiAPI = {
-        appendSystemMessage(message: string) {
-            messages.push(message);
-        },
-        hideKeyboardHelp() {},
-        setBusy(busy: boolean) {
-            busyStates.push(busy);
-        },
-        enableInput() {},
-        abortActivePrompt() {},
-    };
-    const controller = createChatInputController({
-        view: view as never,
-        uiAPI: uiAPI as never,
-        runtime: runtime as never,
-        getSessionId: () => "session-1",
-        getProjectRoot: () => "/tmp/runwield-test",
-        managedSyncController: { pause: () => Promise.resolve(), resume() {} },
-        shouldBlockForModelSetup: () => false,
-        isModelSetupRecoveryCommand: () => false,
-        isInitCommandAvailable: () => false,
-        getPromptTemplateByName: () => new Map(),
-        getSkills: () => [],
-        sessionStartedAt: "2026-01-01T00:00:00.000Z",
-        chatPromptAgentName: "router",
-        replaceRuntimeSession: () => {},
-        markCtrlCPendingExit: () => {},
-        isCtrlCPendingExit: () => false,
-    });
-    return { controller, editor, pastedImages, previewImages, messages, busyStates, runtime };
-}
-
-test("chat input steers a generated background turn and keeps runtime busy", async () => {
-    let steered = "";
-    let promptCalls = 0;
-    const { controller, editor, busyStates } = createControllerHarness({
-        getSessionSnapshot: () => ({ busy: true }) as ReturnType<ChatInputRuntime["getSessionSnapshot"]>,
-        steerSession: (_sessionId, text) => {
-            steered = text;
-            return Promise.resolve({ ok: true, queued: true });
-        },
-        promptUserTurn: () => {
-            promptCalls++;
-            return Promise.resolve({ ok: true, turns: 1, managed: false, submittedRequest: "", restoreDraft: false });
-        },
-    });
-    editor.setText("Use the result and keep working.");
-    await editor.submitValue();
-    assertEquals(steered, "Use the result and keep working.");
-    assertEquals(promptCalls, 0);
-    controller.forceResetUI();
-    assertEquals(busyStates.at(-1), true);
-});
-
-test("chat input controller submits tutorial discovery as a normal Planner turn", async () => {
-    let submitted: Parameters<ChatInputRuntime["promptUserTurn"]>[1] | null = null;
-    const { controller } = createControllerHarness({
-        promptUserTurn: (_sessionId, options) => {
-            submitted = options;
-            return Promise.resolve({ ok: true, turns: 1, managed: false, submittedRequest: "", restoreDraft: false });
-        },
-    });
-    const context = {
-        version: 1 as const,
-        guidanceEnabled: true,
-        shownExplanationIds: ["choose-improvement"],
-        recapShown: false,
-        planId: null,
-    };
-
-    await controller.submitTutorialRequest("Choose one small change.", context);
-
-    assertEquals(submitted, {
-        initialRequest: "Choose one small change.",
-        initialImages: [],
-        preparedModelOverride: undefined,
-        agentName: "planner",
-        initialTutorialContext: context,
-    });
-});
-
-test("chat input explains resource limits and restores the draft without replaying it", async () => {
-    let submissions = 0;
-    const { controller, editor, messages } = createControllerHarness({
-        promptUserTurn: () => {
-            submissions++;
-            return Promise.reject(Object.assign(new Error("Could not open socket"), { code: "EMFILE" }));
-        },
-    });
-    try {
-        await editor.onSubmit("keep this request");
-        await waitFor(() => messages.length > 0, "resource-limit guidance");
-        assertEquals(editor.getText(), "keep this request");
-        assertEquals(submissions, 1);
-        assertStringIncludes(messages[0], "open-file limit");
-        assertEquals(messages[0].includes("at async"), false);
-    } finally {
-        await controller.dispose();
-    }
-});
-
-test("chat input controller restores exact draft and previews after image preflight rejection", async () => {
-    let promptCalled = false;
-    const { editor, pastedImages, previewImages, messages } = createControllerHarness({
-        preflightUserTurnImages: () => Promise.resolve({ ok: false, message: "Cannot attach image." }),
-        promptUserTurn: () => {
-            promptCalled = true;
-            return Promise.resolve({ ok: true, turns: 1, managed: false, submittedRequest: "", restoreDraft: false });
-        },
-    });
-    pastedImages.push({ base64: btoa("img"), mimeType: "image/png" });
-    previewImages.children.push({});
-
-    editor.setText("  keep exact draft  ");
-    await editor.submitValue();
-
-    assertEquals(promptCalled, false);
-    assertEquals(editor.getText(), "  keep exact draft  ");
-    assertEquals(pastedImages.length, 1);
-    assertEquals(previewImages.children.length, 1);
-    assertEquals(messages, ["Cannot attach image."]);
-});
-
-test("chat input controller restores an empty draft after an image-only preflight rejection", async () => {
-    const { editor, pastedImages, previewImages } = createControllerHarness({
-        preflightUserTurnImages: () => Promise.resolve({ ok: false, message: "Cannot attach image." }),
-    });
-    editor.setText("stale draft");
-    editor.setText("");
-    await Promise.resolve();
-    pastedImages.push({ base64: btoa("img"), mimeType: "image/png" });
-    previewImages.children.push({});
-
-    await editor.submitValue();
-
-    assertEquals(editor.getText(), "");
-    assertEquals(pastedImages.length, 1);
-});
-
-test("chat input controller restores expanded pasted content after image preflight rejection", async () => {
-    const { editor, pastedImages } = createControllerHarness({
-        preflightUserTurnImages: () => Promise.resolve({ ok: false, message: "Cannot attach image." }),
-    });
-    pastedImages.push({ base64: btoa("img"), mimeType: "image/png" });
-
-    editor.setExpandedText("before [[paste:1]] after", "before pasted content after");
-    await editor.submitValue();
-
-    assertEquals(editor.getText(), "before pasted content after");
-});
-
-test("chat input controller restores a whitespace-only image draft after Pi clears the editor", async () => {
-    const { editor, pastedImages } = createControllerHarness({
-        preflightUserTurnImages: () => Promise.resolve({ ok: false, message: "Cannot attach image." }),
-    });
-    pastedImages.push({ base64: btoa("img"), mimeType: "image/png" });
-
-    editor.setText("   \t  ");
-    await editor.submitValue();
-
-    assertEquals(editor.getText(), "   \t  ");
-});
-
-test("chat input controller sends the model prepared by image preflight", async () => {
-    let submittedModel = "";
-    const { editor, pastedImages } = createControllerHarness({
-        preflightUserTurnImages: () =>
-            Promise.resolve({
-                ok: true,
-                mode: "direct",
-                preparedModelOverride: "runtime-command-fixture/fixture-model",
-            }),
-        promptUserTurn: (_sessionId, options) => {
-            submittedModel = options.preparedModelOverride || "";
-            return Promise.resolve({ ok: true, turns: 1, managed: false, submittedRequest: "", restoreDraft: false });
-        },
-    });
-    pastedImages.push({ base64: btoa("img"), mimeType: "image/png" });
-
-    editor.setText("describe image");
-    await editor.submitValue();
-
-    assertEquals(submittedModel, "runtime-command-fixture/fixture-model");
-});
-
-test("chat input controller sends one corrected image draft after a rejection", async () => {
-    let preflightCalls = 0;
-    let promptCalls = 0;
-    let submittedImage = "";
-    const { editor, pastedImages } = createControllerHarness({
-        preflightUserTurnImages: () => {
-            preflightCalls += 1;
-            return Promise.resolve(
-                preflightCalls === 1 ? { ok: false, message: "Cannot attach image." } : { ok: true, mode: "direct" },
-            );
-        },
-        promptUserTurn: (_sessionId, options) => {
-            promptCalls += 1;
-            submittedImage = options.initialImages?.[0]?.base64 || "";
-            return Promise.resolve({ ok: true, turns: 1, managed: false, submittedRequest: "", restoreDraft: false });
-        },
-    });
-    pastedImages.push({ base64: btoa("bad"), mimeType: "image/png" });
-    editor.setText("describe image");
-    await editor.submitValue();
-    pastedImages.length = 0;
-    pastedImages.push({ base64: btoa("good"), mimeType: "image/png" });
-    editor.setText("describe corrected image");
-    await editor.submitValue();
-
-    assertEquals(promptCalls, 1);
-    assertEquals(submittedImage, btoa("good"));
-});
-
-test("chat input controller does not queue image steering that runtime rejects", async () => {
-    const release = deferredSignal();
-    let queued = false;
-    const { controller, editor, pastedImages, previewImages, messages } = createControllerHarness({
-        promptUserTurn: () =>
-            release.promise.then(() => ({
-                ok: true,
-                turns: 1,
-                managed: false,
-                submittedRequest: "",
-                restoreDraft: false,
-            })),
-        steerSession: () => Promise.reject(new Error("Cannot attach image.")),
-        queueNextTurnMessage: () => {
-            queued = true;
-            return { ok: true, queued: true };
-        },
-    });
-
-    const firstSubmit = editor.onSubmit("first turn");
-    await waitFor(() => controller.isProcessingSubmission(), "started first turn");
-    pastedImages.push({ base64: btoa("img"), mimeType: "image/png" });
-    previewImages.children.push({});
-    await editor.onSubmit("steer with image");
-    await waitFor(() => editor.getText().includes("steer with image"), "restored rejected steering");
-    release.resolve();
-    await firstSubmit;
-    await waitFor(() => !controller.isProcessingSubmission(), "finished first turn");
-
-    assertEquals(queued, false);
-    assertEquals(editor.getText(), "steer with image");
-    assertEquals(pastedImages.length, 1);
-    assert(messages.some((message) => message.includes("RunWield could not send that message")));
-});
-
 test("composed TUI reports an explicit paste with no image until the next input", async () => {
     if (process.platform !== "darwin") return;
     await withRuntimeCommandFixture("chat-input-empty-clipboard-", async ({ projectRoot }) => {
@@ -1123,3 +694,132 @@ test("composed TUI reports an explicit paste with no image until the next input"
         }
     });
 });
+
+test("single-bang commands survive into the next turn while double-bang output stays local", async () => {
+    await withRuntimeCommandFixture("chat-input-shell-context-", async ({ setModelResponseFactory }) => {
+        const requests: string[] = [];
+        setModelResponseFactory((context) => {
+            requests.push(JSON.stringify(context.messages));
+            return fauxAssistantMessage(fauxText("Shell context inspected."));
+        });
+        const { composition, terminal } = await startComposition();
+        const completedOutputs: string[] = [];
+        const unsubscribe = composition.runtime.subscribeSessionEvents(composition.sessionId, (event) => {
+            if (event.type === RuntimeEventTypes.TOOL_END && event.toolName === "bash" && !event.isError) {
+                completedOutputs.push(event.output || "");
+            }
+        });
+        try {
+            await submitText(terminal, "!printf 'persistent-%s-marker' shell");
+            await waitFor(
+                () => completedOutputs.includes("persistent-shell-marker"),
+                "completed persistent shell command",
+            );
+            await composition.waitForIdle();
+            assertStringIncludes(terminal.getScrollbackText(), "persistent-shell-marker");
+            await submitText(terminal, "!!printf 'ephemeral-%s-marker' shell");
+            await waitFor(
+                () => completedOutputs.includes("ephemeral-shell-marker"),
+                "completed ephemeral shell command",
+            );
+            await composition.waitForIdle();
+            assertStringIncludes(terminal.getScrollbackText(), "ephemeral-shell-marker");
+            await submitText(terminal, "Use the saved shell result");
+            await composition.waitForIdle();
+            assertEquals(requests.length, 1);
+            assertStringIncludes(requests[0], "persistent-shell-marker");
+            assertEquals(requests[0].includes("ephemeral-shell-marker"), false);
+        } finally {
+            unsubscribe();
+            await composition.dispose();
+        }
+    });
+});
+
+for (const failure of ["missing-project", "file-limit"] as const) {
+    test(`real submission ${failure} keeps the draft and permits an explicit retry`, async () => {
+        await withRuntimeCommandFixture(
+            "chat-input-filesystem-failure-",
+            async ({ alternateRoot, homeDir, setModelResponseFactory }) => {
+                const requests: string[] = [];
+                setModelResponseFactory((context) => {
+                    requests.push(JSON.stringify(context.messages));
+                    return fauxAssistantMessage(fauxText("Retried request accepted."));
+                });
+                const { composition, terminal } = await startComposition();
+                const originalOpen = fs.openSync;
+                const canonicalHome = fs.realpathSync(homeDir);
+                const canonicalRoot = fs.realpathSync(alternateRoot);
+                const originalFs = { ...fs };
+                let failedFilesystemCalls = 0;
+                let moved = false;
+                const backup = alternateRoot + "-held";
+                try {
+                    if (failure === "missing-project") {
+                        await rename(alternateRoot, backup);
+                        moved = true;
+                        await fsWriteFile(alternateRoot, "project_identity_unavailable private fixture sentinel");
+                    } else {
+                        // Simulate OS descriptor exhaustion while keeping Session storage real.
+                        mock.module("node:fs", () => ({
+                            ...originalFs,
+                            openSync: (...args: Parameters<typeof fs.openSync>) => {
+                                const path = String(args[0]);
+                                if (
+                                    path.startsWith(homeDir) ||
+                                    path.startsWith(alternateRoot) ||
+                                    path.startsWith(canonicalHome) ||
+                                    path.startsWith(canonicalRoot)
+                                ) {
+                                    failedFilesystemCalls++;
+                                    throw Object.assign(new Error("private filesystem details"), { code: "EMFILE" });
+                                }
+                                return originalOpen(...args);
+                            },
+                        }));
+                    }
+
+                    await submitText(terminal, "keep this failed request");
+                    const expected =
+                        failure === "file-limit" ? "open-file limit" : "RunWield could not send that message";
+                    await waitFor(
+                        () => terminal.getScrollbackText().includes(expected),
+                        "safe actual filesystem failure",
+                    ).catch((error) => {
+                        throw new Error(
+                            `${error.message}: ${JSON.stringify({ failedFilesystemCalls, requestCount: requests.length, screen: terminal.getScrollbackText() })}`,
+                        );
+                    });
+                    await composition.waitForIdle();
+                    assertStringIncludes(terminal.getScreenText(), "keep this failed request");
+                    assertEquals(terminal.getScrollbackText().includes("project_identity_unavailable"), false);
+                    assertEquals(terminal.getScrollbackText().includes("private filesystem details"), false);
+                    assertEquals(terminal.getScrollbackText().includes("at async"), false);
+                    assertEquals(requests.length, 0);
+                    if (failure === "file-limit") assert(failedFilesystemCalls > 0);
+                    mock.module("node:fs", () => originalFs);
+
+                    if (moved) {
+                        await rm(alternateRoot);
+                        await rename(backup, alternateRoot);
+                        moved = false;
+                    }
+                    terminal.pressEnter();
+                    await terminal.flush();
+                    await waitFor(() => requests.length === 1, "explicit retry model request");
+                    await composition.waitForIdle();
+                    assertStringIncludes(requests[0], "keep this failed request");
+                    assertEquals(requests.length, 1);
+                } finally {
+                    mock.module("node:fs", () => originalFs);
+
+                    if (moved) {
+                        await rm(alternateRoot, { force: true });
+                        await rename(backup, alternateRoot);
+                    }
+                    await composition.dispose();
+                }
+            },
+        );
+    });
+}

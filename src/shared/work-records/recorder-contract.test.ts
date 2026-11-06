@@ -8,26 +8,9 @@ import { savePlan } from "../../plan-store.js";
 import { assertEquals, assertExists, assertThrows } from "../../testing/assertions.ts";
 import { createWorkRecordCompletedTool } from "../../tools/work-record-completed.ts";
 import { HostedSession } from "../session/hosted-session.js";
-import {
-    findWorkRecordById,
-    formatWorkRecordMarkdown,
-    parseRecorderSections,
-    parseWorkRecordMarkdown,
-    runWorkRecordBackfill,
-} from "./index.ts";
+import { findWorkRecordById, parseWorkRecordMarkdown, runWorkRecordBackfill } from "./index.ts";
 import type { WorkRecordFrontMatter } from "./schema.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
-
-const INTERNAL_ATTRS: WorkRecordFrontMatter = {
-    kind: "work_record",
-    recordId: "11111111-1111-4111-8111-111111111111",
-    status: "approved",
-    scope: "planned_change",
-    origin: "internal",
-    completionMode: "verified",
-    createdAt: "2026-07-14T08:32:00-04:00",
-    provenance: { sourcePlans: ["22222222-2222-4222-8222-222222222222"] },
-};
 
 for (const field of ["deviationsFromPlan", "deferredWork"]) {
     test(`Recorder tool rejects obsolete ${field} arguments`, () => {
@@ -47,7 +30,7 @@ for (const field of ["deviationsFromPlan", "deferredWork"]) {
                         },
                     }),
                 Error,
-                "additional",
+                `${field}: unknown field`,
             );
             const args = {
                 title: "Search cache",
@@ -68,21 +51,6 @@ for (const field of ["deviationsFromPlan", "deferredWork"]) {
         }
     });
 }
-
-test("Recorder normalization ignores obsolete fields and retains Out of Scope", () => {
-    assertEquals(
-        parseRecorderSections(
-            JSON.stringify({
-                title: "Search cache",
-                summary: "Search uses a local cache.",
-                outOfScope: "No remote cache.",
-                deviationsFromPlan: "A rerun passed.",
-                deferredWork: "Retry later.",
-            }),
-        ),
-        { title: "Search cache", summary: "Search uses a local cache.", outOfScope: "No remote cache." },
-    );
-});
 
 for (const recorded of [false, true]) {
     test(`Work Records contain only recorded deviations (recorded: ${recorded})`, async () => {
@@ -137,10 +105,24 @@ for (const recorded of [false, true]) {
 for (const heading of ["Out of Scope", "Deferred Work"]) {
     test(`Work Record readers retain ${heading}`, () => {
         const record = parseWorkRecordMarkdown(
-            formatWorkRecordMarkdown(
-                INTERNAL_ATTRS,
-                `# Search cache\n\n## Summary\n\nSearch uses a local cache.\n\n## ${heading}\n\nNo remote cache.`,
-            ),
+            `---
+kind: work_record
+recordId: 11111111-1111-4111-8111-111111111111
+status: approved
+scope: planned_change
+origin: external
+completionMode: verified
+createdAt: 2026-07-14T08:32:00-04:00
+---
+# Search cache
+
+## Summary
+
+Search uses a local cache.
+
+## ${heading}
+
+No remote cache.`,
         );
         assertEquals(record.sections[heading], "No remote cache.");
     });

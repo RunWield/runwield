@@ -19,7 +19,7 @@ affectedPaths:
     - "docs/prd/remote-ssh-prd.md"
     - "docs/prd/runwield-core-prd.md"
     - "docs/domain-language.md"
-    - "docs/adr/018-remote-ssh-local-personal-authority.md"
+    - "docs/adr/017-remote-ssh-local-personal-authority.md"
 createdAt: "2026-09-20"
 origin: "internal"
 targetBranch: "epic/remote-ssh-development"
@@ -95,8 +95,8 @@ Separate where work runs from where personal data is owned. Reuse Core's tools, 
 and browser review surfaces rather than build a reduced remote product.
 
 The durable choice and alternatives are recorded in proposed
-[ADR-018](../adr/018-remote-ssh-local-personal-authority.md). Existing
-[ADR-015](../adr/015-file-authoritative-session-bundles.md) still owns file-authoritative Sessions and native writer
+[ADR-017](../adr/017-remote-ssh-local-personal-authority.md). Existing
+[ADR-014](../adr/014-file-authoritative-session-bundles.md) still owns file-authoritative Sessions and native writer
 locking. No new Session database, writer lease, permanent daemon, or hosted service is introduced.
 
 ### System shape and ownership

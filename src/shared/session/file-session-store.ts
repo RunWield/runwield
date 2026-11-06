@@ -14,7 +14,7 @@ import type {
 import type { RemoteArtifactOptions, RemotePlanReview } from "../remote/session-protocol.ts";
 import { readExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
 import { readPersistedTutorialContext } from "./tutorial-context-session.ts";
-import { readPersistedWorkflowContext } from "./workflow-context-session.js";
+import { readPersistedWorkflowContext } from "./workflow-context-session.ts";
 import { findProject, sessionDirForProject } from "./file-session-storage.ts";
 import type { ManagedSessionMetadata } from "./hosted-session.js";
 import type { RemoteRolloverOptions, RemoteRolloverReceipt } from "../remote/session-protocol.ts";
@@ -32,7 +32,13 @@ import {
 import { type LocalFileSessionStore, openLocalFileSessionStore } from "./file-session-store-local.ts";
 import type { FileSessionStore, OpenFileSessionStoreOptions } from "./file-session-store-types.ts";
 
-export type { FileSessionProject, FileSessionStore } from "./file-session-store-types.ts";
+export type {
+    CatalogDiagnostic,
+    CatalogedSession,
+    SessionListResult,
+    FileSessionProject,
+    FileSessionStore,
+} from "./file-session-store-types.ts";
 export type { SessionSegmentLineageEvidence } from "./file-session-store-types.ts";
 export { FILE_SESSION_STORE_VERSION } from "./file-session-storage.ts";
 

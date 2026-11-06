@@ -1,25 +1,26 @@
-import { StringEnum, Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "../shared/session/hosted-session.js";
 import { checkBashCommand, describeBashAllowedCommands } from "../shared/bash-command-policy.ts";
 import type { BashAllowedCommands } from "../shared/bash-command-policy.ts";
 
-const PARAMETERS = Type.Object({
-    action: StringEnum(["start", "status", "cancel"]),
-    command: Type.Optional(Type.String()),
-    task_id: Type.Optional(Type.String()),
-    timeout: Type.Optional(Type.Number({ description: "Optional positive timeout in seconds." })),
-}, { additionalProperties: false });
+const PARAMETERS = Type.Object(
+    {
+        action: Type.Enum(["start", "status", "cancel"]),
+        command: Type.Optional(Type.String()),
+        task_id: Type.Optional(Type.String()),
+        timeout: Type.Optional(Type.Number({ description: "Optional positive timeout in seconds." })),
+    },
+    { additionalProperties: false },
+);
 
 /** Shell start requires the caller's effective bash authority. Controls do not. */
-export function createBackgroundTaskTool(
-    options: {
-        hostedSession: HostedSession;
-        cwd: string;
-        allowShellStart: boolean;
-        allowedCommands?: BashAllowedCommands;
-    },
-) {
+export function createBackgroundTaskTool(options: {
+    hostedSession: HostedSession;
+    cwd: string;
+    allowShellStart: boolean;
+    allowedCommands?: BashAllowedCommands;
+}) {
     return defineTool({
         name: "background_task",
         label: "Background Task",
@@ -52,9 +53,10 @@ export function createBackgroundTaskTool(
                 if (!task_id || command !== undefined || timeout !== undefined) {
                     throw new Error(`${action} requires task_id and no command or timeout.`);
                 }
-                const status = action === "cancel"
-                    ? await options.hostedSession.backgroundTasks.cancel(task_id)
-                    : options.hostedSession.backgroundTasks.status(task_id);
+                const status =
+                    action === "cancel"
+                        ? await options.hostedSession.backgroundTasks.cancel(task_id)
+                        : options.hostedSession.backgroundTasks.status(task_id);
                 return { content: [{ type: "text" as const, text: JSON.stringify(status) }], details: status };
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);

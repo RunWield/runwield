@@ -9,7 +9,7 @@ import {
     stopActiveReviewSurfaces,
 } from "../../ui/review/review-launcher.ts";
 import type { BrowserPort } from "../browser-port.ts";
-import { buildGuidedReviewPolicy, recommendGuidedReview } from "../workflow/guided-review.js";
+import { buildGuidedReviewPolicy, recommendGuidedReview } from "../workflow/guided-review.ts";
 import { ensureReviewWorktree, settleReviewWorktree } from "./review-worktree.ts";
 import { postForgeReview } from "./forge-review.ts";
 import { refreshPRTarget, type ReviewTarget } from "./review-target.ts";

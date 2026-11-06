@@ -11,7 +11,7 @@ import { SpinnerBlock, ToolExecutionGroupBlock } from "./blocks.js";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { installUiApiOverrides } from "./ui-api-overrides.ts";
 
-import { createTuiInteractionAdapter } from "./runtime-interaction-adapter.js";
+import { createTuiInteractionAdapter } from "./runtime-interaction-adapter.ts";
 import { createScriptedReviewBrowser } from "../review/review-test-fixture.ts";
 import { getStoredPlanPath, savePlan } from "../../plan-store.js";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
@@ -74,19 +74,6 @@ function makeHarness(projectRoot = "/fixture/project"): OverridesHarness {
     });
     return { container, editor, messageList, validationPanel, terminal, tui, uiAPI };
 }
-
-test("installUiApiOverrides disables and enables real editor submission", () => {
-    const harness = makeHarness();
-    try {
-        harness.editor.disableSubmit = false;
-        harness.uiAPI.disableInput?.();
-        assertEquals(harness.editor.disableSubmit, true);
-        harness.uiAPI.enableInput?.();
-        assertEquals(harness.editor.disableSubmit, false);
-    } finally {
-        harness.tui.stop();
-    }
-});
 
 test("installUiApiOverrides blocks the editor for real prompts and restores its prior state", async () => {
     const harness = makeHarness();

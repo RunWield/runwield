@@ -1,4 +1,4 @@
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { HelperBinaryExec } from "../helper-binary-exec.ts";
 
@@ -157,15 +157,13 @@ function asArrayJson(value: JsonValue | null): JsonValue[] | null {
 
 function truncateText(value: string, maxChars: number, toolName: string): { text: string; truncated: boolean } {
     if (value.length <= maxChars) return { text: value, truncated: false };
-    const marker =
-        `\n\n[${toolName} output truncated at ${maxChars} characters. Use maxChars or a narrower request for remaining content.]`;
+    const marker = `\n\n[${toolName} output truncated at ${maxChars} characters. Use maxChars or a narrower request for remaining content.]`;
     return { text: value.slice(0, maxChars) + marker, truncated: true };
 }
 
 function formatFailure(exitCode: number, message: string, alternates: string[]): string {
-    const alternatesText = alternates.length > 0
-        ? ` Alternate backends accepted by backend: ${alternates.join(", ")}.`
-        : "";
+    const alternatesText =
+        alternates.length > 0 ? ` Alternate backends accepted by backend: ${alternates.join(", ")}.` : "";
     return `Error (exit ${exitCode}): ${message || "ketch returned no error text."}${alternatesText}`;
 }
 
@@ -176,19 +174,21 @@ function formatWebSearch(
 ): { text: string; truncated: boolean } {
     const parsed = asArrayJson(parseJson(raw));
     if (!parsed) return { text: text(raw), truncated: false };
-    const lines = parsed.map((item) => {
-        const record = readRecord(item);
-        if (!record) return "";
-        if (scrape) {
+    const lines = parsed
+        .map((item) => {
+            const record = readRecord(item);
+            if (!record) return "";
+            if (scrape) {
+                const title = readString(record, "title");
+                const url = readString(record, "url");
+                const content = readString(record, "content") || readString(record, "markdown");
+                return [`## ${title || url || "Result"}`, url, "", content].filter((line) => line !== "").join("\n");
+            }
             const title = readString(record, "title");
             const url = readString(record, "url");
-            const content = readString(record, "content") || readString(record, "markdown");
-            return [`## ${title || url || "Result"}`, url, "", content].filter((line) => line !== "").join("\n");
-        }
-        const title = readString(record, "title");
-        const url = readString(record, "url");
-        return [title, url].filter((part) => part !== "").join(" - ");
-    }).filter((line) => line.trim().length > 0);
+            return [title, url].filter((part) => part !== "").join(" - ");
+        })
+        .filter((line) => line.trim().length > 0);
     const formatted = text(lines.join("\n"));
     if (!scrape) return { text: formatted, truncated: false };
     return truncateText(formatted, maxChars ?? MAX_WEB_FETCH_CHARS, "web_search");
@@ -204,31 +204,35 @@ function formatWebFetch(raw: string, maxChars: number | undefined): { text: stri
 function formatWebCodeSearch(raw: string): string {
     const parsed = asArrayJson(parseJson(raw));
     if (!parsed) return text(raw);
-    const lines = parsed.map((item) => {
-        const record = readRecord(item);
-        if (!record) return "";
-        const repo = readString(record, "repo");
-        const path = readString(record, "path");
-        const line = readString(record, "line");
-        const snippet = readString(record, "snippet");
-        const url = readString(record, "url");
-        const location = [repo, path, line ? `line ${line}` : ""].filter((part) => part !== "").join(" ");
-        return [location, snippet, url].filter((part) => part !== "").join("\n");
-    }).filter((line) => line.trim().length > 0);
+    const lines = parsed
+        .map((item) => {
+            const record = readRecord(item);
+            if (!record) return "";
+            const repo = readString(record, "repo");
+            const path = readString(record, "path");
+            const line = readString(record, "line");
+            const snippet = readString(record, "snippet");
+            const url = readString(record, "url");
+            const location = [repo, path, line ? `line ${line}` : ""].filter((part) => part !== "").join(" ");
+            return [location, snippet, url].filter((part) => part !== "").join("\n");
+        })
+        .filter((line) => line.trim().length > 0);
     return text(lines.join("\n\n"));
 }
 
 function formatWebDocsSearch(raw: string): string {
     const parsed = asArrayJson(parseJson(raw));
     if (!parsed) return text(raw);
-    const lines = parsed.map((item) => {
-        const record = readRecord(item);
-        if (!record) return "";
-        const library = readString(record, "library");
-        const title = readString(record, "title");
-        const snippet = readString(record, "snippet");
-        return [library, title, snippet].filter((part) => part !== "").join("\n");
-    }).filter((line) => line.trim().length > 0);
+    const lines = parsed
+        .map((item) => {
+            const record = readRecord(item);
+            if (!record) return "";
+            const library = readString(record, "library");
+            const title = readString(record, "title");
+            const snippet = readString(record, "snippet");
+            return [library, title, snippet].filter((part) => part !== "").join("\n");
+        })
+        .filter((line) => line.trim().length > 0);
     return text(lines.join("\n\n"));
 }
 
@@ -262,10 +266,12 @@ export function createKetchTools(host: KetchToolHost): ToolDefinition[] {
                 const result = await runKetch(args, signal);
                 if (result.code !== 0) {
                     return {
-                        content: [{
-                            type: "text" as const,
-                            text: formatFailure(result.code, cleanKetchMessage(result), WEB_SEARCH_ALTERNATES),
-                        }],
+                        content: [
+                            {
+                                type: "text" as const,
+                                text: formatFailure(result.code, cleanKetchMessage(result), WEB_SEARCH_ALTERNATES),
+                            },
+                        ],
                         details: typed,
                     };
                 }
@@ -287,10 +293,12 @@ export function createKetchTools(host: KetchToolHost): ToolDefinition[] {
                 const result = await runKetch(["scrape", typed.url, "--json"], signal);
                 if (result.code !== 0) {
                     return {
-                        content: [{
-                            type: "text" as const,
-                            text: formatFailure(result.code, cleanKetchMessage(result), []),
-                        }],
+                        content: [
+                            {
+                                type: "text" as const,
+                                text: formatFailure(result.code, cleanKetchMessage(result), []),
+                            },
+                        ],
                         details: typed,
                     };
                 }
@@ -314,18 +322,22 @@ export function createKetchTools(host: KetchToolHost): ToolDefinition[] {
                 const result = await runKetch(args, signal);
                 if (result.code !== 0) {
                     return {
-                        content: [{
-                            type: "text" as const,
-                            text: formatFailure(result.code, cleanKetchMessage(result), WEB_CODE_SEARCH_ALTERNATES),
-                        }],
+                        content: [
+                            {
+                                type: "text" as const,
+                                text: formatFailure(result.code, cleanKetchMessage(result), WEB_CODE_SEARCH_ALTERNATES),
+                            },
+                        ],
                         details: typed,
                     };
                 }
                 return {
-                    content: [{
-                        type: "text" as const,
-                        text: formatWebCodeSearch(result.stdout || result.stderr || ""),
-                    }],
+                    content: [
+                        {
+                            type: "text" as const,
+                            text: formatWebCodeSearch(result.stdout || result.stderr || ""),
+                        },
+                    ],
                     details: typed,
                 };
             },
@@ -347,18 +359,22 @@ export function createKetchTools(host: KetchToolHost): ToolDefinition[] {
                 }
                 if (result.code !== 0) {
                     return {
-                        content: [{
-                            type: "text" as const,
-                            text: formatFailure(result.code, cleanKetchMessage(result), WEB_DOCS_SEARCH_ALTERNATES),
-                        }],
+                        content: [
+                            {
+                                type: "text" as const,
+                                text: formatFailure(result.code, cleanKetchMessage(result), WEB_DOCS_SEARCH_ALTERNATES),
+                            },
+                        ],
                         details: typed,
                     };
                 }
                 return {
-                    content: [{
-                        type: "text" as const,
-                        text: formatWebDocsSearch(result.stdout || result.stderr || ""),
-                    }],
+                    content: [
+                        {
+                            type: "text" as const,
+                            text: formatWebDocsSearch(result.stdout || result.stderr || ""),
+                        },
+                    ],
                     details: typed,
                 };
             },

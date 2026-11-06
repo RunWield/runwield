@@ -10,7 +10,7 @@ import { isSequencePlan, projectPlanType } from "../../shared/project-plan.ts";
  */
 
 import { isPlannedChangeClassification } from "../../constants.js";
-import { compareChildPlansByOrder, findPlansByParent, isTerminalArchivableStatus, loadPlan } from "../../plan-store.js";
+import { compareChildPlansByOrder, findPlansByParent, isTerminalArchivableStatus } from "../../plan-store.js";
 import { isInValidation, isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
 import { resolveWorkRecordSupersessionProposalsWithUi } from "../../shared/workflow/validation-helpers.ts";
 import {
@@ -21,6 +21,7 @@ import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../../shared/work-records/mne
 import { prepareTargetBranchPlansByParent } from "../../shared/workflow/planning-worktree.ts";
 import { isGitRepository } from "../../shared/git.ts";
 import { ensureEpicBranch } from "../../shared/workflow/epic-branch.ts";
+import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
 import { reconcileEpicDelivery } from "../../shared/workflow/epic-integration.ts";
 import { archiveEpicWithChildren } from "./plan-epic-archive.ts";
 import { resolvePlanWithPrimaryRecovery } from "./primary-plan-recovery.ts";
@@ -69,7 +70,7 @@ export interface HandleEpicPlanOptions {
  * @param {PlanSessionSurface["runSlicerAgent"]} opts.runSlicerAgent
  * @param {(childPlanName: string) => Promise<void>} opts.loadChildPlan
  * @param {PlanSessionSurface} opts.session
- * @returns {Promise<"handled" | "archiving" | "continue" | "review" | "direct_review">}
+ * @returns {Promise<"handled" | "archiving" | "continue" | "review" | "direct_review" | "architect_re_review">}
  */
 export async function handleEpicPlan({
     projectRoot,
@@ -78,7 +79,9 @@ export async function handleEpicPlan({
     runSlicerAgent,
     loadChildPlan,
     session,
-}: HandleEpicPlanOptions): Promise<"handled" | "archiving" | "continue" | "review" | "direct_review"> {
+}: HandleEpicPlanOptions): Promise<
+    "handled" | "archiving" | "continue" | "review" | "direct_review" | "architect_re_review"
+> {
     if (!isProjectPlan(plan.attrs)) return "continue";
     projectPlanType(plan.attrs);
     const sequence = isSequencePlan(plan.attrs);
@@ -122,8 +125,8 @@ export async function handleEpicPlan({
             const message = error instanceof Error ? error.message : String(error);
             uiAPI.appendSystemMessage(`The Epic branch is not ready: ${message}`, true, "RunWield");
         }
-        const refreshed = await loadPlan(projectRoot, plan.planName);
-        if (refreshed) plan.attrs = { ...plan.attrs, ...refreshed.attrs };
+        const refreshed = (await resolveWorkflowPlanLocation(projectRoot, plan.planName, { readOnly: true })).plan;
+        if (refreshed) Object.assign(plan, refreshed);
     }
     const targetBranch = typeof plan.attrs.targetBranch === "string" ? plan.attrs.targetBranch.trim() : "";
     const familyChildren =
@@ -209,13 +212,15 @@ export async function handleEpicPlan({
 
     const canReviewWithArchitect =
         plan.attrs.status === "draft" ||
-        plan.attrs.status === "approved" ||
+        (sequence && plan.attrs.status === "approved") ||
         (sequence &&
             plan.attrs.status === "ready_for_work" &&
             children.every((child) => ["draft", "approved", "ready_for_work"].includes(child.attrs.status)));
     const canDirectReview =
         !sequence &&
         (plan.attrs.status === "draft" || plan.attrs.status === "approved" || plan.attrs.status === "ready_for_work");
+    const canSendBackToArchitect =
+        !sequence && ["ready_for_decomposition", "ready_for_work"].includes(plan.attrs.status);
     const canOpenSlicer =
         !sequence &&
         (isApprovedEpic ||
@@ -226,9 +231,7 @@ export async function handleEpicPlan({
     if (canReviewWithArchitect) {
         const action = sequence
             ? "Review the Sequence and all children with Planner."
-            : canOpenSlicer
-              ? "Review it with Architect or resume Slicer decomposition to create child plans."
-              : "Review it with Architect to continue planning.";
+            : "Open Epic review or resume planning with Architect.";
         uiAPI.appendSystemMessage(
             `This PROJECT ${sequence ? "Sequence" : "Epic"} contains child Plans. ${action}`,
             false,
@@ -246,9 +249,17 @@ export async function handleEpicPlan({
                 label: `Resume publication: ${child.name}`,
             })),
             ...(canPickChild ? [{ value: "pick_child", label: "Pick a child Planned Change plan" }] : []),
-            ...(canDirectReview ? [{ value: "direct_review", label: "Review plan" }] : []),
+            ...(canDirectReview ? [{ value: "direct_review", label: "Open Epic review" }] : []),
             ...(canReviewWithArchitect
-                ? [{ value: "review", label: sequence ? "Review Sequence with Planner" : "Review with Architect" }]
+                ? [
+                      {
+                          value: "review",
+                          label: sequence ? "Review Sequence with Planner" : "Resume planning with Architect",
+                      },
+                  ]
+                : []),
+            ...(canSendBackToArchitect
+                ? [{ value: "architect_re_review", label: "Send back to Architect for re-review" }]
                 : []),
             ...(canOpenSlicer ? [{ value: "slicer", label: "Open or resume Slicer decomposition" }] : []),
             ...((epicGateReady || epicGateRetryReady) && session.runEpicIntegrationGate
@@ -332,6 +343,10 @@ export async function handleEpicPlan({
 
         if (answer === "review") {
             return "review";
+        }
+
+        if (answer === "architect_re_review" && canSendBackToArchitect) {
+            return "architect_re_review";
         }
 
         if (answer === "slicer") {

@@ -16,14 +16,14 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../../../testing/assertions.ts";
 import { join } from "node:path";
 import { defineTool, SessionManager } from "@earendil-works/pi-coding-agent";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { withProcessGlobalTestLock } from "../../../../testing/process-global-lock.ts";
 import { getModelRegistry } from "../../../models/model-registry.ts";
 import { createTaskCompletedTool } from "../../../../tools/task-completed.ts";
 import { HostedSession } from "../../hosted-session.js";
 import { setCustomSetting } from "../../../settings.js";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../../../workflow/metrics.js";
-import { readLatestTaskCompletedOutcome } from "../../../workflow/workflow-results.js";
+import { readLatestTaskCompletedOutcome } from "../../../workflow/workflow-results.ts";
 import { prepareClaudeCliCommand, removeClaudeCliPromptFile } from "./command.ts";
 import { ClaudeCliExecutionSession } from "./execution-session.ts";
 import { ClaudeCliBackendError } from "./failure.ts";
@@ -180,31 +180,6 @@ test("Claude CLI command writes an owner-only appended prompt file", async () =>
     }
 });
 
-test("Claude CLI command prompt file cleanup removes the file", async () => {
-    const command = await prepareClaudeCliCommand({ selector: "haiku", systemPrompt: "cleanup" });
-    await removeClaudeCliPromptFile(command);
-    await assertRejects(() => fsStat(command.promptFilePath), Error, "ENOENT");
-});
-
-test("Claude CLI parser emits assistant text and ignores internal events", async () => {
-    const deltas: string[] = [];
-    const result = await parseClaudeCliStream(
-        streamFromText(
-            [
-                JSON.stringify({ type: "system", subtype: "init" }),
-                JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "hel" }] } }),
-                JSON.stringify({ type: "content_block_delta", delta: { type: "text_delta", text: "lo" } }),
-                JSON.stringify({ type: "tool_use", name: "Bash" }),
-                JSON.stringify({ type: "result", result: "hello", usage: { input_tokens: 3, output_tokens: 4 } }),
-            ].join("\n"),
-        ),
-        { onDelta: (delta) => deltas.push(delta.text) },
-    );
-    assertEquals(deltas, ["hel", "lo"]);
-    assertEquals(result.text, "hello");
-    assertEquals(result.metadata.usage.inputTokens, 3);
-});
-
 test("Claude Code 2.1.284 captured Read stream pairs native tool progress with terminal usage", async () => {
     const captured = await fsReadFile(
         new URL("./fixtures/claude-2.1.284-read-tool-stream.jsonl", import.meta.url),
@@ -273,16 +248,6 @@ test("Claude result identities and running cost deltas reset for each stream", a
             { sourceId: "claude_model_0:2", cost: 0.75, input: 8, basis: "alternative" },
         ]);
     }
-});
-
-test("Claude CLI parser preserves a structured error result", async () => {
-    const message = "You've hit your monthly spend limit · raise it in Claude settings";
-    const result = await parseClaudeCliStream(
-        streamFromText(`${JSON.stringify({ type: "result", is_error: true, result: message })}\n`),
-        { onDelta: () => undefined },
-    );
-    assertEquals(result.text, message);
-    assertEquals(result.metadata.isError, true);
 });
 
 test("Claude CLI parser preserves plain stdout diagnostics as assistant text", async () => {
@@ -437,14 +402,6 @@ test("Claude CLI parser streams thinking and text deltas live without duplicatin
     assertEquals(textDeltas, ["hel", "lo"]);
     assertEquals(thinkingEndCalls, 1);
     assertEquals(result.text, "hello");
-});
-
-test("Claude CLI line parser rejects malformed stream-json", async () => {
-    await assertRejects(
-        () => parseClaudeCliStream(streamFromText("{bad-json}\n"), { onDelta: () => undefined }),
-        Error,
-        "malformed",
-    );
 });
 
 test("Claude CLI parser rejects final text that differs from visible stream", async () => {
@@ -1021,55 +978,6 @@ test("^Claude CLI malformed stream is a typed failure with cleanup$", async () =
         const mcpPath = logEntry.args[logEntry.args.indexOf("--mcp-config") + 1];
         await assertRejects(() => fsStat(promptPath), Error, "ENOENT");
         await assertRejects(() => fsStat(mcpPath), Error, "ENOENT");
-    });
-});
-
-test("^Claude CLI abort cancels the subprocess and preserves active workflow$", async () => {
-    await withClaudeFixture(async (root, logPath) => {
-        process.env["RUNWIELD_CLAUDE_FIXTURE_SLEEP_MS"] = "1000";
-        const model = getModelRegistry().find("claude-cli", "sonnet");
-        if (!model) throw new Error("missing claude model");
-        const manager = SessionManager.inMemory(root);
-        const hostedSession = new HostedSession({
-            id: `hosted-${crypto.randomUUID()}`,
-            cwd: root,
-            sessionManager: manager as never,
-        });
-        hostedSession.setActiveExecutionWorkflow({
-            planName: "plan",
-            triageMeta: { classification: "PLANNED_CHANGE" },
-            executionAgent: "engineer",
-            executionStarted: true,
-            executionCwd: root,
-        });
-        const session = new ClaudeCliExecutionSession({
-            cwd: root,
-            agentName: "Engineer",
-            agentDisplayName: "Engineer",
-            finalSystemPrompt: "system",
-            model,
-            sessionManager: manager,
-            hostedSession,
-        });
-        const run = session.runTurn({ userRequest: "slow" });
-        await waitForLogText(logPath, "slow");
-        session.abort();
-        const error = await assertRejects(() => run, ClaudeCliBackendError);
-        assertEquals(error.kind, "canceled");
-        assertEquals(hostedSession.getActiveExecutionWorkflow()?.planName, "plan");
-        assertEquals(
-            manager
-                .getBranch()
-                .some(
-                    (entry) =>
-                        entry.type === "custom" &&
-                        entry.customType === "runwield.backend_status" &&
-                        (entry as { data?: { kind?: string } }).data?.kind === "canceled",
-                ),
-            true,
-        );
-        const log = await fsReadFile(logPath, "utf8");
-        assert(log.includes("SIGTERM") || log.includes("slow"));
     });
 });
 

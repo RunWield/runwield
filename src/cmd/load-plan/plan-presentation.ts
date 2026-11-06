@@ -7,6 +7,7 @@
  */
 
 import { buildTriageReport } from "../../shared/workflow/workflow-prompts.ts";
+import { AGENTS } from "../../constants.js";
 import type { PlanFrontMatter } from "../../plan-store.js";
 
 /** One commit in the "these paths changed since the Plan was written" warning. */
@@ -44,14 +45,18 @@ export function buildReReviewRevisionRequest(planName: string, feedback: string 
 }
 
 /**
- * Build the prompt that sends an executable Plan back to the planning agent for
+ * Build the prompt that sends a ready Plan back to the planning agent for
  * direct re-review without first opening the local review UI.
  */
-export function buildPlannerReReviewRequest(planName: string): string {
+export function buildPlanningReReviewRequest(planName: string, agentName: string): string {
+    const reviewPurpose =
+        agentName === AGENTS.ARCHITECT
+            ? "Architect re-review before decomposition"
+            : "Planner re-review before execution";
     return [
         `## Plan Re-review Requested: ${planName}`,
         "",
-        `The user wants docs/plans/${planName}.md to go back through Planner re-review before execution, without opening the`,
+        `The user wants docs/plans/${planName}.md to go back through ${reviewPurpose}, without opening the`,
         "local review UI first. No feedback was submitted with the request.",
     ].join("\n");
 }
@@ -59,9 +64,9 @@ export function buildPlannerReReviewRequest(planName: string): string {
 /** Render the commit list shown before execution starts, capped for readability. */
 export function formatCommitHeadsUp(commits: CommitHeadsUp[]): string[] {
     const maxVisible = 12;
-    const visible = commits.slice(0, maxVisible).map((commit) =>
-        `  - ${commit.hash} ${commit.date} ${commit.subject}`.trimEnd()
-    );
+    const visible = commits
+        .slice(0, maxVisible)
+        .map((commit) => `  - ${commit.hash} ${commit.date} ${commit.subject}`.trimEnd());
     if (commits.length > maxVisible) {
         visible.push(`  - ...and ${commits.length - maxVisible} more`);
     }

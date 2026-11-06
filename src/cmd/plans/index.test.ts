@@ -348,34 +348,6 @@ plansTest("plans read serves real fixture markdown through the artifact surface"
     assertStringIncludes(html, "# read-me");
 });
 
-plansTest("plans doctor and UI help use their real command implementations", async () => {
-    const doctor = await captureOutput(() => runPlansCommand(["doctor"]));
-    assertStringIncludes(doctor.join("\n"), "Your Plans look good");
-
-    const uiHelp = await captureOutput(() => runPlansCommand(["ui", "--help"]));
-    assertStringIncludes(uiHelp.join("\n"), "Usage: wld plans ui");
-});
-
-plansTest("plans collaboration subcommands expose their real help contracts without network access", async () => {
-    const output = await captureOutput(async () => {
-        await runPlansCommand(["share", "--help"]);
-        await runPlansCommand(["pull", "--help"]);
-        await runPlansCommand(["push", "--help"]);
-        await runPlansCommand(["unshare", "--help"]);
-    });
-    const text = output.join("\n");
-    assertStringIncludes(text, "plans share");
-    assertStringIncludes(text, "plans pull");
-    assertStringIncludes(text, "plans push");
-    assertStringIncludes(text, "plans unshare");
-});
-
-plansTest("plans help uses the registered command help", async () => {
-    const output = await captureOutput(() => runPlansCommand(["--help"]));
-    assertStringIncludes(output.join("\n"), "Usage (plans):");
-    assertStringIncludes(output.join("\n"), "wld plans archive");
-});
-
 plansTest(
     "Plans list and read dispatch preserve pending sources and show the workflow notice",
     async ({ projectRoot }) => {

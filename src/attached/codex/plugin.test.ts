@@ -110,6 +110,7 @@ test("Codex routes every workflow phase to its packaged action instructions", as
         implementation: "references/implementation.md",
         implemented: "references/validation.md",
         validation_recovery: "references/validation.md",
+        validation_running: "references/validation.md",
         validation: "references/validation.md",
         code_review: "references/validation.md",
         recorder: "references/validation.md",
@@ -438,4 +439,16 @@ test("Codex can install and remove the repository package in an isolated configu
     } finally {
         await rm(temporary, { recursive: true, force: true });
     }
+});
+
+test("Codex guidance suppresses routine compatibility notices including older Core", async () => {
+    const text = await readFile(new URL("./plugin/skills/run/SKILL.md", import.meta.url), "utf8");
+    assert(
+        text.includes(
+            "Continue quietly on nonblocking compatibility assessments, including legacy notices from older Core.",
+        ),
+    );
+    assert(text.includes("`unsupported_host`"));
+    assert(text.includes("`incompatible_adapter`"));
+    assert(text.includes("`unsupported_host_version`"));
 });

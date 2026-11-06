@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { updatePlanFrontMatter } from "../../plan-store.js";
 import { getExactProjectCustomSetting } from "../settings.js";
 import { captureWorktreeTree } from "./git-snapshot.ts";
+import { getWorktreeReviewDiff } from "./git-snapshot.ts";
+import { candidateIdentity } from "./validation-scope.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import { CI_REPAIR_CYCLES, SEMANTIC_REVIEW_CYCLES } from "./validation-types.ts";
 import { applyRoundFindings, createLedger } from "./review-ledger.ts";
@@ -232,7 +234,7 @@ for (const answer of ["retry", "engineer_follow_up", "stop"] as const) {
                 const repair = hostRequest(result, "repair");
                 assertEquals(await host.lifecycle(), await core.lifecycle());
                 assertStringIncludes(repair.prompt, "Fix the new value.");
-                assertStringIncludes(repair.prompt, "Continue the interrupted validation repair");
+                assertStringIncludes(repair.prompt, "Latest failed CI run:");
                 const waiting = (await host.plan()).attrs.validationCheckpoint;
                 assertEquals(waiting?.repairGeneration, repair.repairGeneration);
                 const bytes = await host.checkpointBytes();
@@ -422,6 +424,62 @@ test("Retry followed by the same CI failure rejects the old decision without eff
             "reviewer-feedback-engineer",
         );
         assertEquals(await fixture.ciCount(), 2);
+    } finally {
+        await fixture.close();
+    }
+});
+
+test("CI follow-up retains the latest failed run and candidate beside custom user feedback", async () => {
+    const fixture = await hostFixture();
+    try {
+        await fsWriteFile(
+            join(fixture.cwd, "verify.sh"),
+            "#!/bin/sh\nprintf 'ci\\n' >> ci-count\nprintf 'FAILURE-RUN-%s\\n' \"$(wc -l < ci-count | tr -d ' ')\"\nexit 1\n",
+        );
+        let result = await fixture.processTurn();
+        for (let cycle = 0; cycle < CI_REPAIR_CYCLES; cycle++) {
+            const repair = hostRequest(result, "repair");
+            await fsWriteFile(join(fixture.cwd, "implementation.ts"), `export const value = ${cycle + 2};\n`);
+            result = await fixture.processTurn(complete(repair));
+        }
+        const decision = hostRequest(result, "decision");
+        const pending = (await fixture.plan()).attrs.validationCheckpoint?.pendingCiDecision;
+        assertExists(pending?.evidence?.candidateIdentity);
+        assertEquals(
+            pending.evidence.candidateIdentity,
+            candidateIdentity(await getWorktreeReviewDiff(fixture.cwd, "main", "refs/heads/main"), "p"),
+        );
+        const latest = `FAILURE-RUN-${CI_REPAIR_CYCLES + 1}`;
+        assertStringIncludes(pending.failureReason, latest);
+        const receipt = (await fixture.evidence()).filter((entry) => entry.kind === "ci").at(-1);
+        assertExists(receipt);
+        assertStringIncludes(receipt.detail, latest);
+        assertStringIncludes(receipt.detail, pending.evidence.runId);
+        assertStringIncludes(receipt.detail, pending.evidence.candidateIdentity);
+        const text = hostRequest(
+            await fixture.processTurn({
+                kind: "decision",
+                identity: decision.identity,
+                answer: { outcome: "selected", value: "engineer_follow_up" },
+            }),
+            "decision",
+        );
+        const followUp = hostRequest(
+            await fixture.processTurn({
+                kind: "decision",
+                identity: text.identity,
+                answer: { outcome: "text", value: "Investigate publication observation timing." },
+            }),
+            "repair",
+        );
+        assertStringIncludes(followUp.prompt, latest);
+        assertEquals(followUp.prompt.includes(`FAILURE-RUN-${CI_REPAIR_CYCLES}\n`), false);
+        assertStringIncludes(followUp.prompt, "Investigate publication observation timing.");
+        assertStringIncludes(followUp.prompt, pending.evidence.runId);
+        assertStringIncludes(followUp.prompt, pending.evidence.candidateIdentity);
+        assertEquals(await fixture.ciCount(), CI_REPAIR_CYCLES + 1);
+        assertEquals(hostRequest(await fixture.processTurn(), "repair"), followUp);
+        assertEquals(await fixture.ciCount(), CI_REPAIR_CYCLES + 1);
     } finally {
         await fixture.close();
     }

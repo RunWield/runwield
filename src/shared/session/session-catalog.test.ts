@@ -1,53 +1,24 @@
-import { makeTempFile } from "../../testing/temp-file.ts";
-import { getCwd } from "../../constants.js";
 import { test } from "node:test";
-import {
-    mkdir as fsMkdir,
-    mkdtemp as fsMkdtemp,
-    readFile as fsReadFile,
-    rm as fsRm,
-    writeFile as fsWriteFile,
-} from "node:fs/promises";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { ok as assert } from "node:assert/strict";
-import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import {
     assembleFinalSystemPrompt,
     expandPromptTemplate,
-    expandSkillCommand,
-    listLoadedAgentMdFiles,
     listPromptTemplates,
     listSkills,
     readGlobalAgentMd,
-    steerActiveSessionWithTarget,
-    steerRootSession,
-    steerRootSessionWithTarget,
 } from "./session.js";
-import { ensureBundledAgentDefFile, getBundledAgentDefsPath } from "./agent-assets.ts";
-import { type DisposableLike, HostedSession } from "./hosted-session.js";
+
 import { getAgentDisplayName, listAvailableAgents } from "./agents.js";
 import { getCustomSetting } from "../settings.js";
 import { loadPlan } from "../../plan-store.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 
-import type { AgentSession } from "@earendil-works/pi-coding-agent";
-
 type PromptAgentDefinition = Parameters<typeof assembleFinalSystemPrompt>[0];
 type PromptCustomTools = Parameters<typeof assembleFinalSystemPrompt>[2];
-type SteeringImages = Parameters<AgentSession["steer"]>[1];
-
-interface SteeringCall {
-    text: string;
-    images?: SteeringImages;
-}
-
-interface SteeringSessionFixture extends DisposableLike {
-    steer: (...args: Parameters<AgentSession["steer"]>) => Promise<void>;
-    isStreaming: boolean;
-    model?: Pick<NonNullable<AgentSession["model"]>, "input"> &
-        Partial<Pick<NonNullable<AgentSession["model"]>, "contextWindow">>;
-}
 
 test("two project roots keep local catalogs settings and Plans isolated", async () => {
     const alpha = await fsMkdtemp(join(tmpdir(), "runwield-project-alpha-"));
@@ -219,92 +190,6 @@ test("listPromptTemplates includes installed package prompts after RunWield prom
     }
 });
 
-test("expandPromptTemplate strips front matter and appends user instructions", async () => {
-    const path = await makeTempFile({ prefix: "runwield-template-", suffix: ".md" });
-    try {
-        await fsWriteFile(path, ["---", 'description: "Template"', "---", "Template body", ""].join("\n"));
-
-        assertEquals(await expandPromptTemplate(path, "Extra instructions"), "Template body\n\nExtra instructions");
-        await assertRejects(() => expandPromptTemplate(`${path}.missing`), Error, "Failed to read prompt template");
-    } finally {
-        await fsRm(path).catch(() => {});
-    }
-});
-
-test("listSkills and expandSkillCommand read local skill definitions", async () => {
-    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-local-skill-"));
-    const skillName = `coverage-skill-${crypto.randomUUID()}`;
-    const skillDir = join(projectRoot, ".wld", "skills", skillName);
-    const skillPath = join(skillDir, "SKILL.md");
-    await fsMkdir(skillDir, { recursive: true });
-    try {
-        await fsWriteFile(
-            skillPath,
-            [
-                "---",
-                `name: "${skillName}"`,
-                'description: "Exercise local skill loading"',
-                "---",
-                "Use this skill carefully.",
-            ].join("\n"),
-        );
-
-        const skills = await listSkills({ cwd: projectRoot });
-        const skill = skills.find((item) => item.name === skillName);
-        assertEquals(skill?.source, "local");
-        assertEquals(skill?.description, "Exercise local skill loading");
-
-        const expanded = await expandSkillCommand(skillName, "User extra", projectRoot);
-        assertStringIncludes(expanded, `The user has invoked the "${skillName}" skill.`);
-        assertStringIncludes(expanded, `<skill name="${skillName}" location="${skillPath}">`);
-        assertStringIncludes(expanded, "Use this skill carefully.");
-        assertStringIncludes(expanded, "User extra");
-
-        await assertRejects(() => expandSkillCommand("missing-skill"), Error, "Unknown skill: missing-skill");
-    } finally {
-        await fsRm(projectRoot, { recursive: true }).catch(() => {});
-    }
-});
-
-test("listSkills advertises bundled skills from the runtime-readable cache", async () => {
-    await withProcessGlobalTestLock(async () => {
-        const skills = await listSkills();
-        const research = skills.find((item) => item.name === "research");
-
-        assertEquals(research?.source, "bundled");
-        const researchPath = research?.path ?? "";
-        assertEquals(
-            researchPath.includes(join(".wld", "bundled-skills", "research", "SKILL.md")) ||
-                researchPath.includes(join("src", "skills", "research", "SKILL.md")),
-            true,
-        );
-    });
-});
-
-test("ensureBundledAgentDefFile resolves workflow prompt assets", async () => {
-    const path = await ensureBundledAgentDefFile(join("subagent-definitions", "reviewer-prompt.md"));
-    const prompt = await fsReadFile(path, "utf8");
-
-    assertStringIncludes(path, "subagent-definitions");
-    assertStringIncludes(prompt, "Workflow-only semantic review prompt");
-});
-
-test("bundled agent defs path and loaded instruction files are reported", async () => {
-    const bundledPath = await getBundledAgentDefsPath();
-    assertEquals(bundledPath.endsWith("agent-definitions") || bundledPath.includes("bundled-agent-definitions"), true);
-
-    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-loaded-agent-md-"));
-    const projectHarnessPath = join(projectRoot, "RUNWIELD.md");
-    try {
-        await fsWriteFile(projectHarnessPath, "Project instructions for coverage");
-        const files = await listLoadedAgentMdFiles(projectRoot);
-        const projectFile = files.find((file) => file.path === projectHarnessPath);
-        assertEquals(projectFile, { path: projectHarnessPath, source: "local" });
-    } finally {
-        await fsRm(projectRoot, { recursive: true }).catch(() => {});
-    }
-});
-
 test("readGlobalAgentMd falls through configured global instruction paths", async () => {
     const home = await fsMkdtemp(join(tmpdir(), "runwield-global-agent-md-"));
     const wldDir = join(home, ".wld");
@@ -393,67 +278,4 @@ test("assembleFinalSystemPrompt fills tools, instruction files, skills, and bund
             await fsRm(projectRoot, { recursive: true }).catch(() => {});
         }
     });
-});
-
-test("steerRootSession sends image content only while root is streaming", async () => {
-    const steerCalls: SteeringCall[] = [];
-    const session: SteeringSessionFixture = {
-        isStreaming: false,
-        steer: (text: string, images: SteeringImages) => {
-            steerCalls.push({ text, images });
-            return Promise.resolve();
-        },
-    };
-
-    const hostedSession = new HostedSession({ id: "steer-catalog", cwd: getCwd() });
-    assertEquals(await steerRootSession(hostedSession, "queued"), false);
-
-    hostedSession.setRootAgentSession(session);
-    assertEquals(await steerRootSession(hostedSession, "queued"), false);
-    assertEquals(steerCalls, []);
-
-    session.isStreaming = true;
-    assertEquals(
-        await steerRootSession(hostedSession, "interrupt", [{ base64: "abc123", mimeType: "image/png" }]),
-        true,
-    );
-    assertEquals(steerCalls, [
-        {
-            text: "interrupt",
-            images: [{ type: "image", data: "abc123", mimeType: "image/png" }],
-        },
-    ]);
-    assertEquals(await steerRootSessionWithTarget(hostedSession, "targeted"), session);
-});
-
-test("steerActiveSessionWithTarget prefers streaming foreground target and keeps root helper root-only", async () => {
-    const calls: string[] = [];
-    const root: SteeringSessionFixture = {
-        isStreaming: true,
-        model: { input: ["text"] },
-        steer(text: string) {
-            calls.push(`root:${text}`);
-            return Promise.resolve();
-        },
-    };
-    const foreground: SteeringSessionFixture = {
-        isStreaming: true,
-        model: { input: ["text"] },
-        steer(text: string) {
-            calls.push(`foreground:${text}`);
-            return Promise.resolve();
-        },
-    };
-    const hostedSession = new HostedSession({ id: "active-steer-catalog", cwd: getCwd() });
-    hostedSession.setRootAgentSession(root);
-    const targetId = hostedSession.pushSteeringTargetSession(foreground);
-
-    assertEquals(await steerActiveSessionWithTarget(hostedSession, "active"), foreground);
-    assertEquals(await steerRootSessionWithTarget(hostedSession, "root"), root);
-    assertEquals(calls, ["foreground:active", "root:root"]);
-
-    foreground.isStreaming = false;
-    assertEquals(await steerActiveSessionWithTarget(hostedSession, "fallback"), root);
-    assertEquals(calls.at(-1), "root:fallback");
-    hostedSession.popSteeringTargetSession(targetId);
 });

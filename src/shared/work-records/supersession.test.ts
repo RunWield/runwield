@@ -18,8 +18,6 @@ import {
     acquireRecoveryLock,
     acquireSupersessionLock,
     applyWorkRecordSupersession,
-    buildWorkRecordIndexDocument,
-    buildWorkRecordIndexTags,
     confirmWorkRecordSupersession,
     findWorkRecordById,
     generateWorkRecordForSource,
@@ -38,9 +36,9 @@ import { enterProjectRuntime } from "../project-runtime-layout.ts";
 
 const linkedCheckoutFixture = defineCommittedGitFixture({ ".gitignore": ".wld/\n", "README.md": "# Fixture\n" });
 
-const PREDECESSOR_ID = "11111111-1111-4111-8111-111111111111";
+const PREDECESSOR_ID = "abcdef11-1111-4111-8111-111111111111";
 const OTHER_ID = "22222222-2222-4222-8222-222222222222";
-const SUCCESSOR_ID = "33333333-3333-4333-8333-333333333333";
+const SUCCESSOR_ID = "fedcba33-3333-4333-8333-333333333333";
 
 type WorkRecordLockAcquire = (cwd: string) => Promise<() => Promise<void>>;
 
@@ -255,7 +253,7 @@ test("supersession recovers malformed locks only after their file mtimes are sta
     }
 });
 
-test("concurrent supersession projection indexes the latest canonical successor", async () => {
+test("concurrent supersession retains both canonical predecessor relations", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await seed(cwd, false);
@@ -293,9 +291,8 @@ test("concurrent supersession projection indexes the latest canonical successor"
         const successor = await findWorkRecordById(cwd, SUCCESSOR_ID);
         if (!successor) throw new Error("Expected the canonical successor Work Record.");
         assertEquals(successor.attrs.supersedes, [PREDECESSOR_ID, OTHER_ID]);
-        const indexed = fixture.snapshot().find((document) => document.tags.includes(`work-record:${SUCCESSOR_ID}`));
-        assertEquals(indexed?.content, buildWorkRecordIndexDocument(successor));
-        assertEquals(indexed?.tags, buildWorkRecordIndexTags(successor));
+        assertEquals((await findWorkRecordById(cwd, PREDECESSOR_ID))?.attrs.supersededBy, SUCCESSOR_ID);
+        assertEquals((await findWorkRecordById(cwd, OTHER_ID))?.attrs.supersededBy, SUCCESSOR_ID);
     } finally {
         await fsRm(cwd, { recursive: true });
     }

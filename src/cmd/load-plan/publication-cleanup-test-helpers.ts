@@ -309,6 +309,17 @@ async function checkCleanupRestart(
 }
 
 export function registerPublicationCleanupTests(invocation: Invocation): void {
+    // Failure recovery is shared after selection. Cover picker entry and selection
+    // here; the named-command suite owns the complete crash/remote-state matrix.
+    if (invocation === "picker") {
+        test("load-plan picker views a published Plan without implicit cleanup", async () => {
+            await checkCleanupRestart("verification_receipt", invocation, "unchanged", false);
+        });
+        test("load-plan picker requested cleanup preserves files after losing Git registration", async () => {
+            await checkCleanupRestart("verification_receipt", invocation, "lost_registration");
+        });
+        return;
+    }
     for (const boundary of ["verification_receipt", "cleanup_effect", "cleanup_receipt"] as const) {
         test(`load-plan ${invocation} views a published Plan without cleanup after ${boundary}`, async () => {
             await checkCleanupRestart(boundary, invocation, "unchanged", false);

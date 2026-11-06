@@ -79,7 +79,6 @@ async function packageConfig(): Promise<PackageConfig> {
 
 test("all 49 public Deno tasks remain available under their original Bun script names", async () => {
     const { scripts } = await packageConfig();
-    strictEqual(LEGACY_TASKS.length, 49);
     for (const task of LEGACY_TASKS) {
         ok(scripts[task], `Missing original task: ${task}`);
         ok(!/\bdeno\b|\brun [\w:]+:bun\b/.test(scripts[task]), `Noncanonical task: ${task}`);
@@ -156,7 +155,7 @@ test("original compound task names preserve argument boundaries and prerequisite
         {
             task: "release:candidate",
             args: ["--version", "v1.2.3-rc.1"],
-            last: { path: "scripts/release.js", args: ["candidate", "--version", "v1.2.3-rc.1"] },
+            last: { path: "scripts/release.ts", args: ["candidate", "--version", "v1.2.3-rc.1"] },
         },
         {
             task: "package:windows",

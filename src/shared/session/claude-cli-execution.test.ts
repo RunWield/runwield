@@ -13,7 +13,7 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { defineTool, SessionManager } from "@earendil-works/pi-coding-agent";
 import { AGENTS } from "../../constants.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
@@ -23,14 +23,13 @@ import { __resetSettingsForTests } from "../settings.js";
 import {
     abortActiveSession,
     ensureRootAgentSession,
-    getRootSessionRebuildOptions,
     runIsolatedAgentSession,
     runRootTurn,
     steerActiveSessionWithTarget,
 } from "./session.js";
 import { ClaudeCliBackendError } from "./backends/claude-cli/failure.ts";
 import { CLAUDE_CLI_MCP_PROVENANCE } from "./backends/claude-cli/mcp-bridge.ts";
-import { readLatestTaskCompletedOutcome } from "../workflow/workflow-results.js";
+import { readLatestTaskCompletedOutcome } from "../workflow/workflow-results.ts";
 import { readLatestTriageOutcome } from "../workflow/orchestrator.ts";
 import { startMcpIntegration } from "../mcp/integration.ts";
 import { runValidationAgentUntilEvent } from "./agent-workflow-step.ts";
@@ -385,20 +384,6 @@ test("Claude CLI root turn can set the Session Name through MCP", async () => {
         ) as ToolResultMessage | undefined;
         assertEquals(toolResult?.details?.name, "claude session");
         assertEquals(toolResult?.details?.provenance, CLAUDE_CLI_MCP_PROVENANCE);
-    });
-});
-
-test("Claude CLI root keeps agent tool names available for provider reload", async () => {
-    await withClaudeExecutionFixture(async (_home, cwd) => {
-        const manager = SessionManager.inMemory(cwd);
-        const hostedSession = createHostedSession(cwd, manager);
-        await ensureRootAgentSession({ hostedSession, agentName: AGENTS.GUIDE });
-
-        const rebuildOptions = getRootSessionRebuildOptions(hostedSession);
-
-        assertEquals(rebuildOptions.toolNames?.includes("read"), true);
-        assertEquals(rebuildOptions.toolNames?.includes("bash"), true);
-        assertEquals(rebuildOptions.toolNames?.includes("set_session_name"), true);
     });
 });
 

@@ -82,6 +82,7 @@ export async function runGoldenChild(args: string[], options: GoldenChildOptions
         cwd: options.cwd ?? getCwd(),
         stdin: "null",
         env: { ...sanitizeGoldenChildEnv(), ...(options.env || {}) },
+        clearEnv: true,
         stdout: "piped",
         stderr: "piped",
     });

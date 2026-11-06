@@ -7,7 +7,7 @@ import { getCwd } from "../../constants.js";
 import { mkdir, mkdtemp, readdir, writeFile, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import snipExtension, { __testing } from "./index.ts";
+import snipExtension from "./index.ts";
 
 import type { ExtensionContext, ToolCallEvent, ToolCallEventResult } from "@earendil-works/pi-coding-agent";
 
@@ -39,9 +39,6 @@ interface ShellObservation {
     stderr: string;
     files: DirectoryContents;
 }
-function expectedRewrite(command: string, failureLabel: string | null = null) {
-    return __testing.withFilteredSnipStderr(command, failureLabel);
-}
 
 function setup() {
     const handlers = new Map<string, SnipHandler>();
@@ -58,18 +55,6 @@ function setup() {
     return { getHandler };
 }
 
-test("snip extension rewrites bash tool calls in place", async () => {
-    const setupResult = setup();
-
-    const handler = setupResult.getHandler("tool_call");
-    if (!handler) throw new Error("tool_call handler not registered");
-
-    const event = { toolName: "bash", input: { command: "deno test" } };
-    await handler(event, {});
-
-    assertEquals(event.input.command, expectedRewrite("snip run -- deno test", "tests"));
-});
-
 test("snip extension ignores non-bash, empty, and already snip commands", async () => {
     const noOp = setup();
     const noOpHandler = noOp.getHandler("tool_call");
@@ -77,6 +62,7 @@ test("snip extension ignores non-bash, empty, and already snip commands", async 
 
     const readEvent = { toolName: "read", input: { command: "deno test" } };
     await noOpHandler(readEvent, {});
+    assertEquals(readEvent.input.command, "deno test");
 
     const emptyEvent = { toolName: "bash", input: { command: "  " } };
     await noOpHandler(emptyEvent, {});
@@ -87,70 +73,8 @@ test("snip extension ignores non-bash, empty, and already snip commands", async 
     assertEquals(snipEvent.input.command, "snip run -- deno test");
 });
 
-test("snip extension handles shell safety and env prefixes", async () => {
-    const { getHandler } = setup();
-    const handler = getHandler("tool_call");
-    if (!handler) throw new Error("tool_call handler not registered");
-
-    const cdEvent = { toolName: "bash", input: { command: "cd repo && deno test" } };
-    await handler(cdEvent, {});
-    assertEquals(cdEvent.input.command, "cd repo && deno test");
-
-    const gitCloneEvent = {
-        toolName: "bash",
-        input: { command: "git clone https://example.test/repo.git third_party/repo" },
-    };
-    await handler(gitCloneEvent, {});
-    assertEquals(gitCloneEvent.input.command, "git clone https://example.test/repo.git third_party/repo");
-
-    const gitWorktreeEvent = { toolName: "bash", input: { command: "git worktree add -b demo ../demo HEAD" } };
-    await handler(gitWorktreeEvent, {});
-    assertEquals(gitWorktreeEvent.input.command, "git worktree add -b demo ../demo HEAD");
-
-    const gitDiffEvent = { toolName: "bash", input: { command: "/usr/bin/git -C repo diff --cached" } };
-    await handler(gitDiffEvent, {});
-    assertEquals(gitDiffEvent.input.command, "/usr/bin/git -C repo diff --cached");
-
-    const envEvent = { toolName: "bash", input: { command: "FOO=1 deno test" } };
-    await handler(envEvent, {});
-    assertEquals(envEvent.input.command, expectedRewrite("FOO=1 snip run -- deno test", "tests"));
-
-    const chainEvent = { toolName: "bash", input: { command: "deno test && echo done" } };
-    await handler(chainEvent, {});
-    assertEquals(chainEvent.input.command, `${expectedRewrite("snip run -- deno test", "tests")}&& echo done`);
-
-    const extraEnvEvent = {
-        toolName: "bash",
-        input: { command: "BAR=/tmp/custom deno lint" },
-    };
-    await handler(extraEnvEvent, {});
-    assertEquals(extraEnvEvent.input.command, expectedRewrite("BAR=/tmp/custom snip run -- deno lint", "lint"));
-
-    const snippetEvent = { toolName: "bash", input: { command: "snippets list" } };
-    await handler(snippetEvent, {});
-    assertEquals(snippetEvent.input.command, expectedRewrite("snip run -- snippets list"));
-});
-
-test("snip extension does not rewrite command substitutions", async () => {
-    const { getHandler } = setup();
-    const handler = getHandler("tool_call");
-    if (!handler) throw new Error("tool_call handler not registered");
-
-    const tempDirEvent = { toolName: "bash", input: { command: 'tmp=$(mktemp -d); cd "$tmp"; pwd' } };
-    await handler(tempDirEvent, {});
-    assertEquals(tempDirEvent.input.command, 'tmp=$(mktemp -d); cd "$tmp"; pwd');
-
-    const inlineEvent = { toolName: "bash", input: { command: "echo $(date)" } };
-    await handler(inlineEvent, {});
-    assertEquals(inlineEvent.input.command, "echo $(date)");
-
-    const backtickEvent = { toolName: "bash", input: { command: "echo `date`" } };
-    await handler(backtickEvent, {});
-    assertEquals(backtickEvent.input.command, "echo `date`");
-});
-
 test("snip extension filters the no-filter notice without changing output or exit status", async () => {
-    const successCommand = __testing.rewriteCommand("printf success && printf chained");
+    const successCommand = await rewriteFromHook("printf success && printf chained");
     if (!successCommand) throw new Error("Expected success command to be rewritten.");
 
     const fakeSnip = `snip() { shift 2; printf 'snip: no filter for "printf", passing through -- you can run "printf" directly\\n' >&2; "$@"; }; `;
@@ -162,7 +86,7 @@ test("snip extension filters the no-filter notice without changing output or exi
     assertEquals(new TextDecoder().decode(success.stdout), "successchained");
     assertEquals(new TextDecoder().decode(success.stderr), "");
 
-    const stderrCommand = __testing.rewriteCommand("printf visible-error >&2");
+    const stderrCommand = await rewriteFromHook("printf visible-error >&2");
     if (!stderrCommand) throw new Error("Expected stderr command to be rewritten.");
     const stderrResult = await captureForegroundProcess(bashFixtureExecutable(), {
         args: ["-c", `${fakeSnip}${stderrCommand}`],
@@ -172,7 +96,7 @@ test("snip extension filters the no-filter notice without changing output or exi
     assertEquals(new TextDecoder().decode(stderrResult.stdout), "");
     assertEquals(new TextDecoder().decode(stderrResult.stderr), "visible-error");
 
-    const failureCommand = __testing.rewriteCommand("false && printf should-not-run");
+    const failureCommand = await rewriteFromHook("false && printf should-not-run");
     if (!failureCommand) throw new Error("Expected failure command to be rewritten.");
     const failure = await captureForegroundProcess(bashFixtureExecutable(), {
         args: ["-c", `${fakeSnip}${failureCommand}`],
@@ -184,7 +108,7 @@ test("snip extension filters the no-filter notice without changing output or exi
 });
 
 test("snip extension stores only filtered Deno failure diagnostics", async () => {
-    const command = __testing.rewriteCommand("deno test sample.test.ts");
+    const command = await rewriteFromHook("deno test sample.test.ts");
     if (!command) throw new Error("Expected Deno test command to be rewritten.");
     const fakeSnip = `snip() { printf '%s\\n' 'Check sample.test.ts' 'running 2 tests from ./sample.test.ts' 'passing ... ok (1ms)' 'failure ... FAILED (2ms)' 'AssertionError: expected true' 'FAILED | 1 passed | 1 failed (3ms)'; return 1; }; `;
     const result = await captureForegroundProcess(bashFixtureExecutable(), {
@@ -226,7 +150,7 @@ test("snip leaves the historical for/do/done command valid and unchanged (syntax
         cwd: getCwd(),
     });
     assertEquals(original.code, 0);
-    const rewritten = __testing.rewriteCommand(historicalCommand);
+    const rewritten = await rewriteFromHook(historicalCommand);
     const transformed = await captureForegroundProcess(bashFixtureExecutable(), {
         args: ["-n", "-c", rewritten ?? historicalCommand],
         cwd: getCwd(),
@@ -236,6 +160,20 @@ test("snip leaves the historical for/do/done command valid and unchanged (syntax
 });
 
 const shellCases: ShellCase[] = [
+    {
+        name: "Git clone bypass",
+        command: "git clone https://example.test/repo.git third_party/repo",
+        wrap: false,
+        syntaxOnly: true,
+    },
+    { name: "Git worktree bypass", command: "git worktree add -b demo ../demo HEAD", wrap: false, syntaxOnly: true },
+    {
+        name: "absolute Git inspection bypass",
+        command: "/usr/bin/git -C repo diff --cached",
+        wrap: false,
+        syntaxOnly: true,
+    },
+
     {
         name: "for loop with pipeline and fallback",
         command: 'for f in a b; do printf "%s\\n" "$f" | grep a || :; done',
@@ -322,7 +260,7 @@ async function directoryContents(path: string): Promise<DirectoryContents> {
 
 for (const fixture of shellCases) {
     test(`snip ${fixture.wrap ? "wraps" : "bypasses"} ${fixture.name} without changing shell behavior`, async () => {
-        const rewritten = __testing.rewriteCommand(fixture.command);
+        const rewritten = await rewriteFromHook(fixture.command);
         if (fixture.wrap) {
             if (!rewritten) throw new Error("Expected a Snip invocation");
             assertStringIncludes(rewritten, "snip run -- ");
@@ -400,7 +338,7 @@ for (const fixture of shellCases) {
 test("snip Deno success respects the user's stdout redirection", async () => {
     const root = await mkdtemp(join(tmpdir(), "snip-deno-"));
     try {
-        const command = __testing.rewriteCommand("deno test > out.txt");
+        const command = await rewriteFromHook("deno test > out.txt");
         if (!command) throw new Error("Expected Deno wrapping");
         const result = await captureForegroundProcess(bashFixtureExecutable(), {
             args: [
@@ -417,3 +355,11 @@ test("snip Deno success respects the user's stdout redirection", async () => {
         await fsRm(root, { recursive: true, force: true });
     }
 });
+
+async function rewriteFromHook(command: string): Promise<string | null> {
+    const handler = setup().getHandler("tool_call");
+    if (!handler) throw new Error("Missing tool_call handler");
+    const event = { toolName: "bash", input: { command } };
+    await handler(event, {});
+    return event.input.command === command ? null : event.input.command;
+}

@@ -1,4 +1,5 @@
 // @ts-nocheck: cross-surface protocol payloads are checked by runtime assertions.
+// @ts-nocheck: cross-surface protocol payloads are checked by runtime assertions.
 import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
@@ -11,6 +12,11 @@ import { createSessionRuntime } from "../shared/session/session-runtime.ts";
 import { listPersistedRootSessions } from "../shared/session/root-session.js";
 import { openOwnerCoordinationStore } from "../shared/owner-coordination/index.ts";
 import { WorkspaceSessionContinuationService } from "./workspace/server/session-continuation.js";
+import { Container, TuiMainScreen } from "@earendil-works/pi-tui";
+import { VirtualTerminal } from "./tui/testing/virtual-terminal.ts";
+import { createUiApi } from "./tui/api.js";
+import { SpinnerBlock } from "./tui/blocks.js";
+import { initRunWieldTheme } from "./theme/theme.ts";
 import { runScopedSubmitHandoffLoop } from "./tui/chat-session.ts";
 import { startRunWieldAcpServer } from "../acp/server.js";
 
@@ -126,17 +132,19 @@ async function readTranscriptSummary(transcriptPath: string): Promise<{
 }> {
     const text = await fsReadFile(transcriptPath, "utf8");
     assertStringIncludes(text, compactInvocation);
-    const entries = text.trim().split("\n")
+    const entries = text
+        .trim()
+        .split("\n")
         .filter(Boolean)
         .map((line) => JSON.parse(line) as TranscriptEntry);
-    const namedEntries = entries.filter((entry) =>
-        entry.type === "custom" && entry.customType === "runwield.named_invocation"
+    const namedEntries = entries.filter(
+        (entry) => entry.type === "custom" && entry.customType === "runwield.named_invocation",
     );
     const namedEntry = namedEntries.at(-1);
     const payload = namedEntry?.data;
     if (!payload) throw new Error(`No named invocation payload found in ${transcriptPath}`);
-    const userEntry = entries.find((entry) =>
-        entry.type === "message" && entry.parentId === namedEntry?.id && entry.message?.role === "user"
+    const userEntry = entries.find(
+        (entry) => entry.type === "message" && entry.parentId === namedEntry?.id && entry.message?.role === "user",
     );
     assertEquals(userEntry?.message?.content, [{ type: "text", text: compactInvocation }]);
     const contextEdit = entries.find((entry) => entry.type === "context_edit" && entry.targetId === userEntry?.id);
@@ -196,7 +204,8 @@ function runtimeSurfaceEvents(events: RuntimeSurfaceEvent[]): SurfaceEventSummar
             continue;
         }
         if (
-            !sawThinking && event.type === "thinking_level_changed" &&
+            !sawThinking &&
+            event.type === "thinking_level_changed" &&
             event.thinkingLevel === expectedProfile.thinkingLevel
         ) {
             summaries.push({ type: "thinking_level_changed", thinkingLevel: event.thinkingLevel });
@@ -283,9 +292,11 @@ function acpSurfaceEvents(messages: JsonMap[]): SurfaceEventSummary[] {
 function acpAssistantText(messages: JsonMap[]): string {
     return messages
         .map((message) => {
-            const params = message.params as {
-                update?: { sessionUpdate?: string; content?: { text?: string }; _meta?: { runwield?: JsonMap } };
-            } | undefined;
+            const params = message.params as
+                | {
+                      update?: { sessionUpdate?: string; content?: { text?: string }; _meta?: { runwield?: JsonMap } };
+                  }
+                | undefined;
             const update = params?.update;
             if (update?.sessionUpdate !== "agent_message_chunk") return "";
             if (update?._meta?.runwield?.messageKind !== "assistant") return "";
@@ -344,6 +355,11 @@ async function closeTestServer(handle: TestServerHandle): Promise<void> {
 }
 
 async function runTuiSurface(projectRoot: string): Promise<SurfaceSummary> {
+    initRunWieldTheme();
+    const terminal = new VirtualTerminal();
+    const tui = new TuiMainScreen(terminal);
+    const messages = new Container();
+    const uiAPI = createUiApi(null, tui, messages, new SpinnerBlock());
     const runtime = createSessionRuntime();
     const events: RuntimeSurfaceEvent[] = [];
     let result: NamedInvocationPromptResult | null = null;
@@ -359,15 +375,7 @@ async function runTuiSurface(projectRoot: string): Promise<SurfaceSummary> {
         await runScopedSubmitHandoffLoop({
             runtime,
             sessionId: created.sessionId,
-            uiAPI: {
-                appendSystemMessage: () => {},
-                appendAgentMessageStart: () => ({ appendText: () => {} }),
-                requestRender: () => {},
-                promptSelect: () => Promise.resolve(null),
-                promptText: () => Promise.resolve(null),
-                showModelSelector: () => {},
-                abortActivePrompt: () => {},
-            },
+            uiAPI,
             initialRequest: compactInvocation,
             initialImages: [],
         });
@@ -385,6 +393,7 @@ async function runTuiSurface(projectRoot: string): Promise<SurfaceSummary> {
         };
     } finally {
         await runtime.closeAllSessionsWhenIdle?.();
+        tui.stop();
     }
 }
 
@@ -494,10 +503,7 @@ test("named invocation fixture matches TUI, Workspace, and ACP surfaces", async 
                 await runAcpSurface(projectRoot),
             ];
             assertEquals(new Set(summaries.map((summary) => summary.digest)).size, 1);
-            assertEquals(
-                summaries.find((summary) => summary.surface === "acp")?.events,
-                summaries[0].events,
-            );
+            assertEquals(summaries.find((summary) => summary.surface === "acp")?.events, summaries[0].events);
             assertEquals(new Set(summaries.map((summary) => JSON.stringify(summary.profile))).size, 1);
             assertEquals(new Set(summaries.map((summary) => summary.result)).size, 1);
             assertEquals(new Set(summaries.map((summary) => summary.activeAgent)).size, 1);
@@ -591,8 +597,8 @@ test("Workspace follows a conflicting template into its new Session and keeps pl
                 });
                 assertEquals(originalTimeline.snapshot.activeAgent, "planner");
                 assert(
-                    !originalTimeline.events.some((event) =>
-                        event.type === "user_message" && event.text === "SEPARATE TEMPLATE BODY"
+                    !originalTimeline.events.some(
+                        (event) => event.type === "user_message" && event.text === "SEPARATE TEMPLATE BODY",
                     ),
                 );
                 const followUp = await service.startContinuation({

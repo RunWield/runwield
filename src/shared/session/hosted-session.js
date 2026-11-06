@@ -19,7 +19,7 @@ import {
     recordWorkflowPlanName,
     recordWorkflowTriageContext,
     workflowContextsEqual,
-} from "./workflow-context-session.js";
+} from "./workflow-context-session.ts";
 import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "./session-runtime-events.js";
 import { clearPairCheckpoint } from "./pair-checkpoint-session.ts";
 import { recordExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
@@ -103,9 +103,9 @@ import { PlanReviewConversationOwner } from "./plan-review-conversation.ts";
 
 /**
  * @typedef {Object} ActiveInteractionRecord
- * @property {import('./session-runtime-interactions.js').RuntimeInteractionRequest} [request]
+ * @property {import('./session-runtime-interactions.ts').RuntimeInteractionRequest} [request]
  * @property {AbortController} [abortController]
- * @property {(response: import('./session-runtime-interactions.js').RuntimeInteractionResponse, source?: import('./session-runtime-events.js').NotificationSurface) => void} [answer]
+ * @property {(response: import('./session-runtime-interactions.ts').RuntimeInteractionResponse, source?: import('./session-runtime-events.js').NotificationSurface) => void} [answer]
  */
 
 /**
@@ -114,7 +114,7 @@ import { PlanReviewConversationOwner } from "./plan-review-conversation.ts";
  * @property {string} [cwd]
  * @property {MinimalSessionManagerLike | null} [sessionManager]
  * @property {unknown} [eventSink]
- * @property {import('./session-runtime-interactions.js').RuntimeInteractionAdapter} [interactionAdapter]
+ * @property {import('./session-runtime-interactions.ts').RuntimeInteractionAdapter} [interactionAdapter]
  * @property {ManagedSessionMetadata | null} [managed]
  */
 
@@ -137,7 +137,7 @@ import { PlanReviewConversationOwner } from "./plan-review-conversation.ts";
  * @property {string | null} [model]
  * @property {string | null} [provider]
  * @property {string | null} [thinkingLevel]
- * @property {import('./workflow-context-session.js').WorkflowContext | null} workflowContext
+ * @property {import('./workflow-context-session.ts').WorkflowContext | null} workflowContext
  * @property {import('./tutorial-context-session.ts').TutorialContext | null} [tutorialContext]
  */
 
@@ -245,7 +245,7 @@ export class HostedSession {
         /** @type {Set<(event: HostedRuntimeEventObservation) => void>} */
         this.eventObservers = new Set();
         this.planReviewConversations = new PlanReviewConversationOwner();
-        /** @type {import('./session-runtime-interactions.js').RuntimeInteractionAdapter | null} */
+        /** @type {import('./session-runtime-interactions.ts').RuntimeInteractionAdapter | null} */
         this.interactionAdapter = options.interactionAdapter || null;
         /** @type {Map<string, ActiveInteractionRecord>} */
         this.activeInteractions = new Map();
@@ -271,7 +271,7 @@ export class HostedSession {
         this.delegatedReaderCount = 0;
         this.delegatedWriterActive = false;
         this.projectStateContext = "";
-        /** @type {import('./workflow-context-session.js').WorkflowContext | null} */
+        /** @type {import('./workflow-context-session.ts').WorkflowContext | null} */
         this.workflowContext = readPersistedWorkflowContext(
             /** @type {import('@earendil-works/pi-coding-agent').SessionManager | null} */ (this.rootSessionManager),
         );
@@ -582,7 +582,7 @@ export class HostedSession {
     }
 
     /**
-     * @param {import('./session-runtime-interactions.js').RuntimeInteractionAdapter | null} adapter
+     * @param {import('./session-runtime-interactions.ts').RuntimeInteractionAdapter | null} adapter
      */
     setInteractionAdapter(adapter) {
         this.assertActive();
@@ -1032,7 +1032,7 @@ export class HostedSession {
     }
 
     /**
-     * @param {import('./workflow-context-session.js').WorkflowContext | null} nextContext
+     * @param {import('./workflow-context-session.ts').WorkflowContext | null} nextContext
      * @param {{ persist?: boolean }} options
      */
     replaceWorkflowContext(nextContext, options = {}) {
@@ -1106,7 +1106,7 @@ export class HostedSession {
         }
     }
 
-    /** @param {import('./workflow-context-session.js').WorkflowContextInput} details */
+    /** @param {import('./workflow-context-session.ts').WorkflowContextInput} details */
     setWorkflowExecutionContext(details) {
         if (this.disposed) return;
         const nextContext = deriveWorkflowContextFromExecutionWorkflow(details);

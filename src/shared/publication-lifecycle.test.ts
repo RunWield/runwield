@@ -5,7 +5,7 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../testing/as
 import { join } from "node:path";
 import { defineGitFixture, git } from "./git-test-fixture.ts";
 import { parsePlanFrontMatter } from "../plan-store.js";
-import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "./work-records/markdown.js";
+import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "./work-records/markdown.ts";
 import {
     finalizeLocalPublicationLifecycle,
     finalizePublicationLifecycle,

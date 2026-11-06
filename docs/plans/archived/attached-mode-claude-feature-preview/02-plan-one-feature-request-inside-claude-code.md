@@ -13,7 +13,7 @@ affectedPaths:
     - "src/shared/project-runtime-layout.ts"
     - "docs/domain-language.md"
     - "docs/prd/runwield-connect-prd.md"
-    - "docs/adr/014-attached-workflow-coordination-boundary.md"
+    - "docs/adr/013-attached-workflow-coordination-boundary.md"
 planDeviations:
     - id: "call_aee379039e024a8b9b474a5e843b9171|fc_0904a8e92a9e24e0016ac65c2415348194bc8c77dfb1ca0f46"
       supersededRequirement: "Manual pair check with Claude Code 2.1.292 and `claude --plugin-dir src/attached/claude/plugin`, in a new Git repository with no `.wld/`:\n1. Send an ordinary prompt. No RunWield text appears and no record is created under `~/.wld/attached/`.\n2. Run `/runwield add a dark-mode toggle`. Claude triages, shows the setup preview, writes the Plan, and calls `plan_written`.\n3. Run `wld` in the repository. The Plan is listed in `draft` with its Plan ID.\n4. Ask Claude something unrelated in the same conversation after submission. It answers normally."
@@ -98,7 +98,7 @@ review:
 - `docs/plans/attached-mode-claude-feature-preview.md` — removed the Planning Gate, hooks, generated Skills and their
   stale-copy check, Plan ownership through the controller registry, and the import-graph architecture test. Added
   run-time role instructions and the "never starts a model turn" rule.
-- `docs/adr/014-attached-workflow-coordination-boundary.md` — replaced hook-based mutation gating and Skill
+- `docs/adr/013-attached-workflow-coordination-boundary.md` — replaced hook-based mutation gating and Skill
   materialization with run-time role instructions and the Pi trust model. Plan submission records a Plan reference, not
   ownership.
 - `docs/prd/runwield-connect-prd.md` — removed "prevent implementation changes until planning and approval permit them"
@@ -219,7 +219,7 @@ change only the operation and helper names.
   identity, front matter, location, and runtime entry. No change expected.
 - `docs/domain-language.md` — add Attached Role Instructions and the Plan reference relationship.
 - `docs/prd/runwield-connect-prd.md` — update the activation scope note to what this child delivers.
-- `docs/adr/014-attached-workflow-coordination-boundary.md`, the Epic, and child 07 — already edited in planning (see
+- `docs/adr/013-attached-workflow-coordination-boundary.md`, the Epic, and child 07 — already edited in planning (see
   Epic Scope Changes).
 
 Not touched: `src/shared/workflow/controller-registry.ts`, Plan Events, `src/tools/plan-written.ts`, and review code.
@@ -268,7 +268,7 @@ Not touched: `src/shared/workflow/controller-registry.ts`, Plan Events, `src/too
 9. A repeated `plan_written` with the same `operationId` returns the saved result and leaves the Plan file unchanged.
 10. `src/attached/claude/plugin/` holds a manifest, `commands/runwield.md`, and `.mcp.json`.
     `claude --plugin-dir
-    src/attached/claude/plugin` loads it. The command tells Claude to call `activate` with the
+src/attached/claude/plugin` loads it. The command tells Claude to call `activate` with the
     user's text and then follow the `instructions` in each result. Without `/runwield`, the plugin adds no context and
     no tools other than its MCP server's tool list.
 11. The MCP carrier fills `evidence.host`, `evidence.hostVersion`, and `evidence.adapterVersion` from the MCP client
@@ -283,30 +283,30 @@ Not touched: `src/shared/workflow/controller-registry.ts`, Plan Events, `src/too
 
 - Automated: `deno run -A scripts/run-tests.js src/shared/attached/ src/cmd/attached/ src/attached/claude/`.
 - `coordinator.test.ts` (real record store, real Git fixture):
-  - Triage to Planner: after a PLANNED_CHANGE `triage_report`, `status` returns a planner action and Planner
-    instructions whose text contains the bundled Planner definition.
-  - Override: with a project `.wld/agents/planner.md`, the returned text is that file's body. This test fails if the
-    instructions are a constant or bundled-only.
-  - Replay: call `triage_report`, change the project override, repeat the same `operationId`. The result has the new
-    instructions, and the saved record has no `instructions` field.
-  - Plan submission in a repository with no `.wld/`: the Plan file gains `planId` and Triage front matter,
-    `.wld/internal/` and the `.gitignore` block exist, and the record has `plan_submitted` and the Plan reference. This
-    test fails if `plan_written` only updates the record.
-  - Rejections: missing file, reserved name, invalid policy, wrong action, and stale revision each leave the record
-    revision and the Plan file bytes unchanged.
-  - Retry: a repeated `plan_written` returns the saved result and the Plan file bytes do not change.
-  - Hand-off: after `plan_written`, `loadPlan` finds the Plan in `draft` with its `planId`, the same view `wld` uses.
+    - Triage to Planner: after a PLANNED_CHANGE `triage_report`, `status` returns a planner action and Planner
+      instructions whose text contains the bundled Planner definition.
+    - Override: with a project `.wld/agents/planner.md`, the returned text is that file's body. This test fails if the
+      instructions are a constant or bundled-only.
+    - Replay: call `triage_report`, change the project override, repeat the same `operationId`. The result has the new
+      instructions, and the saved record has no `instructions` field.
+    - Plan submission in a repository with no `.wld/`: the Plan file gains `planId` and Triage front matter,
+      `.wld/internal/` and the `.gitignore` block exist, and the record has `plan_submitted` and the Plan reference. This
+      test fails if `plan_written` only updates the record.
+    - Rejections: missing file, reserved name, invalid policy, wrong action, and stale revision each leave the record
+      revision and the Plan file bytes unchanged.
+    - Retry: a repeated `plan_written` returns the saved result and the Plan file bytes do not change.
+    - Hand-off: after `plan_written`, `loadPlan` finds the Plan in `draft` with its `planId`, the same view `wld` uses.
 - `src/cmd/attached/index.test.ts`: `wld attached triage_report` and `wld attached plan_written` give the same result as
   the coordinator for the same input. `wld attached submit` exits with the usage error.
 - `src/attached/claude/mcp.test.ts`: the tool list is exactly `activate`, `triage_report`, `status`, `plan_written`; a
   call with no `evidence` gets evidence from the client info.
 - Manual pair check with Claude Code 2.1.292 and `claude --plugin-dir src/attached/claude/plugin`, in a new Git
   repository with no `.wld/`:
-  1. Send an ordinary prompt. No RunWield text appears and no record is created under `~/.wld/attached/`.
-  2. Run `/runwield add a dark-mode toggle`. Claude triages, shows the setup preview, writes the Plan, and calls
-     `plan_written`.
-  3. Run `wld` in the repository. The Plan is listed in `draft` with its Plan ID.
-  4. Ask Claude something unrelated in the same conversation after submission. It answers normally.
+    1. Send an ordinary prompt. No RunWield text appears and no record is created under `~/.wld/attached/`.
+    2. Run `/runwield add a dark-mode toggle`. Claude triages, shows the setup preview, writes the Plan, and calls
+       `plan_written`.
+    3. Run `wld` in the repository. The Plan is listed in `draft` with its Plan ID.
+    4. Ask Claude something unrelated in the same conversation after submission. It answers normally.
 - Protected behavior: child 01's `activate`, Triage, `status`, retry, revision-conflict, and project-moved tests still
   pass. Only the operation and helper names change (`submit` to `triage_report`); their assertions stay the same. Core's
   `plan_written` (`src/tools/plan-written.ts`) and its tests are unchanged.

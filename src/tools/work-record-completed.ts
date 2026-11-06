@@ -1,4 +1,4 @@
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "../shared/session/hosted-session.js";
 import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
@@ -27,6 +27,7 @@ const parameters = Type.Object(
 export function createWorkRecordCompletedTool(hostedSession: HostedSession) {
     return defineTool({
         name: "work_record_completed",
+        exposure: "model-only",
         label: "Work Record Completed",
         description: "Submit the completed Work Record sections.",
         parameters,

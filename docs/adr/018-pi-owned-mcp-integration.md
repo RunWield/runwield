@@ -1,0 +1,78 @@
+---
+status: accepted
+---
+
+# Pi owns MCP protocol behavior
+
+## Context and Constraints
+
+The owner chose Pi's official MCP integration and Pi-backed codemode through the coordinated Pi 1.5.0 upgrade. RunWield
+already owns trusted `.wld/mcp.json` loading, additive ACP request configuration, and Session access rules. Root Agents
+can change or use external CLI backends while the Session's MCP connections remain available. Delegated and isolated
+Agents do not inherit those connections.
+
+## Decision and Rationale
+
+Use Pi's public `createMcpExtension()` in a Session-owned, in-memory SDK host. This host never prompts a model or writes
+a conversation. Pi owns connection discovery, tool definitions and names, result conversion, resource access,
+reconnection, and shutdown. RunWield supplies approved configuration and a stdio transport factory that retains its
+minimal inherited environment.
+
+Remote SSH keeps this one integration on the remote Session. Project servers use remote stdio; effective personal
+servers use an authenticated, connection-scoped native MCP transport to laptop stdio processes. The laptop resolves
+currently enabled personal names from its own configuration; remote requests cannot supply executables or environment.
+The relay carries protocol messages, not another tool inventory or result API. A laptop integration host was rejected
+because it would duplicate discovery, naming, resource tools, and updates across origins.
+
+Personal processes start in laptop home. The owner chose this stable cwd instead of the launch folder or an inferred
+checkout. Relative commands and file arguments resolve there; home is not a sandbox. Shared Memory identifies a
+collection, not a filesystem mapping. Remote roots and tool paths stay unchanged. Project-file servers belong in
+project configuration and run remotely.
+
+Transport lifetimes have fresh connection-scoped IDs, ordered sends, close tombstones, and bounded messages and queues.
+Failed sends and broken streams end the lifetime; they are never retried or replayed. Pi reconnect starts a fresh
+transport for later work. Shutdown revokes pending starts and awaits owned processes. Native cancellation can stop a
+cooperative server, but does not roll back accepted external effects.
+
+Root Pi sessions register Pi's original tool definitions through an extension binding, including subsequent tool-list
+updates. External CLI backends expose current definitions through their existing per-turn bridge. Agent disposal
+releases the root binding; owning Session disposal awaits Pi's shutdown hook before disposing the host. An explicitly
+supplied authorized integration remains bound when its inventory is empty, because discovery and recovery are
+independent of the current tool count. Isolated invocation clears both the tool snapshot and the integration.
+
+Using only Pi's client library still required RunWield to maintain discovery orchestration, naming, conversion, and
+reconnection. Loading the MCP extension independently in each root Agent was also considered: it would tie connections
+to replaceable Agents and would not provide definitions to external CLI backends. A separate Session host fits the
+existing lifetime and backend constraints.
+
+## Implications
+
+There is one extra in-memory SDK host for each Session with configured MCP servers. It reuses RunWield's model/auth
+runtime and performs no model turns. MCP definitions adopt Pi's native names and output contract; configuration paths
+and trust rules remain RunWield-owned.
+
+Pi's SDK name allowlist is fixed at session construction. MCP roots therefore exclude unavailable non-MCP tools and
+select the Agent's initial tools while permitting Pi to register new MCP names. Isolated Agents retain explicit
+allowlists and receive no MCP binding. A root tool-call guard restricts other late extension tools to the Agent's
+selected names; MCP access comes from Pi's current registered definitions. External CLI tool lists refresh between
+turns.
+
+MCP keeps stdio configuration and direct exposure. Codemode belongs to each executing Pi AgentSession, never the
+connection host, so discovery, authorization, stores, and nested events use the executing Agent's transcript and policy.
+Workflow decision tools use Pi's public `model-only` exposure. Auxiliary model requests use the configured runtime;
+RunWield records individual model-attributed usage entries and removes only the duplicate script aggregate.
+
+The owner approved a narrow build-time exception to the original public-API-only packaging boundary. Pi 1.5.0 exposes
+its worker publicly but no extension option for embedded worker/WASM paths. Source execution succeeded while compiled
+probes failed resolving `quickjs-wasi/quickjs.wasm`, including with passive assets and explicit WASM imports. The build
+adapter checks exact Pi 1.5.0 and the expected source contract, initializes Pi's existing embedded-WASM setter, and
+compiles the upstream worker at Pi's expected entrypoint. It changes no installed dependency or sandbox implementation.
+A future Pi upgrade must requalify this adapter and standalone execution. Copying the interpreter or silently relying
+on a development checkout was rejected.
+
+HTTP/OAuth configuration and Pi's interactive configuration/sign-in manager remain separate scope. RunWield exposes the official status and reconnect command actions
+without a model turn. Automatic diagnostics stay redacted; explicit inspection can show server error text.
+
+Product requirements belong in
+[Core's customization capability](../prd/runwield-core-prd.md#agent-and-skill-customization). User configuration and
+behavior are documented in [MCP tools](../user-documentation/mcp.md).

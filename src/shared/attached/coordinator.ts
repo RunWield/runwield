@@ -52,7 +52,7 @@ import { withOrderedTransitionResources } from "../workflow/state-transition.ts"
 import { isAnsweredPlanReview } from "../workflow/plan-review-recovery.js";
 import { applySharedPlanReviewDecision } from "../workflow/plan-review-actions.ts";
 import { loadReviewFeedbackImagePaths } from "../workflow/review-feedback-images.ts";
-import { type ReviewDecision } from "../../ui/workspace/routes/api/review-handlers.js";
+import { type ReviewDecision } from "../../ui/workspace/routes/api/review-handlers.ts";
 import { resolveWorkflowPlanLocation } from "../workflow/plan-location.ts";
 import { normalizeTriageOutcome, type TriageOutcome } from "../workflow/triage-outcome.ts";
 import {
@@ -120,7 +120,8 @@ import {
     ValidationHostRejected,
     type ValidationHostResume,
 } from "../workflow/validation-host-contract.ts";
-import { readReviewDiff } from "../workflow/review-diff.ts";
+import { readReviewDiff, type ReviewDiffTexts } from "../workflow/review-diff.ts";
+import { getWorktreeReviewDiff } from "../workflow/git-snapshot.ts";
 import { resolveAttachedRoleInstructions } from "./role-instructions.ts";
 import { attachedHost, type AttachedHostId } from "./hosts.ts";
 import { loadReviewerPrompt } from "../workflow/validation-prompts.ts";
@@ -164,10 +165,45 @@ async function projectSetupFor(projectRoot: string): Promise<string[]> {
     return setup;
 }
 
+/** Status and admission use the same durable ownership evidence, without reclaiming it. */
+async function validationOperationIsActive(record: AttachedWorkflowRecord): Promise<boolean> {
+    const holder = record.validation?.holder;
+    return Boolean(
+        holder &&
+        !(await attachedValidationHolderSettled(locateAttachedWorkflows(record.projectRoot), holder)) &&
+        !(await isLockHolderGone(JSON.stringify(holder))),
+    );
+}
+
 async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNextAction> {
     const pending = record.pendingAction;
     if (record.state === "validating") {
-        if (record.validation?.request && record.validation.actionId && !record.validation.resume) {
+        if (await validationOperationIsActive(record)) {
+            const source = record.plan
+                ? await resolveWorkflowPlanLocation(record.projectRoot, record.plan.planName, { readOnly: true })
+                : null;
+            const checkpoint = source?.plan?.attrs.validationCheckpoint;
+            return {
+                kind: "validation_running",
+                operationId: record.validation?.operationId,
+                operation: record.validation?.operation,
+                startedAt: record.validation?.holder?.startedAt,
+                ...(checkpoint && {
+                    progress: {
+                        phase: checkpoint.nextPhase,
+                        checkpointState: checkpoint.state,
+                        updatedAt: checkpoint.updatedAt,
+                    },
+                }),
+                guidance: "Core validation is active. Wait for the current call; inspect status for progress.",
+            };
+        }
+        if (
+            record.validation?.request &&
+            record.validation.actionId &&
+            !record.validation.resume &&
+            !record.validation.operationId
+        ) {
             const request = record.validation.request;
             if (request.kind === "recorder") return { kind: "recorder", actionId: record.validation.actionId, request };
             if (request.kind === "decision" && request.interaction.type === "code_review") {
@@ -1872,7 +1908,7 @@ async function withRoleInstructions(
                 role,
                 ...(action.dispatch && { dispatch: action.dispatch }),
                 contractVersion: "runwield.attached.validation/1",
-                text: `${text}\n\n${action.request.prompt}${action.request.kind === "recorder" && action.request.validationError ? `\n\nValidation error:\n${action.request.validationError}` : ""}\n\nAttached worker override: Return your report or structured review outcome to the coordinating conversation. Do not call completion or lifecycle tools. Only the reviewer may call MCP review_diff directly.`,
+                text: `${text}\n\n${action.request.prompt}${action.request.kind === "recorder" && action.request.validationError ? `\n\nValidation error:\n${action.request.validationError}` : ""}\n\nAttached worker override: Return your report or structured review outcome to the coordinating conversation. Do not call completion or lifecycle tools. Reviewers and repair workers may call MCP review_diff directly for their current action.`,
             },
         };
     }
@@ -2163,11 +2199,7 @@ export async function runValidationOperation(
         return await rejected(operation, rejection("action_superseded", "No validation action is pending."), current);
     }
     const checkpoint = current.validation ?? { coverage: [] };
-    if (
-        checkpoint.holder &&
-        !(await attachedValidationHolderSettled(location, checkpoint.holder)) &&
-        !(await isLockHolderGone(JSON.stringify(checkpoint.holder)))
-    ) {
+    if (await validationOperationIsActive(current)) {
         return await rejected(
             operation,
             rejection("workflow_busy", "Core validation is running. Retry after the active call returns."),
@@ -2211,14 +2243,24 @@ export async function runValidationOperation(
             );
         }
         const request = checkpoint.request;
-        if (operation === "review_diff" && request.kind === "reviewer" && "command" in envelope.payload) {
+        if (
+            operation === "review_diff" &&
+            (request.kind === "reviewer" || request.kind === "repair") &&
+            "command" in envelope.payload
+        ) {
+            let diffs: ReviewDiffTexts;
             try {
-                await validateAttachedReviewerCandidate(current, {
-                    kind: "reviewer",
-                    identity: request.identity,
-                    outcome: null,
-                    coverage: [],
-                });
+                if (request.kind === "reviewer") {
+                    await validateAttachedReviewerCandidate(current, {
+                        kind: "reviewer",
+                        identity: request.identity,
+                        outcome: null,
+                        coverage: [],
+                    });
+                    diffs = { full: request.fullDiff, repair: request.repairDiff };
+                } else {
+                    diffs = { full: await readAttachedRepairDiff(current, request) };
+                }
             } catch (error) {
                 return await rejected(
                     operation,
@@ -2226,17 +2268,16 @@ export async function runValidationOperation(
                     current,
                 );
             }
-            const diff = readReviewDiff(
-                { full: request.fullDiff, repair: request.repairDiff },
-                {
-                    command: envelope.payload.command || "list",
-                    scope: envelope.payload.scope,
-                    path: envelope.payload.path,
-                    offsetBytes: envelope.payload.offsetBytes,
-                    maxBytes: envelope.payload.maxBytes,
-                },
-            );
+            const diff = readReviewDiff(diffs, {
+                command: envelope.payload.command || "list",
+                scope: envelope.payload.scope,
+                path: envelope.payload.path,
+                offsetBytes: envelope.payload.offsetBytes,
+                maxBytes: envelope.payload.maxBytes,
+            });
             if (diff.isError) return await rejected(operation, rejection("invalid_input", diff.text), current);
+            // Repair context is not evidence of an independent reviewer's inspection.
+            if (request.kind === "repair") delete diff.coverage;
             const decision = await accept(operation, envelope, current, {
                 state: "validating",
                 pendingAction: null,
@@ -2331,7 +2372,12 @@ export async function runValidationOperation(
             operationId: checkpoint.operationId ?? envelope.operationId,
             operation: checkpoint.operationId ? checkpoint.operation : operation,
             evidence: checkpoint.operationId ? checkpoint.evidence : { ...envelope.evidence, coreVersion: VERSION },
-            holder: { pid: process.pid, hostname: getLockHostname(), token: crypto.randomUUID() },
+            holder: {
+                pid: process.pid,
+                hostname: getLockHostname(),
+                token: crypto.randomUUID(),
+                startedAt: new Date().toISOString(),
+            },
         },
     };
     const claim = await writeAttachedWorkflowRecord(location, claimed, current.revision);
@@ -2465,6 +2511,21 @@ export async function runValidationOperation(
             });
         });
     }
+}
+
+async function readAttachedRepairDiff(
+    record: AttachedWorkflowRecord,
+    request: Extract<import("../workflow/validation-host-contract.ts").ValidationHostRequest, { kind: "repair" }>,
+): Promise<string> {
+    if (!record.plan) throw new Error("The Plan is missing.");
+    const source = await resolveWorkflowPlanLocation(record.projectRoot, record.plan.planName, { readOnly: true });
+    const pending = source.plan?.attrs.validationCheckpoint?.pendingRepair;
+    if (!source.plan || !pending || !sameHostIdentity(pending.identity, request.identity)) {
+        throw new Error("This repair action is no longer pending.");
+    }
+    const entry = await findActiveByPlanName(record.projectRoot, record.plan.planName);
+    // Repairs may edit the checkout. Read its current target-relative patch, including on restored actions.
+    return await getWorktreeReviewDiff(request.cwd, source.plan.attrs.worktreeBaseBranch || "", entry?.baseRef);
 }
 
 async function validateAttachedReviewerCandidate(

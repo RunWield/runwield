@@ -2,9 +2,9 @@ import { retrySessionWorkRecord } from "./work-record-retry.ts";
 import { buildPlanConversationRequest } from "../../workflow/plan-review-conversation.ts";
 import { AGENTS, SUBAGENTS } from "../../../constants.js";
 import { resolvePlanExecutionRuntimeAgent } from "../../workflow/execution-agent.ts";
-import { runActiveAgentTurn } from ".././agent-switching.js";
+import { runActiveAgentTurn } from ".././agent-switching.ts";
 import { emitSystemStatus, RuntimeEventTypes } from ".././session-runtime-events.js";
-import { readPersistedPendingSegmentContinuationEntry } from ".././workflow-context-session.js";
+import { readPersistedPendingSegmentContinuationEntry } from ".././workflow-context-session.ts";
 import { prepareSessionPlanningWorktree } from "../../workflow/session-planning-worktree.ts";
 import { executePlanAction } from "../../workflow/plan-actions.ts";
 

@@ -1097,7 +1097,7 @@ The Plan Board, Plan Review, and Code Review each have one surface body. Shells 
 
 Astro development entrypoints:
 
-- `deno task workspace:dev` starts the development server and opens `/dev`, the catalog for every paired presentation;
+- `bun run workspace:dev` starts the development server and opens `/dev/`, the catalog for every paired presentation;
 - `/` and `/projects/dev-project/plans` compare the local and Workspace Plan Board shells;
 - `/dev/plan-review` and `/dev/workspace/plan-review` exercise standalone and Workspace-launched full-window Plan
   Review;
@@ -1107,7 +1107,7 @@ Astro development entrypoints:
   messages, collapsed Activity, individual tool states, thinking, Plan and Code Review prompts, every special workflow
   tool (including triage, completion, and QA), and system notices.
 
-Plan Review fixture variants are linked from `/dev`; fixture pages do not render an additional variant switcher above
+Plan Review fixture variants are linked from `/dev/`; fixture pages do not render an additional variant switcher above
 the review surface.
 
 The `/dev` routes are fixture-only and return 404 in production. The standalone `/review/plan` and `/review/code` routes

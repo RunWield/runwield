@@ -8,11 +8,11 @@ affectedPaths:
     - "src/shared/runwield-owned-paths.ts"
     - "src/shared/worktree-registry.js"
     - "src/shared/workflow/publication-machine.ts"
-    - "src/shared/collaboration/secrets.js"
+    - "src/shared/collaboration/secrets.ts"
     - "src/shared/work-records/index-adapter.ts"
     - "docs/domain-language.md"
     - "docs/prd/runwield-core-prd.md"
-    - "docs/adr/017-project-runtime-state-under-wld-internal.md"
+    - "docs/adr/016-project-runtime-state-under-wld-internal.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-11-01"
@@ -61,11 +61,11 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/shared/runwield-owned-paths.ts` — retire checkout runtime writers without exempting .wld wholesale
 - `src/shared/worktree-registry.js` — home registry and repository-scoped locks
 - `src/shared/workflow/publication-machine.ts` — relocated staging and repair paths
-- `src/shared/collaboration/secrets.js` — private home-owned project secrets
+- `src/shared/collaboration/secrets.ts` — private home-owned project secrets
 - `src/shared/work-records/index-adapter.ts` — home index location
 - `docs/domain-language.md` — Project Runtime State and Internal Root definitions
 - `docs/prd/runwield-core-prd.md` — initialization and work protection
-- `docs/adr/017-project-runtime-state-under-wld-internal.md` — reconcile the old physical-location rule
+- `docs/adr/016-project-runtime-state-under-wld-internal.md` — reconcile the old physical-location rule
 
 ## Reuse Opportunities
 

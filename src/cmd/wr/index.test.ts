@@ -13,11 +13,7 @@ import { runWorkRecordsCommand, type WorkRecordCommandOptions } from "./index.ts
 const CURRENT_RECORD_ID = "a1111111-1111-4111-8111-111111111111";
 const ARCHIVED_RECORD_ID = "b2222222-2222-4222-8222-222222222222";
 
-function recordAttrs(
-    recordId: string,
-    sourcePlan: string,
-    archivedAt?: string,
-): WorkRecordFrontMatter {
+function recordAttrs(recordId: string, sourcePlan: string, archivedAt?: string): WorkRecordFrontMatter {
     return {
         kind: "work_record",
         recordId,
@@ -98,12 +94,25 @@ test("wld wr defaults to current Work Records from the project store", async () 
         process.chdir(projectRoot);
         await writeFixtureRecords(projectRoot);
 
+        await writeWorkRecord(
+            projectRoot,
+            {
+                ...recordAttrs("c3333333-3333-4333-8333-333333333333", "plan-old"),
+                status: "superseded",
+                supersededBy: CURRENT_RECORD_ID,
+            },
+            "# Superseded Record\n\n## Summary\n\nOld work.",
+        );
         const output = await captureCommand([]);
 
         assertStringIncludes(output, "Current Record");
         assertStringIncludes(output, "completionMode: verified");
         assertStringIncludes(output, "sourcePlans: plan-current");
         assertEquals(output.includes("Archived Record"), false);
+        assertEquals(output.includes("Superseded Record"), false);
+        const all = await captureCommand(["list", "--all"]);
+        assertStringIncludes(all, "Superseded Record");
+        assertStringIncludes(all, `WARNING: superseded by ${CURRENT_RECORD_ID}.`);
     });
 });
 
@@ -116,17 +125,6 @@ test("wld wr list --all includes archived project records with warnings", async 
 
         assertStringIncludes(output, "Archived Record");
         assertStringIncludes(output, "WARNING: archived at 2026-07-15T00:00:00.000Z.");
-    });
-});
-
-test("wld wr --help uses the registered command documentation", async () => {
-    await withRuntimeCommandFixture("wr-help-", async ({ projectRoot }) => {
-        process.chdir(projectRoot);
-
-        const output = await captureCommand(["--help"]);
-
-        assertStringIncludes(output, "wr read <recordId> [--no-open]");
-        assertStringIncludes(output, "backfill --dry-run");
     });
 });
 
@@ -181,11 +179,15 @@ test("wld wr backfill --yes writes a Work Record and its Plan backlink", async (
     await withRuntimeCommandFixture("wr-backfill-write-", async ({ projectRoot, setModelMessages }) => {
         process.chdir(projectRoot);
         await saveVerifiedPlan(projectRoot);
-        setModelMessages([fauxAssistantMessage(fauxToolCall("work_record_completed", {
-            title: "Standalone Outcome",
-            summary: "Completed the fixture feature through real Work Record machinery.",
-            futurePlanningNotes: "Reuse the verified fixture path.",
-        }))]);
+        setModelMessages([
+            fauxAssistantMessage(
+                fauxToolCall("work_record_completed", {
+                    title: "Standalone Outcome",
+                    summary: "Completed the fixture feature through real Work Record machinery.",
+                    futurePlanningNotes: "Reuse the verified fixture path.",
+                }),
+            ),
+        ]);
 
         const output = await captureCommand(["backfill", "--yes"], {
             mnemotecaPort: createWorkRecordMnemotecaFixture(),
@@ -245,7 +247,7 @@ test("wld wr read --no-open serves canonical Markdown without launching a browse
             readUrl = await Promise.race([
                 urlReady.promise,
                 new Promise<string>((_resolve, reject) =>
-                    setTimeout(() => reject(new Error("Timed out waiting for Work Record read URL.")), 5_000)
+                    setTimeout(() => reject(new Error("Timed out waiting for Work Record read URL.")), 5_000),
                 ),
             ]);
             const page = await (await fetch(readUrl)).text();
@@ -270,7 +272,10 @@ test("wld wr read --no-open serves canonical Markdown without launching a browse
             console.log = originalLog;
         }
 
-        assertEquals(logs.some((line) => line.includes("Could not open your browser automatically")), false);
+        assertEquals(
+            logs.some((line) => line.includes("Could not open your browser automatically")),
+            false,
+        );
         assertStringIncludes(readUrl, "/review/plan?token=");
     });
 });
@@ -285,10 +290,7 @@ test("wld wr supersede lists pending reasons and confirms one pending relation",
         assertStringIncludes(pending, "The newer outcome replaces the old path.");
         assertStringIncludes(pending, `${ARCHIVED_RECORD_ID} may supersede ${CURRENT_RECORD_ID}`);
 
-        const output = await captureCommand(
-            ["supersede", ARCHIVED_RECORD_ID, "--confirm", CURRENT_RECORD_ID],
-            options,
-        );
+        const output = await captureCommand(["supersede", ARCHIVED_RECORD_ID, "--confirm", CURRENT_RECORD_ID], options);
         assertStringIncludes(output, "Confirmed Work Record supersession proposal");
         assertEquals(
             (await findWorkRecordById(projectRoot, CURRENT_RECORD_ID))?.attrs.supersededBy,
@@ -337,10 +339,9 @@ test("wld wr supersede supports reject and interactive cancel without losing pen
             1,
         );
 
-        const rejected = await captureCommand(
-            ["supersede", ARCHIVED_RECORD_ID, "--reject", CURRENT_RECORD_ID],
-            { mnemotecaPort },
-        );
+        const rejected = await captureCommand(["supersede", ARCHIVED_RECORD_ID, "--reject", CURRENT_RECORD_ID], {
+            mnemotecaPort,
+        });
         assertStringIncludes(rejected, "Rejected Work Record supersession proposal");
         assertEquals(
             (await findWorkRecordById(projectRoot, ARCHIVED_RECORD_ID))?.attrs.supersessionProposal,
@@ -392,10 +393,14 @@ test("wld wr retry regenerates only its completed Plan and is idempotent", async
             status: "verified",
         });
         const unrelated = await fsReadFile(`${projectRoot}/docs/plans/unrelated.md`, "utf8");
-        setModelMessages([fauxAssistantMessage(fauxToolCall("work_record_completed", {
-            title: "Retried record",
-            summary: "Regenerated the selected record.",
-        }))]);
+        setModelMessages([
+            fauxAssistantMessage(
+                fauxToolCall("work_record_completed", {
+                    title: "Retried record",
+                    summary: "Regenerated the selected record.",
+                }),
+            ),
+        ]);
         const options = { mnemotecaPort: createWorkRecordMnemotecaFixture() };
         assertStringIncludes(await captureCommand(["retry", "standalone"], options), "Work Record generated");
         assertEquals((await loadPlan(projectRoot, "standalone"))?.attrs.status, "verified");

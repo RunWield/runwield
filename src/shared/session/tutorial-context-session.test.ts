@@ -1,5 +1,7 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { getCwd } from "../../constants.js";
 import {
     applyTutorialContextUpdate,
     normalizeTutorialContext,
@@ -21,14 +23,10 @@ interface FixtureSessionEntry {
     data: FixtureContextData;
 }
 
-type TutorialSessionManager = NonNullable<Parameters<typeof recordTutorialContext>[0]>;
-
 function makeSessionManager(entries: FixtureSessionEntry[] = []) {
-    return {
-        getBranch: () => entries,
-        appendCustomEntry: (customType: string, data: TutorialContextCandidate) =>
-            entries.push({ type: "custom", customType, data }),
-    } as TutorialSessionManager;
+    const manager = SessionManager.inMemory(getCwd());
+    for (const entry of entries) manager.appendCustomEntry(entry.customType, entry.data);
+    return manager;
 }
 
 const ENABLED_CONTEXT: TutorialContext = {
@@ -69,12 +67,12 @@ test("tutorial context normalizes and deduplicates explanation ids", () => {
 });
 
 test("tutorial context latest valid entry wins and duplicate records are suppressed", () => {
-    const entries: FixtureSessionEntry[] = [];
-    const manager = makeSessionManager(entries);
+    const manager = makeSessionManager();
     recordTutorialContext(manager, ENABLED_CONTEXT);
     recordTutorialContext(manager, ENABLED_CONTEXT);
     recordTutorialContext(manager, { ...ENABLED_CONTEXT, guidanceEnabled: false, recapShown: true });
 
+    const entries = manager.getBranch().filter((entry) => entry.type === "custom");
     assertEquals(entries.length, 2);
     assertEquals(entries[0].customType, TUTORIAL_CONTEXT_CUSTOM_TYPE);
     assertEquals(readPersistedTutorialContext(manager), {

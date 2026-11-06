@@ -14,125 +14,6 @@ import { join } from "node:path";
 import { createRunWieldBashToolDefinition } from "../bash.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 
-test("restricted Pi bash executes inspection and rejects mutations before shell launch", async () => {
-    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-bash-policy-"));
-    try {
-        const git = async (args: string[]) => {
-            const result = await captureForegroundProcess("git", { cwd, args });
-            if (!result.success) throw new Error(new TextDecoder().decode(result.stderr));
-        };
-        await git(["init", "-b", "main"]);
-        await git([
-            "-c",
-            "user.name=Test",
-            "-c",
-            "user.email=test@example.com",
-            "commit",
-            "--allow-empty",
-            "-m",
-            "inspection marker",
-        ]);
-        await fsWriteFile(join(cwd, "file with spaces.txt"), "inspection content\n");
-        await git(["add", "file with spaces.txt"]);
-        await git([
-            "-c",
-            "user.name=Test",
-            "-c",
-            "user.email=test@example.com",
-            "commit",
-            "-m",
-            "tracked inspection content",
-        ]);
-        await fsWriteFile(join(cwd, "file with spaces.txt"), "inspection content\nunstaged marker\n");
-        await fsWriteFile(join(cwd, "staged.txt"), "staged marker\n");
-        await git(["add", "staged.txt"]);
-        const tool = createRunWieldBashToolDefinition(cwd, [
-            "git status",
-            "git diff",
-            "git log",
-            "git show",
-            "git branch --list",
-            "git remote -v",
-            "git worktree list",
-            "cat",
-            "ls",
-        ]);
-        const execute = (command: string) =>
-            tool.execute("call", { command }, new AbortController().signal, () => {}, {
-                sessionManager: SessionManager.inMemory(cwd),
-            } as never);
-        const log = await execute("git log -2 --oneline");
-        assertStringIncludes(
-            log.content
-                .filter((item) => item.type === "text")
-                .map((item) => item.text)
-                .join("\n"),
-            "inspection marker",
-        );
-        for (const [command, marker] of [
-            ["git show HEAD:'file with spaces.txt'", "inspection content"],
-            ["git diff -- 'file with spaces.txt'", "unstaged marker"],
-            ["git diff --cached -- staged.txt", "staged marker"],
-            ["git -C . status --short", "staged.txt"],
-            ["git branch --list", "main"],
-            ["git worktree list", "main"],
-            ["ls", "file with spaces.txt"],
-        ]) {
-            const result = await execute(command);
-            assertStringIncludes(
-                result.content
-                    .filter((item) => item.type === "text")
-                    .map((item) => item.text)
-                    .join("\n"),
-                marker,
-            );
-        }
-        await execute("git remote -v");
-        const cat = await execute("cat 'file with spaces.txt'");
-        assertStringIncludes(
-            cat.content
-                .filter((item) => item.type === "text")
-                .map((item) => item.text)
-                .join("\n"),
-            "inspection content",
-        );
-        const status = await execute("git status --short");
-        assertStringIncludes(
-            status.content
-                .filter((item) => item.type === "text")
-                .map((item) => item.text)
-                .join("\n"),
-            "file with spaces.txt",
-        );
-        const denied = await assertRejects(() => execute("git status && touch sentinel"), Error, "report a blocker");
-        assertStringIncludes(denied.message, "git status");
-        await assertRejects(() => execute("ls > sentinel"), Error, "single inspection commands");
-        await assertRejects(() => execute("git branch unwanted"), Error, "Allowed commands");
-        await assertRejects(() => execute("git add ."), Error, "Allowed commands");
-        await assertRejects(() => execute("git diff --output=sentinel"), Error, "Git output");
-        await assertRejects(() => execute("find . -delete"), Error, "Allowed commands");
-        await assertRejects(() => execute("find . -exec touch sentinel \\;"), Error, "Allowed commands");
-        assertEquals((await fsReadFile(join(cwd, "file with spaces.txt"), "utf8")).includes("unstaged marker"), true);
-        const index = await captureForegroundProcess("git", { cwd, args: ["diff", "--cached", "--name-only"] });
-        assertEquals(new TextDecoder().decode(index.stdout).trim(), "staged.txt");
-        assertEquals(
-            await fsStat(join(cwd, "sentinel")).then(
-                () => true,
-                () => false,
-            ),
-            false,
-        );
-        assertEquals(
-            await captureForegroundProcess("git", { cwd, args: ["branch", "--list", "unwanted"] }).then((result) =>
-                new TextDecoder().decode(result.stdout).trim(),
-            ),
-            "",
-        );
-    } finally {
-        await fsRm(cwd, { recursive: true });
-    }
-});
-
 test("custom bash retains configured shell path and command prefix when unrestricted", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "runwield-bash-settings-"));
     try {
@@ -175,6 +56,103 @@ test("empty policy denies all while absent policy retains Pi shell", async () =>
             { sessionManager: SessionManager.inMemory(cwd) } as never,
         );
         assertEquals((await fsStat(join(cwd, "unrestricted-file"))).isFile(), true);
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+test("restricted Pi bash inspects real staged and unstaged Git state without starting denied writes", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-bash-git-inspection-"));
+    try {
+        const git = async (...args: string[]) => {
+            const output = await captureForegroundProcess("git", { cwd, args });
+            if (!output.success) throw new Error(new TextDecoder().decode(output.stderr));
+        };
+        await git("init", "-b", "main");
+        await fsWriteFile(join(cwd, "file with spaces.txt"), "original marker\n");
+        await git("add", ".");
+        await git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "history marker");
+        await fsWriteFile(join(cwd, "file with spaces.txt"), "staged marker\n");
+        await git("add", ".");
+        await fsWriteFile(join(cwd, "file with spaces.txt"), "staged marker\nunstaged marker\n");
+        const fixture = join(cwd, "keep.txt");
+        await fsWriteFile(fixture, "keep me\n");
+        const sentinel = join(cwd, "sentinel.txt");
+        const policy = [
+            "git status",
+            "git diff",
+            "git log",
+            "git show",
+            "git branch --list",
+            "git remote -v",
+            "git worktree list",
+            "ls",
+            "cat",
+            "find",
+        ];
+        const tool = createRunWieldBashToolDefinition(cwd, policy);
+        const execute = async (command: string) => {
+            const result = await tool.execute("call", { command }, new AbortController().signal, () => {}, {
+                sessionManager: SessionManager.inMemory(cwd),
+            } as never);
+            return result.content
+                .filter((item) => item.type === "text")
+                .map((item) => item.text)
+                .join("\n");
+        };
+        assertStringIncludes(await execute("git log -1 --oneline"), "history marker");
+        assertStringIncludes(await execute("git show HEAD:'file with spaces.txt'"), "original marker");
+        assertStringIncludes(await execute("git diff --cached"), "staged marker");
+        assertStringIncludes(await execute("git diff"), "unstaged marker");
+        assertStringIncludes(await execute("git status --short"), "file with spaces.txt");
+        assertStringIncludes(await execute("git -C '" + cwd + "' --no-pager log -1"), "history marker");
+        assertStringIncludes(await execute("git branch --list"), "main");
+        assertStringIncludes(await execute("git worktree list"), "main");
+        assertStringIncludes(await execute("ls 'file with spaces.txt'"), "file with spaces.txt");
+        assertStringIncludes(await execute("cat 'file with spaces.txt'"), "unstaged marker");
+        for (const command of [
+            "git branch unwanted",
+            "git add keep.txt",
+            "git diff --output=" + sentinel,
+            "find . -delete",
+            "find . -exec touch sentinel.txt \\;",
+            "ls > " + sentinel,
+            "git status && touch " + sentinel,
+        ]) {
+            await assertRejects(() => execute(command), Error, "Allowed commands:");
+        }
+        assertEquals(await fsReadFile(fixture, "utf8"), "keep me\n");
+        assertEquals(
+            await fsStat(sentinel).then(
+                () => true,
+                () => false,
+            ),
+            false,
+        );
+        assertStringIncludes(await execute("git branch --list unwanted"), "(no output)");
+        assertStringIncludes(await execute("git diff --cached"), "staged marker");
+        assertStringIncludes(await execute("git status --short"), "keep.txt");
+        // An approved command still reports Pi's real process error outside a repository.
+        const outside = await fsMkdtemp(join(tmpdir(), "runwield-bash-outside-git-"));
+        try {
+            const outsideTool = createRunWieldBashToolDefinition(outside, ["git status"]);
+            const result = await outsideTool.execute(
+                "call",
+                { command: "git status" },
+                new AbortController().signal,
+                () => {},
+                { sessionManager: SessionManager.inMemory(outside) } as never,
+            );
+            assertEquals(result.isError, true);
+            const output = result.content
+                .filter((item) => item.type === "text")
+                .map((item) => item.text)
+                .join("\n");
+            assertStringIncludes(output, "not a git repository");
+            assertEquals(output.includes("Allowed commands:"), false);
+        } finally {
+            await fsRm(outside, { recursive: true });
+        }
     } finally {
         await fsRm(cwd, { recursive: true });
     }

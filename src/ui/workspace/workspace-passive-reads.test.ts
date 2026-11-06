@@ -13,7 +13,7 @@ import {
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
 import { addEntry } from "../../shared/worktree-registry.js";
-import { loadOwnerSidebar } from "./server/owner-dashboard.ts";
+import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { createOwnerWorkspaceApp } from "./server.js";
 
 function document(id: string, body = "Primary compass", extra = "") {
@@ -46,7 +46,10 @@ const fixture = defineGitFixture(async (root) => {
 
 async function workspace(root: string) {
     const dir = await mkdtemp(join(tmpdir(), "workspace-passive-"));
-    const store = openOwnerCoordinationStore({ dbPath: join(dir, "owner.sqlite3") });
+    const store = openOwnerCoordinationStore({
+        dbPath: join(dir, "owner.sqlite3"),
+        sessionBaseDir: join(dir, ".wld", "sessions"),
+    });
     const project = store.registerProject({ root, displayName: "Compass Project" });
     const pairing = store.createPairingRequest({ codeFactory: () => "READ12", proofFactory: () => "proof" });
     store.approvePairingRequest(pairing.code);
@@ -57,6 +60,8 @@ async function workspace(root: string) {
     const app = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: "http://127.0.0.1:8787", store });
     return {
         app,
+        home: dir,
+        dbPath: join(dir, "owner.sqlite3"),
         store,
         project,
         async get(path: string) {
@@ -367,6 +372,7 @@ for (const pending of [false, true]) {
     test(`owner sidebar and Board retain named parse warnings with ${pending ? "pending" : "ready"} healthy Plans`, async () => {
         const root = await fixture.checkout();
         let owner: Awaited<ReturnType<typeof workspace>> | undefined;
+        let managed: Awaited<ReturnType<typeof makeManagedSessionFixture>> | undefined;
         try {
             if (!pending) await enterProjectRuntime(root);
             if (pending) {
@@ -382,26 +388,19 @@ for (const pending of [false, true]) {
                 `---\nsummary: [<img src=x onerror=alert(1)>, ${root}\n---\n# Broken\n`,
             );
             owner = await workspace(root);
+            managed = await makeManagedSessionFixture({ home: owner.home, projectRoot: root, dbPath: owner.dbPath });
             const before = await snapshot(root);
             const base = `/api/owner/projects/${owner.project.projectId}/plans`;
             for (let repeat = 0; repeat < 2; repeat++) {
                 const sidebar = await (await owner.get("/api/owner/sidebar")).json();
                 const project = sidebar.projects[0];
-                const withSessions = await loadOwnerSidebar(owner.store, {
-                    listSessions() {
-                        return Promise.resolve({
-                            sessions: [
-                                {
-                                    runwieldSessionId: "warning-session",
-                                    displayName: "Preserved Session",
-                                    state: "idle",
-                                },
-                            ],
-                        });
-                    },
-                });
-                strictEqual(withSessions[0].sessions[0]?.runwieldSessionId, "warning-session");
-                deepStrictEqual(withSessions[0].planDiagnostics, project.planDiagnostics);
+                strictEqual(
+                    project.sessions.some(
+                        (session: { runwieldSessionId: string }) =>
+                            session.runwieldSessionId === managed.session.runwieldSessionId,
+                    ),
+                    true,
+                );
                 strictEqual(project.plans.length, pending ? 0 : 1);
                 strictEqual(project.planDiagnostics.length, 2);
                 deepStrictEqual(project.planDiagnostics.map((issue: { name: string }) => issue.name).sort(), [
@@ -435,6 +434,7 @@ for (const pending of [false, true]) {
             sidebar = await (await owner.get("/api/owner/sidebar")).json();
             deepStrictEqual(sidebar.projects[0].planDiagnostics, []);
         } finally {
+            await managed?.cleanup();
             await owner?.close();
             await rm(root, { recursive: true, force: true });
         }

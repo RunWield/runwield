@@ -51,7 +51,7 @@ Runtime inspection distinguishes fresh state, safe adopted authority, pending pr
 Project needs no runtime storage. Ready reads retain registered document-worktree and controller authority, including
 when legacy recovery input returns. Unmigrated or interrupted stores are not combined. Unsafe or unreadable authority
 keeps its diagnostic instead of becoming an authoritative empty catalog. See
-[ADR-017](adr/017-project-runtime-state-under-wld-internal.md).
+[ADR-016](adr/016-project-runtime-state-under-wld-internal.md).
 
 `PlanReadAvailability` carries `ready` or `pending` separately from `attrs` and Front Matter. Missing identity,
 controller import, or runtime adoption can leave workflow details pending while safe local documents remain browseable.
@@ -68,7 +68,7 @@ projections. Inspection reuse expires with the read operation and never satisfie
 Passive progress shows applicable saved publication evidence without obtaining remote proof. A valid controller receipt
 can retain established completion after attempt cleanup; missing or invalidated evidence stays unconfirmed. Reopening
 or a new execution invalidates prior completion evidence. Publication and recovery actions still need fresh target proof
-before new success or cleanup, as required by [ADR-016](adr/016-proof-bearing-publication-state-machine.md).
+before new success or cleanup, as required by [ADR-015](adr/015-proof-bearing-publication-state-machine.md).
 
 ## State ownership
 
@@ -110,6 +110,16 @@ Opening an approved or ready Plan for review does not cancel its approval. A con
 and writes no Plan bytes unless the owner saves a direct edit. A meaningful saved edit or Agent revision presented
 through `plan_written` moves `approved`, `ready_for_work`, or `ready_for_decomposition` to `draft` through
 `review_reopened`. Formatting-only changes preserve the status.
+
+An explicit menu send-back is different from opening or discussing review. **Send back to Planner for re-review**
+is available for a `ready_for_work` Planned Change. **Send back to Architect for re-review** is available for a
+non-Sequence Epic at `ready_for_decomposition` or `ready_for_work`, with or without children. Core resolves the
+current document, records `review_reopened` to return it to `draft`, then starts the planning Agent without opening a
+review page first. No feedback is required. A reply, error, or interrupted turn leaves a resumable draft, not the old
+approval. Child documents, statuses, IDs, order, dependencies, worktree records, and existing Epic branch history stay
+intact. New Epic approval for later returns the parent to `ready_for_decomposition`, even when children exist;
+Approve & Slice starts Slicer. Neither path executes the parent. Viewing or canceling the menu preserves approval.
+See [Core Plan review](prd/runwield-core-prd.md#plan-review) for the shared requirement and scenarios.
 
 Planner or Architect replies in chat for explanation, clarification, or another question. It revises and calls
 `plan_written` when the answer changes scope, behavior, a decision, or verification; when in doubt, it revises.
@@ -279,7 +289,7 @@ caller inputs, locked resources, owned effects, success proof, rollback limit, a
 | `plan_front_matter`                                         | Front Matter updates                                            | Plan                                                                 | Metadata update                                                                    | CAS revision                                                               | None                                                                      | Caller retry                                           |
 | `plan_archive` / `plan_restore`                             | Archive/restore action                                          | Catalog, Plan                                                        | Physical move metadata                                                             | Archive/active path                                                        | Rename CAS only                                                           | Restore/archive retry                                  |
 
-The code-side inventory in `src/shared/workflow/state-transition.test.js` checks that its semantic writer rows have
+The code-side inventory in `src/shared/workflow/state-transition.test.ts` checks that its semantic writer rows have
 inputs, locks, effects, proof, rollback limits, and recovery actions. Publication uses its dedicated attempt record and
 Git reconciliation rather than the retired merge-failure transition journal.
 
@@ -545,7 +555,7 @@ For worktree-backed plans:
     branch, temporary clone, and attempt registry entry. Cleanup or index failure does not revoke delivery or remove the
     receipt. Later target commits do not invalidate proof that the publication commit is an ancestor.
 
-Publication recovery is defined by [ADR-016](adr/016-proof-bearing-publication-state-machine.md). Legacy lifecycle
+Publication recovery is defined by [ADR-015](adr/015-proof-bearing-publication-state-machine.md). Legacy lifecycle
 labels are interpreted using saved validation and delivery evidence; status strings alone do not prove publication.
 
 Code Review has no separate public status. An offer, cancellation, pending decision, or reply-only Git conversation

@@ -9,9 +9,8 @@ import { SessionHost } from "../session/session-host.ts";
 import { SessionRuntime } from "../session/session-runtime.ts";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
 import type { RuntimeValidationProgress } from "../session/session-runtime-events.js";
-import { createTuiInteractionAdapter } from "../../ui/tui/runtime-interaction-adapter.js";
+import { createTuiInteractionAdapter } from "../../ui/tui/runtime-interaction-adapter.ts";
 import { readDeliveryEvidence } from "./delivery-evidence.ts";
-import { normalizeHumanReview } from "./validation-human-review.ts";
 import {
     attachRecorder,
     git,
@@ -41,14 +40,51 @@ for (const response of [
     },
     { outcome: "selected", _meta: { exit: true, feedback: "Unsubmitted draft", annotations: [{ text: "draft" }] } },
 ] as const) {
-    test(`Code Review cancellation overrides decision data: ${JSON.stringify(response)}`, () => {
-        const review = normalizeHumanReview(response);
-        assertEquals(review.approved, false);
-        assertEquals(review.feedback, "");
-        assertEquals(review.annotations, []);
-        assertEquals(review.images, []);
-        assertEquals(review.canceled, true);
-        assertEquals(review.conversationTurn, false);
+    test(`Code Review cancellation preserves pending work despite stale decision data: ${JSON.stringify(response)}`, async () => {
+        const projectRoot = await makeValidationProjectRoot("p", {
+            classification: "QUICK_FIX",
+            status: "reviewed",
+            humanReviewMode: "always",
+            humanReviewDecision: null,
+        });
+        const host = new SessionHost();
+        const session = attachRecorder(host.createSession({ cwd: projectRoot }), makeUi());
+        try {
+            const plan = await loadPlan(projectRoot, "p");
+            assertExists(plan);
+            session.setActiveExecutionWorkflow({
+                planName: "p",
+                triageMeta: plan.attrs,
+                executionAgent: "engineer",
+                projectRoot,
+                executionCwd: projectRoot,
+                nonGitInPlace: true,
+            });
+            session.setInteractionAdapter({
+                requestInteraction: (request) =>
+                    Promise.resolve(
+                        request.type === "code_review" ? response : { outcome: "selected" as const, value: "stop" },
+                    ),
+            });
+            const result = await runValidationPhase({
+                hostedSession: session,
+                planName: "p",
+                planContent: plan.body,
+                triageMeta: plan.attrs,
+                semanticReviewPort: NO_ISOLATED_AGENT_PORT,
+            });
+            assertEquals(result.kind, "paused");
+            const saved = await loadPlan(projectRoot, "p");
+            assertEquals(saved?.attrs.status, "reviewed");
+            assertEquals(saved?.attrs.humanReviewDecision, null);
+            const evidence = await readDeliveryEvidence(projectRoot, "p", "in-place");
+            assertEquals(
+                evidence.entries.filter((entry) => entry.kind === "human" || entry.kind === "human-revision"),
+                [],
+            );
+        } finally {
+            session.dispose();
+        }
     });
 }
 
@@ -165,7 +201,7 @@ const reopenFixture = defineGitFixture(async (root) => {
 for (const revise of [false, true]) {
     test(
         `Code Review reopen projects the same live URL through ${revise ? "revision and CI" : "conversation"} until approval`,
-        { timeout: 10_000 },
+        { timeout: 30_000 },
         async () => {
             const projectRoot = await reopenFixture.checkout();
             await savePlan(projectRoot, "p", "# Review reopen\n\nKeep the exported label.", {

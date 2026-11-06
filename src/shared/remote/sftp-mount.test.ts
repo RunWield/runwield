@@ -15,6 +15,7 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { test } from "node:test";
+import { install } from "@sinonjs/fake-timers";
 import { tmpdir } from "node:os";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
@@ -281,6 +282,31 @@ console.log("SFTP child closed");`;
 });
 
 // Opt in on a Linux host with working SSHFS and /dev/fuse. This exercises real kernel mounts.
+test(
+    "closing during a healthy storage check removes the mount without reporting uncertainty",
+    {
+        skip: process.platform !== "linux" || process.env["WLD_TEST_SSHFS"] !== "1" || process.getuid?.() === 0,
+    },
+    async () => {
+        await syntheticHome(async (home) => {
+            await fsMkdir(join(home, ".wld"));
+            const service = await startLaptopSftp();
+            const clock = install({ toFake: ["setInterval", "clearInterval"] });
+            let mount: Awaited<ReturnType<typeof mountLaptopHome>> | undefined;
+            try {
+                mount = await mountLaptopHome(home, service.header);
+                // Start the real monitor, then close while its first mount lookup is pending.
+                clock.tick(5_000);
+                await mount.close();
+                await assertRejects(() => fsStat(mount!.globalRoot), Error, "ENOENT");
+            } finally {
+                clock.uninstall();
+                await service.close();
+            }
+        });
+    },
+);
+
 test(
     "stalled laptop SFTP detaches its live mount before connection cleanup returns",
     {

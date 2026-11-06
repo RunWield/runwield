@@ -10,10 +10,10 @@ import {
     normalizeCreateSharedSpacePayload,
     normalizeSharedSpaceLifecyclePayload,
 } from "../../../shared/collaboration/protocol.js";
-import { RemoteWorkspaceError } from "../server/remote-adapter.js";
+import { RemoteWorkspaceError } from "../server/remote-adapter.ts";
 
 import type { CapabilityScope } from "../../../shared/collaboration/capabilities.ts";
-import type { RemoteWorkspaceAdapter } from "../server/remote-adapter.js";
+import type { RemoteWorkspaceAdapter } from "../server/remote-adapter.ts";
 
 export interface RemoteApiRouterOptions {
     maxRequestBytes?: number;

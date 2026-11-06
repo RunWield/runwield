@@ -124,14 +124,16 @@ test("remote turn abort reaches a running laptop MCP call and prevents its delay
         await child.send({ kind: "turn-start" });
         assertEquals((await child.read()).kind, "turn-started");
         let started = false;
-        for (let i = 0; i < 200; i++) {
+        // turn-started precedes MCP discovery and tool dispatch; wait for readiness, not runner speed.
+        const deadline = Date.now() + 20_000;
+        while (Date.now() < deadline) {
             if ((await readFile(log, "utf8").catch(() => "")).includes('"event":"call"')) {
                 started = true;
                 break;
             }
             await new Promise((resolve) => setTimeout(resolve, 5));
         }
-        assertEquals(started, true);
+        assertEquals(started, true, `MCP call did not start: ${await readFile(log, "utf8").catch(() => "no log")}`);
         await child.send({ kind: "cancel" });
         const reports = [await child.read(), await child.read()];
         assertEquals(

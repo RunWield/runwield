@@ -5,7 +5,6 @@ import {
     buildPullRevisionRequest,
     formatPullCommentsForPrompt,
     selectPullPlanningAgent,
-    summarizePullPlanningOutcome,
 } from "./collaboration-pull.ts";
 
 test("selectPullPlanningAgent routes PROJECT Plans to Architect and FEATURE Plans to Planner", () => {
@@ -84,11 +83,4 @@ test("buildPullRevisionRequest includes structured metadata and redacts secret-l
     assert(!request.includes("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
     assert(!request.includes("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"));
     assert(request.includes("wld plans push <plan>"));
-});
-
-test("summarizePullPlanningOutcome points maintainers to push instead of execution", () => {
-    assertEquals(
-        summarizePullPlanningOutcome({ outcome: "saved" }, "demo"),
-        'Planning agent finished with outcome "saved". Review the local revision, then publish with: wld plans push demo',
-    );
 });

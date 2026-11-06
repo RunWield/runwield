@@ -5,7 +5,7 @@ import { readFile as fsReadFile, realpath as fsRealpath, stat as fsStat } from "
  */
 
 import { isAbsolute, relative, resolve, sep as SEPARATOR } from "node:path";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "../shared/session/hosted-session.js";
 import type { SessionArtifactKind, SessionArtifactReference } from "../shared/session/file-session-store-types.ts";
@@ -13,26 +13,34 @@ import {
     requestHostedSessionInteraction,
     RuntimeInteractionOutcomes,
     RuntimeInteractionTypes,
-} from "../shared/session/session-runtime-interactions.js";
+} from "../shared/session/session-runtime-interactions.ts";
 
-const TOOL_PARAMS = Type.Object({
-    path: Type.String({
-        minLength: 1,
-        description: "Project-relative path to the completed Markdown artifact.",
-    }),
-    kind: Type.Union([
-        Type.Literal("plan"),
-        Type.Literal("prd"),
-        Type.Literal("adr"),
-        Type.Literal("work-record"),
-        Type.Literal("epic-artifact"),
-        Type.Literal("report"),
-    ], { description: "The artifact's durable role in this Session." }),
-    title: Type.Optional(Type.String({
-        minLength: 1,
-        description: "Human-readable title. Omit to use the first Markdown heading or filename.",
-    })),
-}, { additionalProperties: false });
+const TOOL_PARAMS = Type.Object(
+    {
+        path: Type.String({
+            minLength: 1,
+            description: "Project-relative path to the completed Markdown artifact.",
+        }),
+        kind: Type.Union(
+            [
+                Type.Literal("plan"),
+                Type.Literal("prd"),
+                Type.Literal("adr"),
+                Type.Literal("work-record"),
+                Type.Literal("epic-artifact"),
+                Type.Literal("report"),
+            ],
+            { description: "The artifact's durable role in this Session." },
+        ),
+        title: Type.Optional(
+            Type.String({
+                minLength: 1,
+                description: "Human-readable title. Omit to use the first Markdown heading or filename.",
+            }),
+        ),
+    },
+    { additionalProperties: false },
+);
 
 interface ArtifactWrittenDetails {
     outcome: "registered" | "reviewed" | "feedback" | "rejected";
@@ -60,7 +68,8 @@ function portablePath(path: string): string {
 }
 
 function inferTitle(markdown: string, artifactPath: string): string {
-    const heading = markdown.split(/\r?\n/)
+    const heading = markdown
+        .split(/\r?\n/)
         .map((line) => line.match(/^#\s+(.+?)\s*$/)?.[1]?.trim())
         .find(Boolean);
     if (heading) return heading;
@@ -94,8 +103,10 @@ function assertKindPath(kind: SessionArtifactKind, path: string): void {
 export function createArtifactWrittenTool(options: ArtifactWrittenOptions = {}) {
     return defineTool<typeof TOOL_PARAMS, ArtifactWrittenDetails>({
         name: "artifact_written",
+        exposure: "model-only",
         label: "Artifact Written",
-        description: "Register a completed, meaningful Markdown artifact with the current RunWield Session. " +
+        description:
+            "Register a completed, meaningful Markdown artifact with the current RunWield Session. " +
             "Use this after writing a PRD, ADR, report, Work Record, or other explicit deliverable; do not register files merely mentioned or edited during implementation.",
         parameters: TOOL_PARAMS,
         async execute(_toolCallId, params, signal): Promise<ArtifactWrittenResult> {
@@ -143,8 +154,7 @@ export function createArtifactWrittenTool(options: ArtifactWrittenOptions = {}) 
                             hostedSession,
                             {
                                 type: RuntimeInteractionTypes.ARTIFACT_REVIEW,
-                                prompt:
-                                    `Review ${title}. Send an empty response to accept it, or describe what should change.`,
+                                prompt: `Review ${title}. Send an empty response to accept it, or describe what should change.`,
                                 placeholder: "Feedback (leave empty to accept)",
                                 allowEmpty: true,
                                 _meta: {
@@ -162,11 +172,12 @@ export function createArtifactWrittenTool(options: ArtifactWrittenOptions = {}) 
                         const feedback = typeof review.value === "string" ? review.value.trim() : "";
                         if (feedback) {
                             return {
-                                content: [{
-                                    type: "text",
-                                    text:
-                                        `The ${kind.toUpperCase()} is registered, but the user requested changes:\n\n${feedback}\n\nRevise the artifact and call artifact_written again.`,
-                                }],
+                                content: [
+                                    {
+                                        type: "text",
+                                        text: `The ${kind.toUpperCase()} is registered, but the user requested changes:\n\n${feedback}\n\nRevise the artifact and call artifact_written again.`,
+                                    },
+                                ],
                                 details: { outcome: "feedback", artifact, feedback },
                             };
                         }
@@ -175,10 +186,12 @@ export function createArtifactWrittenTool(options: ArtifactWrittenOptions = {}) 
                             review.outcome === RuntimeInteractionOutcomes.ACCEPTED
                         ) {
                             return {
-                                content: [{
-                                    type: "text",
-                                    text: `Reviewed and kept ${kind} artifact: ${artifact.path}`,
-                                }],
+                                content: [
+                                    {
+                                        type: "text",
+                                        text: `Reviewed and kept ${kind} artifact: ${artifact.path}`,
+                                    },
+                                ],
                                 details: { outcome: "reviewed", artifact },
                             };
                         }

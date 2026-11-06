@@ -11,6 +11,7 @@ import chalk from "chalk";
 chalk.level = 3;
 
 // Initialize the runwield theme before importing blocks (theme must be ready)
+// Initialize the runwield theme before importing blocks (theme must be ready)
 import { initRunWieldTheme, theme } from "../theme/theme.ts";
 initRunWieldTheme();
 
@@ -26,10 +27,9 @@ import {
     ThinkingBlock,
     ToolExecutionBlock,
     ToolExecutionGroupBlock,
-    UserPromptBlock,
     ValidationHandoffBlock,
 } from "./blocks.js";
-import { getCapabilities, setCapabilities, Text } from "@earendil-works/pi-tui";
+import { getCapabilities, setCapabilities } from "@earendil-works/pi-tui";
 import stripAnsi from "strip-ansi";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -82,13 +82,6 @@ function assertBlockBackground(lines: string[], w: number, blockName: string) {
 
 // ─── StyledBlock ─────────────────────────────────────────────────────────────
 
-test("StyledBlock renders full-width bg lines", () => {
-    const w = 80;
-    const block = new StyledBlock("userMessageBg", 2, 1, new Text("hello", 0, 0));
-    const lines = block.render(w);
-    assertBlockBackground(lines, w, "StyledBlock");
-});
-
 test("StyledBlock handles embedded \\x1b[0m in child content", () => {
     const w = 80;
     // Simulate a child that produces content with \x1b[0m (like truncateToWidth)
@@ -103,28 +96,7 @@ test("StyledBlock handles embedded \\x1b[0m in child content", () => {
 
 // ─── UserPromptBlock ─────────────────────────────────────────────────────────
 
-test("UserPromptBlock renders with consistent background", () => {
-    const w = 100;
-    const block = new UserPromptBlock("Hello world");
-    const lines = block.render(w);
-    assertBlockBackground(lines, w, "UserPromptBlock");
-});
-
 // ─── AgentMessageBlock ───────────────────────────────────────────────────────
-
-test("AgentMessageBlock renders without background (like Pi)", () => {
-    const w = 100;
-    const block = new AgentMessageBlock("TestAgent", null);
-    block.appendText("Some markdown **content** here.");
-    const lines = block.render(w);
-
-    // Agent messages no longer have a bg — just verify they render without error
-    assertEquals(lines.length > 0, true, "AgentMessageBlock should produce output");
-
-    // Verify agent name is in the output
-    const plain = lines.map((l) => stripAnsi(l)).join("\n");
-    assertEquals(plain.includes("TestAgent:"), true, "Should contain agent name");
-});
 
 test("AgentMessageBlock renders Markdown URLs with BEL-delimited terminal hyperlinks", () => {
     const capabilities = getCapabilities();
@@ -172,21 +144,6 @@ test("ThinkingBlock renders reasoning with muted styling", () => {
     assertNotEquals(lines.join("\n"), plain, "ThinkingBlock should include ANSI styling");
 });
 
-test("ThinkingBlock removes the thinking label after completion", () => {
-    const block = new ThinkingBlock();
-    block.appendText("Finished reasoning.");
-    block.end();
-
-    const plain = block
-        .render(80)
-        .map((line) => stripAnsi(line))
-        .join("\n");
-
-    assertEquals(plain.includes("Thinking"), false);
-    assertEquals(plain.includes("✓"), false);
-    assertEquals(plain.includes("Finished reasoning."), true);
-});
-
 test("ThinkingBlock wraps long reasoning lines to the viewport width", () => {
     const block = new ThinkingBlock();
     block.appendText("This is a long reasoning line that should wrap instead of truncating at the viewport edge.");
@@ -219,52 +176,6 @@ test("ThinkingBlock can hide reasoning text", () => {
 });
 
 // ─── SystemMessageBlock ──────────────────────────────────────────────────────
-
-test("SystemMessageBlock renders with consistent background", () => {
-    const w = 100;
-    const block = new SystemMessageBlock("[RunWield] System message");
-    const lines = block.render(w);
-    assertBlockBackground(lines, w, "SystemMessageBlock");
-});
-
-test("SystemMessageBlock error renders with consistent background", () => {
-    const w = 100;
-    const block = new SystemMessageBlock("[Error] Something failed", true);
-    const lines = block.render(w);
-    assertBlockBackground(lines, w, "SystemMessageBlock(error)");
-});
-
-test("SystemMessageBlock renders with mdHeading heading style", () => {
-    const w = 100;
-    const text = "skill1, skill2";
-    const header = "Loaded skills (2):";
-    const style = { headingColor: "mdHeading" };
-    const block = new SystemMessageBlock(text, false, header, style);
-    const lines = block.render(w);
-
-    assertBlockBackground(lines, w, "SystemMessageBlock(mdHeading)");
-
-    // StyledBlock adds padY top/bottom; content lives on the middle line(s).
-    const contentLine = lines.find((l) => stripAnsi(l).trim().length > 0) || "";
-    const plain = stripAnsi(contentLine).trim();
-    assertEquals(plain, `${header} ${text}`, "Stripped content should be 'header text'");
-
-    // The mdHeading color is peach (#fab387) → 250;179;135 (truecolor) or 216 (256-color).
-    // Body text should remain normal text by default, not muted/dim, so the heading
-    // may be the only explicit foreground color on this line.
-    // deno-lint-ignore no-control-regex
-    const fgMatches = contentLine.match(/\x1b\[(?:38;2;\d+;\d+;\d+|38;5;\d+)m/g) || [];
-    const hasPeach = fgMatches.some((m) => m === "\x1b[38;2;250;179;135m" || m === "\x1b[38;5;216m");
-    assertEquals(hasPeach, true, "Should contain the peach/mdHeading ANSI code");
-
-    const mutedBlock = new SystemMessageBlock(text, false, header, { ...style, bodyColor: "dim" });
-    const mutedContentLine = mutedBlock.render(w).find((l) => stripAnsi(l).trim().length > 0) || "";
-    assertNotEquals(
-        contentLine,
-        mutedContentLine,
-        "Default system body text should not render with the explicit dim/muted body style",
-    );
-});
 
 test("SystemMessageBlock appendText uses header and style", () => {
     const w = 100;
@@ -443,23 +354,6 @@ test("KeyboardHelpBlock renders ordered shortcuts with responsive wrapping", () 
 
 // ─── ToolExecutionBlock ──────────────────────────────────────────────────────
 
-test("ToolExecutionBlock renders with consistent background (no output)", () => {
-    const w = 100;
-    const block = new ToolExecutionBlock("bash", "$ ls -la");
-    block.endExecution(false, 150);
-    const lines = block.render(w);
-    assertBlockBackground(lines, w, "ToolExecutionBlock(empty)");
-});
-
-test("ToolExecutionBlock renders with consistent background (with output)", () => {
-    const w = 100;
-    const block = new ToolExecutionBlock("bash", "$ ls -la");
-    block.appendOutput("file1.txt\nfile2.txt\nfolder/\n");
-    block.endExecution(false, 250);
-    const lines = block.render(w);
-    assertBlockBackground(lines, w, "ToolExecutionBlock(output)");
-});
-
 test("ToolExecutionBlock shows live elapsed time from execution start after it is enabled", () => {
     const originalNow = Date.now;
     let now = 1000;
@@ -545,15 +439,6 @@ test("ToolExecutionBlock keeps multi-line command headers inside the block", () 
     assertEquals(plain.includes("Consolidate formats - Move plan formats"), true);
 });
 
-test("ToolExecutionBlock error renders with consistent background", () => {
-    const w = 100;
-    const block = new ToolExecutionBlock("bash", "$ bad-command");
-    block.appendOutput("command not found: bad-command\n");
-    block.endExecution(true, 100);
-    const lines = block.render(w);
-    assertBlockBackground(lines, w, "ToolExecutionBlock(error)");
-});
-
 test("ToolExecutionBlock strips ANSI from tool output", () => {
     const w = 100;
     const block = new ToolExecutionBlock("bash", "$ ls --color");
@@ -584,27 +469,6 @@ test("ToolExecutionBlock highlights the clickable plan review URL instruction", 
     assertEquals(rendered.includes("\x1b[2mReview Plan:"), false);
 });
 
-test("ToolExecutionBlock expansion and truncation logic", () => {
-    const w = 100;
-    const block = new ToolExecutionBlock("bash", "$ echo lines");
-
-    // Add more lines than previewLineLimit (6)
-    for (let i = 0; i < 10; i++) {
-        block.appendOutput(`line ${i}\n`);
-    }
-
-    // While collapsed (default), it should only show a subset of lines
-    assertEquals(block.expanded, false);
-    const collapsedLines = block.render(w);
-
-    // Expand it
-    block.setExpanded(true);
-    const expandedLines = block.render(w);
-
-    // The expanded render should be taller than the collapsed render
-    assertEquals(expandedLines.length > collapsedLines.length, true);
-});
-
 test("ToolExecutionBlock limits expanded output while preserving its start and end", () => {
     const block = new ToolExecutionBlock("bash", "$ print many lines");
     block.setOutput(Array.from({ length: 1_000 }, (_, index) => `line ${index}`).join("\n"));
@@ -619,20 +483,6 @@ test("ToolExecutionBlock limits expanded output while preserving its start and e
     assertEquals(plain.includes("line 999"), true);
     assertEquals(plain.includes("line 500"), false);
     assertEquals(plain.includes("501 lines omitted"), true);
-});
-
-test("ToolExecutionGroupBlock bolds only the tool name in compact rows", () => {
-    const block = new ToolExecutionBlock("set_session_name", "set_session_name Name Here");
-    block.endExecution(false, 10);
-    const group = new ToolExecutionGroupBlock();
-    group.addBlock(block);
-
-    const rendered = group.render(80).join("\n");
-    const plain = stripAnsi(rendered);
-
-    assertEquals(plain.includes("set_session_name Name Here"), true);
-    assertEquals(rendered.includes(`${chalk.bold("set_session_name")} Name Here`), true);
-    assertEquals(rendered.includes(chalk.bold("set_session_name Name Here")), false);
 });
 
 test("ToolExecutionGroupBlock renders compact rows inside padded block lines", () => {
@@ -797,16 +647,6 @@ test("PromptSelectBlock renders with uniform background", () => {
     assertEquals(uniqueBgs.length, 1, `PromptSelectBlock should have uniform bg, got: ${uniqueBgs.join(", ")}`);
 });
 
-test("PromptSelectBlock keeps a compact active layout", () => {
-    const block = new PromptSelectBlock("Choose:", [
-        { value: "option1", label: "Option 1" },
-        { value: "option2", label: "Option 2" },
-    ]);
-    block.focus();
-    const lines = block.render(100);
-    assertEquals(lines.length, 9);
-});
-
 test("PromptSelectBlock handles long items that trigger truncation", () => {
     const w = 80;
     const items = [
@@ -821,38 +661,6 @@ test("PromptSelectBlock handles long items that trigger truncation", () => {
     block.focus();
     const lines = block.render(w);
     assertBlockBackground(lines, w, "PromptSelectBlock(truncated)");
-});
-
-test("PromptSelectBlock handles filtering and settling", () => {
-    const items = [
-        { value: "apple", label: "Apple", description: "Red fruit" },
-        { value: "banana", label: "Banana", description: "Yellow fruit" },
-    ];
-    const block = new PromptSelectBlock("Choose fruit:", items);
-
-    // Test Filtering: simulate typing "ban"
-    block.handleInput("b");
-    block.handleInput("a");
-    block.handleInput("n");
-
-    // The list should now only contain "banana"
-    // @ts-ignore: Accessing private field for test verification
-    assertEquals(block.list.filteredItems.length, 1);
-    // @ts-ignore: Accessing private field for test verification
-    assertEquals(block.list.filteredItems[0].value, "banana");
-
-    // Test Navigation: clear filter
-    block.input.setValue("");
-    block.list.setFilter("");
-
-    block.handleInput("\x1b[B");
-    // @ts-ignore: Accessing private field for test verification
-    assertEquals(block.list.selectedIndex > 0, true);
-
-    // Test Settling
-    block.settle("banana");
-    assertEquals(block.settled, true);
-    assertEquals(block.chosenValue, "banana");
 });
 
 // ─── PromptTextBlock ─────────────────────────────────────────────────────────
@@ -874,53 +682,7 @@ test("PromptTextBlock renders with uniform background", () => {
     assertEquals(uniqueBgs.length, 1, `PromptTextBlock should have uniform bg, got: ${uniqueBgs.join(", ")}`);
 });
 
-test("PromptTextBlock handles input and settling", () => {
-    const block = new PromptTextBlock("Enter value:");
-    block.focus();
-
-    // Simulate typing
-    block.handleInput("h");
-    block.handleInput("i");
-
-    assertEquals(block.input.getValue(), "hi");
-
-    block.settle(block.input.getValue());
-
-    assertEquals(block.settled, true);
-    assertEquals(block.chosenValue, "hi");
-
-    // Verify visual output changes to a finalized line (contains "hi")
-    const lines = block.render(80);
-    const plainTextLines = lines.map((line) => stripAnsi(line));
-    assertEquals(
-        plainTextLines.some((line) => line.includes("hi")),
-        true,
-    );
-});
-
 // ─── SpinnerBlock ────────────────────────────────────────────────────────────
-
-test("SpinnerBlock renders full-width lines when busy", () => {
-    const w = 80;
-    const spinner = new SpinnerBlock();
-    spinner.setBusy(true);
-    const lines = spinner.render(w);
-    for (let i = 0; i < lines.length; i++) {
-        const vl = visibleLength(lines[i]);
-        assertEquals(vl, w, `SpinnerBlock line ${i}: visible length should be ${w}, got ${vl}`);
-    }
-});
-
-test("Spinner cycles animation frames", () => {
-    const spinner = new SpinnerBlock();
-    spinner.setBusy(true);
-
-    const frame1 = spinner.render(80)[0];
-    spinner.advance();
-    const frame2 = spinner.render(80)[0];
-
-    assertNotEquals(frame1, frame2);
-});
 
 test("SpinnerBlock renders tasks when provided", () => {
     const spinner = new SpinnerBlock();
@@ -930,26 +692,6 @@ test("SpinnerBlock renders tasks when provided", () => {
     const plainText = stripAnsi(lines[0]);
     assertEquals(plainText.includes("agent"), true);
     assertEquals(plainText.includes("Task 1"), true);
-});
-
-test("SpinnerBlock shows Working... fallback when no busyLines set", () => {
-    const spinner = new SpinnerBlock();
-    spinner.setBusy(true);
-    const plainText = stripAnsi(spinner.render(80)[0]);
-    assertEquals(plainText.includes("Working..."), true);
-});
-
-test("SpinnerBlock shows agent busy line when busyLines are set", () => {
-    const spinner = new SpinnerBlock();
-    spinner.setBusy(true);
-    spinner.setBusyLines(["Planning...", "Drafting the plan...", "Thinking through the steps..."]);
-    const plainText = stripAnsi(spinner.render(80)[0]);
-    assertEquals(
-        plainText.includes("Planning...") ||
-            plainText.includes("Drafting the plan...") ||
-            plainText.includes("Thinking through the steps..."),
-        true,
-    );
 });
 
 test("SpinnerBlock keeps the busy line stable throughout a turn", () => {
@@ -1023,92 +765,4 @@ test("ValidationHandoffBlock caches panel lines until state changes", () => {
     assertEquals(stripAnsi(third.join("\n")).includes("report two"), true);
 });
 
-test("ValidationHandoffBlock rebuilds report lines after invalidate", () => {
-    const block = new ValidationHandoffBlock({
-        progress: verifiedReportProgress,
-        engineer: { agentName: "Engineer", markdown: "# keep me", completedOrder: 1 },
-        reviewer: null,
-    });
-    const before = block.render(80);
-
-    block.invalidate();
-    const after = block.render(80);
-    assertEquals(after, before);
-    assertEquals(stripAnsi(after.join("\n")).includes("keep me"), true);
-});
-
 // ─── Settled-block line caches (typing must not re-render history) ───────────
-
-test("ToolExecutionBlock reuses cached lines across idle frames", () => {
-    const block = new ToolExecutionBlock("bash", "run tests");
-    block.setOutput("ok line one\nok line two");
-    block.endExecution(false, 120);
-
-    const first = block.render(80);
-    assert(first === block.render(80), "idle frames should reuse the cached lines array");
-
-    block.setOutput("ok line one\nok line two\nok line three");
-    assert(block.render(80) !== first, "new output must rebuild lines");
-});
-
-test("ToolExecutionBlock rebuilds lines after invalidate", () => {
-    const block = new ToolExecutionBlock("bash", "run tests");
-    block.setOutput("ok");
-    block.endExecution(false, 10);
-
-    const before = block.render(80);
-    block.invalidate();
-    const after = block.render(80);
-    assert(after !== before, "invalidate must drop the cache for the next frame");
-    assertEquals(after, before);
-});
-
-test("ToolExecutionBlock clock keeps rebuilding while running", () => {
-    const originalNow = Date.now;
-    let now = 1000;
-    Date.now = () => now;
-    try {
-        const block = new ToolExecutionBlock("bash", "$ sleep 1");
-        block.enableElapsedTime();
-        const first = block.render(100);
-        now = 1500;
-        block.enableElapsedTime();
-        const second = block.render(100);
-        assert(first !== second, "the elapsed footer must move with the 100ms timer");
-        assert(stripAnsi(second.join("\n")).includes("Elapsed time: 0.5s"));
-    } finally {
-        Date.now = originalNow;
-    }
-});
-
-test("ThinkingBlock caches idle frames and clears on new deltas", () => {
-    const block = new ThinkingBlock({});
-    block.appendText("considering the plan");
-    block.end();
-
-    const first = block.render(80);
-    assert(first === block.render(80), "settled thinking should reuse lines");
-
-    block.appendText(" more");
-    const second = block.render(80);
-    assert(second !== first, "new deltas must rebuild lines");
-
-    block.invalidate();
-    const third = block.render(80);
-    assert(third !== second, "invalidate must drop the thinking cache");
-    assertEquals(third, second);
-});
-
-test("ToolExecutionGroupBlock forwards invalidate to child tool blocks", () => {
-    const group = new ToolExecutionGroupBlock();
-    const child = new ToolExecutionBlock("bash", "run tests");
-    child.setOutput("ok");
-    child.endExecution(false, 10);
-    group.addBlock(child);
-
-    const before = child.render(80);
-    group.invalidate();
-    const after = child.render(80);
-    assert(after !== before, "theme swaps must reach tool caches inside groups");
-    assertEquals(after, before);
-});

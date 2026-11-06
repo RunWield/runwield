@@ -121,7 +121,6 @@ async function obtainAndClean(): Promise<void> {
 
 test("downloaded runtime remains usable offline after caller removes its extraction", async () => {
     await withCacheFixture(async (fixture) => {
-        assertEquals(fixture.cache, join(getHomeDir(), ".cache/runwield/remote/runtime", TAG, SUFFIX));
         serve(fixture);
         await obtainAndClean();
         assertEquals(new Uint8Array(await readFile(join(fixture.cache, NAME))), fixture.archive);

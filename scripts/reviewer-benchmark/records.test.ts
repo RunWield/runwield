@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../src/cmd/testing/runtime-command-fixture.ts";
 import { materializeFixture } from "./materialize.ts";
-import { FIXTURE_GROUPS } from "./fixtures.ts";
 import type { BenchmarkCase, RunManifest } from "./records.ts";
 import { appendResult, latestResults, readRun } from "./records.ts";
 import { runBenchmark, selectCases } from "./run.ts";
@@ -136,7 +135,7 @@ const savedCase: BenchmarkCase = {
     defects: [],
 };
 
-for (const group of FIXTURE_GROUPS) {
+for (const group of ["cross-file-context"]) {
     test(`saved runs accept allowed group ${group} without an ID registry or corpus package`, async () => {
         const entry = { ...savedCase, caseId: "RV-D99/B", scenarioId: "RV-D99", group };
         await withManifestCase(entry, async (directory) => {

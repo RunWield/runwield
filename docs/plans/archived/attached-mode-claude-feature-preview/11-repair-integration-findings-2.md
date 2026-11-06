@@ -13,7 +13,7 @@ affectedPaths:
     - "src/shared/workflow/validation-mechanical.ts"
     - "src/shared/workflow/validation-supervisor.ts"
     - "docs/prd/runwield-connect-prd.md"
-    - "docs/adr/014-attached-workflow-coordination-boundary.md"
+    - "docs/adr/013-attached-workflow-coordination-boundary.md"
     - "docs/user-documentation/connect-claude-code.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
@@ -221,7 +221,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   `ValidationHostShutdown` is defined next to `ValidationHostWait` (#6).
 - `src/shared/workflow/validation-host-turn.ts`, `validation-mechanical.ts`, `validation-supervisor.ts` — carry the
   signal to CI, throw `ValidationHostShutdown`, and rethrow it without settling an operational failure (#6).
-- `docs/prd/runwield-connect-prd.md`, `docs/adr/014-attached-workflow-coordination-boundary.md`,
+- `docs/prd/runwield-connect-prd.md`, `docs/adr/013-attached-workflow-coordination-boundary.md`,
   `docs/user-documentation/connect-claude-code.md` — delivered behavior for #4, #5, and #6.
 - Tests named in the Verification Plan.
 

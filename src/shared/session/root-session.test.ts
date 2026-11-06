@@ -1,4 +1,4 @@
-import type { AssistantMessage } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, type AssistantMessage } from "@earendil-works/pi-ai";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import {
     mkdir as fsMkdir,
@@ -23,7 +23,6 @@ import {
     getRunWieldSessionDir,
     getRunWieldSessionsBaseDir,
     getRunWieldSessionMemoryBackupDir,
-    isPathInside,
     listCatalogSafeRootSessionLocators,
     listPersistedRootSessions,
     openPersistedRootSession,
@@ -43,13 +42,6 @@ interface WritableSessionFixture extends SessionFixtureIdentity {
 interface DisposableSessionFixture extends SessionFixtureIdentity {
     dispose?: () => void | Promise<void>;
 }
-
-test("root-session path containment accepts children but rejects sibling prefixes", () => {
-    const base = join("root", "sessions");
-    assertEquals(isPathInside(base, base), true);
-    assertEquals(isPathInside(join(base, "session.jsonl"), base), true);
-    assertEquals(isPathInside(`${base}-other`, base), false);
-});
 
 test("Windows root Session paths use native canonical casing", { skip: process.platform !== "win32" }, async () => {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-root-alias-"));
@@ -109,16 +101,6 @@ test("root-session persists a new transcript without Pi's private rewrite method
             await fsRm(home, { recursive: true });
         }
     });
-});
-
-test("root-session cwd directory encoding stays inside filename limits for long worktree paths", () => {
-    const longWorktreeCwd = `/tmp/${"deep-directory-name-".repeat(12)}/.wld/worktrees/${"nested-project-path-".repeat(
-        10,
-    )}/follow-up-repaint`;
-    const encoded = encodeCwdForSessionDir(longWorktreeCwd);
-    assertEquals(encoded.length < 255, true);
-    assertEquals(encoded.startsWith("--follow-up-repaint-"), true);
-    assertEquals(encoded.endsWith("--"), true);
 });
 
 test("root-session opens a validated transcript stored under the Project session directory with a worktree cwd", async () => {
@@ -605,3 +587,54 @@ async function removeTempDirBestEffort(path: string) {
         }
     }
 }
+
+test("root-session saves and reopens a long worktree path and rejects a sibling-prefix locator", async () => {
+    await withProcessGlobalTestLock(async () => {
+        const previousHome = process.env["HOME"];
+        const home = await fsMkdtemp(join(tmpdir(), "root-long-path-"));
+        process.env["HOME"] = home;
+        try {
+            const cwd = join(
+                home,
+                "deep-directory-name-".repeat(10),
+                ".wld",
+                "worktrees",
+                "nested-project-path-".repeat(10),
+                "follow-up-repaint",
+            );
+            await fsMkdir(cwd, { recursive: true });
+            const manager = await createRootSessionManager("new", cwd);
+            manager.appendMessage({
+                role: "user",
+                content: "Preserve the long worktree request.",
+                timestamp: Date.now(),
+            });
+            manager.appendMessage(fauxAssistantMessage("Saved."));
+            const path = await resolveCreatedRootSessionPath(cwd, manager);
+            const opened = await openPersistedRootSession({
+                cwd,
+                sessionId: manager.getSessionId(),
+                sessionPath: path,
+            });
+            assertEquals(
+                JSON.stringify(getRootSessionBranchEntries(opened.sessionManager)).includes(
+                    "Preserve the long worktree request.",
+                ),
+                true,
+            );
+            const sibling = `${getRunWieldSessionDir(cwd)}-other`;
+            await fsMkdir(sibling, { recursive: true });
+            const siblingPath = join(sibling, "copied.jsonl");
+            await fsWriteFile(siblingPath, await fsReadFile(path));
+            await assertRejects(
+                () => openPersistedRootSession({ cwd, sessionId: manager.getSessionId(), sessionPath: siblingPath }),
+                Error,
+                "outside the RunWield session directory",
+            );
+        } finally {
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
+            await removeTempDirBestEffort(home);
+        }
+    });
+});

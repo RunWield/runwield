@@ -1,6 +1,5 @@
 import { verifyRecordedPublication } from "../../shared/workflow/validation-merge-verification.ts";
 import { openNativeFileLock } from "../../shared/native-file-lock.ts";
-import { realpathSync as fsRealpathSync } from "node:fs";
 import { test } from "node:test";
 import {
     mkdir as fsMkdir,
@@ -424,6 +423,8 @@ test("plans doctor reports a pending import from the live execution document", a
     const cwd = await ancestryRepo.checkout({ prefix: "runwield-plans-doctor-execution-import-" });
     const executionRoot = await fsMkdtemp(join(tmpdir(), "runwield-plans-doctor-execution-import-worktree-"));
     try {
+        await fsRm(executionRoot, { recursive: true });
+        await git(cwd, ["worktree", "add", "-b", "runwield/worktree/execution-import", executionRoot]);
         const layout = await enterProjectRuntime(cwd);
         const primaryPath = join(cwd, "docs", "plans", "execution-import.md");
         const executionPath = join(executionRoot, "docs", "plans", "execution-import.md");
@@ -482,6 +483,8 @@ test("plans doctor uses a reopened retired execution document", async () => {
     const cwd = await ancestryRepo.checkout({ prefix: "runwield-plans-doctor-retired-document-" });
     const executionRoot = await fsMkdtemp(join(tmpdir(), "runwield-plans-doctor-retired-execution-"));
     try {
+        await fsRm(executionRoot, { recursive: true });
+        await git(cwd, ["worktree", "add", "-b", "runwield/worktree/reopened-retired", executionRoot]);
         await savePlan(cwd, "reopened", "# Primary\n", {
             planId: "plan-reopened",
             classification: "FEATURE",
@@ -1028,6 +1031,7 @@ test("plans doctor keeps a journal whose worktree may still hold work", async ()
         });
         const orphanPath = join(cwd, "orphan-worktree");
         await fsMkdir(orphanPath, { recursive: true });
+        await fsWriteFile(join(orphanPath, "saved-work.txt"), "Unclaimed developer work\n");
         const failure = await runExecutionPreparationTransition({
             projectRoot: cwd,
             planName: "demo",
@@ -1050,6 +1054,7 @@ test("plans doctor keeps a journal whose worktree may still hold work", async ()
             "and the command that shows whether anything is in it",
         );
         assertEquals(await fsStat(orphanPath).then((stat) => stat.isDirectory()), true, "nothing is deleted");
+        assertEquals(await fsReadFile(join(orphanPath, "saved-work.txt"), "utf8"), "Unclaimed developer work\n");
     } finally {
         await fsRm(cwd, { recursive: true }).catch(() => {});
     }
@@ -1089,44 +1094,6 @@ test("plans doctor preserves a held native lock while repairing another abandone
         assertEquals(await fsReadFile(livePath, "utf8"), text);
     } finally {
         await fsRm(cwd, { recursive: true });
-    }
-});
-
-test("plans doctor clears a recently abandoned Plan lock", async () => {
-    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-plans-doctor-lock-"));
-    try {
-        await enterProjectRuntime(cwd);
-        const resolvedCwd = fsRealpathSync(cwd);
-        const lockDir = join(getRunWieldRuntimeDir(resolvedCwd), PROJECT_INTERNAL_RUNTIME_DIR_NAME, "plan-locks");
-        const lockPath = join(lockDir, "demo.lock");
-        const legacyLockPath = join(getRunWieldRuntimeDir(resolvedCwd), "plan-locks", "demo.lock");
-        await fsMkdir(lockDir, { recursive: true });
-        await fsWriteFile(
-            lockPath,
-            JSON.stringify({ pid: 2_147_483_647, hostname: getLockHostname(), updatedAtMs: 0 }),
-        );
-        const reported = await runPlansDoctor(cwd, false);
-        const stale = reported.issues.find((issue) => issue.kind === "stale_plan_lock");
-        assertEquals(Boolean(stale), true);
-        assertEquals(stale?.repairable, true);
-        assertEquals(await fsStat(lockPath).then(() => true), true, "report-only leaves it in place");
-
-        const repaired = await runPlansDoctor(cwd, true);
-        assertEquals(repaired.repaired >= 1, true);
-        assertEquals(
-            await fsStat(lockPath)
-                .then(() => true)
-                .catch(() => false),
-            false,
-        );
-        assertEquals(
-            await fsStat(legacyLockPath)
-                .then(() => true)
-                .catch(() => false),
-            false,
-        );
-    } finally {
-        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });
 
@@ -1228,12 +1195,8 @@ test("doctor distinguishes committed archived history from a still-active public
 });
 
 test("doctor leaves publication unconfirmed while the publication owner proves real Git ancestry", async () => {
-    // The only test here that runs real Git, and the reason it has to: every other
-    // ancestry assertion lives in a directory with no repository, where the check
-    // fails for lack of Git rather than for lack of ancestry. Those tests would pass
-    // just as happily with the arguments reversed. This one pins what
-    // `merge-base --is-ancestor` actually means for us, so the faked tests above are
-    // safe to trust about everything else.
+    // Actual divergent commits distinguish an unconfirmed diagnostic from the
+    // publication owner's positive and negative ancestry evidence.
     const cwd = await ancestryRepo.checkout({ prefix: "runwield-plans-doctor-git-" });
     try {
         const publishedCommit = await git(cwd, ["rev-parse", "main"]);

@@ -1,14 +1,6 @@
 import { assertEquals } from "../src/testing/assertions.ts";
 import { test } from "node:test";
-import {
-    classifyRoutingIntentDisagreement,
-    normalizeRoutingIntentCell,
-    parseCsv,
-    routingIntentDistance,
-    scoreAgainstHuman,
-    toCsv,
-    withRouterJudgementMetrics,
-} from "./router-eval-utils.js";
+import { parseCsv, scoreAgainstHuman, toCsv, withRouterJudgementMetrics } from "./router-eval-utils.ts";
 
 test("CSV utilities round-trip quoted cells", () => {
     const csv = toCsv(
@@ -27,31 +19,6 @@ test("CSV utilities round-trip quoted cells", () => {
             requestText: 'hello, "Router" please',
         },
     ]);
-});
-
-test("routingIntentDistance follows routing-intent workflow order", () => {
-    assertEquals(routingIntentDistance("OPERATION", "QUICK_FIX"), 1);
-    assertEquals(routingIntentDistance("QUICK_FIX", "PLANNED_CHANGE"), 1);
-    assertEquals(routingIntentDistance("QUICK_FIX", "INQUIRY"), 3);
-    assertEquals(routingIntentDistance("INQUIRY", "PROJECT"), 5);
-    assertEquals(routingIntentDistance("bad", "PROJECT"), null);
-});
-
-test("normalizeRoutingIntentCell aliases legacy FEATURE to PLANNED_CHANGE", () => {
-    assertEquals(normalizeRoutingIntentCell("FEATURE"), "PLANNED_CHANGE");
-    assertEquals(normalizeRoutingIntentCell("feature"), "PLANNED_CHANGE");
-    assertEquals(normalizeRoutingIntentCell("PLANNED_CHANGE"), "PLANNED_CHANGE");
-    assertEquals(normalizeRoutingIntentCell("INQUIRY"), "INQUIRY");
-    assertEquals(normalizeRoutingIntentCell("bogus"), "");
-});
-
-test("classifyRoutingIntentDisagreement names common router-eval cases", () => {
-    assertEquals(classifyRoutingIntentDisagreement("QUICK_FIX", "INQUIRY"), "legacy_quick_fix_to_inquiry");
-    assertEquals(classifyRoutingIntentDisagreement("OPERATION", "QUICK_FIX"), "operation_quick_fix_boundary");
-    assertEquals(classifyRoutingIntentDisagreement("QUICK_FIX", "PLANNED_CHANGE"), "scope_underestimated");
-    assertEquals(classifyRoutingIntentDisagreement("PLANNED_CHANGE", "QUICK_FIX"), "scope_overestimated");
-    assertEquals(classifyRoutingIntentDisagreement("PLANNED_CHANGE", "PROJECT"), "feature_project_boundary");
-    assertEquals(classifyRoutingIntentDisagreement("QUICK_FIX", "FEATURE"), "scope_underestimated");
 });
 
 test("scoreAgainstHuman reports agreement and correction counts", () => {
@@ -108,4 +75,27 @@ test("withRouterJudgementMetrics aliases legacy FEATURE cells", () => {
             routerDisagreementKind: "exact",
         },
     );
+});
+
+test("judgement metrics classify corrections and leave invalid judgements unscored", () => {
+    const cases = [
+        ["OPERATION", "QUICK_FIX", 1, "operation_quick_fix_boundary"],
+        ["QUICK_FIX", "PLANNED_CHANGE", 1, "scope_underestimated"],
+        ["QUICK_FIX", "INQUIRY", 3, "legacy_quick_fix_to_inquiry"],
+        ["INQUIRY", "PROJECT", 5, "answer_action_boundary"],
+        ["PLANNED_CHANGE", "QUICK_FIX", 1, "scope_overestimated"],
+        ["PLANNED_CHANGE", "PROJECT", 1, "feature_project_boundary"],
+        ["QUICK_FIX", "feature", 1, "scope_underestimated"],
+    ] as const;
+    for (const [routerDecision, humanJudgement, distance, kind] of cases) {
+        const row = withRouterJudgementMetrics({ routerDecision, humanJudgement });
+        assertEquals(row.routerAgreesWithHuman, "FALSE");
+        assertEquals(row.routerDistanceFromHuman, distance);
+        assertEquals(row.routerDisagreementKind, kind);
+    }
+    const invalid = withRouterJudgementMetrics({ routerDecision: "bad", humanJudgement: "PROJECT" });
+    assertEquals(invalid.routerDecision, "");
+    assertEquals(invalid.routerAgreesWithHuman, "");
+    assertEquals(invalid.routerDistanceFromHuman, "");
+    assertEquals(invalid.routerCorrection, "");
 });

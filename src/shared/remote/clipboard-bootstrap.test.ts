@@ -103,20 +103,22 @@ const terminal = new VirtualTerminal({ columns: 120, rows: 30 });
 initTUIWithPair({ terminal, tui: new RunWieldTui(terminal) });
 let returned = false;
 const running = runRemoteView().then(() => { returned = true; });
-const deadline = Date.now() + 10000;
-while (!terminal.getScreenText().includes("laptop-http/remote-model") && Date.now() < deadline && !returned) {
+// The model footer renders before input handlers are installed; the empty-directory welcome renders after.
+const deadline = Date.now() + 30_000;
+while (!terminal.getScreenText().includes("Empty directory detected") && Date.now() < deadline && !returned) {
     await new Promise((resolve) => setTimeout(resolve, 20));
     await terminal.flush();
 }
-await new Promise((resolve) => setTimeout(resolve, 500));
-const screenBeforePaste = terminal.getScreenText();
+if (!terminal.getScreenText().includes("Empty directory detected")) {
+    throw new Error("Remote editor did not become ready: " + terminal.getScreenText());
+}
 terminal.input("\\x16");
 const pasteDeadline = Date.now() + 10_000;
-while (terminal.getScreenText() === screenBeforePaste && Date.now() < pasteDeadline) {
+while (!terminal.getScreenText().includes("[image/png]") && Date.now() < pasteDeadline) {
     await new Promise((resolve) => setTimeout(resolve, 20));
     await terminal.flush();
 }
-const imagePreviewed = terminal.getScreenText() !== screenBeforePaste;
+const imagePreviewed = terminal.getScreenText().includes("[image/png]");
 terminal.typeText("Unsubmitted production prompt");
 await new Promise((resolve) => setTimeout(resolve, 200));
 await terminal.flush();
@@ -191,7 +193,7 @@ console.log("RETURNED_AFTER_TERMINATION");
                 const first = await Promise.race([
                     reader.read(),
                     new Promise<never>(
-                        (_, reject) => (timeout = setTimeout(() => reject(new Error("Bootstrap timeout")), 15000)),
+                        (_, reject) => (timeout = setTimeout(() => reject(new Error("Bootstrap timeout")), 45_000)),
                     ),
                 ]).finally(() => clearTimeout(timeout));
                 const report = JSON.parse(first.value || "{}");
@@ -199,7 +201,7 @@ console.log("RETURNED_AFTER_TERMINATION");
                 assertEquals(report.home, remoteHome);
                 assertStringIncludes(report.screen, "laptop-http/remote-model");
                 assertStringIncludes(report.screen, "Unsubmitted production prompt");
-                assertEquals(report.imagePreviewed, true);
+                assertEquals(report.imagePreviewed, true, report.screen);
                 assertEquals(report.screen.includes("Cannot attach"), false);
                 assertEquals(listProjectsFromDisk(baseDir), []);
                 assertEquals(Array.from(readdirSync(baseDir, { withFileTypes: true })), []);

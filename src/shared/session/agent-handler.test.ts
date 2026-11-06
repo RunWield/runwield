@@ -1,13 +1,11 @@
+import { loadPlan, savePlan } from "../../plan-store.js";
+import { createPlanWrittenTool } from "../../tools/plan-written.ts";
+import { applySharedPlanReviewDecision } from "../workflow/plan-review-actions.ts";
 import { test } from "node:test";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { Type } from "@earendil-works/pi-ai";
-import {
-    defineTool,
-    type ExtensionToolContext,
-    SessionManager,
-    type ToolDefinition,
-} from "@earendil-works/pi-coding-agent";
+
+import { type ExtensionToolContext, SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createTaskCompletedTool } from "../../tools/task-completed.ts";
 import { type AgentHandler, createAgentHandler } from "./agent-handler.ts";
@@ -43,7 +41,7 @@ async function activateHandler(
     projectRoot: string,
     agentName: string,
     events: CapturedRuntimeEvent[],
-    customTools?: ToolDefinition[],
+    customToolFactory?: (session: HostedSession) => ToolDefinition[],
 ): Promise<ActiveHandlerFixture> {
     const sessionManager = SessionManager.inMemory(projectRoot);
     const hostedSession = new HostedSession({
@@ -52,6 +50,7 @@ async function activateHandler(
         sessionManager: hostedSessionManager(sessionManager),
         eventSink: { emit: (event: CapturedRuntimeEvent) => events.push(event) },
     });
+    const customTools = customToolFactory?.(hostedSession);
     const handler = createAgentHandler(agentName, { hostedSession, customTools });
     await ensureRootAgentSession({
         hostedSession,
@@ -91,140 +90,6 @@ test("agent handler completes a real root turn and requests user attention", asy
         );
         fixture.hostedSession.dispose();
     });
-});
-
-test("agent handler settles the accepted plan tool before dispatch without another model answer", async () => {
-    await withRuntimeCommandFixture("agent-handler-live-plan-", async ({ projectRoot, setModelMessages }) => {
-        const events: CapturedRuntimeEvent[] = [];
-        const toolPublished = deferredVoid();
-        const releaseTool = deferredVoid();
-        let toolReturned = false;
-        const planTool = defineTool({
-            name: "plan_written",
-            label: "Plan Written",
-            description: "Publish a saved Plan outcome for the live event handoff test.",
-            parameters: Type.Object({}),
-            async execute(toolCallId) {
-                publishWorkflowToolEvent({
-                    hostedSession: fixture.hostedSession,
-                    toolCallId,
-                    kind: "plan_written",
-                    payload: { outcome: "saved", planName: "event-plan" },
-                });
-                toolPublished.resolve();
-                await releaseTool.promise;
-                toolReturned = true;
-                return {
-                    content: [{ type: "text" as const, text: "Plan saved." }],
-                    details: { outcome: "saved", planName: "event-plan" },
-                    terminate: false,
-                };
-            },
-        });
-        setModelMessages([fauxAssistantMessage(fauxToolCall("plan_written", {}))]);
-        const fixture: ActiveHandlerFixture = await activateHandler(projectRoot, "guide", events, [planTool]);
-        let handlerSettled = false;
-        const handler = fixture.handler("Save the Plan.", [], fixture.sessionManager).finally(() => {
-            handlerSettled = true;
-        });
-
-        await toolPublished.promise;
-        await Promise.resolve();
-        await Promise.resolve();
-        assertEquals(handlerSettled, false);
-        releaseTool.resolve();
-        const result = await handler;
-
-        assertEquals(result, { kind: "complete" });
-        assertEquals(toolReturned, true);
-        fixture.hostedSession.dispose();
-    });
-});
-
-test("agent handler leaves a prior triage event for its original request", async () => {
-    await withRuntimeCommandFixture("agent-handler-stale-triage-", async ({ projectRoot, setModelResponse }) => {
-        const events: CapturedRuntimeEvent[] = [];
-        setModelResponse("Answer the new request without routing the old one.");
-        const fixture = await activateHandler(projectRoot, "router", events);
-        publishWorkflowToolEvent({
-            hostedSession: fixture.hostedSession,
-            toolCallId: "prior-request-triage",
-            kind: "triage_report",
-            payload: {
-                routingIntent: "OPERATION",
-                complexity: "LOW",
-                summary: "Old request",
-                sessionName: "Old request",
-            },
-        });
-        const result = await fixture.handler("A new request.", [], fixture.sessionManager);
-        assertEquals(result, { kind: "complete" });
-        assertEquals(fixture.hostedSession.getRootAgentName(), "router");
-        fixture.hostedSession.dispose();
-    });
-});
-
-test("agent handler safely stops a terminal Plan outcome after feedback", async () => {
-    await withRuntimeCommandFixture(
-        "agent-handler-feedback-terminal-",
-        async ({ projectRoot, setModelResponseFactories }) => {
-            const events: CapturedRuntimeEvent[] = [];
-            const terminalPublished = deferredVoid();
-            const releaseTerminalTool = deferredVoid();
-            let toolCalls = 0;
-            let providerCalls = 0;
-            const planTool = defineTool({
-                name: "plan_written",
-                label: "Plan Written",
-                description: "Publish Plan feedback followed by a terminal Plan outcome.",
-                parameters: Type.Object({}),
-                async execute(toolCallId) {
-                    toolCalls += 1;
-                    const outcome = toolCalls === 1 ? "feedback" : "saved";
-                    publishWorkflowToolEvent({
-                        hostedSession: fixture.hostedSession,
-                        toolCallId,
-                        kind: "plan_written",
-                        payload: { outcome, planName: "event-plan" },
-                    });
-                    if (outcome === "saved") {
-                        terminalPublished.resolve();
-                        await releaseTerminalTool.promise;
-                    }
-                    return {
-                        content: [{ type: "text" as const, text: `Plan ${outcome}.` }],
-                        details: { outcome, planName: "event-plan" },
-                        terminate: false,
-                    };
-                },
-            });
-            setModelResponseFactories([
-                () => {
-                    providerCalls += 1;
-                    return fauxAssistantMessage(fauxToolCall("plan_written", {}));
-                },
-                () => {
-                    providerCalls += 1;
-                    return fauxAssistantMessage(fauxToolCall("plan_written", {}));
-                },
-                () => {
-                    providerCalls += 1;
-                    return fauxAssistantMessage(fauxToolCall("plan_written", {}));
-                },
-            ]);
-            const fixture: ActiveHandlerFixture = await activateHandler(projectRoot, "guide", events, [planTool]);
-            const handler = fixture.handler("Revise and save the Plan.", [], fixture.sessionManager);
-
-            await terminalPublished.promise;
-            releaseTerminalTool.resolve();
-            const result = await handler;
-
-            assertEquals(result, { kind: "complete" });
-            assertEquals(toolCalls, 2);
-            assertEquals(providerCalls, 2);
-            fixture.hostedSession.dispose();
-        },
-    );
 });
 
 test("agent handler routes a real triage tool outcome through Operator completion", async () => {
@@ -449,5 +314,106 @@ test("sequential QUICK_FIX completions each run Mechanical Validation", async ()
         assertEquals(fixture.hostedSession.getActiveExecutionWorkflow()?.triageMeta?.classification, "QUICK_FIX");
         assertEquals(listPendingTaskCompletions(fixture.hostedSession), []);
         fixture.hostedSession.dispose();
+    });
+});
+
+test("real Plan review feedback resumes the handler and saved approval settles without another model answer", async () => {
+    await withRuntimeCommandFixture("handler-real-plan-review-", async ({ projectRoot, setModelResponseFactories }) => {
+        await savePlan(projectRoot, "event-plan", "# Event Plan\n\nImplement the reviewed change.", {
+            classification: "FEATURE",
+            status: "approved",
+        });
+        const events: CapturedRuntimeEvent[] = [];
+        const reviewOpened = deferredVoid();
+        const releaseReview = deferredVoid();
+        let reviews = 0;
+        let providers = 0;
+        const fixture = await activateHandler(projectRoot, "guide", events, (hostedSession) => [
+            createPlanWrittenTool({
+                hostedSession,
+                agentName: "planner",
+                triageMeta: {
+                    classification: "FEATURE",
+                    complexity: "MEDIUM",
+                    summary: "Reviewed change",
+                    affectedPaths: [],
+                },
+            }),
+        ]);
+        fixture.hostedSession.setInteractionAdapter({
+            supportsInteraction: () => true,
+            async requestInteraction(request) {
+                if (request.type !== "plan_review") throw new Error(`Unexpected interaction ${request.type}`);
+                reviews++;
+                const plan = await loadPlan(projectRoot, "event-plan");
+                if (!plan) throw new Error("Plan missing before review");
+                if (reviews === 1) {
+                    reviewOpened.resolve();
+                    await releaseReview.promise;
+                    return {
+                        outcome: "selected",
+                        _meta: {
+                            approved: false,
+                            feedback: "Clarify the revised user journey.",
+                            revision: plan.revision,
+                        },
+                    };
+                }
+                const decision = { approved: true, approvalAction: "later" as const };
+                const accepted = await applySharedPlanReviewDecision({
+                    cwd: projectRoot,
+                    planName: "event-plan",
+                    planPath: plan.path,
+                    planWithFrontMatter: plan.markdown,
+                    planRevision: plan.revision,
+                    originalAttrs: plan.attrs,
+                    trustedClassification: plan.attrs.classification,
+                    decision,
+                });
+                return { outcome: "accepted", _meta: { ...decision, ...accepted } };
+            },
+        });
+        setModelResponseFactories([
+            () => {
+                providers++;
+                return fauxAssistantMessage(fauxToolCall("plan_written", { planName: "event-plan" }));
+            },
+            async (context) => {
+                providers++;
+                assertEquals(JSON.stringify(context.messages).includes("Clarify the revised user journey."), true);
+                const plan = await loadPlan(projectRoot, "event-plan");
+                if (!plan) throw new Error("Plan missing before revision");
+                await savePlan(
+                    projectRoot,
+                    "event-plan",
+                    "# Event Plan\n\nRevised user journey is explicit.",
+                    plan.attrs,
+                    { expectedRevision: plan.revision },
+                );
+                return fauxAssistantMessage(fauxToolCall("plan_written", { planName: "event-plan" }));
+            },
+            () => {
+                providers++;
+                throw new Error("Saved Plan must not prompt again");
+            },
+        ]);
+        let settled = false;
+        const pending = fixture.handler("Review and save the Plan.", [], fixture.sessionManager).finally(() => {
+            settled = true;
+        });
+        try {
+            await reviewOpened.promise;
+            await Promise.resolve();
+            assertEquals(settled, false);
+            releaseReview.resolve();
+            assertEquals(await pending, { kind: "complete" });
+            assertEquals(reviews, 2);
+            assertEquals(providers, 2);
+            assertEquals((await loadPlan(projectRoot, "event-plan"))?.attrs.status, "ready_for_work");
+        } finally {
+            releaseReview.resolve();
+            await pending;
+            fixture.hostedSession.dispose();
+        }
     });
 });

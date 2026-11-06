@@ -18,7 +18,7 @@ import {
     restoreEntryFromPlanEvidence,
     updateEntry as updateWorktreeRegistryEntry,
 } from "../worktree-registry.js";
-import { prepareExecutionPlanFile } from "./execution-plan-file.js";
+import { prepareExecutionPlanFile } from "./execution-plan-file.ts";
 import { withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
 import { resolveTargetBranchName } from "../worktree.js";
 import { getWorkflowDiff } from "./git-snapshot.ts";

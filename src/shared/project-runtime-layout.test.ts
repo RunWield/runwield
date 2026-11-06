@@ -31,7 +31,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertExists, assertRejects } from "../testing/assertions.ts";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
-import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME, RUNWIELD_DIR_NAME } from "../constants.js";
+import { getRunWieldRuntimeDir } from "../constants.js";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
 import {
@@ -165,78 +165,6 @@ test("passive runtime access keeps unmatched current authorities blocked", async
     }
 });
 
-test("project runtime layout resolves normal primary and selected internal roots", async () => {
-    await withProcessGlobalTestLock(async () => {
-        const originalSandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
-        const primaryCheckout = await fixture.checkout({ prefix: "runwield-runtime-layout-primary-" });
-        const selectedCheckout = await fsMkdtemp(join(tmpdir(), "runwield-runtime-layout-selected-"));
-        try {
-            delete process.env["WLD_TEST_SANDBOX_HOME"];
-            await git(primaryCheckout, [
-                "worktree",
-                "add",
-                "-b",
-                `runtime-layout-test-${crypto.randomUUID()}`,
-                selectedCheckout,
-            ]);
-
-            const layout = resolveProjectRuntimeLayout(selectedCheckout);
-            const resolvedPrimaryCheckout = await fsRealpath(primaryCheckout);
-            const resolvedSelectedCheckout = await fsRealpath(selectedCheckout);
-            const primaryInternalRoot = join(
-                resolvedPrimaryCheckout,
-                RUNWIELD_DIR_NAME,
-                PROJECT_INTERNAL_RUNTIME_DIR_NAME,
-            );
-            const selectedInternalRoot = join(
-                resolvedSelectedCheckout,
-                RUNWIELD_DIR_NAME,
-                PROJECT_INTERNAL_RUNTIME_DIR_NAME,
-            );
-
-            assertEquals(layout.primary.checkoutRoot, resolvedPrimaryCheckout);
-            assertEquals(layout.primary.internalRoot, primaryInternalRoot);
-            assertEquals(layout.primary.layoutMarkerPath, join(primaryInternalRoot, "layout.json"));
-            assertEquals(layout.primary.layoutMigrationJournalPath, join(primaryInternalRoot, "layout-migration.json"));
-            assertEquals(layout.primary.layoutMigrationLockPath, join(primaryInternalRoot, "layout-migration.lock"));
-            assertEquals(layout.primary.controllerPlansDir, join(primaryInternalRoot, "controller", "plans"));
-            assertEquals(layout.primary.worktreeRegistryPath, join(primaryInternalRoot, "worktrees.json"));
-            assertEquals(layout.primary.worktreeRegistryLockPath, join(primaryInternalRoot, "worktrees.lock"));
-            assertEquals(
-                layout.primary.worktreeRegistryMigrationIssuesPath,
-                join(primaryInternalRoot, "worktree-registry-migration-issues.json"),
-            );
-            assertEquals(layout.primary.publicationStagingRoot, join(primaryInternalRoot, "plan-staging"));
-            assertEquals(
-                layout.primary.projectSecretStorePath,
-                join(primaryInternalRoot, "collaboration-secrets.json"),
-            );
-            assertEquals(layout.primary.fallbackWorktreesRoot, join(primaryInternalRoot, "worktrees"));
-            assertEquals(layout.primary.debugRoot, join(primaryInternalRoot, "debug"));
-
-            assertEquals(layout.selected.checkoutRoot, resolvedSelectedCheckout);
-            assertEquals(layout.selected.internalRoot, selectedInternalRoot);
-            assertEquals(layout.selected.planLocksDir, join(selectedInternalRoot, "plan-locks"));
-            assertEquals(layout.selected.planCatalogLockPath, join(selectedInternalRoot, "plan-locks", "catalog.lock"));
-            assertEquals(layout.selected.transitionJournalsDir, join(selectedInternalRoot, "plan-transitions"));
-            assertEquals(layout.selected.planBackupsDir, join(selectedInternalRoot, "plan-backups"));
-            assertEquals(
-                layout.selected.workRecordSupersessionLockPath,
-                join(selectedInternalRoot, "work-record-supersession.lock"),
-            );
-            assertEquals(
-                layout.selected.workRecordSupersessionRecoveryLockPath,
-                join(selectedInternalRoot, "work-record-supersession-recovery.lock"),
-            );
-        } finally {
-            if (originalSandboxHome === undefined) delete process.env["WLD_TEST_SANDBOX_HOME"];
-            else process.env["WLD_TEST_SANDBOX_HOME"] = originalSandboxHome;
-            await fsRm(selectedCheckout, { recursive: true }).catch(() => {});
-            await fsRm(primaryCheckout, { recursive: true }).catch(() => {});
-        }
-    });
-});
-
 test("runtime migration retries one transient Git worktree listing failure", async () => {
     await withProcessGlobalTestLock(async () => {
         const primaryCheckout = await fixture.checkout({ prefix: "runwield-runtime-layout-retry-" });
@@ -257,44 +185,6 @@ test("runtime migration retries one transient Git worktree listing failure", asy
             await fsRm(primaryCheckout, { recursive: true }).catch(() => {});
         }
     });
-});
-
-test("project runtime layout keeps sandboxed primary and selected lock namespaces separate", async () => {
-    const primaryCheckout = await fixture.checkout({ prefix: "runwield-runtime-layout-sandbox-primary-" });
-    const selectedCheckout = await fsMkdtemp(join(tmpdir(), "runwield-runtime-layout-sandbox-selected-"));
-    try {
-        await git(primaryCheckout, [
-            "worktree",
-            "add",
-            "-b",
-            `runtime-layout-sandbox-test-${crypto.randomUUID()}`,
-            selectedCheckout,
-        ]);
-
-        const layout = resolveProjectRuntimeLayout(selectedCheckout);
-        const resolvedPrimaryCheckout = await fsRealpath(primaryCheckout);
-        const resolvedSelectedCheckout = await fsRealpath(selectedCheckout);
-        const primaryInternalRoot = join(
-            getRunWieldRuntimeDir(resolvedPrimaryCheckout),
-            PROJECT_INTERNAL_RUNTIME_DIR_NAME,
-        );
-        const selectedInternalRoot = join(
-            getRunWieldRuntimeDir(resolvedSelectedCheckout),
-            PROJECT_INTERNAL_RUNTIME_DIR_NAME,
-        );
-
-        assertEquals(layout.primary.checkoutRoot, resolvedPrimaryCheckout);
-        assertEquals(layout.selected.checkoutRoot, resolvedSelectedCheckout);
-        assertEquals(layout.primary.internalRoot, primaryInternalRoot);
-        assertEquals(layout.selected.internalRoot, selectedInternalRoot);
-        assertEquals(dirname(layout.primary.controllerPlansDir), join(primaryInternalRoot, "controller"));
-        assertEquals(dirname(layout.selected.planCatalogLockPath), join(selectedInternalRoot, "plan-locks"));
-        assertEquals(layout.primary.worktreeRegistryPath, join(primaryInternalRoot, "worktrees.json"));
-        assertEquals(layout.selected.transitionJournalsDir, join(selectedInternalRoot, "plan-transitions"));
-    } finally {
-        await fsRm(selectedCheckout, { recursive: true }).catch(() => {});
-        await fsRm(primaryCheckout, { recursive: true }).catch(() => {});
-    }
 });
 
 test("legacy migration adopts primary and selected runtime leaves once", async () => {

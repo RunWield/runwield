@@ -5,6 +5,10 @@ revision, and `payload: {}`. Core runs the configured checks; do not start a sec
 while Core sends progress. The installed plugin gives each tool up to 3600 seconds; it does not change Codex's normal
 permissions. After an interrupted or timed-out call, read `status` before continuing the saved validation attempt.
 
+For `validation_running`, keep waiting for the active operation. Inspect-only status reports its operation ID,
+start time, and latest available checkpoint phase without advancing it. A slow call is not proof of interruption;
+do not call `start_validation` while this action is present. Recovery is appropriate only for `validation_recovery`.
+
 For `validation`, read the requested kind and current action identity. If compact status returns `requestAvailable`
 instead of a request, fetch `get_instructions` to read the decision. Each worker checks its fetched instruction
 contract is `runwield.attached.validation/1` before acting. Core owns rounds, findings, budgets, candidate freshness, and gate outcomes.
@@ -37,6 +41,10 @@ fetches complete current instructions with `get_instructions` and uses the focus
 checkout, including its publication directory when requested. Do not create host worktree isolation or repeat the
 original implementation. The worker may stage conflict resolutions when Core's repair instructions require that, but
 does not commit, merge, push, publish, or make lifecycle calls.
+
+The repair worker calls `review_diff` directly with `scope: "full"` for the current checkout's target-relative diff.
+It follows every truncated page before editing and uses each returned revision for its next call. These reads do not
+count as independent reviewer coverage. It returns its latest revision with the repair report.
 
 Submit its completed per-item Markdown bullet report through `task_completed`, with the current action ID, revision,
 and `payload.message`. For a blocked item, show its identity and needed recovery; do not claim completion.

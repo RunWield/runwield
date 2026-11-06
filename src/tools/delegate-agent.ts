@@ -6,7 +6,7 @@ import { captureForegroundProcess } from "../shared/captured-process.ts";
  */
 
 import { join } from "node:path";
-import { StringEnum, Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
@@ -20,15 +20,11 @@ import {
     getDelegatedRole,
     loadSubAgentDefinition,
 } from "../shared/session/subagent-definitions.ts";
-import type {
-    DelegatedAuthority,
-    DelegatedRoleDefinition,
-    DelegatedRoleId,
-} from "../shared/session/subagent-definitions.ts";
+import type { DelegatedAuthority, DelegatedRoleId } from "../shared/session/subagent-definitions.ts";
 import type { HostedSession } from "../shared/session/hosted-session.js";
 import type { AgentDefinition } from "../shared/session/types.js";
 import type { BashAllowedCommands } from "../shared/bash-command-policy.ts";
-import { extractAssistantOutput } from "../shared/workflow/workflow-results.js";
+import { extractAssistantOutput } from "../shared/workflow/workflow-results.ts";
 
 export type DelegationMode = "read" | "write";
 
@@ -48,11 +44,11 @@ const MODE_DESCRIPTIONS: Readonly<Record<DelegationMode, string>> = Object.freez
 function createParameters(modes: readonly DelegationMode[]) {
     return Type.Object(
         {
-            mode: StringEnum(modes, {
+            mode: Type.Enum(modes, {
                 description: `Delegation authority. Use ${modes.map((mode) => MODE_DESCRIPTIONS[mode]).join(" and ")}.`,
             }),
             role: Type.Optional(
-                StringEnum([...DELEGATED_ROLE_IDS], {
+                Type.Enum([...DELEGATED_ROLE_IDS], {
                     description:
                         "Optional Delegated Agent Role. Omit (or use 'general') for an unspecialized delegate. Use 'verification-adversary' to have a read-only delegate attack a draft Plan's outcomes, steps, and verification claims with the cheapest counterfeit implementation; a role's authority ceiling can reduce the requested mode.",
                 }),
@@ -123,7 +119,7 @@ interface PorcelainStatusEntry {
     path: string;
 }
 
-interface DelegateAgentDetails {
+export interface DelegateAgentDetails {
     ok: boolean;
     mode: DelegationMode;
     role: string;
@@ -347,30 +343,6 @@ function resolveDelegatedThinkingLevelOverride(
 }
 
 /**
- * Role context for the child's user request. A general delegation adds nothing, so its
- * request text stays byte-identical to pre-role delegation.
- *
- * @param {import('../shared/session/subagent-definitions.ts').DelegatedRoleDefinition} role
- * @param {"read" | "write"} requestedMode
- * @param {"read" | "write"} effectiveMode
- * @returns {string[]}
- */
-function roleRequestLines(
-    role: DelegatedRoleDefinition,
-    requestedMode: DelegationMode,
-    effectiveMode: DelegationMode,
-): string[] {
-    if (role.id === DELEGATED_ROLE_GENERAL) return [];
-    const lines = [`Delegated role: ${role.id}`];
-    if (effectiveMode !== requestedMode) {
-        lines.push(
-            `The parent requested ${requestedMode} mode; the ${role.id} role has a ${role.authorityCeiling}-only authority ceiling, so this session runs as ${effectiveMode}.`,
-        );
-    }
-    return lines;
-}
-
-/**
  * @param {DelegateAgentToolOptions} opts
  * @returns {import('@earendil-works/pi-coding-agent').ToolDefinition}
  */
@@ -449,15 +421,7 @@ export function createDelegateAgentTool(opts: DelegateAgentToolOptions) {
             }
             const childTools = resolveDelegatedToolNames(opts.parentTools, mode);
             const definitionId = mode === "read" ? SUBAGENTS.DELEGATED_READ : SUBAGENTS.DELEGATED;
-            const userRequest = [
-                `Delegation mode: ${mode}`,
-                ...roleRequestLines(role, requestedMode, mode),
-                "",
-                "You are running as a context-isolated child. Complete only the brief below and return a concise handoff.",
-                "",
-                "## Brief",
-                brief,
-            ].join("\n");
+            const userRequest = [`Delegation mode: ${mode}`, "", "## Brief", brief].join("\n");
             const modelOverride = resolveDelegatedModelOverride(opts.hostedSession, opts.modelOverride);
             const thinkingLevelOverride = resolveDelegatedThinkingLevelOverride(
                 opts.hostedSession,

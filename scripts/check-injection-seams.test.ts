@@ -9,7 +9,6 @@ import {
     collectSeamNames,
     collectSeams,
     findRegressions,
-    isMachinerySeam,
 } from "./check-injection-seams.js";
 
 test("collectSeams scans production source and scripts but excludes tests", async () => {
@@ -23,11 +22,23 @@ test("collectSeams scans production source and scripts but excludes tests", asyn
         await fsWriteFile(new URL("release.js", scriptsRoot), "const run = deps.run || systemRun; run();\n");
         await fsWriteFile(new URL("release.test.js", scriptsRoot), "const run = deps.run || systemRun; run();\n");
 
+        await fsWriteFile(
+            new URL("machinery.ts", sourceRoot),
+            "const deps = __deps || {}; deps.runImplementationCheckpointTransition(); deps.runTransition(); deps.runImplementationCheckpoint(); deps._buildAgentSession(); deps._attachSessionEventSubscribers(); deps._runPrompt(); deps._agentDefOverride;\n",
+        );
         const seams = await collectSeams([
             { rootUrl: sourceRoot, pathPrefix: "src" },
             { rootUrl: scriptsRoot, pathPrefix: "scripts" },
         ]);
-        assertEquals(Object.keys(seams).sort(), ["scripts/release.js", "src/command.ts"]);
+        assertEquals(Object.keys(seams).sort(), ["scripts/release.js", "src/command.ts", "src/machinery.ts"]);
+        assertEquals(seams["src/machinery.ts"].machinery, [
+            "_agentDefOverride",
+            "_attachSessionEventSubscribers",
+            "_buildAgentSession",
+            "_runPrompt",
+            "runImplementationCheckpointTransition",
+            "runTransition",
+        ]);
     } finally {
         await fsRm(root, { recursive: true });
     }
@@ -65,16 +76,6 @@ test("positional defaults ignore literal text but still detect template expressi
         ),
         ["runTurn"],
     );
-});
-
-test("machinery seam patterns match wildcards in the middle of transaction names", () => {
-    assertEquals(isMachinerySeam("runImplementationCheckpointTransition"), true);
-    assertEquals(isMachinerySeam("runTransition"), true);
-    assertEquals(isMachinerySeam("runImplementationCheckpoint"), false);
-    assertEquals(isMachinerySeam("_buildAgentSession"), true);
-    assertEquals(isMachinerySeam("_attachSessionEventSubscribers"), true);
-    assertEquals(isMachinerySeam("_runPrompt"), true);
-    assertEquals(isMachinerySeam("_agentDefOverride"), true);
 });
 
 test("collectSeamNames catches arbitrary Agent Definition overrides", () => {
@@ -379,16 +380,6 @@ test("collectSeamNames detects fallbacks hidden in ordinary options and nested s
         "runIsolatedAgentSession",
         "switchActiveAgent",
     ]);
-});
-
-test("collectSeamNames detects a buildAgentSession override masking buildExecutionSession", () => {
-    const names = collectSeamNames(`
-        export function build(options) {
-            return options._buildAgentSession || buildExecutionSession;
-        }
-    `);
-
-    assertEquals(names, ["_buildAgentSession"]);
 });
 
 test("collectSeamNames detects mutable dependency registries and individual test override hooks", () => {

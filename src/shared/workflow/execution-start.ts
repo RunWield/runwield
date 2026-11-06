@@ -30,7 +30,7 @@ import {
 } from "./plan-branch.ts";
 import { probeGitRepository } from "../git.ts";
 import { hasNonGitExecutionConsent, rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
-import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.js";
+import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.ts";
 import {
     checkpointExecutionPreparation,
     createWorktreeGitArtifacts,
@@ -52,7 +52,7 @@ import {
     updateEntry as updateWorktreeRegistryEntry,
 } from "../worktree-registry.js";
 import { captureWorktreeTree } from "./git-snapshot.ts";
-import { ensureExecutionPlanFile, loadCanonicalExecutionPlanSource } from "./execution-plan-file.js";
+import { ensureExecutionPlanFile, loadCanonicalExecutionPlanSource } from "./execution-plan-file.ts";
 import {
     emitCreatedExecutionWorktree,
     emitCreatingExecutionWorktree,

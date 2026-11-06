@@ -1359,7 +1359,7 @@ Evidence: `/tmp/wld-child13-linked-space-retry.log`, receipt 0, suite `wld-cli-w
 #### Evidence boundaries after these repairs
 
 `source-delta-from-693.json` in the final candidate compares the saved snapshots. The base HEAD is unchanged. Production
-changes since `693c6b96…` are limited to `plan-written.ts`, `session-runtime-interactions.js`, and `execution-start.ts`;
+changes since `693c6b96…` are limited to `plan-written.ts`, `session-runtime-interactions.ts`, and `execution-start.ts`;
 other differences are documentation, test registration, and tests. Existing ordinary-primary-checkout journeys pass the
 same cwd value before and after these substitutions. Cases without Plan Review or execution-start do not enter the
 changed paths. Thus the earlier results keep their original build IDs and this explicit unaffected-case rationale;

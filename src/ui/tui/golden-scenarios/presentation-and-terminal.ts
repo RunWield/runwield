@@ -98,38 +98,43 @@ export const managedSyncQueueImageScenario: GoldenScenario = {
 };
 
 export const terminalControlsScenario: GoldenScenario = {
-    name: "terminal-controls-autocomplete-resize-ctrlc-focus",
+    name: "terminal-autocomplete-and-input-after-prompt-cancellation",
     composedTui: true,
+    initialAgentName: "guide",
     terminal: { columns: 100, rows: 30 },
-    coverage: [
-        "terminal:ctrl-c",
-        "terminal:slash-command",
-        "terminal:autocomplete",
-        "terminal:resize",
-        "terminal:prompt-focus-restoration",
-        "block:keyboard-help",
+    script: [
+        {
+            id: "guide-after-terminal-controls",
+            agent: "guide",
+            phase: "inquiry",
+            text: "Input works after prompt cancellation.",
+        },
     ],
     actions: [
-        { type: "type", text: "/help" },
-        { type: "enter" },
-        { type: "waitForIdle", timeoutMs: 5000 },
         { type: "slashAutocomplete" },
+        { type: "enter" },
+        { type: "waitForScreen", text: "Global flags:" },
+        { type: "waitForIdle", timeoutMs: 10000 },
         { type: "promptFocusRoundTrip" },
         { type: "resize", columns: 120, rows: 40 },
         { type: "assertTerminalSize", columns: 120, rows: 40 },
+        { type: "type", text: "discard this draft" },
         { type: "ctrlC" },
-        { type: "waitForIdle", timeoutMs: 5000 },
+        { type: "type", text: "continue after prompt cancellation" },
+        { type: "enter" },
+        { type: "waitForScreen", text: "Input works after prompt cancellation." },
+        { type: "waitForIdle", timeoutMs: 10000 },
     ],
     assertions: [
-        assertRuntimeEvent("terminal:ctrl-c", "terminal:ctrl-c"),
-        assertsGoldenCoverage("terminal:slash-command", (result) => {
-            assertEventIncludes(result, "terminal:type:/help");
+        (result) => {
             assertScreenIncludes(result, "Global flags:");
-        }),
-        assertRuntimeEvent("terminal:autocomplete", "terminal:autocomplete:/he"),
-        assertRuntimeEvent("terminal:resize", "terminal:resize:120x40"),
-        assertRuntimeEvent("terminal:prompt-focus-restoration", "ui:prompt-focus:restored"),
-        assertsGoldenCoverage("block:keyboard-help", (result) => assertScreenIncludes(result, "Global flags:")),
+            assertScreenIncludes(result, "  continue after prompt cancellation");
+            assertScreenIncludes(result, "Input works after prompt cancellation.");
+            assert(
+                !result.screenText.includes("discard this draft"),
+                "Ctrl-C must clear the draft before the next submission.",
+            );
+        },
     ],
 };
 

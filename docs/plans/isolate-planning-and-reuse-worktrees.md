@@ -4,14 +4,14 @@ workKind: "BUG_FIX"
 complexity: "HIGH"
 affectedPaths:
     - "src/shared/workflow/planning-worktree.ts"
-    - "src/shared/session/agent-switching.js"
+    - "src/shared/session/agent-switching.ts"
     - "src/shared/session/session-runtime.js"
     - "src/shared/worktree-registry.js"
     - "src/tools/plan-written.ts"
     - "src/shared/workflow/execution-start.ts"
     - "src/shared/workflow/epic-continuation.ts"
     - "src/cmd/load-plan/"
-    - "docs/adr/005-concurrent-worktree-isolation.md"
+    - "docs/adr/004-concurrent-worktree-isolation.md"
     - "docs/prd/runwield-core-prd.md"
 devServerCommand: null
 devServerUrl: null
@@ -178,17 +178,17 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 
 - `src/shared/workflow/planning-worktree.ts`, `src/shared/worktree.js`, `src/shared/worktree-registry.js` — unnamed
   Session ownership, binding, retained container/child worktrees, and safe target refresh.
-- `src/shared/session/agent-switching.js`, `session.js`, `session-runtime.js`, `hosted-session.js`, Session persistence
+- `src/shared/session/agent-switching.ts`, `session.js`, `session-runtime.js`, `hosted-session.js`, Session persistence
   helpers — restore working-directory evidence before constructing tools while preserving transcript continuity.
 - `src/tools/plan-written.ts`, `src/shared/workflow/sequence-review.ts` — real identity binding before review and saved
   container/child document references; all tools use the selected cwd.
 - `src/shared/workflow/plan-location.ts`, `controller-registry.ts`, `plan-executor.ts`, `execution-start.ts`,
-  `execution-plan-file.js` — authoritative document discovery and refresh-before-materialization for first execution.
+  `execution-plan-file.ts` — authoritative document discovery and refresh-before-materialization for first execution.
 - `src/cmd/load-plan/`, `src/shared/workflow/epic-continuation.ts`, `workflow-slicer.ts`, and post-publication handoff —
   correct container/child cwd for manual and automatic continuation, including unpublished child drafts.
 - Real-Git workflow, tool, registry, and Session tests — prove composed behavior, not only helper results.
-- `docs/prd/runwield-core-prd.md`, `docs/adr/005-concurrent-worktree-isolation.md`,
-  `docs/adr/015-file-authoritative-session-bundles.md`, `docs/plan-lifecycle.md`, `docs/domain-language.md` —
+- `docs/prd/runwield-core-prd.md`, `docs/adr/004-concurrent-worktree-isolation.md`,
+  `docs/adr/014-file-authoritative-session-bundles.md`, `docs/plan-lifecycle.md`, `docs/domain-language.md` —
   synchronize planning ownership, Session working context, Sequence and child rules, and affected references. Keep
   ADR-017's runtime layout unchanged. Update bundled Planner guidance only where it contradicts automatic runtime
   behavior.
@@ -229,7 +229,7 @@ share the runtime fix. Connect hosts that own their tools are not silently redir
 7. Integration tests prove Run and Later, branch switches, target advancement, interruption, container continuation,
    Sequence order, and primary-file preservation through the real owning modules. No new owned-machinery test seam
    exists.
-8. Owning PRD requirements/scenarios, ADR-005/015, lifecycle references, and glossary definitions for Session context,
+8. Owning PRD requirements/scenarios, ADR-004/015, lifecycle references, and glossary definitions for Session context,
    Plan Association, Epic, Sequence, and Child PLANNED_CHANGE Plan match the delivered behavior. Update stable
    relationships and avoided aliases where affected. Keep automatic Epic branch creation and other unmet requirements
    explicitly deferred.
@@ -246,7 +246,7 @@ Use sandboxed tests only. Add focused cases to existing suites or new adjacent i
 ```sh
 deno run -A scripts/run-tests.js src/shared/workflow/planning-worktree.test.ts
 deno run -A scripts/run-tests.js src/shared/workflow/epic-branch-planning.integration.test.ts
-deno run -A scripts/run-tests.js src/shared/session/agent-switching.test.js
+deno run -A scripts/run-tests.js src/shared/session/agent-switching.test.ts
 deno run -A scripts/run-tests.js src/shared/session/session-runtime.test.js
 deno run -A scripts/run-tests.js src/tools/__tests__/plan-written.test.js
 deno run -A scripts/run-tests.js src/shared/workflow/workflow.test.js

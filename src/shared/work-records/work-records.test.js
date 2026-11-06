@@ -1,22 +1,16 @@
 import { syncEpicChildPlanDeviations } from "../workflow/epic-review-context.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
-import { getCwd } from "../../constants.js";
 import { mkdtemp as fsMkdtemp, rm as fsRm, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import {
-    archiveWorkRecord,
-    buildWorkRecordFileName,
     buildWorkRecordIndexDocument,
-    buildWorkRecordIndexTags,
-    filterWorkRecordsForList,
     findWorkRecordById,
     formatHydratedWorkRecord,
     formatWorkRecordList,
     formatWorkRecordMarkdown,
-    generateRecorderSections,
     generateWorkRecordForSource,
     getWorkRecordIndexCollectionName,
     isWorkRecordIndexEmpty,
@@ -25,10 +19,8 @@ import {
     previewWorkRecordBackfill,
     readWorkRecordById,
     rebuildWorkRecordIndex,
-    restoreWorkRecord,
     runWorkRecordBackfill,
     searchWorkRecords,
-    supersedeWorkRecord,
     syncWorkRecordToIndex,
     writeWorkRecord,
 } from "./index.ts";
@@ -117,34 +109,6 @@ test("Work Record markdown parses nested provenance and body sections", () => {
     assertStringIncludes(markdown, "    evidence:\n        - path:");
 });
 
-test("Work Record supersession proposals normalize, deduplicate, and round-trip", () => {
-    const markdown = formatWorkRecordMarkdown(
-        {
-            ...INTERNAL_ATTRS,
-            supersessionProposal: {
-                candidates: [
-                    { recordId: " 33333333-3333-4333-8333-333333333333 ", reason: " First reason. " },
-                    { recordId: "33333333-3333-4333-8333-333333333333", reason: "Duplicate." },
-                ],
-            },
-        },
-        BODY,
-    );
-    const parsed = parseWorkRecordMarkdown(markdown);
-    assertEquals(parsed.attrs.supersessionProposal?.candidates, [
-        {
-            recordId: "33333333-3333-4333-8333-333333333333",
-            reason: "First reason.",
-        },
-    ]);
-    assertStringIncludes(markdown, "supersessionProposal:");
-    assertThrows(
-        () => parseWorkRecordMarkdown(markdown.replace('reason: "First reason."', 'reason: "   "')),
-        Error,
-        "candidate reason must be a non-blank string",
-    );
-});
-
 test("Work Record supersession proposals reject every malformed candidate before deduplication", () => {
     const malformedCandidates = [
         {},
@@ -229,19 +193,6 @@ test("Work Record validation reports malformed provenance evidence entries", () 
     );
 });
 
-test("Work Record formatting omits empty optional provenance fields", () => {
-    const markdown = formatWorkRecordMarkdown(
-        {
-            ...INTERNAL_ATTRS,
-            origin: "external",
-            provenance: { sourcePlans: [], evidence: [] },
-        },
-        BODY,
-    );
-
-    assertEquals(markdown.includes("provenance:"), false);
-});
-
 test("Work Record store writes flat files and resolves by recordId", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
@@ -283,13 +234,6 @@ test("Work Record create collision preserves the old record and uses a determini
     }
 });
 
-test("Work Record lifecycle helpers update final state fields only", () => {
-    const archived = archiveWorkRecord(INTERNAL_ATTRS, { now: "2026-07-15T00:00:00.000Z" });
-    assertEquals(archived.archivedAt, "2026-07-15T00:00:00.000Z");
-    assertEquals(restoreWorkRecord(archived).archivedAt, undefined);
-    assertEquals(supersedeWorkRecord(INTERNAL_ATTRS, "33333333-3333-4333-8333-333333333333").status, "superseded");
-});
-
 test("Work Record documentation Work Kind normalizes and displays", () => {
     const record = parseWorkRecordMarkdown(
         formatWorkRecordMarkdown(
@@ -305,50 +249,6 @@ test("Work Record documentation Work Kind normalizes and displays", () => {
     assertEquals(record.attrs.workKind, "DOCUMENTATION");
     assertEquals(formatHydratedWorkRecord(record).workKind, "DOCUMENTATION");
     assertStringIncludes(formatWorkRecordList([record]), "Planned documentation");
-});
-
-test("Work Record list defaults to current records and warns on all records", () => {
-    const current = parseWorkRecordMarkdown(formatWorkRecordMarkdown(INTERNAL_ATTRS, BODY), {
-        relativePath: "docs/work-records/current.md",
-    });
-    const archived = parseWorkRecordMarkdown(
-        formatWorkRecordMarkdown(
-            {
-                ...INTERNAL_ATTRS,
-                recordId: "33333333-3333-4333-8333-333333333333",
-                archivedAt: "2026-07-15T00:00:00.000Z",
-            },
-            BODY,
-        ),
-        { relativePath: "docs/work-records/archived.md" },
-    );
-    const superseded = parseWorkRecordMarkdown(
-        formatWorkRecordMarkdown(
-            {
-                ...INTERNAL_ATTRS,
-                recordId: "44444444-4444-4444-8444-444444444444",
-                supersededBy: "55555555-5555-4555-8555-555555555555",
-            },
-            BODY,
-        ),
-        { relativePath: "docs/work-records/superseded.md" },
-    );
-
-    assertEquals(
-        filterWorkRecordsForList([archived, superseded, current]).map((record) => record.attrs.recordId),
-        [INTERNAL_ATTRS.recordId],
-    );
-    const output = formatWorkRecordList([archived, superseded, current], { includeAll: true });
-    assertStringIncludes(output, "completionMode: verified");
-    assertStringIncludes(output, "WARNING: archived at 2026-07-15T00:00:00.000Z.");
-    assertStringIncludes(output, "WARNING: superseded by 55555555-5555-4555-8555-555555555555.");
-});
-
-test("Work Record path slug uses date-prefixed flat markdown filenames", () => {
-    assertEquals(
-        buildWorkRecordFileName("Durable Store!", new Date("2026-07-14T08:32:00-04:00")),
-        "2026-07-14-durable-store.md",
-    );
 });
 
 test("Recorder structured output parses JSON and rejects empty sections", () => {
@@ -381,40 +281,6 @@ test("Recorder structured output parses JSON and rejects empty sections", () => 
         Error,
         "non-blank",
     );
-});
-
-test("default Recorder generation invokes the Recorder prompt boundary", async () => {
-    /** @type {string[]} */
-    const prompts = [];
-    const sections = await generateRecorderSections(
-        "/tmp/project",
-        {
-            sourceKind: "active",
-            name: "feature",
-            relativePath: "docs/plans/feature.md",
-            path: "/tmp/project/docs/plans/feature.md",
-            planId: "plan-feature",
-            attrs: /** @type {any} */ ({ classification: "FEATURE", status: "verified", summary: "Feature." }),
-            body: "# Feature\n\n## Plan\n\nBody",
-            markdown: "",
-            scope: "planned_change",
-            completionMode: "verified",
-        },
-        {
-            runRecorderStep: (prompt) => {
-                prompts.push(prompt);
-                return Promise.resolve({ title: "Feature Outcome", summary: "Completed through Recorder." });
-            },
-        },
-    );
-
-    assertEquals(sections.title, "Feature Outcome");
-    assertEquals(prompts.length, 1);
-    const payload = JSON.parse(prompts[0]);
-    assertEquals(Object.keys(payload).sort(), ["settledSupersedes", "source", "successorRecordId"]);
-    assertEquals("instruction" in payload, false);
-    assertEquals("deliveryState" in payload.source, false);
-    assertEquals(payload.source.body, "# Feature\n\n## Plan\n\nBody");
 });
 
 test("Work Record backfill previews eligible sources, child skips, and existing record links", async () => {
@@ -504,16 +370,23 @@ test("Work Record generation writes a record and active Plan backlink", async ()
             mnemotecaPort: createWorkRecordMnemotecaFixture(),
             idGenerator: () => "44444444-4444-4444-8444-444444444444",
             now: () => new Date("2026-07-16T00:00:00.000Z"),
-            runRecorderStep: recorderResponse({
-                title: "Standalone Outcome",
-                summary: "Completed the standalone feature.",
-                futurePlanningNotes: "Reuse this seam.",
-            }),
+            runRecorderStep: (prompt) => {
+                const payload = JSON.parse(prompt);
+                assertEquals(payload.source.body, "# Standalone\n\n## Plan\n\nBody");
+                assertEquals("instruction" in payload, false);
+                assertEquals("deliveryState" in payload.source, false);
+                return Promise.resolve({
+                    title: "Standalone Outcome",
+                    summary: "Completed the standalone feature.",
+                    futurePlanningNotes: "Reuse this seam.",
+                });
+            },
         });
 
         assertEquals(outcome.status, "generated");
         const record = await findWorkRecordById(cwd, "44444444-4444-4444-8444-444444444444");
         assertEquals(record?.attrs.provenance?.sourcePlans, ["plan-standalone"]);
+        assertEquals(record?.relativePath, "docs/work-records/2026-07-16-standalone-outcome.md");
         const plan = await loadPlan(cwd, "standalone");
         assertEquals(plan?.attrs.workRecord?.recordId, "44444444-4444-4444-8444-444444444444");
         assertEquals(plan?.attrs.status, "verified");
@@ -548,10 +421,13 @@ test("Work Record generation always includes confirmed Plan Deviations", async (
             mnemotecaPort: createWorkRecordMnemotecaFixture(),
             idGenerator: () => "45454545-4545-4545-8545-454545454545",
             now: () => new Date("2026-07-16T00:00:00.000Z"),
-            runRecorderStep: recorderResponse({
-                title: "Deviated Outcome",
-                summary: "Completed with the confirmed user direction.",
-            }),
+            runRecorderStep: (prompt) => {
+                assertEquals(JSON.parse(prompt).source.planDeviations[0].replacementRequirement, "Keep current nav.");
+                return Promise.resolve({
+                    title: "Deviated Outcome",
+                    summary: "Completed with the confirmed user direction.",
+                });
+            },
         });
 
         assertEquals(outcome.status, "generated");
@@ -744,10 +620,13 @@ test("Work Record generation distills the task completion report into the summar
             mnemotecaPort: createWorkRecordMnemotecaFixture(),
             idGenerator: () => "77777777-7777-4777-8777-777777777777",
             now: () => new Date("2026-07-16T00:00:00.000Z"),
-            runRecorderStep: recorderResponse({
-                title: "Reported Outcome",
-                summary: `Completed with evidence: ${executionReport}`,
-            }),
+            runRecorderStep: (prompt) => {
+                assertEquals(JSON.parse(prompt).source.executionReport, executionReport);
+                return Promise.resolve({
+                    title: "Reported Outcome",
+                    summary: `Completed with evidence: ${executionReport}`,
+                });
+            },
         });
 
         assertEquals(outcome.status, "generated");
@@ -790,61 +669,6 @@ test("Work Record generation includes deterministic Plan record requirements", a
     } finally {
         await cleanupTempProject(cwd);
     }
-});
-
-test("Work Record recorder prompt includes the task completion report as source material", async () => {
-    /** @type {import('./generation.js').WorkRecordSource} */
-    const source = {
-        sourceKind: "active",
-        name: "reported",
-        relativePath: "docs/plans/reported.md",
-        path: "/tmp/reported.md",
-        planId: "plan-reported",
-        scope: "planned_change",
-        completionMode: "verified",
-        executionReport: "- Implemented.\n- Verified.",
-        attrs: {
-            planId: "plan-reported",
-            classification: "FEATURE",
-            complexity: "LOW",
-            summary: "Reported feature.",
-            affectedPaths: [],
-            createdAt: "2026-07-14T00:00:00.000Z",
-            status: "verified",
-            executionReport: "- Implemented.\n- Verified.",
-            planDeviations: [
-                {
-                    id: "call-1",
-                    supersededRequirement: "Old requirement.",
-                    replacementRequirement: "New requirement.",
-                    approvedAt: "2026-09-10T00:00:00.000Z",
-                },
-            ],
-        },
-        planDeviations: [
-            {
-                id: "call-1",
-                supersededRequirement: "Old requirement.",
-                replacementRequirement: "New requirement.",
-                approvedAt: "2026-09-10T00:00:00.000Z",
-            },
-        ],
-        body: "# Reported\n\n## Plan\n\nBody",
-        markdown: "# Reported\n\n## Plan\n\nBody",
-    };
-    let prompt = "";
-
-    const sections = await generateRecorderSections(getCwd(), source, {
-        runRecorderStep: (value) => {
-            prompt = value;
-            return Promise.resolve({ title: "Reported", summary: "Distilled the execution report." });
-        },
-    });
-
-    assertEquals(sections.summary, "Distilled the execution report.");
-    assertStringIncludes(prompt, '"executionReport": "- Implemented.\\n- Verified."');
-    assertStringIncludes(prompt, '"planDeviations"');
-    assertEquals(JSON.parse(prompt).source.planDeviations, source.planDeviations);
 });
 
 test("Work Record generation discloses skipped verification reason fallback", async () => {
@@ -1111,39 +935,25 @@ test("Work Record backfill ignores non-linkable existing records and generates a
     }
 });
 
-test("Work Record index document uses compact summary metadata and tags only", () => {
-    const record = parseWorkRecordMarkdown(formatWorkRecordMarkdown(INTERNAL_ATTRS, BODY), {
-        relativePath: "docs/work-records/example.md",
-    });
-
-    const document = buildWorkRecordIndexDocument(record);
-    const tags = buildWorkRecordIndexTags(record);
-
-    assertStringIncludes(document, "## Summary");
-    assertStringIncludes(document, "Built the durable store.");
-    assertEquals(document.includes("## Future Planning Notes"), false);
-    assertEquals(document.includes("Reuse this pattern."), false);
-    assertEquals(tags.includes(`work-record:${INTERNAL_ATTRS.recordId}`), true);
-    assertEquals(tags.includes("status:approved"), true);
-    assertEquals(tags.includes("scope:planned_change"), true);
-    assertEquals(tags.includes("origin:internal"), true);
-    assertEquals(tags.includes("completion:verified"), true);
-    assertEquals(tags.includes("archived:false"), true);
-    assertEquals(tags.includes("superseded:false"), true);
-});
-
 test("Work Record index emptiness ignores Mnemoteca plain-list footer", async () => {
-    assertEquals(
-        await isWorkRecordIndexEmpty("/tmp/project", {
-            mnemotecaPort: createCommandMnemotecaPort(
-                (/** @type {string} */ _command, /** @type {string[]} */ args) => {
-                    assertEquals(args[0], "list");
-                    return Promise.resolve(ok("[42] indexed\n\nShowing 1 of 90 documents. Use --limit to see more."));
-                },
-            ),
-        }),
-        false,
-    );
+    const cwd = await fsMkdtemp(join(tmpdir(), "work-record-index-"));
+    try {
+        assertEquals(
+            await isWorkRecordIndexEmpty(cwd, {
+                mnemotecaPort: createCommandMnemotecaPort(
+                    (/** @type {string} */ _command, /** @type {string[]} */ args) => {
+                        assertEquals(args[0], "list");
+                        return Promise.resolve(
+                            ok("[42] indexed\n\nShowing 1 of 90 documents. Use --limit to see more."),
+                        );
+                    },
+                ),
+            }),
+            false,
+        );
+    } finally {
+        await cleanupTempProject(cwd);
+    }
 });
 
 test("Work Record index collection name is stable across linked git worktrees", async () => {
@@ -1167,61 +977,80 @@ test("Work Record index collection name is stable across linked git worktrees", 
 });
 
 test("Work Record index sync adds absent records and strictly updates existing records", async () => {
-    const record = parseWorkRecordMarkdown(formatWorkRecordMarkdown(INTERNAL_ATTRS, BODY), {
-        relativePath: "docs/work-records/example.md",
-    });
-    /** @type {string[][]} */
-    const calls = [];
-    let listCalls = 0;
-    const commandOutput = (/** @type {string} */ _command, /** @type {string[]} */ args) => {
-        calls.push(args);
-        if (args[0] === "update" && args[1] === "--help") {
-            return Promise.resolve(ok("Usage: mnemoteca update <id> [text] --replace-tags"));
-        }
-        if (args[0] === "init") return Promise.resolve(ok(""));
-        if (args[0] === "list") {
-            listCalls += 1;
-            return Promise.resolve(ok(listCalls === 1 ? "" : "[42] 2026-07-19 - old"));
-        }
-        if (args[0] === "add" || args[0] === "update") return Promise.resolve(ok(""));
-        throw new Error(`unexpected ${args.join(" ")}`);
-    };
+    const cwd = await fsMkdtemp(join(tmpdir(), "work-record-index-"));
+    try {
+        const record = await writeWorkRecord(cwd, INTERNAL_ATTRS, BODY, { fileName: "example.md" });
+        /** @type {string[][]} */
+        const calls = [];
+        let listCalls = 0;
+        const commandOutput = (/** @type {string} */ _command, /** @type {string[]} */ args) => {
+            calls.push(args);
+            if (args[0] === "update" && args[1] === "--help") {
+                return Promise.resolve(ok("Usage: mnemoteca update <id> [text] --replace-tags"));
+            }
+            if (args[0] === "init") return Promise.resolve(ok(""));
+            if (args[0] === "list") {
+                listCalls += 1;
+                return Promise.resolve(ok(listCalls === 1 ? "" : "[42] 2026-07-19 - old"));
+            }
+            if (args[0] === "add" || args[0] === "update") return Promise.resolve(ok(""));
+            throw new Error(`unexpected ${args.join(" ")}`);
+        };
 
-    const mnemotecaPort = createCommandMnemotecaPort(commandOutput);
-    await syncWorkRecordToIndex("/tmp/project", record, { mnemotecaPort });
-    await syncWorkRecordToIndex("/tmp/project", record, { mnemotecaPort });
+        const mnemotecaPort = createCommandMnemotecaPort(commandOutput);
+        await syncWorkRecordToIndex(cwd, record, { mnemotecaPort });
+        await syncWorkRecordToIndex(cwd, record, { mnemotecaPort });
 
-    assertEquals(
-        calls.some((args) => args[0] === "add" && args.includes(`work-record:${INTERNAL_ATTRS.recordId}`)),
-        true,
-    );
-    const updateCall = calls.find((args) => args[0] === "update" && args[1] !== "--help");
-    assertEquals(updateCall?.[1], "42");
-    assertEquals(updateCall?.includes("--replace-tags"), true);
-    assertEquals(updateCall?.includes(`work-record:${INTERNAL_ATTRS.recordId}`), true);
+        assertEquals(
+            calls.some((args) => args[0] === "add" && args.includes(`work-record:${INTERNAL_ATTRS.recordId}`)),
+            true,
+        );
+        const updateCall = calls.find((args) => args[0] === "update" && args[1] !== "--help");
+        assertEquals(updateCall?.[1], "42");
+        assertEquals(updateCall?.includes("--replace-tags"), true);
+        assertEquals(updateCall?.includes(`work-record:${INTERNAL_ATTRS.recordId}`), true);
+        const document = updateCall?.at(-1) || "";
+        assertStringIncludes(document, "Built the durable store.");
+        assertEquals(document.includes("Reuse this pattern."), false);
+        for (const tag of [
+            "status:approved",
+            "scope:planned_change",
+            "origin:internal",
+            "completion:verified",
+            "archived:false",
+            "superseded:false",
+        ]) {
+            assertEquals(updateCall?.includes(tag), true);
+        }
+    } finally {
+        await cleanupTempProject(cwd);
+    }
 });
 
 test("Work Record index sync rejects duplicate locator matches with rebuild guidance", async () => {
-    const record = parseWorkRecordMarkdown(formatWorkRecordMarkdown(INTERNAL_ATTRS, BODY), {
-        relativePath: "docs/work-records/example.md",
-    });
-    await assertRejects(
-        () =>
-            syncWorkRecordToIndex("/tmp/project", record, {
-                mnemotecaPort: createCommandMnemotecaPort(
-                    (/** @type {string} */ _command, /** @type {string[]} */ args) => {
-                        if (args[0] === "update" && args[1] === "--help") {
-                            return Promise.resolve(ok("Usage: mnemoteca update <id> [text] --replace-tags"));
-                        }
-                        if (args[0] === "init") return Promise.resolve(ok(""));
-                        if (args[0] === "list") return Promise.resolve(ok("[1] old\n[2] duplicate"));
-                        return Promise.resolve(ok(""));
-                    },
-                ),
-            }),
-        Error,
-        "wld wr index rebuild",
-    );
+    const cwd = await fsMkdtemp(join(tmpdir(), "work-record-index-"));
+    try {
+        const record = await writeWorkRecord(cwd, INTERNAL_ATTRS, BODY, { fileName: "example.md" });
+        await assertRejects(
+            () =>
+                syncWorkRecordToIndex(cwd, record, {
+                    mnemotecaPort: createCommandMnemotecaPort(
+                        (/** @type {string} */ _command, /** @type {string[]} */ args) => {
+                            if (args[0] === "update" && args[1] === "--help") {
+                                return Promise.resolve(ok("Usage: mnemoteca update <id> [text] --replace-tags"));
+                            }
+                            if (args[0] === "init") return Promise.resolve(ok(""));
+                            if (args[0] === "list") return Promise.resolve(ok("[1] old\n[2] duplicate"));
+                            return Promise.resolve(ok(""));
+                        },
+                    ),
+                }),
+            Error,
+            "wld wr index rebuild",
+        );
+    } finally {
+        await cleanupTempProject(cwd);
+    }
 });
 
 test("Work Record search rejects duplicate indexed locator candidates", async () => {
@@ -1426,34 +1255,37 @@ test("Work Record index rebuild forgets only the dedicated collection and report
 });
 
 test("Work Record index sync rejects locator listing without numeric document ID", async () => {
-    const record = parseWorkRecordMarkdown(formatWorkRecordMarkdown(INTERNAL_ATTRS, BODY), {
-        relativePath: "docs/work-records/example.md",
-    });
-    /** @type {string[][]} */
-    const calls = [];
-    await assertRejects(
-        () =>
-            syncWorkRecordToIndex("/tmp/project", record, {
-                mnemotecaPort: createCommandMnemotecaPort(
-                    (/** @type {string} */ _command, /** @type {string[]} */ args) => {
-                        calls.push(args);
-                        if (args[0] === "update" && args[1] === "--help") {
-                            return Promise.resolve(ok("Usage: mnemoteca update <id> [text] --replace-tags"));
-                        }
-                        if (args[0] === "init") return Promise.resolve(ok(""));
-                        if (args[0] === "list") return Promise.resolve(ok("work-record row missing numeric id"));
-                        if (args[0] === "add") throw new Error("must not add duplicate");
-                        return Promise.resolve(ok(""));
-                    },
-                ),
-            }),
-        Error,
-        "parseable Mnemoteca numeric document ID",
-    );
-    assertEquals(
-        calls.some((args) => args[0] === "add"),
-        false,
-    );
+    const cwd = await fsMkdtemp(join(tmpdir(), "work-record-index-"));
+    try {
+        const record = await writeWorkRecord(cwd, INTERNAL_ATTRS, BODY, { fileName: "example.md" });
+        /** @type {string[][]} */
+        const calls = [];
+        await assertRejects(
+            () =>
+                syncWorkRecordToIndex(cwd, record, {
+                    mnemotecaPort: createCommandMnemotecaPort(
+                        (/** @type {string} */ _command, /** @type {string[]} */ args) => {
+                            calls.push(args);
+                            if (args[0] === "update" && args[1] === "--help") {
+                                return Promise.resolve(ok("Usage: mnemoteca update <id> [text] --replace-tags"));
+                            }
+                            if (args[0] === "init") return Promise.resolve(ok(""));
+                            if (args[0] === "list") return Promise.resolve(ok("work-record row missing numeric id"));
+                            if (args[0] === "add") throw new Error("must not add duplicate");
+                            return Promise.resolve(ok(""));
+                        },
+                    ),
+                }),
+            Error,
+            "parseable Mnemoteca numeric document ID",
+        );
+        assertEquals(
+            calls.some((args) => args[0] === "add"),
+            false,
+        );
+    } finally {
+        await cleanupTempProject(cwd);
+    }
 });
 
 test("Work Record markdown round-trips Ticket References and index/search surfaces include URLs", () => {

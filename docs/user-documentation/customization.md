@@ -49,12 +49,57 @@ still required, even if it's empty (`---` on two lines).
 `promptOverride` applies only to the layers below the file that sets it. If `~/.wld/agents/guide.md` sets it and
 `.wld/agents/guide.md` doesn't, the project body is added after your personal one, and the bundled body is dropped.
 
+An Agent body can include a `## Compaction reminder` section. After compaction, RunWield includes that section beside
+the summary on model requests. The reminder comes from the current system prompt, so switching Agents replaces it;
+it is not saved into the summary or added periodically to user messages. The last section with that heading wins,
+through the next level-one or level-two heading. An empty section disables an inherited reminder. Replacing the
+prompt with `promptOverride: true` also removes lower-layer reminders.
+
 Some tools are **protected**: if the bundled Agent has one, a narrower tool list in an override gets it back anyway.
 They cover memory, code exploration (`code_*`), web access (`web_*`), and workflow tools such as `task_completed`,
 `plan_written`, and `user_interview`, which RunWield needs to move work forward.
 
 Model, thinking level, and temperature in an Agent file are defaults. [`agents`](settings.md#agents) and
 `defaultModel` in settings win over them, so use settings to pick models.
+
+### Codemode
+
+Bundled Agents running through Pi include `codemode` alongside their ordinary tools in TUI, Workspace, and ACP.
+A custom Agent opts in with `tools: [codemode, ...]`. A higher-layer tool list that omits `codemode` disables it;
+it is not protected. Delegated and isolated Agents keep their explicit tool ceilings and do not inherit root MCP
+connections. Claude and Antigravity CLI backends retain direct tools without advertising codemode. Connect keeps
+its external host's tool loop.
+
+Codemode runs JavaScript in Pi 1.5.0's QuickJS sandbox. It has no filesystem, network, Node APIs, or timers of its own.
+It can only call the Agent's authorized tools. Workflow decisions and interactive orchestration remain direct calls
+and cannot be batched inside a script. For example, an Agent with `read` can combine two files:
+
+```javascript
+const values = await Promise.all([tools.read({ path: "left.txt" }), tools.read({ path: "right.txt" })]);
+text(values.map(Number).reduce((a, b) => a + b, 0));
+```
+
+With `20` and `22` in those files, this emits `42`. Use `ALL_TOOLS`, `searchTools()`, and `describeTool()` for discovery.
+`text()` filters what reaches the model; `image()` preserves native image output. `store()` / `load()` retain small JSON
+values on the current Session branch only after successful scripts. Resume keeps them; a branch before the write does
+not. Failure preserves partial output and never rolls back completed tool effects.
+
+An optional first line sets a deadline and output budget:
+
+```javascript
+// @options: {"timeout_ms": 60000, "max_output_tokens": 2000}
+text(await tools.read({ path: "README.md" }));
+```
+
+The default output budget is 10,000 estimated tokens; excess output is truncated with a full-output file. Pi limits the
+sandbox heap to 256 MiB, output to 16,777,216 characters / 100,000 output calls, individual stored values to 262,144 JSON
+characters, and total stored values to 1,048,576. Two workers are admitted per process by default; excess calls queue
+for at most 60 seconds, including any script deadline. Cancelling a queued script never runs its tools. An exiting
+cancelled worker retains its slot until exit.
+
+`models` discovers and invokes configured classifier and image models, using RunWield's credentials. Each request's
+usage is recorded once against its actual model. Chat-model turns and recursive codemode calls are unavailable.
+See [presentation settings](settings.md#codemode) and [MCP tools](mcp.md).
 
 ### Front matter fields
 

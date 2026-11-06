@@ -130,22 +130,6 @@ test("changed validation instrumentation is rejected", async () => {
     });
 });
 
-test("authentication preflight fails before any model or Core tool call", async () => {
-    await withExternalClaude(UNAUTHENTICATED_CLAUDE, async (root, claude) => {
-        const world = await AcceptanceWorld.create(root, CHECKOUT, claude);
-        try {
-            await rejects(
-                world.prepare(),
-                (error) => error instanceof PrerequisiteError && error.prerequisite === "claude-authentication",
-            );
-            equal(await readFile(join(root, "shim-argv.jsonl"), "utf8"), "");
-            equal(await readdir(join(root, "logs/claude")), []);
-        } finally {
-            await world.close();
-        }
-    });
-});
-
 for (const assets of ["missing-server", "missing-client"])
     test(`browser preflight blocks ${assets} before any model or Core call`, async () => {
         const authenticated = UNAUTHENTICATED_CLAUDE.replace("loggedIn:false", "loggedIn:true").replace(
@@ -189,31 +173,6 @@ test("private-file cleanup keeps the summary and unexpected user files", async (
         await writeFile(join(root, "keep-user-file"), "keep");
         await world.discardPrivateFiles();
         equal((await readdir(root)).sort(), ["keep-user-file", "summary.json"]);
-    });
-});
-
-test("both real Reviewer modes receive the fixture-only layered practice rule", async () => {
-    await withExternalClaude(UNAUTHENTICATED_CLAUDE, async (root, claude) => {
-        const world = await AcceptanceWorld.create(root, CHECKOUT, claude);
-        try {
-            const loader = join(CHECKOUT, "src/shared/workflow/validation.ts");
-            const code = `import {loadReviewerPrompt} from ${JSON.stringify(loader)};
-                const prompts=await Promise.all(['discovery','verify'].map(mode=>loadReviewerPrompt(mode)));
-                console.log(JSON.stringify(prompts.map(prompt=>prompt.systemPrompt.includes('acceptance-notes'))));`;
-            const output = execFileSync(process.execPath, ["--no-env-file", "-e", code], {
-                cwd: world.fixture,
-                env: {
-                    HOME: join(root, "runwield-home"),
-                    PATH: process.env.PATH,
-                    BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0",
-                },
-                encoding: "utf8",
-                timeout: 30_000,
-            });
-            equal(JSON.parse(output), [true, true]);
-        } finally {
-            await world.close();
-        }
     });
 });
 

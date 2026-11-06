@@ -3,7 +3,7 @@ import { makeTempDirectory } from "../../../../testing/temp-file.ts";
 import { test } from "node:test";
 import { assertEquals } from "../../../../testing/assertions.ts";
 import { createReviewWorkspaceApp } from "../../server.js";
-import { registerReviewDecisionPromise, unregisterReviewDecision } from "./review-handlers.js";
+import { registerReviewDecisionPromise, unregisterReviewDecision } from "./review-handlers.ts";
 for (const action of ["post_comments", "approve_pr", "approve_commit", "request_changes", "arbitrary"]) {
     test(`review feedback validates ${action}`, async () => {
         const cwd = await makeTempDirectory();

@@ -1,24 +1,24 @@
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import {
-    buildAgentHandoffRequest,
+    buildPostTriageRequest,
     buildEngineerRequest,
     buildReAnchorMessage,
     buildSlicerRequest,
     buildTriageReport,
 } from "./workflow-prompts.ts";
 
-test("buildAgentHandoffRequest explicitly re-anchors the active specialist", () => {
-    const request = buildAgentHandoffRequest("Planner", "Continue the requested refactor.", {
+test("post-triage requests carry task facts without assigning an Agent role", () => {
+    const request = buildPostTriageRequest("Continue the requested refactor.", {
         routingIntent: "PLANNED_CHANGE",
         classification: "PLANNED_CHANGE",
         complexity: "MEDIUM",
         summary: "Plan the refactor.",
     });
 
-    assertStringIncludes(request, "## Active RunWield Agent");
-    assertStringIncludes(request, "You are now Planner.");
-    assertStringIncludes(request, "previous RunWield Agent");
+    assertEquals(request.includes("Active RunWield Agent"), false);
+    assertEquals(request.includes("You are now"), false);
+    assertEquals(request.includes("Planner"), false);
     assertStringIncludes(request, "## User Request\nContinue the requested refactor.");
     assertStringIncludes(request, "## Triage Report");
 });
@@ -51,6 +51,9 @@ test("buildSlicerRequest includes existing child order and dependencies", () => 
     assertStringIncludes(request, "  - Work Kind: DOCUMENTATION");
     assertStringIncludes(request, "  - Dependencies: 01-first");
     assertStringIncludes(request, "- Target branch: feature-base");
+    assertEquals(request.includes("You are resuming an interactive Slicer"), false);
+    assertEquals(request.includes("Follow the Slicer system prompt"), false);
+    assertEquals(request.includes("Do not finalize or write child files"), false);
 });
 
 test("approval annotations are included in Engineer and Slicer handoffs", () => {
@@ -259,11 +262,11 @@ test("buildReAnchorMessage returns null for agents with no durable artifact", ()
 });
 
 test("buildReAnchorMessage returns null when no Plan pointer survived", () => {
-    assertEquals(buildReAnchorMessage({ agentName: "engineer" }), null);
-    assertEquals(buildReAnchorMessage({ agentName: "engineer", planName: "   " }), null);
+    assertEquals(buildReAnchorMessage({ agentName: "plan-engineer" }), null);
+    assertEquals(buildReAnchorMessage({ agentName: "plan-engineer", planName: "   " }), null);
     assertEquals(buildReAnchorMessage(), null);
 });
 
 test("buildReAnchorMessage refuses an execution re-anchor without a projected body", () => {
-    assertEquals(buildReAnchorMessage({ agentName: "engineer", planName: "some-plan" }), null);
+    assertEquals(buildReAnchorMessage({ agentName: "plan-engineer", planName: "some-plan" }), null);
 });

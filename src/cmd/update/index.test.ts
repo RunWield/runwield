@@ -18,7 +18,7 @@ import process, { platform } from "node:process";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import { VERSION } from "../../shared/version.js";
-import { parseRunWieldReleaseVersion } from "../../shared/update-check.js";
+import { parseRunWieldReleaseVersion } from "../../shared/update-check.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { type InstallerProcessPort, type ProcessExitPort, runUpdateCommand, type UpdateNetworkPort } from "./index.ts";
 
@@ -193,10 +193,12 @@ test(
 test("update rejects arguments through the real usage formatter before external work", async () => {
     await withProcessGlobalTestLock(async () => {
         const exits = createExitFixture();
+        const network = createNetworkFixture(makeJsonResponse({ tag_name: "v999.0.0" }));
+        const installer = createInstallerFixture();
         const output = await captureConsole(() =>
             runUpdateCommand(["extra"], {
-                networkPort: createNetworkFixture(makeJsonResponse({ tag_name: "v999.0.0" })).port,
-                installerPort: createInstallerFixture().port,
+                networkPort: network.port,
+                installerPort: installer.port,
                 exitPort: exits.port,
             }),
         );
@@ -205,6 +207,8 @@ test("update rejects arguments through the real usage formatter before external 
             "Usage: wld update [--rc | --to <tag>] [--downgrade] [--yes]\n       wld upgrade [--rc | --to <tag>] [--downgrade] [--yes]",
         ]);
         assertEquals(exits.codes, [1]);
+        assertEquals(network.urls, []);
+        assertEquals(installer.invocations, []);
     });
 });
 

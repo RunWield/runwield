@@ -15,7 +15,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { join } from "node:path";
 import { __resetSettingsForTests, getSettingsDir, getSettingsManager } from "../../shared/settings.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { DEFAULT_THEME_NAME, getAvailableThemes, initRunWieldTheme, setTheme, theme } from "../../ui/theme/theme.ts";
+import { DEFAULT_THEME_NAME, getAvailableThemes, initRunWieldTheme, theme } from "../../ui/theme/theme.ts";
 import { runThemeCommand } from "./index.ts";
 
 const FIXTURE_THEME_NAME = "fixture-command-theme";
@@ -156,7 +156,8 @@ test("runThemeCommand switches to and persists a real installed theme", async ()
         assertEquals(output.errors, []);
         assertEquals(output.logs, [`Theme switched to ${FIXTURE_THEME_NAME}`]);
         assertEquals(getSettingsManager(projectRoot).getTheme(), FIXTURE_THEME_NAME);
-        assertEquals(setTheme(FIXTURE_THEME_NAME).success, true);
+        const colored = theme.fg("accent", "fixture");
+        assert(colored.includes("\u001b[38;2;171;205;239mfixture") || colored.includes("\u001b[38;5;153mfixture"));
         assertEquals(process.exitCode, 0);
     });
 });

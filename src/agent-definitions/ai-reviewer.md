@@ -7,6 +7,7 @@ workflowOnly: true
 sharedPractice:
     - user-authority
 tools:
+    - codemode
     - read
     - grep
     - find

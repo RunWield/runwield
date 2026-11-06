@@ -1,6 +1,6 @@
 /** Agent Custom Tool for canonical Work Record search. */
 
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import { formatWorkRecordSearchResults, searchWorkRecords } from "../shared/work-records/index.ts";
@@ -8,9 +8,12 @@ import type { WorkRecordMnemotecaPort } from "../shared/work-records/mnemoteca-p
 
 export const WORK_RECORD_SEARCH_TOOL_NAME = "work_record_search";
 
-const PARAMETERS = Type.Object({
-    query: Type.String({ minLength: 1, description: "Work Record search query." }),
-}, { additionalProperties: false });
+const PARAMETERS = Type.Object(
+    {
+        query: Type.String({ minLength: 1, description: "Work Record search query." }),
+    },
+    { additionalProperties: false },
+);
 
 interface WorkRecordSearchToolOptions {
     cwd: string;

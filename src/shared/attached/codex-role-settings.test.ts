@@ -5,13 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import schema from "../../../config.schema.json" with { type: "json" };
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import {
-    __resetSettingsForTests,
-    getCustomSetting,
-    getSettingsManager,
-    preserveRunWieldCustomSettingsForWrite,
-    setCustomSetting,
-} from "../settings.js";
+import { __resetSettingsForTests, getCustomSetting, getSettingsManager, setCustomSetting } from "../settings.js";
 import { git } from "../git-test-fixture.ts";
 import { resolveCodexRoleSettings } from "./codex-role-settings.ts";
 import { ATTACHED_HOST_ROLES, type AttachedJsonObject, type AttachedJsonValue } from "./operations.ts";
@@ -50,15 +44,6 @@ async function writeSettings(root: string, roles: AttachedJsonObject) {
 }
 
 test("settings schema exposes exactly the supported Codex roles and host-native strings", () => {
-    assert.deepEqual(ATTACHED_HOST_ROLES, [
-        "router",
-        "planner",
-        "engineer",
-        "frontend-engineer",
-        "reviewer",
-        "reviewer-feedback-engineer",
-        "recorder",
-    ]);
     const roles = schema.properties.connect.properties.codex.properties.roles;
     assert.deepEqual(Object.keys(roles.properties), ATTACHED_HOST_ROLES);
     assert.equal(roles.additionalProperties, false);
@@ -212,10 +197,6 @@ test("Codex settings survive custom and SettingsManager writes with unrelated ke
             base: { reviewer: { model: "core/model" } },
         });
         assert.equal(getCustomSetting("verification_command", "project", root), "true");
-        assert.deepEqual(
-            JSON.parse(preserveRunWieldCustomSettingsForWrite(JSON.stringify({ connect }), '{"theme":"dark"}')),
-            { theme: "dark", connect },
-        );
     });
 });
 

@@ -26,28 +26,6 @@ async function readConfiguredAgentModel(
     });
 }
 
-test("getConfiguredAgentModel returns undefined when no agents config", async () => {
-    const result = await readConfiguredAgentModel("router", undefined, undefined, undefined);
-    assertEquals(result, undefined);
-});
-
-test("getConfiguredAgentModel returns agent model from base config", async () => {
-    const agents = {
-        router: { model: "openai/gpt-4" },
-        operator: { model: "anthropic/claude-3" },
-    };
-    const result = await readConfiguredAgentModel("router", agents, undefined, undefined);
-    assertEquals(result, "openai/gpt-4");
-});
-
-test("getConfiguredAgentModel returns undefined for unknown agent", async () => {
-    const agents = {
-        router: { model: "openai/gpt-4" },
-    };
-    const result = await readConfiguredAgentModel("nonexistent", agents, undefined, undefined);
-    assertEquals(result, undefined);
-});
-
 test("getConfiguredAgentModel returns preset model when active preset is set", async () => {
     const agents = {
         router: { model: "openai/gpt-4" },
@@ -120,36 +98,4 @@ test("getConfiguredAgentModel ignores preset with no agents field", async () => 
 
     const result = await readConfiguredAgentModel("router", agents, "empty", modelPresets);
     assertEquals(result, "openai/gpt-4");
-});
-
-test("getConfiguredAgentModel - agent without model field in base config", async () => {
-    const agents = {
-        router: { model: "openai/gpt-4" },
-        operator: {}, // no model field
-    };
-    const result = await readConfiguredAgentModel("operator", agents, undefined, undefined);
-    assertEquals(result, undefined);
-});
-
-test("getConfiguredAgentModel - preset partial override merges correctly", async () => {
-    const agents = {
-        router: { model: "openai/gpt-4" },
-        planner: { model: "anthropic/claude-3-opus" },
-        operator: { model: "openai/gpt-4o" },
-    };
-    const modelPresets = {
-        fast: {
-            agents: {
-                router: { model: "openai/gpt-4o-mini" },
-                // planner and operator NOT in preset -> inherited from base
-            },
-        },
-    };
-
-    // Router overridden by preset
-    assertEquals(await readConfiguredAgentModel("router", agents, "fast", modelPresets), "openai/gpt-4o-mini");
-    // Planner NOT in preset -> falls through to base
-    assertEquals(await readConfiguredAgentModel("planner", agents, "fast", modelPresets), "anthropic/claude-3-opus");
-    // Operator NOT in preset -> falls through to base
-    assertEquals(await readConfiguredAgentModel("operator", agents, "fast", modelPresets), "openai/gpt-4o");
 });

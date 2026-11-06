@@ -8,7 +8,7 @@ import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
 import { archivePlan, ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.js";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
-import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";
+import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 
 const gitFixture = defineCommittedGitFixture();

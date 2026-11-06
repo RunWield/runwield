@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.js";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
-import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "../work-records/markdown.js";
+import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "../work-records/markdown.ts";
 import { readPublishedRecordMarkdown } from "../work-records/published-source.ts";
 import { syncWorkRecordToIndex } from "../work-records/index-adapter.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";

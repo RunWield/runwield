@@ -3,8 +3,8 @@ import {
     PLAN_FRONT_MATTER_KEYS as FM,
 } from "../../../plan-front-matter.ts";
 import { safeHttpTicketReferenceUrl } from "../../../shared/ticket-references.ts";
-import { PlanBodyEditor } from "../islands/PlanBodyEditor.jsx";
-import { PlanLifecycleActions } from "../islands/PlanLifecycleActions.jsx";
+import { PlanBodyEditor } from "../islands/PlanBodyEditor.tsx";
+import { PlanLifecycleActions } from "../islands/PlanLifecycleActions.tsx";
 import { BoardColumn } from "./BoardColumn.tsx";
 import { MarkdownView } from "./MarkdownView.tsx";
 import { ComplexityLabel, workspaceHref } from "./PlanCard.tsx";

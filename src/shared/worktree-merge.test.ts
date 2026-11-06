@@ -86,51 +86,6 @@ test("mergeExecutionWorktree targets recorded branch without changing primary ch
     }
 });
 
-test("mergeExecutionWorktree refuses to update target branch checked out in another worktree", async () => {
-    const projectRoot = await makeRepo();
-    const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    const targetCheckout = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    let worktree: TestWorktreeAttempt | undefined;
-    try {
-        await git(projectRoot, ["checkout", "-b", "feature-base"]);
-        worktree = await createTestWorktreeAttempt({
-            projectRoot,
-            planName: "Checked Out Target",
-            worktreeRoot,
-        });
-        await git(projectRoot, ["checkout", "main"]);
-        await git(projectRoot, ["worktree", "add", targetCheckout, "feature-base"]);
-        const worktreePath = worktree.path;
-        const worktreeBranch = worktree.branch;
-        await fsWriteFile(`${worktreePath}/feature.txt`, "feature\n");
-
-        await assertRejects(
-            () =>
-                mergeExecutionWorktree({
-                    projectRoot,
-                    branch: worktreeBranch,
-                    targetBranch: "feature-base",
-                    worktreePath,
-                }),
-            Error,
-            "Target branch feature-base is checked out",
-        );
-        await assertRejects(() => git(projectRoot, ["show", "feature-base:feature.txt"]), Error);
-    } finally {
-        await git(projectRoot, ["worktree", "remove", "--force", targetCheckout]).catch(() => {});
-        if (worktree) {
-            await removeWorktreeGitArtifacts({
-                projectRoot,
-                path: worktree.path,
-                force: true,
-            });
-        }
-        await fsRm(projectRoot, { recursive: true });
-        await fsRm(worktreeRoot, { recursive: true }).catch(() => {});
-        await fsRm(targetCheckout, { recursive: true }).catch(() => {});
-    }
-});
-
 test("mergeExecutionWorktree refuses checked-out target before mutating execution branch", async () => {
     const projectRoot = await makeRepo();
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
@@ -155,6 +110,7 @@ test("mergeExecutionWorktree refuses checked-out target before mutating executio
         await git(worktree.path, ["add", "docs/plans/demo.md"]);
         await git(worktree.path, ["commit", "-m", "execution plan metadata"]);
         const beforeExecutionHead = await git(projectRoot, ["rev-parse", worktree.branch]);
+        const targetHead = await git(projectRoot, ["rev-parse", "feature-base"]);
 
         await assertRejects(
             () =>
@@ -169,6 +125,7 @@ test("mergeExecutionWorktree refuses checked-out target before mutating executio
         );
 
         assertEquals(await git(projectRoot, ["rev-parse", worktree.branch]), beforeExecutionHead);
+        assertEquals(await git(projectRoot, ["rev-parse", "feature-base"]), targetHead);
         assertEquals(await git(projectRoot, ["show", `${worktree.branch}:docs/plans/demo.md`]), "execution");
     } finally {
         await git(projectRoot, ["worktree", "remove", "--force", targetCheckout]).catch(() => {});
@@ -899,7 +856,10 @@ test("removeWorktreeGitArtifacts preserves unexpected dirty work unless force is
             Error,
         );
 
-        assertEquals((await fsStat(`${worktree.path}/valuable-repair.js`)).isFile(), true);
+        assertEquals(
+            await fsReadFile(`${worktree.path}/valuable-repair.js`, "utf8"),
+            "export const repaired = true;\n",
+        );
         assertEquals((await git(projectRoot, ["show-ref", "--verify", `refs/heads/${worktree.branch}`])) !== "", true);
     } finally {
         if (worktree) {

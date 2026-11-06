@@ -14,7 +14,9 @@ test("Session-free validation returns command_missing without prompting or start
             const result = await runValidationCommand({
                 cwd,
                 settingsPolicy,
-                onCommandStart: () => starts++,
+                onCommandStart: () => {
+                    starts++;
+                },
             });
             assertEquals(result, { kind: "command_missing" });
         }
@@ -35,7 +37,9 @@ test("Session-free validation saves an answer and runs it with ordinary or exact
             const result = await runValidationCommand({
                 cwd,
                 settingsPolicy,
-                onCommandStart: (command) => commands.push(command),
+                onCommandStart: (command) => {
+                    commands.push(command);
+                },
             });
             assertEquals(commands, ["printf ci-failed; exit 7"]);
             assertEquals(result.kind, "completed");
@@ -67,10 +71,43 @@ test("Session-free validation does not start a command with an aborted signal", 
         const result = await runValidationCommand({
             cwd,
             signal: controller.signal,
-            onCommandStart: () => starts++,
+            onCommandStart: () => {
+                starts++;
+            },
         });
         assertEquals(result, { kind: "canceled", output: "Validation canceled." });
         assertEquals(starts, 0);
+        assertEquals(await fsStat(join(cwd, "should-not-run")).catch(() => null), null);
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+test("CI awaits candidate capture and honors cancellation during capture", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-validation-candidate-"));
+    try {
+        await saveValidationCommand(cwd, "test -f candidate-captured; exit $?");
+        const captured = await runValidationCommand({
+            cwd,
+            onCommandStart: async () => {
+                await new Promise((resolve) => setTimeout(resolve, 10));
+                await fsWriteFile(join(cwd, "candidate-captured"), "captured");
+            },
+        });
+        assertEquals(captured.kind, "completed");
+        if (captured.kind !== "completed") throw new Error("Validation must complete.");
+        assertEquals(captured.exitCode, 0);
+        await saveValidationCommand(cwd, "touch should-not-run");
+        const controller = new AbortController();
+        const canceled = await runValidationCommand({
+            cwd,
+            signal: controller.signal,
+            onCommandStart: async () => {
+                await new Promise((resolve) => setTimeout(resolve, 10));
+                controller.abort();
+            },
+        });
+        assertEquals(canceled.kind, "canceled");
         assertEquals(await fsStat(join(cwd, "should-not-run")).catch(() => null), null);
     } finally {
         await fsRm(cwd, { recursive: true });
