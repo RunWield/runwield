@@ -1,7 +1,7 @@
 # Plan Lifecycle
 
 Plan status is the durable state machine for saved Plans. Workflow code records facts as Plan Events, and the Plan
-Lifecycle decides the next status and front matter updates.
+Lifecycle decides the next status and metadata updates.
 
 The [Core completion requirement](prd/runwield-core-prd.md#execution-validation-and-recovery) distinguishes workflow
 conclusions from implementation statuses: delivery ends only after confirmed publication or deliberate user abandonment.
@@ -14,7 +14,7 @@ path meets this requirement.
 
 The owning product requirements are
 [Plan authoring and external adoption](prd/runwield-core-prd.md#plan-authoring-and-external-adoption). RunWield owns
-front matter; the user owns the body and can edit it at any time with any tool. The body does not need to parse as
+legacy front matter; the user owns the body and can edit it at any time with any tool. The body does not need to parse as
 RunWield data.
 
 - Metadata lifecycle decisions compare `getPlanFrontMatterRevisionForText()` / the loaded `frontMatterRevision`, not
@@ -39,6 +39,35 @@ supplies applicable defaults.
 
 Adoption is idempotent. Existing front matter is not reinitialized; identity can be ensured without resetting lifecycle
 decisions or age. Recheck under the lock so concurrent adoption cannot replace an identity already established.
+
+## Explicit internal package lifecycle
+
+`PackageWorkflowSelection` supplies an established personal Project identity, Plan ID and expected package revision to
+shared preparation/location, review or execution. Admission checks the launch owner and repository. No name, path,
+package presence or public discovery default selects this source. `resolvePlanWithPrimaryRecovery` accepts the same
+internal selection; its legacy route remains unchanged.
+
+The selected home `context.md` is raw user text, including text resembling YAML. Metadata adapts into existing Plan
+attributes in memory, without synthesized front matter or an execution copy. Complete document manifests and required
+parent inputs are retained at review/readiness and frozen for dispatch. Content, membership and execution-policy changes
+invalidate old evidence; formatting-only review may preserve approval while capturing new exact bytes. Controller-only
+timestamps and unrelated sibling edits do not stale the child's content. Families and artifacts use package IDs/current
+documents rather than directory ancestry or published sibling Markdown.
+
+Scalar controller state and definition/status commit together in `plan.wld.json`. Its typed references select immutable
+complex controller/checkpoint records, including generations, open issues and repair receipts. Native locks order
+catalog, sorted Plan IDs, stable repository/attempt resources and the final registry mutation; nested metadata writes
+reuse the held package locks. The owner-wide attempt reference is reserved before Git effects, and its repository
+registry reserves the exact worktree/branch/context before creation. Restart retries that binding and setup receipts.
+Plan-only journals live beside packages; Git-effect journals retain their recorded execution owner. Compensation changes
+only owned metadata and preserves all current editor bytes.
+
+An unfinished imported legacy attempt returns its original continuation after live registry/controller/authority checks.
+It cannot acquire a second package attempt. Code execution still uses an isolated worktree, implementation commits and
+checkpoints. A missing code checkout leaves the home documents readable; it does not prove code recovery or completion.
+The internal slice stops validation/publication with a paused result retaining the attempt/input. It emits no final
+receipt, delivery copy or `verified` status. Package publication and ordinary CLI/TUI/Workspace/Connect activation remain
+separate work; the following checkout rules apply to legacy selection.
 
 ## Passive reads and action preparation
 
@@ -72,12 +101,12 @@ before new success or cleanup, as required by [ADR-016](adr/016-proof-bearing-pu
 
 ## State ownership
 
-Before execution starts, Plan lifecycle metadata is canonical in the target project's Plan file. Once RunWield activates
+For legacy selection, before execution starts, Plan lifecycle metadata is canonical in the target project's Plan file. Once RunWield activates
 an execution worktree, that worktree's Plan file is authoritative for the attempt through execution, recovery,
 validation, and publication. The corresponding file in the user's checkout may remain behind and must never be used to
 move the active attempt backward. Plan Markdown stores the definition, lifecycle status, and human-facing history. The
 controller stores execution mode, validation checkpoints and counters, review decisions, and delivery proof in
-`.wld/internal/controller/plans/<planId>.json`. The worktree registry owns attempt identity, path, branch, baseline, and
+the home runtime controller directory selected by the shared layout owner (ADR-017). The worktree registry owns attempt identity, path, branch, baseline, and
 publication state. These facts are not copied into Plan Front Matter and are never compared against obsolete copies
 there.
 

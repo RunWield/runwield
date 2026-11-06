@@ -1,4 +1,11 @@
 // @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
+import {
+    currentPackageSelection,
+    withPackageWorkflow,
+    withPackageExecutionJournal,
+    assertPackageWorkflowInput,
+} from "./package-workflow.ts";
+import { readPlanPackage } from "../plan-package-store.ts";
 import { getPlanRevisionForText, loadPlan } from "../../plan-store.js";
 import { checkpointExecutionWorktree } from "../worktree.js";
 import { acknowledgeTaskCompletion, claimPendingTaskCompletion } from "../session/task-completion-session.ts";
@@ -29,6 +36,18 @@ interface FinalizePlanImplementationOptions {
  */
 export async function finalizePlanImplementation(options: FinalizePlanImplementationOptions) {
     const { executionContext, projectRoot, planName } = options;
+    if (executionContext?.packageSelection && !currentPackageSelection()) {
+        const selection = executionContext.packageSelection;
+        const current = await readPlanPackage(selection.identity, { planId: selection.planId });
+        if (current.kind !== "loaded") throw new Error(current.message);
+        if (current.metadata.workflow?.attempt?.attemptId !== executionContext.worktreeId)
+            throw new Error("Implementation attempt binding changed.");
+        return await withPackageWorkflow(
+            projectRoot,
+            { ...selection, expectedRevision: current.metadata.revision },
+            () => withPackageExecutionJournal(() => finalizePlanImplementation(options)),
+        );
+    }
     if (!executionContext) {
         throw new Error(`Cannot complete ${planName}: durable execution context is missing.`);
     }
@@ -94,6 +113,10 @@ async function finalizeLockedImplementation({
                 currentPlan.attrs.planId || "missing"
             }, expected ${expectedPlanId}.`,
         );
+    }
+    if (currentPackageSelection()) {
+        if (!executionContext.packageInput) throw new Error("Implementation retained input is missing.");
+        await assertPackageWorkflowInput(planName, executionContext.packageInput);
     }
     const planStatus = currentPlan?.attrs?.status;
     // Attached binds completion to the issued document. Check under the same

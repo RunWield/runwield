@@ -13,7 +13,8 @@ leave project `.wld/` for configuration and overrides.
 
 Stable Project identity is separate from repository and checkout identity. Linked worktrees share repository-owned
 resources; explicitly linked clones share Project identity while retaining separate Git refs and execution attempts.
-Legacy Plan Markdown and front matter remain authoritative until the separate Plan-package adoption.
+Legacy Plan Markdown and front matter remain authoritative for ordinary public selection and unfinished imported
+attempts. Explicit internal package selection uses the separate personal Plan authority described below.
 
 Passive inspection must not admit identity, migrate files, probe writer locks, or reconcile old data. Deliberate
 entry owns those effects. An interrupted transfer must preserve unfinished Git work and the publication proof defined
@@ -42,8 +43,23 @@ managed transport and Plan Store proposal remains in
 
 The shared layout owner resolves these paths from stable identity. Resolving a path grants no read or write authority.
 Registry, controller, sharing, indexing, transition, and diagnostic callers use the shared boundary. Canonical Plans
-and Work Records retain their existing repository locations. Normal worktrees already under `~/.wld/worktrees/` keep
+retain repository locations for legacy selection; Work Records retain their existing locations. Normal worktrees already under `~/.wld/worktrees/` keep
 their locations. Missing home access is an actionable prerequisite; it never creates a checkout fallback.
+
+### Explicit package lifecycle authority
+
+An admitted ordinary personal package keeps its live documents and scalar definition/controller metadata in
+`plans/<name>/`, keyed by Plan ID. Immutable complex controller records and retained input manifests live under
+`internal/plan-packages/`; metadata holds their typed references. A live checkout projection would reintroduce the
+competing authorities this boundary removes, so code worktrees do not receive package Plan files.
+
+The personal package owns the one unfinished-attempt binding across linked clones. Its repository ID and exact attempt
+ID identify the registry that owns Git state; a caller's cwd cannot relocate that ownership. Plan-only transition
+journals stay with the personal store, while Git-effect journals stay with the bound execution repository. Admission
+precedes catalog, sorted Plan-ID, repository/attempt and registry locks. Native ownership, rather than a timed lease,
+protects live writers. Recovery reuses recorded inputs and compensates owned metadata without replacing editor work.
+Unfinished imported legacy attempts retain their original controller and publication owner through settlement.
+Public activation, package delivery copies and package publication are separate boundaries.
 
 ### Recoverable transfer
 

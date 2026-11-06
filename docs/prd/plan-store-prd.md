@@ -22,10 +22,13 @@ hashes and metadata revisions, ID-based relationships, rename/archive/restore, n
 publication, and durable retained inputs. The [Core authoring requirements](runwield-core-prd.md#plan-authoring-and-external-adoption)
 and [recovery requirements](runwield-core-prd.md#execution-validation-and-recovery) own this preparatory contract.
 
-Public Plan discovery, lifecycle and Epic workflows continue using repository Markdown. These operations do not import
-existing Plans or create a second writable representation of an admitted Plan. Import, lifecycle binding, public
-activation, managed-remote ownership transport, repository publication, Work Records, milestone history and retention
-remain target journeys below. A captured input is persistence evidence, not approval or delivery evidence.
+Explicit internal lifecycle selection now connects home packages to existing review, readiness, Sequence, execution and
+checkpoint/recovery rules. The [Core lifecycle requirements](runwield-core-prd.md#plan-lifecycle) own this bounded path.
+Complete required inputs and one owner-wide unfinished-attempt binding survive restart; an imported unfinished legacy
+attempt retains its original owner. Package validation/publication pauses with that continuation rather than producing
+a final receipt. Ordinary public discovery and activation still select repository Plans. Managed-remote transport,
+package publication/delivery copies, Work Records and milestone retention remain target journeys below. A captured input
+alone is persistence evidence, not approval or delivery evidence.
 
 ## Problem Description
 
@@ -168,7 +171,8 @@ change that delivers the behavior.
 
 ### Plan store
 
-**Scope and maturity:** Target. Changes
+**Scope and maturity:** Internal package persistence and explicitly selected lifecycle through implementation/checkpoint
+recovery are current. Ordinary public activation and package publication remain target. Changes
 [Plan authoring and external adoption](runwield-core-prd.md#plan-authoring-and-external-adoption) and every capability
 that reads Plans from a checkout.
 

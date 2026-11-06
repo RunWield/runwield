@@ -1,3 +1,4 @@
+import { currentPackageSelection } from "./package-workflow.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
 import { captureForegroundProcess } from "../captured-process.ts";
@@ -118,6 +119,7 @@ export async function prepareEditedSiblingPlans(
     planName: string,
     planRelativePath: string,
 ): Promise<string[]> {
+    if (currentPackageSelection()) return [];
     const plan = await loadPlan(worktreePath, planName);
     const epicPlanName = typeof plan?.attrs.parentPlan === "string" ? plan.attrs.parentPlan.trim() : "";
     if (!epicPlanName) return [];

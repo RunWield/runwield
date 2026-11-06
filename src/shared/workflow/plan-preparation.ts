@@ -1,3 +1,12 @@
+import { enterProjectRuntime } from "../project-runtime-layout.ts";
+import { healSettledTransitionRecords } from "./transition-recovery.ts";
+import {
+    LegacyPackageContinuation,
+    packageWorkflowLocks,
+    currentPackageSelection,
+    withPackageWorkflow,
+    type PackageWorkflowSelection,
+} from "./package-workflow.ts";
 /** Action-owned runtime preparation. Passive lookups must not call this module. */
 import {
     ensurePlanIdentity,
@@ -44,7 +53,39 @@ export async function preparePlanController(projectRoot: string, planName: strin
 }
 
 /** Prepare controller authority, then select the actionable document. */
-export async function preparePlanWorkflow(projectRoot: string, planName: string) {
+export async function preparePlanWorkflow(
+    projectRoot: string,
+    planName: string,
+    packageSelection?: PackageWorkflowSelection,
+) {
+    if (packageSelection) {
+        try {
+            return await withPackageWorkflow(
+                projectRoot,
+                packageSelection,
+                () => preparePlanWorkflowInScope(projectRoot, planName),
+                planName,
+            );
+        } catch (error) {
+            if (!(error instanceof LegacyPackageContinuation)) throw error;
+            return {
+                ...(await preparePlanWorkflowInScope(error.repositoryRoot, error.planName)),
+                legacyContinuation: { repositoryRoot: error.repositoryRoot, attemptId: error.attemptId },
+            };
+        }
+    }
+    return await preparePlanWorkflowInScope(projectRoot, planName);
+}
+async function preparePlanWorkflowInScope(projectRoot: string, planName: string) {
+    if (currentPackageSelection()) {
+        await enterProjectRuntime(projectRoot);
+        const recovery = await packageWorkflowLocks([planName], () =>
+            healSettledTransitionRecords(projectRoot, { planName }),
+        );
+        const pending = recovery.remaining[0];
+        if (pending) throw new Error(`Package transition needs current evidence: ${pending.reason}`);
+        return await resolveWorkflowPlanLocation(projectRoot, planName, { readOnly: true });
+    }
     await preparePlanController(projectRoot, planName);
     let location = await resolveWorkflowPlanLocation(projectRoot, planName, { readOnly: true });
     if (

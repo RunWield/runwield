@@ -1,3 +1,14 @@
+import {
+    currentPackageSelection,
+    selectedPackage,
+    withPackageWorkflow,
+    loadPackageWorkflowPlan,
+    assertPackageWorkflowInput,
+    capturePackageWorkflowInput,
+    updatePackageWorkflowMetadata,
+    type PackageWorkflowSelection,
+} from "./package-workflow.ts";
+import { savePlanPackageDocument, type PackageWorkflowInput } from "../plan-package-store.ts";
 import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { resolvePlanQuestions, type PlanQuestionAnswer } from "../plan-questions.ts";
 import { projectPlanType } from "../project-plan.ts";
@@ -44,6 +55,8 @@ export interface SharedPlanReviewEvidence {
 }
 
 export interface SharedPlanReviewActionOptions {
+    packageSelection?: PackageWorkflowSelection;
+    packageInput?: PackageWorkflowInput;
     cwd: string;
     planName: string;
     planPath: string;
@@ -166,7 +179,20 @@ async function validateReviewEvidence(
     return null;
 }
 
-export async function applySharedPlanReviewDecision({
+export async function applySharedPlanReviewDecision(
+    options: SharedPlanReviewActionOptions,
+): Promise<SharedPlanReviewActionResult> {
+    if (options.packageSelection)
+        return await withPackageWorkflow(
+            options.cwd,
+            options.packageSelection,
+            () => applySharedPlanReviewDecisionInScope(options),
+            options.planName,
+        );
+    return await applySharedPlanReviewDecisionInScope(options);
+}
+async function applySharedPlanReviewDecisionInScope({
+    packageInput,
     cwd,
     planName,
     planPath,
@@ -227,6 +253,75 @@ export async function applySharedPlanReviewDecision({
     }
     const evidenceIssue = await validateReviewEvidence(cwd, planName, reviewEvidence);
     if (evidenceIssue) return evidenceIssue;
+
+    if (currentPackageSelection()) {
+        if (!packageInput) return reviewRejected("Package review requires the complete retained input.");
+        const transition = await runPlanReviewDecisionTransition({
+            projectRoot: cwd,
+            planName,
+            approved,
+            decide: async ({ beforePlan }) => {
+                if (!beforePlan || beforePlan.attrs.status !== originalAttrs.status)
+                    throw new Error("Plan Status changed after review opened.");
+                await assertPackageWorkflowInput(
+                    planName,
+                    packageInput,
+                    (left, right) =>
+                        reviewMarkdown.parse(left, { async: false }) === reviewMarkdown.parse(right, { async: false }),
+                );
+                const current = await selectedPackage(planName);
+                let text = typeof decision.plan === "string" ? decision.plan : beforePlan.markdown;
+                if (approved) text = resolvePlanQuestions(text, decision.questionAnswers);
+                if (text !== beforePlan.markdown) {
+                    const doc = current.documents.find((entry) => entry.name === "context.md")!;
+                    await savePlanPackageDocument(
+                        currentPackageSelection()!.identity,
+                        current.metadata.planId,
+                        "context.md",
+                        doc.hash,
+                        text,
+                    );
+                }
+                const nextAttrs = { ...beforePlan.attrs, ...(approved && approvedPolicy ? approvedPolicy : {}) };
+                if (!conversationTurn) {
+                    if (!isPlanReviewableWithoutReopen(nextAttrs.status))
+                        Object.assign(
+                            nextAttrs,
+                            buildPlanEventUpdates("review_reopened", nextAttrs.status, { triageMeta: nextAttrs }),
+                        );
+                    Object.assign(
+                        nextAttrs,
+                        buildPlanEventUpdates(approved ? "review_approved" : "review_feedback", nextAttrs.status, {
+                            triageMeta: nextAttrs,
+                            failureReason: decision.feedback,
+                        }),
+                    );
+                }
+                const nextDefinition = {
+                    ...current.metadata.definition,
+                    ...(approved && approvedPolicy ? approvedPolicy : {}),
+                    status: nextAttrs.status!,
+                };
+                const retained = await capturePackageWorkflowInput(planName, nextDefinition);
+                if (!conversationTurn)
+                    await updatePackageWorkflowMetadata(planName, nextAttrs, undefined, {
+                        review: approved ? retained : undefined,
+                        readiness: undefined,
+                    });
+                return await loadPackageWorkflowPlan(planName);
+            },
+        });
+        if (transition.status !== "committed") return reviewRejected(transition.message || "Package review changed.");
+        const current = await loadPackageWorkflowPlan(planName);
+        return {
+            approved,
+            ...(conversationTurn ? { conversationTurn: true } : {}),
+            feedback: decision.feedback,
+            approvalAction: decision.approvalAction,
+            revision: current.revision,
+            ...(approved ? { planAttrs: current.attrs } : {}),
+        };
+    }
 
     // A chat message is not a lifecycle decision. Validate the saved source even
     // when there is no edit, but do not normalize or rewrite its bytes.

@@ -962,5 +962,8 @@
     "src/plan-package-snapshots.test.ts",
     "src/plan-package-import.test.ts",
     "src/plan-package-import-recovery.test.ts",
-    "src/plan-package-import-evidence.test.ts"
+    "src/plan-package-import-evidence.test.ts",
+    "src/shared/workflow/package-lifecycle.integration.test.ts",
+    "src/shared/workflow/package-execution.integration.test.ts",
+    "src/shared/workflow/package-lifecycle-recovery.test.ts"
 ]

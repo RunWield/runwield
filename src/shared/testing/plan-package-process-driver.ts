@@ -45,7 +45,12 @@ const observedRename = (from: fs.PathLike, to: fs.PathLike) => {
         exit(batch.phase === "pending" ? "import-intent" : "import-committed");
     }
     if (path.endsWith("/allocations.json")) exit("import-allocated");
-    if (path.includes("/plans/") && path.endsWith("plan.wld.json")) exit("metadata");
+    if (path.includes("/plans/") && path.endsWith("plan.wld.json")) {
+        exit("metadata");
+        const metadata = JSON.parse(fs.readFileSync(path, "utf8"));
+        if (metadata.workflow?.attempt && metadata.definition.status === "ready_for_work") exit("attempt-reserved");
+        if (metadata.definition.status === "in_progress") exit("attempt-started");
+    }
     if (path.endsWith("/input.wld.json")) {
         if (request.edit) {
             const target = join(project, "plans", request.name ?? "one", request.edit);
@@ -62,6 +67,15 @@ Object.defineProperty(promises, "rename", {
         await originalMove(...args);
         if (String(args[1]).includes("/plans/") && String(args[1]).endsWith("context.md")) exit("moved-resource");
         if (String(args[1]).includes("/inputs/")) exit("published-input");
+        if (String(args[1]).endsWith("/worktrees.json")) {
+            const registry = JSON.parse(fs.readFileSync(args[1], "utf8"));
+            if (registry.entries?.some((entry: { creationContext?: { files: string[] } }) => entry.creationContext))
+                exit("registry-reserved");
+        }
+        if (String(args[1]).includes("/transitions/") && String(args[1]).endsWith(".json")) {
+            const record = JSON.parse(fs.readFileSync(args[1], "utf8"));
+            if (record.packageWrites?.length) exit("lifecycle-intent");
+        }
     },
 });
 const originalReadFile = promises.readFile;
@@ -114,6 +128,20 @@ Object.defineProperty(promises, "readdir", {
         return entries;
     },
 });
+Object.defineProperty(Bun, "spawn", {
+    value: new Proxy(Bun.spawn, {
+        apply(target, receiver, args) {
+            const child = Reflect.apply(target, receiver, args);
+            const command = args[0]?.cmd || args[0];
+            if (Array.isArray(command) && command.includes("worktree") && command.includes("add"))
+                child.exited.then((code: number) => {
+                    if (code === 0) exit("git-created");
+                });
+            return child;
+        },
+    }),
+});
+if (request.command !== "import") mock.module("node:fs/promises", () => ({ ...promises, default: promises }));
 const store = await import("../../plan-store.js");
 const planId = request.planId ?? "plan-one";
 try {
@@ -136,6 +164,61 @@ try {
             while (!fs.existsSync(request.barrier)) await new Promise((resolve) => setTimeout(resolve, 5));
         let result;
         switch (request.command) {
+            case "sequence":
+            case "lifecycle":
+            case "recover-lifecycle":
+            case "execution": {
+                if (!current || current.kind !== "loaded") throw new Error("Missing package");
+                const { withPackageWorkflow, loadPackageWorkflowPlan } =
+                    await import("../workflow/package-workflow.ts");
+                const { recordPlanEvent } = await import("../workflow/plan-lifecycle.js");
+                const { preparePlanWorkflow } = await import("../workflow/plan-preparation.ts");
+                result = await withPackageWorkflow(
+                    request.identity.checkoutRoot,
+                    { identity: request.identity, planId, expectedRevision: current.metadata.revision },
+                    async () => {
+                        await preparePlanWorkflow(request.identity.checkoutRoot, current.metadata.name);
+                        if (request.command === "sequence") {
+                            const { prepareSequenceReview, applySequenceReviewDecision } =
+                                await import("../workflow/sequence-review.ts");
+                            const documents = await prepareSequenceReview(
+                                request.identity.checkoutRoot,
+                                current.metadata.name,
+                            );
+                            return await applySequenceReviewDecision({
+                                cwd: request.identity.checkoutRoot,
+                                documents,
+                                decision: {
+                                    approved: true,
+                                    approvalAction: "later",
+                                    documents: documents.map((doc) => ({ planId: doc.planId, plan: doc.plan })),
+                                },
+                            });
+                        }
+                        if (request.command === "recover-lifecycle")
+                            return await loadPackageWorkflowPlan(current.metadata.name);
+                        if (request.command === "execution") {
+                            const { startActiveExecutionWorkflow, createExecutionStartPorts } =
+                                await import("../workflow/execution-start.ts");
+                            const plan = await loadPackageWorkflowPlan(current.metadata.name);
+                            return await startActiveExecutionWorkflow({
+                                cwd: request.identity.checkoutRoot,
+                                planName: current.metadata.name,
+                                triageMeta: plan.attrs,
+                                currentStatus: plan.attrs.status!,
+                                ports: createExecutionStartPorts(),
+                            });
+                        }
+                        return await recordPlanEvent({
+                            cwd: request.identity.checkoutRoot,
+                            planName: current.metadata.name,
+                            event: "review_approved",
+                            currentStatus: "draft",
+                        });
+                    },
+                );
+                break;
+            }
             case "evidence":
                 if (!current || current.kind !== "loaded" || !current.metadata.references.legacyImport)
                     throw new Error("Missing imported package");
