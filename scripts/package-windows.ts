@@ -19,7 +19,7 @@ import process from "node:process";
 
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
-import { parseReleaseTag } from "./release.js";
+import { parseReleaseTag } from "./release.ts";
 
 const DEFAULT_INPUTS_PATH = "packaging/windows/tested-dependencies.json";
 const PACKAGE_ID = "Gandazgul.RunWield";

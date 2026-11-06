@@ -5,7 +5,7 @@ import process from "node:process";
  */
 
 import { basename, join } from "node:path";
-import { parseReleaseTag } from "./release.js";
+import { parseReleaseTag } from "./release.ts";
 import { releaseLicense } from "./release-license.ts";
 
 const RUNWIELD_REPO = "RunWield/runwield";

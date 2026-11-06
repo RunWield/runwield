@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { captureScriptProcess, waitForScriptExit } from "./script-process.ts";
-import type { ScriptProcessOptions, ScriptProcessOutput } from "./script-process.ts";
+import type { ScriptProcessOptions, ScriptProcessTextOutput } from "./script-process.ts";
 import type { Readable } from "node:stream";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -44,10 +44,7 @@ const REQUIRED_BUNDLED_BINARY_ASSET_INCLUDES = Object.freeze([
     "src/ui/theme/catppuccin-mocha.json",
 ]);
 
-export interface RunResult extends Pick<ScriptProcessOutput, "success" | "code"> {
-    stdout: string;
-    stderr: string;
-}
+export type RunResult = ScriptProcessTextOutput;
 
 interface BundledMarkdownTarget {
     label: string;

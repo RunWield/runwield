@@ -15,7 +15,7 @@ import process from "node:process";
  */
 
 import { join } from "node:path";
-import { parseReleaseTag } from "./release.js";
+import { parseReleaseTag } from "./release.ts";
 import { releaseLicense } from "./release-license.ts";
 import { sha256 } from "./package-windows.ts";
 
