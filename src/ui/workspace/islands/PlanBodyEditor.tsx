@@ -3,90 +3,100 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { RunWieldButton } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 import { PLAN_UI_TOKEN_HEADER, PLAN_UI_TOKEN_QUERY } from "../constants.ts";
 import { MarkdownView } from "../components/MarkdownView.tsx";
+import type { PlanBodyResource } from "../../../plan-store.js";
+import type {
+    MarkdownEditorHandle,
+    WorkspacePlanDocumentMode,
+    WorkspacePlanDocumentProps,
+} from "../react/WorkspacePlanDocument.tsx";
 
-/** @type {Record<string, () => Promise<unknown>>} */
-let workspacePlanDocumentModules = {};
+export interface PlanBodyEditorCapabilities {
+    bodyEditing?: boolean;
+}
+
+export interface PlanBodyEditorPlan
+    extends Pick<PlanBodyResource, "planId">, Partial<Pick<PlanBodyResource, "body" | "bodyHash" | "revision">> {
+    workspaceKey?: string;
+    capabilities?: PlanBodyEditorCapabilities;
+}
+
+export interface PlanBodyEditorProps {
+    plan: PlanBodyEditorPlan;
+    initialEdit?: boolean;
+}
+
+export interface PlanBodyDraftBase {
+    baseBodyHash: string;
+}
+
+export interface PlanBodyDraft extends PlanBodyDraftBase {
+    body: string;
+    updatedAt?: string;
+}
+
+interface SavePlanBodyResponse extends Partial<Pick<PlanBodyResource, "bodyHash">> {
+    error?: string;
+    plan?: Partial<Pick<PlanBodyResource, "bodyHash" | "revision">>;
+}
+
+type WorkspacePlanDocumentModule = typeof import("../react/WorkspacePlanDocument.tsx");
+type WorkspacePlanDocumentLoader = () => Promise<WorkspacePlanDocumentModule>;
+type WorkspacePlanDocumentFallbackProps = Partial<Pick<WorkspacePlanDocumentProps, "markdown">>;
+
+let workspacePlanDocumentModules: Record<string, WorkspacePlanDocumentLoader> = {};
 try {
-    workspacePlanDocumentModules = import.meta.glob("../react/WorkspacePlanDocument.tsx");
+    workspacePlanDocumentModules = import.meta.glob<WorkspacePlanDocumentModule>("../react/WorkspacePlanDocument.tsx");
 } catch {
     // Deno test runs do not provide Vite's import.meta.glob transform.
 }
-const loadWorkspacePlanDocument = /** @type {() => Promise<{ default: import("react").ComponentType<any> }>} */ (
+const loadWorkspacePlanDocument: WorkspacePlanDocumentLoader =
     workspacePlanDocumentModules["../react/WorkspacePlanDocument.tsx"] ||
-    (() => Promise.resolve({ default: WorkspacePlanDocumentFallback }))
-);
+    (() => Promise.resolve({ default: WorkspacePlanDocumentFallback }));
 const WorkspacePlanDocument = lazy(loadWorkspacePlanDocument);
 
-/** @param {{ markdown?: string }} props */
-function WorkspacePlanDocumentFallback({ markdown = "" }) {
+function WorkspacePlanDocumentFallback({ markdown = "" }: WorkspacePlanDocumentFallbackProps) {
     return <MarkdownView markdown={markdown} />;
 }
 
-/**
- * @param {string} workspaceKey
- * @param {string} planId
- */
-export function planBodyDraftKey(workspaceKey, planId) {
+export function planBodyDraftKey(workspaceKey: string, planId: string) {
     return `runwield:workspace:${workspaceKey}:plan:${planId}:bodyDraft`;
 }
 
-/**
- * @param {{ baseBodyHash?: string } | null} draft
- * @param {string} currentBodyHash
- * @returns {"none"|"same-base"|"changed-on-disk"}
- */
-export function draftRecoveryState(draft, currentBodyHash) {
+export function draftRecoveryState(draft: Partial<PlanBodyDraftBase> | null, currentBodyHash: string) {
     if (!draft) return "none";
     return draft.baseBodyHash === currentBodyHash ? "same-base" : "changed-on-disk";
 }
 
-/**
- * @param {{ baseBodyHash: string }} draft
- * @returns {string}
- */
-export function restoredDraftExpectedBodyHash(draft) {
+export function restoredDraftExpectedBodyHash(draft: PlanBodyDraftBase) {
     return draft.baseBodyHash;
 }
 
-/**
- * @typedef {Object} PlanBodyDraft
- * @property {string} body
- * @property {string} baseBodyHash
- * @property {string} [updatedAt]
- */
-
-/** @param {{ body: string, baseBodyHash: string }} draft */
-function serializeDraft(draft) {
+function serializeDraft(draft: PlanBodyDraft) {
     return JSON.stringify({ body: draft.body, baseBodyHash: draft.baseBodyHash, updatedAt: new Date().toISOString() });
 }
 
-/**
- * @param {string} key
- * @returns {{ body: string, baseBodyHash: string, updatedAt?: string } | null}
- */
-function readDraft(key) {
+function readDraft(key: string): PlanBodyDraft | null {
     try {
-        const parsed = JSON.parse(localStorage.getItem(key) || "null");
+        const parsed: PlanBodyDraft | null = JSON.parse(localStorage.getItem(key) || "null");
         return parsed && typeof parsed.body === "string" && typeof parsed.baseBodyHash === "string" ? parsed : null;
     } catch {
         return null;
     }
 }
 
-/** @param {{ plan: any, initialEdit?: boolean }} props */
-export function PlanBodyEditor({ plan, initialEdit = false }) {
+export function PlanBodyEditor({ plan, initialEdit = false }: PlanBodyEditorProps) {
     const canEdit = plan.capabilities?.bodyEditing !== false;
     const [clientReady, setClientReady] = useState(false);
-    const [mode, setMode] = useState("read");
+    const [mode, setMode] = useState<WorkspacePlanDocumentMode>("read");
     const [body, setBody] = useState(plan.body || "");
     const [savedBody, setSavedBody] = useState(plan.body || "");
     const [bodyHash, setBodyHash] = useState(plan.bodyHash || "");
     const [expectedBodyHash, setExpectedBodyHash] = useState(plan.bodyHash || "");
     const [expectedRevision, setExpectedRevision] = useState(plan.revision || "");
     const [message, setMessage] = useState("");
-    const [draft, setDraft] = useState(/** @type {PlanBodyDraft | null} */ (null));
+    const [draft, setDraft] = useState<PlanBodyDraft | null>(null);
     const [saving, setSaving] = useState(false);
-    const editorHandleRef = useRef(null);
+    const editorHandleRef = useRef<MarkdownEditorHandle | null>(null);
     const dirty = body !== savedBody;
     const draftKey = planBodyDraftKey(plan.workspaceKey || "unknown", plan.planId);
 
@@ -108,7 +118,7 @@ export function PlanBodyEditor({ plan, initialEdit = false }) {
 
     useEffect(() => {
         if (!canEdit || !dirty) return undefined;
-        const handler = (/** @type {BeforeUnloadEvent} */ event) => {
+        const handler = (event: BeforeUnloadEvent) => {
             event.preventDefault();
             Reflect.set(event, "returnValue", "");
         };
@@ -167,7 +177,7 @@ export function PlanBodyEditor({ plan, initialEdit = false }) {
                 },
                 body: JSON.stringify({ body, expectedBodyHash, expectedRevision }),
             });
-            const payload = await response.json();
+            const payload: SavePlanBodyResponse = await response.json();
             if (response.status === 409) {
                 setMessage(`${payload.error || "Conflict saving Plan body."} Your local draft was kept.`);
                 return;
@@ -191,58 +201,57 @@ export function PlanBodyEditor({ plan, initialEdit = false }) {
     }
 
     const recovery = draftRecoveryState(draft, bodyHash);
-    const document = clientReady
-        ? (
-            <Suspense fallback={<MarkdownView markdown={mode === "edit" ? body : savedBody} />}>
-                <WorkspacePlanDocument
-                    mode={mode}
-                    markdown={mode === "edit" ? body : savedBody}
-                    documentId={`${plan.planId}:${bodyHash || "initial"}`}
-                    editorHandleRef={editorHandleRef}
-                    onMarkdownChange={setBody}
-                />
-            </Suspense>
-        )
-        : <MarkdownView markdown={savedBody} />;
+    const document = clientReady ? (
+        <Suspense fallback={<MarkdownView markdown={mode === "edit" ? body : savedBody} />}>
+            <WorkspacePlanDocument
+                mode={mode}
+                markdown={mode === "edit" ? body : savedBody}
+                documentId={`${plan.planId}:${bodyHash || "initial"}`}
+                editorHandleRef={editorHandleRef}
+                onMarkdownChange={setBody}
+            />
+        </Suspense>
+    ) : (
+        <MarkdownView markdown={savedBody} />
+    );
 
     return (
         <section className="plan-body-editor" data-editor-mode={mode} data-plannotator-workspace-document>
             <div className="editor-toolbar">
-                {mode === "edit"
-                    ? (
-                        <>
-                            <RunWieldButton
-                                type="button"
-                                variant="primary"
-                                disabled={saving || !dirty}
-                                onClick={saveBody}
-                            >
-                                {saving ? <RunWieldThinkingDots label="Saving" /> : "Save"}
-                            </RunWieldButton>
-                            <RunWieldButton type="button" onClick={cancelEdit}>Cancel</RunWieldButton>
-                            <span className={dirty ? "dirty-indicator" : "saved-indicator"}>
-                                {dirty ? "Unsaved changes" : "No changes"}
-                            </span>
-                        </>
-                    )
-                    : canEdit
-                    ? <RunWieldButton type="button" variant="primary" onClick={startEdit}>Edit</RunWieldButton>
-                    : null}
+                {mode === "edit" ? (
+                    <>
+                        <RunWieldButton type="button" variant="primary" disabled={saving || !dirty} onClick={saveBody}>
+                            {saving ? <RunWieldThinkingDots label="Saving" /> : "Save"}
+                        </RunWieldButton>
+                        <RunWieldButton type="button" onClick={cancelEdit}>
+                            Cancel
+                        </RunWieldButton>
+                        <span className={dirty ? "dirty-indicator" : "saved-indicator"}>
+                            {dirty ? "Unsaved changes" : "No changes"}
+                        </span>
+                    </>
+                ) : canEdit ? (
+                    <RunWieldButton type="button" variant="primary" onClick={startEdit}>
+                        Edit
+                    </RunWieldButton>
+                ) : null}
             </div>
             {message ? <p className="notice editor-notice">{message}</p> : null}
-            {canEdit && draft && mode === "read"
-                ? (
-                    <div className={recovery === "changed-on-disk" ? "notice warning" : "notice"}>
-                        {recovery === "changed-on-disk"
-                            ? "A local draft exists, but this Plan changed on disk. Restore only if you want to copy or merge it manually."
-                            : "A local unsaved draft is available for this Plan body."}
-                        <div className="inline-actions">
-                            <RunWieldButton type="button" onClick={restoreDraft}>Restore draft</RunWieldButton>
-                            <RunWieldButton type="button" onClick={discardDraft}>Discard draft</RunWieldButton>
-                        </div>
+            {canEdit && draft && mode === "read" ? (
+                <div className={recovery === "changed-on-disk" ? "notice warning" : "notice"}>
+                    {recovery === "changed-on-disk"
+                        ? "A local draft exists, but this Plan changed on disk. Restore only if you want to copy or merge it manually."
+                        : "A local unsaved draft is available for this Plan body."}
+                    <div className="inline-actions">
+                        <RunWieldButton type="button" onClick={restoreDraft}>
+                            Restore draft
+                        </RunWieldButton>
+                        <RunWieldButton type="button" onClick={discardDraft}>
+                            Discard draft
+                        </RunWieldButton>
                     </div>
-                )
-                : null}
+                </div>
+            ) : null}
             <div className={mode === "edit" ? "workspace-plan-document is-editing" : "workspace-plan-document"}>
                 {document}
             </div>
