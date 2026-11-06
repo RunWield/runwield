@@ -35,6 +35,9 @@ workRecord:
     path: "docs/work-records/2026-10-31-independent-homebrew-package-refresh-and-safe-publication.md"
     lastAttemptAt: "2026-10-31T21:07:19.236Z"
 status: "verified"
+archivedAt: "2026-11-06T02:19:52.915Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/prevent-homebrew-dependency-rollbacks.md"
 ---
 
 # Prevent Homebrew Dependency Rollbacks

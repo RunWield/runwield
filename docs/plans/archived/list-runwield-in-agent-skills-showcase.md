@@ -21,6 +21,9 @@ workRecord:
     path: "docs/work-records/2026-10-28-runwield-agent-skills-showcase-contribution.md"
     lastAttemptAt: "2026-10-28T17:40:56.802Z"
 status: "verified"
+archivedAt: "2026-11-06T02:19:52.915Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/list-runwield-in-agent-skills-showcase.md"
 ---
 
 # List RunWield in the Agent Skills Client Showcase

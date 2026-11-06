@@ -19,6 +19,14 @@ targetBranch: "epic/connect-codex"
 userVerifiedAt: null
 deliveryBranch: "epic/connect-codex"
 status: "reviewed"
+workRecord:
+  status: "generated"
+  recordId: "0dad7cd1-7093-4b8e-8dae-42e355c8a50f"
+  path: "docs/work-records/2026-11-05-persistent-codex-model-and-thinking-preferences-per-role.md"
+  lastAttemptAt: "2026-11-05T16:07:07.448Z"
+archivedAt: "2026-11-06T02:19:52.915Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/codex-per-role-model-settings.md"
 ---
 
 # Persistent Codex Model and Thinking Settings per Role

@@ -1,6 +1,20 @@
+---
+kind: "work_record"
+recordId: "77998851-9466-48aa-a904-49449b3d498b"
+status: "approved"
+scope: "planned_change"
+workKind: "FEATURE"
+origin: "internal"
+completionMode: "verified"
+createdAt: "2026-10-16T00:00:00.000Z"
+provenance:
+    sourcePlans:
+        - "5df960b5-5c59-41b7-935a-3dc7511ad917"
+---
+
 # Remote MCP transport pilot
 
-## Scope
+## Summary
 
 [Child06](../plans/archived/remote-ssh-development/06-forward-personal-mcp-tools-from-the-laptop.md) adds personal MCP
 transport forwarding. This record covers a bounded live check on `sct`, not release qualification or a production-provider matrix.

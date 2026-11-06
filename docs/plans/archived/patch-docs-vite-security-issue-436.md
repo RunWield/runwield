@@ -24,6 +24,9 @@ workRecord:
     path: "docs/work-records/2026-10-31-vite-security-patch-in-the-docs-dependency-graph.md"
     lastAttemptAt: "2026-10-31T02:12:46.505Z"
 status: "verified"
+archivedAt: "2026-11-06T02:19:52.915Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/patch-docs-vite-security-issue-436.md"
 ---
 
 # Complete the Vite Security Patch for Issue 436

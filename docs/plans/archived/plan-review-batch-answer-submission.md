@@ -26,6 +26,9 @@ workRecord:
     path: "docs/work-records/2026-10-30-batch-plan-question-answers-with-visible-planner-progress.md"
     lastAttemptAt: "2026-10-30T16:03:19.329Z"
 status: "verified"
+archivedAt: "2026-11-06T02:19:52.915Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/plan-review-batch-answer-submission.md"
 ---
 
 # Plan Review Batch Answer Submission

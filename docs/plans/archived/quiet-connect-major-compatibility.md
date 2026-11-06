@@ -17,11 +17,15 @@ userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "main"
 validatedCommit: "79d6478cb19a1b3a52137c0f9844604b26ca552d"
-workRecord:
-    status: "failed"
-    lastAttemptAt: "2026-11-03T00:30:31.696Z"
-    error: "docs/work-records/2026-10-16-remote-mcp-transport-pilot.md: Invalid Work Record: front matter is required."
 status: "verified"
+workRecord:
+  status: "generated"
+  recordId: "91a77766-abd8-4267-81e9-ef898bf565ea"
+  path: "docs/work-records/2026-11-05-quiet-connect-compatibility-across-qualified-release-families.md"
+  lastAttemptAt: "2026-11-05T16:10:48.126Z"
+archivedAt: "2026-11-06T02:19:52.915Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/quiet-connect-major-compatibility.md"
 ---
 
 # Quiet Connect Compatibility Across Qualified Release Families

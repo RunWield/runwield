@@ -21,11 +21,15 @@ routingIntent: "PLANNED_CHANGE"
 targetBranch: "main"
 deliveryBranch: "main"
 validatedCommit: "bd333eba7df60af79732d22ecc617cefc77e8c67"
-workRecord:
-    status: "failed"
-    lastAttemptAt: "2026-11-05T02:04:05.196Z"
-    error: "docs/work-records/2026-10-16-remote-mcp-transport-pilot.md: Invalid Work Record: front matter is required."
 status: "verified"
+workRecord:
+  status: "generated"
+  recordId: "0506633d-ea5f-4f79-bde3-61cb86939b5e"
+  path: "docs/work-records/2026-11-05-independent-write-tests-distribution-with-bundled-availability.md"
+  lastAttemptAt: "2026-11-05T16:10:10.224Z"
+archivedAt: "2026-11-06T02:19:52.915Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/publish-write-tests-skill.md"
 ---
 
 # Publish Write Tests Without Losing the Bundled Skill

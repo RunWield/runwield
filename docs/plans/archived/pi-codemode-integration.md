@@ -19,11 +19,15 @@ userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "main"
 validatedCommit: "0d8a278a10ab0c563f3c4bfa6275f8f8056f3b68"
-workRecord:
-    status: "failed"
-    lastAttemptAt: "2026-11-02T21:02:01.334Z"
-    error: "docs/work-records/2026-10-16-remote-mcp-transport-pilot.md: Invalid Work Record: front matter is required."
 status: "verified"
+workRecord:
+  status: "generated"
+  recordId: "b94c85fa-fa35-4edb-9a2b-69bb6a9a44bf"
+  path: "docs/work-records/2026-11-05-authorized-tool-composition-with-pi-codemode.md"
+  lastAttemptAt: "2026-11-05T16:09:16.012Z"
+archivedAt: "2026-11-06T02:19:52.915Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/pi-codemode-integration.md"
 ---
 
 # Integrate Pi codemode into RunWield

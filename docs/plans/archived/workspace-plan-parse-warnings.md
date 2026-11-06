@@ -35,6 +35,9 @@ workRecord:
     path: "docs/work-records/2026-10-31-workspace-plan-parse-warnings.md"
     lastAttemptAt: "2026-10-31T19:58:42.202Z"
 status: "verified"
+archivedAt: "2026-11-06T02:19:52.915Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/workspace-plan-parse-warnings.md"
 ---
 
 # Keep the Workspace Sidebar Usable When a Plan Cannot Be Parsed
