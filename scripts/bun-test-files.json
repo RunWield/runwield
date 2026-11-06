@@ -707,7 +707,7 @@
     "src/ui/review/code-review.test.ts",
     "src/ui/review/document-link-host.test.ts",
     "src/ui/review/plan-review.test.ts",
-    "src/ui/review/review-consumers.integration.test.js",
+    "src/ui/review/review-consumers.integration.test.ts",
     "src/ui/review/review-decision-sink.test.ts",
     "src/ui/review/review-launcher.test.ts",
     "src/ui/session-export/session-export-html.test.ts",

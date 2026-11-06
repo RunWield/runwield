@@ -15,6 +15,7 @@ export type {
     DiffInspectionOptions,
     ReviewDiffTexts,
     ReviewDiffDetails,
+    ReviewDiffParams,
 } from "./review-diff.ts";
 
 export interface ReviewDiffToolOptions {

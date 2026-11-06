@@ -22,9 +22,55 @@ import {
 import { startCodeReviewSurface } from "./review-launcher.ts";
 import { reviewFileContentApi } from "../workspace/routes/api/review-file-handlers.ts";
 
-/** @param {Array<Record<string, string>>} findings */
-function reviewerMessages(findings) {
-    return /** @type {any} */ ([
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { TextContent, ToolResultMessage } from "@earendil-works/pi-ai";
+import type { SemanticReviewPort } from "../../shared/workflow/validation.ts";
+import type { ReviewFindingInput, ReviewOutcomeDetails } from "../../shared/workflow/review-outcome.ts";
+import type {
+    createReviewDiffTool,
+    ReviewDiffDetails,
+    ReviewDiffParams,
+    ReviewDiffTexts,
+} from "../../shared/workflow/review-diff-tool.ts";
+
+type ReviewSessionOptions = Parameters<SemanticReviewPort["runIsolatedAgentSession"]>[0];
+type ReviewerDiffListFixture = Pick<ReviewDiffDetails, "command" | "scope" | "fileCount">;
+type ReviewerFindingFixture = Required<Pick<ReviewFindingInput, "title" | "requirement" | "evidence">>;
+type ReviewerCompletionCollections = {
+    findings: ReviewerFindingFixture[];
+    advisories: [];
+};
+type ReviewerCompletionFixture = Pick<ReviewOutcomeDetails, "outcome" | "approved" | "feedback"> &
+    ReviewerCompletionCollections;
+
+type ReviewerToolDetails = ReviewerDiffListFixture | ReviewerCompletionFixture;
+type NativeReviewerToolResult = ToolResultMessage<ReviewerToolDetails>;
+type ReviewerToolResultFixture = Partial<NativeReviewerToolResult> &
+    Required<Pick<NativeReviewerToolResult, "role" | "toolName" | "details">>;
+
+type ReviewSessionRunner = (
+    options: ReviewSessionOptions,
+) => Promise<ReviewerToolResultFixture[]> | ReviewerToolResultFixture[];
+
+interface ReviewDiffFixtureResult {
+    content: TextContent[];
+    details: ReviewDiffDetails;
+}
+
+interface ReviewDiffFixtureSurface {
+    __runwieldReviewDiffs: ReviewDiffTexts;
+    execute: (id: string, params: ReviewDiffParams) => Promise<ReviewDiffFixtureResult>;
+}
+
+type ReviewDiffFixtureTool = ReturnType<typeof createReviewDiffTool> & ReviewDiffFixtureSurface;
+
+interface ReviewFileContentFixture {
+    oldContent: string | null;
+    newContent: string | null;
+}
+
+function reviewerMessages(findings: ReviewerFindingFixture[]): ReviewerToolResultFixture[] {
+    return [
         {
             role: "toolResult",
             toolName: "review_diff",
@@ -41,22 +87,21 @@ function reviewerMessages(findings) {
                 advisories: [],
             },
         },
-    ]);
+    ];
 }
 
-/** @param {Function} runIsolatedAgentSession */
-function reviewPort(runIsolatedAgentSession) {
-    return /** @type {any} */ ({
-        runIsolatedAgentSession: async (/** @type {any} */ options) => {
+function reviewPort(runIsolatedAgentSession: ReviewSessionRunner): SemanticReviewPort {
+    return {
+        runIsolatedAgentSession: async (options) => {
             const messages = await runIsolatedAgentSession(options);
             await executeWorkflowTestTools(
                 options,
-                messages.flatMap((/** @type {any} */ message) => {
+                messages.flatMap((message) => {
                     const call = { name: message.toolName, arguments: message.details || {} };
                     if (call.name !== "review_diff") return [call];
-                    const tool = options.customTools.find(
-                        (/** @type {any} */ candidate) => candidate.name === "review_diff",
-                    );
+                    const tool = options.customTools!.find(
+                        (candidate) => candidate.name === "review_diff",
+                    ) as ReviewDiffFixtureTool;
                     return [
                         call,
                         ...parseDiffFiles(tool.__runwieldReviewDiffs.full).map((file) => ({
@@ -66,9 +111,9 @@ function reviewPort(runIsolatedAgentSession) {
                     ];
                 }),
             );
-            return messages;
+            return messages as AgentMessage[];
         },
-    });
+    };
 }
 
 for (const mode of ["local", "remote"]) {
@@ -146,10 +191,10 @@ for (const mode of ["local", "remote"]) {
                 planContent: "# p",
                 triageMeta: { classification: "QUICK_FIX", status: "validated_ci" },
                 supportsSemanticRepairHandoff: true,
-                semanticReviewPort: reviewPort(async (/** @type {any} */ options) => {
-                    const tool = options.customTools.find(
-                        (/** @type {any} */ candidate) => candidate.name === "review_diff",
-                    );
+                semanticReviewPort: reviewPort(async (options) => {
+                    const tool = options.customTools!.find(
+                        (candidate) => candidate.name === "review_diff",
+                    ) as ReviewDiffFixtureTool;
                     const listed = await tool.execute("list-full", { command: "list", scope: "full" });
                     assertStringIncludes(listed.content[0].text, "plan-change.js");
                     const paths = Array.from(
@@ -170,7 +215,7 @@ for (const mode of ["local", "remote"]) {
                             assertExists(content);
                             aiPatch += content;
                             if (!page.details.truncated) break;
-                            offsetBytes = page.details.nextOffsetBytes;
+                            offsetBytes = page.details.nextOffsetBytes!;
                         }
                     }
                     return reviewerMessages(findings);
@@ -192,7 +237,7 @@ for (const mode of ["local", "remote"]) {
                 targetBaseRef,
                 browser: { open: () => Promise.resolve(false) },
             });
-            let standalonePatch;
+            let standalonePatch: string | undefined;
             try {
                 const html = await (await fetch(standalone.url)).text();
                 const embedded =
@@ -201,7 +246,7 @@ for (const mode of ["local", "remote"]) {
                 const fileUrl = new URL("/api/file-content", standalone.url);
                 fileUrl.searchParams.set("path", "shared.md");
                 fileUrl.searchParams.set("token", new URL(standalone.url).searchParams.get("token") || "");
-                const fileResponse = await (await fetch(fileUrl)).json();
+                const fileResponse: ReviewFileContentFixture = await (await fetch(fileUrl)).json();
                 assertEquals(fileResponse.oldContent, expectedBefore);
                 assertEquals(fileResponse.newContent, "current review proposal\n");
                 if (mode === "remote") {
@@ -209,7 +254,7 @@ for (const mode of ["local", "remote"]) {
                     // The page and before-file route must retain the recorded remote
                     // requirement, rather than silently switching to the stale local target.
                     assertEquals((await fetch(standalone.url)).status, 500);
-                    const missingBase = await (await fetch(fileUrl)).json();
+                    const missingBase: ReviewFileContentFixture = await (await fetch(fileUrl)).json();
                     assertEquals(missingBase.oldContent, null);
                     assertEquals(missingBase.newContent, "current review proposal\n");
                     await git(projectRoot, ["remote", "add", "origin", `${projectRoot}/.git/review-remote.git`]);
@@ -240,7 +285,7 @@ for (const mode of ["local", "remote"]) {
                     const workspacePatch = liveReview?.request?.codeReview?.rawPatch;
                     const checkout = await workspace.getLiveCodeReviewCheckout(reference);
                     assertEquals(checkout, { cwd: projectRoot, targetBranch: "target", targetBaseRef });
-                    const workspaceFile = await (
+                    const workspaceFile: ReviewFileContentFixture = await (
                         await reviewFileContentApi(
                             new Request("http://localhost/api/file-content?path=shared.md"),
                             checkout || {},
@@ -254,7 +299,7 @@ for (const mode of ["local", "remote"]) {
                             () => workspace.getLiveCodeReview(reference),
                             WorktreeReviewComparisonError,
                         );
-                        const missingBase = await (
+                        const missingBase: ReviewFileContentFixture = await (
                             await reviewFileContentApi(
                                 new Request("http://localhost/api/file-content?path=shared.md"),
                                 checkout || {},
