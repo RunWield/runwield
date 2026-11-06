@@ -17,7 +17,7 @@ import {
     workspaceMetadata as _workspaceMetadata,
 } from "./server/plan-adapter.js";
 
-import { blockedDropMessage, isAllowedDropTarget, parseAllowedTargetStatuses } from "./islands/PlanBoardDragDrop.jsx";
+import { blockedDropMessage, isAllowedDropTarget, parseAllowedTargetStatuses } from "./islands/PlanBoardDragDrop.tsx";
 
 import {
     createCloseWithoutVerificationIntent,
