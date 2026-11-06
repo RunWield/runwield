@@ -42,7 +42,7 @@ The selected execution base is `epic/connect-codex`, whose Codex implementation 
 lacks the adapter and [PR #477](https://github.com/runwield/runwield/pull/477) reports open and unmerged. The selected
 branch supplies the required adapter; importing it is outside this feature.
 
-The owning capability is [Connect: Host-owned reasoning](../prd/runwield-connect-prd.md#host-owned-reasoning).
+The owning capability is [Connect: Host-owned reasoning](../../prd/runwield-connect-prd.md#host-owned-reasoning).
 Add a requirement and scenarios for persistent Codex role preferences, inheritance, reset, and host capability errors.
 Preserve host-owned model calls, fresh independent review, runtime role instructions, and ordinary host behavior outside
 an activated workflow. This Plan describes proposed behavior, not delivered support.

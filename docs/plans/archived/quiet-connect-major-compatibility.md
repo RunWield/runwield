@@ -40,12 +40,12 @@ The owner clarified that stable hosts (`1.0.0` and later) share coverage within 
 coverage within a minor. Claude `2.x` is one qualification family; Codex `0.164.x` is one family and `0.165.x` is another.
 Patch updates stay covered without individual qualification.
 
-The owning capability is [Compatibility and honest availability](../prd/runwield-connect-prd.md#compatibility-and-honest-availability).
+The owning capability is [Compatibility and honest availability](../../prd/runwield-connect-prd.md#compatibility-and-honest-availability).
 This Plan changes **Disclose tested host support and limitations** and its acceptance scenarios: routine untested-version
 announcements disappear, qualified release families replace exact-version gating, and actionable incompatibility errors
 survive.
-[Preview Acceptance](../prd/runwield-connect-prd.md#preview-acceptance) and
-[Codex acceptance](../prd/runwield-connect-prd.md#codex-acceptance) retain the provenance and limits of actual runs.
+[Preview Acceptance](../../prd/runwield-connect-prd.md#preview-acceptance) and
+[Codex acceptance](../../prd/runwield-connect-prd.md#codex-acceptance) retain the provenance and limits of actual runs.
 
 Current evidence includes a complete Claude `2.1.303` acceptance run. Codex `0.164.0-alpha.11.1` has separate installed
 protocol and source-skill evidence, with remaining complete-installed-workflow and desktop gaps. Those facts do not

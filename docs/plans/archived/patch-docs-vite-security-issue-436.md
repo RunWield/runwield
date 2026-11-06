@@ -42,7 +42,7 @@ Current evidence:
 - The [upstream advisory](https://github.com/vitejs/launch-editor/security/advisories/GHSA-587h-7wmj-h5pm) lists Vite 8.3.3 as patched. The [release notes](https://github.com/vitejs/vite/releases/tag/v8.3.3) confirm bundled launch-editor 2.14.2.
 - The two-lock version check below passes for root and fails for docs before this change. Windows exploitation in RunWield has not been reproduced.
 
-**Requirements preserved:** [Public documentation](../prd/runwield.md#public-documentation), especially “Find usable instructions” and “Read documentation for the latest Stable release.” The manual must still build, exclude internal records, and retain its release identity. [Workspace project access and navigation](../prd/runwield-workspace-prd.md#project-access-and-navigation) retains packaged browser dependency support. No product requirement, acceptance scenario, domain term, or architectural decision changes; PRD and glossary edits are not needed for this dependency-only fix.
+**Requirements preserved:** [Public documentation](../../prd/runwield.md#public-documentation), especially “Find usable instructions” and “Read documentation for the latest Stable release.” The manual must still build, exclude internal records, and retain its release identity. [Workspace project access and navigation](../../prd/runwield-workspace-prd.md#project-access-and-navigation) retains packaged browser dependency support. No product requirement, acceptance scenario, domain term, or architectural decision changes; PRD and glossary edits are not needed for this dependency-only fix.
 
 ## Objective
 

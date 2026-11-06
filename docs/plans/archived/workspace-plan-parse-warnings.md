@@ -63,13 +63,13 @@ A malformed result during the second resource read is silently skipped.
 
 ### Product requirements
 
-- **Change:** [Workspace Project access and navigation](../prd/runwield-workspace-prd.md#project-access-and-navigation),
+- **Change:** [Workspace Project access and navigation](../../prd/runwield-workspace-prd.md#project-access-and-navigation),
   **Navigate without repeated startup work**: an individual Plan parse error leaves healthy navigation available and
   appears beside the affected Plan, with details on hover or focus.
-- **Change and preserve:** [Local Plan management](../prd/runwield-workspace-prd.md#local-plan-management), **Browse without
+- **Change and preserve:** [Local Plan management](../../prd/runwield-workspace-prd.md#local-plan-management), **Browse without
   hidden Project changes**: add healthy Board content with named parse warnings. Preserve document authority and the
   rule that incomplete reads do not authorize actions.
-- **Preserve:** [Core Plan authoring and external adoption](../prd/runwield-core-prd.md#plan-authoring-and-external-adoption),
+- **Preserve:** [Core Plan authoring and external adoption](../../prd/runwield-core-prd.md#plan-authoring-and-external-adoption),
   **Inspect Plans without preparing them**: passive reads do not repair files, assign IDs, fetch, or create runtime state.
 
 No new Plan Status or domain term is introduced. This is display feedback, not a lifecycle transition.

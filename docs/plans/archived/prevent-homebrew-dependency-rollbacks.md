@@ -56,7 +56,7 @@ The cause is ownership, not a bad checksum:
 - Mnemoteca's own release workflow writes its formula and patches `mnemotecaTag` in that same manifest.
 - Existing tests validate generated packages, but do not protect an independently updated dependency.
 
-The owning capability is [Core: Installation and updates](../prd/runwield-core-prd.md#installation-and-updates).
+The owning capability is [Core: Installation and updates](../../prd/runwield-core-prd.md#installation-and-updates).
 This fix makes its independent Mnemoteca package requirement explicit: a RunWield release must not change another
 package's version or formula. Add acceptance scenarios for independent updates and concurrent tap changes. Preserve
 **Install through a shell installer or a package manager** and **Qualify packages before publication and keep published

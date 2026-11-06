@@ -45,7 +45,7 @@ both. `scripts/compile-bun.ts` embeds `src/skills`, not the public submodule. Th
 or stale extracted Skill Markdown, including `write-tests`. The relocated package checker does not yet prove Skill
 invocation from the compiled executable.
 
-Owning capability: [Core — Agent and skill customization](../prd/runwield-core-prd.md#agent-and-skill-customization).
+Owning capability: [Core — Agent and skill customization](../../prd/runwield-core-prd.md#agent-and-skill-customization).
 
 - **Change “Portable skills install independently”:** add Write Tests to Guide, Ideator, and Review.
 - **Preserve “Test authoring earns its coverage”:** publish the current instructions without changing their meaning.
@@ -53,7 +53,7 @@ Owning capability: [Core — Agent and skill customization](../prd/runwield-core
 - Add acceptance scenarios for independent Write Tests installation, public/bundled parity, and compiled availability
   without the public checkout. No existing requirement is removed.
 
-[Core — Installation and updates](../prd/runwield-core-prd.md#installation-and-updates) owns package qualification.
+[Core — Installation and updates](../../prd/runwield-core-prd.md#installation-and-updates) owns package qualification.
 This work adds focused evidence for its existing requirement, not a new installer or release policy.
 
 ## Objective
