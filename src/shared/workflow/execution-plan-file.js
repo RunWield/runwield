@@ -1,3 +1,4 @@
+import { currentPackageSelection, loadPackageWorkflowPlan } from "./package-workflow.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { lstat as fsLstat, mkdir as fsMkdir, readFile as fsReadFile } from "node:fs/promises";
 /**
@@ -145,32 +146,28 @@ async function inspectCanonicalParentChain(projectRoot, segments, sourceRelative
             return {
                 ok: false,
                 kind: "unreadable",
-                reason:
-                    `Canonical Plan source parent is unreadable at ${currentRelativePath}; source: ${sourceRelativePath}.`,
+                reason: `Canonical Plan source parent is unreadable at ${currentRelativePath}; source: ${sourceRelativePath}.`,
             };
         }
         if (!info) {
             return {
                 ok: false,
                 kind: "absent",
-                reason:
-                    `Canonical Plan source is absent: ${sourceRelativePath} (missing parent ${currentRelativePath}).`,
+                reason: `Canonical Plan source is absent: ${sourceRelativePath} (missing parent ${currentRelativePath}).`,
             };
         }
         if (info.isSymbolicLink()) {
             return {
                 ok: false,
                 kind: "symlink",
-                reason:
-                    `Canonical Plan source parent is a symlink at ${currentRelativePath}; source: ${sourceRelativePath}.`,
+                reason: `Canonical Plan source parent is a symlink at ${currentRelativePath}; source: ${sourceRelativePath}.`,
             };
         }
         if (!info.isDirectory()) {
             return {
                 ok: false,
                 kind: "non_regular",
-                reason:
-                    `Canonical Plan source parent is not a directory at ${currentRelativePath}; source: ${sourceRelativePath}.`,
+                reason: `Canonical Plan source parent is not a directory at ${currentRelativePath}; source: ${sourceRelativePath}.`,
             };
         }
     }
@@ -183,6 +180,7 @@ async function inspectCanonicalParentChain(projectRoot, segments, sourceRelative
  * @returns {Promise<{ kind: "loaded", path: string, relativePath: string, markdown: string, attrs: import('../../plan-store.js').PlanFrontMatter } | ExecutionPlanFileResult>}
  */
 export async function loadCanonicalExecutionPlanSource(projectRoot, planName) {
+    if (currentPackageSelection()) return { ...(await loadPackageWorkflowPlan(planName)), relativePath: "context.md" };
     const path = getStoredPlanPath(projectRoot, planName);
     const relativePath = projectRelativePath(projectRoot, path);
     const parentRelativePath = dirname(relativePath);
@@ -358,9 +356,9 @@ export async function ensureExecutionPlanFile({
             kind: "unreadable",
             path: targetPath,
             relativePath,
-            reason: `Cannot inspect execution Plan path ${relativePath}: ${
-                String(error)
-            }. Existing evidence was preserved.`,
+            reason: `Cannot inspect execution Plan path ${relativePath}: ${String(
+                error,
+            )}. Existing evidence was preserved.`,
         };
     }
     if (targetInfo) {
@@ -383,15 +381,16 @@ export async function ensureExecutionPlanFile({
                 kind: "unreadable",
                 path: targetPath,
                 relativePath,
-                reason: `Execution Plan path ${relativePath} is unreadable: ${
-                    String(error)
-                }. Existing evidence was preserved.`,
+                reason: `Execution Plan path ${relativePath} is unreadable: ${String(
+                    error,
+                )}. Existing evidence was preserved.`,
             };
         }
         try {
             const { attrs } = parsePlanFrontMatter(markdown);
             if (
-                !replaceFromCanonical && !reconcileFromCanonical &&
+                !replaceFromCanonical &&
+                !reconcileFromCanonical &&
                 hasPlanIdConflict(canonicalSource.attrs.planId, attrs.planId)
             ) {
                 return {
@@ -415,11 +414,10 @@ export async function ensureExecutionPlanFile({
                         kind: "restore_failed",
                         path: targetPath,
                         relativePath,
-                        reason:
-                            `Could not materialize the latest execution Plan at ${relativePath}. Existing evidence was preserved.`,
+                        reason: `Could not materialize the latest execution Plan at ${relativePath}. Existing evidence was preserved.`,
                     };
                 }
-                if (await fsReadFile(targetPath, "utf8") !== planDocumentMarkdown(canonicalSource.markdown)) {
+                if ((await fsReadFile(targetPath, "utf8")) !== planDocumentMarkdown(canonicalSource.markdown)) {
                     return {
                         kind: "restore_failed",
                         path: targetPath,
@@ -449,7 +447,7 @@ export async function ensureExecutionPlanFile({
                             if (
                                 !hasPlanIdConflict(canonicalSource.attrs.planId, concurrent.attrs.planId) &&
                                 Object.keys(executionMetadataOverrides(canonicalSource.attrs, concurrent.attrs))
-                                        .length === 0
+                                    .length === 0
                             ) {
                                 return { kind: "present", path: targetPath, relativePath };
                             }
@@ -461,8 +459,7 @@ export async function ensureExecutionPlanFile({
                         kind: "restore_failed",
                         path: targetPath,
                         relativePath,
-                        reason:
-                            `Could not synchronize execution Plan metadata at ${relativePath}. Existing evidence was preserved.`,
+                        reason: `Could not synchronize execution Plan metadata at ${relativePath}. Existing evidence was preserved.`,
                     };
                 }
                 const verifiedMarkdown = await fsReadFile(targetPath, "utf8");
@@ -475,8 +472,7 @@ export async function ensureExecutionPlanFile({
                         kind: "restore_failed",
                         path: targetPath,
                         relativePath,
-                        reason:
-                            `Could not verify synchronized execution Plan metadata at ${relativePath}. Existing evidence was preserved.`,
+                        reason: `Could not verify synchronized execution Plan metadata at ${relativePath}. Existing evidence was preserved.`,
                     };
                 }
                 return {
@@ -492,9 +488,9 @@ export async function ensureExecutionPlanFile({
                 kind: "malformed",
                 path: targetPath,
                 relativePath,
-                reason: `Execution Plan path ${relativePath} is malformed: ${
-                    String(error)
-                }. Existing evidence was preserved.`,
+                reason: `Execution Plan path ${relativePath} is malformed: ${String(
+                    error,
+                )}. Existing evidence was preserved.`,
             };
         }
     }
@@ -506,8 +502,7 @@ export async function ensureExecutionPlanFile({
                 kind: "restore_failed",
                 path: targetPath,
                 relativePath,
-                reason:
-                    `Canonical execution Plan validation failed for ${relativePath}. Existing evidence was preserved.`,
+                reason: `Canonical execution Plan validation failed for ${relativePath}. Existing evidence was preserved.`,
             };
         }
         const recheckedParents = await verifyParentChain(executionCwd, parentSegments, false);
@@ -550,8 +545,7 @@ export async function ensureExecutionPlanFile({
             kind: "restore_failed",
             path: targetPath,
             relativePath,
-            reason:
-                `Failed to restore execution Plan path ${relativePath}: ${reason}. Existing evidence was preserved.`,
+            reason: `Failed to restore execution Plan path ${relativePath}: ${reason}. Existing evidence was preserved.`,
         };
     }
 }
@@ -560,9 +554,12 @@ export async function ensureExecutionPlanFile({
  * @param {{ projectRoot: string, executionCwd: string, planName: string, executionAuthoritative?: boolean }} opts
  * @returns {Promise<ExecutionPlanFileResult>}
  */
-export async function prepareExecutionPlanFile(
-    { projectRoot, executionCwd, planName, executionAuthoritative = false },
-) {
+export async function prepareExecutionPlanFile({
+    projectRoot,
+    executionCwd,
+    planName,
+    executionAuthoritative = false,
+}) {
     if (executionAuthoritative) {
         const executionSource = await loadCanonicalExecutionPlanSource(executionCwd, planName);
         if (executionSource.kind === "loaded") {

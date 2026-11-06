@@ -1,3 +1,4 @@
+import type { ActiveExecutionWorkflow } from "../types.js";
 /** Subprocess fault injection at actual filesystem boundaries; package machinery remains real. */
 import fs from "node:fs";
 import promises from "node:fs/promises";
@@ -38,6 +39,13 @@ const observedRename = (from: fs.PathLike, to: fs.PathLike) => {
         exit("import-all-moved");
     originalRename(from, to);
     const path = String(to);
+    if (
+        (request.command === "review-race" || request.command === "sequence-race") &&
+        request.boundary !== "review-metadata" &&
+        path.includes("/plans/") &&
+        path.endsWith("context.md")
+    )
+        fs.writeFileSync(request.mutateEvidenceDestination!, "Unreviewed requirements\n");
     if (path.includes("/staging/") && path.endsWith("plan.wld.json")) exit("staged-package");
     if (path.endsWith("/intent.json")) exit("intent");
     if (path.endsWith("/batch.json")) {
@@ -45,7 +53,14 @@ const observedRename = (from: fs.PathLike, to: fs.PathLike) => {
         exit(batch.phase === "pending" ? "import-intent" : "import-committed");
     }
     if (path.endsWith("/allocations.json")) exit("import-allocated");
-    if (path.includes("/plans/") && path.endsWith("plan.wld.json")) exit("metadata");
+    if (path.includes("/plans/") && path.endsWith("plan.wld.json")) {
+        exit("metadata");
+        const metadata = JSON.parse(fs.readFileSync(path, "utf8"));
+        if (request.command === "sequence-race" && request.boundary === "review-metadata")
+            fs.writeFileSync(request.mutateEvidenceDestination!, "Unreviewed requirements\n");
+        if (metadata.workflow?.attempt && metadata.definition.status === "ready_for_work") exit("attempt-reserved");
+        if (metadata.definition.status === "in_progress") exit("attempt-started");
+    }
     if (path.endsWith("/input.wld.json")) {
         if (request.edit) {
             const target = join(project, "plans", request.name ?? "one", request.edit);
@@ -60,8 +75,28 @@ mock.module("node:fs", () => ({ ...fs, renameSync: observedRename, default: fs }
 Object.defineProperty(promises, "rename", {
     value: async (...args: Parameters<typeof promises.rename>) => {
         await originalMove(...args);
-        if (String(args[1]).includes("/plans/") && String(args[1]).endsWith("context.md")) exit("moved-resource");
+        if (String(args[1]).includes("/plans/") && String(args[1]).endsWith("context.md")) {
+            if (request.command === "review-race" || request.command === "sequence-race")
+                fs.writeFileSync(request.mutateEvidenceDestination!, "Unreviewed requirements\n");
+            exit("moved-resource");
+        }
         if (String(args[1]).includes("/inputs/")) exit("published-input");
+        if (String(args[1]).endsWith("/worktrees.json")) {
+            const registry = JSON.parse(fs.readFileSync(args[1], "utf8"));
+            if (registry.entries?.some((entry: { creationContext?: { files: string[] } }) => entry.creationContext))
+                exit("registry-reserved");
+        }
+        if (/(?:\/transitions\/|\/plan-transitions\/)/.test(String(args[1])) && String(args[1]).endsWith(".json")) {
+            const record = JSON.parse(fs.readFileSync(args[1], "utf8"));
+            if (record.packageWrites?.length) exit("lifecycle-intent");
+            if (
+                record.operation === "implementation_checkpoint" &&
+                record.completedEffects?.some(
+                    (effect: { effect: string }) => effect.effect === "implementation_checkpoint_settled",
+                )
+            )
+                exit("implementation-committed");
+        }
     },
 });
 const originalReadFile = promises.readFile;
@@ -114,6 +149,20 @@ Object.defineProperty(promises, "readdir", {
         return entries;
     },
 });
+Object.defineProperty(Bun, "spawn", {
+    value: new Proxy(Bun.spawn, {
+        apply(target, receiver, args) {
+            const child = Reflect.apply(target, receiver, args);
+            const command = args[0]?.cmd || args[0];
+            if (Array.isArray(command) && command.includes("worktree") && command.includes("add"))
+                child.exited.then((code: number) => {
+                    if (code === 0) exit("git-created");
+                });
+            return child;
+        },
+    }),
+});
+if (request.command !== "import") mock.module("node:fs/promises", () => ({ ...promises, default: promises }));
 const store = await import("../../plan-store.js");
 const planId = request.planId ?? "plan-one";
 try {
@@ -136,6 +185,124 @@ try {
             while (!fs.existsSync(request.barrier)) await new Promise((resolve) => setTimeout(resolve, 5));
         let result;
         switch (request.command) {
+            case "review":
+            case "sequence-race":
+            case "review-race":
+            case "finalize":
+            case "resume-finalize":
+            case "sequence":
+            case "lifecycle":
+            case "recover-lifecycle":
+            case "execution": {
+                if (!current || current.kind !== "loaded") throw new Error("Missing package");
+                const { withPackageWorkflow, loadPackageWorkflowPlan } =
+                    await import("../workflow/package-workflow.ts");
+                const { recordPlanEvent } = await import("../workflow/plan-lifecycle.js");
+                const { preparePlanWorkflow } = await import("../workflow/plan-preparation.ts");
+                result = await withPackageWorkflow(
+                    request.identity.checkoutRoot,
+                    { identity: request.identity, planId, expectedRevision: current.metadata.revision },
+                    async () => {
+                        await preparePlanWorkflow(request.identity.checkoutRoot, current.metadata.name);
+                        if (request.command === "resume-finalize") {
+                            const { finalizePlanImplementation } =
+                                await import("../workflow/implementation-checkpoint.ts");
+                            const workflow: ActiveExecutionWorkflow = JSON.parse(
+                                fs.readFileSync(request.executionContextPath!, "utf8"),
+                            );
+                            return await finalizePlanImplementation({
+                                projectRoot: request.identity.checkoutRoot,
+                                planName: current.metadata.name,
+                                executionContext: workflow,
+                            });
+                        }
+                        if (request.command === "review-race" || request.command === "review") {
+                            const { capturePackageWorkflowInput } = await import("../workflow/package-workflow.ts");
+                            const { applySharedPlanReviewDecision } =
+                                await import("../workflow/plan-review-actions.ts");
+                            const plan = await loadPackageWorkflowPlan(current.metadata.name);
+                            const input = await capturePackageWorkflowInput(current.metadata.name);
+                            return await applySharedPlanReviewDecision({
+                                cwd: request.identity.checkoutRoot,
+                                planName: current.metadata.name,
+                                planPath: plan.path,
+                                planWithFrontMatter: plan.markdown,
+                                planRevision: plan.revision,
+                                originalAttrs: plan.attrs,
+                                trustedClassification: "PLANNED_CHANGE",
+                                packageInput: input,
+                                decision: {
+                                    approved: true,
+                                    approvalAction: "later",
+                                    plan:
+                                        request.command === "review-race"
+                                            ? plan.markdown + "\nReviewed edit\n"
+                                            : plan.markdown,
+                                },
+                            });
+                        }
+                        if (request.command === "sequence" || request.command === "sequence-race") {
+                            const { prepareSequenceReview, applySequenceReviewDecision } =
+                                await import("../workflow/sequence-review.ts");
+                            const documents = await prepareSequenceReview(
+                                request.identity.checkoutRoot,
+                                current.metadata.name,
+                            );
+                            return await applySequenceReviewDecision({
+                                cwd: request.identity.checkoutRoot,
+                                documents,
+                                decision: {
+                                    approved: true,
+                                    approvalAction: "later",
+                                    documents: documents.map((doc) => ({
+                                        planId: doc.planId,
+                                        plan:
+                                            request.command === "sequence-race"
+                                                ? doc.plan + "\nReviewed edit\n"
+                                                : doc.plan,
+                                    })),
+                                },
+                            });
+                        }
+                        if (request.command === "recover-lifecycle")
+                            return await loadPackageWorkflowPlan(current.metadata.name);
+                        if (request.command === "execution" || request.command === "finalize") {
+                            const { startActiveExecutionWorkflow, createExecutionStartPorts } =
+                                await import("../workflow/execution-start.ts");
+                            const plan = await loadPackageWorkflowPlan(current.metadata.name);
+                            const workflow = await startActiveExecutionWorkflow({
+                                cwd: request.identity.checkoutRoot,
+                                planName: current.metadata.name,
+                                triageMeta: plan.attrs,
+                                currentStatus: plan.attrs.status!,
+                                ports: createExecutionStartPorts(),
+                            });
+                            if (request.command === "finalize") {
+                                fs.writeFileSync(request.executionContextPath!, JSON.stringify(workflow));
+                                const { finalizePlanImplementation } =
+                                    await import("../workflow/implementation-checkpoint.ts");
+                                await promises.writeFile(
+                                    join(workflow.executionCwd!, "implemented.txt"),
+                                    "implementation\n",
+                                );
+                                return await finalizePlanImplementation({
+                                    projectRoot: request.identity.checkoutRoot,
+                                    planName: current.metadata.name,
+                                    executionContext: workflow,
+                                });
+                            }
+                            return workflow;
+                        }
+                        return await recordPlanEvent({
+                            cwd: request.identity.checkoutRoot,
+                            planName: current.metadata.name,
+                            event: "review_approved",
+                            currentStatus: "draft",
+                        });
+                    },
+                );
+                break;
+            }
             case "evidence":
                 if (!current || current.kind !== "loaded" || !current.metadata.references.legacyImport)
                     throw new Error("Missing imported package");

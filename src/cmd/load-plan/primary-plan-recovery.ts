@@ -1,3 +1,9 @@
+import {
+    currentPackageSelection,
+    withPackageWorkflow,
+    LegacyPackageContinuation,
+    type PackageWorkflowSelection,
+} from "../../shared/workflow/package-workflow.ts";
 import { executionWorktreePathExists } from "../../shared/workflow/execution-worktree-rescue.ts";
 import { listControllerDocumentWorktrees } from "../../shared/workflow/controller-registry.ts";
 import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
@@ -134,7 +140,26 @@ export async function resumePlanPublicationCleanup(
 export async function resolvePlanWithPrimaryRecovery(
     projectRoot: string,
     planArg: string,
+    packageSelection?: PackageWorkflowSelection,
 ): Promise<LoadPlanResolution> {
+    if (packageSelection) {
+        try {
+            return await withPackageWorkflow(
+                projectRoot,
+                packageSelection,
+                () => resolvePlanWithPrimaryRecovery(projectRoot, planArg),
+                planArg,
+            );
+        } catch (error) {
+            if (!(error instanceof LegacyPackageContinuation)) throw error;
+            return await resolvePlanWithPrimaryRecovery(error.repositoryRoot, error.planName);
+        }
+    }
+    if (currentPackageSelection()) {
+        const location = await preparePlanWorkflow(projectRoot, planArg);
+        if (!location.plan) throw new Error("Canonical package Plan is unavailable.");
+        return { plan: { ...location.plan, planName: planArg } };
+    }
     await prepareWorktreeRegistry(projectRoot);
     if (isPlanIdArgument(planArg)) {
         const selected = await findPlanEvidenceById(projectRoot, planArg);
@@ -176,6 +201,7 @@ export interface PlanDocumentTarget {
 
 /** Select document authority without recovery, status repair, or activation. */
 export async function discoverPlanDocumentRoot(projectRoot: string, planArg: string): Promise<PlanDocumentTarget> {
+    if (currentPackageSelection()) return { path: projectRoot };
     // Directory consent precedes authority validation or repair. This is only a
     // guard target: resolving the workflow below must still reject foreign trees.
     const normalized = await normalizePlanArgument(projectRoot, planArg);

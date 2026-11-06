@@ -1,3 +1,4 @@
+import { currentPackageSelection, selectedPackage } from "./package-workflow.ts";
 import { preparePlanController } from "./plan-preparation.ts";
 import { type OutcomeSession, recordWorkflowOutcome } from "./outcome-observations.ts";
 import {
@@ -442,6 +443,25 @@ function pausedResult(
 
 /** Reconcile canonical Plan state, claim one owner, run, and durably settle. */
 export async function runValidationAttempt(args: RunValidationAttemptArgs): Promise<WorkflowValidationResult> {
+    if (currentPackageSelection()) {
+        const plan = await selectedPackage(args.planName);
+        const binding = plan.metadata.workflow?.attempt;
+        return {
+            kind: "paused",
+            planName: args.planName,
+            projectRoot: args.projectRoot,
+            reason: "Package publication is pending; continue this retained attempt when package delivery is available.",
+            ...(binding
+                ? {
+                      packageContinuation: {
+                          attemptId: binding.attemptId,
+                          repositoryRoot: binding.repositoryRoot,
+                          input: binding.input,
+                      },
+                  }
+                : {}),
+        };
+    }
     return await continueValidationAttempt({ ...args, projectRoot: resolvePrimaryCheckoutRoot(args.projectRoot) }, 0);
 }
 

@@ -36,10 +36,9 @@ resolves verified original stores after moves and accepted clone links, without 
 historical evidence, transferring execution attempts, or changing managed-remote ownership. ADR-015 owns that accepted
 Session lookup decision; the broader home-state proposal remains proposed.
 
-The canonical-package persistence slice is available through explicit internal operations; public discovery and
-lifecycle still retain the repository boundary. Its version-1 metadata owns IDs, names, independent revisions,
-relationships, archive facts, supported definition/controller fields and references to execution records. It does not
-copy mutable worktree registries or validation checkpoints into package authority. Unsupported fields and versions
+The canonical-package persistence slice is available through explicit internal operations; public discovery still retains the repository boundary. Its version-1 metadata owns IDs, names, independent revisions,
+relationships, archive facts, supported definition/controller fields and references to execution records. Its optional workflow references retain complete review/readiness inputs, the personal-owner/repository/attempt binding,
+and immutable complex-controller evidence. The registry remains the owner of physical Git facts. Unsupported fields and versions
 require an explicit format change. This persistence contract does not accept the broader proposed ownership and
 activation decision below.
 
@@ -54,7 +53,8 @@ The internal import contract extends version-1 metadata with named Sequence, Tic
 closure and archive facts. Original bytes and remaining historical fields are immutable provenance, including retired
 objective-check fields. Typed import references resolve retained controller/checkpoint and repository-attempt evidence;
 they do not create another mutable lifecycle authority. Existing version-1 packages remain valid without these optional
-fields. Lifecycle admission must recheck the retained binding before execution.
+fields. Explicit internal lifecycle admission rechecks the retained binding before execution. Unfinished imported attempts
+continue through their original legacy owner; retained provenance is never promoted into mutable controller truth.
 
 A batch intent reserves IDs and retains complete selected inputs before any package is visible. The same persistence
 owner stages and publishes every new member under the catalog lock and ordered Plan-ID locks. One persistent batch
@@ -64,6 +64,13 @@ ordinary single-package creation was rejected because interruption could expose 
 inputs permits recovery without the original sources, while the committed marker prevents replay over newer edits.
 The import boundary is explicit selection, not automatic repository migration, and does not accept the broader public
 activation or managed-remote ownership proposal below.
+
+The bounded internal lifecycle path now uses existing review, readiness, Sequence and Plan Event rules with home package
+metadata. Retained inputs include every required resource and parent context; implementation dispatch and checkpoints
+keep the exact input and attempt. Package validation/publication returns a nonterminal pause with that continuation,
+without final delivery evidence. Public selection, package publication and managed-remote transport remain outside this
+contract. ADR-004 and ADR-017 qualify the accepted lifecycle/runtime decisions for this internal case; the broader
+proposal below remains proposed.
 
 ## Decision and Rationale
 

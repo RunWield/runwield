@@ -277,6 +277,14 @@ Approval leads to a readiness check; a Plan that needs repair explains what bloc
 review keep the decision valid. Changes to Plan meaning, code, execution policy, or workflow evidence require review of
 the current Plan.
 
+**Requirement: Internal package review proves the complete input.** Explicitly selected canonical packages use the
+same approval/readiness rules over every required document and parent context. Changes to resource membership,
+validation content or execution policy require current review. Formatting-only review captures the new exact bytes;
+controller timestamps and unrelated sibling edits do not invalidate unchanged required input. Reply-only review keeps
+status unchanged. Single-Plan and Sequence decisions recheck the complete input after saving reviewed edits and before
+acceptance. A refused stale review preserves editor bytes and permits a fresh review after restart without manual
+journal repair. Ordinary public review source selection remains the legacy baseline.
+
 **Requirement: Reply or revise in Plan review.** Planner or Architect replies in chat to explain, clarify, or ask back.
 It revises the Plan and calls `plan_written` when the answer changes scope, behavior, a decision, or verification; when
 in doubt, it revises. A reply-only turn writes nothing to the Plan file. RunWield keeps the same review and conversation
@@ -513,6 +521,12 @@ Lifecycle rules:
   child selection. Epics are containers; their child Plans execute and validate independently.
 - `on_hold` pauses work and resumes from the previous stage.
 - Board actions follow the same rules as CLI and TUI actions.
+
+**Requirement: Internal package lifecycle has one metadata authority.** An explicit established owner/Project, Plan ID
+and revision selects the home package for shared lifecycle actions. Its definition/controller metadata changes
+atomically without modifying Markdown; YAML-looking prose cannot assign status or identity. ID-based families and
+Sequence review read live package documents without Git transport. Existing public discovery defaults remain unchanged.
+An unfinished imported legacy attempt continues through its revalidated original owner.
 
 **Requirement: Conversation is not a Plan Status.** Review chat alone does not change status or write Plan front
 matter. Legacy `feedback` and `in_review` Plans read as `draft` in every surface, including Epic, Sequence, dependency,
@@ -787,7 +801,16 @@ of selecting an old or new location as authoritative. Durable metadata replaceme
 restart; recovery cannot revert a later revision. A retained input commits all observed document bytes, membership,
 hashes, Plan identity and metadata revision before returning a reference. Detected changes or missing required input
 produce no usable reference. Retained bytes survive later live edits. Capture assigns no approval, execution or delivery
-status; those consumers bind inputs in the later lifecycle work.
+status; explicitly admitted lifecycle consumers separately bind and revalidate those inputs.
+
+**Requirement: One package attempt survives clone races and interruption.** Explicit internal package execution reserves
+one unfinished attempt across the personal owner's linked clones. The binding identifies the repository that owns its
+physical Git work. Retry reuses that attempt after interruption; another clone receives its recorded continuation.
+Code remains isolated in a worktree without a package Plan copy. Implementation dispatch uses retained complete input,
+and later editor changes neither rewrite that input nor erase code. Consequential continuation requires current
+review/readiness. Checkpoints retain exact generations, review issues and repair receipts through restart. Recovery
+respects native lock owners and compensates only owned metadata. Package validation/publication pauses with the same
+attempt/input until its delivery path is available; it cannot claim `verified` or create final receipts.
 
 **Requirement: Import publishes complete families and recovers the same identities.** One durable batch intent reserves
 all new IDs and retains complete import inputs before publication. Until the batch commits, ID and name lookup report
@@ -840,6 +863,18 @@ point. Commands are copy-ready with real values. Waiting for the user's action s
 
 **Acceptance scenarios:**
 
+- Given an explicitly selected package and a poisoned checkout Plan, review/readiness and execution use only the home
+  documents and metadata; ordinary public selection remains unchanged.
+- Given a reviewed package, changing required resource membership, parent context or policy rejects old readiness;
+  formatting-only review preserves the decision and retains the new bytes, while reply-only leaves status unchanged.
+- Given an editor changes a required document during single-Plan or Sequence approval, the decision is refused;
+  restart preserves both saved review edits and editor changes, and a fresh review can approve the current input.
+- Given simultaneous starts in two linked clones, one exact unfinished attempt wins. Fresh-process retry after intent,
+  registry reservation or Git creation reuses it and preserves editor changes; a held native lock is waited on.
+- Given an imported dirty unfinished legacy attempt, internal selection returns its original owner and checkpoint;
+  changed or missing binding evidence cannot start a second attempt.
+- Given an internally executed package, Engineer receives retained child/parent resources and writes isolated code.
+  Implementation checkpoints persist, but package publication remains paused without a final receipt or verified status.
 - Given competing package writers from worktrees or explicitly linked clones, one stale revision wins once; a
   metadata edit and document edit both survive. An active native lock is not stolen; process exit releases it.
 - Given interruption during package publication, inspection reports pending recovery without writes. The next

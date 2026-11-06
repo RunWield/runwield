@@ -59,6 +59,7 @@ const LOCK_RETRY_MS = 50;
  * @property {string} updatedAt
  * @property {{ reason: string, recordedAt: string, candidates?: string[] }} [migrationIssue]
  * @property {import('./workflow/publication-attempt.ts').PublicationAttempt} [publication]
+ * @property {import("./worktree-project-context.ts").WorktreeProjectContext} [creationContext]
  */
 
 /** @typedef {{ label: string, description: string, command?: string }} RegistryRecoveryAction */

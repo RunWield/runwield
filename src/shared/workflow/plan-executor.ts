@@ -1,4 +1,11 @@
 // @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
+import {
+    currentPackageSelection,
+    withPackageWorkflow,
+    selectedPackage,
+    type PackageWorkflowSelection,
+} from "./package-workflow.ts";
+import { readPlanPackageInput } from "../plan-package-store.ts";
 import { isEpicPlan } from "../project-plan.ts";
 import { AGENTS, CLI_BIN, PLANS_DIR_NAME } from "../../constants.js";
 import { resolvePlanExecutionPolicy } from "../../plan-store.js";
@@ -64,6 +71,7 @@ export interface PlanExecutionResult {
 }
 
 export interface ExecutePlanOptions {
+    packageSelection?: PackageWorkflowSelection;
     planName: string;
     triageMeta?: Partial<PlanFrontMatter>;
     sessionManager?: SessionManager;
@@ -95,7 +103,17 @@ export interface ExecuteSingleEngineerPlanOptions {
     resumePreviousRequest?: boolean;
 }
 
-export async function executePlan({
+export async function executePlan(options: ExecutePlanOptions): Promise<PlanExecutionResult> {
+    if (options.packageSelection)
+        return await withPackageWorkflow(
+            options.hostedSession.cwd,
+            options.packageSelection,
+            () => executePlanInScope(options),
+            options.planName,
+        );
+    return await executePlanInScope(options);
+}
+async function executePlanInScope({
     planName,
     triageMeta: _triageMeta,
     sessionManager,
@@ -591,8 +609,30 @@ export async function executeSingleEngineerPlan({
             error: `Prepared execution Plan is missing: ${planName}`,
         };
     }
-    planBody = projectEngineerPlanBody(preparedPlan.markdown);
-    approvedMarkdown = preparedPlan.markdown;
+    if (currentPackageSelection()) {
+        const selected = await selectedPackage(planName);
+        const input = executionContext.packageInput;
+        if (!input)
+            return { repairRequired: false, executionComplete: false, error: "Execution retained input is missing." };
+        const retained = await Promise.all(
+            input.inputs.map((ref) => readPlanPackageInput(currentPackageSelection()!.identity, ref)),
+        );
+        planBody = retained
+            .map((bundle, index) =>
+                bundle.documents
+                    .map(
+                        (doc) =>
+                            `# ${input.inputs[index].planId}/${doc.name}\n\n${new TextDecoder().decode(doc.bytes)}`,
+                    )
+                    .join("\n\n"),
+            )
+            .join("\n\n");
+        const own = retained[input.inputs.findIndex((ref) => ref.planId === selected.metadata.planId)];
+        approvedMarkdown = new TextDecoder().decode(own.documents.find((doc) => doc.name === "context.md")!.bytes);
+    } else {
+        planBody = projectEngineerPlanBody(preparedPlan.markdown);
+        approvedMarkdown = preparedPlan.markdown;
+    }
     if (prepareSegmentHandoff) {
         const managed = hostedSession.getManagedMetadata?.();
         if (!managed?.runwieldSessionId) {

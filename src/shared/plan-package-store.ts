@@ -1,5 +1,6 @@
 /** Explicit personal Plan packages. Legacy discovery and lifecycle admission remain separate. */
 import fs from "node:fs/promises";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID } from "node:crypto";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { inspectProjectIdentity, type ProjectIdentity } from "./project-identity.ts";
@@ -113,6 +114,32 @@ export interface PackageArchive {
     fromPath?: string;
     restoredFromPath?: string;
 }
+export interface PackageWorkflowInput {
+    inputs: PackageInputReference[];
+    definitionHash: string;
+}
+export interface PackageAttemptContinuation {
+    attemptId: string;
+    repositoryRoot: string;
+    input: PackageWorkflowInput;
+}
+export interface PackageAttemptReference {
+    personalOwner: string;
+    repositoryId: string;
+    repositoryRoot: string;
+    attemptId: string;
+    input: PackageWorkflowInput;
+}
+export interface PackageControllerReference {
+    revisionId: string;
+    planId: string;
+}
+export interface PackageWorkflowEvidence {
+    review?: PackageWorkflowInput;
+    readiness?: PackageWorkflowInput;
+    attempt?: PackageAttemptReference;
+    controller?: PackageControllerReference;
+}
 export interface PlanPackageMetadata {
     version: 1;
     planId: string;
@@ -125,6 +152,7 @@ export interface PlanPackageMetadata {
     controller: PackageControllerState;
     references: PackageReferences;
     archive: PackageArchive | null;
+    workflow?: PackageWorkflowEvidence;
 }
 export interface CreatePlanPackage {
     planId: string;
@@ -137,6 +165,7 @@ export interface CreatePlanPackage {
     dependencyPlanIds?: string[];
 }
 export interface PackageMetadataUpdate {
+    workflow?: PackageWorkflowEvidence;
     definition?: PackageDefinition;
     controller?: PackageControllerState;
     references?: PackageReferences;
@@ -350,7 +379,7 @@ function fields(value: JsonValue, allowed: string[]): JsonFields {
 function strings(value: JsonValue): boolean {
     return Array.isArray(value) && value.every((v) => typeof v === "string");
 }
-const definitionStrings = [
+export const packageDefinitionStrings = [
     "type",
     "deliveryBranch",
     "closedWithoutVerificationReason",
@@ -376,7 +405,7 @@ const definitionStrings = [
     "heldAt",
     "holdReason",
 ];
-const controllerStrings = [
+export const packageControllerStrings = [
     "updatedAt",
     "failureReason",
     "failedAt",
@@ -392,13 +421,40 @@ const controllerStrings = [
     "collaborationBodyHash",
     "collaborationSyncedAt",
 ];
-const controllerNumbers = ["validationCiAttempts", "validationSemanticRounds", "collaborationRevision"];
-const controllerEnums: Record<string, string[]> = {
+export const packageControllerNumbers = ["validationCiAttempts", "validationSemanticRounds", "collaborationRevision"];
+export const packageControllerEnums: Record<string, string[]> = {
     executionMode: ["worktree", "non_git_in_place"],
     validationPhase: ["mechanical", "semantic", "delivery"],
     humanReviewMode: ["none", "ask", "always"],
     humanReviewDecision: ["not_required", "skipped", "approved", "changes_requested"],
 };
+function validateWorkflowInput(value: JsonValue, planId: string): void {
+    const input = fields(value, ["inputs", "definitionHash"]);
+    if (
+        typeof input.definitionHash !== "string" ||
+        !/^[0-9a-f]{64}$/.test(input.definitionHash) ||
+        !Array.isArray(input.inputs) ||
+        !input.inputs.length
+    )
+        fail("malformed_metadata", "Invalid package workflow input.");
+    const ids = new Set<string>();
+    for (const value of input.inputs) {
+        const ref = fields(value, ["projectId", "planId", "inputId"]);
+        if (
+            typeof ref.projectId !== "string" ||
+            !ref.projectId ||
+            typeof ref.planId !== "string" ||
+            !ref.planId ||
+            typeof ref.inputId !== "string" ||
+            !/^[0-9a-f-]{36}$/.test(ref.inputId) ||
+            ids.has(ref.planId)
+        )
+            fail("malformed_metadata", "Invalid package retained-input reference.");
+        requireId(ref.planId);
+        ids.add(ref.planId);
+    }
+    if (!ids.has(planId)) fail("malformed_metadata", "Workflow input omits its owning Plan.");
+}
 function metadataFrom(value: PlanPackageMetadata): PlanPackageMetadata {
     const data = fields(JSON.parse(JSON.stringify(value)), [
         "version",
@@ -412,6 +468,7 @@ function metadataFrom(value: PlanPackageMetadata): PlanPackageMetadata {
         "controller",
         "references",
         "archive",
+        "workflow",
     ]);
     if (data.version !== 1) fail("unsupported_metadata", "Unsupported Plan package metadata version.");
     if (
@@ -438,13 +495,13 @@ function metadataFrom(value: PlanPackageMetadata): PlanPackageMetadata {
         "tickets",
         "supersedes",
         "planDeviations",
-        ...definitionStrings,
+        ...packageDefinitionStrings,
     ]);
     if (
         !["PLANNED_CHANGE", "PROJECT"].includes(String(definition.classification)) ||
         typeof definition.status !== "string" ||
         canonicalPlanStatus(definition.status) !== definition.status ||
-        definitionStrings.some((key) => key in definition && typeof definition[key] !== "string") ||
+        packageDefinitionStrings.some((key) => key in definition && typeof definition[key] !== "string") ||
         ("affectedPaths" in definition && !strings(definition.affectedPaths)) ||
         ("order" in definition && !Number.isSafeInteger(definition.order)) ||
         ["frontend", "devServerHmr"].some((key) => key in definition && typeof definition[key] !== "boolean")
@@ -477,18 +534,18 @@ function metadataFrom(value: PlanPackageMetadata): PlanPackageMetadata {
         }
     }
     const controller = fields(data.controller, [
-        ...controllerStrings,
-        ...controllerNumbers,
-        ...Object.keys(controllerEnums),
+        ...packageControllerStrings,
+        ...packageControllerNumbers,
+        ...Object.keys(packageControllerEnums),
     ]);
     if (
-        controllerStrings.some(
+        packageControllerStrings.some(
             (key) => key in controller && controller[key] !== null && typeof controller[key] !== "string",
         ) ||
-        controllerNumbers.some(
+        packageControllerNumbers.some(
             (key) => key in controller && (!Number.isSafeInteger(controller[key]) || Number(controller[key]) < 0),
         ) ||
-        Object.entries(controllerEnums).some(
+        Object.entries(packageControllerEnums).some(
             ([key, values]) =>
                 key in controller && controller[key] !== null && !values.includes(String(controller[key])),
         )
@@ -519,6 +576,37 @@ function metadataFrom(value: PlanPackageMetadata): PlanPackageMetadata {
             retained.format !== "legacy-markdown"
         )
             fail("malformed_metadata", "Invalid legacy import reference.");
+    }
+    if (data.workflow !== undefined) {
+        const workflow = fields(data.workflow, ["review", "readiness", "attempt", "controller"]);
+        for (const key of ["review", "readiness"]) {
+            if (workflow[key] !== undefined) validateWorkflowInput(workflow[key], data.planId);
+        }
+        if (workflow.attempt !== undefined) {
+            const attempt = fields(workflow.attempt, [
+                "personalOwner",
+                "repositoryId",
+                "repositoryRoot",
+                "attemptId",
+                "input",
+            ]);
+            for (const key of ["personalOwner", "repositoryId", "repositoryRoot", "attemptId"]) {
+                if (typeof attempt[key] !== "string" || !attempt[key])
+                    fail("malformed_metadata", "Invalid package attempt binding.");
+            }
+            if (!isAbsolute(String(attempt.repositoryRoot)))
+                fail("malformed_metadata", "Invalid attempt repository root.");
+            validateWorkflowInput(attempt.input, data.planId);
+        }
+        if (workflow.controller !== undefined) {
+            const ref = fields(workflow.controller, ["revisionId", "planId"]);
+            if (
+                typeof ref.revisionId !== "string" ||
+                !/^[0-9a-f-]{36}$/.test(ref.revisionId) ||
+                ref.planId !== data.planId
+            )
+                fail("malformed_metadata", "Invalid package controller reference.");
+        }
     }
     if (data.archive !== null) {
         const archive = fields(data.archive, [
@@ -879,13 +967,56 @@ async function recover(paths: PackageLayout): Promise<void> {
         syncParentDirectory(join(paths.stages, "entry"));
     }
 }
+interface PackageLockScope {
+    internal: string;
+    planIds: Set<string>;
+}
+const packageLocks = new AsyncLocalStorage<PackageLockScope>();
+
+/** Catalog, sorted Plan IDs, then repository/attempt resources. Nested writes reuse held native locks. */
+export async function withPlanPackageLocks<T>(
+    identity: ProjectIdentity,
+    planIds: string[],
+    action: () => Promise<T>,
+): Promise<T> {
+    return await mutate(identity, planIds, () => action());
+}
+
+export function planPackageControllerDirectory(identity: ProjectIdentity): string {
+    return join(layout(identity).internal, "controller-evidence");
+}
+
+/** Validate every ancestor before the controller owner reads or creates evidence. */
+export async function checkedPlanPackageControllerDirectory(
+    identity: ProjectIdentity,
+    create = false,
+): Promise<string> {
+    const path = planPackageControllerDirectory(identity);
+    await safe(identity.executionAccountHome, path);
+    if (create) await fs.mkdir(path, { recursive: true, mode: 0o700 });
+    await safe(identity.executionAccountHome, path);
+    return path;
+}
+
+/** Personal lifecycle journals share the package owner's layout, never the invoking checkout. */
+export function planPackageJournalDirectory(identity: ProjectIdentity): string {
+    return join(layout(identity).internal, "transitions");
+}
+
 async function mutate<T>(
     identity: ProjectIdentity,
-    planId: string | null,
+    selected: string | string[] | null,
     action: (paths: PackageLayout) => Promise<T>,
 ): Promise<T> {
     const paths = layout(identity);
-    if (planId !== null) requireId(planId);
+    const planIds = selected === null ? [] : typeof selected === "string" ? [selected] : selected;
+    for (const id of planIds) requireId(id);
+    const held = packageLocks.getStore();
+    if (held?.internal === paths.internal) {
+        if (planIds.some((id) => !held.planIds.has(id)))
+            fail("unavailable", "A package transition must declare every Plan before acquiring its locks.");
+        return await action(paths);
+    }
     await directory(paths, paths.locks);
     const catalogPath = join(paths.locks, "catalog.lock");
     await safe(paths.home, catalogPath);
@@ -897,7 +1028,7 @@ async function mutate<T>(
         const batch = await readBatch(paths);
         for (const id of [
             ...new Set([
-                ...(planId === null ? [] : [planId]),
+                ...planIds,
                 ...(intent ? [intent.planId] : []),
                 ...(batch?.phase === "pending" ? batch.members.map((member) => member.planId!) : []),
             ]),
@@ -909,11 +1040,11 @@ async function mutate<T>(
             await lock.lock(true);
         }
         await recover(paths);
-        if (planId === null) {
+        if (selected === null) {
             for (const lock of plans.reverse()) lock.close();
             plans.length = 0;
         }
-        return await action(paths);
+        return await packageLocks.run({ internal: paths.internal, planIds: new Set(planIds) }, () => action(paths));
     } finally {
         for (const lock of plans.reverse()) lock.close();
         catalog.close();
@@ -1008,6 +1139,7 @@ export async function updatePlanPackageMetadata(
         expectedRevision(current.metadata, revision);
         // Validate update keys before merging: identity, location and archive are dedicated operations.
         fields(JSON.parse(JSON.stringify(update)), [
+            "workflow",
             "definition",
             "controller",
             "references",

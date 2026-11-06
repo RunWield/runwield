@@ -48,6 +48,15 @@ export async function tree(root: string): Promise<Record<string, string>> {
 export interface DriverRequest {
     identity: ProjectIdentity;
     command:
+        | "review-race"
+        | "review"
+        | "sequence-race"
+        | "finalize"
+        | "resume-finalize"
+        | "sequence"
+        | "lifecycle"
+        | "execution"
+        | "recover-lifecycle"
         | "metadata"
         | "document"
         | "create"
@@ -59,6 +68,7 @@ export interface DriverRequest {
         | "import"
         | "list"
         | "evidence";
+    executionContextPath?: string;
     barrier?: string;
     boundary?: string;
     planId?: string;

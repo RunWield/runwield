@@ -1,3 +1,4 @@
+import { currentPackageSelection } from "./package-workflow.ts";
 import { epicChildOrderProblem } from "./epic-child-order.ts";
 import { projectPlanType } from "../project-plan.ts";
 /**
@@ -105,7 +106,11 @@ export async function resolveEpicContinuation({
     let completedAttrs = completedLocation.plan?.attrs;
     let completedDeclaredStatus =
         knownCompletedStatus ||
-        (completedLocation.plan ? getDeclaredPlanStatus(completedLocation.plan.markdown) : undefined);
+        (currentPackageSelection()
+            ? completedAttrs?.status
+            : completedLocation.plan
+              ? getDeclaredPlanStatus(completedLocation.plan.markdown)
+              : undefined);
     if (!completedAttrs) {
         completedAttrs = (await listPlans(cwd)).find((plan) => plan.name === completedPlanName)?.attrs;
     }
@@ -114,6 +119,7 @@ export async function resolveEpicContinuation({
     const completedTargetBranch =
         typeof completedAttrs.targetBranch === "string" ? completedAttrs.targetBranch.trim() : "";
     if (
+        !currentPackageSelection() &&
         !TERMINAL_CHILD_STATUSES.has(completedDeclaredStatus || "") &&
         parentPlanName &&
         completedTargetBranch &&
@@ -162,7 +168,7 @@ export async function resolveEpicContinuation({
 
     const targetBranch = typeof parent.attrs.targetBranch === "string" ? parent.attrs.targetBranch.trim() : "";
     const family =
-        targetBranch && (await isGitRepository(cwd))
+        !currentPackageSelection() && targetBranch && (await isGitRepository(cwd))
             ? await prepareTargetBranchPlansByParent(cwd, targetBranch, parentPlanName)
             : await findPlansByParent(cwd, parentPlanName);
     const siblings = family
