@@ -1,20 +1,54 @@
-// @ts-nocheck: Compiled Workspace injects its bundled adapter. Astro dev can fall back to a native dynamic import
+// Compiled Workspace injects its bundled adapter. Astro dev can fall back to a native dynamic import
 import { stat } from "node:fs/promises";
 import { getCwd } from "../../../constants.js";
 // so both surfaces use the canonical adapter without reimplementing it.
 
 import { isAstroDevelopmentMode } from "./astro-dev-mode.ts";
 
+import type { PlanBodyResource, PlanResource } from "../../../plan-store.js";
+import type { DevPlanCatalogVariant } from "./dev-owner-fixtures.ts";
+import type { WorkspacePlanDetailOptions } from "./plan-adapter.js";
+
+type WorkspaceAdapter = typeof import("./plan-adapter.js");
+type WorkspaceAdapterImporter = (specifier: string) => Promise<WorkspaceAdapter>;
+type WorkspaceCatalog = Awaited<ReturnType<WorkspaceAdapter["loadPlanSummaryCatalog"]>>;
+type DevPlanSummary = Pick<PlanResource, "planId" | "attrs">;
+
+interface DevPlanCapabilities {
+    bodyEditing?: boolean;
+}
+
+interface DevPlanDetail extends Pick<PlanBodyResource, "attrs" | "body" | "markdown" | "bodyHash"> {
+    frontMatter: PlanResource["attrs"];
+    workspaceKey: string;
+    capabilities?: DevPlanCapabilities;
+}
+
+interface DevWorkspaceState {
+    plans: DevPlanSummary[];
+    diagnostics: WorkspaceCatalog["diagnostics"];
+    details: Map<string, DevPlanDetail>;
+    workspaceKey: string;
+}
+
+interface CanonicalWorkspaceGlobals {
+    [ADAPTER_URL_KEY]?: string;
+    [ADAPTER_MODULE_KEY]?: WorkspaceAdapter | Promise<WorkspaceAdapter>;
+    [DEV_WORKSPACES_KEY]?: Map<string, DevWorkspaceState>;
+}
+
+type CanonicalWorkspaceRuntime = typeof globalThis & CanonicalWorkspaceGlobals;
+
 const ADAPTER_URL_KEY = Symbol.for("runwield.workspace.plan-adapter-url");
 const ADAPTER_MODULE_KEY = Symbol.for("runwield.workspace.plan-adapter-module");
 const DEV_WORKSPACES_KEY = Symbol.for("runwield.workspace.dev-memory-state");
-const runtime = globalThis;
+const runtime: CanonicalWorkspaceRuntime = globalThis;
 const ADAPTER_URL = runtime[ADAPTER_URL_KEY] || new URL("./plan-adapter.js", import.meta.url).href;
-const devWorkspaces = (runtime[DEV_WORKSPACES_KEY] ||= new Map());
+const devWorkspaces = (runtime[DEV_WORKSPACES_KEY] ||= new Map<string, DevWorkspaceState>());
 
-async function workspaceAdapter() {
+async function workspaceAdapter(): Promise<WorkspaceAdapter> {
     if (runtime[ADAPTER_MODULE_KEY]) return runtime[ADAPTER_MODULE_KEY];
-    const nativeImport = Function("specifier", "return import(specifier)");
+    const nativeImport = Function("specifier", "return import(specifier)") as WorkspaceAdapterImporter;
     try {
         return await nativeImport(await devVersionedAdapterUrl(ADAPTER_URL));
     } catch (error) {
@@ -25,8 +59,7 @@ async function workspaceAdapter() {
     }
 }
 
-/** @param {string} url */
-async function devVersionedAdapterUrl(url) {
+async function devVersionedAdapterUrl(url: string) {
     if (!devMode() || !url.startsWith("file:")) return url;
     try {
         const info = await stat(new URL(url));
@@ -42,14 +75,12 @@ function devMode() {
     return isAstroDevelopmentMode();
 }
 
-/** @param {string} value */
-async function sha256Hex(value) {
+async function sha256Hex(value: string) {
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
     return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-/** @param {string} cwd */
-async function loadDevWorkspace(cwd) {
+async function loadDevWorkspace(cwd: string) {
     let state = devWorkspaces.get(cwd);
     if (state) return state;
     const adapter = await workspaceAdapter();
@@ -57,22 +88,21 @@ async function loadDevWorkspace(cwd) {
     state = {
         plans: structuredClone(catalog.plans),
         diagnostics: structuredClone(catalog.diagnostics),
-        details: new Map(),
+        details: new Map<string, DevPlanDetail>(),
         workspaceKey: await sha256Hex(cwd),
     };
     devWorkspaces.set(cwd, state);
     return state;
 }
 
-/** @param {string} cwd @param {string} planId */
-async function loadDevDetail(cwd, planId) {
+async function loadDevDetail(cwd: string, planId: string): Promise<DevPlanDetail> {
     const adapter = await workspaceAdapter();
     const state = await loadDevWorkspace(cwd);
     const summary = state.plans.find((plan) => plan.planId === planId);
     if (!summary) throw new Error(`Plan not found for planId: ${planId}`);
     let resource = state.details.get(planId);
     if (!resource) {
-        const loaded = await adapter.loadWorkspaceDetail(cwd, planId);
+        const loaded: DevPlanDetail = await adapter.loadWorkspaceDetail(cwd, planId);
         resource = {
             ...loaded,
             attrs: summary.attrs,
@@ -85,9 +115,8 @@ async function loadDevDetail(cwd, planId) {
 }
 
 /** Fixture-only Board projection. Production and detail readers do not use it.
- * @param {import("./dev-owner-fixtures.ts").DevPlanCatalogVariant} variant
  */
-export async function loadDevPlanCatalogBoard(variant) {
+export async function loadDevPlanCatalogBoard(variant: DevPlanCatalogVariant) {
     if (!devMode()) throw new Error("Development fixture is not available.");
     if (variant === "project-failure") throw new Error("Plans could not be loaded. Open Project settings.");
     const { devPlanCatalog } = await import("./dev-owner-fixtures.ts");
@@ -100,8 +129,7 @@ export async function loadDevPlanCatalogBoard(variant) {
     };
 }
 
-/** @param {string} cwd */
-export async function loadCanonicalBoard(cwd) {
+export async function loadCanonicalBoard(cwd: string) {
     const adapter = await workspaceAdapter();
     if (devMode()) {
         const state = await loadDevWorkspace(cwd);
@@ -115,19 +143,17 @@ export async function loadCanonicalBoard(cwd) {
     return await adapter.loadBoard(cwd);
 }
 
-/** @param {string} cwd @param {string} planId @param {import('./plan-adapter.js').WorkspacePlanDetailOptions} [options] */
-export async function loadCanonicalWorkspaceDetail(cwd, planId, options = {}) {
+export async function loadCanonicalWorkspaceDetail(
+    cwd: string,
+    planId: string,
+    options: WorkspacePlanDetailOptions = {},
+) {
     const adapter = await workspaceAdapter();
     if (devMode() && !options.reviewOnly) return await loadDevDetail(cwd, planId);
     return await adapter.loadWorkspaceDetail(cwd, planId, options);
 }
 
-/**
- * @param {string} cwd
- * @param {string} planId
- * @param {unknown} payload
- */
-export async function applyCanonicalDevLifecycleAction(cwd, planId, payload) {
+export async function applyCanonicalDevLifecycleAction<TPayload>(cwd: string, planId: string, payload: TPayload) {
     if (!devMode()) throw new Error("In-memory lifecycle actions are only available in Workspace dev mode.");
     const adapter = await workspaceAdapter();
     const state = await loadDevWorkspace(cwd);
@@ -152,13 +178,7 @@ export async function applyCanonicalDevLifecycleAction(cwd, planId, payload) {
     };
 }
 
-/**
- * @param {string} cwd
- * @param {string} planId
- * @param {string} body
- * @param {string} expectedBodyHash
- */
-export async function saveCanonicalDevPlanBody(cwd, planId, body, expectedBodyHash) {
+export async function saveCanonicalDevPlanBody(cwd: string, planId: string, body: string, expectedBodyHash: string) {
     if (!devMode()) throw new Error("In-memory body editing is only available in Workspace dev mode.");
     const adapter = await workspaceAdapter();
     const state = await loadDevWorkspace(cwd);
@@ -181,8 +201,7 @@ export async function saveCanonicalDevPlanBody(cwd, planId, body, expectedBodyHa
     return adapter.projectWorkspaceDetail(resource, state.plans);
 }
 
-/** @param {unknown} error */
-export async function serializeCanonicalPlanError(error) {
+export async function serializeCanonicalPlanError<TError>(error: TError) {
     const adapter = await workspaceAdapter();
     return adapter.serializePlanError(error);
 }

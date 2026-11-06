@@ -5,7 +5,7 @@ import {
     loadCanonicalWorkspaceDetail,
     saveCanonicalDevPlanBody,
     serializeCanonicalPlanError,
-} from "../../../server/astro-canonical-data.js";
+} from "../../../server/astro-canonical-data.ts";
 
 export const prerender = false;
 

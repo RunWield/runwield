@@ -10,7 +10,7 @@ import {
 } from "./dev-owner-fixtures.ts";
 import { currentWorkspaceCwd } from "./cwd.ts";
 import { listOwnerProjects, requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./owner-projects.ts";
-import { loadCanonicalBoard, loadCanonicalWorkspaceDetail, loadDevPlanCatalogBoard } from "./astro-canonical-data.js";
+import { loadCanonicalBoard, loadCanonicalWorkspaceDetail, loadDevPlanCatalogBoard } from "./astro-canonical-data.ts";
 import { readSessionArtifact } from "../../../shared/session/read-session-artifact.ts";
 import { isAstroDevelopmentMode } from "./astro-dev-mode.ts";
 
