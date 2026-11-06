@@ -1,7 +1,7 @@
 import type { BoardColumnData } from "./BoardColumn.tsx";
 import type { PlanCardData } from "./PlanCard.tsx";
 import type { PlanBoardView } from "./PlanBoardToolbar.tsx";
-import { PlanBoardDragDrop } from "../islands/PlanBoardDragDrop.jsx";
+import { PlanBoardDragDrop } from "../islands/PlanBoardDragDrop.tsx";
 import { BoardColumn } from "./BoardColumn.tsx";
 import { PlanCard } from "./PlanCard.tsx";
 

@@ -1,72 +1,80 @@
 import { useEffect, useRef, useState } from "react";
 import { createMoveStatusIntent, dispatchPlanLifecycleAction } from "./PlanLifecycleActions.jsx";
 
-/**
- * @typedef {Object} DragPlanState
- * @property {string} planId
- * @property {string} planName
- * @property {string} fromStatus
- * @property {Set<string>} allowedTargetStatuses
- * @property {HTMLElement} card
- */
-
-/**
- * @param {string} value
- * @returns {Set<string>}
- */
-export function parseAllowedTargetStatuses(value) {
-    return new Set(value.split(/\s+/).map((status) => status.trim()).filter(Boolean));
+export interface DragPlanState {
+    planId: string;
+    planName: string;
+    fromStatus: string;
+    allowedTargetStatuses: Set<string>;
+    card: HTMLElement;
 }
 
-/**
- * @param {{ fromStatus: string, targetStatus: string, allowedTargetStatuses: Set<string> }} opts
- */
-export function isAllowedDropTarget({ fromStatus, targetStatus, allowedTargetStatuses }) {
-    return Boolean(targetStatus) && targetStatus !== fromStatus && allowedTargetStatuses.has(targetStatus);
+export interface AllowedDropTargetOptions extends Pick<DragPlanState, "fromStatus" | "allowedTargetStatuses"> {
+    targetStatus: string;
 }
 
-/** @param {Set<string>} statuses */
-function allowedStatusList(statuses) {
-    return [...statuses].join(", ") || "no columns";
+export interface BlockedDropMessageOptions extends Pick<DragPlanState, "planName" | "allowedTargetStatuses"> {
+    targetStatus?: string;
 }
 
-/**
- * @param {{ planName: string, targetStatus?: string, allowedTargetStatuses: Set<string> }} opts
- */
-export function blockedDropMessage({ planName, targetStatus = "that column", allowedTargetStatuses }) {
-    return `${planName} cannot move to ${targetStatus}. Available columns: ${
-        allowedStatusList(allowedTargetStatuses)
-    }.`;
+export interface PlanBoardDragDropProps {
+    boardId: string;
 }
 
-/**
- * @param {Element | null} element
- * @returns {HTMLElement | null}
- */
-function closestCard(element) {
-    return /** @type {HTMLElement | null} */ (element?.closest?.('[data-draggable-plan-card="true"]') || null);
+interface PlanDropResponsePayload {
+    blockedReason?: string;
+    error?: string;
+    message?: string;
 }
 
-/**
- * @param {Element | null} element
- * @returns {HTMLElement | null}
- */
-function closestColumn(element) {
-    return /** @type {HTMLElement | null} */ (element?.closest?.("[data-action-target-status]") || null);
+interface PlanDropResult {
+    response: Response;
+    payload: PlanDropResponsePayload;
 }
 
-/** @param {HTMLElement} boardElement */
-function clearDropClasses(boardElement) {
-    boardElement.querySelectorAll(".drop-allowed, .drop-blocked, .drop-target-active").forEach(
-        (/** @param {Element} element */ element) => {
-            element.classList.remove("drop-allowed", "drop-blocked", "drop-target-active");
-        },
+export function parseAllowedTargetStatuses(value: string) {
+    return new Set(
+        value
+            .split(/\s+/)
+            .map((status) => status.trim())
+            .filter(Boolean),
     );
 }
 
-/** @param {HTMLElement} card */
-function makeDragImage(card) {
-    const clone = /** @type {HTMLElement} */ (card.cloneNode(true));
+export function isAllowedDropTarget({ fromStatus, targetStatus, allowedTargetStatuses }: AllowedDropTargetOptions) {
+    return Boolean(targetStatus) && targetStatus !== fromStatus && allowedTargetStatuses.has(targetStatus);
+}
+
+function allowedStatusList(statuses: Set<string>) {
+    return [...statuses].join(", ") || "no columns";
+}
+
+export function blockedDropMessage({
+    planName,
+    targetStatus = "that column",
+    allowedTargetStatuses,
+}: BlockedDropMessageOptions) {
+    return `${planName} cannot move to ${targetStatus}. Available columns: ${allowedStatusList(
+        allowedTargetStatuses,
+    )}.`;
+}
+
+function closestCard(element: Element | null) {
+    return element?.closest?.<HTMLElement>('[data-draggable-plan-card="true"]') || null;
+}
+
+function closestColumn(element: Element | null) {
+    return element?.closest?.<HTMLElement>("[data-action-target-status]") || null;
+}
+
+function clearDropClasses(boardElement: HTMLElement) {
+    boardElement.querySelectorAll(".drop-allowed, .drop-blocked, .drop-target-active").forEach((element) => {
+        element.classList.remove("drop-allowed", "drop-blocked", "drop-target-active");
+    });
+}
+
+function makeDragImage(card: HTMLElement) {
+    const clone = card.cloneNode(true) as HTMLElement;
     clone.classList.add("drag-image-card");
     clone.style.position = "fixed";
     clone.style.top = "-1000px";
@@ -76,19 +84,17 @@ function makeDragImage(card) {
     return clone;
 }
 
-/** @param {{ boardId: string }} props */
-export function PlanBoardDragDrop({ boardId }) {
+export function PlanBoardDragDrop({ boardId }: PlanBoardDragDropProps) {
     const [message, setMessage] = useState("");
-    const dragging = useRef(/** @type {DragPlanState | null} */ (null));
+    const dragging = useRef<DragPlanState | null>(null);
 
     useEffect(() => {
         const board = document.getElementById(boardId);
         if (!board) return undefined;
         const boardElement = board;
 
-        /** @param {DragEvent} event */
-        function handleDragStart(event) {
-            const card = closestCard(/** @type {Element | null} */ (event.target));
+        function handleDragStart(event: DragEvent) {
+            const card = closestCard(event.target as Element | null);
             if (!card || !event.dataTransfer) return;
             const allowedTargetStatuses = parseAllowedTargetStatuses(card.dataset.allowedTargetStatuses || "");
             const planId = card.dataset.planId || "";
@@ -113,11 +119,10 @@ export function PlanBoardDragDrop({ boardId }) {
             setMessage(`Moving ${planName}. Available columns: ${allowedStatusList(allowedTargetStatuses)}.`);
         }
 
-        /** @param {DragEvent} event */
-        function handleDragOver(event) {
+        function handleDragOver(event: DragEvent) {
             const state = dragging.current;
             if (!state || !event.dataTransfer) return;
-            const column = closestColumn(/** @type {Element | null} */ (event.target));
+            const column = closestColumn(event.target as Element | null);
             if (!column) return;
             const targetStatus = column.dataset.actionTargetStatus || "";
             const allowed = isAllowedDropTarget({
@@ -143,22 +148,20 @@ export function PlanBoardDragDrop({ boardId }) {
             );
         }
 
-        /** @param {DragEvent} event */
-        function handleDragLeave(event) {
+        function handleDragLeave(event: DragEvent) {
             const state = dragging.current;
             if (!state) return;
-            const column = closestColumn(/** @type {Element | null} */ (event.target));
+            const column = closestColumn(event.target as Element | null);
             if (!column) return;
-            const relatedTarget = /** @type {Node | null} */ (event.relatedTarget || null);
+            const relatedTarget = (event.relatedTarget || null) as Node | null;
             if (relatedTarget && column.contains(relatedTarget)) return;
             column.classList.remove("drop-allowed", "drop-blocked", "drop-target-active");
         }
 
-        /** @param {DragEvent} event */
-        function handleDrop(event) {
+        function handleDrop(event: DragEvent) {
             const state = dragging.current;
             if (!state) return;
-            const column = closestColumn(/** @type {Element | null} */ (event.target));
+            const column = closestColumn(event.target as Element | null);
             const targetStatus = column?.dataset.actionTargetStatus || "";
             const allowed = isAllowedDropTarget({
                 fromStatus: state.fromStatus,
@@ -182,8 +185,7 @@ export function PlanBoardDragDrop({ boardId }) {
             submitDrop(state, targetStatus);
         }
 
-        /** @param {DragEvent} event */
-        function handleDragEnd(event) {
+        function handleDragEnd(event: DragEvent) {
             const state = dragging.current;
             if (state && event.dataTransfer?.dropEffect === "none") {
                 state.card.classList.add("drop-rejected");
@@ -197,32 +199,27 @@ export function PlanBoardDragDrop({ boardId }) {
             }
             dragging.current = null;
             boardElement.classList.remove("is-dragging-plan");
-            boardElement.querySelectorAll(".is-drag-source").forEach((element) =>
-                element.classList.remove("is-drag-source")
-            );
+            boardElement
+                .querySelectorAll(".is-drag-source")
+                .forEach((element) => element.classList.remove("is-drag-source"));
             clearDropClasses(boardElement);
             boardElement.dataset.justDragged = "true";
             setTimeout(() => delete boardElement.dataset.justDragged, 0);
         }
 
-        /** @param {MouseEvent} event */
-        function handleClick(event) {
+        function handleClick(event: MouseEvent) {
             if (boardElement.dataset.justDragged === "true") {
                 event.preventDefault();
                 event.stopPropagation();
             }
         }
 
-        /**
-         * @param {DragPlanState} state
-         * @param {string} targetStatus
-         */
-        async function submitDrop(state, targetStatus) {
+        async function submitDrop(state: DragPlanState, targetStatus: string) {
             clearDropClasses(boardElement);
             boardElement.classList.add("is-drop-pending");
             setMessage(`Moving ${state.planName} to ${targetStatus}…`);
             try {
-                const { response, payload } = await dispatchPlanLifecycleAction(
+                const { response, payload }: PlanDropResult = await dispatchPlanLifecycleAction(
                     createMoveStatusIntent({
                         planId: state.planId,
                         fromStatus: state.fromStatus,
