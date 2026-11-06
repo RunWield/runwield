@@ -289,7 +289,7 @@ caller inputs, locked resources, owned effects, success proof, rollback limit, a
 | `plan_front_matter`                                         | Front Matter updates                                            | Plan                                                                 | Metadata update                                                                    | CAS revision                                                               | None                                                                      | Caller retry                                           |
 | `plan_archive` / `plan_restore`                             | Archive/restore action                                          | Catalog, Plan                                                        | Physical move metadata                                                             | Archive/active path                                                        | Rename CAS only                                                           | Restore/archive retry                                  |
 
-The code-side inventory in `src/shared/workflow/state-transition.test.js` checks that its semantic writer rows have
+The code-side inventory in `src/shared/workflow/state-transition.test.ts` checks that its semantic writer rows have
 inputs, locks, effects, proof, rollback limits, and recovery actions. Publication uses its dedicated attempt record and
 Git reconciliation rather than the retired merge-failure transition journal.
 

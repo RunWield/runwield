@@ -600,7 +600,7 @@
     "src/shared/workflow/semantic-repair-segment-handoff.test.ts",
     "src/shared/workflow/sequence-review.test.ts",
     "src/shared/workflow/sidebar-checkpoint.test.ts",
-    "src/shared/workflow/state-transition.test.js",
+    "src/shared/workflow/state-transition.test.ts",
     "src/shared/workflow/transition-recovery.test.ts",
     "src/shared/workflow/triage-outcome.test.ts",
     "src/shared/workflow/usage-reporting-clear-race.test.ts",

@@ -33,14 +33,43 @@ import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixtu
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
 
+import type { JournaledEffect, TransitionResult } from "./state-transition.ts";
+
+type PlanRevision = Partial<Pick<NonNullable<Awaited<ReturnType<typeof loadPlan>>>, "revision">>;
+
+interface JournalBeforeFacts {
+    plan?: PlanRevision;
+}
+
+interface ReconciliationFixtureRecord {
+    state: string;
+    operation: string;
+    completedEffects?: JournaledEffect[];
+    beforeFacts?: JournalBeforeFacts;
+}
+
+interface SemanticTransitionCase {
+    name: string;
+    operation: string;
+    run: (cwd: string) => Promise<TransitionResult>;
+    expectedResources: string[];
+    expectedEffect: string;
+}
+
+interface AttestedJournal {
+    state: string;
+    operation: string;
+    attestationNote: string;
+    closedByUserAttestationAt: string;
+}
+
 const linkedCheckoutFixture = defineCommittedGitFixture({ ".gitignore": ".wld/\n", "app.ts": "// app\n" });
 
 async function makeProject() {
     return await fsMkdtemp(join(tmpdir(), "runwield-state-transition-"));
 }
 
-/** @param {string} projectRoot @param {string} transitionId */
-function selectedJournalPath(projectRoot, transitionId) {
+function selectedJournalPath<Identifier>(projectRoot: string, transitionId: Identifier) {
     return join(
         getRunWieldRuntimeDir(fsRealpathSync(projectRoot)),
         PROJECT_INTERNAL_RUNTIME_DIR_NAME,
@@ -49,8 +78,7 @@ function selectedJournalPath(projectRoot, transitionId) {
     );
 }
 
-/** @param {string} projectRoot @param {string} fileName */
-function selectedLockPath(projectRoot, fileName) {
+function selectedLockPath(projectRoot: string, fileName: string) {
     return join(
         getRunWieldRuntimeDir(fsRealpathSync(projectRoot)),
         PROJECT_INTERNAL_RUNTIME_DIR_NAME,
@@ -59,8 +87,7 @@ function selectedLockPath(projectRoot, fileName) {
     );
 }
 
-/** @param {string} path */
-async function pathExists(path) {
+async function pathExists(path: string) {
     return await fsStat(path)
         .then(() => true)
         .catch(() => false);
@@ -304,8 +331,7 @@ test("implementation checkpoint failure before any effect leaves no recovery jou
 });
 
 test("semantic transition matrix records operation-specific resources, effects, proof, and recovery", async () => {
-    /** @type {Array<{ name: string, operation: string, run: (cwd: string) => Promise<any>, expectedResources: string[], expectedEffect: string }>} */
-    const cases = [
+    const cases: SemanticTransitionCase[] = [
         {
             name: "implementation checkpoint",
             operation: "implementation_checkpoint",
@@ -594,7 +620,7 @@ test("reconciliation closes settled journals but keeps ones with durable effects
         const plan = await loadPlan(cwd, "demo");
         const dir = dirname(getTransitionJournalPath(cwd, "x"));
         await fsMkdir(dir, { recursive: true });
-        const write = async (/** @type {string} */ id, /** @type {Record<string, unknown>} */ record) =>
+        const write = async (id: string, record: ReconciliationFixtureRecord) =>
             await fsWriteFile(
                 getTransitionJournalPath(cwd, id),
                 JSON.stringify({ version: 1, transitionId: id, planName: "demo", ...record }),
@@ -934,7 +960,9 @@ test("a journal keeps its before-facts across state changes", async () => {
         });
         assertEquals(failure.status, "needs_recovery");
         const [record] = await listTransitionRecoveryRecords(cwd);
-        const beforeFacts = /** @type {{ plan?: { revision?: string } }} */ (record.beforeFacts);
+        // The journal reader deliberately exposes unvalidated disk fields. Preserve
+        // this test's existing property-level assertion at that JSON boundary.
+        const beforeFacts = record.beforeFacts as JournalBeforeFacts;
         assertEquals(
             typeof beforeFacts?.plan?.revision,
             "string",
@@ -978,7 +1006,7 @@ test("an unprovable record can be closed on user attestation without destroying 
             "attested",
             "stuck-1.json",
         );
-        const archived = JSON.parse(await fsReadFile(archivePath, "utf8"));
+        const archived: AttestedJournal = JSON.parse(await fsReadFile(archivePath, "utf8"));
         assertEquals(
             await pathExists(
                 join(getRunWieldRuntimeDir(fsRealpathSync(cwd)), "plan-transitions", "attested", "stuck-1.json"),
