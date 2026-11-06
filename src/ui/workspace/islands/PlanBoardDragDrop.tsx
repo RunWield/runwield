@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { createMoveStatusIntent, dispatchPlanLifecycleAction } from "./PlanLifecycleActions.jsx";
+import { createMoveStatusIntent, dispatchPlanLifecycleAction } from "./PlanLifecycleActions.tsx";
 
 export interface DragPlanState {
     planId: string;
@@ -19,17 +19,6 @@ export interface BlockedDropMessageOptions extends Pick<DragPlanState, "planName
 
 export interface PlanBoardDragDropProps {
     boardId: string;
-}
-
-interface PlanDropResponsePayload {
-    blockedReason?: string;
-    error?: string;
-    message?: string;
-}
-
-interface PlanDropResult {
-    response: Response;
-    payload: PlanDropResponsePayload;
 }
 
 export function parseAllowedTargetStatuses(value: string) {
@@ -219,7 +208,7 @@ export function PlanBoardDragDrop({ boardId }: PlanBoardDragDropProps) {
             boardElement.classList.add("is-drop-pending");
             setMessage(`Moving ${state.planName} to ${targetStatus}…`);
             try {
-                const { response, payload }: PlanDropResult = await dispatchPlanLifecycleAction(
+                const { response, payload } = await dispatchPlanLifecycleAction(
                     createMoveStatusIntent({
                         planId: state.planId,
                         fromStatus: state.fromStatus,

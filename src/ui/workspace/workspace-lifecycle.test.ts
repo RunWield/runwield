@@ -24,7 +24,7 @@ import {
     createMoveStatusIntent,
     createPutOnHoldIntent,
     lifecycleActionLabel,
-} from "./islands/PlanLifecycleActions.jsx";
+} from "./islands/PlanLifecycleActions.tsx";
 
 import { createWorkspaceApp } from "./server.js";
 import { COLLABORATION_STATE_REMOTE_CANONICAL } from "../../shared/collaboration/lock.ts";

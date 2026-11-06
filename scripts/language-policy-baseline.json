@@ -41,7 +41,6 @@
     "src/ui/workspace/components/SessionTimeline.jsx",
     "src/ui/workspace/integrations/deno-react.mjs",
     "src/ui/workspace/integrations/react-server.mjs",
-    "src/ui/workspace/islands/PlanLifecycleActions.jsx",
     "src/ui/workspace/islands/SessionSurface.jsx",
 
     "src/ui/workspace/routes/api/review-agent-handlers.js",
