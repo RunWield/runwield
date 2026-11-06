@@ -2,7 +2,7 @@
 import type { OwnerProjectView } from "../server/owner-projects.ts";
 import { PLAN_SEARCH_QUERY_PARAM, PLAN_UI_TOKEN_QUERY } from "../constants.ts";
 import WorkspaceLayout from "../layouts/WorkspaceLayout.astro";
-import { loadCanonicalBoard, serializeCanonicalPlanError } from "../server/astro-canonical-data.js";
+import { loadCanonicalBoard, serializeCanonicalPlanError } from "../server/astro-canonical-data.ts";
 import { loadOwnerProjectBoard, loadOwnerProjects } from "../server/astro-owner-data.ts";
 import { currentWorkspaceCwd } from "../server/cwd.ts";
 import { PlanBoard } from "./Board.tsx";
@@ -10,10 +10,12 @@ import { PlanBoardToolbar } from "./PlanBoardToolbar.tsx";
 
 import type { PlanBoardView as BoardView } from "./PlanBoardToolbar.tsx";
 type BoardContext = "local" | "workspace";
+type BoardData = Awaited<ReturnType<typeof loadCanonicalBoard | typeof loadOwnerProjectBoard>>;
+type BoardFailure = Awaited<ReturnType<typeof serializeCanonicalPlanError>>;
 
 interface Props {
-    boardData?: Awaited<ReturnType<typeof loadCanonicalBoard>>;
-    boardError?: { error: string; repair: string };
+    boardData?: BoardData | null;
+    boardError?: BoardFailure | null;
     context: BoardContext;
     projectId?: string;
     view: BoardView;
@@ -78,6 +80,6 @@ const pageTitle = context === "workspace" ? `${heading} · RunWield Workspace` :
             <p>{error.repair}</p>
         </section>
     ) : (
-        <PlanBoard board={board} view={view} url={Astro.url.href} client:load />
+        <PlanBoard board={board!} view={view} url={Astro.url.href} client:load />
     )}
 </WorkspaceLayout>

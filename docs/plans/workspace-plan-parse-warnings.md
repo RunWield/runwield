@@ -8,7 +8,7 @@ affectedPaths:
     - "src/shared/workflow/planning-worktree.ts"
     - "src/ui/workspace/server/plan-adapter.js"
     - "src/ui/workspace/server/owner-dashboard.ts"
-    - "src/ui/workspace/server/astro-canonical-data.js"
+    - "src/ui/workspace/server/astro-canonical-data.ts"
     - "src/ui/workspace/components/Board.tsx"
     - "src/ui/workspace/static/workspace-shell.ts"
     - "src/ui/workspace/static/workspace-styles/navigation.css"
@@ -136,7 +136,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   identity without discarding healthy Plans or changing their Session associations.
 - `src/ui/workspace/components/Board.tsx`, `PlanBoardPage.astro`, and their data contracts — show named catalog warnings
   beside healthy Board content so the warning row's destination remains useful.
-- `src/ui/workspace/server/astro-canonical-data.js` and development fixtures — carry the same display result through
+- `src/ui/workspace/server/astro-canonical-data.ts` and development fixtures — carry the same display result through
   the development Board and provide deterministic browser fixtures without changing detail or save behavior.
 - `src/ui/workspace/static/workspace-shell.ts` and `static/workspace-styles/navigation.css` — render warning rows,
   accessible tooltip interaction, and refresh cleanup without disrupting expansion, focus, or scrolling.
