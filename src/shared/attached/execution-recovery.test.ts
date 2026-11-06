@@ -6,7 +6,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { archivePlan, loadPlan, updatePlanFrontMatter } from "../../plan-store.js";
-import { recordPlanEvent } from "../workflow/plan-lifecycle.js";
+import { recordPlanEvent } from "../workflow/plan-lifecycle.ts";
 import { createWorktreeGitArtifacts, settleWorktreeAttempt } from "../worktree.js";
 import { finalizePlanImplementation } from "../workflow/implementation-checkpoint.ts";
 import {

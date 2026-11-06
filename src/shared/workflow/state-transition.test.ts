@@ -28,7 +28,7 @@ import {
     runValidationOutcomeTransition,
     withOrderedTransitionResources,
 } from "./state-transition.ts";
-import { recordPlanEvent } from "./plan-lifecycle.js";
+import { recordPlanEvent } from "./plan-lifecycle.ts";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";

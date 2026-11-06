@@ -214,7 +214,7 @@ later, and execution without the retired metadata.
 
 **Source-confirmed; consumer contract concern.** Publication stages
 [validation_passed](../../src/shared/workflow/validation-publication.ts#L542) before target integration. Meanwhile,
-[terminal/verified helpers](../../src/shared/workflow/plan-lifecycle.js#L185) include `validated`, as does
+[terminal/verified helpers](../../src/shared/workflow/plan-lifecycle.ts#L238) include `validated`, as does
 [Epic child selection](../../src/shared/workflow/epic-continuation.ts#L29). The ordinary successful continuation is
 attached to the post-publication result, but status-only readers do not independently consult publication evidence.
 

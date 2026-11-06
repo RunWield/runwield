@@ -14,7 +14,7 @@ import { applySequenceReviewDecision, prepareSequenceReview } from "../../shared
 import { AGENTS, CLI_BIN } from "../../constants.js";
 import { loadPlan, type PlanFrontMatter, resolvePlanExecutionPolicy } from "../../plan-store.js";
 import { decidePostExecution, decidePostPlanning } from "../../shared/workflow/decisions.ts";
-import { isPlanReviewableWithoutReopen, isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
+import { isPlanReviewableWithoutReopen, isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
 import { loadPlanActionEvidence } from "../../shared/workflow/plan-actions.ts";
 import { normalizePlanApprovalAction, PLAN_APPROVAL_ACTIONS } from "../../shared/workflow/plan-approval.ts";

@@ -38,7 +38,7 @@ import { checkpointExecutionWorktree, resolveTargetBranchName } from "../worktre
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
 import { findById as findWorktreeRegistryEntryById } from "../worktree-registry.js";
 import { ensureRunWieldOwnedGitignoreBlock } from "../runwield-owned-paths.ts";
-import { stageValidationPassedInExecutionWorktree } from "./plan-lifecycle.js";
+import { stageValidationPassedInExecutionWorktree } from "./plan-lifecycle.ts";
 import { shouldContinueParentEpicAfterValidation } from "./validation-scope.ts";
 import type {
     HumanReviewMetadata,

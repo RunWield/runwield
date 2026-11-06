@@ -56,7 +56,7 @@ import {
 import { getWorktreeRegistryPath } from "../../../shared/worktree-registry.js";
 import { enterProjectRuntime } from "../../../shared/project-runtime-layout.ts";
 import { isCurrentProjectRuntimePath } from "../../../shared/runwield-owned-paths.ts";
-import { PLAN_STATUSES } from "../../../shared/workflow/plan-lifecycle.js";
+import { PLAN_STATUSES } from "../../../shared/workflow/plan-lifecycle.ts";
 import { readScenarioRegistryForPoll } from "./scenario-registry-poll.ts";
 
 /**
@@ -2278,12 +2278,12 @@ async function runComposedTuiScenario(scenario, options) {
                     const rawStatus = String(typed.status || "");
                     if (
                         !PLAN_STATUSES.includes(
-                            /** @type {import('../../../shared/workflow/plan-lifecycle.js').PlanStatus} */ (rawStatus),
+                            /** @type {import('../../../shared/workflow/plan-lifecycle.ts').PlanStatus} */ (rawStatus),
                         )
                     ) {
                         throw new Error(`Cannot set invalid primary Plan status: ${rawStatus}`);
                     }
-                    const status = /** @type {import('../../../shared/workflow/plan-lifecycle.js').PlanStatus} */ (
+                    const status = /** @type {import('../../../shared/workflow/plan-lifecycle.ts').PlanStatus} */ (
                         rawStatus
                     );
                     const loaded = await loadPlan(getCwd(), planName);

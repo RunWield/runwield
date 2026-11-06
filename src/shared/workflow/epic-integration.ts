@@ -42,7 +42,7 @@ import {
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { EPIC_INTEGRATION_REPORT_FILE_NAME, getEpicArtifactPath } from "../epic-artifacts.ts";
 import type { HostedSession } from "../session/hosted-session.js";
-import { recordPlanEvent } from "./plan-lifecycle.js";
+import { recordPlanEvent } from "./plan-lifecycle.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 import { findTargetBranchPlansByParent, prepareTargetBranchPlansByParent } from "./planning-worktree.ts";

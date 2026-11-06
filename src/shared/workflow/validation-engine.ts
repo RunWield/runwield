@@ -18,7 +18,7 @@ import {
     loadPlan,
     PlanFrontMatterParseError,
 } from "../../plan-store.js";
-import { VALIDATION_PLAN_STATUSES } from "./plan-lifecycle.js";
+import { VALIDATION_PLAN_STATUSES } from "./plan-lifecycle.ts";
 import { getProjectRoot, resolvePhaseContext } from "./validation-context.ts";
 import { emitStatus } from "./validation-emit.ts";
 import { validationPhaseForStatus } from "./validation-checkpoint.ts";

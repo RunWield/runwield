@@ -308,7 +308,7 @@ test("Workspace progress retains saved publication proof after cleanup and inval
     const projectRoot = await publicationFixture.checkout();
     try {
         const { writeControllerState } = await import("../../shared/workflow/controller-registry.ts");
-        const { recordPlanEvent } = await import("../../shared/workflow/plan-lifecycle.js");
+        const { recordPlanEvent } = await import("../../shared/workflow/plan-lifecycle.ts");
         await savePlan(projectRoot, "receipt", "# Saved publication", {
             planId: "receipt-id",
             classification: "PLANNED_CHANGE",

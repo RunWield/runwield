@@ -575,7 +575,7 @@
     "src/shared/workflow/plan-document-authority.integration.test.ts",
     "src/shared/workflow/plan-execution-runtime-boundaries.integration.test.ts",
     "src/shared/workflow/plan-executor.integration.test.ts",
-    "src/shared/workflow/plan-lifecycle.test.js",
+    "src/shared/workflow/plan-lifecycle.test.ts",
     "src/shared/workflow/plan-location.integration.test.ts",
     "src/shared/workflow/plan-preparation.test.ts",
     "src/shared/workflow/plan-question-approval.test.ts",

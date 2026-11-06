@@ -20,7 +20,7 @@ import type { PlanFrontMatter } from "../../plan-store.js";
 import { assertSharedPlanWriteAllowed } from "../collaboration/lock.ts";
 import { stripRuntimeFields } from "./controller-state.ts";
 import { isSequencePlan } from "../project-plan.ts";
-import { buildPlanEventUpdates } from "./plan-lifecycle.js";
+import { buildPlanEventUpdates } from "./plan-lifecycle.ts";
 import { loadPlanActionEvidence } from "./plan-actions.ts";
 import { runSequenceReviewTransition } from "./state-transition.ts";
 import { reviewSourceStillMatches } from "./plan-review-actions.ts";

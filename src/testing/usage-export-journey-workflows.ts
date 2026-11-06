@@ -13,7 +13,7 @@ import type { SessionRuntime } from "../shared/session/session-runtime.ts";
 import { findById } from "../shared/worktree-registry.js";
 import { createTestWorktreeAttempt } from "../shared/worktree-test-helpers.ts";
 import { cleanupStoredPublication } from "../shared/workflow/publication-machine.ts";
-import { buildPlanEventUpdates, type PlanEvent, type PlanEventDetails } from "../shared/workflow/plan-lifecycle.js";
+import { buildPlanEventUpdates, type PlanEvent, type PlanEventDetails } from "../shared/workflow/plan-lifecycle.ts";
 import { runPlanLifecycleEventTransition } from "../shared/workflow/state-transition.ts";
 import { makePublicationOutcomeFixture } from "../shared/workflow/testing/publication-outcome-fixture.ts";
 import { runValidationPhase } from "../shared/workflow/validation.ts";

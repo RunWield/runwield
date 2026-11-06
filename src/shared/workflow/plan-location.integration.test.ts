@@ -32,7 +32,7 @@ import { readControllerRecord, writeControllerState } from "./controller-registr
 import { findById, getWorktreeRegistryPath, pruneEntry } from "../worktree-registry.js";
 import { addEntry } from "../worktree-registry.js";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
-import { recordPlanEvent } from "./plan-lifecycle.js";
+import { recordPlanEvent } from "./plan-lifecycle.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { applySharedPlanReviewDecision } from "./plan-review-actions.ts";

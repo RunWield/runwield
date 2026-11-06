@@ -9,7 +9,7 @@ import { loadPlan, savePlan } from "../../plan-store.js";
 import { HostedSession } from "../session/hosted-session.js";
 import type { SessionRuntimeEvent } from "../session/session-runtime-events.js";
 import { __resetSettingsForTests } from "../settings.js";
-import type { PlanStatus } from "./plan-lifecycle.js";
+import type { PlanStatus } from "./plan-lifecycle.ts";
 import {
     beginSlicerContextPhase,
     createSlicerFinalizeTool,

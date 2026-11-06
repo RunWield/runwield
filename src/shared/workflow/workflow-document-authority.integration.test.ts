@@ -9,7 +9,7 @@ import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { createGitPort } from "../git-port.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { addEntry } from "../worktree-registry.js";
-import { recordPlanEvent } from "./plan-lifecycle.js";
+import { recordPlanEvent } from "./plan-lifecycle.ts";
 import { continueWorkflowValidation } from "./validation.ts";
 import { attachRecorder, makeUi } from "./validation-test-helpers.js";
 

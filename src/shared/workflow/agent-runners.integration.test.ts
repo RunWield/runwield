@@ -10,7 +10,7 @@ import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../s
 import { AgyCliBackendError } from "../session/backends/agy-cli/failure.ts";
 import { buildEngineerPausedMessage, runEngineerWithPlan } from "./engineer-runner.ts";
 import { runPlanningAgent } from "./planning-agent.ts";
-import { recordPlanEvent } from "./plan-lifecycle.js";
+import { recordPlanEvent } from "./plan-lifecycle.ts";
 
 interface AgentSessionFixture {
     hostedSession: HostedSession;

@@ -47,7 +47,7 @@ import { assertNotReservedEpicArtifactPlanName } from "../epic-artifacts.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { runWieldGitignoreNeedsUpdate } from "../runwield-owned-paths.ts";
 import { VERSION } from "../version.js";
-import { recordPlanEvent } from "../workflow/plan-lifecycle.js";
+import { recordPlanEvent } from "../workflow/plan-lifecycle.ts";
 import { withOrderedTransitionResources } from "../workflow/state-transition.ts";
 import { isAnsweredPlanReview } from "../workflow/plan-review-recovery.js";
 import { applySharedPlanReviewDecision } from "../workflow/plan-review-actions.ts";
