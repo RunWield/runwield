@@ -32,7 +32,13 @@ import {
 import { type LocalFileSessionStore, openLocalFileSessionStore } from "./file-session-store-local.ts";
 import type { FileSessionStore, OpenFileSessionStoreOptions } from "./file-session-store-types.ts";
 
-export type { FileSessionProject, FileSessionStore } from "./file-session-store-types.ts";
+export type {
+    CatalogDiagnostic,
+    CatalogedSession,
+    SessionListResult,
+    FileSessionProject,
+    FileSessionStore,
+} from "./file-session-store-types.ts";
 export type { SessionSegmentLineageEvidence } from "./file-session-store-types.ts";
 export { FILE_SESSION_STORE_VERSION } from "./file-session-storage.ts";
 

@@ -11,7 +11,7 @@ import {
     RunWieldPanelToggle,
     RunWieldThinkingDots,
 } from "../../design-system/components/react/RunWieldPrimitives.tsx";
-import { SessionList } from "../components/SessionList.jsx";
+import { SessionList } from "../components/SessionList.tsx";
 import { deriveSessionAvailability } from "../components/SessionActivationStatus.tsx";
 import {
     displayAgentName,

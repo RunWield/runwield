@@ -2194,7 +2194,7 @@ test("New Session terminal stream message followed by error does not report an i
 });
 
 test("Session history confirms busy archive before any request and guards duplicate actions", async () => {
-    const { SessionList } = await import("./components/SessionList.jsx");
+    const { SessionList } = await import("./components/SessionList.tsx");
     const { createElement, act } = await import("react");
     const { create } = await import("react-test-renderer");
     const previousFetch = globalThis.fetch;
@@ -2266,7 +2266,7 @@ test("Session history confirms busy archive before any request and guards duplic
 });
 
 test("Idle archive failure keeps its open link and supports retry; archived rows unarchive without confirmation", async () => {
-    const { SessionList } = await import("./components/SessionList.jsx");
+    const { SessionList } = await import("./components/SessionList.tsx");
     const { createElement, act } = await import("react");
     const { create } = await import("react-test-renderer");
     const previousFetch = globalThis.fetch;
@@ -2410,7 +2410,7 @@ test("Archived Sessions fetches the selected page and keeps saved links when Una
 });
 
 test("fresh Session history restores a previously removed ID and empty later pages keep Previous", async () => {
-    const { SessionList } = await import("./components/SessionList.jsx");
+    const { SessionList } = await import("./components/SessionList.tsx");
     const { createElement, act } = await import("react");
     const { create } = await import("react-test-renderer");
     const previousFetch = globalThis.fetch;
@@ -2453,7 +2453,7 @@ test("fresh Session history restores a previously removed ID and empty later pag
 });
 
 test("Plan Session archive keeps the row and switches its action; stale idle busy conflict confirms retry", async () => {
-    const { SessionList } = await import("./components/SessionList.jsx");
+    const { SessionList } = await import("./components/SessionList.tsx");
     const { createElement, act } = await import("react");
     const { create } = await import("react-test-renderer");
     const previousFetch = globalThis.fetch;
