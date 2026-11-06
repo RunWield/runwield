@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
 import { captureScriptProcess, waitForScriptExit } from "./script-process.ts";
+import type { ScriptProcessOptions, ScriptProcessOutput } from "./script-process.ts";
+import type { Readable } from "node:stream";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import {
@@ -42,21 +44,38 @@ const REQUIRED_BUNDLED_BINARY_ASSET_INCLUDES = Object.freeze([
     "src/ui/theme/catppuccin-mocha.json",
 ]);
 
-/**
- * @typedef {Object} RunResult
- * @property {boolean} success
- * @property {number} code
- * @property {string} stdout
- * @property {string} stderr
- */
+export interface RunResult extends Pick<ScriptProcessOutput, "success" | "code"> {
+    stdout: string;
+    stderr: string;
+}
 
-/**
- * @param {string} command
- * @param {string[]} args
- * @param {import("./script-process.ts").ScriptProcessOptions} [options]
- * @returns {Promise<RunResult>}
- */
-async function run(command, args, options = {}) {
+interface BundledMarkdownTarget {
+    label: string;
+    sourceDir: string;
+    cacheDir: string;
+}
+
+export interface ExtractedBundledMarkdownFile extends BundledMarkdownTarget {
+    relativePath: string;
+}
+
+export interface ParsedReleaseCheckOptions {
+    buildVersion: string | undefined;
+    includeGolden: boolean;
+    runtime?: "bun";
+}
+
+interface BunRuntimeIdentity {
+    runtime: string;
+    runtimeVersion: string;
+}
+
+interface FileSnapshot {
+    exists: boolean;
+    content: string;
+}
+
+async function run(command: string, args: string[], options: ScriptProcessOptions = {}): Promise<RunResult> {
     const output = await captureScriptProcess(command, {
         ...options,
         args,
@@ -73,15 +92,13 @@ async function run(command, args, options = {}) {
     };
 }
 
-/**
- * @param {string} label
- * @param {string} command
- * @param {string[]} args
- * @param {import("./script-process.ts").ScriptProcessOptions} [options]
- * @param {typeof run} [runner]
- * @returns {Promise<RunResult>}
- */
-async function mustRun(label, command, args, options = {}, runner = run) {
+async function mustRun(
+    label: string,
+    command: string,
+    args: string[],
+    options: ScriptProcessOptions = {},
+    runner: typeof run = run,
+) {
     console.log(`\n==> ${label}`);
     const result = await runner(command, args, options);
     if (!result.success) {
@@ -90,25 +107,22 @@ async function mustRun(label, command, args, options = {}, runner = run) {
     return result;
 }
 
-/** @param {import("node:stream").Readable | null} stream @param {(text: string) => void} onText */
-async function collectStream(stream, onText) {
+async function collectStream(stream: Readable | null, onText: (text: string) => void) {
     if (!stream) return;
     stream.setEncoding("utf8");
-    for await (const text of stream) onText(text);
+    // Node does not track the text chunk type established by setEncoding.
+    for await (const text of stream as AsyncIterable<string>) onText(text);
 }
 
-/** @param {string} output */
-export function readReviewUrl(output) {
+export function readReviewUrl(output: string) {
     return output.match(/http:\/\/127\.0\.0\.1:\d+\/review\/plan\?token=[^\s]+/)?.[0] || "";
 }
 
-/** @param {string} output */
-export function readWorkspaceUrl(output) {
+export function readWorkspaceUrl(output: string) {
     return output.match(/http:\/\/127\.0\.0\.1:\d+\/?\?token=[^\s]+/)?.[0] || "";
 }
 
-/** @param {string} html */
-export function assertBinaryWorkspaceHtml(html) {
+export function assertBinaryWorkspaceHtml(html: string) {
     if (html.includes("Workspace Astro build unavailable")) {
         throw new Error("Standalone binary rendered the Workspace build-unavailable error.");
     }
@@ -119,8 +133,7 @@ export function assertBinaryWorkspaceHtml(html) {
     if (!html.includes("/_astro/")) throw new Error("Standalone binary Workspace page lacks built Astro asset links.");
 }
 
-/** @param {string} html */
-export function assertBinaryReviewHtml(html) {
+export function assertBinaryReviewHtml(html: string) {
     if (html.includes("Workspace review UI assets are unavailable")) {
         throw new Error("Standalone binary rendered the old unavailable-assets review page.");
     }
@@ -138,41 +151,26 @@ export function assertBinaryReviewHtml(html) {
     }
 }
 
-/**
- * @param {string} html
- * @param {string} baseUrl
- * @returns {string[]}
- */
-export function collectReviewAssetUrls(html, baseUrl) {
-    const urls = new Set();
+export function collectReviewAssetUrls(html: string, baseUrl: string) {
+    const urls = new Set<string>();
     const attributePattern = /(?:src|href|component-url|renderer-url)=(['"])(.*?)\1/g;
-    let match;
+    let match: RegExpExecArray | null;
     while ((match = attributePattern.exec(html)) !== null) {
         addReviewAssetUrl(urls, match[2], baseUrl);
     }
     return [...urls];
 }
 
-/**
- * @param {Set<string>} urls
- * @param {string} rawUrl
- * @param {string} baseUrl
- */
-function addReviewAssetUrl(urls, rawUrl, baseUrl) {
+function addReviewAssetUrl(urls: Set<string>, rawUrl: string, baseUrl: string) {
     if (!rawUrl || rawUrl.startsWith("data:") || rawUrl.startsWith("#")) return;
     const url = new URL(rawUrl, baseUrl);
     if (url.pathname.startsWith("/_astro/")) urls.add(url.href);
 }
 
-/**
- * @param {string} source
- * @param {string} assetUrl
- * @returns {string[]}
- */
-export function collectNestedReviewAssetUrls(source, assetUrl) {
-    const urls = new Set();
+export function collectNestedReviewAssetUrls(source: string, assetUrl: string) {
+    const urls = new Set<string>();
     const importPattern = /(?:import\s*\(\s*|from\s+)(['"])(.*?)\1/g;
-    let match;
+    let match: RegExpExecArray | null;
     while ((match = importPattern.exec(source)) !== null) {
         addReviewAssetUrl(urls, match[2], assetUrl);
     }
@@ -187,13 +185,9 @@ export function collectNestedReviewAssetUrls(source, assetUrl) {
     return [...urls];
 }
 
-/**
- * @param {string} pageUrl
- * @param {string} html
- */
-export async function assertReviewAssetsLoad(pageUrl, html) {
+export async function assertReviewAssetsLoad(pageUrl: string, html: string) {
     const pending = collectReviewAssetUrls(html, pageUrl);
-    const seen = new Set();
+    const seen = new Set<string>();
 
     while (pending.length) {
         const assetUrl = pending.shift();
@@ -216,14 +210,8 @@ export async function assertReviewAssetsLoad(pageUrl, html) {
     if (!seen.size) throw new Error("Review UI page did not reference any loadable Astro assets.");
 }
 
-/**
- * @param {string} rootDir
- * @param {string} [relativeDir]
- * @returns {Promise<string[]>}
- */
-async function collectMarkdownFiles(rootDir, relativeDir = "") {
-    /** @type {string[]} */
-    const files = [];
+async function collectMarkdownFiles(rootDir: string, relativeDir = ""): Promise<string[]> {
+    const files: string[] = [];
     const currentDir = relativeDir ? join(rootDir, ...relativeDir.split("/")) : rootDir;
     for await (const entry of await fsReaddir(currentDir, { withFileTypes: true })) {
         const relativePath = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
@@ -243,18 +231,12 @@ export function assertRequiredBundledAssetsConfigured() {
     }
 }
 
-/**
- * @returns {Promise<string[]>}
- */
 export async function collectBundledAgentReferenceFiles() {
     return await collectMarkdownFiles(BUNDLED_AGENT_DEFS_SOURCE_DIR);
 }
 
-/**
- * @returns {Promise<Array<{ label: string, sourceDir: string, cacheDir: string, relativePath: string }>>}
- */
-export async function collectExtractedBundledMarkdownFiles() {
-    const files = [];
+export async function collectExtractedBundledMarkdownFiles(): Promise<ExtractedBundledMarkdownFile[]> {
+    const files: ExtractedBundledMarkdownFile[] = [];
     for (const target of BUNDLED_EXTRACTED_MARKDOWN_TARGETS) {
         for (const relativePath of await collectMarkdownFiles(target.sourceDir)) {
             files.push({ ...target, relativePath });
@@ -263,15 +245,12 @@ export async function collectExtractedBundledMarkdownFiles() {
     return files.sort((a, b) => `${a.cacheDir}/${a.relativePath}`.localeCompare(`${b.cacheDir}/${b.relativePath}`));
 }
 
-/**
- * @param {string} homeDir
- */
-export async function assertExtractedBundledAgentReferenceFiles(homeDir) {
+export async function assertExtractedBundledAgentReferenceFiles(homeDir: string) {
     for (const { label, sourceDir, cacheDir, relativePath } of await collectExtractedBundledMarkdownFiles()) {
         const sourcePath = join(sourceDir, relativePath);
         const extractedPath = join(homeDir, cacheDir, relativePath);
-        let source;
-        let extracted;
+        let source: string;
+        let extracted: string;
         try {
             source = await fsReadFile(sourcePath, "utf8");
         } catch (error) {
@@ -290,11 +269,7 @@ export async function assertExtractedBundledAgentReferenceFiles(homeDir) {
     }
 }
 
-/**
- * @param {string} homeDir
- * @returns {Promise<boolean>}
- */
-async function hasExtractedBundledAgentReferenceFiles(homeDir) {
+async function hasExtractedBundledAgentReferenceFiles(homeDir: string) {
     try {
         await assertExtractedBundledAgentReferenceFiles(homeDir);
         return true;
@@ -303,11 +278,7 @@ async function hasExtractedBundledAgentReferenceFiles(homeDir) {
     }
 }
 
-/**
- * @param {string} binaryPath
- * @param {string} root
- */
-export async function smokeTestBundledAgentReferenceExtraction(binaryPath, root) {
+export async function smokeTestBundledAgentReferenceExtraction(binaryPath: string, root: string) {
     console.log("\n==> Smoke test bundled agent reference extraction");
     const homeDir = join(root, "reference-home");
     const projectDir = join(root, "reference-project");
@@ -323,8 +294,7 @@ export async function smokeTestBundledAgentReferenceExtraction(binaryPath, root)
     const childStatus = waitForScriptExit(child);
 
     let output = "";
-    /** @param {string} text */
-    const append = (text) => {
+    const append = (text: string) => {
         output += text;
     };
     const stdoutDone = collectStream(child.stdout, append);
@@ -337,7 +307,7 @@ export async function smokeTestBundledAgentReferenceExtraction(binaryPath, root)
 
             const status = await Promise.race([
                 childStatus,
-                new Promise((resolve) => setTimeout(() => resolve(null), 100)),
+                new Promise<null>((resolve) => setTimeout(() => resolve(null), 100)),
             ]);
             if (status) break;
         }
@@ -356,11 +326,7 @@ export async function smokeTestBundledAgentReferenceExtraction(binaryPath, root)
     }
 }
 
-/**
- * @param {string} binaryPath
- * @param {string} root
- */
-export async function smokeTestBinaryPlansUiSurface(binaryPath, root) {
+export async function smokeTestBinaryPlansUiSurface(binaryPath: string, root: string) {
     console.log("\n==> Smoke test standalone Plans UI surface");
     const projectDir = join(root, "plans-ui-project");
     await fsMkdir(join(projectDir, "docs", "plans"), { recursive: true });
@@ -376,8 +342,7 @@ export async function smokeTestBinaryPlansUiSurface(binaryPath, root) {
     const childStatus = waitForScriptExit(child);
 
     let output = "";
-    /** @param {string} text */
-    const append = (text) => {
+    const append = (text: string) => {
         output += text;
     };
     const stdoutDone = collectStream(child.stdout, append);
@@ -388,7 +353,7 @@ export async function smokeTestBinaryPlansUiSurface(binaryPath, root) {
     while (Date.now() < deadline) {
         url = readWorkspaceUrl(output);
         if (url) break;
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        await new Promise<void>((resolve) => setTimeout(resolve, 100));
     }
     if (!url) {
         try {
@@ -418,11 +383,7 @@ export async function smokeTestBinaryPlansUiSurface(binaryPath, root) {
     }
 }
 
-/**
- * @param {string} binaryPath
- * @param {string} root
- */
-export async function smokeTestBinaryReviewSurface(binaryPath, root) {
+export async function smokeTestBinaryReviewSurface(binaryPath: string, root: string) {
     console.log("\n==> Smoke test standalone Plan review surface");
     const projectDir = join(root, "plan-review-project");
     await fsMkdir(join(projectDir, "docs", "plans"), { recursive: true });
@@ -438,8 +399,7 @@ export async function smokeTestBinaryReviewSurface(binaryPath, root) {
     const childStatus = waitForScriptExit(child);
 
     let output = "";
-    /** @param {string} text */
-    const append = (text) => {
+    const append = (text: string) => {
         output += text;
     };
     const stdoutDone = collectStream(child.stdout, append);
@@ -450,7 +410,7 @@ export async function smokeTestBinaryReviewSurface(binaryPath, root) {
     while (Date.now() < deadline) {
         url = readReviewUrl(output);
         if (url) break;
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        await new Promise<void>((resolve) => setTimeout(resolve, 100));
     }
     if (!url) {
         try {
@@ -480,11 +440,10 @@ export async function smokeTestBinaryReviewSurface(binaryPath, root) {
         if (!exitResponse.ok) {
             throw new Error(`Standalone review exit returned ${exitResponse.status}: ${exitBody}`);
         }
-        /** @type {ReturnType<typeof setTimeout> | undefined} */
-        let timeoutId;
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
         const status = await Promise.race([
             childStatus,
-            new Promise((_, reject) => {
+            new Promise<never>((_, reject) => {
                 timeoutId = setTimeout(
                     () => reject(new Error("Standalone review command did not exit within 10 seconds.")),
                     10_000,
@@ -502,13 +461,8 @@ export async function smokeTestBinaryReviewSurface(binaryPath, root) {
     }
 }
 
-/**
- * @param {string[]} args
- * @returns {{ buildVersion: string | undefined, includeGolden: boolean, runtime?: "bun" }}
- */
-export function parseReleaseCheckOptions(args = []) {
-    /** @type {{ buildVersion: string | undefined, includeGolden: boolean, runtime?: "bun" }} */
-    const options = { buildVersion: undefined, includeGolden: true };
+export function parseReleaseCheckOptions(args: string[] = []): ParsedReleaseCheckOptions {
+    const options: ParsedReleaseCheckOptions = { buildVersion: undefined, includeGolden: true };
     for (let index = 0; index < args.length; index += 1) {
         const arg = args[index];
         if (arg === "--build-version") options.buildVersion = args[++index];
@@ -525,11 +479,7 @@ export function parseReleaseCheckOptions(args = []) {
     return options;
 }
 
-/**
- * @param {string} output
- * @param {string} expectedVersion
- */
-export function assertBinaryVersionOutput(output, expectedVersion) {
+export function assertBinaryVersionOutput(output: string, expectedVersion: string) {
     if (!output.includes(`runwield ${expectedVersion} (`)) {
         throw new Error(
             `Release binary reported the wrong version. Expected ${expectedVersion}; output was:\n${output}`,
@@ -537,22 +487,14 @@ export function assertBinaryVersionOutput(output, expectedVersion) {
     }
 }
 
-/**
- * @param {string} output
- * @param {string} expectedVersion
- */
-export function assertBunRuntimeIdentity(output, expectedVersion) {
-    const identity = JSON.parse(output);
+export function assertBunRuntimeIdentity(output: string, expectedVersion: string) {
+    const identity: BunRuntimeIdentity = JSON.parse(output);
     if (identity.runtime !== "bun" || identity.runtimeVersion !== expectedVersion) {
         throw new Error(`Release binary must execute Bun ${expectedVersion}.`);
     }
 }
 
-/**
- * @param {string} path
- * @returns {Promise<{ exists: boolean, content: string }>}
- */
-async function snapshotFile(path) {
+async function snapshotFile(path: string): Promise<FileSnapshot> {
     try {
         return { exists: true, content: await fsReadFile(path, "utf8") };
     } catch (error) {
@@ -563,11 +505,7 @@ async function snapshotFile(path) {
     }
 }
 
-/**
- * @param {string} path
- * @param {{ exists: boolean, content: string }} snapshot
- */
-async function restoreFile(path, snapshot) {
+async function restoreFile(path: string, snapshot: FileSnapshot) {
     if (snapshot.exists) {
         await fsWriteFile(path, snapshot.content);
         return;
@@ -577,39 +515,41 @@ async function restoreFile(path, snapshot) {
     });
 }
 
-/**
- * @typedef {Object} ReleaseCheckOptions
- * @property {string} [buildVersion]
- * @property {string} [rootDir]
- * @property {boolean} [includeGolden]
- * @property {"bun"} [runtime]
- */
+export interface ReleaseCheckOptions {
+    buildVersion?: string;
+    rootDir?: string;
+    includeGolden?: boolean;
+    runtime?: "bun";
+}
 
-/**
- * @typedef {Object} ReleaseCheckExecutionPort
- * @property {typeof run} run
- * @property {(options?: { prefix?: string }) => Promise<string>} makeTempDir
- * @property {(path: string, options?: { recursive?: boolean }) => Promise<void>} remove
- * @property {(binaryPath: string, root: string) => Promise<void>} smokeTestBundledAgentReferenceExtraction
- * @property {(binaryPath: string, root: string) => Promise<void>} smokeTestBinaryPlansUiSurface
- * @property {(binaryPath: string, root: string) => Promise<void>} smokeTestBinaryReviewSurface
- */
+export interface ReleaseCheckTempDirOptions {
+    prefix?: string;
+}
 
-/** @type {ReleaseCheckExecutionPort} */
-const SYSTEM_RELEASE_CHECK_EXECUTION_PORT = Object.freeze({
+export interface ReleaseCheckRemoveOptions {
+    recursive?: boolean;
+}
+
+export interface ReleaseCheckExecutionPort {
+    run: typeof run;
+    makeTempDir: (options?: ReleaseCheckTempDirOptions) => Promise<string>;
+    remove: (path: string, options?: ReleaseCheckRemoveOptions) => Promise<void>;
+    smokeTestBundledAgentReferenceExtraction: typeof smokeTestBundledAgentReferenceExtraction;
+    smokeTestBinaryPlansUiSurface: typeof smokeTestBinaryPlansUiSurface;
+    smokeTestBinaryReviewSurface: typeof smokeTestBinaryReviewSurface;
+}
+
+const SYSTEM_RELEASE_CHECK_EXECUTION_PORT: ReleaseCheckExecutionPort = Object.freeze({
     run,
-    makeTempDir: (options = {}) => mkdtemp(join(tmpdir(), options.prefix ?? "wld-release-")),
+    makeTempDir: (options: ReleaseCheckTempDirOptions = {}) =>
+        mkdtemp(join(tmpdir(), options.prefix ?? "wld-release-")),
     remove: fsRm,
     smokeTestBundledAgentReferenceExtraction,
     smokeTestBinaryPlansUiSurface,
     smokeTestBinaryReviewSurface,
 });
 
-/**
- * @param {ReleaseCheckOptions} options
- * @param {ReleaseCheckExecutionPort} port
- */
-export async function runReleaseCheck(options, port) {
+export async function runReleaseCheck(options: ReleaseCheckOptions, port: ReleaseCheckExecutionPort) {
     const tempDir = await port.makeTempDir({ prefix: "wld-release-check-" });
     const rootDir = options.rootDir || ".";
     const versionPath = join(rootDir, "src", "shared", "version.js");
@@ -700,7 +640,7 @@ export async function runReleaseCheck(options, port) {
     }
 }
 
-export async function main(args = process.argv.slice(2)) {
+export async function main(args: string[] = process.argv.slice(2)) {
     await runReleaseCheck(parseReleaseCheckOptions(args), SYSTEM_RELEASE_CHECK_EXECUTION_PORT);
 }
 

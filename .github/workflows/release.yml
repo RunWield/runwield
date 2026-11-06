@@ -384,7 +384,7 @@ jobs:
               env:
                   WLD_BUILD_VERSION: ${{ needs.metadata.outputs.build_version }}
                   ASTRO_KEY: ${{ needs.metadata.outputs.astro_key }}
-              run: bun scripts/release-check.js --runtime bun --binary-only --build-version "${{ needs.metadata.outputs.build_version }}"
+              run: bun scripts/release-check.ts --runtime bun --binary-only --build-version "${{ needs.metadata.outputs.build_version }}"
 
     unix-checks:
         if: needs.metadata.outputs.qualification_only != 'true'

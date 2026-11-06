@@ -53,7 +53,7 @@ jobs:
             - name: Check source quality
               run: bun run lint && bun run seams:check
             - name: Check compiled release surfaces
-              run: bun scripts/release-check.js --runtime bun --binary-only --build-version "$WLD_BUILD_VERSION"
+              run: bun scripts/release-check.ts --runtime bun --binary-only --build-version "$WLD_BUILD_VERSION"
             - name: Build remote runtime bundles
               run: |
                   bun scripts/build-workspace-runtime.ts
