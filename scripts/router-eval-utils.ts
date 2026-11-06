@@ -203,7 +203,7 @@ export function withRouterJudgementMetrics<TRow extends RouterJudgementInput>(ro
     };
 }
 
-export function scoreAgainstHuman(rows: CsvRow[], candidateColumn: string): RouterJudgementScore {
+export function scoreAgainstHuman<TCell>(rows: CsvRow<TCell>[], candidateColumn: string): RouterJudgementScore {
     let total = 0;
     let agreementCount = 0;
     let distanceSum = 0;
