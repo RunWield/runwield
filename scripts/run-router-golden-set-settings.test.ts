@@ -4,7 +4,7 @@ import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promis
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../src/cmd/testing/runtime-command-fixture.ts";
-import { main } from "./run-router-golden-set.js";
+import { main } from "./run-router-golden-set.ts";
 
 interface RouterRequestSettings {
     temperature?: number;

@@ -11,7 +11,7 @@ import {
     mergeGoldenRowsWithResultRows,
     normalizeGoldenRow,
     runRouterGoldenSet,
-} from "./run-router-golden-set.js";
+} from "./run-router-golden-set.ts";
 import { parseCsv, ROUTER_JUDGEMENT_COLUMNS, toCsv } from "./router-eval-utils.ts";
 
 const fixture = defineGitFixture(async (cwd) => {

@@ -12,7 +12,7 @@ import {
     runRouterForGoldenRequest,
     runRouterGoldenSet,
     runRouterGoldenSetWithSelection,
-} from "./run-router-golden-set.js";
+} from "./run-router-golden-set.ts";
 
 type GoldenRows = Awaited<ReturnType<typeof runRouterGoldenSet>>;
 type BenchmarkToolContext = Parameters<ReturnType<typeof createBenchmarkBashNudgeTool>["execute"]>[4];
@@ -200,7 +200,7 @@ test("runRouterGoldenSet clears stale decisions only when rerunning rows", async
         ],
         {
             resume: false,
-            runAgentSession: () => new Promise<GoldenRows>(() => {}),
+            runAgentSession: () => new Promise<never>(() => {}),
             rowTimeoutMs: 1,
             onRowComplete: (checkpointRows) => {
                 checkpoints.push(checkpointRows.map((row) => ({ ...row })));

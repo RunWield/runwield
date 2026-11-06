@@ -16,13 +16,15 @@ import process from "node:process";
  */
 
 import { parseArgs } from "../src/shared/cli-args.ts";
-import { Type } from "typebox";
+import { Type, type TObject, type TString } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { dirname, join } from "node:path";
 import { AGENTS, getCwd, getHomeDir } from "../src/constants.js";
 import { createSessionRuntime } from "../src/shared/session/session-runtime.ts";
 import { readLatestTriageOutcome as readLatestTriageOutcomeFn } from "../src/shared/workflow/orchestrator.ts";
 import {
+    type CsvRow,
+    type RouterJudgementScore,
     parseCsv,
     ROUTER_JUDGEMENT_COLUMNS,
     scoreAgainstHuman,
@@ -30,7 +32,85 @@ import {
     withRouterJudgementMetrics,
 } from "./router-eval-utils.ts";
 
-/** @typedef {Parameters<import("../src/shared/session/session-runtime.ts").SessionRuntime["setSessionThinkingLevel"]>[1]} RouterThinkingLevel */
+import type { SessionRuntime } from "../src/shared/session/session-runtime.ts";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { ImageAttachment } from "../src/shared/session/types.js";
+import type { TriageOutcome, TriageOutcomeInput } from "../src/shared/workflow/triage-outcome.ts";
+
+type BenchmarkBashProperties = {
+    command: TString;
+};
+
+type BenchmarkBashSchema = TObject<BenchmarkBashProperties>;
+
+export interface BenchmarkBashNudgeDetails {
+    blocked: boolean;
+    callCount: number;
+    command: string;
+    reason: string;
+}
+
+type RouterThinkingLevel = Parameters<SessionRuntime["setSessionThinkingLevel"]>[1];
+type RouterRuntimeRunOptions = Parameters<SessionRuntime["runIsolatedAgent"]>[1];
+
+export interface RouterAgentRunOptions extends Omit<RouterRuntimeRunOptions, "subAgentDefinition"> {
+    toolNames: string[];
+    images: ImageAttachment[];
+    customTools: ToolDefinition[];
+    cwd?: string;
+}
+
+export interface RouterAgentMessage {
+    role: string;
+    toolName?: string;
+    details?: TriageOutcomeInput;
+}
+
+export type RouterAgentRunner = (options: RouterAgentRunOptions) => Promise<RouterAgentMessage[]>;
+
+export interface RouterRequestOptions extends Pick<
+    RouterRuntimeRunOptions,
+    "modelOverride" | "thinkingLevelOverride" | "temperatureOverride" | "customTools"
+> {
+    cwd?: string;
+    rowTimeoutMs?: number;
+    runAgentSession?: RouterAgentRunner;
+}
+
+export type RouterGoldenResultRow = ReturnType<typeof normalizeGoldenRow>;
+
+export interface RouterGoldenSetOptions extends Omit<RouterRequestOptions, "customTools"> {
+    limit?: number;
+    onProgress?: (message: string) => void;
+    onRowComplete?: (rows: RouterGoldenResultRow[]) => Promise<void> | void;
+    resume?: boolean;
+}
+
+export interface RouterGoldenSelection {
+    rows: RouterGoldenResultRow[];
+    selectedIndexes: number[];
+}
+
+export interface RouterGoldenReport {
+    labelledRows: number;
+    unlabelledRows: number;
+    router: RouterJudgementScore;
+}
+
+interface RouterGoldenArguments {
+    _: (string | number)[];
+    csv?: string;
+    out?: string;
+    limit?: string;
+    model?: string;
+    cwd?: string;
+    "row-timeout-ms"?: string;
+    "thinking-level"?: string;
+    temperature?: string;
+    help?: boolean;
+    rerun?: boolean;
+}
 
 const ROUTER_EVAL_DIRNAME = "router-eval";
 const DEFAULT_GOLDEN_CSV_NAME = "router-judgements.csv";
@@ -38,23 +118,14 @@ const DEFAULT_RESULT_CSV_NAME = "router-judgements-results.csv";
 const DEFAULT_ROW_TIMEOUT_MS = 60_000;
 const BENCHMARK_BASH_NUDGE = "bash is disabled in this run, and the command below was not executed.";
 
-/**
- * @returns {string}
- */
 export function getDefaultRouterEvalDir() {
     return join(getHomeDir(), ".wld", ROUTER_EVAL_DIRNAME);
 }
 
-/**
- * @returns {string}
- */
 export function getDefaultRouterGoldenCsvPath() {
     return join(getDefaultRouterEvalDir(), DEFAULT_GOLDEN_CSV_NAME);
 }
 
-/**
- * @returns {string}
- */
 export function getDefaultRouterResultCsvPath() {
     return join(getDefaultRouterEvalDir(), DEFAULT_RESULT_CSV_NAME);
 }
@@ -78,27 +149,9 @@ const BENCHMARK_ROUTER_TOOLS = [
     "triage_report",
 ];
 
-/**
- * @typedef {Object} RouterAgentRunOptions
- * @property {string} agentName
- * @property {string[]} toolNames
- * @property {string} userRequest
- * @property {import('../src/shared/session/types.js').ImageAttachment[]} images
- * @property {import('@earendil-works/pi-coding-agent').ToolDefinition[]} customTools
- * @property {string} [modelOverride]
- * @property {RouterThinkingLevel} [thinkingLevelOverride]
- * @property {number} [temperatureOverride]
- * @property {string} [cwd]
- */
-
-/** @typedef {(options: RouterAgentRunOptions) => Promise<any[]>} RouterAgentRunner */
-
-/**
- * @returns {import('@earendil-works/pi-coding-agent').ToolDefinition}
- */
 export function createBenchmarkBashNudgeTool() {
     let callCount = 0;
-    return defineTool({
+    return defineTool<BenchmarkBashSchema, BenchmarkBashNudgeDetails>({
         name: "bash",
         label: "Benchmark Bash Nudge",
         description:
@@ -136,26 +189,13 @@ export function createBenchmarkBashNudgeTool() {
     });
 }
 
-/**
- * @param {Record<string, string>} row
- * @param {number} index
- * @returns {string}
- */
-function getDecisionId(row, index) {
+function getDecisionId(row: CsvRow, index: number) {
     return row.decisionId || `golden-${String(index + 1).padStart(4, "0")}`;
 }
 
-/**
- * @template T
- * @param {Promise<T>} promise
- * @param {number} timeoutMs
- * @param {() => void} [onTimeout]
- * @returns {Promise<T>}
- */
-function withAbortTimeout(promise, timeoutMs, onTimeout = () => {}) {
-    /** @type {ReturnType<typeof setTimeout> | undefined} */
-    let timeoutId;
-    const timeout = new Promise((_, reject) => {
+function withAbortTimeout<T>(promise: Promise<T>, timeoutMs: number, onTimeout: () => void = () => {}): Promise<T> {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
         timeoutId = setTimeout(() => {
             onTimeout();
             reject(new Error(`Router golden row timed out after ${timeoutMs}ms.`));
@@ -166,22 +206,13 @@ function withAbortTimeout(promise, timeoutMs, onTimeout = () => {}) {
     });
 }
 
-/**
- * @param {string | undefined} value
- * @returns {number | undefined}
- */
-function parsePositiveInt(value) {
+function parsePositiveInt(value: string | undefined) {
     if (!value) return undefined;
     const parsed = Number(value);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-/**
- * @param {Record<string, string>} row
- * @param {number} index
- * @returns {Record<string, unknown>}
- */
-export function normalizeGoldenRow(row, index) {
+export function normalizeGoldenRow(row: CsvRow, index: number) {
     return withRouterJudgementMetrics({
         decisionId: getDecisionId(row, index),
         timestamp: row.timestamp || "",
@@ -196,28 +227,15 @@ export function normalizeGoldenRow(row, index) {
     });
 }
 
-/**
- * @param {Record<string, string>} row
- * @returns {boolean}
- */
-function shouldRunRow(row) {
+function shouldRunRow(row: Pick<RouterGoldenResultRow, "requestText" | "humanJudgement">) {
     return Boolean(row.requestText?.trim() && row.humanJudgement?.trim());
 }
 
-/**
- * @param {Record<string, unknown>} row
- * @returns {boolean}
- */
-function hasCompletedRouterDecision(row) {
+function hasCompletedRouterDecision<TCell>(row: CsvRow<TCell>) {
     return Boolean(String(row.routerDecision || "").trim());
 }
 
-/**
- * @param {Array<Record<string, string>>} goldenRows
- * @param {Array<Record<string, string>>} resultRows
- * @returns {Array<Record<string, string>>}
- */
-export function mergeGoldenRowsWithResultRows(goldenRows, resultRows) {
+export function mergeGoldenRowsWithResultRows(goldenRows: CsvRow[], resultRows: CsvRow[]): CsvRow[] {
     const resultById = new Map(resultRows.map((row) => [row.decisionId, row]));
     return goldenRows.map((goldenRow, index) => {
         const decisionId = getDecisionId(goldenRow, index);
@@ -237,11 +255,7 @@ export function mergeGoldenRowsWithResultRows(goldenRows, resultRows) {
     });
 }
 
-/**
- * @param {string} path
- * @returns {Promise<Array<Record<string, string>>>}
- */
-async function readExistingCsv(path) {
+async function readExistingCsv(path: string) {
     try {
         return parseCsv(await fsReadFile(path, "utf8"));
     } catch (error) {
@@ -250,12 +264,7 @@ async function readExistingCsv(path) {
     }
 }
 
-/**
- * @param {string} cwd
- * @param {string[]} args
- * @returns {Promise<string>}
- */
-async function runContextGit(cwd, args) {
+async function runContextGit(cwd: string, args: string[]) {
     const result = await captureScriptProcess("git", { cwd, args, stdout: "piped", stderr: "piped" });
     const decoder = new TextDecoder();
     if (!result.success) {
@@ -264,21 +273,11 @@ async function runContextGit(cwd, args) {
     return decoder.decode(result.stdout).trim();
 }
 
-/**
- * @param {string} requestText
- * @param {{
- *   cwd?: string,
- *   modelOverride?: string,
- *   thinkingLevelOverride?: RouterThinkingLevel,
- *   temperatureOverride?: number,
- *   rowTimeoutMs?: number,
- *   runAgentSession?: RouterAgentRunner,
- *   customTools?: import('@earendil-works/pi-coding-agent').ToolDefinition[],
- * }} [options]
- * @returns {Promise<import('../src/shared/workflow/triage-outcome.ts').TriageOutcome>}
- */
-export async function runRouterForGoldenRequest(requestText, options = {}) {
-    const agentOptions = /** @type {RouterAgentRunOptions} */ ({
+export async function runRouterForGoldenRequest(
+    requestText: string,
+    options: RouterRequestOptions = {},
+): Promise<TriageOutcome> {
+    const agentOptions: RouterAgentRunOptions = {
         agentName: AGENTS.ROUTER,
         toolNames: BENCHMARK_ROUTER_TOOLS,
         userRequest: requestText,
@@ -287,12 +286,10 @@ export async function runRouterForGoldenRequest(requestText, options = {}) {
         modelOverride: options.modelOverride,
         thinkingLevelOverride: options.thinkingLevelOverride,
         temperatureOverride: options.temperatureOverride,
-    });
+    };
 
-    /** @type {() => void} */
-    let cancel = () => {};
-    /** @type {() => Promise<void>} */
-    let close = () => Promise.resolve();
+    let cancel: () => void = () => {};
+    let close: () => Promise<void> = () => Promise.resolve();
     let messagesPromise;
     if (options.runAgentSession) {
         messagesPromise = options.runAgentSession({ ...agentOptions, cwd: options.cwd });
@@ -317,7 +314,7 @@ export async function runRouterForGoldenRequest(requestText, options = {}) {
               )
             : await messagesPromise;
         if (!Array.isArray(messages)) throw new Error(messages.error || "Router operation was refused.");
-        const triage = readLatestTriageOutcomeFn(messages);
+        const triage = readLatestTriageOutcomeFn(messages as AgentMessage[]);
         if (!triage) throw new Error("Router did not call triage_report.");
         return triage;
     } finally {
@@ -325,48 +322,19 @@ export async function runRouterForGoldenRequest(requestText, options = {}) {
     }
 }
 
-/**
- * @param {Array<Record<string, string>>} rows
- * @param {{
- *   limit?: number,
- *   cwd?: string,
- *   modelOverride?: string,
- *   thinkingLevelOverride?: RouterThinkingLevel,
- *   temperatureOverride?: number,
- *   rowTimeoutMs?: number,
- *   runAgentSession?: RouterAgentRunner,
- *   onProgress?: (message: string) => void,
- *   onRowComplete?: (rows: Array<Record<string, unknown>>) => Promise<void> | void,
- *   resume?: boolean,
- * }} [options]
- * @returns {Promise<Array<Record<string, unknown>>>}
- */
-export async function runRouterGoldenSet(rows, options = {}) {
+export async function runRouterGoldenSet(rows: CsvRow[], options: RouterGoldenSetOptions = {}) {
     const result = await runRouterGoldenSetWithSelection(rows, options);
     return result.rows;
 }
 
-/**
- * @param {Array<Record<string, string>>} rows
- * @param {{
- *   limit?: number,
- *   cwd?: string,
- *   modelOverride?: string,
- *   thinkingLevelOverride?: RouterThinkingLevel,
- *   temperatureOverride?: number,
- *   rowTimeoutMs?: number,
- *   runAgentSession?: RouterAgentRunner,
- *   onProgress?: (message: string) => void,
- *   onRowComplete?: (rows: Array<Record<string, unknown>>) => Promise<void> | void,
- *   resume?: boolean,
- * }} [options]
- * @returns {Promise<{ rows: Array<Record<string, unknown>>, selectedIndexes: number[] }>}
- */
-export async function runRouterGoldenSetWithSelection(rows, options = {}) {
+export async function runRouterGoldenSetWithSelection(
+    rows: CsvRow[],
+    options: RouterGoldenSetOptions = {},
+): Promise<RouterGoldenSelection> {
     const normalized = rows.map(normalizeGoldenRow);
     const runnableIndexes = normalized
         .map((row, index) => ({ row, index }))
-        .filter(({ row }) => shouldRunRow(/** @type {Record<string, string>} */ (row)))
+        .filter(({ row }) => shouldRunRow(row))
         .filter(({ row }) => !options.resume || !hasCompletedRouterDecision(row));
     const selected = options.limit ? runnableIndexes.slice(0, options.limit) : runnableIndexes;
     const selectedIndexes = selected.map(({ index }) => index);
@@ -387,8 +355,7 @@ export async function runRouterGoldenSetWithSelection(rows, options = {}) {
     let worktree = "";
     let worktreeAdded = false;
 
-    /** @param {string} contextCommit */
-    async function resolveRowCwd(contextCommit) {
+    async function resolveRowCwd(contextCommit: string) {
         if (!contextCommit) return sourceCwd;
         if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(contextCommit)) {
             throw new Error("Invalid contextCommit: use a full 40- or 64-character Git commit hash.");
@@ -450,14 +417,10 @@ export async function runRouterGoldenSetWithSelection(rows, options = {}) {
     return { rows: normalized, selectedIndexes };
 }
 
-/**
- * @param {Array<Record<string, unknown>>} rows
- * @returns {Record<string, unknown>}
- */
-export function buildRouterGoldenReport(rows) {
+export function buildRouterGoldenReport<TCell>(rows: CsvRow<TCell>[]): RouterGoldenReport {
     const labelledRows = rows.filter((row) => String(row.humanJudgement || "").trim()).length;
     const router = scoreAgainstHuman(
-        rows.map((row) => /** @type {Record<string, string>} */ (row)),
+        rows.map((row) => row),
         "routerDecision",
     );
     return {
@@ -467,11 +430,8 @@ export function buildRouterGoldenReport(rows) {
     };
 }
 
-/**
- * @param {string[]} argv
- */
-export async function main(argv) {
-    const args = parseArgs(argv, {
+export async function main(argv: string[]) {
+    const args: RouterGoldenArguments = parseArgs(argv, {
         string: ["csv", "out", "limit", "model", "cwd", "row-timeout-ms", "thinking-level", "temperature"],
         boolean: ["help", "rerun"],
         alias: { h: "help", o: "out", m: "model" },
@@ -480,7 +440,7 @@ export async function main(argv) {
     if (args.help) {
         console.log(
             [
-                "Usage: bun scripts/run-router-golden-set.js [options]",
+                "Usage: bun scripts/run-router-golden-set.ts [options]",
                 "",
                 "Runs the real Router against labelled Router judgement rows.",
                 "",
@@ -500,7 +460,7 @@ export async function main(argv) {
         return;
     }
 
-    const thinkingLevels = /** @type {const} */ (["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+    const thinkingLevels: RouterThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
     const thinkingLevelOverride = thinkingLevels.find((level) => level === args["thinking-level"]);
     if (args["thinking-level"] !== undefined && thinkingLevelOverride === undefined) {
         throw new Error("Invalid --thinking-level. Use off, minimal, low, medium, high, xhigh, or max.");
