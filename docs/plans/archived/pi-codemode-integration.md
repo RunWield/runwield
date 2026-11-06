@@ -38,9 +38,9 @@ The request is to implement Pi 1.0's codemode in `wld`. Codemode lets an Agent u
 process their results, and return only useful output to the model. RunWield already pins Pi 1.0.4; it does not load
 the public codemode extension. The earlier MCP migration deliberately left this feature for separate work.
 
-The owning capability is [Core: Agent and skill customization](../prd/runwield-core-prd.md#agent-and-skill-customization).
+The owning capability is [Core: Agent and skill customization](../../prd/runwield-core-prd.md#agent-and-skill-customization).
 This Plan proposes a named codemode requirement and acceptance scenarios there. Preserve Trusted MCP tools, layered
-Agent definitions, delegated/validation tool ceilings, and [Session continuity](../prd/runwield-core-prd.md#session-continuity)
+Agent definitions, delegated/validation tool ceilings, and [Session continuity](../../prd/runwield-core-prd.md#session-continuity)
 where applicable. Codemode is proposed behavior until implemented and verified.
 
 Repository evidence:

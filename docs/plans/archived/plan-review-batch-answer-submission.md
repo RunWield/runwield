@@ -39,7 +39,7 @@ Each answered Plan Question currently submits only its own answer. The right sid
 Planner's progress. The owner wants one click to send all selected answers and reveal that progress.
 
 This changes **Answer Plan Questions in place** and the related layout and acceptance scenarios in
-[Browser Plan review and workflow](../prd/runwield-workspace-prd.md#browser-plan-review-and-workflow). Batch submission
+[Browser Plan review and workflow](../../prd/runwield-workspace-prd.md#browser-plan-review-and-workflow). Batch submission
 and automatic reveal are proposed behavior. Answer persistence, sent-value tracking, chat queue behavior, and approval
 remain existing behavior to preserve.
 

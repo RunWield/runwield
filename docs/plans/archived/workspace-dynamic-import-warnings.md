@@ -59,8 +59,8 @@ needs changes to settings loading, validation composition, and the runtime callb
 Planning reproduced all seven warnings with Bun 1.4.3 after `bun run install:locked`. The same build also reports a
 large-chunk warning and a third-party `COMMONJS_VARIABLE_IN_ESM` warning. Those are outside this request.
 
-**Preserved product requirements:** [Core validation](../prd/runwield-core-prd.md#validation), including “Required checks
-fail closed,” and [Core usage measurement](../prd/runwield-core-prd.md#usage-measurement-and-export). No product requirement,
+**Preserved product requirements:** [Core validation](../../prd/runwield-core-prd.md#validation), including “Required checks
+fail closed,” and [Core usage measurement](../../prd/runwield-core-prd.md#usage-measurement-and-export). No product requirement,
 acceptance scenario, domain term, or runtime architecture changes are proposed. Existing requirements and references
 remain current; do not add a product promise about internal bundler output.
 
