@@ -17,7 +17,7 @@ export default function denoReact(): AstroIntegration {
                 addRenderer({
                     name: "@astrojs/react",
                     clientEntrypoint: new URL("./react-client.ts", import.meta.url).href,
-                    serverEntrypoint: new URL("./react-server.mjs", import.meta.url).href,
+                    serverEntrypoint: new URL("./react-server.ts", import.meta.url).href,
                 });
                 updateConfig({
                     vite: {
