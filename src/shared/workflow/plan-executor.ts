@@ -17,7 +17,7 @@ import {
     requestPlanReviewRetryConfirmation,
     requestRecoverablePlanReview,
     SESSION_COMPLETE_GUIDANCE,
-} from "./plan-review-recovery.js";
+} from "./plan-review-recovery.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { recordWorkflowMetric } from "./metrics.js";
 import { CollaborationStyles, selectRuntimeCollaborationStyle } from "./execution-collaboration.ts";

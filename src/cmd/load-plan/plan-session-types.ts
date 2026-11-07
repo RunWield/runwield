@@ -24,6 +24,7 @@ export interface ReviewImage {
 export interface PlanReviewOutcome {
     conversationTurn?: boolean;
     canceled: boolean;
+    cancellationReason?: string;
     approved: boolean;
     feedback?: string;
     approvalAction?: PlanApprovalAction;

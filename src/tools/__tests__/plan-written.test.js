@@ -12,7 +12,7 @@ import { match as assertMatch } from "node:assert/strict";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
-import { SESSION_COMPLETE_GUIDANCE } from "../../shared/workflow/plan-review-recovery.js";
+import { SESSION_COMPLETE_GUIDANCE } from "../../shared/workflow/plan-review-recovery.ts";
 import { createPlanWrittenTool } from "../plan-written.ts";
 import { getStoredPlanPath, loadPlan } from "../../plan-store.js";
 import { addEntry as addRegistryEntry } from "../../shared/worktree-registry.js";
