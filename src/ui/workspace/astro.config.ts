@@ -1,4 +1,3 @@
-// @ts-nocheck: Astro/Vite plugin type packages resolve to multiple Vite versions under Deno npm nodeModulesDir.
 // Polyfill for Astro's Vite CJS evaluator in Deno, following the local Goaly Astro app pattern.
 globalThis.exports = globalThis.exports || {};
 globalThis.module = globalThis.module || { exports: globalThis.exports };
@@ -15,7 +14,6 @@ import { reviewCollapseStatePlugin } from "./integrations/review-collapse-state.
 const WORKSPACE_DIR = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = resolve(WORKSPACE_DIR, "../../..");
 const PLANNOTATOR_DIR = resolve(ROOT_DIR, "third_party/plannotator");
-
 
 export default defineConfig({
     root: WORKSPACE_DIR,
