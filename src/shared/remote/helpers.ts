@@ -6,7 +6,7 @@ import { getCwd, getHomeDir } from "../../constants.js";
 import { sha256Bytes } from "../../../scripts/build-metadata.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { openNativeFileLock } from "../native-file-lock.ts";
-import { linuxTarget, prepareRemoteFiles } from "./runtime.js";
+import { linuxTarget, prepareRemoteFiles } from "./runtime.ts";
 
 export interface RemoteHelperPin {
     name: string;

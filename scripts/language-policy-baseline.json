@@ -6,7 +6,6 @@
     "src/shared/collaboration/protocol.js",
     "src/shared/owner-coordination/session-activations.js",
     "src/shared/owner-coordination/sessions.js",
-    "src/shared/remote/runtime.js",
     "src/shared/session/agents.js",
     "src/shared/session/hosted-session.js",
     "src/shared/session/root-session.js",

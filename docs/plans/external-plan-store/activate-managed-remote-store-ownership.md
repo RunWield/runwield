@@ -6,7 +6,7 @@ affectedPaths:
     - "src/cmd/remote/index.ts"
     - "src/shared/remote/entry.ts"
     - "src/shared/remote/supervisor.ts"
-    - "src/shared/remote/runtime.js"
+    - "src/shared/remote/runtime.ts"
     - "src/shared/project-runtime-layout.ts"
     - "src/shared/worktree-registry.js"
     - "src/shared/workflow/"
@@ -65,7 +65,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/cmd/remote/index.ts` — public launch selection and entry/adoption
 - `src/shared/remote/entry.ts` — bind laptop owner and remote execution context
 - `src/shared/remote/supervisor.ts` — connection lifecycle and recovery
-- `src/shared/remote/runtime.js` — compose workflow consumers with store service
+- `src/shared/remote/runtime.ts` — compose workflow consumers with store service
 - `src/shared/project-runtime-layout.ts` — cross-host adoption and owner-aware runtime paths
 - `src/shared/worktree-registry.js` — personal-owner scoped attempts and repository-level Git coordination
 - `src/shared/workflow/` — cross-host lifecycle/publication reconciliation

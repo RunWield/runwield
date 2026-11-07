@@ -1,12 +1,11 @@
 import { getCwd } from "../../constants.js";
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { readFile as fsReadFile } from "node:fs/promises";
-import { verifyBuildArtifact } from "../../../scripts/build-metadata.ts";
+import { verifyBuildArtifact, type ArtifactMetadata } from "../../../scripts/build-metadata.ts";
 import { fixedPythonCommand } from "./target.ts";
-import { assertRemoteHostSupported } from "./host-prerequisites.ts";
+import { assertRemoteHostSupported, type RemoteHostPlatform } from "./host-prerequisites.ts";
 
-/** @param {{os: string, arch: string}} platform */
-export function linuxTarget(platform) {
+export function linuxTarget(platform: RemoteHostPlatform) {
     assertRemoteHostSupported(platform);
     return platform.arch === "x86_64" ? "x86_64-unknown-linux-gnu" : "aarch64-unknown-linux-gnu";
 }
@@ -14,10 +13,8 @@ export function linuxTarget(platform) {
 /**
  * Compare the artifact metadata with the identity embedded in this launcher.
  * The generated identity is absent in source runs without an explicit build.
- * @param {string} artifact
- * @param {{os: string, arch: string}} platform
  */
-export async function verifyRemoteRuntimeArtifact(artifact, platform) {
+export async function verifyRemoteRuntimeArtifact(artifact: string, platform: RemoteHostPlatform) {
     const target = linuxTarget(platform);
     let identity;
     try {
@@ -201,24 +198,61 @@ finally:
 
 export const REMOTE_PREPARE_COMMAND = fixedPythonCommand(PREPARE_SOURCE);
 
-/**
- * @typedef {Object} RemotePreparationResult
- * @property {string} path
- * @property {boolean} reused
- */
+export interface RemotePreparationResult {
+    path: string;
+    reused: boolean;
+}
+
+interface RemoteTransferFile {
+    name: string;
+    sha256: string;
+    size: number;
+    executable: boolean;
+}
+
+interface HelperPreparation {
+    kind: "helper";
+    cacheParts: string[];
+    files: RemoteTransferFile[];
+}
+
+export interface RuntimePreparation extends Omit<ArtifactMetadata, "schema"> {
+    schema?: ArtifactMetadata["schema"];
+    size: number;
+}
+
+interface RemoteTransferReady {
+    send: true;
+    ok?: never;
+    error?: never;
+}
+
+interface RemotePreparationSuccess extends RemotePreparationResult {
+    send?: never;
+    ok: true;
+    error?: never;
+}
+
+interface RemotePreparationFailure {
+    send?: never;
+    ok: false;
+    error: string;
+}
+
+type RemotePreparationReply = RemoteTransferReady | RemotePreparationSuccess | RemotePreparationFailure;
 
 /**
  * Verify the local bytes, send them through SSH stdin, and let the fixed remote
  * source atomically stage and preflight the executable. The returned path is a
  * remote locator; callers must not use laptop path utilities on it.
- * @param {string} host
- * @param {{os: string, arch: string}} platform
- * @param {string} artifact
- * @param {string} [sshExecutable] External subprocess boundary.
- * @param {AbortSignal} [signal] Connection cancellation.
- * @returns {Promise<RemotePreparationResult>}
  */
-export async function prepareRemoteRuntime(host, platform, artifact, sshExecutable = "ssh", signal) {
+export async function prepareRemoteRuntime(
+    host: string,
+    platform: RemoteHostPlatform,
+    artifact: string,
+    sshExecutable = "ssh",
+    signal?: AbortSignal,
+): Promise<RemotePreparationResult> {
     const metadata = await verifyRemoteRuntimeArtifact(artifact, platform);
     const bytes = await fsReadFile(artifact);
     const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)))
@@ -228,38 +262,14 @@ export async function prepareRemoteRuntime(host, platform, artifact, sshExecutab
     return prepareRemoteFiles(host, { ...metadata, size: bytes.length }, [bytes], sshExecutable, signal);
 }
 
-/**
- * @typedef {Object} RemoteTransferFile
- * @property {string} name
- * @property {string} sha256
- * @property {number} size
- * @property {boolean} executable
- */
-/**
- * @typedef {Object} HelperPreparation
- * @property {string} kind
- * @property {string[]} cacheParts
- * @property {RemoteTransferFile[]} files
- */
-/**
- * @typedef {Object} RuntimePreparation
- * @property {string} buildId
- * @property {string} sha256
- * @property {string} target
- * @property {number} protocol
- * @property {string} version
- * @property {number} size
- */
-/**
- * Shared two-phase preparation transport. Remote cache ownership stays with each artifact owner.
- * @param {string} host
- * @param {HelperPreparation | RuntimePreparation} header
- * @param {Uint8Array[]} payloads
- * @param {string} [sshExecutable] External subprocess boundary.
- * @param {AbortSignal} [signal]
- * @returns {Promise<RemotePreparationResult>}
- */
-export async function prepareRemoteFiles(host, header, payloads, sshExecutable = "ssh", signal) {
+/** Shared two-phase preparation transport. Remote cache ownership stays with each artifact owner. */
+export async function prepareRemoteFiles(
+    host: string,
+    header: HelperPreparation | RuntimePreparation,
+    payloads: Uint8Array[],
+    sshExecutable = "ssh",
+    signal?: AbortSignal,
+): Promise<RemotePreparationResult> {
     // deno-lint-ignore no-control-regex -- SSH destinations must not contain control or whitespace characters.
     if (!host || host.startsWith("-") || /[\x00-\x20\x7f]/.test(host)) throw new Error("Invalid SSH destination");
     const process = spawnNativeProcess(sshExecutable, {
@@ -286,7 +296,7 @@ export async function prepareRemoteFiles(host, header, payloads, sshExecutable =
             const [status, stderr] = await output;
             throw new Error(`Remote runtime setup failed: ${stderr.trim() || stdout.trim() || status.code}`);
         }
-        const first = JSON.parse(stdout.slice(0, newline));
+        const first: RemotePreparationReply = JSON.parse(stdout.slice(0, newline));
         let transferError;
         if (first.send === true) {
             try {
@@ -303,7 +313,7 @@ export async function prepareRemoteFiles(host, header, payloads, sshExecutable =
             stdout += new TextDecoder().decode(value);
         }
         const [status, stderr] = await output;
-        let reply = first;
+        let reply: RemotePreparationReply = first;
         if (first.send === true) {
             try {
                 reply = JSON.parse(stdout.trim());

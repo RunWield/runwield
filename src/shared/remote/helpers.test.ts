@@ -13,7 +13,7 @@ import {
     seedRemoteHelpers,
 } from "../../testing/remote-helper-fixture.ts";
 import { remoteHelperPins } from "./helpers.ts";
-import { prepareRemoteFiles } from "./runtime.js";
+import { prepareRemoteFiles } from "./runtime.ts";
 import type { RemoteHelper } from "./helpers.ts";
 
 const PLATFORM = { os: "Linux", arch: "x86_64" };
