@@ -24,7 +24,7 @@ type RunawayLoopGuardOptions = {
     hostedSession?: HostedSession;
 };
 
-type GuardCustomEntry = CustomEntry<GuardEntryData>;
+export type GuardCustomEntry = CustomEntry<GuardEntryData>;
 
 export class RunawayLoopGuardStoppedError extends Error {
     constructor(reason: string) {

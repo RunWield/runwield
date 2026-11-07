@@ -238,7 +238,7 @@ async function main(): Promise<void> {
                 `${sourceRoot}/scripts`,
                 `${sourceRoot}/node_modules`,
                 `${sourceRoot}/package.json`,
-                `${sourceRoot}/runtime-root.js`,
+                `${sourceRoot}/runtime-root.ts`,
                 `${sourceRoot}/brand`,
                 `${sourceRoot}/third_party`,
                 `${sourceRoot}/tsconfig.json`,

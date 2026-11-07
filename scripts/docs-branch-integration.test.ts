@@ -256,7 +256,7 @@ test("docs branch publishes Stable content, preserves corrections, and stops on 
             "DOCS-CORRECTION",
         );
 
-        const configPath = join(work, "docs-site", "astro.config.mjs");
+        const configPath = join(work, "docs-site", "astro.config.ts");
         const validConfig = await fsReadFile(configPath, "utf8");
         await fsWriteFile(configPath, "this is not valid JavaScript {");
         await assertRejects(() => buildStableDocs(work));

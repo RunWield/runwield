@@ -24,7 +24,7 @@ test("Astro dev serves local and owner Plan Boards with canonical Plan data", as
         import { assertEquals, assertStringIncludes } from ${JSON.stringify(import.meta.resolve("../../testing/assertions.ts"))};
         const server = await dev({
             root: ${JSON.stringify(fileURLToPath(new URL("src/ui/workspace/", repoRoot)))},
-            configFile: "astro.config.mjs",
+            configFile: "astro.config.ts",
             cacheDir: ${JSON.stringify(`${scratch}/astro`)},
             server: { host: "127.0.0.1", port: 0, open: false },
             vite: { cacheDir: ${JSON.stringify(`${scratch}/vite`)} },
@@ -71,7 +71,7 @@ test("Astro dev reads remote mode from Bun's environment for Shared Space pages"
         import { assertEquals, assertStringIncludes } from ${JSON.stringify(import.meta.resolve("../../testing/assertions.ts"))};
         const server = await dev({
             root: ${JSON.stringify(fileURLToPath(new URL("src/ui/workspace/", repoRoot)))},
-            configFile: "astro.config.mjs",
+            configFile: "astro.config.ts",
             cacheDir: ${JSON.stringify(`${scratch}/astro`)},
             server: { host: "127.0.0.1", port: 0, open: false },
             vite: { cacheDir: ${JSON.stringify(`${scratch}/vite`)} },

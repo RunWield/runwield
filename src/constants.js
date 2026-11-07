@@ -6,7 +6,7 @@
 import { realpathSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import { argv, cwd, env, platform, versions } from "node:process";
-import { RUNWIELD_SOURCE_ROOT } from "../runtime-root.js";
+import { RUNWIELD_SOURCE_ROOT } from "../runtime-root.ts";
 
 /** Name of the installed CLI binary shown in user-facing docs/help. */
 export const CLI_BIN = "wld";

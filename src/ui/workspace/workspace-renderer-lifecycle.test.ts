@@ -8,7 +8,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { join } from "node:path";
 import { loadPlanBodyById, savePlanBodyById } from "../../plan-store.js";
 import { createRendererFixture } from "../../../scripts/workspace-memory-fixture.ts";
-import { RUNWIELD_ROOT } from "../../../runtime-root.js";
+import { RUNWIELD_ROOT } from "../../../runtime-root.ts";
 
 for (const mode of ["normal", "missing", "fallback", "disabled"]) {
     test(`renderer entry lifecycle: ${mode}`, async () => {

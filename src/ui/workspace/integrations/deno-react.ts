@@ -1,4 +1,4 @@
-// @ts-nocheck: local Astro integration mirrors @astrojs/react hooks where Deno/Vite types are not stable.
+import type { AstroIntegration } from "astro";
 import viteReact from "@vitejs/plugin-react";
 
 /**
@@ -9,7 +9,7 @@ import viteReact from "@vitejs/plugin-react";
  * keeps Astro's React client renderer and Vite React/Fast Refresh support while
  * pointing the server renderer at a local Deno-loadable module.
  */
-export default function denoReact() {
+export default function denoReact(): AstroIntegration {
     return {
         name: "@astrojs/react",
         hooks: {

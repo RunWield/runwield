@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { RUNWIELD_SOURCE_ROOT } from "../../../runtime-root.js";
+import { RUNWIELD_SOURCE_ROOT } from "../../../runtime-root.ts";
 import {
     MAX_SESSION_BYTES,
     type RemoteSessionConnection,
