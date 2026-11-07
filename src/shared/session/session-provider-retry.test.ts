@@ -3,7 +3,14 @@ import { test } from "node:test";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
+import type {
+    AgentSessionEvent,
+    CompactionSettings,
+    RetrySettings,
+    SessionEntry,
+} from "@earendil-works/pi-coding-agent";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
+import type { TextContent, TranscriptContext } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import {
     attachSessionEventSubscribers,
@@ -16,15 +23,48 @@ import { HostedSession } from "./hosted-session.js";
 import { createReplayEvents } from "./session-transcript-projection.js";
 import { attachRunawayLoopGuard, RunawayLoopGuardStoppedError } from "./runaway-loop-guard.ts";
 
-/** @typedef {{ type: string, message?: string }} ProviderNotice */
+import type { GuardCustomEntry } from "./runaway-loop-guard.ts";
+import type { AgentDefinition } from "./types.js";
+
+interface SessionEventKind<Kind extends AgentSessionEvent["type"]> {
+    type: Kind;
+}
+
+type RetryStarted = Extract<AgentSessionEvent, SessionEventKind<"auto_retry_start">>;
+type RetryEnded = Extract<AgentSessionEvent, SessionEventKind<"auto_retry_end">>;
+type SummaryRetryScheduled = Extract<AgentSessionEvent, SessionEventKind<"summarization_retry_scheduled">>;
+type RetryDiagnostic = [message: string, shouldRetry: boolean];
+type GuideSettings = Pick<AgentDefinition, "temperature">;
+
+interface ProviderNotice {
+    type: string;
+    message?: string;
+}
+
+interface ReplayEventProbe extends ProviderNotice {
+    delta?: string;
+}
+
+interface FixtureAgents {
+    guide: GuideSettings;
+}
+
+interface FixtureSettings {
+    retry?: RetrySettings;
+    compaction?: CompactionSettings;
+    agents?: FixtureAgents;
+}
+
+interface SyntheticStepArgs {
+    step?: number;
+}
 
 test("an interrupted provider response retries the same request and completes", async () => {
     await withRuntimeCommandFixture("provider-eof-retry-", async (fixture) => {
-        const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
+        const settings: FixtureSettings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
         settings.retry = { enabled: true, maxRetries: 1, baseDelayMs: 1 };
         await fsWriteFile(fixture.settingsPath, JSON.stringify(settings));
-        /** @type {import('@earendil-works/pi-ai').TranscriptContext[]} */
-        const requests = [];
+        const requests: TranscriptContext[] = [];
         fixture.setModelResponseFactories([
             (context) => {
                 requests.push(context);
@@ -45,7 +85,7 @@ test("an interrupted provider response retries the same request and completes", 
             toolNames: [],
             sessionManager: manager,
         });
-        const retryEvents = [];
+        const retryEvents: RetryStarted[] = [];
         const guard = attachRunawayLoopGuard({ session, requestId: "synthetic-provider-retry" });
         const unsubscribe = session.subscribe((event) => {
             if (event.type === "auto_retry_start") retryEvents.push(event);
@@ -73,11 +113,11 @@ test("an interrupted provider response retries the same request and completes", 
             const transcript = await fsReadFile(file, "utf8");
             assertStringIncludes(transcript, "Network error: Unexpected EOF");
             assertStringIncludes(transcript, "Recovered answer");
-            const entries = transcript
+            const entries: SessionEntry[] = transcript
                 .trim()
                 .split("\n")
                 .map((line) => JSON.parse(line));
-            const replay = createReplayEvents("eof-then-success", entries);
+            const replay: ReplayEventProbe[] = createReplayEvents("eof-then-success", entries);
             const second = createReplayEvents("eof-then-success", entries);
             assertEquals(replay, second);
             assertEquals(await fsReadFile(file, "utf8"), transcript);
@@ -100,8 +140,7 @@ test("an interrupted provider response retries the same request and completes", 
 
 test("default EOF retries wait 2, 4, and 8 seconds and stop after four requests", async () => {
     await withRuntimeCommandFixture("provider-default-backoff-", async (fixture) => {
-        /** @type {number[]} */
-        const starts = [];
+        const starts: number[] = [];
         fixture.setModelResponseFactories(
             Array.from({ length: 4 }, () => () => {
                 starts.push(Date.now());
@@ -112,10 +151,8 @@ test("default EOF retries wait 2, 4, and 8 seconds and stop after four requests"
             }),
         );
         const { session } = await buildAgentSession({ agentName: "guide", cwd: fixture.projectRoot, toolNames: [] });
-        /** @type {number[]} */
-        const schedules = [];
-        /** @type {Array<{ attempt: number, success: boolean }>} */
-        const endings = [];
+        const schedules: number[] = [];
+        const endings: RetryEnded[] = [];
         const unsubscribe = session.subscribe((event) => {
             if (event.type === "auto_retry_start") schedules.push(event.delayMs);
             if (event.type === "auto_retry_end") endings.push(event);
@@ -141,7 +178,7 @@ test("default EOF retries wait 2, 4, and 8 seconds and stop after four requests"
 test("disabled and zero retry budgets leave an EOF as one provider request", async () => {
     for (const retry of [{ enabled: false }, { enabled: true, maxRetries: 0, baseDelayMs: 1 }]) {
         await withRuntimeCommandFixture("provider-no-retry-", async (fixture) => {
-            const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
+            const settings: FixtureSettings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
             settings.retry = retry;
             await fsWriteFile(fixture.settingsPath, JSON.stringify(settings));
             let calls = 0;
@@ -170,8 +207,7 @@ test("disabled and zero retry budgets leave an EOF as one provider request", asy
 });
 
 test("Pi retains existing transient retry rules and exclusions", async () => {
-    /** @type {Array<[string, boolean]>} */
-    const diagnostics = [
+    const diagnostics: RetryDiagnostic[] = [
         ["socket hang up", true],
         ["connection error", true],
         ["timeout", true],
@@ -185,7 +221,7 @@ test("Pi retains existing transient retry rules and exclusions", async () => {
     ];
     for (const [diagnostic, shouldRetry] of diagnostics) {
         await withRuntimeCommandFixture("provider-error-matrix-", async (fixture) => {
-            const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
+            const settings: FixtureSettings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
             settings.retry = { enabled: true, maxRetries: 1, baseDelayMs: 1 };
             if (diagnostic === "exceeds the context window") settings.compaction = { enabled: false };
             await fsWriteFile(fixture.settingsPath, JSON.stringify(settings));
@@ -217,7 +253,7 @@ test("Pi retains existing transient retry rules and exclusions", async () => {
 
 test("cancel during backoff stops requests and permits a later turn", async () => {
     await withRuntimeCommandFixture("provider-cancel-backoff-", async (fixture) => {
-        const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
+        const settings: FixtureSettings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
         settings.retry = { enabled: true, maxRetries: 2, baseDelayMs: 500 };
         await fsWriteFile(fixture.settingsPath, JSON.stringify(settings));
         let calls = 0;
@@ -235,7 +271,7 @@ test("cancel during backoff stops requests and permits a later turn", async () =
             },
         ]);
         const { session } = await buildAgentSession({ agentName: "guide", cwd: fixture.projectRoot, toolNames: [] });
-        const events = [];
+        const events: RetryStarted[] = [];
         const unsubscribe = session.subscribe((event) => {
             if (event.type === "auto_retry_start") {
                 events.push(event);
@@ -261,8 +297,7 @@ test("cancel during backoff stops requests and permits a later turn", async () =
 test("cancel an active provider response without retrying and continue later", async () => {
     await withRuntimeCommandFixture("provider-cancel-active-", async (fixture) => {
         let calls = 0;
-        /** @type {() => void} */
-        let notifyStart = () => {};
+        let notifyStart: () => void = () => {};
         const started = new Promise((resolve) => {
             notifyStart = () => resolve(undefined);
         });
@@ -298,7 +333,7 @@ test("cancel an active provider response without retrying and continue later", a
 
 test("Pi summary retry recovers from EOF without a second policy", async () => {
     await withRuntimeCommandFixture("provider-summary-retry-", async (fixture) => {
-        const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
+        const settings: FixtureSettings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
         settings.retry = { enabled: true, maxRetries: 1, baseDelayMs: 1 };
         settings.compaction = { enabled: true, reserveTokens: 16384, keepRecentTokens: 1 };
         await fsWriteFile(fixture.settingsPath, JSON.stringify(settings));
@@ -329,9 +364,8 @@ test("Pi summary retry recovers from EOF without a second policy", async () => {
             },
         ]);
         const hostedSession = new HostedSession({ id: "summary-retry", cwd: fixture.projectRoot });
-        /** @type {ProviderNotice[]} */
-        const notices = [];
-        hostedSession.setEventSink({ emit: (/** @type {ProviderNotice} */ event) => notices.push(event) });
+        const notices: ProviderNotice[] = [];
+        hostedSession.setEventSink({ emit: (event: ProviderNotice) => notices.push(event) });
         const { session, agentDef } = await buildAgentSession({
             hostedSession,
             agentName: "guide",
@@ -340,8 +374,7 @@ test("Pi summary retry recovers from EOF without a second policy", async () => {
             sessionManager: manager,
         });
         const subscriber = attachSessionEventSubscribers(session, agentDef, undefined, hostedSession);
-        /** @type {Array<{ attempt: number, maxAttempts: number, delayMs: number }>} */
-        const scheduled = [];
+        const scheduled: SummaryRetryScheduled[] = [];
         const unsubscribe = session.subscribe((event) => {
             if (event.type === "summarization_retry_scheduled") scheduled.push(event);
         });
@@ -370,14 +403,12 @@ test("Pi summary retry recovers from EOF without a second policy", async () => {
 
 test("isolated Pi Session recovers EOF without repeating the user request", async () => {
     await withRuntimeCommandFixture("provider-isolated-retry-", async (fixture) => {
-        const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
+        const settings: FixtureSettings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
         settings.retry = { enabled: true, maxRetries: 1, baseDelayMs: 1 };
         settings.agents = { guide: { temperature: 0.3 } };
         await fsWriteFile(fixture.settingsPath, JSON.stringify(settings));
-        /** @type {import('@earendil-works/pi-ai').TranscriptContext[]} */
-        const requests = [];
-        /** @type {Array<number | undefined>} */
-        const temperatures = [];
+        const requests: TranscriptContext[] = [];
+        const temperatures: (number | undefined)[] = [];
         fixture.setModelResponseFactories([
             (context, options) => {
                 requests.push(context);
@@ -419,7 +450,7 @@ test("isolated Pi Session recovers EOF without repeating the user request", asyn
 
 test("a completed tool is not repeated after EOF and its result stays in retry context", async () => {
     await withRuntimeCommandFixture("provider-tool-retry-", async (fixture) => {
-        const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
+        const settings: FixtureSettings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
         settings.retry = { enabled: true, maxRetries: 1, baseDelayMs: 1 };
         await fsWriteFile(fixture.settingsPath, JSON.stringify(settings));
         let executions = 0;
@@ -431,7 +462,7 @@ test("a completed tool is not repeated after EOF and its result stays in retry c
             execute: () => {
                 executions++;
                 return Promise.resolve({
-                    content: [{ type: /** @type {const} */ ("text"), text: "committed result" }],
+                    content: [{ type: "text", text: "committed result" } satisfies TextContent],
                     details: null,
                 });
             },
@@ -476,7 +507,7 @@ test("a repeated tool call and result stops before another model request", async
             execute: () => {
                 executions += 1;
                 return Promise.resolve({
-                    content: [{ type: /** @type {const} */ ("text"), text: "stable synthetic result" }],
+                    content: [{ type: "text", text: "stable synthetic result" } satisfies TextContent],
                     details: null,
                 });
             },
@@ -512,15 +543,13 @@ test("a repeated tool call and result stops before another model request", async
             );
             const stops = sessionManager
                 .getBranch()
-                .filter((entry) => entry.type === "custom" && entry.customType === "runwield.loop_guard_stop");
+                .filter(
+                    (entry): entry is GuardCustomEntry =>
+                        entry.type === "custom" && entry.customType === "runwield.loop_guard_stop",
+                );
             assertEquals(executions, 3);
             assertEquals(requests, 3);
-            assertEquals(
-                /** @type {import('@earendil-works/pi-coding-agent').CustomEntry<{reason?: string}> | undefined} */ (
-                    stops.at(-1)
-                )?.data?.reason,
-                "repeated_tool_result",
-            );
+            assertEquals(stops.at(-1)?.data?.reason, "repeated_tool_result");
         } finally {
             built.session.dispose();
         }
@@ -565,8 +594,7 @@ test("different tool calls with shared or changing results do not stop the reque
                 label: name,
                 description: "Returns a synthetic result for loop guard coverage",
                 parameters: { type: "object", properties: { step: { type: "number" } } },
-                /** @param {string} _toolCallId @param {{step?: number}} args */
-                execute: (_toolCallId, args) => {
+                execute: (_toolCallId: string, args: SyntheticStepArgs) => {
                     executions += 1;
                     const call = scenario.calls[executions - 1];
                     if (
@@ -577,7 +605,7 @@ test("different tool calls with shared or changing results do not stop the reque
                         throw new Error(`Unexpected synthetic call to ${name}`);
                     }
                     return Promise.resolve({
-                        content: [{ type: /** @type {const} */ ("text"), text: call.result }],
+                        content: [{ type: "text", text: call.result } satisfies TextContent],
                         details: null,
                     });
                 },
@@ -635,7 +663,7 @@ test("a runaway isolated request rejects instead of returning successful message
             execute: () => {
                 executions += 1;
                 return Promise.resolve({
-                    content: [{ type: /** @type {const} */ ("text"), text: "stable isolated result" }],
+                    content: [{ type: "text", text: "stable isolated result" } satisfies TextContent],
                     details: null,
                 });
             },
@@ -673,8 +701,7 @@ test("a repeated two-tool cycle stops after three cycles", async () => {
     await withRuntimeCommandFixture("loop-guard-tool-cycle-", async (fixture) => {
         let executions = 0;
         let requests = 0;
-        /** @param {string} name @param {string} result */
-        const makeTool = (name, result) => ({
+        const makeTool = (name: string, result: string) => ({
             name,
             label: name,
             description: "Returns a stable synthetic cycle result",
@@ -682,7 +709,7 @@ test("a repeated two-tool cycle stops after three cycles", async () => {
             execute: () => {
                 executions += 1;
                 return Promise.resolve({
-                    content: [{ type: /** @type {const} */ ("text"), text: result }],
+                    content: [{ type: "text", text: result } satisfies TextContent],
                     details: null,
                 });
             },
@@ -718,15 +745,13 @@ test("a repeated two-tool cycle stops after three cycles", async () => {
             );
             const stops = sessionManager
                 .getBranch()
-                .filter((entry) => entry.type === "custom" && entry.customType === "runwield.loop_guard_stop");
+                .filter(
+                    (entry): entry is GuardCustomEntry =>
+                        entry.type === "custom" && entry.customType === "runwield.loop_guard_stop",
+                );
             assertEquals(executions, 6);
             assertEquals(requests, 6);
-            assertEquals(
-                /** @type {import('@earendil-works/pi-coding-agent').CustomEntry<{reason?: string}> | undefined} */ (
-                    stops.at(-1)
-                )?.data?.reason,
-                "repeating_tool_cycle",
-            );
+            assertEquals(stops.at(-1)?.data?.reason, "repeating_tool_cycle");
         } finally {
             built.session.dispose();
         }
@@ -737,8 +762,7 @@ test("a repeated three-tool cycle stops after three cycles", async () => {
     await withRuntimeCommandFixture("loop-guard-three-tool-cycle-", async (fixture) => {
         let executions = 0;
         let requests = 0;
-        /** @param {string} name @param {string} result */
-        const makeTool = (name, result) => ({
+        const makeTool = (name: string, result: string) => ({
             name,
             label: name,
             description: "Returns a stable synthetic cycle result",
@@ -746,7 +770,7 @@ test("a repeated three-tool cycle stops after three cycles", async () => {
             execute: () => {
                 executions += 1;
                 return Promise.resolve({
-                    content: [{ type: /** @type {const} */ ("text"), text: result }],
+                    content: [{ type: "text", text: result } satisfies TextContent],
                     details: null,
                 });
             },
@@ -787,26 +811,20 @@ test("a repeated three-tool cycle stops after three cycles", async () => {
             );
             const entries = sessionManager.getBranch();
             const stops = entries.filter(
-                (entry) => entry.type === "custom" && entry.customType === "runwield.loop_guard_stop",
+                (entry): entry is GuardCustomEntry =>
+                    entry.type === "custom" && entry.customType === "runwield.loop_guard_stop",
             );
             const signatures = entries
-                .filter((entry) => entry.type === "custom" && entry.customType === "runwield.loop_guard_tool")
-                .map(
-                    (entry) =>
-                        /** @type {import('@earendil-works/pi-coding-agent').CustomEntry<{signature?: string}>} */ (
-                            entry
-                        ).data?.signature,
-                );
+                .filter(
+                    (entry): entry is GuardCustomEntry =>
+                        entry.type === "custom" && entry.customType === "runwield.loop_guard_tool",
+                )
+                .map((entry) => entry.data?.signature);
             assertEquals(executions, 9);
             assertEquals(requests, 9);
             // Three distinct pairs, each completed three times.
             assertEquals(new Set(signatures).size, 3);
-            assertEquals(
-                /** @type {import('@earendil-works/pi-coding-agent').CustomEntry<{reason?: string}> | undefined} */ (
-                    stops.at(-1)
-                )?.data?.reason,
-                "repeating_tool_cycle",
-            );
+            assertEquals(stops.at(-1)?.data?.reason, "repeating_tool_cycle");
         } finally {
             built.session.dispose();
         }
@@ -822,11 +840,10 @@ test("the model-turn budget survives a Session reopen for the same request", asy
             label: "Counter tool",
             description: "Returns the distinct synthetic step number",
             parameters: { type: "object", properties: { step: { type: "number" } }, required: ["step"] },
-            /** @param {string} _toolCallId @param {{step: number}} args */
-            execute: (_toolCallId, args) => {
+            execute: (_toolCallId: string, args: Required<SyntheticStepArgs>) => {
                 executions += 1;
                 return Promise.resolve({
-                    content: [{ type: /** @type {const} */ ("text"), text: `synthetic step ${args.step}` }],
+                    content: [{ type: "text", text: `synthetic step ${args.step}` } satisfies TextContent],
                     details: null,
                 });
             },
@@ -898,7 +915,8 @@ test("the model-turn budget survives a Session reopen for the same request", asy
             );
             const entries = reopenedManager.getBranch();
             const stops = entries.filter(
-                (entry) => entry.type === "custom" && entry.customType === "runwield.loop_guard_stop",
+                (entry): entry is GuardCustomEntry =>
+                    entry.type === "custom" && entry.customType === "runwield.loop_guard_stop",
             );
             const turns = entries.filter(
                 (entry) => entry.type === "custom" && entry.customType === "runwield.loop_guard_turn",
@@ -906,12 +924,7 @@ test("the model-turn budget survives a Session reopen for the same request", asy
             assertEquals(executions, 99);
             assertEquals(requests, 100);
             assertEquals(turns.length, 100);
-            assertEquals(
-                /** @type {import('@earendil-works/pi-coding-agent').CustomEntry<{reason?: string}> | undefined} */ (
-                    stops.at(-1)
-                )?.data?.reason,
-                "model_turn_limit",
-            );
+            assertEquals(stops.at(-1)?.data?.reason, "model_turn_limit");
         } finally {
             secondBuilt.session.dispose();
         }
@@ -990,7 +1003,7 @@ test("the model-turn budget survives a Session reopen for the same request", asy
 
 test("failed response tool calls never execute on the retry", async () => {
     await withRuntimeCommandFixture("provider-incomplete-tool-", async (fixture) => {
-        const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
+        const settings: FixtureSettings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
         settings.retry = { enabled: true, maxRetries: 1, baseDelayMs: 1 };
         await fsWriteFile(fixture.settingsPath, JSON.stringify(settings));
         let executions = 0;
@@ -1002,7 +1015,7 @@ test("failed response tool calls never execute on the retry", async () => {
             execute: () => {
                 executions++;
                 return Promise.resolve({
-                    content: [{ type: /** @type {const} */ ("text"), text: "ran" }],
+                    content: [{ type: "text", text: "ran" } satisfies TextContent],
                     details: null,
                 });
             },
@@ -1033,7 +1046,7 @@ test("failed response tool calls never execute on the retry", async () => {
 
 test("noninteractive Pi Session uses the same EOF retry policy", async () => {
     await withRuntimeCommandFixture("provider-noninteractive-retry-", async (fixture) => {
-        const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
+        const settings: FixtureSettings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
         settings.retry = { enabled: true, maxRetries: 1, baseDelayMs: 1 };
         await fsWriteFile(fixture.settingsPath, JSON.stringify(settings));
         let calls = 0;
