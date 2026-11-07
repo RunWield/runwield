@@ -71,6 +71,18 @@ manifest under the same project migration lock before mutation uses its runtime 
 durable phase record and resumes from verified source and destination facts; a partial destination is not treated as an
 independent authority.
 
+Completed marker paths record adoption history, not permanent project identity. A primary checkout can move or gain a
+symlink alias without invalidating its local marker. Passive reads verify the current Git and runtime authority without
+rewriting history; action entry refreshes the primary location under the migration lock. Historical selected roots are
+not followed to discover authority, because retired worktree paths can be reused by unrelated projects.
+
+`src/shared/project-checkout.ts` owns checkout path resolution, primary-checkout discovery, and relocation repair.
+Runtime layout owns storage paths and admission; after admission, action entry prepares the selected checkout through
+that module. Plan recovery and validation enter their execution checkout before inspecting its changes. Initialized
+submodule Git back-pointers can become invalid when the primary checkout changes folder depth, even with an old-path
+symlink. Repair uses the tracked gitlink and forward pointer into that checkout's module metadata, updates only a
+missing reverse locator, and preserves an existing conflicting checkout. It does not check out files or reset work.
+
 The migration resolves primary-shared state to the primary checkout and preserves selected-checkout ownership for
 document-local state. Before a completed adoption marker, it does not infer ownership between independently populated
 authorities. After that marker, the internal controller owns workflow decisions. Recreated legacy controller, journal,

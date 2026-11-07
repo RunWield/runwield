@@ -16,10 +16,10 @@ affectedPaths:
     - "docs/adr/020-electron-workspace-acp-client.md"
 createdAt: "2026-11-01"
 origin: "internal"
+userVerifiedAt: null
 epicBaseCommit: "8363344cdfb4bcf6715a5aac6ed24d06c6437ec7"
 targetBranch: "epic/local-workspace-desktop"
-status: "ready_for_decomposition"
-userVerifiedAt: null
+status: "ready_for_work"
 ---
 
 # Local Workspace Desktop
@@ -34,7 +34,9 @@ not yet exist. Mobile app development is deferred.
 This is an architecture and implementation proposal, not implementation authorization or delivery evidence. The
 desktop target is Windows, macOS, and Linux. Electron replaces the standalone local browser Workspace. Shared product
 components serve desktop now and the future hosted SaaS; maintaining a third, local web application is not a goal.
-The treatment of browser review links used by TUI, Connect, and external ACP clients remains an open review decision.
+TUI, Connect, and external ACP clients retain standalone browser Plan review, Code Review, and artifact viewers.
+Desktop integrates these capabilities into its own UI instead of opening the standalone browser pages. The Plan share
+server and Shared Plan links remain unchanged and outside this Epic.
 
 Owning requirements:
 
@@ -62,8 +64,9 @@ client contract and shared UI, not the choice of installer generator.
 The first release includes Project registration, attention/dashboard navigation, Sessions and existing history,
 configuration, questions/approvals, Plan boards and editing, Plan/Code Review, workflow progress/actions, document and
 knowledge views, usage/settings, and native desktop essentials. This Epic does not create an account-based collaboration service. Existing local
-workbench capabilities move to desktop; local browser access is deliberately removed. Review and sharing links must
-receive an explicit compatibility decision rather than be removed as an incidental result of retiring the workbench.
+workbench capabilities move to desktop; standalone local browser workbench access is deliberately removed. Standalone
+browser review and artifact viewing remain supported for TUI, Connect, and external ACP clients without Electron.
+The Plan share server is not retired, migrated, or replaced by this Epic.
 
 ## Vertical Slice Findings
 
@@ -108,8 +111,9 @@ flowchart TD
 
 ### Architecture and Delivery Outcomes
 
-These outcomes define the architecture, not executable child work. Decomposition belongs to Slicer. This Epic remains
-draft while the browser review-link decision is open; no outcome below claims delivery.
+These outcomes define the architecture, not executable child work. Decomposition belongs to Slicer. The owner has
+settled the viewer compatibility boundary; child boundaries still require confirmation before finalization. No outcome
+below claims delivery.
 
 ### 1. Establish the workbench contract and a real protocol slice
 
@@ -140,8 +144,9 @@ Mutations retain Project admission, expected revision/generation, request identi
 rules. History and observations are bounded and can rebuild from canonical state after a gap. Unknown capabilities,
 oversized content, stale review decisions, wrong Project/session references, and duplicate requests have explicit
 outcomes. Review payloads include resource identity and versioned decisions so desktop can render them directly.
-External-client review links follow the pending compatibility decision below. Live event data never becomes storage
-authority.
+TUI, Connect, and external ACP clients retain their standalone browser review and artifact-viewing paths. Desktop uses
+structured payloads and decisions through ACP for integrated experiences, not standalone browser-page launches.
+Live event data never becomes storage authority.
 
 ### 3. Extract shared UI and retire the standalone local web workbench
 
@@ -155,10 +160,16 @@ and settings move into the desktop product. The final release removes the standa
 their dedicated hosting code, tests, release assets, and support instructions. Existing browser code can remain during
 development, but it is not a second supported product after cutover. Session, Plan, and provider data survive removal.
 
-Browser review pages and Shared Plan links are distinct from the full workbench. Their callers, access rules, and
-hosting dependencies must be separated before removal. Whether to retain narrow browser review support or move these
-journeys to desktop is an open owner decision. No child may infer permission to break those callers from workbench
-retirement alone.
+Retain standalone browser Plan review, Code Review, and artifact/document viewers for TUI, Connect, and external ACP
+clients. Preserve their token-scoped hosts, handlers, access rules, shared components, and compiled assets. Separate
+these dependencies from workbench-only code before removal; deleting the Workspace directory or its whole browser
+build is not a valid retirement strategy. The Plan share server and Shared Plan links remain outside scope, including
+their hosting and build support.
+
+Desktop owns integrated review and artifact experiences with desktop navigation and actions. Shared components and
+Core decision rules serve both hosts; desktop must not open standalone browser viewers or embed their hosted pages as
+its implementation. Existing standalone browser-question fallback is preserved as a compatibility assumption, not
+removed as a side effect of workbench retirement.
 
 ### 4. Deliver the local Electron application
 
@@ -224,8 +235,9 @@ justify shipping speculative services, mock authentication, remote transport imp
 - `src/shared/session/`, `src/shared/owner-coordination/`, and existing Plan/workflow owners — reusable authoritative
   workbench services extracted from the UI server, without replacing storage and lifecycle policy.
 - `src/ui/workspace/server/`, `routes/`, `components/`, `browser/`, `static/`, and Astro pages — extract shared
-  composition and runtime services; remove standalone local workbench hosting after desktop cutover. Separate review
-  hosting from workbench-only code before any removal.
+  composition and runtime services; remove standalone local workbench hosting after desktop cutover. Preserve
+  standalone review and artifact/document hosting and assets. Shared dependencies must keep the out-of-scope Plan
+  share server working.
 - New shared ACP client and desktop boundaries — exact paths follow the first contract slice; `src/ui/desktop/` is
   the proposed desktop package, not an existing implementation.
 - `src/ui/design-system/`, `docs/design-system.md` — reuse existing primitives; any necessary new desktop pattern
@@ -233,8 +245,10 @@ justify shipping speculative services, mock authentication, remote transport imp
 - `package.json`, Bun locks, existing build/release scripts and CI — explicit Electron build and platform artifacts.
 - Workspace/ACP/root PRDs, applicable accepted ADRs, proposed ADR-020, `docs/domain-language.md`, and user
   documentation — record desktop as the local Workspace and hosted SaaS as future scope. The delivery that retires
-  local browser hosting must update its owning requirements and scenarios, including paired-device, installable web
-  app, and container-hosting guidance. Preserve separate review requirements until their replacement is agreed.
+  the local browser workbench must update its owning requirements and scenarios, including paired-device and
+  installable web app guidance. Preserve standalone review, artifact-reader, and Plan share server requirements;
+  container-hosting guidance for the Plan share server remains supported. Desktop review integration must update its
+  owning scenarios without claiming that existing standalone viewers were removed.
 
 ## Reuse Opportunities
 
@@ -273,6 +287,12 @@ provider for end-to-end acceptance. Verify long histories/diffs, keyboard and sc
 window close/reopen on all target operating systems. Record release-build process-tree memory at idle and with the
 same representative workload; no framework marketing estimate substitutes for measurement.
 
+Verify Plan review, Code Review, and artifact reading inside the packaged desktop application without opening a
+standalone browser page. Verify the retained standalone paths from TUI, Connect, and external ACP clients without
+Electron installed, including token refusal, stale decisions, safe file/image access, and hydrated assets from a
+relocated compiled executable. Existing Plan share server build and link checks must still pass; no new sharing
+behavior is introduced.
+
 ### Outcome Evidence
 
 | Outcome                             | Observable evidence                                                                                                                                                                                     |
@@ -292,10 +312,12 @@ same representative workload; no framework marketing estimate substitutes for me
 
 The entire Epic protects ordinary TUI use, private transcripts, Plan-store ownership, writer exclusion, passive reads,
 provider configuration, review conflict checks, and Core's publication/recovery semantics. External-client protocol
-behavior remains protected; the browser review-link policy is still open. Expected removals are the standalone local
-browser workbench, its runtime hosting, bypasses of the runtime contract for authoritative desktop operations, and
-platform-specific copies of shared workbench UI. Future hosted SaaS reuses UI, not a promise to maintain the old local
-web server. Any retained review-only routes need an explicit purpose and owner.
+behavior remains protected, including standalone browser Plan review, Code Review, and artifact viewing for TUI,
+Connect, and external ACP clients. Desktop provides integrated equivalents through its runtime contract. The Plan
+share server and Shared Plan links remain unchanged. Expected removals are the standalone local browser workbench,
+its dedicated runtime hosting, bypasses of the runtime contract for authoritative desktop operations, and
+platform-specific copies of shared workbench UI. Future hosted SaaS reuses UI; it is not a replacement for retained
+standalone viewers or the existing Plan share server.
 
 ## Edge Cases & Considerations
 
@@ -309,9 +331,9 @@ web server. Any retained review-only routes need an explicit purpose and owner.
   consumer falls behind instead of retaining unlimited events.
 - Electron and TUI coordinate through Core's existing single-writer protocol. A new global lease or cross-process fake
   lock is not introduced. This Epic does not build a replacement local browser gateway.
-- Open decision: browser Plan/Code Review and Shared Plan links are used outside the standalone workbench. Retaining
-  narrow review pages preserves those callers without preserving the workbench; requiring desktop instead removes
-  more web hosting but changes external-host and remote reviewer journeys. Resolve this before final review.
+- Retained standalone viewers share hosting code and browser assets with the workbench today. Separate only the
+  workbench-specific dependencies. Desktop integration must not require TUI, Connect, or external ACP users to install
+  Electron, and retirement must not break the out-of-scope Plan share server.
 - Target OS/architecture support, signing credentials, updater hosting, and the release channel must be resolved in the
   packaging Plan. Missing publication prerequisites are recorded, never replaced with claims that a release shipped.
 - The first app's background lifetime ends on explicit Quit. Unattended service behavior and remote-worker disconnect

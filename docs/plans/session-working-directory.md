@@ -7,7 +7,7 @@ affectedPaths:
     - "src/tools/registry.ts"
     - "src/shared/session/"
     - "src/shared/git.ts"
-    - "src/shared/primary-checkout.ts"
+    - "src/shared/project-checkout.ts"
     - "src/extensions/mnemoteca/tools.ts"
     - "src/agent-definitions/planner.md"
     - "docs/prd/runwield-core-prd.md"
@@ -113,7 +113,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/tools/session-directory.ts` and `registry.ts` — typed tool contract and universal root-Agent availability.
 - `src/shared/session/` — shared checkout facts, effective location, guarded movement, durable evidence, root-turn
   handoff, tool rebuilding, continuation, and behavioral tests.
-- `src/shared/git.ts`, `primary-checkout.ts`, and worktree/controller registry readers — reuse read-only Git and ownership
+- `src/shared/git.ts`, `project-checkout.ts`, and worktree/controller registry readers — reuse read-only Git and ownership
   evidence; normalize package paths before checkout-scoped operations.
 - `src/shared/settings.js`, `src/extensions/mnemoteca/tools.ts`, and cwd-bound resource/tool composition — distinguish
   working folder from Project or checkout ownership where the current code conflates them.

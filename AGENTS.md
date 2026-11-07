@@ -5,6 +5,8 @@ that the writer make all his sentences short, or that he avoid all detail and
 treat his subjects only in outline, but that every word tell.” — Strunk, The
 Elements of Style (1918).
 
+When choosing words, choose simpler terms where possible, when the writing is technical don't loose preciseness but explain things in a simplest possible way without lots of high concepts or abstractions.
+
 ## Local Type Style
 
 JSDoc: prefer `@typedef` for object shapes over inline annotations or `@type`

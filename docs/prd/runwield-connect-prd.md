@@ -698,6 +698,10 @@ owner is gone; elapsed time alone does not establish interruption. Shared Core o
 - The host adapter may invoke local RunWield Core capabilities on demand.
 - Saved Plans, work, review outcomes, and recovery evidence must allow useful continuation or explicit retry after
   process loss.
+- Moving a checkout while retaining its old path as a symlink must preserve Connect continuation through either path.
+  Passive reads leave saved records unchanged; mutations share the original revision, lock, and operation receipts.
+  A missing alias or a different checkout does not establish continuity, and competing record locations must not be
+  silently combined.
 - A persistent local service may be added later for performance or cross-client continuity, but it is not part of the
   acquisition prerequisite.
 
@@ -720,6 +724,9 @@ owner is gone; elapsed time alone does not establish interruption. Shared Core o
   optional and material required repository changes are previewed.
 - Given no home directory, activation, status, and current-action reads return `home_unavailable`. No `.wld` directory
   or other repository artifact is created.
+- Given a saved workflow and a checkout moved with its old path retained as an alias, inspection by workflow ID and
+  latest-open-workflow lookup find the same saved action. Continuing through either path uses one record directory,
+  preserves operation replay, and rejects stale revisions. A move without that alias still reports recovery.
 - When host or Core processes stop, saved Plans and work remain available for useful continuation or explicit retry.
   `/runwield:plan-review` restores browser review; `/runwield:implement` restores the execution handoff described in
   [Isolated implementation](#isolated-implementation), including the same registered worktree after worker loss.

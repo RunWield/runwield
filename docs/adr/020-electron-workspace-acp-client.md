@@ -61,8 +61,11 @@ rather than freeze its storage location while separate Plan-store work proceeds.
 Move reusable interactive composition and data access out of server-only pages so a locally packaged React renderer
 can display the workbench. Remove the standalone local workbench host at desktop cutover; preserve canonical work.
 Do not fork a second desktop component library or build the future hosted service to ship the local application.
-Narrow browser review pages and existing Shared Plan links are separate compatibility decisions, still open in the
-Epic. Workbench retirement does not implicitly authorize their removal.
+The owner requires standalone browser Plan review, Code Review, and artifact viewers to remain for TUI, Connect, and
+external ACP clients without Electron. Desktop integrates these experiences into its own navigation and actions,
+reusing components and Core rules rather than launching or embedding the standalone browser pages. Retained hosts and
+their assets remain separate from the retired workbench. The Plan share server and Shared Plan links are unchanged and
+outside this Epic.
 
 ### ACP and workbench access
 
@@ -88,8 +91,9 @@ working behavior. Required desktop capability mismatches produce an actionable c
 
 Review content and decisions are structured data rendered with the shared review components. Large files and images
 use bounded transfers/resource references tied to the selected runtime, not renderer-side arbitrary filesystem access.
-The Epic must settle compatibility for existing external ACP review links before final review. Desktop must not depend
-on a remote machine's loopback URL being reachable from the user's browser. No general-purpose shell or filesystem RPC is added to solve UI gaps.
+Existing external ACP browser review links remain supported. Desktop instead consumes structured review and artifact
+payloads through its client boundary; it does not depend on a runtime's loopback browser URL. No general-purpose shell
+or filesystem RPC is added to solve UI gaps.
 
 ### Local process and distribution
 

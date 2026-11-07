@@ -59,8 +59,11 @@ Store each Attached Workflow Record in the user's home, at
 Sessions and execution worktrees, so every linked worktree of a repository finds the same records. Without a home
 directory, Attached operations reject with `home_unavailable` and ask the user to set `HOME`. They write nothing to the
 repository. Temporary storage is not used because records must survive process loss and restart. The record keeps the
-canonical primary checkout root as binding evidence. When the key and that root disagree, for example after
-the project folder moves, the coordinator reports a recovery case and never matches the record to another project.
+original canonical primary checkout root as binding evidence. If that saved path remains an alias of the current
+physical checkout, every caller reuses its original record directory and root binding. This preserves operation
+identities, revision locks, and validation-holder receipts without migrating records during passive reads. Creating a
+second directory under the new path would split ownership, so competing record directories are rejected. Without a
+resolving saved alias, a changed project path remains a recovery case; unrelated projects are never matched by name.
 
 Attached Workflow Records are not Project Runtime State under ADR-017. Like a Session, a record describes one host
 request, not Plan controller state. Keeping it in home means that activation and Triage write nothing to the repository:

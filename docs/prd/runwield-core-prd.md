@@ -2694,6 +2694,14 @@ rechecks changed runtime evidence independently of earlier reads. Nested inspect
 new requests see newly tracked runtime paths, attached worktrees, and changed files. See
 [ADR-016](../adr/016-project-runtime-state-under-wld-internal.md).
 
+**Requirement: Keep adopted Projects usable after relocation.** Moving or renaming a primary checkout, including
+leaving a symlink at its former location, must not prevent Plan reads or `load-plan` solely because the completed
+layout marker records the previous path. Passive reads use the current checkout without writes. Action entry refreshes
+the marker under its existing lock, preserving workflow state and checking current runtime authority as usual.
+Before inspecting a retained execution checkout, including an Epic child's checkout, action entry repairs stale
+initialized-submodule back-pointers caused by relocation. Working files, staged changes, branches, and commits survive;
+a pointer to another existing checkout is preserved and reported as a conflict.
+
 **Requirement: Reconcile leftovers automatically.** When a Plan is selected, RunWield reconciles files recreated by
 older processes, stale runtime records, and concurrent migrations. Current progress, review decisions, and
 publications stay authoritative, and original files stay recoverable.
@@ -2725,6 +2733,12 @@ Open product questions:
   configuration and leave runtime state out.
 - Given runtime state already tracked or staged, Core refuses with safe paths and keeps the worktree, index, files, and
   refs.
+- Given an adopted primary checkout moved with or without a compatibility symlink, passive Plan reads succeed
+  without changing runtime files; the next action refreshes its saved location and preserves controller, registry,
+  and transition state. Both the new path and a retained alias reach the same runtime authority.
+- Given an implemented Epic child with initialized nested submodules after the primary checkout moves to a different
+  folder depth, retrying validation repairs missing Git back-pointers before inspecting changes. Uncommitted submodule
+  edits and the execution baseline remain intact; passive inspection does not repair Git metadata.
 - Given a long-running process, a newly staged secret or attached worktree is detected at the next entry.
 - Given a broad `.wld/` ignore rule, Core keeps it and reports what it hides.
 - Given eligible 0.10 state, `wld plans doctor --check` reports pending adoption without writes or lock probes; Doctor repair
