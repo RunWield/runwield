@@ -37,8 +37,8 @@ async function entry(path: string, name: string): Promise<void> {
 }
 
 try {
-    await mirror("", ["runtime-root.js", "src", "dist"]);
-    await fsCopyFile(join(sourceRoot, "runtime-root.js"), join(root, "runtime-root.js"));
+    await mirror("", ["runtime-root.ts", "src", "dist"]);
+    await fsCopyFile(join(sourceRoot, "runtime-root.ts"), join(root, "runtime-root.ts"));
     await mirror("src", ["ui"]);
     await mirror("src/ui", ["workspace"]);
     await mirror("src/ui/workspace", ["server.js"]);

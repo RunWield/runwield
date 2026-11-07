@@ -57,7 +57,7 @@ async function fixture(fn: (fixture: RuntimeFixture) => Promise<void>) {
             await copyFile(source, destination);
         for (const relative of [
             "scripts/build-metadata.ts",
-            "runtime-root.js",
+            "runtime-root.ts",
             "src/constants.js",
             "src/shared/foreground-process.ts",
             "src/shared/linux-process-group.ts",

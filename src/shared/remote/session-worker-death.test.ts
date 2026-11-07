@@ -16,8 +16,8 @@ test("Worker startup death faults at the total deadline without a main-thread ca
     await fsMkdir(directory, { recursive: true });
     try {
         await fsWriteFile(
-            join(runtimeRoot, "runtime-root.js"),
-            await fsReadFile(new URL("../../../runtime-root.js", import.meta.url), "utf8"),
+            join(runtimeRoot, "runtime-root.ts"),
+            await fsReadFile(new URL("../../../runtime-root.ts", import.meta.url), "utf8"),
         );
         for (const name of ["session-protocol.ts", "session-save-bridge.ts", "session-save-worker.ts"]) {
             const source = await fsReadFile(new URL(name, import.meta.url), "utf8");
