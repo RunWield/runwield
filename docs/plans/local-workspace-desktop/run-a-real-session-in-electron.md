@@ -28,6 +28,7 @@ dependencies: []
 targetBranch: "epic/local-workspace-desktop"
 userVerifiedAt: null
 status: "reviewed"
+validatedCommit: "3c23d6ccd795755779cb48fd45eddfaa940c619b"
 ---
 
 # Run a Real Session in Electron
