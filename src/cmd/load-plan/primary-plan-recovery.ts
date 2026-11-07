@@ -16,7 +16,7 @@ import {
     resolveWorkflowPlanLocation,
 } from "../../shared/workflow/plan-location.ts";
 import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
-import { resolvePrimaryCheckoutRoot } from "../../shared/primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../../shared/project-checkout.ts";
 import { listEntries, prepareWorktreeRegistry } from "../../shared/worktree-registry.js";
 import { cleanupStoredPublication, loadPublicationAttempt } from "../../shared/workflow/publication-machine.ts";
 import { isPublicationCleanupPending } from "../../shared/workflow/publication-attempt.ts";

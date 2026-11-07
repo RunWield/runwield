@@ -31,7 +31,7 @@ import { getWorktreeReviewDiff } from "./git-snapshot.ts";
 import { claimReviewFixes, renderOpenItems } from "./review-ledger.ts";
 import { PLAN_STATUSES } from "./plan-lifecycle.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
-import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import {
     sameHostIdentity,
     ValidationHostRejected,

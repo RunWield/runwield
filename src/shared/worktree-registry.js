@@ -22,7 +22,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "./lock-file-snapshot.ts";
 import { getLockHostname, isPidAlive } from "./process-liveness.ts";
 import { CLI_BIN } from "../constants.js";
-import { resolvePrimaryCheckoutRoot } from "./primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "./project-checkout.ts";
 import {
     enterProjectRuntime,
     checkedProjectRuntimeLayout,

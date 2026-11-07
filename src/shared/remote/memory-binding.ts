@@ -3,7 +3,7 @@ import { link, mkdir, open, readFile, unlink } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { getHomeDir } from "../../constants.js";
 import { resolveMemoryCollection } from "../memory-collection.ts";
-import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { listProjectsFromDisk, remoteProjectRoot } from "../session/file-session-storage.ts";
 import { getRunWieldSessionsBaseDir } from "../session/root-session.js";
 import type { ResolvedRemoteTarget } from "./target.ts";

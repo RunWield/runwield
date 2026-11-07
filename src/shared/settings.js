@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { parse as parseJsonc } from "./jsonc.ts";
 import lockfile from "proper-lockfile";
 import { normalizePlanServerUrl } from "./collaboration/urls.ts";
-import { resolvePrimaryCheckoutRoot } from "./primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "./project-checkout.ts";
 import { getCwd, getHomeDir } from "../constants.js";
 import { getBundledModelPresets } from "./model-presets.ts";
 import { remoteSettingsSnapshot, updateRemoteGlobalSetting } from "./remote/settings-bridge.ts";

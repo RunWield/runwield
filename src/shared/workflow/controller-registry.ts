@@ -15,7 +15,7 @@ import {
 /** File-backed controller state shared by all worktrees of one project. */
 import { dirname, join, resolve } from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import {
     enterProjectRuntime,
     checkedProjectRuntimeLayout,

@@ -1,6 +1,6 @@
 import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { loadPlan, mergeFrontMatterText } from "../../plan-store.js";
-import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { findActiveByPlanName } from "../worktree-registry.js";
 import { executionWorktreePathExists, recoverMissingExecutionWorktree } from "./execution-worktree-rescue.ts";
 import { isPublicationCleanupPending } from "./publication-attempt.ts";

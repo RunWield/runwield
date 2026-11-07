@@ -1,5 +1,6 @@
+import { findExistingProjectPath } from "../../shared/project-checkout.ts";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
-import { realpath as fsRealpath, stat as fsStat } from "node:fs/promises";
+import { stat as fsStat } from "node:fs/promises";
 /**
  * @module cmd/load-plan/plan-recovery-worktree
  * Reading, reporting on, and detaching the worktree generation a Plan records.
@@ -28,6 +29,7 @@ import {
 import { buildPlanSummary } from "../../shared/plan-presentation.ts";
 import { transitionFailureError } from "./transition-failure.ts";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
+import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 
 import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
 import type { PlanFrontMatter } from "../../plan-store.js";
@@ -72,14 +74,6 @@ interface AttachedWorktreeRecord {
     branch: string;
 }
 
-async function canonicalPath(path: string): Promise<string | null> {
-    try {
-        return await fsRealpath(path);
-    } catch {
-        return null;
-    }
-}
-
 async function listAttachedWorktrees(projectRoot: string): Promise<AttachedWorktreeRecord[]> {
     const command = captureForegroundProcess("git", { args: ["worktree", "list", "--porcelain"], cwd: projectRoot });
     const output = await command;
@@ -111,7 +105,7 @@ async function discoverAttachedPlanWorktree(
     projectRoot: string,
     plan: RecoveryPlanRef,
 ): Promise<RecoveryWorktreeContext | null> {
-    const projectPath = await canonicalPath(projectRoot);
+    const projectPath = await findExistingProjectPath(projectRoot);
     const matches: RecoveryWorktreeContext[] = [];
     // Execution branches are created only as `worktree/<plan-slug>-<attempt-id>`, a
     // prefix target branches may not use, and attempt IDs contain no dash. A child
@@ -123,7 +117,7 @@ async function discoverAttachedPlanWorktree(
         branch.startsWith(executionBranchPrefix) && !branch.slice(executionBranchPrefix.length).includes("-");
     for (const record of await listAttachedWorktrees(projectRoot)) {
         if (!isOwnExecutionBranch(record.branch)) continue;
-        const recordPath = await canonicalPath(record.path);
+        const recordPath = await findExistingProjectPath(record.path);
         if (!recordPath || recordPath === projectPath) continue;
         const executionPlan = await loadPlan(record.path, plan.planName).catch(() => null);
         if (!executionPlan || executionPlan.attrs.executionMode !== "worktree") continue;
@@ -137,7 +131,7 @@ async function discoverAttachedPlanWorktree(
         )
             continue;
         if (plan.attrs.planId && plan.attrs.planId !== attrs.planId) continue;
-        if ((await canonicalPath(attrs.worktreePath)) !== recordPath) continue;
+        if ((await findExistingProjectPath(attrs.worktreePath)) !== recordPath) continue;
         if (record.branch !== `refs/heads/${attrs.worktreeBranch}`) continue;
         if (!["in_progress", "failed", "implemented", "validated_ci", "reviewed", "validated"].includes(attrs.status))
             continue;
@@ -657,6 +651,7 @@ export async function confirmRecoveryWorktreeAvailable(
         return false;
     }
     try {
+        await enterProjectRuntime(worktreeContext.path);
         const status = await getWorktreeStatus({
             projectRoot: projectRoot,
             path: worktreeContext.path,

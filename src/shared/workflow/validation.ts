@@ -15,7 +15,7 @@ import { runValidationAttempt, type ValidationTrigger } from "./validation-super
 import { loadPlan } from "../../plan-store.js";
 import { findActiveByPlanName as findWorktreeByPlanName } from "../worktree-registry.js";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
-import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { emitProgress, emitStatus } from "./validation-emit.ts";
 import { getCurrentValidationProgress } from "./validation-progress.ts";
 import { validationUserMessage } from "./validation-user-messages.ts";

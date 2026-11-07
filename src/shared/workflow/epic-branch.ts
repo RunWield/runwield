@@ -26,7 +26,7 @@ import { isPlannedChangeClassification } from "../../constants.js";
 import { projectPlanType } from "../project-plan.ts";
 import { isGitRepository } from "../git.ts";
 import { prepareTargetBranchRef, resolveTargetBranchName } from "../worktree.js";
-import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { listControllerDocumentWorktrees } from "./controller-registry.ts";
 import { listEntries as listWorktreeRegistryEntries } from "../worktree-registry.js";

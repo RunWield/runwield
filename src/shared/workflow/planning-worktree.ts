@@ -31,7 +31,7 @@ import {
     removeWorktreeGitArtifacts,
 } from "../worktree.js";
 import { runExecutionPreparationTransition } from "./state-transition.ts";
-import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { ensureExecutionPlanFile } from "./execution-plan-file.ts";
 import {
     assertControllerDocumentAvailable,

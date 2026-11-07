@@ -1,7 +1,7 @@
 /** Qualify a relocated development executable without touching the user's home. */
 import { deepEqual, doesNotMatch, equal, match, ok } from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { cp, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, realpath, rename, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { installPackageHelperFixtures } from "./package-helper-fixtures.ts";
 import { verifyBuildArtifact } from "./build-metadata.ts";
+import { captureScriptProcess } from "./script-process.ts";
 import { removeExecutableFixtureDirectory } from "../src/testing/runtime-executable-fixture.ts";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -58,7 +59,7 @@ export async function checkBunPackage(
             PATH: env.PATH || "/usr/bin:/bin",
             WLD_INTERNAL_PACKAGE_CHECK: "1",
         };
-        const start = (args: string[]) => {
+        const start = (args: string[], cwd = home) => {
             // Deny the complete checkout to the executable, including dependencies,
             // while this verifier can still read expected bytes for comparison.
             const sandbox = `(version 1)(allow default)(deny file-read* (subpath ${JSON.stringify(ROOT)}))`;
@@ -67,7 +68,7 @@ export async function checkBunPackage(
             const acknowledgedArgs = ["--allow-system-directory", ...args];
             const commandArgs =
                 platform === "darwin" ? ["-p", sandbox, relocated, ...acknowledgedArgs] : acknowledgedArgs;
-            const child = spawn(command, commandArgs, { cwd: home, env: childEnv, stdio: ["pipe", "pipe", "pipe"] });
+            const child = spawn(command, commandArgs, { cwd, env: childEnv, stdio: ["pipe", "pipe", "pipe"] });
             let output = "";
             child.stdout.setEncoding("utf8").on("data", (chunk: string) => (output += chunk));
             child.stderr.setEncoding("utf8").on("data", (chunk: string) => (output += chunk));
@@ -105,6 +106,39 @@ export async function checkBunPackage(
                 await readFile(join(ROOT, "src/skills/write-tests", file)),
                 `Packaged write-tests/${file} must match the runtime source bytes`,
             );
+        }
+        // Qualify project moves with the actual shipped executable, not source imports.
+        for (const keepAlias of [false, true]) {
+            const original = join(home, `project-before-${keepAlias}`);
+            const moved = join(home, `project-after-${keepAlias}`);
+            await mkdir(original);
+            const initialized = await captureScriptProcess("git", {
+                args: ["init", "-b", "main", original],
+                cwd: home,
+                stdout: "piped",
+                stderr: "piped",
+            });
+            ok(initialized.success, new TextDecoder().decode(initialized.stderr));
+            const run = async (args: string[], cwd: string) => {
+                const running = start(args, cwd);
+                const timeout = setTimeout(() => running.child.kill("SIGKILL"), 30_000);
+                try {
+                    equal(await running.finished, 0, running.output());
+                } finally {
+                    clearTimeout(timeout);
+                }
+            };
+            await run(["plans", "doctor"], original);
+            const markerPath = join(moved, ".wld/internal/layout.json");
+            await rename(original, moved);
+            if (keepAlias) await symlink(moved, original, "junction");
+            const before = await readFile(markerPath, "utf8");
+            await run(["plans"], moved);
+            if (keepAlias) await run(["plans"], original);
+            equal(await readFile(markerPath, "utf8"), before, "Passive reads must not rewrite a relocated marker");
+            await run(["plans", "doctor"], moved);
+            const marker = JSON.parse(await readFile(markerPath, "utf8"));
+            equal(marker.primaryCheckoutRoot, await realpath(moved));
         }
         const bin = join(home, "bin");
         await installPackageHelperFixtures(bin, helperFixturePath);
@@ -222,7 +256,7 @@ export async function checkBunPackage(
             await running.finished;
         }
         console.log(
-            `Relocated Bun package passed: CLI onboarding/cancel and Plan entry, worker/WASM, image conversion, bundled skills, Workspace assets/auth, shutdown (${metadata.target}).`,
+            `Relocated Bun package passed: CLI onboarding/cancel, relocated Project reads and entry, worker/WASM, image conversion, bundled skills, Workspace assets/auth, shutdown (${metadata.target}).`,
         );
     } finally {
         await removeExecutableFixtureDirectory(home);

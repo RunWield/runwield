@@ -1,5 +1,5 @@
 import { getStoredPlanPath, loadPlan, withPlanLock, writePlanMarkdownWithRevision } from "../../plan-store.js";
-import { resolvePrimaryCheckoutRoot } from "../../shared/primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../../shared/project-checkout.ts";
 import { discardWorktreeGitArtifacts, validateWorktreeDiscard } from "../../shared/worktree.js";
 import { findById, listEntries, pruneEntry, updateEntry } from "../../shared/worktree-registry.js";
 import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
@@ -18,9 +18,12 @@ interface CompleteUserVerificationOptions {
 }
 
 /** Carry the accepted document home before asking permission to discard its execution checkout. */
-export async function completeUserVerification(
-    { projectRoot, plan, uiAPI, session }: CompleteUserVerificationOptions,
-): Promise<boolean> {
+export async function completeUserVerification({
+    projectRoot,
+    plan,
+    uiAPI,
+    session,
+}: CompleteUserVerificationOptions): Promise<boolean> {
     const primaryRoot = resolvePrimaryCheckoutRoot(projectRoot);
     const location = await resolveWorkflowPlanLocation(projectRoot, plan.planName);
     const accepted = location.plan;
@@ -30,10 +33,16 @@ export async function completeUserVerification(
     const recorded = await resolveRecoveryWorktree(primaryRoot, { planName: plan.planName, attrs: accepted.attrs });
     // A declined or interrupted cleanup leaves a retired record so the next
     // Archive action can retry without making the old document authoritative.
-    const retired = !recorded &&
-        (await listEntries(primaryRoot)).filter((entry) =>
-            entry.planName === plan.planName && entry.planId === accepted.attrs.planId && entry.status === "abandoned"
-        ).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+    const retired =
+        !recorded &&
+        (await listEntries(primaryRoot))
+            .filter(
+                (entry) =>
+                    entry.planName === plan.planName &&
+                    entry.planId === accepted.attrs.planId &&
+                    entry.status === "abandoned",
+            )
+            .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
     const attempt = recorded || retired || null;
     if (location.documentRoot !== primaryRoot) {
         await withPlanLock(location.documentRoot, plan.planName, async () => {
@@ -63,24 +72,30 @@ export async function completeUserVerification(
         recover: async ({ markEffect }) => {
             // Select the saved primary document before removing the execution copy.
             // A partial cleanup can then be retried without reconstructing an old Plan.
-            if (attempt?.id && await findById(primaryRoot, attempt.id)) {
+            if (attempt?.id && (await findById(primaryRoot, attempt.id))) {
                 await updateEntry(primaryRoot, attempt.id, { status: "abandoned" });
             }
-            await writeControllerState(primaryRoot, { planName: plan.planName, planId: accepted.attrs.planId }, {
-                documentWorktreeId: null,
-                executionMode: null,
-                validationCheckpoint: null,
-            }, {
-                recovery: attempt && !await findById(primaryRoot, attempt.id || "")
-                    ? {
-                        worktreeId: attempt.id,
-                        worktreePath: attempt.path,
-                        worktreeBranch: attempt.branch,
-                        worktreeBaseBranch: attempt.baseBranch,
-                        worktreeStatus: "abandoned",
-                    }
-                    : null,
-            });
+            await writeControllerState(
+                primaryRoot,
+                { planName: plan.planName, planId: accepted.attrs.planId },
+                {
+                    documentWorktreeId: null,
+                    executionMode: null,
+                    validationCheckpoint: null,
+                },
+                {
+                    recovery:
+                        attempt && !(await findById(primaryRoot, attempt.id || ""))
+                            ? {
+                                  worktreeId: attempt.id,
+                                  worktreePath: attempt.path,
+                                  worktreeBranch: attempt.branch,
+                                  worktreeBaseBranch: attempt.baseBranch,
+                                  worktreeStatus: "abandoned",
+                              }
+                            : null,
+                },
+            );
             await markEffect("user_verified_primary_selected", { path: getStoredPlanPath(primaryRoot, plan.planName) });
         },
     });

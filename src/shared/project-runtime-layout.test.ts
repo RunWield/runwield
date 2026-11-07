@@ -52,6 +52,95 @@ import {
 const fixture = defineCommittedGitFixture({ "README.md": "# Runtime layout fixture\n" });
 const REPO_ROOT = dirname(dirname(dirname(fromFileUrl(import.meta.url))));
 
+for (const alias of ["none", "parent", "checkout"] as const) {
+    test(`runtime survives moving an adopted project with ${alias} alias`, async () => {
+        await withProcessGlobalTestLock(async () => {
+            const originalSandboxHome = process.env.WLD_TEST_SANDBOX_HOME;
+            delete process.env.WLD_TEST_SANDBOX_HOME;
+            const fixtureRoot = await fixture.checkout({ prefix: "runwield-relocation-fixture-" });
+            const base = await fsMkdtemp(join(tmpdir(), "runwield-relocation-"));
+            const oldParent = join(base, "old");
+            const newParent = join(base, "new");
+            const oldRoot = join(oldParent, "project");
+            const newRoot = join(newParent, "project");
+            const linkedRoot = join(base, "linked");
+            try {
+                await fsMkdir(oldParent);
+                await fsPromises.rename(fixtureRoot, oldRoot);
+                if (alias !== "none") await git(oldRoot, ["worktree", "add", "-b", "linked", linkedRoot]);
+                const layout = await enterProjectRuntime(oldRoot);
+                if (alias !== "none") await enterProjectRuntime(linkedRoot);
+                await writeText(join(layout.primary.controllerPlansDir, "saved.json"), '{"checkpoint":"keep"}');
+                await writeText(layout.primary.worktreeRegistryPath, '{"version":1,"entries":[]}');
+                await writeText(join(layout.selected.transitionJournalsDir, "saved.json"), '{"phase":"keep"}');
+                const before = await snapshotTree(layout.primary.internalRoot);
+                await fsPromises.rename(oldParent, newParent);
+                if (alias === "parent") await fsSymlink(newParent, oldParent, "dir");
+                if (alias === "checkout") {
+                    await fsMkdir(oldParent);
+                    await fsSymlink(newRoot, oldRoot, "dir");
+                }
+                const moved = resolveProjectRuntimeLayout(newRoot);
+                const paths = alias === "none" ? [newRoot] : [newRoot, oldRoot, linkedRoot];
+                for (const path of paths) {
+                    const inspection = await inspectProjectRuntimeReadAccess(path);
+                    assertEquals(inspection.kind, "ready", JSON.stringify(inspection));
+                }
+                assertEquals(await snapshotTree(moved.primary.internalRoot), before);
+                for (const path of paths) {
+                    const entered = await enterProjectRuntime(path);
+                    assertEquals(entered.primary.checkoutRoot, await fsRealpath(newRoot));
+                }
+                const marker = JSON.parse(await fsReadFile(moved.primary.layoutMarkerPath, "utf8"));
+                assertEquals(marker.primaryCheckoutRoot, await fsRealpath(newRoot));
+                assert(marker.adoptedSelectedCheckoutRoots.includes(await fsRealpath(newRoot)));
+                assertEquals(
+                    await fsReadFile(join(moved.primary.controllerPlansDir, "saved.json"), "utf8"),
+                    '{"checkpoint":"keep"}',
+                );
+                assertEquals(
+                    await fsReadFile(moved.primary.worktreeRegistryPath, "utf8"),
+                    '{"version":1,"entries":[]}',
+                );
+                assertEquals(
+                    await fsReadFile(join(moved.selected.transitionJournalsDir, "saved.json"), "utf8"),
+                    '{"phase":"keep"}',
+                );
+                await assertMissing(moved.primary.layoutMigrationJournalPath);
+                await assertMissing(moved.primary.layoutMigrationLockPath);
+                const repeat = await migrateLegacyProjectRuntimeState(newRoot);
+                assertEquals(repeat.kind, "ready");
+                if (repeat.kind === "ready") assertEquals(repeat.migrated, false);
+            } finally {
+                if (originalSandboxHome === undefined) delete process.env.WLD_TEST_SANDBOX_HOME;
+                else process.env.WLD_TEST_SANDBOX_HOME = originalSandboxHome;
+                await fsRm(base, { recursive: true, force: true });
+                await fsRm(fixtureRoot, { recursive: true, force: true });
+            }
+        });
+    });
+}
+
+test("runtime rejects malformed primary locations in completed markers", async () => {
+    const root = await fixture.checkout({ prefix: "runwield-runtime-invalid-primary-" });
+    try {
+        const layout = await enterProjectRuntime(root);
+        const marker = JSON.parse(await fsReadFile(layout.primary.layoutMarkerPath, "utf8"));
+        for (const primaryCheckoutRoot of ["relative", `${root}/../other`, `${root}/.`]) {
+            await fsWriteFile(layout.primary.layoutMarkerPath, JSON.stringify({ ...marker, primaryCheckoutRoot }));
+            for (const result of [
+                await inspectProjectRuntimeReadAccess(root),
+                await migrateLegacyProjectRuntimeState(root),
+            ]) {
+                assertEquals(result.kind, "blocked");
+                if (result.kind === "blocked") assertEquals(result.reason, "malformed_migration_evidence");
+            }
+        }
+    } finally {
+        await fsRm(root, { recursive: true, force: true });
+    }
+});
+
 test("runtime entry refreshes authority after another writer completes adoption", async () => {
     await withProcessGlobalTestLock(async () => {
         const root = await fixture.checkout({ prefix: "runwield-runtime-concurrent-adoption-" });

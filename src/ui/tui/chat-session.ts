@@ -1,4 +1,4 @@
-import { resolvePrimaryCheckoutRoot } from "../../shared/primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../../shared/project-checkout.ts";
 import { resolveSessionContinuation } from "../../shared/session/session-runtime.ts";
 import {
     confirmMissingManagedProjectDirectory,

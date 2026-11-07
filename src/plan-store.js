@@ -50,7 +50,7 @@ import {
 } from "./shared/workflow/planning-worktree.ts";
 import { probeGitRepository } from "./shared/git.ts";
 import { prepareWorktreeRegistry, renameRestoredPlanEntry } from "./shared/worktree-registry.js";
-import { resolvePrimaryCheckoutRoot } from "./shared/primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "./shared/project-checkout.ts";
 import { writePlanDocumentAndController } from "./shared/workflow/state-transition.ts";
 import { escapeYamlDoubleQuoted } from "./shared/yaml-scalar.ts";
 import { requestWorkspaceSearchRefresh } from "./shared/workspace-search-refresh.ts";

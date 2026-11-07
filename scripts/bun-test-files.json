@@ -304,7 +304,7 @@
     "src/shared/plan-archive-retention.test.ts",
     "src/shared/plan-deviations.test.ts",
     "src/shared/plan-questions.test.ts",
-    "src/shared/primary-checkout.test.ts",
+    "src/shared/project-checkout.test.ts",
     "src/shared/private-json-file.test.ts",
     "src/shared/process-identity.test.ts",
     "src/shared/process-liveness.test.ts",

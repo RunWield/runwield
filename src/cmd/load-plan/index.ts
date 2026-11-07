@@ -54,7 +54,7 @@ import {
     putPlanOnHold,
 } from "./plan-hold.ts";
 import { completeUserVerification } from "./user-verification-completion.ts";
-import { resolvePrimaryCheckoutRoot } from "../../shared/primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../../shared/project-checkout.ts";
 import { confirmChildFeatureDependencies, formatTopLevelPlanOption } from "./plan-epic-children.ts";
 import { reopenPlanForReview, resolveRecoveryWorktree } from "./plan-recovery-worktree.ts";
 import { healSettledTransitionRecords } from "../../shared/workflow/transition-recovery.ts";

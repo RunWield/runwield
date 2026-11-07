@@ -32,7 +32,7 @@ import { writeControllerState } from "../../shared/workflow/controller-registry.
 import { loadPlan } from "../../plan-store.js";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
 import { completeUserVerification } from "./user-verification-completion.ts";
-import { resolvePrimaryCheckoutRoot } from "../../shared/primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../../shared/project-checkout.ts";
 import type { PlanFrontMatter } from "../../plan-store.js";
 import type { UiAPI } from "../../ui/tui/types.js";
 import type { PlanSessionSurface } from "./plan-session-types.ts";

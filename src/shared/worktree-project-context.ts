@@ -12,7 +12,7 @@ import { parse as parseJsonc } from "./jsonc.ts";
 import { basename, dirname, join } from "node:path";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "./project-runtime-layout.ts";
 import { ensureRunWieldOwnedGitignoreBlock, RUNWIELD_GITIGNORE_BLOCK } from "./runwield-owned-paths.ts";
-import { resolvePrimaryCheckoutRoot } from "./primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "./project-checkout.ts";
 
 /** Versionable setup artifacts; these are not disposable .wld/internal runtime state. */
 export const PROJECT_CONTEXT_PATHS = [".wld/settings.json", "docs/domain-language.md"] as const;
