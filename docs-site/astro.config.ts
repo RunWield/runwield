@@ -1,4 +1,5 @@
 import { defineConfig } from "astro/config";
+import type { AstroIntegration } from "astro";
 import starlight from "@astrojs/starlight";
 import { writeSearchIndex } from "./src/search-index.ts";
 import release from "./release.json" with { type: "json" };
@@ -82,8 +83,7 @@ export default defineConfig({
     ],
 });
 
-/** @param {import("astro").AstroIntegration} integration */
-function withAwaitedSearchWrites(integration) {
+function withAwaitedSearchWrites(integration: AstroIntegration) {
     // Keep Starlight's search UI, replacing only its build hook. Pagefind 1.5.2
     // returns from writeFiles before Tokio flushes; close() then kills the writer.
     integration.hooks["astro:build:done"] = writeSearchIndex;
