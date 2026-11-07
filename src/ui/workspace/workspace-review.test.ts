@@ -1,3 +1,7 @@
+import type { GuidedReviewUsage } from "../../cmd/guided-review/protocol.ts";
+import type { GuideCostTotals } from "./routes/api/review-agent-handlers.js";
+import type { ReviewServerOutput } from "./server.js";
+
 import {
     removeExecutableFixtureDirectory,
     writeRuntimeExecutableFixture,
@@ -16,7 +20,7 @@ import { join } from "node:path";
 import { encodeGuidedReviewMetadata } from "../../cmd/guided-review/protocol.ts";
 
 import { RUNWIELD_ROOT } from "../../../runtime-root.js";
-import { workspaceMetadata as _workspaceMetadata } from "./server/plan-adapter.js";
+import "./server/plan-adapter.js";
 
 import { createReviewWorkspaceApp, createWorkspaceApp, startReviewWorkspaceServer } from "./server.js";
 
@@ -31,6 +35,55 @@ import { registerReviewDecisionPromise, unregisterReviewDecision } from "./route
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { makeToolProjectFixture, withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 
+interface GuideCommandFixture {
+    stdout: string;
+    stderr?: string[];
+    gatePath?: string;
+    exitCode?: number;
+}
+
+interface GuideJobIdentity {
+    id: string;
+}
+
+interface GuideJobInfo extends GuideJobIdentity {
+    status?: string;
+    usageState?: string;
+    tokens?: GuidedReviewUsage | null;
+    cost?: GuideCostTotals | null;
+}
+
+interface GuideJobLaunchResponse {
+    job: GuideJobIdentity;
+}
+
+interface GuideJobsResponse {
+    jobs: GuideJobInfo[];
+}
+
+interface GuideResponseBlock {
+    type: string;
+    id?: string;
+}
+
+interface GuideResponseSection {
+    blocks: GuideResponseBlock[];
+}
+
+interface GuideResponse {
+    schemaVersion: string;
+    sections: GuideResponseSection[];
+}
+
+interface UploadedImageResponse {
+    path: string;
+}
+
+interface ReviewFileComparisonResponse {
+    oldContent: string;
+    newContent: string;
+}
+
 // Anchored to the shared runtime root, not Deno.cwd(): test realms share one
 // process, so a concurrent file's chdir would otherwise pin this to its temp
 // directory.
@@ -39,8 +92,6 @@ const REVIEW_AGENT_PROJECT_ROOT = makeToolProjectFixture("runwield-workspace-rev
 const GUIDE_EVENT_PREFIX = "RUNWIELD_GUIDED_REVIEW_EVENT ";
 
 const UNUSED_MNEMOTECA_PORT = { run: () => Promise.reject(new Error("Fixture Mnemoteca command should not run.")) };
-
-/** @typedef {{ id: string }} GuideJobIdentity */
 
 const UNUSED_GUIDE_COMMAND = () => Promise.reject(new Error("Fixture guide command should not run."));
 
@@ -66,20 +117,11 @@ function makeGuideReviewPayload() {
     };
 }
 
-/** @param {string} value */
-function shellQuote(value) {
+function shellQuote(value: string) {
     return process.platform === "win32" ? `"${value}"` : `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-/**
- * @typedef {Object} GuideCommandFixture
- * @property {string} stdout
- * @property {string[]} [stderr]
- * @property {string} [gatePath]
- * @property {number} [exitCode]
- */
-/** @param {string} path @param {GuideCommandFixture} fixture */
-async function writeGuideCommandFixture(path, fixture) {
+async function writeGuideCommandFixture(path: string, fixture: GuideCommandFixture) {
     const source = `${path}.mjs`;
     await fsWriteFile(
         source,
@@ -96,8 +138,7 @@ process.exitCode = fixture.exitCode || 0;
     return await writeRuntimeExecutableFixture(path, source);
 }
 
-/** @param {ReturnType<typeof createReviewAgentState>} state */
-async function runReviewGuideJob(state) {
+async function runReviewGuideJob(state: ReturnType<typeof createReviewAgentState>) {
     const launch = await reviewAgentApi(
         new Request("http://localhost/api/agents/jobs", {
             method: "POST",
@@ -108,7 +149,7 @@ async function runReviewGuideJob(state) {
         state,
     );
     if (!launch) throw new Error("expected job launch response");
-    const { job } = await launch.json();
+    const { job }: GuideJobLaunchResponse = await launch.json();
     await state.jobs.get(job.id)?.done;
     return state.jobs.get(job.id)?.info;
 }
@@ -150,8 +191,7 @@ test("review request forwarding does not inherit Deno.serve's legacy abort signa
 });
 
 test("review server reports stdout through its output callback", async () => {
-    /** @type {Array<{ stream: "stdout" | "stderr", text: string }>} */
-    const output = [];
+    const output: ReviewServerOutput[] = [];
     const server = startReviewWorkspaceServer({
         cwd: getCwd(),
         token: "review-output",
@@ -325,9 +365,9 @@ test("review guide and widget APIs require token and serve explainer state", asy
         }),
     );
     assertEquals(launch.status, 202);
-    const { job } = await launch.json();
+    const { job }: GuideJobLaunchResponse = await launch.json();
 
-    let guide;
+    let guide!: Response;
     for (let attempt = 0; attempt < 500; attempt += 1) {
         guide = await app(
             new Request(`http://localhost/api/guide/${job.id}`, {
@@ -338,9 +378,9 @@ test("review guide and widget APIs require token and serve explainer state", asy
         await new Promise((resolve) => setTimeout(resolve, 20));
     }
     assertEquals(guide.status, 200);
-    const guideJson = await guide.json();
+    const guideJson: GuideResponse = await guide.json();
     assertEquals(guideJson.schemaVersion, "1.0");
-    const widgetId = guideJson.sections[0].blocks.find((/** @type {any} */ block) => block.type === "widget").id;
+    const widgetId = guideJson.sections[0].blocks.find((block) => block.type === "widget")!.id;
 
     const widget = await app(
         new Request(`http://localhost/api/review/widgets/${widgetId}/index.html`, {
@@ -448,17 +488,17 @@ test("default review guide usage frames update a running job and remain after co
             );
             assertEquals(launch?.status, 202);
             if (!launch) throw new Error("expected job launch response");
-            const { job } = await launch.json();
+            const { job }: GuideJobLaunchResponse = await launch.json();
 
-            let runningJob = null;
+            let runningJob: GuideJobInfo | null | undefined = null;
             for (let attempt = 0; attempt < 500; attempt += 1) {
                 const jobsResponse = await reviewAgentApi(
                     new Request("http://localhost/api/agents/jobs"),
                     new URL("http://localhost/api/agents/jobs"),
                     state,
                 );
-                const jobs = await jobsResponse?.json();
-                runningJob = jobs.jobs.find((/** @type {GuideJobIdentity} */ candidate) => candidate.id === job.id);
+                const jobs: GuideJobsResponse = await jobsResponse?.json();
+                runningJob = jobs.jobs.find((candidate) => candidate.id === job.id);
                 if (runningJob?.cost?.usd === 0.125) break;
                 await new Promise((resolve) => setTimeout(resolve, 20));
             }
@@ -521,7 +561,7 @@ test("review guide jobs keep reported zero usage available", async () => {
         state,
     );
     if (!launch) throw new Error("expected job launch response");
-    const { job } = await launch.json();
+    const { job }: GuideJobLaunchResponse = await launch.json();
     await state.jobs.get(job.id)?.done;
     const doneJob = state.jobs.get(job.id)?.info;
     assertEquals(doneJob?.status, "done");
@@ -721,7 +761,7 @@ test("review guide jobs ground provider prompt in Plan payload", async () => {
         );
         assertEquals(launch?.status, 202);
         if (!launch) throw new Error("expected job launch response");
-        const { job } = await launch.json();
+        const { job }: GuideJobLaunchResponse = await launch.json();
         await state.jobs.get(job.id)?.done;
 
         assertStringIncludes(capturedPrompt, "# Plan");
@@ -769,7 +809,7 @@ test("review guide jobs record generation result metrics", async () => {
         );
         assertEquals(launch?.status, 202);
         if (!launch) throw new Error("expected job launch response");
-        const { job } = await launch.json();
+        const { job }: GuideJobLaunchResponse = await launch.json();
         await state.jobs.get(job.id)?.done;
 
         const metrics = await readMetrics();
@@ -818,7 +858,7 @@ test("review guide failure metrics redact provider error details", async () => {
         );
         assertEquals(launch?.status, 202);
         if (!launch) throw new Error("expected job launch response");
-        const { job } = await launch.json();
+        const { job }: GuideJobLaunchResponse = await launch.json();
         await state.jobs.get(job.id)?.done;
 
         const [metric] = await readMetrics();
@@ -1211,7 +1251,7 @@ test("review image endpoints upload and serve an annotated image", async () => {
         }),
     );
     assertEquals(upload.status, 200);
-    const uploaded = await upload.json();
+    const uploaded: UploadedImageResponse = await upload.json();
 
     try {
         const image = await app(
@@ -1421,7 +1461,7 @@ test("standalone Code Review file content returns merge-base before text and req
             }),
         );
         assertEquals(response.status, 200);
-        const body = await response.json();
+        const body: ReviewFileComparisonResponse = await response.json();
         assertEquals(body.oldContent, "base text\n");
         assertEquals(body.newContent, "execution text\n");
     } finally {
