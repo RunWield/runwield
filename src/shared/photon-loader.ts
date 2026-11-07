@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL as toFileUrl } from "node:url";
 import type { PhotonImage } from "@silvia-odwyer/photon-node";
-import { RUNWIELD_ROOT } from "../../runtime-root.js";
+import { RUNWIELD_ROOT } from "../../runtime-root.ts";
 
 interface PhotonModule {
     PhotonImage: typeof PhotonImage;

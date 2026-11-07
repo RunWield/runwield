@@ -498,7 +498,7 @@ test("source remote help works without a generated identity and connection expla
             "src/shared/remote/sftp-mount.ts",
             "src/shared/remote/model-proof-config.ts",
             "src/constants.js",
-            "runtime-root.js",
+            "runtime-root.ts",
             "scripts/build-metadata.ts",
             "src/shared/version.js",
         ])

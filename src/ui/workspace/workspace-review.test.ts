@@ -19,7 +19,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { join } from "node:path";
 import { encodeGuidedReviewMetadata } from "../../cmd/guided-review/protocol.ts";
 
-import { RUNWIELD_ROOT } from "../../../runtime-root.js";
+import { RUNWIELD_ROOT } from "../../../runtime-root.ts";
 import "./server/plan-adapter.js";
 
 import { createReviewWorkspaceApp, createWorkspaceApp, startReviewWorkspaceServer } from "./server.js";

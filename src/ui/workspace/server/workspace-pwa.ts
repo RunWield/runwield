@@ -1,7 +1,7 @@
 /** Online-only Workspace installation and connection fallback. */
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { RUNWIELD_SOURCE_ROOT } from "../../../../runtime-root.js";
+import { RUNWIELD_SOURCE_ROOT } from "../../../../runtime-root.ts";
 import { renderRunWieldThemeCss } from "../../design-system/theme-bridge.ts";
 import { DARK_BROWSER_THEME } from "../../design-system/themes/dark.ts";
 
