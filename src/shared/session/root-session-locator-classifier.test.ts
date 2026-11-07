@@ -162,10 +162,10 @@ test("classifyRootSessionLocator silently catalogs Projects and legacy transcrip
     const root = await makeRoot("classifier-automatic-root");
     const store = openFileSessionStore();
     try {
-        assertEquals(
-            await classifyRootSessionLocator({ cwd: root, ownerCoordinationStore: store }),
-            { kind: "uncataloged", reason: "session_project_absent" },
-        );
+        assertEquals(await classifyRootSessionLocator({ cwd: root, ownerCoordinationStore: store }), {
+            kind: "uncataloged",
+            reason: "session_project_absent",
+        });
         const project = store.ensureRuntimeProject({ root });
         const sessionPath = await writeTranscript(root, "legacy-pi");
         const result = await classifyRootSessionLocator({
@@ -241,6 +241,42 @@ test("classifyRootSessionLocator resumes a cataloged repair segment from the Pro
         });
         assertEquals(uncataloged.kind, "blocked");
         assertEquals(uncataloged.reason, "invalid_transcript_locator");
+    } finally {
+        store.close();
+    }
+});
+
+test("classifyRootSessionLocator resolves a known managed identity only within its Project", async () => {
+    const root = await makeRoot("classifier-managed-id");
+    const otherRoot = await makeRoot("classifier-other-project");
+    const store = openFileSessionStore();
+    try {
+        const project = store.ensureRuntimeProject({ root });
+        store.ensureRuntimeProject({ root: otherRoot });
+        const sessionPath = await writeTranscript(root, "stable-locator-pi");
+        const cataloged = await classifyRootSessionLocator({
+            cwd: root,
+            sessionId: "stable-locator-pi",
+            sessionPath,
+            ownerCoordinationStore: store,
+        });
+        assertEquals(cataloged.kind, "managed");
+        const managedId = cataloged.session?.runwieldSessionId;
+        if (!managedId) throw new Error("Fixture did not catalog the Session");
+        const found = await classifyRootSessionLocator({
+            cwd: root,
+            sessionId: managedId,
+            ownerCoordinationStore: store,
+        });
+        assertEquals(found.kind, "managed");
+        assertEquals(found.session?.runwieldSessionId, managedId);
+        assertEquals(found.project?.projectId, project.projectId);
+        const wrongProject = await classifyRootSessionLocator({
+            cwd: otherRoot,
+            sessionId: managedId,
+            ownerCoordinationStore: store,
+        });
+        assertEquals(wrongProject.kind, "blocked");
     } finally {
         store.close();
     }

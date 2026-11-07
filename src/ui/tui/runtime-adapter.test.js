@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { getCapabilities, setCapabilities } from "@earendil-works/pi-tui";
 import { assertEquals, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import { emitHostedSessionRuntimeEvent } from "../../shared/session/session-runtime-events.js";
 import stripAnsi from "strip-ansi";
@@ -329,41 +330,47 @@ test("TUI retains repeated message IDs from different segments and removes only 
 
 test("TUI preserves read-tool images and hidden-tool image fallback without repeating root handoffs", async () => {
     await withAdapter(({ emit, allText, uiAPI }) => {
-        /** @type {DisplayImage} */
-        const image = {
-            type: "image",
-            data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-            mimeType: "image/png",
-        };
-        emit({
-            type: "tool_start",
-            toolCallId: "image-read",
-            toolName: "read",
-            title: "Read diagram.png",
-            kind: "read",
-        });
-        emit({
-            type: "tool_end",
-            toolCallId: "image-read",
-            toolName: "read",
-            output: "Read image",
-            content: [image],
-            isError: false,
-        });
-        uiAPI.toggleToolOutputsExpanded?.();
-        assertStringIncludes(allText(), "[image/png");
-        const before = allText().split("[image/png").length;
-        emit({
-            type: "tool_end",
-            toolCallId: "hidden-image",
-            toolName: "task_completed",
-            output: "",
-            content: [image],
-            isError: false,
-        });
-        assertEquals(allText().split("[image/png").length, before + 1);
-        emit({ type: "agent_changed", agentName: "guide", displayName: "Guide", rootHandoff: true });
-        emit({ type: "agent_changed", agentName: "guide", displayName: "Guide", rootHandoff: true });
-        assertEquals(allText().split("Agent switched to Guide").length - 1, 1);
+        const previousCapabilities = getCapabilities();
+        setCapabilities({ ...previousCapabilities, images: null });
+        try {
+            /** @type {DisplayImage} */
+            const image = {
+                type: "image",
+                data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+                mimeType: "image/png",
+            };
+            emit({
+                type: "tool_start",
+                toolCallId: "image-read",
+                toolName: "read",
+                title: "Read diagram.png",
+                kind: "read",
+            });
+            emit({
+                type: "tool_end",
+                toolCallId: "image-read",
+                toolName: "read",
+                output: "Read image",
+                content: [image],
+                isError: false,
+            });
+            uiAPI.toggleToolOutputsExpanded?.();
+            assertStringIncludes(allText(), "[image/png");
+            const before = allText().split("[image/png").length;
+            emit({
+                type: "tool_end",
+                toolCallId: "hidden-image",
+                toolName: "task_completed",
+                output: "",
+                content: [image],
+                isError: false,
+            });
+            assertEquals(allText().split("[image/png").length, before + 1);
+            emit({ type: "agent_changed", agentName: "guide", displayName: "Guide", rootHandoff: true });
+            emit({ type: "agent_changed", agentName: "guide", displayName: "Guide", rootHandoff: true });
+            assertEquals(allText().split("Agent switched to Guide").length - 1, 1);
+        } finally {
+            setCapabilities(previousCapabilities);
+        }
     });
 });

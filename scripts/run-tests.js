@@ -375,7 +375,19 @@ async function runIsolatedSuite(sandboxRoot, roots, excludedPaths, options) {
                 if (process.env[key] === "1") env[key] = "1";
             }
 
-            for (const key of ["PATH", "SystemRoot", "WINDIR", "COMSPEC", "PATHEXT", "LANG", "LC_ALL", "TERM", "TZ"]) {
+            for (const key of [
+                "PATH",
+                "SystemRoot",
+                "WINDIR",
+                "COMSPEC",
+                "PATHEXT",
+                "LANG",
+                "LC_ALL",
+                "TERM",
+                "TZ",
+                "DISPLAY",
+                "XAUTHORITY",
+            ]) {
                 if (process.env[key]) env[key] = process.env[key];
             }
 

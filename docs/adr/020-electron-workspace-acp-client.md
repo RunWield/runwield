@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Electron Workspace as an ACP Client
@@ -13,8 +13,10 @@ prototype, not the intended product architecture.
 
 The first delivery is free local desktop work without a Workspace account. Later, the same application should connect
 to a `wld` process on another network machine and optionally sign in to hosted Workspace for identity and cloud
-features. Mobile applications are deferred. These are owner decisions; the process, packaging, and client details below
-are proposed for review. This ADR does not claim implementation.
+features. Mobile applications are deferred. Approval of the
+[first Session Plan](../plans/local-workspace-desktop/run-a-real-session-in-electron.md) accepts the separate-process
+and semantic-client architecture below. Acceptance records the decision, not delivery. Packaging tooling, remote
+transport and trust, an always-on service, and hosted identity remain unresolved or separately planned.
 
 Workspace currently combines browser presentation, HTTP handlers, Session orchestration, and direct Core/store calls.
 Changing only the window shell would preserve that coupling. The requested ACP boundary must cover the workbench's
@@ -28,18 +30,20 @@ Product outcomes belong to [Workspace desktop requirements](../prd/runwield-work
 
 ### Shared application, separate runtime
 
-Reuse Workspace's React surfaces, browser model, and semantic design tokens. Give them a typed client interface for
-workbench queries, actions, subscriptions, and interactions. Electron supplies that interface through a narrow preload
-bridge; the browser supplies it through its authenticated server adapter. Both hosts use the same ACP client mapping.
-The interface represents a real process/network boundary, not a fake implementation introduced for tests.
+Reuse Workspace's React surfaces and semantic design tokens through a typed semantic client interface. Shared UI serves
+desktop now and future hosted SaaS. Electron supplies the interface through a narrow preload bridge and a persistent
+ACP client. The interface represents a real process boundary, not a fake introduced for tests. Hosted SaaS transport,
+authentication, and deployment are not selected here.
+
+Do not migrate the old local browser workbench to ACP. It remains operational during this child; its retirement belongs
+to the later cutover. Standalone question, review, and document hosts and the Plan share server survive that cutover.
+This decision does not change Workspace's current public browser glossary.
 
 ```mermaid
 flowchart LR
     UI[Shared Workspace React surfaces] --> Client[Workspace client interface]
     Client --> Desktop[Electron preload and main]
-    Client --> Web[Browser HTTP adapter and Workspace server]
     Desktop --> ACP[Shared ACP client]
-    Web --> ACP
     ACP -->|Local stdio first| WLD[wld ACP server]
     WLD --> Core[Core runtime and domain services]
     TUI[wld TUI] --> Core
@@ -50,16 +54,16 @@ Electron packages the local renderer and owns windows, native menus/dialogs, not
 desktop preferences. Its main process uses Electron's Node runtime. It does not import Bun-dependent Core execution
 modules, construct `SessionRuntime`, acquire Session writer locks, or mutate Plan lifecycle files.
 
-The bundled `wld` executable owns runtime execution and canonical storage through existing Core services. Project
+The `wld` runtime owns execution and canonical storage through existing Core services. Project
 registration and access grants are runtime-side facts; window state, drafts, and connection preferences can remain
 client-side. Client caches are projections. Storage format and Session authority remain as defined by
 [ADR-014](014-file-authoritative-session-bundles.md) and
 [ADR-016](016-project-runtime-state-under-wld-internal.md). This client change must use the current Plan-store boundary
 rather than freeze its storage location while separate Plan-store work proceeds.
 
-Astro may remain the browser host. Move reusable interactive composition and data access out of server-only pages as
-needed, so a locally packaged React renderer can display the same workbench. Do not fork a second desktop component
-library or force a hosted-site framework migration to ship the desktop application.
+Keep reusable interactive composition separate from server-only pages. Do not fork a second desktop component library
+or force a hosted-site framework migration. Future hosted SaaS reuses this UI; that does not require an ACP adapter
+for the old browser workbench.
 
 ### ACP and workbench access
 
@@ -78,9 +82,11 @@ ACP server needs it; never introduce a dependency from Core or ACP back into the
 receipts, expected generations/revisions, access checks, and cancellation settlement at the authoritative owner.
 Transport request IDs alone do not provide durable mutation deduplication.
 
-RunWield ACP's pinned implementation, current ACP v1, and v2 draft semantics must be compared explicitly before pinning
-the desktop contract. Where an extension fills an upcoming standard capability, use compatible concepts and retain a
-small translation boundary. A draft does not justify advertising v2 conformance. Older external clients retain their
+The development Session client uses the persistent SDK 1.4.0 root client and ACP v1 over stdio. It implements
+new/load/prompt/cancel/close and form elicitation, not discovery or full-workbench extensions. The
+[engineering contract](../desktop-workbench-contract.md#protocol-baseline) compares that baseline with current v1 and
+v2 drafts and assigns later capabilities to their owners. Where an extension fills an upcoming standard capability,
+use compatible concepts and retain a small translation boundary. A draft does not justify advertising v2 conformance. Older external clients retain their
 working behavior. Required desktop capability mismatches produce an actionable compatibility result before mutation.
 
 Review content and decisions are structured data rendered with the shared review components. Large files and images
@@ -89,6 +95,13 @@ Existing external ACP review links remain valid; desktop must not depend on a re
 reachable from the user's browser. No general-purpose shell or filesystem RPC is added to solve UI gaps.
 
 ### Local process and distribution
+
+The current source-development launcher passes its explicit Bun executable and checkout `src/cli.ts acp` to main.
+Main launches that subprocess for one absolute Project; no global CLI is selected. Builds use Vite for the renderer
+and separate Node-target bundles for main and sandbox-compatible preload. This is not an installer or release.
+The [engineering contract](../desktop-workbench-contract.md) holds setup commands and scoped evidence.
+
+The distribution and supervisor targets are distinct from this minimal controlled-shutdown host:
 
 Ship a compatible platform-specific `wld` executable with each desktop release and launch it over stdio. The initial
 product does not depend on a globally installed CLI, Bun, Node, or a development server. Existing `wld` user settings,
@@ -105,7 +118,8 @@ settlement before process disposal. An unexpected process exit leaves interrupte
 Restarting the connection may reload observations, but never automatically resubmits an uncertain prompt, decision, or
 publication action. An always-on service that survives application exit is a separate future capability.
 
-Use Vite to build the desktop renderer/main/preload and retain Bun as repository orchestration. Packaging tooling must
+Use Vite for the desktop renderer and separate esbuild bundles for Node main and sandbox preload. Retain Bun as
+repository orchestration. Packaging tooling must
 bundle the matching executable and existing assets, follow the frozen-lock/no-lifecycle-script policy, and qualify the
 three target operating systems. Choose and pin the packager during the packaging slice after checking native assets and
 update behavior; the choice is not part of the runtime contract. Updates install application and bundled runtime as a
@@ -155,8 +169,8 @@ their own subsequent Plan. The first local app has no nonfunctional cloud contro
 ## Implications
 
 The main investment is separating Workspace's client and runtime responsibilities while preserving full workbench
-behavior. Electron supplies distribution and integration, not new lifecycle authority. Browser and desktop share UI
-improvements and ACP client semantics; protocol compatibility and process recovery become explicit obligations.
+behavior. Electron supplies distribution and integration, not new lifecycle authority. Desktop and future hosted SaaS
+share UI improvements; protocol compatibility and process recovery become explicit obligations.
 
 Chromium adds baseline memory and release-maintenance costs. Keep observation retention bounded, avoid a browser engine
 per Session, and measure representative release builds with long conversations and diffs. Window, keyboard, clipboard,

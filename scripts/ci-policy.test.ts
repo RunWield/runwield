@@ -460,3 +460,18 @@ test("publication requires every product and source gate including actual packag
     assertStringIncludes(check, "artifact.target !== process.env.TARGET");
     assertStringIncludes(check, "embedded.buildId !== artifact.buildId");
 });
+
+test("PR source gate runs under a virtual display with Chromium sandbox support", async () => {
+    const steps = (await readGate("pr")).jobs["ci-shards"].steps || [];
+    const prepare = steps.findIndex((step) => step.run?.includes("bun run desktop:setup"));
+    const gate = steps.findIndex((step) => step.run?.includes("bun run ci --source-only"));
+    assertEquals(prepare >= 0 && gate > prepare, true);
+    const script = steps[prepare].run || "";
+    assertStringIncludes(script, "xvfb xauth");
+    assertStringIncludes(script, "sudo chown root:root node_modules/electron/dist/chrome-sandbox");
+    assertStringIncludes(script, "sudo chmod 4755 node_modules/electron/dist/chrome-sandbox");
+    assertEquals(steps[gate].run, "xvfb-run -a bun run ci --source-only");
+    for (const step of steps) {
+        assertEquals(/--no-sandbox|ELECTRON_DISABLE_SANDBOX|ignore-scripts=false/.test(step.run || ""), false);
+    }
+});
