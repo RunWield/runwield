@@ -37,7 +37,6 @@
 
     "src/ui/workspace/components/PlanDetail.jsx",
     "src/ui/workspace/components/SessionTimeline.jsx",
-    "src/ui/workspace/integrations/deno-react.mjs",
     "src/ui/workspace/integrations/react-server.mjs",
     "src/ui/workspace/islands/SessionSurface.jsx",
 
