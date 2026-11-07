@@ -1047,8 +1047,27 @@ export async function recordPlanEvent({
             () => recordPlanEvent({ cwd, planName, event, currentStatus, details, expectedRevision }),
             planName,
         );
-    if (currentPackageSelection() && ["validation_passed", "manual_user_verified"].includes(event))
-        throw new Error("Package publication is pending; retain this attempt and its input for continuation.");
+    if (currentPackageSelection() && ["validation_passed", "manual_user_verified"].includes(event)) {
+        const selected = await selectedPackage(planName);
+        const receipt = selected.metadata.workflow?.delivery;
+        if (!details.pendingPublication && !receipt)
+            throw new Error("Package completion requires applicable publication evidence.");
+        if (receipt && !details.pendingPublication) {
+            const { readPlanPackagePublication, samePackagePublicationReference } =
+                await import("../plan-package-store.ts");
+            const selection = currentPackageSelection();
+            if (!selection) throw new Error("Package completion requires explicit admission.");
+            const retained = await readPlanPackagePublication(selection.identity, receipt.source);
+            if (
+                selected.metadata.workflow?.attempt ||
+                selected.metadata.definition.status !== "verified" ||
+                !samePackagePublicationReference(selected.metadata.workflow?.publication, receipt.source) ||
+                receipt.validatedCommit !== retained.validatedCommit ||
+                receipt.targetBranch !== retained.targetBranch
+            )
+                throw new Error("A historical package receipt cannot complete another execution.");
+        }
+    }
     await preparePlanWorkflow(cwd, planName);
     // The caller's project root locates the controller, not necessarily the Plan.
     // Resolve once before the transaction, then keep that document locked even

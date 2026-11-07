@@ -1,3 +1,4 @@
+import { retirePackageCopies } from "./package-publication.ts";
 import { rename as fsRename } from "node:fs/promises";
 import { captureForegroundProcess } from "../captured-process.ts";
 import {
@@ -116,7 +117,7 @@ async function sourceNeedsRevalidation(attempt: PublicationAttempt, head: string
     const ancestry = await git(attempt.executionCwd, ["merge-base", "--is-ancestor", sealed, head]);
     if (ancestry.code === 1) return true;
     if (!ancestry.success) throw new Error("Could not inspect publication source history.");
-    if (attempt.phase !== "candidate_sealed") {
+    if (!attempt.packageInput && attempt.phase !== "candidate_sealed") {
         await recoverSealedPlanFormatting({
             executionCwd: attempt.executionCwd,
             sealedExecutionCommit: sealed,
@@ -126,7 +127,8 @@ async function sourceNeedsRevalidation(attempt: PublicationAttempt, head: string
     const changes = await git(attempt.executionCwd, ["diff", "--name-only", "-z", sealed, head]);
     if (!changes.success) throw new Error("Could not inspect the sealed publication files.");
     const paths = [...changes.text.split("\0").filter(Boolean), ...(await gitStatusPaths(attempt.executionCwd))];
-    if (attempt.phase !== "candidate_sealed") return paths.some((path) => !isRunWieldOwnedRuntimePath(path));
+    if (attempt.packageInput || attempt.phase !== "candidate_sealed")
+        return paths.some((path) => !isRunWieldOwnedRuntimePath(path));
     // A Recorder wait permits only its exact record and lifecycle/backlink edits,
     // not new implementation files or changes to the reviewed Plan's prose.
     const { source } = await resolveTargetedWorkRecordSource(attempt.executionCwd, attempt.planName, true);
@@ -236,6 +238,7 @@ export async function preparePublicationRevalidation(projectRoot: string, planNa
                 await updatePublication(projectRoot, entry.id, current.revision, attempt);
             }
             await preserveAttempt(attempt);
+            if (attempt.packageInput) await retirePackageCopies(projectRoot, attempt);
             await resetValidation(executionCwd, planName, entry.id, entry.planId);
             await retirePublicationForRevalidation(projectRoot, entry.id, attempt.revision);
             return attempt.revalidation!.archiveRoot;

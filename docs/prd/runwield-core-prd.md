@@ -809,8 +809,21 @@ physical Git work. Retry reuses that attempt after interruption; another clone r
 Code remains isolated in a worktree without a package Plan copy. Implementation dispatch uses retained complete input,
 and later editor changes neither rewrite that input nor erase code. Consequential continuation requires current
 review/readiness. Checkpoints retain exact generations, review issues and repair receipts through restart. Recovery
-respects native lock owners and compensates only owned metadata. Package validation/publication pauses with the same
-attempt/input until its delivery path is available; it cannot claim `verified` or create final receipts.
+respects native lock owners and compensates only owned metadata. Explicitly admitted packages continue through real
+validation and publication using an immutable personal-store input. That input freezes metadata, family/Ticket sources,
+copy policy and destinations. No payload or an unchanged proven prior payload creates no artifacts commit; changed
+Plan copies and prepared Work Record payloads share one artifacts-only commit. A later delivery replaces only its own
+prior copies, proven by the retained receipt, repository/path association, published ancestry and exact prior bytes.
+Externally edited or unrelated destinations remain untouched. These internal copies are delivery documents, never live authority. Public
+package selection and copy settings remain deferred.
+
+**Requirement: Package delivery settles from applicable proof before cleanup.** The existing publication record owns
+all intermediate phases. Fresh target proof binds the reviewed candidate, exact copy bytes, owner, repository, Plan,
+attempt and retained source. One atomic metadata settlement records verified delivery and releases the owner-wide
+attempt before registry cleanup. Lost acknowledgements reconcile the same effect. Missing inputs, foreign identities,
+a missing registry entry or an old receipt cannot substitute for proof. Live documents survive both refusal and retry.
+Changed code requires revalidation; an unpublished owned copies commit is separated from the new candidate so the final
+ancestry still contains one copies commit. Non-Git completion retains explicit in-place evidence.
 
 **Requirement: Import publishes complete families and recovers the same identities.** One durable batch intent reserves
 all new IDs and retains complete import inputs before publication. Until the batch commits, ID and name lookup report
@@ -874,7 +887,14 @@ point. Commands are copy-ready with real values. Waiting for the user's action s
 - Given an imported dirty unfinished legacy attempt, internal selection returns its original owner and checkpoint;
   changed or missing binding evidence cannot start a second attempt.
 - Given an internally executed package, Engineer receives retained child/parent resources and writes isolated code.
-  Implementation checkpoints persist, but package publication remains paused without a final receipt or verified status.
+  Implementation checkpoints persist, and real validation/review publishes code with no repository Plan required.
+  Copies disabled produce no artifacts commit; enabled copies contain only frozen Markdown, not personal metadata.
+- Given a sealed package, later editor changes, rename, settings changes and target advancement preserve its frozen
+  payload and destinations. Invalid paths or unrelated target content refuse publication without overwriting either.
+- Given interruption after publication or package settlement, a fresh process proves the existing target, finishes the
+  same receipt and releases ownership before cleanup without pushing again. Corrupt/missing source or unavailable
+  upstream remains recoverable; restoring the exact prerequisite permits the same attempt to finish.
+- Given a historical package receipt and a reopened Plan or new execution, that receipt cannot complete the new work.
 - Given competing package writers from worktrees or explicitly linked clones, one stale revision wins once; a
   metadata edit and document edit both survive. An active native lock is not stolen; process exit releases it.
 - Given interruption during package publication, inspection reports pending recovery without writes. The next
@@ -2076,6 +2096,20 @@ records. Recorder finishes by submitting its record; a turn that ends without it
 (provider errors and cancellation end the attempt), and repeated omission leaves a concise protocol diagnostic on the
 Plan, without model text or private reasoning. With automatic generation turned off, listing, reading, search, and
 explicit backfill stay available.
+
+**Requirement: Package Recorder input outlives execution cleanup.** For explicitly admitted packages, a retained
+publication manifest supplies exact delivered documents, metadata, relevant children and Tickets. A delivered child
+keeps its own identity while its eligible terminal Epic remains the recording owner. Recorder retry reads that source
+after checkout, branch and publication-clone removal; edits, rename or missing repository copies do not replace it.
+Retained bytes alone never promote an unconfirmed attempt to verified. External recording/index failure preserves
+confirmed delivery and its source reference. This internal input contract does not relocate canonical Work Records or
+activate automatic package record generation, public copy settings, import or pruning.
+
+**Package source acceptance scenarios:**
+
+- Given a delivered child or Epic and removed code checkouts, a fresh Recorder read returns exact retained text,
+  provenance and child Tickets, preserves live editor bytes, and creates no repository Plan.
+- Given a failed Recorder/index request, retry reads the same retained source without revoking confirmed delivery.
 
 **Requirement: Retrieve current records.** `wld wr` lists, searches, reads, rebuilds the index, and backfills. Default
 retrieval returns current approved records. Pending, draft, superseded, and archived records appear in explicit

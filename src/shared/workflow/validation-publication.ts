@@ -1,3 +1,5 @@
+import { currentPackageSelection } from "./package-workflow.ts";
+import { preparePackageCopies, settlePackageInPlace } from "./package-publication.ts";
 import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { ProjectRuntimeReadPendingError } from "../project-runtime-layout.ts";
 import { stat as fsStat } from "node:fs/promises";
@@ -157,7 +159,7 @@ async function prepareEpicChildManualQaArtifact(
     cwd: string,
     projectRoot: string,
 ): Promise<ManualQaPreparationResult> {
-    if (args.hostTurn) return { kind: "ready" };
+    if (args.hostTurn || currentPackageSelection()) return { kind: "ready" };
     const plan = await loadPlan(cwd, args.planName).catch(() => null);
     const parentPlan =
         typeof plan?.attrs.parentPlan === "string" && plan.attrs.parentPlan.trim() ? plan.attrs.parentPlan.trim() : "";
@@ -341,12 +343,18 @@ async function runLockedPublicationPhase(
         const deliveryEvidence: DeliveryEvidence = context.nonGitInPlace
             ? { version: 1, mode: "non_git_in_place" }
             : null;
-        if (args.hostTurn) await runPostVerificationHandoffs(args, context.executionCwd || context.projectRoot, true);
+        if (args.hostTurn && !currentPackageSelection())
+            await runPostVerificationHandoffs(args, context.executionCwd || context.projectRoot, true);
         await recordLifecycleEvent(args, context.projectRoot, "validation_passed", "reviewed", undefined, {
             executionMode: context.nonGitInPlace ? "non_git_in_place" : undefined,
             deliveryEvidence,
+            pendingPublication: Boolean(currentPackageSelection()),
             ...humanReviewMetadata,
         });
+        if (currentPackageSelection()) {
+            await settlePackageInPlace(args.planName);
+            return { recorded: true, result: await buildVerifiedResult(args, context.projectRoot) };
+        }
         if (args.hostTurn) {
             await completeInPlaceWorkRecord(
                 context.executionCwd || context.projectRoot,
@@ -699,6 +707,23 @@ async function runLockedPublicationPhase(
                     }),
             );
             args.session.assertLive();
+            if (currentPackageSelection())
+                await stageValidationPassedInExecutionWorktree({
+                    projectRoot: context.projectRoot,
+                    executionCwd: context.executionCwd,
+                    planName: args.planName,
+                    details: {
+                        executionMode: "worktree",
+                        ...humanReviewMetadata,
+                        deliveryEvidence: {
+                            version: 1,
+                            mode: "worktree_merge",
+                            executionCommit: candidate.executionCommit,
+                            targetBranch,
+                            targetHeadBeforeMerge: targetHeadAtSeal,
+                        },
+                    },
+                });
             publicationAttempt = await startPublicationAttempt({
                 projectRoot: context.projectRoot,
                 attemptId: worktreeId,
@@ -711,6 +736,15 @@ async function runLockedPublicationPhase(
             });
         }
 
+        if (publicationAttempt.phase === "candidate_sealed" && publicationAttempt.packageInput) {
+            const evidence = await preparePackageCopies(context.projectRoot, publicationAttempt);
+            publicationAttempt = await advanceStoredPublication(
+                context.projectRoot,
+                publicationAttempt,
+                "artifacts_committed",
+                evidence,
+            );
+        }
         if (publicationAttempt.phase === "candidate_sealed") {
             const manualQa = await atStage(
                 "artifact_preparation",
@@ -773,7 +807,9 @@ async function runLockedPublicationPhase(
             );
         }
 
-        const artifactCommit = publicationAttempt.artifactCommit;
+        const artifactCommit =
+            publicationAttempt.artifactCommit ||
+            (publicationAttempt.packageInput ? publicationAttempt.validatedCommit : undefined);
         if (!artifactCommit) throw new Error(`Publication artifacts are missing for ${args.planName}.`);
         const planPaths = publicationAttempt.planPaths || [planPath];
         if (!epicResolution && shouldContinueParentEpicAfterValidation(args.triageMeta)) {
@@ -798,6 +834,7 @@ async function runLockedPublicationPhase(
                         planDescription: args.triageMeta?.summary,
                         sealedExecutionCommit: artifactCommit,
                         allowedPlanPaths: planPaths,
+                        packageInput: publicationAttempt?.packageInput,
                         publicationRoot: publicationAttempt?.publicationRoot,
                         repairedPublicationRoot: repairMergeWorktreePath || undefined,
                         recordedTargetBaseCommit: publicationAttempt?.targetBaseCommit,

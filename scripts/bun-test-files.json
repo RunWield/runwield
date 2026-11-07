@@ -545,6 +545,7 @@
     "src/shared/work-records/auto-generation.test.ts",
     "src/shared/work-records/passive-index.test.ts",
     "src/shared/work-records/published-delivery-source.test.ts",
+    "src/shared/work-records/package-published-source.test.ts",
     "src/shared/work-records/recorder-contract.test.ts",
     "src/shared/work-records/supersession.test.ts",
     "src/shared/work-records/work-records.test.js",
@@ -965,5 +966,10 @@
     "src/plan-package-import-evidence.test.ts",
     "src/shared/workflow/package-lifecycle.integration.test.ts",
     "src/shared/workflow/package-execution.integration.test.ts",
+    "src/shared/workflow/package-publication.integration.test.ts",
+    "src/shared/workflow/package-publication-copies.test.ts",
+    "src/shared/workflow/package-publication-recovery.test.ts",
+    "src/shared/workflow/package-publication-copies-recovery.test.ts",
+    "src/shared/workflow/package-publication-refusal.test.ts",
     "src/shared/workflow/package-lifecycle-recovery.test.ts"
 ]

@@ -1,3 +1,13 @@
+import { inspectProjectIdentity } from "../project-identity.ts";
+import {
+    readPlanPackage,
+    decodePackageMarkdown,
+    readPlanPackageInput,
+    readPlanPackagePublication,
+    samePackagePublicationReference,
+    type PackagePublicationReference,
+} from "../plan-package-store.ts";
+import { currentPackageSelection, loadPackageWorkflowPlan, selectedPackage } from "../workflow/package-workflow.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { effectiveDeliveryBranch } from "../workflow/plan-branch.ts";
 /** Immutable recording input retained after delivery removes the execution worktree. */
@@ -41,6 +51,10 @@ export async function retainPublishedWorkRecordSource(root: string, attempt: Pub
     if (!["publication_verified", "cleanup_complete"].includes(attempt.phase)) {
         throw new Error("Recording source requires confirmed publication.");
     }
+    if (attempt.packageInput) {
+        await packageDeliverySources(root, attempt.packageInput, true);
+        return;
+    }
     if (!attempt.artifactCommit) throw new Error("The delivered recording source has no artifact commit.");
     const delivered = await readSource(root, attempt.artifactCommit, attempt.planName);
     if (delivered.planId !== attempt.planId) throw new Error("The delivered Plan identity changed.");
@@ -63,14 +77,30 @@ export async function retainPublishedWorkRecordSource(root: string, attempt: Pub
 
 /** Read the delivered input while preserving a stale or edited primary Plan body. */
 export async function loadPublishedWorkRecordSource(root: string, planName: string): Promise<WorkRecordSource | null> {
+    if (currentPackageSelection()) {
+        const selected = await selectedPackage(planName);
+        const receipt = selected.metadata.workflow?.delivery;
+        if (!receipt) return null;
+        const sources = await packageDeliverySources(root, receipt.source, true);
+        const source = sources.workRecordOwner;
+        if (source) {
+            const owner = await readPlanPackage(currentPackageSelection()!.identity, { planId: source.planId });
+            if (owner.kind !== "loaded") throw new Error(owner.message);
+            source.name = owner.metadata.name;
+            source.documentRevision = (await loadPackageWorkflowPlan(source.name)).revision;
+        }
+        return source || null;
+    }
     const local = await loadPlan(root, planName);
     const view = await inspectControllerView(root, { planName, planId: local?.attrs.planId }, {});
     const published = view.state.publicationReceipt;
-    const completedSource = local?.attrs.deliveryBranch && published &&
-            effectiveDeliveryBranch(local.attrs) === published.targetBranch
-        ? { commit: published.publishedCommit, planName, planId: local.attrs.planId || "" }
-        : undefined;
-    const receipt = view.state.recordingSource || completedSource ||
+    const completedSource =
+        local?.attrs.deliveryBranch && published && effectiveDeliveryBranch(local.attrs) === published.targetBranch
+            ? { commit: published.publishedCommit, planName, planId: local.attrs.planId || "" }
+            : undefined;
+    const receipt =
+        view.state.recordingSource ||
+        completedSource ||
         (!local ? (await findRecordingControllerByName(root, planName))?.state.recordingSource : undefined);
     if (!receipt) return null;
     const source = await readSource(root, receipt.commit, receipt.planName);
@@ -81,7 +111,7 @@ export async function loadPublishedWorkRecordSource(root: string, planName: stri
         throw new Error("A different Plan now uses the delivered Plan's path. Its record was not changed.");
     }
     if (!current) await savePlan(root, source.name, source.body, source.attrs);
-    const writable = current || await loadPlan(root, source.name);
+    const writable = current || (await loadPlan(root, source.name));
     if (!writable) throw new Error("The delivered Plan could not be prepared for its Work Record backlink.");
     source.documentRevision = writable.revision;
     // A previous successful retry is authoritative for the backlink, not for source prose.
@@ -90,7 +120,9 @@ export async function loadPublishedWorkRecordSource(root: string, planName: stri
     }
     if (!isProjectPlan(source.attrs)) return source;
     const paths = (await git(root, ["ls-tree", "-r", "--name-only", receipt.commit, "--", "docs/plans/"]))
-        .trim().split("\n").filter((path) => path.endsWith(".md"));
+        .trim()
+        .split("\n")
+        .filter((path) => path.endsWith(".md"));
     const children: WorkRecordSource[] = [];
     for (const path of paths) {
         const name = path.slice("docs/plans/".length, -3);
@@ -109,8 +141,17 @@ export interface PublishedDeliverySources {
 /** Read-only delivery facts: keep child identity distinct from the Epic recording owner. */
 export async function readPublishedDeliverySources(
     root: string,
-    attempt: Pick<PublicationAttempt, "artifactCommit" | "planName" | "planId" | "phase" | "planPaths">,
+    attempt: Pick<
+        PublicationAttempt,
+        "artifactCommit" | "planName" | "planId" | "phase" | "planPaths" | "packageInput"
+    >,
 ): Promise<PublishedDeliverySources> {
+    if (attempt.packageInput)
+        return await packageDeliverySources(
+            root,
+            attempt.packageInput,
+            ["publication_verified", "cleanup_complete"].includes(attempt.phase),
+        );
     if (!attempt.artifactCommit) throw new Error("The delivered Plan artifact commit is missing.");
     const delivered = await readSource(root, attempt.artifactCommit, attempt.planName);
     if (delivered.planId !== attempt.planId) throw new Error("The delivered Plan identity changed.");
@@ -125,16 +166,16 @@ export async function readPublishedDeliverySources(
     // Child branches can contain only child Plans; the Epic document remains in the primary checkout.
     // Its absent recording evidence must not interrupt a confirmed child delivery.
     const parent = await readSource(root, attempt.artifactCommit, delivered.attrs.parentPlan || "").catch(() => null);
-    const preparedParentDelivered = parent &&
+    const preparedParentDelivered =
+        parent &&
         ["publication_verified", "cleanup_complete"].includes(attempt.phase) &&
         ["reviewed", "validated"].includes(parent.attrs.status) &&
         parent.attrs.epicCompletionMode === "done_enough" &&
         Boolean(attempt.planPaths?.includes(`docs/plans/${parent.name}.md`));
     return {
         delivered,
-        workRecordOwner: parent && (isTerminalWorkRecordParent(parent.attrs) || preparedParentDelivered)
-            ? parent
-            : undefined,
+        workRecordOwner:
+            parent && (isTerminalWorkRecordParent(parent.attrs) || preparedParentDelivered) ? parent : undefined,
     };
 }
 
@@ -146,13 +187,79 @@ export async function readPublishedRecordMarkdown(
 ): Promise<string | null> {
     if (
         !["publication_verified", "cleanup_complete"].includes(attempt.phase) ||
-        !attempt.publishedCommit || !/^docs\/work-records\/[^/]+\.md$/.test(path)
+        !attempt.publishedCommit ||
+        !/^docs\/work-records\/[^/]+\.md$/.test(path)
     ) {
         return null;
+    }
+    if (attempt.packageInput) {
+        const inspected = inspectProjectIdentity(root);
+        if (inspected.kind !== "existing") throw new Error("Recording owner is unavailable.");
+        await packageDeliverySources(root, attempt.packageInput, true);
+        const manifest = await readPlanPackagePublication(inspected.identity, attempt.packageInput);
+        return manifest.copies.find((copy) => copy.kind === "work-record" && copy.path === path)?.text || null;
     }
     try {
         return await git(root, ["show", `${attempt.publishedCommit}:${path}`]);
     } catch {
         return null;
     }
+}
+
+/** Retained source is addressable without execution/Git copies and never materializes a Plan. */
+async function packageDeliverySources(
+    root: string,
+    reference: PackagePublicationReference,
+    confirmed: boolean,
+): Promise<PublishedDeliverySources> {
+    const inspected = inspectProjectIdentity(root);
+    if (inspected.kind !== "existing") throw new Error("Recording owner is unavailable.");
+    const manifest = await readPlanPackagePublication(inspected.identity, reference);
+    const current = await readPlanPackage(inspected.identity, { planId: reference.planId });
+    if (current.kind !== "loaded") throw new Error(current.message);
+    const receipt = current.metadata.workflow?.delivery;
+    const proved =
+        !current.metadata.workflow?.attempt &&
+        samePackagePublicationReference(current.metadata.workflow?.publication, reference) &&
+        samePackagePublicationReference(receipt?.source, reference) &&
+        receipt &&
+        receipt.validatedCommit === manifest.validatedCommit &&
+        receipt.targetBranch === manifest.targetBranch;
+    if (confirmed && !proved) throw new Error("Retained source has no matching delivery receipt.");
+    const sources: WorkRecordSource[] = [];
+    const name = (id: string) => manifest.members.find((member) => member.metadata.planId === id)?.metadata.name || id;
+    for (const member of manifest.members) {
+        const retained = await readPlanPackageInput(inspected.identity, member.input);
+        const markdown = decodePackageMarkdown(retained.documents.find((doc) => doc.name === "context.md")!.bytes);
+        const metadata = member.metadata;
+        const delivered = metadata.planId === reference.planId;
+        const source = buildActiveWorkRecordSource(metadata.name, {
+            path: join(retained.path, "context.md"),
+            markdown,
+            body: markdown,
+            attrs: {
+                ...metadata.definition,
+                ...member.controller,
+                ...metadata.controller,
+                planId: metadata.planId,
+                createdAt: metadata.createdAt,
+                parentPlan: metadata.parentPlanId ? name(metadata.parentPlanId) : undefined,
+                dependencies: metadata.dependencyPlanIds.map(name),
+                status: delivered && proved ? "verified" : metadata.definition.status,
+            } as import("../../plan-store.js").PlanFrontMatter,
+        });
+        source.pendingPublication = delivered && !proved;
+        source.relativePath = `package:${metadata.planId}`;
+        sources.push(source);
+    }
+    const family = attachEpicChildren(sources);
+    const delivered = family.find((source) => source.planId === reference.planId)!;
+    const owner = isChildFeaturePlan(delivered)
+        ? family.find((source) => source.name === delivered.attrs.parentPlan)
+        : delivered;
+    return {
+        delivered,
+        workRecordOwner:
+            owner && (!isChildFeaturePlan(delivered) || isTerminalWorkRecordParent(owner.attrs)) ? owner : undefined,
+    };
 }

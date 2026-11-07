@@ -67,10 +67,14 @@ activation or managed-remote ownership proposal below.
 
 The bounded internal lifecycle path now uses existing review, readiness, Sequence and Plan Event rules with home package
 metadata. Retained inputs include every required resource and parent context; implementation dispatch and checkpoints
-keep the exact input and attempt. Package validation/publication returns a nonterminal pause with that continuation,
-without final delivery evidence. Public selection, package publication and managed-remote transport remain outside this
-contract. ADR-004 and ADR-017 qualify the accepted lifecycle/runtime decisions for this internal case; the broader
-proposal below remains proposed.
+keep the exact input and attempt. The same publication owner now accepts a durable retained manifest with exact
+metadata/family/Tickets and frozen optional delivery copies. Packages complete real validation and target publication,
+settle matching personal receipts and release ownership before cleanup; no target metadata-only commit or repository
+Plan is required. Retained Recorder inputs survive code cleanup. Reusing the publication state machine avoids a second
+phase authority, and exact immutable inputs avoid treating a delivery copy as live state. ADR-016 qualifies its legacy
+Git-metadata rule for this internal case. Public selection/copy settings, canonical Work Record storage, managed-remote
+transport and retention remain outside this contract. ADR-004 and ADR-017 qualify the accepted lifecycle/runtime
+decisions; the broader proposal below remains proposed.
 
 ## Decision and Rationale
 

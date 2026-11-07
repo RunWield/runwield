@@ -23,7 +23,7 @@ import {
 } from "./plan-package-import.ts";
 import type { TicketReference } from "./ticket-references.ts";
 import { normalizePlanDeviations, type PlanDeviation } from "./plan-deviations.ts";
-import type { WorkflowControllerState } from "./workflow/controller-state.ts";
+import { CONTROLLER_STATE_FIELDS, type WorkflowControllerState } from "./workflow/controller-state.ts";
 
 export type PackageResource = "context.md" | "validation.md" | "manual-qa.md" | "integration-report.md";
 export type PackageResourceRole = "context" | "validation" | "manual-qa" | "integration-report";
@@ -124,6 +124,7 @@ export interface PackageAttemptContinuation {
     input: PackageWorkflowInput;
 }
 export interface PackageAttemptReference {
+    executionMode?: "non_git_in_place";
     personalOwner: string;
     repositoryId: string;
     repositoryRoot: string;
@@ -139,6 +140,50 @@ export interface PackageWorkflowEvidence {
     readiness?: PackageWorkflowInput;
     attempt?: PackageAttemptReference;
     controller?: PackageControllerReference;
+    publication?: PackagePublicationReference;
+    delivery?: PackageDeliveryReceipt;
+}
+export interface DeliveryCopy {
+    kind: "plan" | "work-record";
+    path: string;
+    text: string;
+}
+export interface PackagePublicationReference {
+    kind: "package";
+    projectId: string;
+    personalOwner: string;
+    repositoryId: string;
+    planId: string;
+    attemptId: string;
+    inputId: string;
+    digest: string;
+}
+export interface PackagePublicationMember {
+    metadata: PlanPackageMetadata;
+    controller: WorkflowControllerState;
+    input: PackageInputReference;
+}
+export interface PackagePublicationManifest {
+    version: 1;
+    projectId: string;
+    personalOwner: string;
+    repositoryId: string;
+    planId: string;
+    attemptId: string;
+    inputId: string;
+    validatedCommit: string;
+    targetBranch: string;
+    planCopies: boolean;
+    members: PackagePublicationMember[];
+    copies: DeliveryCopy[];
+}
+export interface PackageDeliveryReceipt {
+    source: PackagePublicationReference;
+    validatedCommit: string;
+    publishedCommit: string;
+    targetBranch: string;
+    mode: "local" | "remote" | "non_git_in_place";
+    verifiedAt: string;
 }
 export interface PlanPackageMetadata {
     version: 1;
@@ -222,6 +267,7 @@ export interface PackageInputManifest extends PackageInputReference {
     documents: InputResource[];
 }
 export interface PackageInput {
+    path: string;
     manifest: PackageInputManifest;
     documents: PackageDocument[];
 }
@@ -578,18 +624,53 @@ function metadataFrom(value: PlanPackageMetadata): PlanPackageMetadata {
             fail("malformed_metadata", "Invalid legacy import reference.");
     }
     if (data.workflow !== undefined) {
-        const workflow = fields(data.workflow, ["review", "readiness", "attempt", "controller"]);
+        const workflow = fields(data.workflow, [
+            "review",
+            "readiness",
+            "attempt",
+            "controller",
+            "publication",
+            "delivery",
+        ]);
+        if (workflow.publication !== undefined) {
+            assertPackagePublicationReference(JSON.parse(JSON.stringify(workflow.publication)));
+            if (fields(workflow.publication, publicationReferenceFields).planId !== data.planId)
+                fail("malformed_metadata", "Publication input belongs to another Plan.");
+        }
+        if (workflow.delivery !== undefined) {
+            const receipt = fields(workflow.delivery, [
+                "source",
+                "validatedCommit",
+                "publishedCommit",
+                "targetBranch",
+                "mode",
+                "verifiedAt",
+            ]);
+            assertPackagePublicationReference(JSON.parse(JSON.stringify(receipt.source)));
+            if (
+                fields(receipt.source, publicationReferenceFields).planId !== data.planId ||
+                !["local", "remote", "non_git_in_place"].includes(String(receipt.mode)) ||
+                ["validatedCommit", "publishedCommit", "targetBranch", "verifiedAt"].some(
+                    (key) => typeof receipt[key] !== "string",
+                ) ||
+                !receipt.verifiedAt
+            )
+                fail("malformed_metadata", "Invalid package delivery receipt.");
+        }
         for (const key of ["review", "readiness"]) {
             if (workflow[key] !== undefined) validateWorkflowInput(workflow[key], data.planId);
         }
         if (workflow.attempt !== undefined) {
             const attempt = fields(workflow.attempt, [
+                "executionMode",
                 "personalOwner",
                 "repositoryId",
                 "repositoryRoot",
                 "attemptId",
                 "input",
             ]);
+            if (attempt.executionMode !== undefined && attempt.executionMode !== "non_git_in_place")
+                fail("malformed_metadata", "Invalid package attempt execution mode.");
             for (const key of ["personalOwner", "repositoryId", "repositoryRoot", "attemptId"]) {
                 if (typeof attempt[key] !== "string" || !attempt[key])
                     fail("malformed_metadata", "Invalid package attempt binding.");
@@ -1310,7 +1391,7 @@ export async function readPlanPackageInput(
         })
     )
         fail("malformed_metadata", "Retained-input bytes or membership do not match the committed manifest.");
-    return { manifest, documents };
+    return { path: directory, manifest, documents };
 }
 
 function validateImportRecord(record: ImportRecord): ImportRecord {
@@ -1594,4 +1675,242 @@ export async function readPlanImportEvidence(
     const member = record.prepared.members.find((member) => member.allocation.locator === reference.locator);
     if (!member) fail("missing", "Import source evidence is missing.");
     return member.evidence;
+}
+
+const publicationReferenceFields = [
+    "kind",
+    "projectId",
+    "personalOwner",
+    "repositoryId",
+    "planId",
+    "attemptId",
+    "inputId",
+    "digest",
+];
+export function assertPackagePublicationReference(reference: PackagePublicationReference): void {
+    const value = fields(JSON.parse(JSON.stringify(reference)), publicationReferenceFields);
+    if (
+        value.kind !== "package" ||
+        publicationReferenceFields.some((key) => typeof value[key] !== "string" || !value[key]) ||
+        !/^[0-9a-f-]{36}$/.test(reference.inputId) ||
+        !/^[0-9a-f]{64}$/.test(reference.digest)
+    )
+        fail("malformed_metadata", "Invalid package publication reference.");
+    requireId(reference.planId);
+}
+
+/** Preserve UTF-8 Markdown byte identity, including BOM; malformed encoding cannot be copied lossily. */
+export function decodePackageMarkdown(bytes: Uint8Array): string {
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+}
+
+export function assertDeliveryCopies(copies: DeliveryCopy[]): void {
+    if (!Array.isArray(copies)) fail("malformed_metadata", "Invalid delivery copies.");
+    const paths = new Set<string>();
+    for (const copy of copies) {
+        fields(JSON.parse(JSON.stringify(copy)), ["kind", "path", "text"]);
+        if (
+            typeof copy.text !== "string" ||
+            typeof copy.path !== "string" ||
+            !["plan", "work-record"].includes(copy.kind) ||
+            !copy.path.startsWith(copy.kind === "plan" ? "docs/plans/" : "docs/work-records/") ||
+            !copy.path.endsWith(".md") ||
+            copy.path.includes("\\") ||
+            copy.path
+                .split("/")
+                .some(
+                    (part) =>
+                        !part ||
+                        part === "." ||
+                        part === ".." ||
+                        [...part].some((character) => character.charCodeAt(0) < 32),
+                ) ||
+            paths.has(copy.path)
+        )
+            fail("unsafe_path", "Unsafe or duplicate delivery copy destination.");
+        if (decodePackageMarkdown(new TextEncoder().encode(copy.text)) !== copy.text)
+            fail("malformed_metadata", "Delivery copy is not valid UTF-8 Markdown.");
+        paths.add(copy.path);
+    }
+}
+
+async function validatePublicationManifest(
+    identity: ProjectIdentity,
+    manifest: PackagePublicationManifest,
+): Promise<void> {
+    fields(JSON.parse(JSON.stringify(manifest)), [
+        "version",
+        "projectId",
+        "personalOwner",
+        "repositoryId",
+        "planId",
+        "attemptId",
+        "inputId",
+        "validatedCommit",
+        "targetBranch",
+        "planCopies",
+        "members",
+        "copies",
+    ]);
+    if (
+        manifest.version !== 1 ||
+        manifest.projectId !== identity.projectId ||
+        manifest.personalOwner !== identity.personalOwner.identity ||
+        manifest.repositoryId !== identity.repositoryId ||
+        typeof manifest.planCopies !== "boolean" ||
+        typeof manifest.validatedCommit !== "string" ||
+        typeof manifest.targetBranch !== "string" ||
+        !manifest.attemptId ||
+        !Array.isArray(manifest.members)
+    )
+        fail("malformed_metadata", "Publication manifest does not belong to this owner and repository.");
+    assertDeliveryCopies(manifest.copies);
+    const ids = new Set<string>();
+    for (const member of manifest.members) {
+        fields(JSON.parse(JSON.stringify(member)), ["metadata", "input", "controller"]);
+        metadataFrom(member.metadata);
+        fields(JSON.parse(JSON.stringify(member.controller)), [...CONTROLLER_STATE_FIELDS]);
+        if (ids.has(member.metadata.planId) || member.input.planId !== member.metadata.planId)
+            fail("malformed_metadata", "Invalid publication family identity.");
+        ids.add(member.metadata.planId);
+        const retained = await readPlanPackageInput(identity, member.input);
+        for (const document of retained.documents) decodePackageMarkdown(document.bytes);
+        const copies = manifest.copies.filter((copy) => copy.kind === "plan");
+        if (
+            manifest.planCopies &&
+            member.metadata.planId === manifest.planId &&
+            (copies.length !== retained.documents.length ||
+                retained.documents.some(
+                    (doc) =>
+                        !copies.some(
+                            (copy) =>
+                                copy.path === `docs/plans/${member.metadata.name}/${doc.name}` &&
+                                copy.text === decodePackageMarkdown(doc.bytes),
+                        ),
+                ))
+        )
+            fail("malformed_metadata", "Plan copies do not match the retained documents.");
+    }
+    if (!ids.has(manifest.planId) || (!manifest.planCopies && manifest.copies.some((copy) => copy.kind === "plan")))
+        fail("malformed_metadata", "Publication input omits its Plan or violates copy policy.");
+}
+
+/** Persist immutable source bytes before exposing a reference to any workflow owner. */
+export async function retainPlanPackagePublication(
+    identity: ProjectIdentity,
+    input: Omit<PackagePublicationManifest, "version" | "inputId" | "projectId" | "personalOwner" | "repositoryId">,
+): Promise<PackagePublicationReference> {
+    const manifest: PackagePublicationManifest = {
+        ...input,
+        version: 1,
+        inputId: publicationInputId(identity, input.planId, input.attemptId, input.validatedCommit),
+        projectId: identity.projectId,
+        personalOwner: identity.personalOwner.identity,
+        repositoryId: identity.repositoryId,
+    };
+    const previous = await findPlanPackagePublication(identity, input.planId, input.attemptId, input.validatedCommit);
+    if (previous) return previous;
+    await validatePublicationManifest(identity, manifest);
+    const paths = layout(identity);
+    const root = join(paths.internal, "publications");
+    await directory(paths, root);
+    const text = JSON.stringify(manifest);
+    writeTextAtomically(join(root, `${manifest.inputId}.json`), text);
+    const reference: PackagePublicationReference = {
+        kind: "package",
+        projectId: manifest.projectId,
+        personalOwner: manifest.personalOwner,
+        repositoryId: manifest.repositoryId,
+        planId: manifest.planId,
+        attemptId: manifest.attemptId,
+        inputId: manifest.inputId,
+        digest: createHash("sha256").update(text).digest("hex"),
+    };
+    await readPlanPackagePublication(identity, reference);
+    return reference;
+}
+
+export async function readPlanPackagePublication(
+    identity: ProjectIdentity,
+    reference: PackagePublicationReference,
+): Promise<PackagePublicationManifest> {
+    assertPackagePublicationReference(reference);
+    if (
+        reference.projectId !== identity.projectId ||
+        reference.personalOwner !== identity.personalOwner.identity ||
+        reference.repositoryId !== identity.repositoryId
+    )
+        fail("malformed_metadata", "Publication reference belongs to another owner or repository.");
+    const paths = layout(identity);
+    const bytes = await file(paths.home, join(paths.internal, "publications", `${reference.inputId}.json`));
+    if (!bytes || createHash("sha256").update(bytes).digest("hex") !== reference.digest)
+        fail("malformed_metadata", "Retained publication input is missing or changed.");
+    const manifest: PackagePublicationManifest = JSON.parse(new TextDecoder().decode(bytes));
+    if (
+        manifest.planId !== reference.planId ||
+        manifest.attemptId !== reference.attemptId ||
+        manifest.inputId !== reference.inputId
+    )
+        fail("malformed_metadata", "Retained publication identity changed.");
+    await validatePublicationManifest(identity, manifest);
+    return manifest;
+}
+
+function publicationInputId(identity: ProjectIdentity, planId: string, attemptId: string, commit: string): string {
+    const digest = createHash("sha256")
+        .update(
+            JSON.stringify([
+                identity.projectId,
+                identity.personalOwner.identity,
+                identity.repositoryId,
+                planId,
+                attemptId,
+                commit,
+            ]),
+        )
+        .digest("hex");
+    return `${digest.slice(0, 8)}-${digest.slice(8, 12)}-${digest.slice(12, 16)}-${digest.slice(16, 20)}-${digest.slice(20, 32)}`;
+}
+/** Recover bytes made durable before the controller/registry acknowledged their reference. */
+export async function findPlanPackagePublication(
+    identity: ProjectIdentity,
+    planId: string,
+    attemptId: string,
+    commit: string,
+): Promise<PackagePublicationReference | null> {
+    const inputId = publicationInputId(identity, planId, attemptId, commit);
+    const paths = layout(identity);
+    const bytes = await file(paths.home, join(paths.internal, "publications", `${inputId}.json`));
+    if (!bytes) return null;
+    const reference: PackagePublicationReference = {
+        kind: "package",
+        projectId: identity.projectId,
+        personalOwner: identity.personalOwner.identity,
+        repositoryId: identity.repositoryId,
+        planId,
+        attemptId,
+        inputId,
+        digest: createHash("sha256").update(bytes).digest("hex"),
+    };
+    const manifest = await readPlanPackagePublication(identity, reference);
+    if (manifest.validatedCommit !== commit)
+        fail("malformed_metadata", "Retained candidate does not match publication.");
+    return reference;
+}
+
+export function samePackagePublicationReference(
+    left: PackagePublicationReference | undefined,
+    right: PackagePublicationReference,
+): boolean {
+    return Boolean(
+        left &&
+        left.kind === right.kind &&
+        left.projectId === right.projectId &&
+        left.personalOwner === right.personalOwner &&
+        left.repositoryId === right.repositoryId &&
+        left.planId === right.planId &&
+        left.attemptId === right.attemptId &&
+        left.inputId === right.inputId &&
+        left.digest === right.digest,
+    );
 }

@@ -1,3 +1,5 @@
+import { assertPackageCopyTargets, assertPackagePublicationCandidate } from "./workflow/package-publication.ts";
+import type { PackagePublicationReference } from "./plan-package-store.ts";
 import { resolvePublicationUpstream as resolveUpstream } from "./publication-target.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
@@ -38,6 +40,7 @@ interface CommandResult {
 }
 
 export interface IsolatedPublicationArgs {
+    packageInput?: PackagePublicationReference;
     projectRoot: string;
     executionCwd: string;
     executionBranch: string;
@@ -314,12 +317,20 @@ export async function publishExecutionWorktreeIsolated(
 ): Promise<IsolatedPublicationResult> {
     await enterProjectRuntime(args.projectRoot);
     args.onProgress?.("preparing");
-    await recoverSealedPlanFormatting(args);
+    if (!args.packageInput) await recoverSealedPlanFormatting(args);
     await assertPreMergeCandidateUnchanged({
         worktreePath: args.executionCwd,
         sealedExecutionCommit: args.sealedExecutionCommit,
         allowedPlanPaths: [],
     });
+    if (args.packageInput)
+        await assertPackagePublicationCandidate(
+            args.projectRoot,
+            args.executionCwd,
+            args.packageInput,
+            args.sealedExecutionCommit,
+            args.sealedExecutionCommit,
+        );
     const executionMetadataCommit = args.sealedExecutionCommit;
     args.onProgress?.("reading_target");
     const upstream = await resolveUpstream(args.projectRoot, args.targetBranch);
@@ -374,6 +385,13 @@ export async function publishExecutionWorktreeIsolated(
                     upstream.url,
                     `+refs/heads/${upstream.branch}:${publicationTargetRef}`,
                 ]);
+                if (args.packageInput)
+                    await assertPackageCopyTargets(
+                        args.projectRoot,
+                        publicationRoot,
+                        args.packageInput,
+                        targetHeadBeforeMerge,
+                    );
                 const containsRemoteHead = await runGitResult(publicationRoot, [
                     "merge-base",
                     "--is-ancestor",
@@ -445,14 +463,24 @@ export async function publishExecutionWorktreeIsolated(
             const deliveryCommit = await runGit(publicationRoot, ["rev-parse", "HEAD"]);
             await assertNoRuntimePathsInNewHistory(publicationRoot, publicationHistoryBase, deliveryCommit);
             preserveForRecovery = true;
-            const publicationCommit = await commitPublicationMetadata(
-                publicationRoot,
-                args.planName,
-                args.sealedExecutionCommit,
-                args.allowedPlanPaths,
-                upstream.branch,
-            );
+            const publicationCommit = args.packageInput
+                ? deliveryCommit
+                : await commitPublicationMetadata(
+                      publicationRoot,
+                      args.planName,
+                      args.sealedExecutionCommit,
+                      args.allowedPlanPaths,
+                      upstream.branch,
+                  );
             await assertNoRuntimePathsInNewHistory(publicationRoot, publicationHistoryBase, publicationCommit);
+            if (args.packageInput)
+                await assertPackagePublicationCandidate(
+                    args.projectRoot,
+                    publicationRoot,
+                    args.packageInput,
+                    args.sealedExecutionCommit,
+                    publicationCommit,
+                );
             await args.onIntegrated?.({
                 targetBaseCommit: targetHeadBeforeMerge,
                 integrationCommit: publicationCommit,
@@ -573,6 +601,8 @@ export async function publishExecutionWorktreeIsolated(
             }
         }
         const targetHeadBeforeMerge = expectedRemoteHead || sourceTargetHead;
+        if (args.packageInput)
+            await assertPackageCopyTargets(args.projectRoot, publicationRoot, args.packageInput, targetHeadBeforeMerge);
         const publicationHistoryBase = expectedRemoteHead ? targetHeadBeforeMerge : null;
         await runGit(publicationRoot, [
             "branch",
@@ -604,14 +634,24 @@ export async function publishExecutionWorktreeIsolated(
         const deliveryCommit = await runGit(publicationRoot, ["rev-parse", "HEAD"]);
         await assertNoRuntimePathsInNewHistory(publicationRoot, publicationHistoryBase, deliveryCommit);
         preserveForRecovery = true;
-        const publicationCommit = await commitPublicationMetadata(
-            publicationRoot,
-            args.planName,
-            args.sealedExecutionCommit,
-            args.allowedPlanPaths,
-            upstream.branch,
-        );
+        const publicationCommit = args.packageInput
+            ? deliveryCommit
+            : await commitPublicationMetadata(
+                  publicationRoot,
+                  args.planName,
+                  args.sealedExecutionCommit,
+                  args.allowedPlanPaths,
+                  upstream.branch,
+              );
         await assertNoRuntimePathsInNewHistory(publicationRoot, publicationHistoryBase, publicationCommit);
+        if (args.packageInput)
+            await assertPackagePublicationCandidate(
+                args.projectRoot,
+                publicationRoot,
+                args.packageInput,
+                args.sealedExecutionCommit,
+                publicationCommit,
+            );
         await args.onIntegrated?.({
             targetBaseCommit: targetHeadBeforeMerge,
             integrationCommit: publicationCommit,
@@ -670,8 +710,11 @@ async function publishToLocalTarget(
             { mergeFailureKind: "publication_target_changed" },
         );
     }
-    await recoverLocalPublicationLifecycle(args.projectRoot, args.targetBranch, args.sealedExecutionCommit);
+    if (!args.packageInput)
+        await recoverLocalPublicationLifecycle(args.projectRoot, args.targetBranch, args.sealedExecutionCommit);
     const targetHeadBeforeMerge = await runGit(args.projectRoot, ["rev-parse", `refs/heads/${args.targetBranch}`]);
+    if (args.packageInput)
+        await assertPackageCopyTargets(args.projectRoot, args.projectRoot, args.packageInput, targetHeadBeforeMerge);
     const primaryBranch = await runGit(args.projectRoot, ["branch", "--show-current"]);
     const updatedPrimaryCheckout = primaryBranch === args.targetBranch;
     const savedAuthoritativePlans = new Map<string, Uint8Array>();
@@ -681,7 +724,7 @@ async function publishToLocalTarget(
             const trackedChanges = (await runGitRaw(args.projectRoot, ["diff", "--name-only", "-z", "HEAD", "--"]))
                 .split("\0")
                 .filter((path) => path.length > 0);
-            const allowedPrimaryChanges = new Set(args.allowedPlanPaths);
+            const allowedPrimaryChanges = new Set(args.packageInput ? [] : args.allowedPlanPaths);
             const blockingTrackedChanges = trackedChanges.filter((path) => !allowedPrimaryChanges.has(path));
             if (blockingTrackedChanges.length > 0) {
                 throw new IsolatedPublicationError(
@@ -692,7 +735,7 @@ async function publishToLocalTarget(
                     { mergeFailureKind: "primary_checkout_dirty", blockingPaths: blockingTrackedChanges },
                 );
             }
-            for (const relativePath of args.allowedPlanPaths) {
+            for (const relativePath of args.packageInput ? [] : args.allowedPlanPaths) {
                 const staged = await runGitResult(args.projectRoot, [
                     "diff",
                     "--cached",
@@ -707,7 +750,7 @@ async function publishToLocalTarget(
                     );
                 }
             }
-            for (const relativePath of args.allowedPlanPaths) {
+            for (const relativePath of args.packageInput ? [] : args.allowedPlanPaths) {
                 const path = join(args.projectRoot, relativePath);
                 const bytes = await fsReadFile(path).catch((error) => {
                     if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
@@ -742,15 +785,25 @@ async function publishToLocalTarget(
             planDescription: args.planDescription,
         });
         args.onProgress?.("verifying");
-        const publicationCommit = await finalizeLocalPublicationLifecycle(
-            args.projectRoot,
-            args.targetBranch,
-            args.planName,
-            args.sealedExecutionCommit,
-            args.allowedPlanPaths,
-        );
+        const publicationCommit = args.packageInput
+            ? await runGit(args.projectRoot, ["rev-parse", `refs/heads/${args.targetBranch}`])
+            : await finalizeLocalPublicationLifecycle(
+                  args.projectRoot,
+                  args.targetBranch,
+                  args.planName,
+                  args.sealedExecutionCommit,
+                  args.allowedPlanPaths,
+              );
         await assertNoRuntimePathsInNewHistory(args.projectRoot, targetHeadBeforeMerge, publicationCommit);
         if (updatedPrimaryCheckout) await settleProjectContextPublication(args.projectRoot);
+        if (args.packageInput)
+            await assertPackagePublicationCandidate(
+                args.projectRoot,
+                args.projectRoot,
+                args.packageInput,
+                args.sealedExecutionCommit,
+                publicationCommit,
+            );
         await args.onIntegrated?.({
             targetBaseCommit: targetHeadBeforeMerge,
             integrationCommit: publicationCommit,

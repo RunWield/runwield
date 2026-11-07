@@ -82,7 +82,7 @@ test("package execution prepares an isolated code worktree without materializing
                         event: "validation_passed",
                         currentStatus: "in_progress",
                     }),
-                    /publication is pending/,
+                    /completion requires applicable publication evidence/,
                 );
             },
         );
@@ -277,24 +277,25 @@ test("package dispatch supplies frozen complete context and checkpoints real imp
                         }),
                         /changed/,
                     );
-                    const paused = await runValidationAttempt({
-                        projectRoot,
-                        planName: "one",
-                        runtime: {
-                            kind: "core",
-                            args: {
-                                planName: "one",
-                                hostedSession: session,
-                                planContent: "",
-                                triageMeta: {},
-                                git: createGitPort(),
-                                localCI: systemLocalCIPort,
-                                workRecordMnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
+                    await rejects(
+                        runValidationAttempt({
+                            projectRoot,
+                            planName: "one",
+                            runtime: {
+                                kind: "core",
+                                args: {
+                                    planName: "one",
+                                    hostedSession: session,
+                                    planContent: "",
+                                    triageMeta: {},
+                                    git: createGitPort(),
+                                    localCI: systemLocalCIPort,
+                                    workRecordMnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
+                                },
                             },
-                        },
-                    });
-                    equal(paused.kind, "paused");
-                    equal(paused.packageContinuation?.attemptId, result.executionContext!.worktreeId);
+                        }),
+                        /documents changed/,
+                    );
                     equal((await read(identity)).metadata.controller.verifiedAt, undefined);
                     await git(projectRoot, ["worktree", "remove", "--force", result.executionContext!.executionCwd!]);
                 },

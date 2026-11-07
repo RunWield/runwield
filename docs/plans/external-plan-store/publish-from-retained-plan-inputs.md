@@ -28,7 +28,7 @@ dependencies:
     - "external-plan-store/run-lifecycle-from-canonical-plans"
 targetBranch: "epic/external-plan-store"
 userVerifiedAt: null
-status: "in_progress"
+status: "implemented"
 ---
 
 # Publish from Retained Plan Inputs
