@@ -33,7 +33,7 @@ import { getWorktreeStatus, inspectExecutionWorktreeMergeRisk } from "../../../s
 import {
     autoGenerateWorkRecordForCompletedPlan,
     formatWorkRecordAutoGenerationResult,
-} from "../../../shared/work-records/auto-generation.js";
+} from "../../../shared/work-records/auto-generation.ts";
 import { executePlanAction, loadPlanActionEvidence } from "../../../shared/workflow/plan-actions.ts";
 import { PLAN_LIFECYCLE_ACTIONS } from "../constants.ts";
 

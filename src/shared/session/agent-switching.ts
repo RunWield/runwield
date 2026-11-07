@@ -3,7 +3,7 @@
  * Adapter-neutral active Agent switch transaction.
  */
 
-import { createAgentHandler } from "./agent-handler.js";
+import { createAgentHandler } from "./agent-handler.ts";
 import { readPersistedActiveAgentName, readPersistedManualModelState } from "./active-agent-session.ts";
 import { getAgentBusyLines, normalizeAgentInternalName } from "./agents.js";
 import {

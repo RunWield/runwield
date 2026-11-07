@@ -25,7 +25,7 @@ import {
 import type { WorkRecordMnemotecaPort } from "../../shared/work-records/mnemoteca-port.ts";
 import { NO_OPEN_BROWSER_PORT, SYSTEM_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { startArtifactReadSurface } from "../../ui/review/review-launcher.ts";
-import { printCommandHelp } from "../help/index.js";
+import { printCommandHelp } from "../help/index.ts";
 import {
     resolveWorkRecordSupersessionProposals,
     type WorkRecordSupersessionDecision,

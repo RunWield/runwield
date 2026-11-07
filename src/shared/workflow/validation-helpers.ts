@@ -41,7 +41,7 @@ import {
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { recordWorkflowMetric } from "./metrics.js";
 
-import { autoGenerateWorkRecordForCompletedPlan } from "../work-records/auto-generation.js";
+import { autoGenerateWorkRecordForCompletedPlan } from "../work-records/auto-generation.ts";
 import type { WorkRecordMnemotecaPort } from "../work-records/mnemoteca-port.ts";
 import {
     confirmWorkRecordSupersessionProposal,

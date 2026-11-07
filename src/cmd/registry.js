@@ -645,7 +645,7 @@ export const commandRegistry = {
             `${bin("<command> --help")}`,
         ],
         notes: [],
-        execute: async (argv, options) => await (await import("./help/index.js")).runHelpCommand(argv, options),
+        execute: async (argv, options) => await (await import("./help/index.ts")).runHelpCommand(argv, options),
         surfaces: ["cli", "slash"],
         slashSurfaces: ["tui", "acp", "workspace"],
     },
