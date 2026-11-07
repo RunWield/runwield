@@ -27,7 +27,7 @@ order: 1
 dependencies: []
 targetBranch: "epic/local-workspace-desktop"
 userVerifiedAt: null
-status: "implemented"
+status: "reviewed"
 ---
 
 # Run a Real Session in Electron
