@@ -645,7 +645,7 @@ export function sessionInteractionChoiceResponse(requestType, request, choice) {
     const choiceValue = text(choiceRecord.value || choiceLabel);
     if (requestType === RuntimeInteractionTypes.APPROVAL) {
         const accepted = isApprovalAcceptedValue(
-            /** @type {import("../../../shared/session/session-runtime-interactions.ts").RuntimeInteractionRequest} */
+            /** @type {import("../../../shared/session/interaction-values.ts").ApprovalValueRequest} */
             (request),
             choiceValue,
         );
@@ -835,6 +835,15 @@ function SessionActivityGroup({ item }) {
     );
 }
 
+/**
+ * @typedef {Object} SessionTimelineProps
+ * @property {Array<Record<string, any>>} [items]
+ * @property {Array<Record<string, any>>} [events]
+ * @property {string} [emptyMessage]
+ * @property {string} [sessionPath]
+ * @property {(report: import("../../../shared/workflow/delivery-report-view.ts").DeliveryReport) => Promise<string>} [onRetryWorkRecord]
+ */
+/** @param {SessionTimelineProps} props */
 export function SessionTimeline({ items, events, emptyMessage = "", sessionPath = "", onRetryWorkRecord }) {
     const timelineItems = items || reduceSessionEvents(events || []);
     if (!timelineItems.length) {

@@ -2,6 +2,8 @@
  * @module shared/session/file-session-store-types
  * Domain contracts for file-authoritative Session storage.
  */
+import type { SessionArtifactKind } from "./session-artifact-types.ts";
+export type { SessionArtifactKind } from "./session-artifact-types.ts";
 
 export interface SessionTranscriptSegment {
     segmentId: string;
@@ -36,8 +38,6 @@ export interface SessionSegmentLineageEvidence {
 }
 export type SessionPhase = "bootstrap" | "preparing" | "hydrated" | "turning" | "checkpointing";
 export type ProcessKind = "workspace" | "tui" | "acp" | "test";
-
-export type SessionArtifactKind = "plan" | "prd" | "adr" | "work-record" | "epic-artifact" | "report";
 
 export interface SessionArtifactReference {
     artifactId: string;

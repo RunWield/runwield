@@ -20,7 +20,19 @@ interface TestResult {
 
 async function isolatedEnvironment(home: string): Promise<Record<string, string>> {
     const childEnv: Record<string, string> = {};
-    for (const key of ["PATH", "SystemRoot", "WINDIR", "COMSPEC", "PATHEXT", "LANG", "LC_ALL", "TERM", "TZ"]) {
+    for (const key of [
+        "PATH",
+        "SystemRoot",
+        "WINDIR",
+        "COMSPEC",
+        "PATHEXT",
+        "LANG",
+        "LC_ALL",
+        "TERM",
+        "TZ",
+        "DISPLAY",
+        "XAUTHORITY",
+    ]) {
         const value = env[key];
         if (value) childEnv[key] = value;
     }

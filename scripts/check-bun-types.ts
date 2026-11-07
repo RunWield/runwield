@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { dirname, resolve } from "node:path";
+import { dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import process from "node:process";
 import { requirePinnedBun } from "./check-bun-runtime.ts";
@@ -10,7 +10,11 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const configPath = resolve(root, "tsconfig.bun.json");
 const loaded = ts.readConfigFile(configPath, ts.sys.readFile);
 const config = ts.parseJsonConfigFileContent(loaded.config, ts.sys, root);
-const rootNames = [...new Set([...config.fileNames, ...(await walkSourceFiles()).map((file) => resolve(root, file))])];
+// Native host and renderer use desktop:check without Bun ambient types. Tests retain the isolated Bun gate.
+const desktop = resolve(root, "src/ui/desktop") + sep;
+const rootNames = [
+    ...new Set([...config.fileNames, ...(await walkSourceFiles()).map((file) => resolve(root, file))]),
+].filter((file) => !file.startsWith(desktop) || file.endsWith(".test.ts") || file.includes(`${sep}testing${sep}`));
 const program = ts.createProgram({ rootNames, options: config.options });
 const diagnostics = [...(loaded.error ? [loaded.error] : []), ...config.errors, ...ts.getPreEmitDiagnostics(program)];
 if (diagnostics.length) {

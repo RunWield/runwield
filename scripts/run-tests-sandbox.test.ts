@@ -45,3 +45,45 @@ for (const installed of [true, false]) {
         });
     });
 }
+
+test("isolated runner forwards display access without private environment or sandbox overrides", async () => {
+    const { captureScriptProcess } = await import("./script-process.ts");
+    const root = await mkdtemp(join(tmpdir(), "runner-display-"));
+    try {
+        const file = join(root, "display.test.ts");
+        await writeFile(
+            file,
+            `
+            import { test } from "node:test";
+            import { equal, notEqual } from "node:assert/strict";
+            import { join } from "node:path";
+            test("display access and private state", () => {
+                equal(process.env.DISPLAY, ":93");
+                equal(process.env.XAUTHORITY, "/tmp/runner-display-auth");
+                for (const key of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "ELECTRON_DISABLE_SANDBOX"])
+                    equal(process.env[key], undefined);
+                notEqual(process.env.HOME, ${JSON.stringify(process.env.HOME)});
+                equal(process.env.HOME, process.env.WLD_TEST_SANDBOX_HOME);
+                equal(process.env.MNEMOTECA_DB_PATH, join(process.env.HOME, "mnemoteca-test.db"));
+                notEqual(process.env.MNEMOTECA_DB_PATH, "/private/owner.db");
+            });
+        `,
+        );
+        const result = await captureScriptProcess(process.execPath, {
+            args: ["scripts/run-tests.js", file, "--report-dir", join(root, "reports")],
+            env: {
+                DISPLAY: ":93",
+                XAUTHORITY: "/tmp/runner-display-auth",
+                OPENAI_API_KEY: "private",
+                ANTHROPIC_API_KEY: "private",
+                ELECTRON_DISABLE_SANDBOX: "1",
+                MNEMOTECA_DB_PATH: "/private/owner.db",
+            },
+            stdout: "piped",
+            stderr: "piped",
+        });
+        equal(result.code, 0, new TextDecoder().decode(result.stdout) + new TextDecoder().decode(result.stderr));
+    } finally {
+        await rm(root, { recursive: true, force: true });
+    }
+});

@@ -11,6 +11,8 @@ export const PRE_TEST_TASKS = [
     "snip:check",
     "check",
     "workspace:check",
+    "desktop:check",
+    "desktop:build",
     "lint",
     "language-policy:check",
     "seams:check",
@@ -22,7 +24,7 @@ export const PRE_TEST_TASKS = [
     "workspace:build",
 ] as const;
 
-export type CiTaskName = (typeof PRE_TEST_TASKS)[number] | "test:suite" | "test:all:suite";
+export type CiTaskName = (typeof PRE_TEST_TASKS)[number] | "desktop:setup" | "test:suite" | "test:all:suite";
 
 export interface CiTaskResult {
     name: CiTaskName;
@@ -78,6 +80,12 @@ export async function runCi(executeTask: ExecuteCiTask, options: CiOptions = {})
               })
             : null;
     try {
+        // Provision the binary before build and checks start in parallel.
+        const setup = await settleTask("desktop:setup", executeTask);
+        if (setup.code !== 0) {
+            printFailureSummary([setup]);
+            return { exitCode: 1, failures: [setup] };
+        }
         const preTestRuns = PRE_TEST_TASKS.map((taskName) => settleTask(taskName, executeTask));
         const preTestResults = await Promise.all(preTestRuns);
         const preTestFailures = failedTasks(preTestResults);

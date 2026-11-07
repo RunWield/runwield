@@ -81,7 +81,7 @@ Stage labels below are delivery scope, not new lifecycle states or claims of shi
 
 - [ACP Session access](#acp-session-access)
 - [Protocol negotiation and interactions](#protocol-negotiation-and-interactions)
-- [Workspace client access](#workspace-client-access) — target; local desktop and browser separation
+- [Workspace client access](#workspace-client-access) — development desktop Session slice; full workbench target
 - [Chat workflow access](#telegram-workflow-access)
 - [Interrupted-work recovery](#interrupted-work-recovery)
 - [Reference-client portability](#reference-client-portability)
@@ -311,17 +311,24 @@ requirement.
 
 ### Workspace client access
 
-**Scope and maturity:** Target, not implemented. Workspace currently constructs a runtime in its server. The owner
-requires first-party Workspace clients to control a separate `wld` process through ACP plus extensions, with local
-desktop first and network-runtime access later. See
-[Desktop Workspace](runwield-workspace-prd.md#desktop-workspace) and
-[proposed ADR-020](../adr/020-electron-workspace-acp-client.md).
+**Scope and maturity:** The source-development desktop Session client controls a separate source `wld acp` subprocess
+through a persistent SDK 1.4.0 / ACP v1 connection. Create, known-ID load, text prompts, streamed updates, form
+elicitation, Stop, and close are implemented for one launch-bound Project. Discovery and full-workbench parity remain
+targets; no Workspace extension is added by this slice. See
+[Desktop Workspace](runwield-workspace-prd.md#desktop-workspace), accepted
+[ADR-020](../adr/020-electron-workspace-acp-client.md), and the
+[protocol baseline and capability inventory](../desktop-workbench-contract.md).
+
+Shared UI serves desktop now and future hosted SaaS. The old local browser workbench still constructs its runtime in
+its server and remains supported during this child; it will not be migrated to ACP. Standalone question, review, and
+document hosts and Plan sharing survive the later cutover. Remote access and hosted identity remain future scope.
 
 **Requirement: Carry the full workbench through the runtime contract.** A Workspace client can discover admitted
 Projects and saved Sessions, read bounded history and current observations, converse, configure supported choices,
 answer interactions, and perform revision-checked artifact/review/workflow operations without hosting Core execution
 or writing canonical lifecycle state itself. Existing Core services own validation, access checks, request receipts,
-writer exclusion, persistence, and recovery. Browser and desktop use the same protocol semantics.
+writer exclusion, persistence, and recovery. Desktop and future hosted SaaS share UI; this does not select the hosted
+transport or identity architecture.
 
 **Requirement: Prefer standard ACP and negotiate the remainder.** Use standard capabilities where they cover an
 operation, including Session discovery when supported by the selected baseline. Remaining workbench features are
@@ -340,10 +347,20 @@ transport, authentication, and disconnect semantics are separately specified bef
 
 **Acceptance scenarios:**
 
-- A desktop and a browser client complete the same Session and Plan review through real ACP connections; their hosts
-  do not construct `SessionRuntime` or mutate canonical workflow state outside the runtime contract.
-- A client discovers persisted Sessions, reads bounded history, and continues one also visible in an idle TUI; history
-  and current settings agree with Core's committed state.
+- **Current development slice:** A native desktop client streams a real source-runtime turn, returns an exact choice
+  and optional Other text through the pending form request, stops a held stream or question, then accepts another turn.
+  Main launches the checkout runtime, not a global CLI; neither main nor shared UI constructs `SessionRuntime`.
+- **Current development slice:** Close and reopen the process, load a known ID, and continue the same committed history.
+  Replay arriving before the load response is retained once. Connection loss shows interruption and does not replay input.
+- **Current development slice:** Stop or Close during a pending non-turn command form cancels its client request and
+  settles the command before availability is reported. This does not expand request-context cancellation semantics.
+- **Current development slice:** Incompatible peers fail before dependent new/load/prompt mutations; unsupported forms
+  fail visibly. These checks do not establish full ACP conformance. Scoped evidence is in the
+  [engineering contract](../desktop-workbench-contract.md#acceptance-evidence).
+- **Full-workbench target:** A desktop client completes Session and integrated Plan review through the runtime contract
+  without hosting Core execution or mutating canonical workflow state itself.
+- **Full-workbench target:** A client discovers persisted Sessions, reads bounded history, and continues one also
+  visible in an idle TUI; history and current settings agree with Core's committed state.
 - An older runtime lacks a required workbench capability; the client explains incompatibility and sends no dependent
   mutation. An ordinary external ACP client continues working without the extension.
 - A duplicate action, stale revision, or wrong-Project Session reference receives the same authoritative rejection or
@@ -538,7 +555,7 @@ Discord and other OpenAB-supported chats are already supported. Separate future 
 - Media and attachment parity beyond what the validated ACP prompt path supports.
 - Transparent replay of an interrupted model request, command, or tool side effect.
 - Full ACP v1 compliance or stdio MCP server support before Stage 2.
-- Workspace UI session-adapter work.
+- Full Workspace workbench protocol parity beyond the development Session slice.
 
 <a id="9-risks-and-guardrails"></a>
 
