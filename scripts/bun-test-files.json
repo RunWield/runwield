@@ -480,7 +480,7 @@
     "src/shared/session/session-projected-usage.test.ts",
     "src/shared/session/session-prompt.test.js",
     "src/shared/session/session-provider-replay.test.ts",
-    "src/shared/session/session-provider-retry.test.js",
+    "src/shared/session/session-provider-retry.test.ts",
     "src/shared/session/session-replay.test.ts",
     "src/shared/session/session-resume-list.test.ts",
     "src/shared/session/session-runtime-events.test.ts",
