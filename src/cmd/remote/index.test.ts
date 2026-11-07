@@ -488,7 +488,7 @@ test("source remote help works without a generated identity and connection expla
             "src/shared/socket-listener.ts",
             "src/shared/stdin-stream.ts",
             "src/shared/jsonc.ts",
-            "src/shared/remote/runtime.js",
+            "src/shared/remote/runtime.ts",
             "src/shared/remote/target.ts",
             "src/shared/remote/host-prerequisites.ts",
             "src/shared/remote/control.ts",

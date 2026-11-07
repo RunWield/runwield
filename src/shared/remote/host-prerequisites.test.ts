@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { assertRemoteHostReady, assertRemoteMountPrerequisites, parseOsRelease } from "./host-prerequisites.ts";
-import { linuxTarget } from "./runtime.js";
+import { linuxTarget } from "./runtime.ts";
 
 const ready = { os: "Linux", arch: "x86_64", sshfs: true, fusermount3: true, fuseDevice: true };
 

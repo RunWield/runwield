@@ -19,14 +19,14 @@ import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { pathToFileURL as toFileUrl } from "node:url";
 import { sha256Bytes } from "../../../scripts/build-metadata.ts";
-import { linuxTarget } from "./runtime.js";
+import { linuxTarget, type RuntimePreparation } from "./runtime.ts";
 
 const BUILD_ID = "a".repeat(64);
 const PROTOCOL = 1;
 
 import type { ArtifactMetadata } from "../../../scripts/build-metadata.ts";
 
-type RuntimeModule = typeof import("./runtime.js");
+type RuntimeModule = typeof import("./runtime.ts");
 interface RuntimeFixture {
     root: string;
     ssh: string;
@@ -34,12 +34,9 @@ interface RuntimeFixture {
     module: RuntimeModule;
     metadata: ArtifactMetadata;
 }
-interface RuntimeTransferHeader extends ArtifactMetadata {
-    size: number;
-}
 interface SshRequestLog {
     args: string[];
-    header: RuntimeTransferHeader;
+    header: RuntimePreparation;
 }
 
 async function fixture(fn: (fixture: RuntimeFixture) => Promise<void>) {
@@ -50,7 +47,7 @@ async function fixture(fn: (fixture: RuntimeFixture) => Promise<void>) {
         await fsMkdir(remote, { recursive: true });
         await fsMkdir(join(root, "scripts"));
         for (const [source, destination] of [
-            ["src/shared/remote/runtime.js", join(remote, "runtime.js")],
+            ["src/shared/remote/runtime.ts", join(remote, "runtime.ts")],
             ["src/shared/remote/target.ts", join(remote, "target.ts")],
             ["src/shared/remote/host-prerequisites.ts", join(remote, "host-prerequisites.ts")],
         ])
@@ -70,7 +67,7 @@ async function fixture(fn: (fixture: RuntimeFixture) => Promise<void>) {
             `export const BUILD_ID = '${BUILD_ID}'; export const REMOTE_PROTOCOL_VERSION = ${PROTOCOL};`,
         );
         await fsWriteFile(join(shared, "version.js"), 'export const VERSION = "test-build";');
-        const module: RuntimeModule = await import(toFileUrl(join(remote, "runtime.js")).href);
+        const module: RuntimeModule = await import(toFileUrl(join(remote, "runtime.ts")).href);
         const ssh = join(root, "ssh");
         await fsWriteFile(
             ssh,

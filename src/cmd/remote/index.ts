@@ -7,7 +7,7 @@ import { readFile as fsReadFile, rm as fsRm, stat as fsStat } from "node:fs/prom
 /* CLI-only remote connection. SSH supplies authentication, host verification and
  * terminal transport. Saved remote Sessions remain on the laptop. */
 import { dirname, join } from "node:path";
-import { linuxTarget, prepareRemoteRuntime, verifyRemoteRuntimeArtifact } from "../../shared/remote/runtime.js";
+import { linuxTarget, prepareRemoteRuntime, verifyRemoteRuntimeArtifact } from "../../shared/remote/runtime.ts";
 import { fixedPythonCommand, resolveRemoteTarget } from "../../shared/remote/target.ts";
 import { assertRemoteHostReady } from "../../shared/remote/host-prerequisites.ts";
 import { type MountHeader, startLaptopSftp } from "../../shared/remote/sftp-mount.ts";
