@@ -61,7 +61,7 @@ import { healSettledTransitionRecords } from "../../shared/workflow/transition-r
 import { isExecutablePlanStatus, isInValidation } from "../../shared/workflow/plan-lifecycle.ts";
 import { getPlanContentStatus } from "../../shared/workflow/validation-engine.ts";
 import { loadPlanActionEvidence } from "../../shared/workflow/plan-actions.ts";
-import { printCommandHelp } from "../help/index.js";
+import { printCommandHelp } from "../help/index.ts";
 import { startInteractiveSession } from "../../ui/tui/chat-session.ts";
 import { SYSTEM_BROWSER_PORT } from "../../shared/browser-port.ts";
 import {

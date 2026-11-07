@@ -15,7 +15,7 @@ import { resolveWorkRecordSupersessionProposalsWithUi } from "../../shared/workf
 import {
     autoGenerateWorkRecordForCompletedPlan,
     formatWorkRecordAutoGenerationResult,
-} from "../../shared/work-records/auto-generation.js";
+} from "../../shared/work-records/auto-generation.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../../shared/work-records/mnemoteca-port.ts";
 import {
     discardWorktreeGitArtifacts,

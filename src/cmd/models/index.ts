@@ -14,7 +14,7 @@ import {
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { getCwd } from "../../constants.js";
 import { COMMAND_NAMES } from "../registry.js";
-import { formatCommandHelp, printCommandHelp } from "../help/index.js";
+import { formatCommandHelp, printCommandHelp } from "../help/index.ts";
 export { getModelCompletions } from "./getArgumentCompletions.ts";
 
 interface ModelSelectItem {

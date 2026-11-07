@@ -162,7 +162,7 @@ async function main(): Promise<void> {
 
     const { COMMAND_NAMES, commandRegistry, getCommandDefinition, hasCommandSurface, requiresProjectDirectoryConsent } =
         await import("./cmd/registry.js");
-    const { printCommandHelp, printGlobalHelp } = await import("./cmd/help/index.js");
+    const { printCommandHelp, printGlobalHelp } = await import("./cmd/help/index.ts");
 
     const helpRequest = resolveHelpRequest(args, COMMAND_NAMES);
     if (helpRequest.requested) {

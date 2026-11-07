@@ -1,6 +1,5 @@
 [
     "src/acp/server.js",
-    "src/cmd/help/index.js",
     "src/cmd/registry.js",
     "src/constants.js",
     "src/plan-store.js",
@@ -8,7 +7,6 @@
     "src/shared/owner-coordination/session-activations.js",
     "src/shared/owner-coordination/sessions.js",
     "src/shared/remote/runtime.js",
-    "src/shared/session/agent-handler.js",
     "src/shared/session/agents.js",
     "src/shared/session/hosted-session.js",
     "src/shared/session/root-session.js",
@@ -19,7 +17,6 @@
     "src/shared/session/types.js",
     "src/shared/settings.js",
     "src/shared/types.js",
-    "src/shared/work-records/auto-generation.js",
     "src/shared/work-records/generation.js",
     "src/shared/workflow/metrics.js",
     "src/shared/workflow/validation-test-helpers.js",

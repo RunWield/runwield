@@ -647,7 +647,7 @@ async function dispatchAcpBuiltinCommand(options) {
                 : null;
             await helpTracker?.recordStart();
             await helpTracker?.recordDispatched();
-            const { formatCommandHelp } = await import("../cmd/help/index.js");
+            const { formatCommandHelp } = await import("../cmd/help/index.ts");
             sendMessage(formatCommandHelp(definition.name) || `No help is available for /${definition.name}.`);
             await helpTracker?.recordFinish({ outcome: "succeeded" });
             return;

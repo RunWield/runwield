@@ -17,7 +17,7 @@ import {
     setCustomSetting,
 } from "../../shared/settings.js";
 import { theme } from "../../ui/theme/theme.ts";
-import { printCommandHelp } from "../help/index.js";
+import { printCommandHelp } from "../help/index.ts";
 import { editPolicySetting, getPolicySettings } from "./policies.ts";
 
 interface CompactionSettings {
