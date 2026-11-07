@@ -136,7 +136,7 @@ test("original compound task names preserve argument boundaries and prerequisite
             args: ["--mode", "test mode"],
             last: {
                 path: "node_modules/astro/bin/astro.mjs",
-                args: ["build", "--config", "src/ui/workspace/astro.config.mjs", "--mode", "test mode"],
+                args: ["build", "--config", "src/ui/workspace/astro.config.ts", "--mode", "test mode"],
             },
         },
         {
