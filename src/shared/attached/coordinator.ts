@@ -49,7 +49,7 @@ import { runWieldGitignoreNeedsUpdate } from "../runwield-owned-paths.ts";
 import { VERSION } from "../version.js";
 import { recordPlanEvent } from "../workflow/plan-lifecycle.ts";
 import { withOrderedTransitionResources } from "../workflow/state-transition.ts";
-import { isAnsweredPlanReview } from "../workflow/plan-review-recovery.js";
+import { isAnsweredPlanReview } from "../workflow/plan-review-recovery.ts";
 import { applySharedPlanReviewDecision } from "../workflow/plan-review-actions.ts";
 import { loadReviewFeedbackImagePaths } from "../workflow/review-feedback-images.ts";
 import { type ReviewDecision } from "../../ui/workspace/routes/api/review-handlers.ts";

@@ -22,7 +22,7 @@ import {
     appendSessionCompleteGuidance,
     requestRecoverablePlanReview,
     SESSION_COMPLETE_GUIDANCE,
-} from "../../shared/workflow/plan-review-recovery.js";
+} from "../../shared/workflow/plan-review-recovery.ts";
 import { RuntimeInteractionOutcomes } from "../../shared/session/session-runtime-interactions.ts";
 import type { UiAPI } from "../../ui/tui/types.js";
 import { buildReReviewRevisionRequest } from "./plan-presentation.ts";

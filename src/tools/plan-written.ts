@@ -52,7 +52,7 @@ import {
     requestPlanReviewRetryConfirmation,
     requestRecoverablePlanReview,
     SESSION_COMPLETE_GUIDANCE,
-} from "../shared/workflow/plan-review-recovery.js";
+} from "../shared/workflow/plan-review-recovery.ts";
 import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
 import type { HostedSession } from "../shared/session/hosted-session.js";
 import type { PlanFrontMatter } from "../plan-store.js";
