@@ -14,8 +14,55 @@ import { savePlan } from "../../plan-store.js";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { createOwnerWorkspaceApp, startWorkspaceServer } from "./server.js";
 
-/** @param {string} credential @param {string} [csrf] */
-function cookiePair(credential, csrf = "csrf-secret") {
+type OwnerStore = ReturnType<typeof openOwnerCoordinationStore>;
+type RegisterProjectInput = Parameters<OwnerStore["registerProject"]>[0];
+type RelinkProjectInput = Parameters<OwnerStore["relinkProject"]>[0];
+
+interface OwnerProjectMutation
+    extends
+        Partial<Pick<RegisterProjectInput, "root" | "directoryConfirmation">>,
+        Partial<Pick<RelinkProjectInput, "newRoot">> {
+    action?: string;
+}
+
+interface OwnerPairingResponse {
+    state: string;
+    code: string;
+}
+
+interface OwnerBoardResponse {
+    readOnly: boolean;
+}
+
+interface OwnerPlanCapabilities {
+    bodyEditing: boolean;
+}
+
+interface OwnerPlanSummary {
+    planId: string;
+    capabilities: OwnerPlanCapabilities;
+    actions: Record<string, never>;
+}
+
+interface OwnerPlanResponse extends OwnerBoardResponse {
+    plan: OwnerPlanSummary;
+}
+
+interface OwnerProgressResponse extends OwnerBoardResponse {
+    plan: Pick<OwnerPlanSummary, "planId">;
+}
+
+interface OwnerFileResponse {
+    filepath: string;
+    contents: string;
+}
+
+interface OwnerDirectoryConfirmationResponse {
+    code: string;
+    confirmation: NonNullable<RegisterProjectInput["directoryConfirmation"]>;
+}
+
+function cookiePair(credential: string, csrf = "csrf-secret") {
     return `rw_owner_device=${encodeURIComponent(credential)}; rw_owner_csrf=${encodeURIComponent(csrf)}`;
 }
 
@@ -71,7 +118,7 @@ test("owner Workspace redirects unpaired browsers and serves pairing code bootst
         );
         assertEquals(request.status, 201);
         assertStringIncludes(request.headers.get("set-cookie") || "", "rw_pairing_proof=");
-        const body = await request.json();
+        const body: OwnerPairingResponse = await request.json();
         assertEquals(body.state, "pending");
         assertEquals(/^[A-Z2-9]{6}$/.test(body.code), true);
 
@@ -120,7 +167,7 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
         status: "on_hold",
     });
     const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
-    let appObject;
+    let appObject: ReturnType<typeof createOwnerWorkspaceApp> | undefined;
     try {
         const pairing = store.createPairingRequest({
             codeFactory: () => "OWN123",
@@ -134,13 +181,11 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
         const project = store.registerProject({ root: projectRoot, displayName: "Owner Project" });
         store.registerProject({ root: otherProjectRoot, displayName: "Other Project" });
         let closedConnections = 0;
-        appObject = /** @type {any} */ (
-            createOwnerWorkspaceApp({
-                mode: "owner",
-                publicOrigin: "http://127.0.0.1:8787",
-                store,
-            })
-        );
+        appObject = createOwnerWorkspaceApp({
+            mode: "owner",
+            publicOrigin: "http://127.0.0.1:8787",
+            store,
+        });
         appObject.ownerConnections.register(claimed.deviceId, { close: () => (closedConnections += 1) });
         const app = appObject.handler();
 
@@ -202,7 +247,7 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
             }),
         );
         assertEquals(boardApi.status, 200);
-        const boardJson = await boardApi.json();
+        const boardJson: OwnerBoardResponse = await boardApi.json();
         assertEquals(boardJson.readOnly, true);
         const boardText = JSON.stringify(boardJson);
         assertStringIncludes(boardText, "Visible owner plan");
@@ -242,7 +287,7 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
             }),
         );
         assertEquals(detailApi.status, 200);
-        const detailJson = await detailApi.json();
+        const detailJson: OwnerPlanResponse = await detailApi.json();
         assertEquals(detailJson.plan.capabilities.bodyEditing, false);
         assertEquals(detailJson.plan.actions, {});
         const detailText = JSON.stringify(detailJson);
@@ -256,7 +301,7 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
             ),
         );
         assertEquals(referencedFile.status, 200);
-        const referencedFileJson = await referencedFile.json();
+        const referencedFileJson: OwnerFileResponse = await referencedFile.json();
         assertEquals(referencedFileJson.filepath, "src/referenced.ts");
         assertEquals(referencedFileJson.contents, "export const referenced = true;\n");
 
@@ -535,7 +580,7 @@ test("owner Workspace keeps read-only Project Plan progress API and removes prog
             ),
         );
         assertEquals(api.status, 200);
-        const json = await api.json();
+        const json: OwnerProgressResponse = await api.json();
         assertEquals(json.readOnly, true);
         assertEquals(json.plan.planId, "progress-plan-id");
         assertEquals(JSON.stringify(json).includes(projectRoot), false);
@@ -565,7 +610,7 @@ test("owner add and relink expose redacted confirmation before writes and keep a
     });
     const owner = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: "http://127.0.0.1:8787", store });
     const app = owner.handler();
-    const request = (path, body, authenticated = true) =>
+    const request = (path: string, body: OwnerProjectMutation, authenticated = true) =>
         app(
             new Request(`http://127.0.0.1:8787${path}`, {
                 method: "POST",
@@ -585,7 +630,7 @@ test("owner add and relink expose redacted confirmation before writes and keep a
         assertEquals(unauthenticated.status, 401);
         const refusal = await request("/api/owner/projects", { root });
         assertEquals(refusal.status, 409);
-        const warning = await refusal.json();
+        const warning: OwnerDirectoryConfirmationResponse = await refusal.json();
         assertEquals(warning.code, "directory_confirmation_required");
         assertEquals(JSON.stringify(warning).includes(root), false);
         assertEquals(store.listProjects(), []);
@@ -595,7 +640,9 @@ test("owner add and relink expose redacted confirmation before writes and keep a
             (await request("/api/owner/projects", { root: alias, directoryConfirmation: warning.confirmation })).status,
             409,
         );
-        const aliasWarning = await (await request("/api/owner/projects", { root: alias })).json();
+        const aliasWarning: OwnerDirectoryConfirmationResponse = await (
+            await request("/api/owner/projects", { root: alias })
+        ).json();
         await fsRm(alias);
         await fsSymlink("/", alias);
         assertEquals(
