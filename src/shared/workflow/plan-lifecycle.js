@@ -1166,7 +1166,7 @@ export async function recordPlanEvent({
                     .map((child) => ({
                         kind: /** @type {const} */ ("plan"),
                         id: child.name,
-                        root: getPlanDocumentRoot(child.path),
+                        root: currentPackageSelection() ? cwd : getPlanDocumentRoot(child.path),
                     })),
             ];
             const transition = await runPlanLifecycleEventTransition({
@@ -1216,7 +1216,10 @@ export async function recordPlanEvent({
                                 if (child.path.includes(":docs/plans/")) {
                                     return { name: child.name, revision: undefined, attrs: child.attrs };
                                 }
-                                const lockedChild = await loadPlan(getPlanDocumentRoot(child.path), child.name);
+                                const lockedChild = await loadPlan(
+                                    currentPackageSelection() ? cwd : getPlanDocumentRoot(child.path),
+                                    child.name,
+                                );
                                 if (!lockedChild) throw new Error(`Child Plan disappeared: ${child.name}`);
                                 return { name: child.name, revision: lockedChild.revision, attrs: lockedChild.attrs };
                             }),

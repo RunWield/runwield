@@ -37,40 +37,46 @@ test("corrupt retained input refuses publication, then exact restoration resumes
     }
 });
 
-test("changed code retires unpublished copies, revalidates and publishes one copies commit", async () => {
-    const { preparePublicationRevalidation } = await import("./publication-revalidation.ts");
-    const { recordPlanEvent } = await import("./plan-lifecycle.js");
-    const f = await publicationFixture(true);
-    try {
-        equal((await f.drive("artifact_receipt")).code, 86);
-        await fs.writeFile(join(f.workflow.executionCwd!, "code.txt"), "revised code\n");
-        await f.scope(async () => {
-            ok(await preparePublicationRevalidation(f.root, "one"));
-            equal((await read(f.identity)).metadata.definition.status, "implemented");
-            await recordPlanEvent({
-                cwd: f.root,
-                planName: "one",
-                event: "mechanical_validation_passed",
-                currentStatus: "implemented",
+for (const interrupted of [false, true]) {
+    test(`changed code retires unpublished copies with interrupted receipt ${interrupted}`, async () => {
+        const { preparePublicationRevalidation } = await import("./publication-revalidation.ts");
+        const { recordPlanEvent } = await import("./plan-lifecycle.js");
+        const f = await publicationFixture(true);
+        try {
+            equal((await f.drive(interrupted ? "artifact_effect" : "artifact_receipt")).code, 86);
+            await fs.writeFile(join(f.workflow.executionCwd!, "code.txt"), "revised code\n");
+            if (interrupted) {
+                await git(f.workflow.executionCwd!, ["add", "code.txt"]);
+                await git(f.workflow.executionCwd!, ["commit", "-m", "Changed code after interrupted copies"]);
+            }
+            await f.scope(async () => {
+                ok(await preparePublicationRevalidation(f.root, "one"));
+                equal((await read(f.identity)).metadata.definition.status, "implemented");
+                await recordPlanEvent({
+                    cwd: f.root,
+                    planName: "one",
+                    event: "mechanical_validation_passed",
+                    currentStatus: "implemented",
+                });
+                await recordPlanEvent({
+                    cwd: f.root,
+                    planName: "one",
+                    event: "semantic_review_passed",
+                    currentStatus: "implemented",
+                });
             });
-            await recordPlanEvent({
-                cwd: f.root,
-                planName: "one",
-                event: "semantic_review_passed",
-                currentStatus: "implemented",
-            });
-        });
-        const resumed = await f.drive();
-        equal(resumed.code, 0, resumed.text);
-        equal(await git(f.remote, ["show", "main:code.txt"]), "revised code");
-        equal(
-            (await git(f.remote, ["log", "--format=%B", "main"])).split("RunWield-Publication-Attempt:").length - 1,
-            1,
-        );
-    } finally {
-        await f.cleanup();
-    }
-});
+            const resumed = await f.drive();
+            equal(resumed.code, 0, resumed.text);
+            equal(await git(f.remote, ["show", "main:code.txt"]), "revised code");
+            equal(
+                (await git(f.remote, ["log", "--format=%B", "main"])).split("RunWield-Publication-Attempt:").length - 1,
+                1,
+            );
+        } finally {
+            await f.cleanup();
+        }
+    });
+}
 
 for (const issue of ["missing-manifest", "foreign-reference", "missing-registry"] as const) {
     test(`${issue} refuses without freeing ownership and exact repair resumes the same attempt`, async () => {

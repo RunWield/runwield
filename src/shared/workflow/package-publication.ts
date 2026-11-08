@@ -1,4 +1,5 @@
 /** Package input and settlement at the existing publication state-machine boundary. */
+import { retainPublishedWorkRecordSource } from "../work-records/published-source.ts";
 import fs from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { captureForegroundProcess } from "../captured-process.ts";
@@ -23,6 +24,7 @@ import {
     selectedPackage,
     assertPackageWorkflowInput,
     packageController,
+    packageWorkflowLocks,
     updatePackageWorkflowMetadata,
 } from "./package-workflow.ts";
 import type { PublicationAttempt, PublicationPhaseEvidence } from "./publication-attempt.ts";
@@ -251,6 +253,49 @@ export async function packageArtifactEvidence(
     return { artifactCommit: commit, planPaths: manifest.copies.map((c) => c.path), copiesPrepared: true };
 }
 
+/** Exact frozen writes left before the copies commit are artifacts, not implementation changes. */
+export async function uncommittedPackageCopyPaths(attempt: PublicationAttempt): Promise<string[]> {
+    if (!attempt.packageInput || attempt.artifactCommit) return [];
+    const cwd = attempt.executionCwd;
+    const manifest = await packagePublicationInput(cwd, attempt.packageInput);
+    const changed = new Set(await changedCopyPaths(cwd, cwd, manifest, attempt.validatedCommit));
+    const dirty = new Set(await gitStatusPaths(cwd));
+    const owned: string[] = [];
+    for (const copy of manifest.copies) {
+        if (!dirty.has(copy.path) || !changed.has(copy.path)) continue;
+        const pathspec = `:(literal)${copy.path}`;
+        const committed = await git(cwd, ["diff", "--quiet", attempt.validatedCommit, "HEAD", "--", pathspec]);
+        if (committed.code === 1) continue;
+        if (committed.code !== 0) throw new Error("Could not inspect unfinished delivery copies.");
+        let cursor = cwd;
+        let regular = true;
+        for (const segment of copy.path.split("/")) {
+            cursor = join(cursor, segment);
+            const stat = await fs.lstat(cursor).catch((error) => {
+                if (error.code === "ENOENT") return null;
+                throw error;
+            });
+            if (
+                !stat ||
+                stat.isSymbolicLink() ||
+                (cursor === join(cwd, copy.path) && (!stat.isFile() || stat.mode & 0o111))
+            ) {
+                regular = false;
+                break;
+            }
+        }
+        if (!regular || (await fs.readFile(cursor, "utf8")) !== copy.text) continue;
+        const staged = await git(cwd, ["diff", "--cached", "--quiet", "HEAD", "--", pathspec]);
+        if (staged.code === 1) {
+            const unstaged = await git(cwd, ["diff", "--quiet", "--", pathspec]);
+            if (unstaged.code === 1) continue;
+            if (unstaged.code !== 0) throw new Error("Could not inspect staged delivery copies.");
+        } else if (staged.code !== 0) throw new Error("Could not inspect staged delivery copies.");
+        owned.push(copy.path);
+    }
+    return owned;
+}
+
 /** The single assembler accepts both Plan and already prepared Work Record documents. */
 export async function preparePackageCopies(
     root: string,
@@ -308,6 +353,37 @@ export async function preparePackageCopies(
     return evidence;
 }
 
+async function settlePackageParent(manifest: PackagePublicationManifest, verifiedAt: string): Promise<void> {
+    const selection = currentPackageSelection()!;
+    const child = manifest.members.find((member) => member.metadata.planId === manifest.planId);
+    const parent = manifest.members.find((member) => member.metadata.planId === child?.metadata.parentPlanId);
+    if (
+        parent?.metadata.definition.type !== "sequence" ||
+        parent.metadata.definition.status !== "reviewed" ||
+        parent.metadata.definition.epicCompletionMode !== "done_enough"
+    )
+        return;
+    const liveParent = await readPlanPackage(selection.identity, { planId: parent.metadata.planId });
+    if (liveParent.kind !== "loaded") throw new Error(liveParent.message);
+    await packageWorkflowLocks([{ planId: liveParent.metadata.planId }], async () => {
+        const current = await readPlanPackage(selection.identity, { planId: parent.metadata.planId });
+        if (current.kind !== "loaded") throw new Error(current.message);
+        // An old child delivery cannot finish a reopened or newly executing parent.
+        if (
+            current.metadata.workflow?.attempt ||
+            JSON.stringify(current.metadata.definition) !== JSON.stringify(parent.metadata.definition)
+        )
+            return;
+        await updatePackageWorkflowMetadata(
+            { planId: current.metadata.planId },
+            {
+                status: "verified",
+                verifiedAt,
+            },
+        );
+    });
+}
+
 /** Called only by publication reconciliation after fresh target proof, before registry pruning. */
 export async function settlePackagePublication(root: string, attempt: PublicationAttempt): Promise<void> {
     const selection = currentPackageSelection();
@@ -320,7 +396,7 @@ export async function settlePackagePublication(root: string, attempt: Publicatio
         !attempt.publicationMode
     )
         throw new Error("Package settlement requires admitted ownership and confirmed publication.");
-    await packagePublicationInput(root, attempt.packageInput);
+    const manifest = await packagePublicationInput(root, attempt.packageInput);
     const plan = await selectedPackage(attempt.planName);
     const prior = plan.metadata.workflow?.delivery;
     const binding = plan.metadata.workflow?.attempt;
@@ -333,8 +409,10 @@ export async function settlePackagePublication(root: string, attempt: Publicatio
         plan.metadata.definition.status === "verified" &&
         samePackagePublicationReference(plan.metadata.workflow?.publication, attempt.packageInput) &&
         !binding
-    )
+    ) {
+        await settlePackageParent(manifest, attempt.verifiedAt);
         return;
+    }
     if (
         plan.metadata.definition.status !== "reviewed" ||
         !binding ||
@@ -369,6 +447,7 @@ export async function settlePackagePublication(root: string, attempt: Publicatio
             attempt: undefined,
         },
     );
+    await settlePackageParent(manifest, attempt.verifiedAt);
 }
 
 /** Target proof includes the exact immutable payload, independently of optional Git metadata. */
@@ -399,6 +478,10 @@ export async function settlePackageInPlace(planName: string): Promise<void> {
     if (controller.deliveryEvidence?.mode !== "non_git_in_place" || controller.executionMode !== "non_git_in_place")
         throw new Error("In-place completion requires explicit non-Git evidence.");
     const verifiedAt = new Date().toISOString();
+    await settlePackageParent(
+        await readPlanPackagePublication(currentPackageSelection()!.identity, source),
+        verifiedAt,
+    );
     await updatePackageWorkflowMetadata(planName, { status: "verified", verifiedAt }, undefined, {
         ...plan.metadata.workflow,
         publication: source,
@@ -411,6 +494,12 @@ export async function settlePackageInPlace(planName: string): Promise<void> {
             mode: "non_git_in_place",
             verifiedAt,
         },
+    });
+    await retainPublishedWorkRecordSource(currentPackageSelection()!.identity.checkoutRoot, {
+        phase: "publication_verified",
+        packageInput: source,
+        planName,
+        planId: plan.metadata.planId,
     });
 }
 
@@ -429,7 +518,7 @@ export async function assertPackageCopyTargets(
 
 /** Remove only a proven unpublished copies commit before validating a changed code candidate. */
 export async function retirePackageCopies(root: string, attempt: PublicationAttempt): Promise<void> {
-    if (!attempt.packageInput || !attempt.artifactCommit) return;
+    if (!attempt.packageInput) return;
     const manifest = await packagePublicationInput(root, attempt.packageInput);
     if (!manifest.copies.length) return;
     const cwd = attempt.executionCwd;
@@ -475,6 +564,28 @@ export async function retirePackageCopies(root: string, attempt: PublicationAtte
             ...manifest.copies.map((copy) => copy.path),
         ]);
         if (same.code !== 0) throw new Error("Unpublished copy ownership cannot be proven.");
+        const dirty = (await gitStatusPaths(cwd)).filter((path) => manifest.copies.some((copy) => copy.path === path));
+        const owned = new Set(await uncommittedPackageCopyPaths(attempt));
+        if (dirty.some((path) => !owned.has(path)))
+            throw new Error("Edited delivery copies are preserved; restore their sealed bytes before revalidation.");
+        for (const path of dirty) {
+            const base = await committedCopy(cwd, attempt.validatedCommit, path);
+            const pathspec = `:(literal)${path}`;
+            const indexed = await git(cwd, ["ls-files", "--cached", "--", pathspec]);
+            if (indexed.code !== 0) throw new Error("Could not inspect unfinished delivery copy index.");
+            if (indexed.text) {
+                const restored = await git(cwd, [
+                    "restore",
+                    `--source=${attempt.validatedCommit}`,
+                    "--staged",
+                    "--",
+                    pathspec,
+                ]);
+                if (restored.code !== 0) throw new Error("Could not retire the staged delivery copy.");
+            }
+            if (base === null) await fs.unlink(join(cwd, path));
+            else await fs.writeFile(join(cwd, path), base);
+        }
         return;
     }
     for (const copy of manifest.copies) {

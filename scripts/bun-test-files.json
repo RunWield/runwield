@@ -971,5 +971,6 @@
     "src/shared/workflow/package-publication-recovery.test.ts",
     "src/shared/workflow/package-publication-copies-recovery.test.ts",
     "src/shared/workflow/package-publication-refusal.test.ts",
+    "src/shared/workflow/package-publication-validation-recovery.test.ts",
     "src/shared/workflow/package-lifecycle-recovery.test.ts"
 ]

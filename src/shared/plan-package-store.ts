@@ -136,11 +136,13 @@ export interface PackageControllerReference {
     planId: string;
 }
 export interface PackageWorkflowEvidence {
+    workRecord?: import("../plan-store.js").PlanFrontMatter["workRecord"];
     review?: PackageWorkflowInput;
     readiness?: PackageWorkflowInput;
     attempt?: PackageAttemptReference;
     controller?: PackageControllerReference;
     publication?: PackagePublicationReference;
+    recordingSource?: PackagePublicationReference;
     delivery?: PackageDeliveryReceipt;
 }
 export interface DeliveryCopy {
@@ -630,8 +632,20 @@ function metadataFrom(value: PlanPackageMetadata): PlanPackageMetadata {
             "attempt",
             "controller",
             "publication",
+            "recordingSource",
             "delivery",
+            "workRecord",
         ]);
+        if (workflow.workRecord !== undefined) {
+            const record = fields(workflow.workRecord, ["status", "recordId", "path", "lastAttemptAt", "error"]);
+            if (
+                Object.values(record).some((value) => typeof value !== "string") ||
+                (record.status !== undefined && !["generated", "failed"].includes(String(record.status)))
+            )
+                fail("malformed_metadata", "Invalid package recording outcome.");
+        }
+        if (workflow.recordingSource !== undefined)
+            assertPackagePublicationReference(JSON.parse(JSON.stringify(workflow.recordingSource)));
         if (workflow.publication !== undefined) {
             assertPackagePublicationReference(JSON.parse(JSON.stringify(workflow.publication)));
             if (fields(workflow.publication, publicationReferenceFields).planId !== data.planId)

@@ -1,3 +1,4 @@
+import { retainPublishedWorkRecordSource } from "../work-records/published-source.ts";
 import { currentPackageSelection } from "./package-workflow.ts";
 import {
     sealPackagePublication,
@@ -693,6 +694,7 @@ export async function cleanupStoredPublication(
         if (!(await publishedEvidence(projectRoot, attempt)))
             throw new Error("Package delivery cannot be confirmed on its target.");
         await settlePackagePublication(projectRoot, attempt);
+        await retainPublishedWorkRecordSource(projectRoot, attempt);
     }
     let planKinds = new Map<string, string>();
     if (!attempt.packageInput && (attempt.phase === "publication_verified" || attempt.phase === "cleanup_complete")) {

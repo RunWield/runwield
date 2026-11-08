@@ -13,7 +13,7 @@ import { git } from "../git-test-fixture.ts";
 import { inspectWorktreeRegistry } from "../worktree-registry.js";
 import { coverage } from "./testing/validation-host-fixture.ts";
 import type { ValidationHostResume } from "./validation-host-contract.ts";
-import { readPlanPackagePublication } from "../plan-package-store.ts";
+import { readPlanPackage, readPlanPackagePublication } from "../plan-package-store.ts";
 import { loadPublishedWorkRecordSource } from "../work-records/published-source.ts";
 
 for (const remote of [false, true])
@@ -130,52 +130,72 @@ for (const remote of [false, true])
         });
     }
 
-test("non-Git package validation retains explicit in-place proof without Git artifacts", async () => {
-    const { tmpdir } = await import("node:os");
-    const { admitProjectIdentity } = await import("../project-identity.ts");
-    const { rememberNonGitExecutionConsent } = await import("../non-git-execution-consent.ts");
-    const root = await fs.realpath(await fs.mkdtemp(join(tmpdir(), "package-in-place-")));
-    try {
-        const admitted = await admitProjectIdentity(root);
-        ok(admitted.kind === "existing");
-        const identity = admitted.identity;
-        await rememberNonGitExecutionConsent("featurePlan", root);
-        setExactProjectCustomSetting("verification_command", "test -f result.txt", root);
-        setExactProjectCustomSetting("codereview", "none", root);
-        const p = await create(identity, {
-            definition: {
-                classification: "PLANNED_CHANGE",
-                status: "draft",
-                executionAgent: "engineer",
-                collaborationRecommendation: "autonomous",
-            },
-        });
-        await withPackageWorkflow(root, { identity, planId: p.metadata.planId, expectedRevision: 1 }, async () => {
-            await recordPlanEvent({ cwd: root, planName: "one", event: "review_approved", currentStatus: "draft" });
-            await recordPlanEvent({ cwd: root, planName: "one", event: "readiness_passed", currentStatus: "approved" });
-            const workflow = await startActiveExecutionWorkflow({
-                cwd: root,
-                planName: "one",
-                currentStatus: "ready_for_work",
-                triageMeta: (await loadPackageWorkflowPlan("one")).attrs,
-                ports: createExecutionStartPorts(),
+for (const child of [false, true]) {
+    test(`non-Git package validation retains in-place proof and Sequence completion ${child}`, async () => {
+        const { tmpdir } = await import("node:os");
+        const { admitProjectIdentity } = await import("../project-identity.ts");
+        const { rememberNonGitExecutionConsent } = await import("../non-git-execution-consent.ts");
+        const root = await fs.realpath(await fs.mkdtemp(join(tmpdir(), "package-in-place-")));
+        try {
+            const admitted = await admitProjectIdentity(root);
+            ok(admitted.kind === "existing");
+            const identity = admitted.identity;
+            await rememberNonGitExecutionConsent("featurePlan", root);
+            setExactProjectCustomSetting("verification_command", "test -f result.txt", root);
+            setExactProjectCustomSetting("codereview", "none", root);
+            if (child)
+                await create(identity, {
+                    planId: "parent",
+                    name: "parent",
+                    definition: { classification: "PROJECT", type: "sequence", status: "ready_for_work" },
+                });
+            const p = await create(identity, {
+                ...(child ? { parentPlanId: "parent" } : {}),
+                definition: {
+                    classification: "PLANNED_CHANGE",
+                    status: "draft",
+                    executionAgent: "engineer",
+                    collaborationRecommendation: "autonomous",
+                },
             });
-            equal(workflow.executionMode, "non_git_in_place");
-            await fs.writeFile(join(root, "result.txt"), "in-place work\n");
-            await finalizePlanImplementation({ projectRoot: root, planName: "one", executionContext: workflow });
-            const result = await runValidationAttempt({
-                projectRoot: root,
-                planName: "one",
-                runtime: { kind: "host" },
+            await withPackageWorkflow(root, { identity, planId: p.metadata.planId, expectedRevision: 1 }, async () => {
+                await recordPlanEvent({ cwd: root, planName: "one", event: "review_approved", currentStatus: "draft" });
+                await recordPlanEvent({
+                    cwd: root,
+                    planName: "one",
+                    event: "readiness_passed",
+                    currentStatus: "approved",
+                });
+                const workflow = await startActiveExecutionWorkflow({
+                    cwd: root,
+                    planName: "one",
+                    currentStatus: "ready_for_work",
+                    triageMeta: (await loadPackageWorkflowPlan("one")).attrs,
+                    ports: createExecutionStartPorts(),
+                });
+                equal(workflow.executionMode, "non_git_in_place");
+                await fs.writeFile(join(root, "result.txt"), "in-place work\n");
+                await finalizePlanImplementation({ projectRoot: root, planName: "one", executionContext: workflow });
+                const result = await runValidationAttempt({
+                    projectRoot: root,
+                    planName: "one",
+                    runtime: { kind: "host" },
+                });
+                equal(result.kind, "verified", JSON.stringify(result));
+                const settled = await read(identity);
+                equal(settled.metadata.workflow?.delivery?.mode, "non_git_in_place");
+                equal(settled.metadata.workflow?.delivery?.publishedCommit, "");
+                equal(settled.metadata.definition.status, "verified");
+                if (child) {
+                    const parent = await readPlanPackage(identity, { planId: "parent" });
+                    ok(parent.kind === "loaded");
+                    equal(parent.metadata.definition.status, "verified");
+                    equal((await loadPublishedWorkRecordSource(root, "one"))?.planId, "parent");
+                }
+                await rejects(fs.access(join(root, "docs/plans/one.md")));
             });
-            equal(result.kind, "verified", JSON.stringify(result));
-            const settled = await read(identity);
-            equal(settled.metadata.workflow?.delivery?.mode, "non_git_in_place");
-            equal(settled.metadata.workflow?.delivery?.publishedCommit, "");
-            equal(settled.metadata.definition.status, "verified");
-            await rejects(fs.access(join(root, "docs/plans/one.md")));
-        });
-    } finally {
-        await fs.rm(root, { recursive: true, force: true });
-    }
-});
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    });
+}

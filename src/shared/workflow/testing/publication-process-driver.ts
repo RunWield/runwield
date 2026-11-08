@@ -25,7 +25,7 @@ type DriverConfig = {
     executionBranch: string;
     executionCwd: string;
     crashAfter?: string;
-    operation?: "revalidate";
+    operation?: "revalidate" | "validate";
     packageSelection?: PackageWorkflowSelection;
 };
 
@@ -54,8 +54,17 @@ async function removePublicationArtifacts(config: DriverConfig, publicationRoot:
 const configPath = process.argv.slice(2)[0];
 if (!configPath) throw new Error("publication process driver requires a config path");
 const config = JSON.parse(await fsReadFile(configPath, "utf8")) as DriverConfig;
-const run = async () =>
-    await withPlanLock(config.projectRoot, config.planName, async () => {
+const run = async () => {
+    if (config.operation === "validate") {
+        const { continueHostTurnValidation } = await import("../validation-host-turn.ts");
+        const result = await continueHostTurnValidation({
+            projectRoot: config.projectRoot,
+            planName: config.planName,
+        });
+        if (result.kind !== "verified") throw new Error(JSON.stringify(result));
+        return;
+    }
+    return await withPlanLock(config.projectRoot, config.planName, async () => {
         if (config.operation === "revalidate") {
             const { preparePublicationRevalidation } = await import("../publication-revalidation.ts");
             await preparePublicationRevalidation(config.projectRoot, config.planName);
@@ -200,6 +209,7 @@ const run = async () =>
         }
         if (attempt.phase === "cleanup_complete") await cleanupStoredPublication(config.projectRoot, attempt);
     });
+};
 
 if (config.packageSelection) {
     const selected = await readPlanPackage(config.packageSelection.identity, {

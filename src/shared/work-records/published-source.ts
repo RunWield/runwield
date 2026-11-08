@@ -7,7 +7,12 @@ import {
     samePackagePublicationReference,
     type PackagePublicationReference,
 } from "../plan-package-store.ts";
-import { currentPackageSelection, loadPackageWorkflowPlan, selectedPackage } from "../workflow/package-workflow.ts";
+import {
+    currentPackageSelection,
+    loadPackageWorkflowPlan,
+    selectedPackage,
+    updatePackageWorkflowMetadata,
+} from "../workflow/package-workflow.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { effectiveDeliveryBranch } from "../workflow/plan-branch.ts";
 /** Immutable recording input retained after delivery removes the execution worktree. */
@@ -47,12 +52,24 @@ async function readSource(root: string, commit: string, name: string): Promise<W
 }
 
 /** Called only after publication proof, before reporting completed delivery. */
-export async function retainPublishedWorkRecordSource(root: string, attempt: PublicationAttempt): Promise<void> {
+export async function retainPublishedWorkRecordSource(
+    root: string,
+    attempt: Pick<PublicationAttempt, "phase" | "packageInput" | "artifactCommit" | "planName" | "planId">,
+): Promise<void> {
     if (!["publication_verified", "cleanup_complete"].includes(attempt.phase)) {
         throw new Error("Recording source requires confirmed publication.");
     }
     if (attempt.packageInput) {
-        await packageDeliverySources(root, attempt.packageInput, true);
+        const { workRecordOwner } = await packageDeliverySources(root, attempt.packageInput, true);
+        if (!workRecordOwner) return;
+        const selection = currentPackageSelection();
+        if (!selection) throw new Error("Recording source retention requires admitted package ownership.");
+        const owner = await readPlanPackage(selection.identity, { planId: workRecordOwner.planId });
+        if (owner.kind !== "loaded") throw new Error(owner.message);
+        if (!samePackagePublicationReference(owner.metadata.workflow?.recordingSource, attempt.packageInput))
+            await updatePackageWorkflowMetadata({ planId: workRecordOwner.planId }, {}, undefined, {
+                recordingSource: attempt.packageInput,
+            });
         return;
     }
     if (!attempt.artifactCommit) throw new Error("The delivered recording source has no artifact commit.");
@@ -79,15 +96,20 @@ export async function retainPublishedWorkRecordSource(root: string, attempt: Pub
 export async function loadPublishedWorkRecordSource(root: string, planName: string): Promise<WorkRecordSource | null> {
     if (currentPackageSelection()) {
         const selected = await selectedPackage(planName);
-        const receipt = selected.metadata.workflow?.delivery;
-        if (!receipt) return null;
-        const sources = await packageDeliverySources(root, receipt.source, true);
+        const recordingSource = selected.metadata.workflow?.recordingSource;
+        const reference = recordingSource || selected.metadata.workflow?.delivery?.source;
+        if (!reference) return null;
+        const sources = await packageDeliverySources(root, reference, true);
         const source = sources.workRecordOwner;
+        if (recordingSource && source?.planId !== selected.metadata.planId)
+            throw new Error("Retained recording source belongs to another recording owner.");
         if (source) {
             const owner = await readPlanPackage(currentPackageSelection()!.identity, { planId: source.planId });
             if (owner.kind !== "loaded") throw new Error(owner.message);
             source.name = owner.metadata.name;
-            source.documentRevision = (await loadPackageWorkflowPlan(source.name)).revision;
+            const writable = await loadPackageWorkflowPlan({ planId: source.planId });
+            source.documentRevision = writable.revision;
+            source.attrs.workRecord = writable.attrs.workRecord;
         }
         return source || null;
     }
@@ -217,10 +239,19 @@ async function packageDeliverySources(
     const manifest = await readPlanPackagePublication(inspected.identity, reference);
     const current = await readPlanPackage(inspected.identity, { planId: reference.planId });
     if (current.kind !== "loaded") throw new Error(current.message);
-    const receipt = current.metadata.workflow?.delivery;
+    let receipt = current.metadata.workflow?.delivery;
+    const visited = new Set<string>();
+    while (receipt && !samePackagePublicationReference(receipt.source, reference)) {
+        if (visited.has(receipt.source.inputId)) throw new Error("Publication receipt history contains a cycle.");
+        visited.add(receipt.source.inputId);
+        const prior = await readPlanPackagePublication(inspected.identity, receipt.source);
+        if (receipt.validatedCommit !== prior.validatedCommit || receipt.targetBranch !== prior.targetBranch)
+            throw new Error("Publication receipt history does not match its retained input.");
+        receipt = prior.members.find((member) => member.metadata.planId === reference.planId)?.metadata.workflow
+            ?.delivery;
+    }
     const proved =
-        !current.metadata.workflow?.attempt &&
-        samePackagePublicationReference(current.metadata.workflow?.publication, reference) &&
+        current.metadata.workflow?.attempt?.attemptId !== reference.attemptId &&
         samePackagePublicationReference(receipt?.source, reference) &&
         receipt &&
         receipt.validatedCommit === manifest.validatedCommit &&
@@ -233,6 +264,12 @@ async function packageDeliverySources(
         const markdown = decodePackageMarkdown(retained.documents.find((doc) => doc.name === "context.md")!.bytes);
         const metadata = member.metadata;
         const delivered = metadata.planId === reference.planId;
+        const completedParent =
+            metadata.planId ===
+                manifest.members.find((item) => item.metadata.planId === reference.planId)?.metadata.parentPlanId &&
+            metadata.definition.type === "sequence" &&
+            metadata.definition.status === "reviewed" &&
+            metadata.definition.epicCompletionMode === "done_enough";
         const source = buildActiveWorkRecordSource(metadata.name, {
             path: join(retained.path, "context.md"),
             markdown,
@@ -245,7 +282,7 @@ async function packageDeliverySources(
                 createdAt: metadata.createdAt,
                 parentPlan: metadata.parentPlanId ? name(metadata.parentPlanId) : undefined,
                 dependencies: metadata.dependencyPlanIds.map(name),
-                status: delivered && proved ? "verified" : metadata.definition.status,
+                status: (delivered || completedParent) && proved ? "verified" : metadata.definition.status,
             } as import("../../plan-store.js").PlanFrontMatter,
         });
         source.pendingPublication = delivered && !proved;

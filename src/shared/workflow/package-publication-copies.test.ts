@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { deepEqual, equal, ok, rejects, throws } from "node:assert/strict";
 import fs from "node:fs/promises";
 import { join } from "node:path";
-import { read } from "../testing/plan-package-fixture.ts";
+import { create, read } from "../testing/plan-package-fixture.ts";
 import { git } from "../git-test-fixture.ts";
 import { readPlanPackagePublication } from "../plan-package-store.ts";
 
@@ -33,7 +33,7 @@ for (const plans of [false, true]) {
     });
 }
 
-test("sealed copy policy and destination survive live edits, rename and target advancement", async () => {
+test("sealed copy policy and destination survive reused name, live edits and target advancement", async () => {
     const { publicationFixture } = await import("./testing/package-publication-fixture.ts");
     const { renamePlanPackage } = await import("../plan-package-store.ts");
     const f = await publicationFixture(true);
@@ -42,6 +42,7 @@ test("sealed copy policy and destination survive live edits, rename and target a
         const before = await read(f.identity);
         const source = before.metadata.workflow!.publication!;
         await renamePlanPackage(f.identity, before.metadata.planId, before.metadata.revision, "renamed");
+        const replacement = await create(f.identity, { planId: "replacement", name: "one" });
         const renamed = await read(f.identity);
         await fs.writeFile(join(renamed.path, "context.md"), "# Preserve my new draft\n");
         f.config.packageSelection.deliveryCopies = {
@@ -57,6 +58,7 @@ test("sealed copy policy and destination survive live edits, rename and target a
         equal(await git(f.remote, ["show", "main:docs/plans/one/context.md"]), "# A Plan\n\nProse — 世界");
         equal(await git(f.remote, ["ls-tree", "main", "--", "docs/plans/renamed", "docs/work-records/new.md"]), "");
         equal((await read(f.identity)).metadata.workflow?.delivery?.source.digest, source.digest);
+        deepEqual((await read(f.identity, "replacement")).metadata, replacement.metadata);
         equal(await fs.readFile(join(renamed.path, "context.md"), "utf8"), "# Preserve my new draft\n");
         equal(
             (await git(f.remote, ["log", "--format=%B", "main"])).split("RunWield-Publication-Attempt:").length - 1,

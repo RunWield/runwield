@@ -890,10 +890,15 @@ point. Commands are copy-ready with real values. Waiting for the user's action s
   Implementation checkpoints persist, and real validation/review publishes code with no repository Plan required.
   Copies disabled produce no artifacts commit; enabled copies contain only frozen Markdown, not personal metadata.
 - Given a sealed package, later editor changes, rename, settings changes and target advancement preserve its frozen
-  payload and destinations. Invalid paths or unrelated target content refuse publication without overwriting either.
+  payload and destinations, even when another Plan takes the old name. Invalid paths or unrelated target content refuse
+  publication without overwriting either.
 - Given interruption after publication or package settlement, a fresh process proves the existing target, finishes the
   same receipt and releases ownership before cleanup without pushing again. Corrupt/missing source or unavailable
   upstream remains recoverable; restoring the exact prerequisite permits the same attempt to finish.
+- Given an interruption after the copies commit but before its receipt, ordinary validation resume reconciles the
+  existing copies before checking for changed implementation; unchanged code does not repeat validation or copies.
+- Given the last child of a ready Sequence, publication retains the staged parent completion and settles it only after
+  target proof. Interrupted settlement resumes; a reopened parent keeps its newer status and editor work.
 - Given a historical package receipt and a reopened Plan or new execution, that receipt cannot complete the new work.
 - Given competing package writers from worktrees or explicitly linked clones, one stale revision wins once; a
   metadata edit and document edit both survive. An active native lock is not stolen; process exit releases it.
@@ -2109,7 +2114,13 @@ activate automatic package record generation, public copy settings, import or pr
 
 - Given a delivered child or Epic and removed code checkouts, a fresh Recorder read returns exact retained text,
   provenance and child Tickets, preserves live editor bytes, and creates no repository Plan.
-- Given a failed Recorder/index request, retry reads the same retained source without revoking confirmed delivery.
+- Given a renamed delivered child whose terminal parent takes its sealed name, publication retains the recording
+  reference on the parent by Plan ID. Recorder reads and retry outcomes preserve the child and sibling metadata.
+- Given a failed Recorder request, its failed outcome persists and a fresh-process retry addressed to the recording
+  owner reads the same retained parent and child source, even after rename or live family edits, without revoking
+  confirmed delivery or changing a reopened Plan's status or newer execution binding.
+- Given another execution or publication, an older delivered source remains readable through its retained receipt
+  history. That historical confidence does not verify the newer candidate.
 
 **Requirement: Retrieve current records.** `wld wr` lists, searches, reads, rebuilds the index, and backfills. Default
 retrieval returns current approved records. Pending, draft, superseded, and archived records appear in explicit

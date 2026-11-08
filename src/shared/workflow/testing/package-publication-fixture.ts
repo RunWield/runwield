@@ -12,7 +12,7 @@ import type { DeliveryCopy, PackageDocuments } from "../../plan-package-store.ts
 export async function publicationFixture(
     plans = false,
     records: DeliveryCopy[] = [],
-    family?: "child" | "epic",
+    family?: "child" | "epic" | "last-child",
     local = false,
     documents?: PackageDocuments,
 ) {
@@ -24,7 +24,7 @@ export async function publicationFixture(
         await git(f.root, ["config", "branch.main.remote", "origin"]);
         await git(f.root, ["config", "branch.main.merge", "refs/heads/main"]);
     }
-    if (family === "child")
+    if (family === "child" || family === "last-child")
         await create(f.identity, {
             planId: "parent",
             name: "parent",
@@ -32,18 +32,22 @@ export async function publicationFixture(
             definition: {
                 classification: "PROJECT",
                 type: "sequence",
-                status: "closed_without_verification",
-                epicCompletionMode: "done_enough",
-                closedWithoutVerificationReason: "Scope accepted",
+                ...(family === "last-child"
+                    ? { status: "ready_for_work" as const }
+                    : {
+                          status: "closed_without_verification" as const,
+                          epicCompletionMode: "done_enough" as const,
+                          closedWithoutVerificationReason: "Scope accepted",
+                      }),
                 targetBranch: "main",
                 tickets: [{ url: "https://example.com/epic/1", title: "Epic ticket" }],
             },
         });
-    if (family)
+    if (family && family !== "last-child")
         await create(f.identity, {
             planId: "sibling",
             name: "sibling",
-            parentPlanId: family === "child" ? "parent" : "plan-one",
+            parentPlanId: family !== "epic" ? "parent" : "plan-one",
             definition: {
                 classification: "PLANNED_CHANGE",
                 status: "verified",
@@ -53,7 +57,7 @@ export async function publicationFixture(
         });
     const p = await create(f.identity, {
         ...(documents ? { documents } : {}),
-        ...(family === "child" ? { parentPlanId: "parent" } : {}),
+        ...(family === "child" || family === "last-child" ? { parentPlanId: "parent" } : {}),
         definition: {
             classification: family === "epic" ? "PROJECT" : "PLANNED_CHANGE",
             ...(family === "epic" ? { type: "sequence" as const } : {}),
@@ -177,7 +181,7 @@ export async function publicationFixture(
                 run,
             );
         },
-        async drive(crashAfter?: string, operation?: "revalidate") {
+        async drive(crashAfter?: string, operation?: "revalidate" | "validate") {
             await fs.mkdir(join(f.root, ".wld"), { recursive: true });
             await fs.writeFile(configPath, JSON.stringify({ ...config, crashAfter, operation }));
             const result = await captureForegroundProcess(process.execPath, {
