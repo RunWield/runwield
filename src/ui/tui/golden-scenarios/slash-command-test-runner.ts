@@ -14,7 +14,7 @@ export function registerSlashCommandGoldenTests(
             }`,
             { skip: Boolean(testCase.todoReason) },
             async () => {
-                const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
+                const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.ts");
                 const result = await runGoldenScenarioChildProcess({
                     scenarioModule,
                     exportName: testCase.exportName,
@@ -22,7 +22,7 @@ export function registerSlashCommandGoldenTests(
                     initDone: testCase.scenario.initDone,
                     initArtifact: testCase.scenario.initArtifact,
                 });
-                assertEquals(result.result.actor.remaining, []);
+                assertEquals(result.result?.actor.remaining, []);
             },
         );
     }

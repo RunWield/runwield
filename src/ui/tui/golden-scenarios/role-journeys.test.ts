@@ -17,12 +17,12 @@ const scenarioExportNames = new Map([
 
 for (const scenario of roleJourneyScenarios) {
     test(`golden role journey: ${scenario.name}`, async () => {
-        const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
+        const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.ts");
         const result = await runGoldenScenarioChildProcess({
             scenarioModule: "src/ui/tui/golden-scenarios/role-journeys.ts",
             exportName: scenarioExportNames.get(scenario) || "",
             timeoutMs: "timeoutMs" in scenario && typeof scenario.timeoutMs === "number" ? scenario.timeoutMs : 30000,
         });
-        assertEquals(result.result.actor.remaining, []);
+        assertEquals(result.result?.actor.remaining, []);
     });
 }

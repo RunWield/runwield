@@ -19,7 +19,7 @@ export type {
     VirtualTerminalProgress,
 } from "./virtual-terminal.ts";
 export { normalizeScreenText, VirtualTerminal } from "./virtual-terminal.ts";
-export { runGoldenScenarioChildProcess } from "./child-protocol.js";
+export { runGoldenScenarioChildProcess } from "./child-protocol.ts";
 export {
     assertGoldenScenarioCoverage,
     collectGoldenScenarioCoverage,

@@ -17,12 +17,12 @@ const scenarioExportNames = new Map([
 
 for (const scenario of presentationAndTerminalScenarios) {
     test(`golden presentation/terminal: ${scenario.name}`, async () => {
-        const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
+        const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.ts");
         const result = await runGoldenScenarioChildProcess({
             scenarioModule: "src/ui/tui/golden-scenarios/presentation-and-terminal.ts",
             exportName: scenarioExportNames.get(scenario) || "",
             timeoutMs: 30000,
         });
-        assertEquals(result.result.actor.remaining, []);
+        assertEquals(result.result?.actor.remaining, []);
     });
 }

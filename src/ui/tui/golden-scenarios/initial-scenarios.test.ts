@@ -11,7 +11,7 @@ import {
 } from "node:fs/promises";
 import process from "node:process";
 import { ok as assert } from "node:assert/strict";
-import { assertEquals, assertRejects } from "../../../testing/assertions.ts";
+import { assertEquals, assertExists, assertRejects } from "../../../testing/assertions.ts";
 import {
     escapeCancellationScenario,
     helpSlashCommandScenario,
@@ -68,13 +68,13 @@ const scenarioExportNames = new Map<InitialGoldenScenario, string>([
 
 for (const scenario of initialGoldenScenarios.filter((candidate) => candidate !== helpSlashCommandScenario)) {
     test(`golden scenario: ${scenario.name}`, async () => {
-        const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
+        const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.ts");
         const result = await runGoldenScenarioChildProcess({
             scenarioModule: "src/ui/tui/golden-scenarios/initial-scenarios.ts",
             exportName: scenarioExportNames.get(scenario) || "",
             timeoutMs: "timeoutMs" in scenario && typeof scenario.timeoutMs === "number" ? scenario.timeoutMs : 30000,
         });
-        assertEquals(result.result.actor.remaining, []);
+        assertEquals(result.result?.actor.remaining, []);
     });
 }
 
@@ -135,15 +135,16 @@ test("golden actor fails when required tools are unavailable", async () => {
 });
 
 test("golden scenario child process runs with isolated environment before scenario import", async () => {
-    const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
+    const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.ts");
     const result = await runGoldenScenarioChildProcess({
         scenarioModule: "src/ui/tui/golden-scenarios/initial-scenarios.ts",
         exportName: "helpSlashCommandScenario",
         timeoutMs: 30000,
     });
     assertEquals(result.ok, true);
-    assertEquals(result.result.name, "help-slash-command");
-    assertEquals(result.result.actor.remaining, []);
+    assertEquals(result.result?.name, "help-slash-command");
+    assertEquals(result.result?.actor.remaining, []);
+    assertExists(result.env);
     assertEquals(
         await fsStat(result.env.root)
             .then(() => true)
@@ -192,7 +193,7 @@ test("golden composition cleans up partial startup failure", async () => {
 });
 
 test("golden scenario child process failure reports retained diagnostics artifact", async () => {
-    const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
+    const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.ts");
     const error = await assertRejects(
         () =>
             runGoldenScenarioChildProcess({
@@ -215,7 +216,7 @@ test("golden scenario child process failure reports retained diagnostics artifac
 });
 
 test("golden scenario timeout retains child heartbeat diagnostics", async () => {
-    const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
+    const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.ts");
     const error = await assertRejects(
         () =>
             runGoldenScenarioChildProcess({
@@ -249,7 +250,7 @@ test("golden scenario timeout retains child heartbeat diagnostics", async () => 
 });
 
 test("golden scenario child crash surfaces substantive scenario diagnostics", async () => {
-    const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
+    const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.ts");
     const error = await assertRejects(
         () =>
             runGoldenScenarioChildProcess({
