@@ -9,8 +9,18 @@ import { ok as assert, strictEqual as assertStrictEquals } from "node:assert/str
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
-import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
+import { loadPlan, savePlan, updatePlanFrontMatter, type PlanFrontMatterInput } from "../../plan-store.js";
 import { HostedSession } from "../session/hosted-session.js";
+import type {
+    RuntimeInteractionAdapter,
+    RuntimeInteractionRequest,
+    RuntimeInteractionResponse,
+} from "../session/session-runtime-interactions.ts";
+import type { runCodeReview } from "../../ui/review/code-review.ts";
+import type { PlanStatus } from "./plan-lifecycle.ts";
+import type { IsolatedAgentSessionOptions } from "./validation-session-adapter.ts";
+import type { CodeReviewConversation } from "./validation-types.ts";
+import type { ValidationLoopArgs } from "./validation.ts";
 import { createTestWorktreeAttempt } from "../worktree-test-helpers.ts";
 import { createGitPort } from "../git-port.ts";
 import { getWorktreeReviewDiff } from "./git-snapshot.ts";
@@ -25,15 +35,27 @@ import {
     NO_ISOLATED_AGENT_PORT,
     runValidationLoop,
     runValidationPhase,
+    type ValidationTestArgs,
 } from "./validation-test-helpers.ts";
+
+interface ReviewRequestMetadata extends Pick<Parameters<typeof runCodeReview>[0], "diffText" | "planTitle"> {
+    reviewConversation?: CodeReviewConversation;
+}
+
+// The interaction broker carries Code Review metadata in its generic record.
+function reviewMetadata(request: RuntimeInteractionRequest): ReviewRequestMetadata | undefined {
+    return request._meta as ReviewRequestMetadata | undefined;
+}
 
 function makeValidationUi() {
     const uiAPI = makeUi();
     return { uiAPI, hostedSession: makeRecordedSession("validation-human-review-test", uiAPI) };
 }
 
-/** @param {HostedSession} hostedSession @param {(request: any) => Promise<any>} requestInteraction */
-function setInteraction(hostedSession, requestInteraction) {
+function setInteraction(
+    hostedSession: HostedSession,
+    requestInteraction: RuntimeInteractionAdapter["requestInteraction"],
+) {
     hostedSession.setInteractionAdapter({ requestInteraction });
 }
 
@@ -57,7 +79,7 @@ test("human Code Review metadata uses the Plan heading as the review title", asy
     });
     let planTitle = "";
     setInteraction(hostedSession, (request) => {
-        planTitle = request._meta?.planTitle || "";
+        planTitle = reviewMetadata(request)?.planTitle || "";
         return Promise.resolve({ outcome: "selected", _meta: { approved: true, feedback: "" } });
     });
 
@@ -92,7 +114,7 @@ test("human Code Review metadata falls back to the Plan filename when no title h
     });
     let planTitle = "";
     setInteraction(hostedSession, (request) => {
-        planTitle = request._meta?.planTitle || "";
+        planTitle = reviewMetadata(request)?.planTitle || "";
         return Promise.resolve({ outcome: "selected", _meta: { approved: true, feedback: "" } });
     });
 
@@ -123,7 +145,7 @@ test("runValidationLoop runs always human review after semantic approval and bef
         executionCwd: projectRoot,
         nonGitInPlace: true,
     });
-    const requests = /** @type {string[]} */ ([]);
+    const requests: RuntimeInteractionRequest["type"][] = [];
     setInteraction(hostedSession, (request) => {
         requests.push(request.type);
         return Promise.resolve({ outcome: "selected", _meta: { approved: true, feedback: "" } });
@@ -178,9 +200,9 @@ test("runValidationLoop ask mode can skip human review and merge", async () => {
     assertEquals(result.kind, "paused");
     assertEquals(plan?.attrs.status, "reviewed");
     assertEquals(plan?.attrs.humanReviewDecision, "skipped");
-    assertEquals(uiAPI.messages.filter((/** @type {string} */ message) => message === "Code Review skipped").length, 1);
+    assertEquals(uiAPI.messages.filter((message) => message === "Code Review skipped").length, 1);
     assertEquals(
-        uiAPI.messages.some((/** @type {string} */ message) => message.includes("You approved")),
+        uiAPI.messages.some((message) => message.includes("You approved")),
         false,
     );
 });
@@ -265,8 +287,7 @@ test("runValidationLoop resumes at reviewed and records durable human-review met
     assertEquals(plan?.attrs.humanReviewDecision, "not_required");
 });
 
-/** @param {Record<string, unknown>} [extra] */
-async function makeAwaitingReview(extra = {}) {
+async function makeAwaitingReview(extra: PlanFrontMatterInput = {}) {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "QUICK_FIX",
         status: "reviewed",
@@ -300,8 +321,7 @@ async function makeAwaitingReview(extra = {}) {
     return { projectRoot, hostedSession, uiAPI };
 }
 
-/** @param {import("./validation-session-adapter.ts").IsolatedAgentSessionOptions} options */
-async function completedRepairMessages(options) {
+async function completedRepairMessages(options: IsolatedAgentSessionOptions) {
     await executeWorkflowTestTools(options, [
         {
             name: "task_completed",
@@ -401,8 +421,7 @@ for (const reportedFix of [false, true]) {
             });
             let rounds = 0;
             let patch = "";
-            /** @type {import("./validation-types.ts").CodeReviewConversationState["conversation"]} */
-            let conversation;
+            let conversation: CodeReviewConversation | undefined;
             let ciRuns = 0;
             await preparePlanWorkflow(projectRoot, "p");
             const initialPlan = await loadPlan(projectRoot, "p");
@@ -411,16 +430,18 @@ for (const reportedFix of [false, true]) {
             const reply = reportedFix ? "I fixed the exported label." : "The exported label identifies this fixture.";
             setInteraction(hostedSession, async (request) => {
                 assertEquals(request.type, "code_review");
+                const meta = reviewMetadata(request);
+                assert(meta);
                 rounds += 1;
                 const plan = await loadPlan(projectRoot, "p");
                 if (rounds === 1) {
-                    patch = request._meta.diffText;
-                    conversation = request._meta.reviewConversation;
+                    patch = meta.diffText;
+                    conversation = meta.reviewConversation;
                     return { outcome: "selected", _meta: { feedback: "Why this label?", conversationTurn: true } };
                 }
                 assertEquals(rounds, 2);
-                assertEquals(request._meta.diffText, patch);
-                assertStrictEquals(request._meta.reviewConversation, conversation);
+                assertEquals(meta.diffText, patch);
+                assertStrictEquals(meta.reviewConversation, conversation);
                 assertEquals(conversation?.events.length, 1);
                 assertEquals(conversation?.events[0].delta, reply);
                 assertEquals(plan?.attrs.status, "reviewed");
@@ -467,9 +488,7 @@ for (const reportedFix of [false, true]) {
     );
 }
 
-/** @param {boolean} [nonGitInPlace] */
 async function makeConversationReview(nonGitInPlace = false) {
-    /** @satisfies {import("./validation-types.ts").ValidationLoopArgs["triageMeta"]} */
     const triageMeta = {
         planId: "review-conversation",
         classification: "QUICK_FIX",
@@ -477,7 +496,7 @@ async function makeConversationReview(nonGitInPlace = false) {
         humanReviewMode: "always",
         humanReviewDecision: null,
         humanReviewedAt: "2026-10-19T12:00:00.000Z",
-    };
+    } satisfies ValidationLoopArgs["triageMeta"];
     const projectRoot = nonGitInPlace
         ? await makeValidationProjectRoot("p", triageMeta)
         : await conversationFixture.checkout();
@@ -513,19 +532,20 @@ test("a Code Review edit followed by a revert is reply-only", async () => {
     let rounds = 0;
     let ciRuns = 0;
     let patch = "";
-    /** @type {import("./validation-types.ts").CodeReviewConversationState["conversation"]} */
-    let conversation;
+    let conversation: CodeReviewConversation | undefined;
     setInteraction(hostedSession, async (request) => {
         assertEquals(request.type, "code_review");
+        const meta = reviewMetadata(request);
+        assert(meta);
         rounds += 1;
         if (rounds === 1) {
-            patch = request._meta.diffText;
-            conversation = request._meta.reviewConversation;
+            patch = meta.diffText;
+            conversation = meta.reviewConversation;
             return { outcome: "selected", _meta: { feedback: "Try a clearer label.", conversationTurn: true } };
         }
         assertEquals(rounds, 2);
-        assertEquals(request._meta.diffText, patch);
-        assertStrictEquals(request._meta.reviewConversation, conversation);
+        assertEquals(meta.diffText, patch);
+        assertStrictEquals(meta.reviewConversation, conversation);
         assertEquals(
             conversation?.events.map((event) => event.delta),
             [reply],
@@ -623,12 +643,13 @@ for (const throws of [false, true]) {
         const initialEvidence = await readDeliveryEvidence(projectRoot, "p", "in-place");
         let rounds = 0;
         let ciRuns = 0;
-        /** @type {import("./validation-types.ts").CodeReviewConversationState["conversation"]} */
-        let conversation;
+        let conversation: CodeReviewConversation | undefined;
         setInteraction(hostedSession, (request) => {
             assertEquals(request.type, "code_review");
+            const meta = reviewMetadata(request);
+            assert(meta);
             rounds += 1;
-            conversation = request._meta.reviewConversation;
+            conversation = meta.reviewConversation;
             return Promise.resolve(
                 rounds === 1
                     ? { outcome: "selected", _meta: { feedback: "Why this label?", conversationTurn: true } }
@@ -673,19 +694,20 @@ test("non-Git Code Review chat keeps the repair path and reruns CI without a sou
     let rounds = 0;
     let ciRuns = 0;
     let engineerRuns = 0;
-    /** @type {import("./validation-types.ts").CodeReviewConversationState["conversation"]} */
-    let conversation;
+    let conversation: CodeReviewConversation | undefined;
     setInteraction(hostedSession, async (request) => {
         assertEquals(request.type, "code_review");
-        assertEquals(request._meta.diffText, "");
+        const meta = reviewMetadata(request);
+        assert(meta);
+        assertEquals(meta.diffText, "");
         rounds += 1;
         if (rounds === 1) {
-            conversation = request._meta.reviewConversation;
+            conversation = meta.reviewConversation;
             return { outcome: "selected", _meta: { feedback: "Explain the label.", conversationTurn: true } };
         }
         assertEquals(rounds, 2);
         assertEquals(ciRuns, 1);
-        assertStrictEquals(request._meta.reviewConversation, conversation);
+        assertStrictEquals(meta.reviewConversation, conversation);
         assertEquals(conversation?.events.length, 1);
         assertEquals((await loadPlan(projectRoot, "p"))?.attrs.humanReviewDecision, "changes_requested");
         return { outcome: "selected", _meta: { approved: true } };
@@ -761,19 +783,16 @@ test("Code Review chat repairs rerun CI before reopening the fresh diff", async 
         worktreeBaseBranch: "main",
     });
 
-    /** @type {string[]} */
-    const patches = [];
-    /** @type {string[]} */
-    const targetBranches = [];
-    /** @type {any[]} */
-    const conversations = [];
+    const patches: string[] = [];
+    const targetBranches: string[] = [];
+    const conversations: (CodeReviewConversation | undefined)[] = [];
     let reviewRound = 0;
     setInteraction(hostedSession, (request) => {
         if (request.type !== "code_review") return Promise.resolve({ outcome: "canceled" });
         reviewRound += 1;
         patches.push(String(request._meta?.diffText || ""));
         targetBranches.push(String(request._meta?.targetBranch || ""));
-        conversations.push(request._meta?.reviewConversation);
+        conversations.push(reviewMetadata(request)?.reviewConversation);
         if (reviewRound === 1) {
             return Promise.resolve({
                 outcome: "selected",
@@ -814,6 +833,7 @@ test("Code Review chat repairs rerun CI before reopening the fresh diff", async 
     assertStringIncludes(patches[1], "+export const label = 'second';");
     assertEquals(ciRuns, 1);
     assertStrictEquals(conversations[1], conversations[0]);
+    assert(conversations[1]);
     assertEquals(conversations[1].events.length, 1);
     assertEquals(conversations[1].events[0].type, "assistant_text_delta");
     assertEquals(result.kind, "paused");
@@ -859,8 +879,7 @@ test("human code-review annotations are not duplicated in the engineer repair re
 
 test("your feedback goes to the engineer, then the tests, then straight back to you", async () => {
     const { projectRoot, hostedSession } = await makeAwaitingReview();
-    /** @type {string[]} */
-    const opened = [];
+    const opened: string[] = [];
     let reviews = 0;
     let isolatedRuns = 0;
     setInteraction(hostedSession, (request) => {
@@ -978,8 +997,7 @@ test("an unconfigured Plan offers human review and cancellation pauses before de
         executionCwd: projectRoot,
         nonGitInPlace: true,
     });
-    /** @type {import("../session/session-runtime-interactions.ts").RuntimeInteractionRequest[]} */
-    const requests = [];
+    const requests: RuntimeInteractionRequest[] = [];
     setInteraction(hostedSession, (request) => {
         requests.push(request);
         return Promise.resolve({ outcome: "canceled" });
@@ -1001,12 +1019,16 @@ test("an unconfigured Plan offers human review and cancellation pauses before de
     assertEquals((await loadPlan(projectRoot, "default-review"))?.attrs.status, "reviewed");
 });
 
-for (const answer of [{ outcome: "canceled" }, { outcome: "selected", value: "close" }]) {
+const unansweredOffers: RuntimeInteractionResponse[] = [
+    { outcome: "canceled" },
+    { outcome: "selected", value: "close" },
+];
+for (const answer of unansweredOffers) {
     test(`Code Review offer ${answer.value || answer.outcome} stays pending without a skipped or approved outcome`, async () => {
         const projectRoot = await makeValidationProjectRoot("p", {
             classification: "QUICK_FIX",
             // Keep exercising the legacy spelling that Plan storage normalizes on read.
-            status: /** @type {import("../../plan-store.js").PlanFrontMatter["status"]} */ ("validated_reviewer"),
+            status: "validated_reviewer" as PlanStatus,
             humanReviewMode: "ask",
             humanReviewDecision: null,
         });
@@ -1031,8 +1053,7 @@ for (const answer of [{ outcome: "canceled" }, { outcome: "selected", value: "cl
         assertEquals((await loadPlan(projectRoot, "p"))?.attrs.humanReviewDecision, null);
         assertEquals(
             uiAPI.messages.some(
-                (/** @type {string} */ message) =>
-                    message.includes("Code Review skipped") || message.includes("You approved"),
+                (message) => message.includes("Code Review skipped") || message.includes("You approved"),
             ),
             false,
         );
@@ -1086,10 +1107,8 @@ test("Core resumes an edited reviewed candidate through CI and Semantic Review b
             worktreeBranch: entry.branch,
             worktreeBaseBranch: entry.baseBranch,
         });
-        /** @type {string[]} */
-        const events = [];
-        /** @type {string[]} */
-        const diffs = [];
+        const events: string[] = [];
+        const diffs: string[] = [];
         setInteraction(hostedSession, (request) => {
             if (request.type === "code_review") {
                 events.push("code_review");
@@ -1098,8 +1117,7 @@ test("Core resumes an edited reviewed candidate through CI and Semantic Review b
             }
             return Promise.resolve({ outcome: "selected", value: "stop" });
         });
-        /** @type {import("./validation-test-helpers.ts").ValidationTestArgs} */
-        const args = {
+        const args: ValidationTestArgs = {
             hostedSession,
             planName: "p",
             planContent: plan.markdown,
@@ -1145,7 +1163,7 @@ test("Core resumes an edited reviewed candidate through CI and Semantic Review b
         assertStringIncludes(diffs[1], "+export const value = 9;");
         assertEquals((await loadPlan(entry.path, "p"))?.attrs.status, "reviewed");
         assertEquals(
-            uiAPI.messages.some((/** @type {string} */ message) => message.includes("code changed after review")),
+            uiAPI.messages.some((message) => message.includes("code changed after review")),
             true,
         );
     } finally {
