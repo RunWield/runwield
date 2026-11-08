@@ -20,12 +20,12 @@ const scenarioExportNames = new Map<ProjectWorkflowScenario, string>([
 
 for (const scenario of scenarios) {
     test(`golden PROJECT workflow: ${scenario.name}`, async () => {
-        const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
+        const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.ts");
         const result = await runGoldenScenarioChildProcess({
             scenarioModule: "src/ui/tui/golden-scenarios/project-workflow.ts",
             exportName: scenarioExportNames.get(scenario) || "",
             timeoutMs: scenario.timeoutMs || 30000,
         });
-        assertEquals(result.result.actor.remaining, []);
+        assertEquals(result.result?.actor.remaining, []);
     });
 }

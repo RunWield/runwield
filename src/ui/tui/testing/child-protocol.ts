@@ -10,8 +10,10 @@ import process from "node:process";
 
 import { fileURLToPath as fromFileUrl, pathToFileURL as toFileUrl } from "node:url";
 import { join } from "node:path";
-import { createGoldenIsolatedEnvironment } from "./isolated-environment.ts";
-import { GOLDEN_CHILD_READY_MARKER, runGoldenChild } from "./subprocess-runner.ts";
+import { createGoldenIsolatedEnvironment, type GoldenIsolatedEnvironment } from "./isolated-environment.ts";
+import { GOLDEN_CHILD_READY_MARKER, runGoldenChild, type GoldenChildResult } from "./subprocess-runner.ts";
+import type { GoldenScenario, GoldenScenarioResult } from "./scenario-runner.js";
+import type { JsonRecord } from "../../../shared/jsonc.ts";
 import { releaseProcessGlobalTestLockSync } from "../../../testing/process-global-lock.ts";
 
 const CHILD_FLAG = "--golden-tui-child";
@@ -23,18 +25,40 @@ const CHILD_FLAG = "--golden-tui-child";
  */
 const REPO_ROOT = fromFileUrl(new URL("../../../..", import.meta.url));
 
-/**
- * @typedef {Object} GoldenChildScenarioRequest
- * @property {string} scenarioModule
- * @property {string} exportName
- * @property {number} [timeoutMs]
- * @property {boolean} [keepArtifacts]
- * @property {boolean} [initDone]
- * @property {boolean} [initArtifact]
- */
+export interface GoldenChildScenarioRequest {
+    scenarioModule: string;
+    exportName: string;
+    timeoutMs?: number;
+    keepArtifacts?: boolean;
+    initDone?: boolean;
+    initArtifact?: boolean;
+}
 
-/** @param {string} stdout */
-function parseLastJsonLine(stdout) {
+interface GoldenArtifactLocation {
+    artifactDir?: string | null;
+}
+
+interface SerializedGoldenScenarioResult extends Omit<GoldenScenarioResult, "state"> {
+    state: JsonRecord;
+}
+
+interface GoldenChildReport extends GoldenArtifactLocation {
+    ok?: boolean;
+    error?: string;
+    expectedCleanExit?: boolean;
+    heartbeat?: boolean;
+    heartbeatArtifactDir?: string;
+    env?: Pick<GoldenIsolatedEnvironment, "root" | "projectRoot">;
+    result?: SerializedGoldenScenarioResult;
+}
+
+export interface GoldenChildFailure extends Error, GoldenArtifactLocation {
+    childPayload?: GoldenChildReport | null;
+}
+
+type GoldenScenarioModule = Record<string, GoldenScenario | undefined>;
+
+function parseLastJsonLine(stdout: string): GoldenChildReport | null {
     const line = stdout
         .trim()
         .split("\n")
@@ -48,12 +72,11 @@ function parseLastJsonLine(stdout) {
     }
 }
 
-/**
- * @param {GoldenChildScenarioRequest} request
- * @param {import('./subprocess-runner.ts').GoldenChildResult} result
- * @param {unknown} childPayload
- */
-async function writeChildFailureArtifact(request, result, childPayload) {
+async function writeChildFailureArtifact(
+    request: GoldenChildScenarioRequest,
+    result: GoldenChildResult,
+    childPayload: GoldenChildReport | null,
+) {
     const artifactDir = await fsMkdtemp(join(tmpdir(), "runwield-golden-tui-child-failure-"));
     await fsWriteFile(
         join(artifactDir, "child-diagnostics.json"),
@@ -77,14 +100,12 @@ async function writeChildFailureArtifact(request, result, childPayload) {
 /**
  * Remove the isolated environment a child reported on startup. Safe to call on
  * every outcome: a child that cleaned up after itself leaves nothing to find.
- *
- * @param {unknown} childPayload
  */
-async function removeChildEnvironmentRoot(childPayload) {
+async function removeChildEnvironmentRoot(childPayload: GoldenChildReport | null) {
     if (!childPayload || typeof childPayload !== "object") return;
-    const env = /** @type {{ env?: unknown }} */ (childPayload).env;
+    const env = childPayload.env;
     if (!env || typeof env !== "object") return;
-    const root = /** @type {{ root?: unknown }} */ (env).root;
+    const root = env.root;
     if (typeof root !== "string" || !root) return;
     await fsRm(root, { recursive: true }).catch(() => {});
 }
@@ -93,10 +114,8 @@ async function removeChildEnvironmentRoot(childPayload) {
  * Runs a scenario in a fresh Deno process. The child creates HOME/Project/Git,
  * model/settings, worktree, and registry directories before importing the
  * scenario module or other RunWield code.
- *
- * @param {GoldenChildScenarioRequest} request
  */
-export async function runGoldenScenarioChildProcess(request) {
+export async function runGoldenScenarioChildProcess(request: GoldenChildScenarioRequest): Promise<GoldenChildReport> {
     const normalizedRequest = {
         ...request,
         scenarioModule: request.scenarioModule.startsWith("file:")
@@ -119,40 +138,35 @@ export async function runGoldenScenarioChildProcess(request) {
     // printed; the pre-exit report it logged is the terminal success signal, and
     // the child's exit code 0 is the proof the quit path ran for real.
     const expectedCleanExit =
-        childPayload &&
-        typeof childPayload === "object" &&
-        /** @type {{ expectedCleanExit?: unknown }} */ (childPayload).expectedCleanExit === true;
+        childPayload && typeof childPayload === "object" && childPayload.expectedCleanExit === true;
     // Backstop for a child that never got to tear itself down: one wedged past
     // the grace window, or crashed before its own cleanup. The child announces
     // its environment root on startup precisely so this path can find it.
     if (!request.keepArtifacts) await removeChildEnvironmentRoot(childPayload);
     const childReportedFailure =
-        childPayload &&
-        typeof childPayload === "object" &&
-        "ok" in childPayload &&
-        !(/** @type {{ ok?: unknown }} */ (childPayload).ok);
+        childPayload && typeof childPayload === "object" && "ok" in childPayload && !childPayload.ok;
     // A success report does not excuse a hung process or unfinished teardown.
     // The scenario must both satisfy its assertions and exit successfully.
     if (childReportedFailure || !result.success || result.timedOut) {
         const artifactDir = await writeChildFailureArtifact(normalizedRequest, result, childPayload);
         const childArtifact =
             childPayload && typeof childPayload === "object" && "artifactDir" in childPayload
-                ? `; childArtifactDir=${String(/** @type {{ artifactDir?: unknown }} */ (childPayload).artifactDir || "")}`
+                ? `; childArtifactDir=${String(childPayload.artifactDir || "")}`
                 : "";
         // The child's own `error` is the unmet expectation; stderr is whatever the
         // composed TUI happened to warn about on the way (a theme notice, say).
         // Reporting stderr first buried every real failure behind unrelated noise.
         const childError =
             childPayload && typeof childPayload === "object" && "error" in childPayload
-                ? String(/** @type {{ error?: unknown }} */ (childPayload).error || "")
+                ? String(childPayload.error || "")
                 : "";
-        const error = new Error(
+        const error: GoldenChildFailure = new Error(
             `Golden child failed${result.timedOut ? " (timeout)" : ""}; artifactDir=${artifactDir}${childArtifact}: ${
                 childError || result.stderr || result.stdout
             }`,
         );
-        /** @type {Error & { artifactDir?: string, childPayload?: unknown }} */ (error).artifactDir = artifactDir;
-        /** @type {Error & { artifactDir?: string, childPayload?: unknown }} */ (error).childPayload = childPayload;
+        error.artifactDir = artifactDir;
+        error.childPayload = childPayload;
         throw error;
     }
     if (expectedCleanExit) {
@@ -160,29 +174,28 @@ export async function runGoldenScenarioChildProcess(request) {
         // blocks); reclaim its heartbeat artifact root here.
         const heartbeatArtifactDir =
             typeof childPayload === "object" && childPayload !== null && "heartbeatArtifactDir" in childPayload
-                ? /** @type {{ heartbeatArtifactDir?: unknown }} */ (childPayload).heartbeatArtifactDir
+                ? childPayload.heartbeatArtifactDir
                 : null;
         if (!request.keepArtifacts && typeof heartbeatArtifactDir === "string") {
             await fsRm(heartbeatArtifactDir, { recursive: true }).catch(() => {});
         }
         // Run the scenario's own assertions against the pre-exit report; the
         // child that produced it is already gone.
-        const module = await import(normalizedRequest.scenarioModule);
+        const module: GoldenScenarioModule = await import(normalizedRequest.scenarioModule);
         const scenario = module[normalizedRequest.exportName];
         if (!scenario) throw new Error(`Missing scenario export: ${normalizedRequest.exportName}`);
-        const report = /** @type {{ result?: unknown }} */ (childPayload).result;
+        const report = childPayload.result;
         if (!report || typeof report !== "object") {
             throw new Error("Expected-clean-exit scenario did not report a pre-exit result.");
         }
         for (const assertion of scenario.assertions || []) {
-            await assertion(/** @type {any} */ (report));
+            await assertion(report);
         }
     }
     return childPayload || {};
 }
 
-/** @param {GoldenChildScenarioRequest} request */
-async function runChild(request) {
+async function runChild(request: GoldenChildScenarioRequest) {
     const previousCwd = getCwd();
     const env = await createGoldenIsolatedEnvironment({
         keep: request.keepArtifacts,
@@ -250,7 +263,7 @@ async function runChild(request) {
             ? request.scenarioModule
             : toFileUrl(join(REPO_ROOT, request.scenarioModule)).href;
         await fsWriteFile(join(timeoutArtifactDir, "startup-phase.txt"), "loading scenario\n");
-        const module = await import(moduleUrl);
+        const module: GoldenScenarioModule = await import(moduleUrl);
         const scenario = module[request.exportName];
         if (!scenario) throw new Error(`Missing scenario export: ${request.exportName}`);
         try {
@@ -268,7 +281,7 @@ async function runChild(request) {
                 JSON.stringify({
                     ok: false,
                     error: error instanceof Error ? error.message : String(error),
-                    artifactDir: /** @type {{ artifactDir?: unknown }} */ (error || {}).artifactDir || null,
+                    artifactDir: ((error || {}) as GoldenArtifactLocation).artifactDir || null,
                     // Scenario artifacts nest inside this directory, so it is the root a
                     // caller has to remove to reclaim everything the run retained.
                     // `artifactDir` alone names a child of it and leaves the parent behind.
@@ -289,6 +302,6 @@ async function runChild(request) {
 }
 
 if (import.meta.main && process.argv.slice(2)[0] === CHILD_FLAG) {
-    const request = JSON.parse(process.argv.slice(2)[1] || "{}");
+    const request: GoldenChildScenarioRequest = JSON.parse(process.argv.slice(2)[1] || "{}");
     await runChild(request);
 }

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../../testing/assertions.ts";
+import type { JsonRecord } from "../../../shared/jsonc.ts";
 import {
     resumeCorruptSessionScenario,
     resumeInterruptedSessionScenario,
@@ -8,12 +9,6 @@ import {
     resumeQuickFixSessionScenario,
     sessionResumeWorkflowScenarios,
 } from "./session-resume-workflow.ts";
-
-interface ModelTurn {
-    agent?: string;
-    runtimeAgent?: string;
-    systemPrompt?: string;
-}
 
 const scenarioExportNames = new Map<object, string>([
     [resumePersistedSessionScenario, "resumePersistedSessionScenario"],
@@ -23,20 +18,25 @@ const scenarioExportNames = new Map<object, string>([
 ]);
 
 test("execution Agent context identity survives recovery", async () => {
-    const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
+    const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.ts");
     const result = await runGoldenScenarioChildProcess({
         scenarioModule: "src/ui/tui/golden-scenarios/session-resume-workflow.ts",
         exportName: "resumeQuickFixSessionScenario",
         timeoutMs: resumeQuickFixSessionScenario.timeoutMs || 90000,
     });
 
+    assert(result.result, "Expected a Golden child report");
     assertEquals(result.result.actor.remaining, []);
-    assertEquals(
-        result.result.state.snapshot?.activeAgent,
-        "engineer",
-        "Expected runtime:agent:engineer after recovery.",
-    );
-    const turns: ModelTurn[] = Array.isArray(result.result.state.modelTurns) ? result.result.state.modelTurns : [];
+    const snapshot = result.result.state.snapshot;
+    const activeAgent =
+        snapshot && typeof snapshot === "object" && "activeAgent" in snapshot ? snapshot.activeAgent : undefined;
+    assertEquals(activeAgent, "engineer", "Expected runtime:agent:engineer after recovery.");
+    const modelTurns = result.result.state.modelTurns;
+    const turns = Array.isArray(modelTurns)
+        ? modelTurns.filter(
+              (turn): turn is JsonRecord => Boolean(turn) && typeof turn === "object" && !Array.isArray(turn),
+          )
+        : [];
     const executionTurn = turns.find(
         (turn) => turn?.runtimeAgent === "engineer" && String(turn?.systemPrompt || "").includes("Quick Fix Checklist"),
     );
@@ -51,12 +51,12 @@ test("execution Agent context identity survives recovery", async () => {
 
 for (const scenario of sessionResumeWorkflowScenarios.filter((entry) => entry !== resumeQuickFixSessionScenario)) {
     test(`golden Session resume: ${scenario.name}`, async () => {
-        const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
+        const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.ts");
         const result = await runGoldenScenarioChildProcess({
             scenarioModule: "src/ui/tui/golden-scenarios/session-resume-workflow.ts",
             exportName: scenarioExportNames.get(scenario) || "",
             timeoutMs: scenario.timeoutMs || 90000,
         });
-        assertEquals(result.result.actor.remaining, []);
+        assertEquals(result.result?.actor.remaining, []);
     });
 }
