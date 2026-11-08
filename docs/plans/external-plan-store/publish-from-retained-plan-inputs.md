@@ -29,6 +29,7 @@ dependencies:
 targetBranch: "epic/external-plan-store"
 userVerifiedAt: null
 status: "reviewed"
+validatedCommit: "03cf51acb9f1cce593e2203b2bea7a5911a7dc10"
 ---
 
 # Publish from Retained Plan Inputs
