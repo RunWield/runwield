@@ -1052,7 +1052,7 @@ dependency guard are what prevent this seam from silently returning.
 | Semantic interactions and cancellation                 | `src/shared/session/session-runtime.test.js`, adapter interaction tests             |
 | Workflow tools emit messages/events without UI ports   | tool tests under `src/tools/__tests__/`                                             |
 | CI, system status, errors, reviews, repair, merge      | `src/shared/workflow/validation.test.js`                                            |
-| Routing, planning, slicing, execution                  | `src/shared/workflow/orchestrator.test.js`, `src/shared/workflow/workflow.test.js`  |
+| Routing, planning, slicing, execution                  | `src/shared/workflow/orchestrator.test.js`, `src/shared/workflow/workflow.test.ts`  |
 
 ## Current automated-test map
 
@@ -1067,7 +1067,7 @@ Git behavior.
 | Agent/Pi bridge              | `session-prompt.test.ts`, `session-subscribers.test.ts`, `agent-switching.test.ts`, `session-catalog.test.js`                         | Root reuse/rebuild, event translation, prompt assembly, project-root catalog isolation          |
 | Agent workflow handler       | `agent-handler.test.js`, `orchestrator.test.js`, `decisions.test.js`, `workflow-results` coverage inside workflow tests               | Current-turn outcome extraction, routing, dispatch, completion gates, semantic decisions        |
 | Plan persistence and state   | `plan-store.test.js`, `plan-lifecycle.test.ts`, `src/ui/review/plan-review.test.js`, `src/tools/__tests__/plan-written.test.ts`       | Front matter, hierarchy, identity, locks, transition matrix, readiness and submission outcomes  |
-| Execution and validation     | `workflow.test.js`, `validation.test.js`, `git-snapshot.test.ts`                                                                      | Worktree setup, completion gate, CI/review/repair/merge paths, lifecycle evidence               |
+| Execution and validation     | `workflow.test.ts`, `validation.test.js`, `git-snapshot.test.ts`                                                                      | Worktree setup, completion gate, CI/review/repair/merge paths, lifecycle evidence               |
 | Git worktrees                | `worktree.test.js`, `worktree-registry.test.ts`, `git.test.js`                                                                        | Real/temp Git operations, branch targets, merge safety, recovery metadata, non-Git behavior     |
 | Configuration and policy     | `settings.test.ts`, `model-registry.test.ts`, `model-validation.test.js`, `runtime-preflight.test.js`, `session-tools-policy.test.js` | Layering, migration, locking, model discovery, protected-tool and binary policy                 |
 | Collaboration primitives     | Tests under `src/shared/collaboration/`                                                                                               | Crypto, capabilities, protocol normalization, locks, secrets, client behavior                   |

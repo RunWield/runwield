@@ -1,4 +1,3 @@
-// @ts-nocheck: public workflow facade now forwards to TypeScript extraction modules; behavioral coverage remains unchanged.
 import { writeRuntimeExecutableFixture } from "../../testing/runtime-executable-fixture.ts";
 import { delimiter } from "node:path";
 import { join } from "node:path";
@@ -17,7 +16,7 @@ import {
 import { test } from "node:test";
 import { rmSync as fsRmSync, writeFileSync as fsWriteFileSync } from "node:fs";
 import process from "node:process";
-import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createWorktreeGitArtifacts, settleWorktreeAttempt } from "../worktree.js";
@@ -27,13 +26,15 @@ import {
     readLatestPlanOutcome,
     runPlanningAgent,
     startActiveExecutionWorkflow,
+    type FinalizePlanImplementationOptions,
 } from "./workflow.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan, type PlanFrontMatterInput } from "../../plan-store.js";
 import { getTransitionJournalDir } from "./state-transition.ts";
 import { createExecutionStartPorts } from "./execution-start.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
+import type { SessionRuntimeEventSink } from "../types.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { setCustomSetting } from "../settings.js";
 import { getCwd } from "../../constants.js";
@@ -42,27 +43,18 @@ import {
     listEntries as listWorktreeRegistryEntries,
 } from "../worktree-registry.js";
 
-/**
- * @param {string} [id]
- * @param {string} [cwd]
- */
 function makeHostedSession(id = "workflow-test", cwd = getCwd()) {
     return new HostedSession({ id, cwd, sessionManager: null });
 }
 
-/**
- * @param {string} id @param {string} cwd
- * @param {string} cwd
- */
-function makeAgentHostedSession(id, cwd) {
+function makeAgentHostedSession(id: string, cwd: string) {
     const sessionManager = SessionManager.inMemory(cwd);
     const hostedSession = new HostedSession({ id, cwd });
     hostedSession.setRootSessionManager(sessionManager);
-    return hostedSession;
+    return { hostedSession, sessionManager };
 }
 
-/** @type {string[]} */
-const projectsToRemove = [];
+const projectsToRemove: string[] = [];
 let projectCleanupRegistered = false;
 
 function registerProjectCleanup() {
@@ -84,6 +76,14 @@ const workflowRepo = defineCommittedGitFixture();
 /** The durable Plan identity shared by the fixture Plan and the `triageMeta` naming it. */
 const PLAN_UNDER_TEST = "plan-under-test";
 
+interface WorkflowFixturePlan extends Pick<PlanFrontMatterInput, "status" | "classification"> {
+    name: string;
+    attrs?: PlanFrontMatterInput;
+}
+
+type RuntimeEventDraft = Parameters<SessionRuntimeEventSink["emit"]>[0];
+type ExecutionContext = NonNullable<FinalizePlanImplementationOptions["executionContext"]>;
+
 /**
  * A real project: a real Git repository holding real Plans.
  *
@@ -96,38 +96,30 @@ const PLAN_UNDER_TEST = "plan-under-test";
  * The repository is real for the same reason: `startActiveExecutionWorkflow` proves its
  * own work by stat-ing the worktree and re-reading the registry entry it settled, and
  * those proofs mean nothing against a directory Git never made.
- *
- * @param {Array<string | { name: string, status?: string, classification?: string, attrs?: Record<string, unknown> }>} plans
- * @returns {Promise<string>} the project root
  */
-async function makeWorkflowProject(plans) {
+async function makeWorkflowProject(plans: (string | WorkflowFixturePlan)[]) {
     const cwd = await workflowRepo.checkout({ prefix: "runwield-workflow-" });
     projectsToRemove.push(cwd);
     registerProjectCleanup();
     for (const [index, entry] of plans.entries()) {
         const plan = typeof entry === "string" ? { name: entry } : entry;
-        await savePlan(
-            cwd,
-            plan.name,
-            `# ${plan.name}`,
-            /** @type {any} */ ({
-                classification: plan.classification || "PLANNED_CHANGE",
-                status: plan.status || "ready_for_work",
-                summary: plan.name,
-                affectedPaths: [],
-                // A Plan that reached execution already has its durable identity. Without
-                // it, ensurePlanIdentity backfills one mid-transaction and the execution
-                // preparation transaction correctly rejects its own snapshot as stale.
-                //
-                // The first Plan gets PLAN_UNDER_TEST because it is the one callers name
-                // in `triageMeta.planId`, and those two identities have to agree: the
-                // preparation transaction re-reads the Plan it materialized into the
-                // worktree and rejects a copy whose id is not the one it prepared. They
-                // silently disagreed while that check was gated off for injected deps.
-                planId: index === 0 ? PLAN_UNDER_TEST : `plan-${plan.name.replace(/[^a-z0-9]+/gi, "-")}`,
-                ...(plan.attrs || {}),
-            }),
-        );
+        await savePlan(cwd, plan.name, `# ${plan.name}`, {
+            classification: plan.classification || "PLANNED_CHANGE",
+            status: plan.status || "ready_for_work",
+            summary: plan.name,
+            affectedPaths: [],
+            // A Plan that reached execution already has its durable identity. Without
+            // it, ensurePlanIdentity backfills one mid-transaction and the execution
+            // preparation transaction correctly rejects its own snapshot as stale.
+            //
+            // The first Plan gets PLAN_UNDER_TEST because it is the one callers name
+            // in `triageMeta.planId`, and those two identities have to agree: the
+            // preparation transaction re-reads the Plan it materialized into the
+            // worktree and rejects a copy whose id is not the one it prepared. They
+            // silently disagreed while that check was gated off for injected deps.
+            planId: index === 0 ? PLAN_UNDER_TEST : `plan-${plan.name.replace(/[^a-z0-9]+/gi, "-")}`,
+            ...(plan.attrs || {}),
+        });
     }
     return cwd;
 }
@@ -173,8 +165,8 @@ test("startActiveExecutionWorkflow indexes a newly created execution worktree", 
     await withProcessGlobalTestLock(async () => {
         const projectRoot = await makeWorkflowProject([{ name: "indexed-plan", status: "ready_for_work" }]);
         const hostedSession = makeHostedSession("indexed-workflow", projectRoot);
-        const events = [];
-        hostedSession.setEventSink((event) => events.push(event));
+        const events: RuntimeEventDraft[] = [];
+        hostedSession.setEventSink((event: RuntimeEventDraft) => events.push(event));
         const binDir = await fsMkdtemp(join(tmpdir(), "runwield-fake-cymbal-bin-"));
         const markerPath = `${binDir}/cymbal-marker.txt`;
         const cymbalPath = `${binDir}/cymbal`;
@@ -201,9 +193,12 @@ writeFileSync(process.env.RUNWIELD_CYMBAL_MARKER, realpathSync(process.cwd()) + 
             });
 
             const marker = (await fsReadFile(markerPath, "utf8")).trim().split("\n");
+            assertExists(result.executionCwd);
             assertEquals(marker, [await fsRealpath(result.executionCwd), "index ."]);
             assertEquals(
-                events.some((event) => event.message === "Indexing the worktree for code search..."),
+                events.some(
+                    (event) => "message" in event && event.message === "Indexing the worktree for code search...",
+                ),
                 true,
             );
         } finally {
@@ -243,7 +238,8 @@ test("startActiveExecutionWorkflow bases the execution worktree on the requested
     // question is what the worktree was actually branched from, and only the repository
     // can answer that.
     assertEquals(result.worktreeBaseBranch, "feature-base");
-    const entry = await findWorktreeRegistryEntryById(projectRoot, /** @type {string} */ (result.worktreeId));
+    assertExists(result.worktreeId);
+    const entry = await findWorktreeRegistryEntryById(projectRoot, result.worktreeId);
     assertEquals(entry?.baseRef, "refs/heads/feature-base");
     assertEquals(entry?.baseBranch, "feature-base");
     const targetCommit = await git(projectRoot, ["rev-parse", "refs/heads/feature-base"]);
@@ -262,8 +258,9 @@ test("startActiveExecutionWorkflow bases the execution worktree on the requested
         await git(projectRoot, ["ls-tree", "-r", "--name-only", preparationCommit]),
         "docs/plans/targeted-plan.md",
     );
-    assertEquals(await git(/** @type {string} */ (result.executionCwd), ["status", "--porcelain"]), "");
-    const plan = await loadPlan(/** @type {string} */ (result.executionCwd), "targeted-plan");
+    assertExists(result.executionCwd);
+    assertEquals(await git(result.executionCwd, ["status", "--porcelain"]), "");
+    const plan = await loadPlan(result.executionCwd, "targeted-plan");
     assertEquals(plan?.attrs.status, "in_progress");
 });
 
@@ -303,7 +300,8 @@ test("startActiveExecutionWorkflow uses the latest uncommitted Plan revision ins
             ports: createExecutionStartPorts(),
         });
         executionCwd = result.executionCwd;
-        const executionPlan = await loadPlan(result.executionCwd, "revised-before-execution");
+        assertExists(executionCwd);
+        const executionPlan = await loadPlan(executionCwd, "revised-before-execution");
         assertEquals(executionPlan?.body.trim(), "# Latest approved Plan\n\n## Context\n\nlatest approved Plan");
         assertEquals(executionPlan?.attrs.summary, "latest approved Plan");
     } finally {
@@ -346,12 +344,9 @@ test("startActiveExecutionWorkflow captures baseline after first Plan materializ
     // session proves it was recomputed. The evidence below says both, without making
     // either step replaceable.
     assertEquals(result.baselineTree !== "stale-tree-without-plan", true);
-    const baselineFiles = await git(/** @type {string} */ (result.executionCwd), [
-        "ls-tree",
-        "-r",
-        "--name-only",
-        /** @type {string} */ (result.baselineTree),
-    ]);
+    assertExists(result.executionCwd);
+    assertExists(result.baselineTree);
+    const baselineFiles = await git(result.executionCwd, ["ls-tree", "-r", "--name-only", result.baselineTree]);
     assertStringIncludes(baselineFiles, "docs/plans/p.md");
 });
 
@@ -482,7 +477,8 @@ test("startActiveExecutionWorkflow bases untargeted plans on the repository defa
         ports: createExecutionStartPorts(),
     });
 
-    const entry = await findWorktreeRegistryEntryById(projectRoot, /** @type {string} */ (result.worktreeId));
+    assertExists(result.worktreeId);
+    const entry = await findWorktreeRegistryEntryById(projectRoot, result.worktreeId);
     // No declared target means the current branch is the target. Naming its ref
     // explicitly lets repositories with an upstream prefer the fetched remote ref
     // without ever moving the user's checkout.
@@ -537,6 +533,7 @@ test("startActiveExecutionWorkflow rejects reusable worktree target mismatches",
     });
     const entriesBefore = await listWorktreeRegistryEntries(projectRoot);
     const selected = await loadPlan(recorded.path, "targeted-plan");
+    assertExists(selected);
     await assertRejects(
         () =>
             startActiveExecutionWorkflow({
@@ -615,6 +612,7 @@ test("startActiveExecutionWorkflow ignores an unregistered cached attempt and us
     });
     assertEquals(started.worktreeId === "wt4", false);
     assertEquals(started.worktreeBaseBranch, "feature-base");
+    assertExists(started.worktreeId);
     assertEquals((await findWorktreeRegistryEntryById(projectRoot, started.worktreeId))?.baseBranch, "feature-base");
 });
 
@@ -628,8 +626,7 @@ test("startActiveExecutionWorkflow prompts once and uses CWD for non-Git in-plac
             return Promise.resolve({ outcome: "selected", value: "proceed" });
         },
     });
-    /** @type {string[]} */
-    const prompts = [];
+    const prompts: string[] = [];
     const result = await startActiveExecutionWorkflow({
         planName: "non-git-plan",
         triageMeta: { planId: "plan-under-test", classification: "FEATURE" },
@@ -707,13 +704,13 @@ test("startActiveExecutionWorkflow does not activate Frontend Engineer before no
 });
 
 test("readLatestPlanOutcome returns the latest plan_written outcome", () => {
-    const messages = [
-        /** @type {any} */ ({
+    const messages: Parameters<typeof readLatestPlanOutcome>[0] = [
+        {
             role: "toolResult",
             toolName: "plan_written",
             details: { planName: "first", outcome: "feedback" },
-        }),
-        /** @type {any} */ ({
+        },
+        {
             role: "toolResult",
             toolName: "plan_written",
             content: [
@@ -726,7 +723,7 @@ test("readLatestPlanOutcome returns the latest plan_written outcome", () => {
                 triageMeta: { classification: "FEATURE" },
                 feedback: "Keep the selected command.",
             },
-        }),
+        },
     ];
     assertEquals(readLatestPlanOutcome(messages), {
         outcome: "approved_execute",
@@ -738,8 +735,8 @@ test("readLatestPlanOutcome returns the latest plan_written outcome", () => {
 });
 
 test("extractAssistantOutput falls back to task_completed message details", () => {
-    const messages = [
-        /** @type {any} */ ({
+    const messages: Parameters<typeof extractAssistantOutput>[0] = [
+        {
             role: "assistant",
             content: [
                 {
@@ -748,15 +745,15 @@ test("extractAssistantOutput falls back to task_completed message details", () =
                     input: { message: "Implemented isolated worktree setup." },
                 },
             ],
-        }),
-        /** @type {any} */ ({
+        },
+        {
             role: "toolResult",
             toolName: "task_completed",
             details: {
                 outcome: "task_completed",
                 message: "Implemented isolated worktree setup.",
             },
-        }),
+        },
     ];
 
     assertEquals(extractAssistantOutput(messages), "Implemented isolated worktree setup.");
@@ -764,13 +761,11 @@ test("extractAssistantOutput falls back to task_completed message details", () =
 
 test("extractAssistantOutput handles legacy assistant text shapes", () => {
     assertEquals(
-        extractAssistantOutput([/** @type {any} */ ({ role: "assistant", content: "Plain legacy summary." })]),
+        extractAssistantOutput([{ role: "assistant", content: "Plain legacy summary." }]),
         "Plain legacy summary.",
     );
     assertEquals(
-        extractAssistantOutput([
-            /** @type {any} */ ({ role: "assistant", content: [{ contentText: "Content text summary." }] }),
-        ]),
+        extractAssistantOutput([{ role: "assistant", content: [{ contentText: "Content text summary." }] }]),
         "Content text summary.",
     );
 });
@@ -792,7 +787,7 @@ test("finalizePlanImplementation checkpoints worktree changes before lifecycle c
     const branchHeadBefore = await git(projectRoot, ["rev-parse", `${worktree.branch}^{commit}`]);
     await fsWriteFile(`${worktree.path}/implemented.txt`, "the Agent's work\n");
 
-    const executionContext = /** @type {const} */ ({
+    const executionContext: ExecutionContext = {
         planName: "feature-plan",
         triageMeta: { classification: "FEATURE" },
         executionAgent: "engineer",
@@ -802,7 +797,7 @@ test("finalizePlanImplementation checkpoints worktree changes before lifecycle c
         baselineTree: "attempt-tree",
         worktreeId: worktree.id,
         worktreeBranch: worktree.branch,
-    });
+    };
 
     const result = await finalizePlanImplementation({
         projectRoot,
@@ -838,7 +833,7 @@ test("finalizePlanImplementation restores missing execution_started before lifec
     await savePlan(worktree.path, "feature-plan", "# feature-plan", { status: "ready_for_work" });
     await fsWriteFile(`${worktree.path}/recovered.txt`, "work done before the marker was lost\n");
 
-    const executionContext = /** @type {const} */ ({
+    const executionContext: ExecutionContext = {
         planName: "feature-plan",
         triageMeta: { classification: "FEATURE" },
         executionAgent: "engineer",
@@ -848,7 +843,7 @@ test("finalizePlanImplementation restores missing execution_started before lifec
         baselineTree: "attempt-tree",
         worktreeId: worktree.id,
         worktreeBranch: worktree.branch,
-    });
+    };
 
     await finalizePlanImplementation({
         projectRoot,
@@ -882,7 +877,8 @@ test("finalizePlanImplementation restores a Plan deleted and committed by the En
         hostedSession,
         ports: createExecutionStartPorts(),
     });
-    const worktreePath = /** @type {string} */ (executionContext.executionCwd);
+    const worktreePath = executionContext.executionCwd;
+    assertExists(worktreePath);
     const planPath = `${worktreePath}/docs/plans/deleted-plan.md`;
     const preparationCommit = await git(worktreePath, ["rev-parse", "HEAD"]);
     assertStringIncludes(await git(worktreePath, ["ls-files"]), "docs/plans/deleted-plan.md");
@@ -947,8 +943,9 @@ test("execution preparation ignores Plan body edits the user owns", async () => 
         { name: "body-plan", status: "ready_for_work", classification: "FEATURE" },
     ]);
     const stored = await loadPlan(projectRoot, "body-plan");
+    assertExists(stored);
     const hostedSession = makeHostedSession("exec-body", projectRoot);
-    hostedSession.setEventSink((event) => {
+    hostedSession.setEventSink((event: RuntimeEventDraft) => {
         if (event.type === "system_status" && event.message === "Preparing the implementation target...") {
             fsWriteFileSync(stored.path, `${stored.markdown}\n\nEdited in another editor.\n`);
         }
@@ -964,7 +961,8 @@ test("execution preparation ignores Plan body edits the user owns", async () => 
 
     assertEquals(result.planName, "body-plan");
     // The body edit reached the execution copy rather than being reverted or rejected.
-    const executionPlan = await loadPlan(/** @type {string} */ (result.executionCwd), "body-plan");
+    assertExists(result.executionCwd);
+    const executionPlan = await loadPlan(result.executionCwd, "body-plan");
     assertStringIncludes(String(executionPlan?.markdown), "Edited in another editor.");
 });
 
@@ -979,8 +977,9 @@ test("execution preparation still refuses when lifecycle front matter drifts", a
             affectedPaths: [],
         });
         const stored = await loadPlan(projectRoot, "fm-plan");
+        assertExists(stored);
         const hostedSession = makeHostedSession("exec-fm", projectRoot);
-        hostedSession.setEventSink((event) => {
+        hostedSession.setEventSink((event: RuntimeEventDraft) => {
             if (event.type === "system_status" && event.message === "Preparing the implementation target...") {
                 fsWriteFileSync(stored.path, stored.markdown.replace('status: "ready_for_work"', 'status: "on_hold"'));
             }
@@ -1008,8 +1007,8 @@ test("execution preparation still refuses when lifecycle front matter drifts", a
 test("runPlanningAgent records a known Plan name before the planning turn starts", async () => {
     await withRuntimeCommandFixture("workflow-planning-plan-name-", async ({ setModelResponseFactory }) => {
         const projectRoot = await makeWorkflowProject([{ name: "resumed-plan", status: "draft" }]);
-        const hostedSession = makeAgentHostedSession("workflow-planning-plan-name", projectRoot);
-        let planNameDuringTurn = null;
+        const { hostedSession, sessionManager } = makeAgentHostedSession("workflow-planning-plan-name", projectRoot);
+        let planNameDuringTurn: string | null = null;
         setModelResponseFactory(() => {
             planNameDuringTurn = hostedSession.getWorkflowContext()?.planName ?? null;
             return fauxAssistantMessage(fauxText("Acknowledged; nothing to finalize yet."));
@@ -1021,7 +1020,7 @@ test("runPlanningAgent records a known Plan name before the planning turn starts
                 initialRequest: "Resume the draft Plan.",
                 triageMeta: {},
                 hostedSession,
-                sessionManager: hostedSession.getRootSessionManager(),
+                sessionManager,
                 planName: "resumed-plan",
             });
 
@@ -1039,7 +1038,7 @@ test("runPlanningAgent records a known Plan name before the planning turn starts
 test("runPlanningAgent leaves workflow Plan context alone when no Plan name is known", async () => {
     await withRuntimeCommandFixture("workflow-planning-no-plan-name-", async ({ setModelResponseFactory }) => {
         const projectRoot = await makeWorkflowProject([{ name: "unrelated-plan", status: "draft" }]);
-        const hostedSession = makeAgentHostedSession("workflow-planning-no-plan-name", projectRoot);
+        const { hostedSession, sessionManager } = makeAgentHostedSession("workflow-planning-no-plan-name", projectRoot);
         setModelResponseFactory(() => fauxAssistantMessage(fauxText("Still gathering context.")));
 
         try {
@@ -1048,7 +1047,7 @@ test("runPlanningAgent leaves workflow Plan context alone when no Plan name is k
                 initialRequest: "Plan something new.",
                 triageMeta: {},
                 hostedSession,
-                sessionManager: hostedSession.getRootSessionManager(),
+                sessionManager,
             });
 
             assertEquals(hostedSession.getWorkflowContext()?.planName, undefined);
