@@ -1,5 +1,6 @@
 import { getCwd } from "../../constants.js";
 import process from "node:process";
+import { Type } from "typebox";
 import {
     chmod as fsChmod,
     mkdir as fsMkdir,
@@ -11,8 +12,15 @@ import {
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
-import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { fauxAssistantMessage, fauxText, fauxToolCall, type AssistantMessage } from "@earendil-works/pi-ai";
+import {
+    SessionManager,
+    type AgentSessionEventListener,
+    type CustomEntry,
+    type ExtensionToolContext,
+    type ProviderModelConfig,
+    type ToolDefinition,
+} from "@earendil-works/pi-coding-agent";
 import { basename, join } from "node:path";
 import { AGENTS } from "../../constants.js";
 import { loadAgentDef } from "./agents.js";
@@ -34,6 +42,8 @@ import {
     shouldBypassAutoCompactionForAssistantMessage,
 } from "./session.js";
 import { HostedSession } from "./hosted-session.js";
+import type { RequestAttemptEntry } from "./request-dispatch.ts";
+import type { ImageAttachment } from "./types.js";
 import { getRunWieldSessionDir } from "./root-session.js";
 import { RunawayLoopGuardStoppedError } from "./runaway-loop-guard.ts";
 import { estimateContextTextTokens } from "./session-context-report.ts";
@@ -43,24 +53,23 @@ import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 
-/** @typedef {import("@earendil-works/pi-coding-agent").ExtensionToolContext} MnemotecaToolContext */
+type PromptTest = () => void | Promise<void>;
+type CompactionMessage = Pick<AssistantMessage, "role" | "stopReason">;
 
-/**
- * @param {string | Record<string, any>} testDefinition
- * @param {(() => void | Promise<void>) | undefined} [fn]
- */
-function sessionPromptTest(testDefinition, fn) {
-    if (typeof testDefinition === "string") {
-        if (!fn) throw new Error("sessionPromptTest requires a test function");
-        test(testDefinition, () => withProcessGlobalTestLock(async () => await fn()));
-        return;
-    }
-    test(
-        /** @type {any} */ ({
-            ...testDefinition,
-            fn: () => withProcessGlobalTestLock(async () => await testDefinition.fn()),
-        }),
-    );
+type AttemptEntry = CustomEntry<Pick<RequestAttemptEntry, "phase" | "requestId">>;
+
+type FixtureModel = Pick<ProviderModelConfig, "input">;
+
+interface FixtureProvider {
+    models: FixtureModel[];
+}
+
+interface FixtureModelConfig {
+    providers: Record<string, FixtureProvider>;
+}
+
+function sessionPromptTest(name: string, fn: PromptTest) {
+    test(name, () => withProcessGlobalTestLock(async () => await fn()));
 }
 
 const promptGitFixture = defineCommittedGitFixture();
@@ -227,28 +236,29 @@ sessionPromptTest("assembleFinalSystemPromptWithContextProjection attributes res
         );
 
         const { prompt, projection } = await assembleFinalSystemPromptWithContextProjection(
-            /** @type {any} */ ({
+            {
                 name: "test",
                 displayName: "Test",
                 description: "Test agent",
+                model: "",
+                tools: [],
                 systemPrompt:
                     "Agent instructions {{AVAILABLE_TOOLS}} {{GLOBAL_AGENTSMD}} {{PROJECT_AGENTSMD}} {{MEMORIES}} {{SKILLS}} {{PROJECT_STATE_CONTEXT}} {{IMAGE_ATTACHMENTS_SECTION}} {{BUNDLED_AGENT_DEFS_DIR}}",
-            }),
+            },
             ["read", "custom_tool"],
             [
-                /** @type {any} */ ({
+                {
                     name: "custom_tool",
                     label: "Custom Tool",
                     description: "Custom tool with schema",
                     promptSnippet: "custom_tool(value): use schema-backed custom tool",
-                    parameters: {
-                        type: "object",
-                        properties: {
-                            value: { type: "string", description: "Important schema-only value details" },
-                        },
-                        required: ["value"],
+                    parameters: Type.Object({
+                        value: Type.String({ description: "Important schema-only value details" }),
+                    }),
+                    execute: () => {
+                        throw new Error("Prompt projection must not execute the custom tool");
                     },
-                }),
+                },
             ],
             projectRoot,
             "Runtime project state",
@@ -331,16 +341,18 @@ esac
             { action: "store", content: "Core memory from Mnemoteca\nSecond core memory", core: true },
             new AbortController().signal,
             () => {},
-            /** @type {MnemotecaToolContext} */ ({}),
+            {} as ExtensionToolContext,
         );
 
         const { prompt, projection } = await assembleFinalSystemPromptWithContextProjection(
-            /** @type {any} */ ({
+            {
                 name: "test",
                 displayName: "Test",
                 description: "Test agent",
+                model: "",
+                tools: [],
                 systemPrompt: "Agent instructions {{MEMORIES}}",
-            }),
+            },
             [],
             [],
             worktree,
@@ -380,12 +392,14 @@ sessionPromptTest("assembleFinalSystemPromptWithContextProjection excludes omitt
         );
 
         const { prompt, projection } = await assembleFinalSystemPromptWithContextProjection(
-            /** @type {any} */ ({
+            {
                 name: "test",
                 displayName: "Test",
                 description: "Test agent",
+                model: "",
+                tools: [],
                 systemPrompt: "Bare agent instructions.",
-            }),
+            },
             ["see_image"],
             [],
             projectRoot,
@@ -502,7 +516,7 @@ test("runPrompt compacts Engineer before Pi's configured threshold", async () =>
     await withRuntimeCommandFixture(
         "runprompt-engineer-threshold-",
         async (fixture) => {
-            const observations = /** @type {string[]} */ ([]);
+            const observations: string[] = [];
             await fsMkdir(join(fixture.projectRoot, ".wld"), { recursive: true });
             await fsWriteFile(
                 join(fixture.projectRoot, ".wld/settings.json"),
@@ -589,24 +603,21 @@ test("runPrompt compacts Engineer before Pi's configured threshold", async () =>
 });
 
 sessionPromptTest("Engineer post-response compaction re-arms after new context growth", async () => {
-    const calls = /** @type {string[]} */ ([]);
+    const calls: string[] = [];
     let tokens = 59;
-    /** @type {import('@earendil-works/pi-coding-agent').AgentSessionEventListener | undefined} */
-    let listener;
-    const session = /** @type {any} */ ({
+    let listener: AgentSessionEventListener | undefined;
+    const session = {
         model: { contextWindow: 100 },
         settingsManager: {
             getCompactionSettings: () => ({ enabled: true, reserveTokens: 10, keepRecentTokens: 10 }),
         },
         getContextUsage: () => ({ tokens, contextWindow: 100, percent: tokens }),
-        subscribe: /** @param {import('@earendil-works/pi-coding-agent').AgentSessionEventListener} callback */ (
-            callback,
-        ) => {
+        subscribe: (callback: AgentSessionEventListener) => {
             listener = callback;
             return () => {};
         },
-        _checkCompaction: () => Promise.resolve(false),
-        _runAutoCompaction: (/** @type {string} */ reason, /** @type {boolean} */ willRetry) => {
+        _checkCompaction: (_message: CompactionMessage) => Promise.resolve(false),
+        _runAutoCompaction: (reason: string, willRetry: boolean) => {
             calls.push(`compact:${reason}:${willRetry}`);
             listener?.({
                 type: "compaction_end",
@@ -617,7 +628,7 @@ sessionPromptTest("Engineer post-response compaction re-arms after new context g
             });
             return Promise.resolve(false);
         },
-    });
+    };
 
     installEngineerAutoCompactionThreshold(session, AGENTS.ENGINEER);
     await session._checkCompaction({ role: "assistant", stopReason: "stop" });
@@ -634,20 +645,20 @@ sessionPromptTest("Engineer post-response compaction re-arms after new context g
 });
 
 sessionPromptTest("Engineer threshold respects disabled automatic compaction", async () => {
-    const calls = /** @type {string[]} */ ([]);
-    const session = /** @type {any} */ ({
+    const calls: string[] = [];
+    const session = {
         model: { contextWindow: 100 },
         settingsManager: {
             getCompactionSettings: () => ({ enabled: false, reserveTokens: 10, keepRecentTokens: 10 }),
         },
         getContextUsage: () => ({ tokens: 75, contextWindow: 100, percent: 75 }),
         subscribe: () => () => {},
-        _checkCompaction: () => Promise.resolve(false),
+        _checkCompaction: (_message: CompactionMessage) => Promise.resolve(false),
         _runAutoCompaction: () => {
             calls.push("compact");
             return Promise.resolve(true);
         },
-    });
+    };
 
     installEngineerAutoCompactionThreshold(session, AGENTS.ENGINEER);
     await session._checkCompaction({ role: "assistant", stopReason: "stop" });
@@ -660,7 +671,7 @@ test("runPrompt sends fallback image markers without raw image content to text-o
         "runprompt-text-image-fallback-",
         async (fixture) => {
             const modelsPath = join(fixture.homeDir, ".wld/models.json");
-            const modelsConfig = JSON.parse(await fsReadFile(modelsPath, "utf8"));
+            const modelsConfig: FixtureModelConfig = JSON.parse(await fsReadFile(modelsPath, "utf8"));
             modelsConfig.providers["runtime-command-fixture"].models[0].input = ["text"];
             await fsWriteFile(modelsPath, JSON.stringify(modelsConfig));
             await fsMkdir(join(fixture.projectRoot, ".wld"), { recursive: true });
@@ -683,19 +694,15 @@ test("runPrompt sends fallback image markers without raw image content to text-o
             assertEquals(built.session.model?.input, ["text"]);
             const subscriber = attachSessionEventSubscribers(built.session, built.agentDef);
 
+            const images: ImageAttachment[] = [{ base64: "abc", mimeType: "image/png", ref: "attachment:123" }];
+
             try {
                 await runPrompt({
                     ...built,
                     agentName: "operator",
                     userRequest: "please inspect",
                     finalSystemPrompt: "system",
-                    images: /** @type {import('./types.js').ImageAttachment[]} */ ([
-                        {
-                            base64: "abc",
-                            mimeType: "image/png",
-                            ref: "attachment:123",
-                        },
-                    ]),
+                    images,
                     subscriberState: subscriber,
                 });
 
@@ -716,13 +723,9 @@ test("runPrompt sends fallback image markers without raw image content to text-o
     );
 });
 
-/**
- * @param {string} projectRoot
- * @param {string} id
- */
-function makeHostedRuntimeSession(projectRoot, id) {
+function makeHostedRuntimeSession(projectRoot: string, id: string) {
     const manager = SessionManager.create(projectRoot, getRunWieldSessionDir(projectRoot), { id: `${id}-manager` });
-    return new HostedSession({ id, cwd: projectRoot, sessionManager: /** @type {any} */ (manager) });
+    return new HostedSession({ id, cwd: projectRoot, sessionManager: manager });
 }
 
 test("ensureRootAgentSession scopes real roots and transcripts to each HostedSession", async () => {
@@ -783,7 +786,7 @@ test("a runaway root turn is recorded as failed and a new instruction gets a fre
     await withRuntimeCommandFixture("session-root-loop-guard-", async ({ projectRoot, setModelResponseFactories }) => {
         let modelCalls = 0;
         let toolCalls = 0;
-        const repeatTool = {
+        const repeatTool: ToolDefinition = {
             name: "repeat_tool",
             label: "Repeat tool",
             description: "Returns a stable synthetic result",
@@ -791,7 +794,7 @@ test("a runaway root turn is recorded as failed and a new instruction gets a fre
             execute: () => {
                 toolCalls += 1;
                 return Promise.resolve({
-                    content: [{ type: /** @type {const} */ ("text"), text: "stable result" }],
+                    content: [{ type: "text", text: "stable result" }],
                     details: null,
                 });
             },
@@ -837,12 +840,7 @@ test("a runaway root turn is recorded as failed and a new instruction gets a fre
             const attempts = root.sessionManager
                 .getBranch()
                 .filter((entry) => entry.type === "custom" && entry.customType === "runwield.request_attempt")
-                .map(
-                    (entry) =>
-                        /** @type {import('@earendil-works/pi-coding-agent').CustomEntry<{phase?: string; requestId?: string}>} */ (
-                            entry
-                        ).data,
-                );
+                .map((entry) => (entry as AttemptEntry).data);
             assertEquals(attempts.at(-1)?.phase, "failed");
 
             const messages = await runRootTurn({
@@ -855,12 +853,7 @@ test("a runaway root turn is recorded as failed and a new instruction gets a fre
             const completedAttempts = root.sessionManager
                 .getBranch()
                 .filter((entry) => entry.type === "custom" && entry.customType === "runwield.request_attempt")
-                .map(
-                    (entry) =>
-                        /** @type {import('@earendil-works/pi-coding-agent').CustomEntry<{phase?: string; requestId?: string}>} */ (
-                            entry
-                        ).data,
-                );
+                .map((entry) => (entry as AttemptEntry).data);
             assertEquals(completedAttempts.at(-1)?.phase, "completed");
             assertEquals(completedAttempts.at(-1)?.requestId === attempts.at(-1)?.requestId, false);
         } finally {
