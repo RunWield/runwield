@@ -94,6 +94,17 @@ export function createFooterOnlyUiApi(parentUiAPI) {
     };
 }
 
+/** @typedef {import("./types.js").UiAPI} UiAPI */
+
+/**
+ * @typedef {UiAPI & Required<Pick<UiAPI,
+ *     "advanceSpinner" | "appendQueuedMessage" | "appendUserMessage" | "clearMessages" | "getActiveToolBlock" |
+ *     "isOutputSuppressed" | "removeQueuedMessage" | "setBusy" | "setManagedSyncStatus" | "setRunningTasks" |
+ *     "showKeyboardHelp" | "startToolExecution" | "suppressOutput" | "toggleToolOutputsExpanded" |
+ *     "updateValidationProgress" | "updateValidationReport"
+ * >>} InteractiveUiAPI
+ */
+
 /**
  * Creates a UiAPI object for RunWield TUI.
  *
@@ -107,7 +118,7 @@ export function createFooterOnlyUiApi(parentUiAPI) {
  * @param {{ addChild: (child: any) => void, removeChild: (child: any) => void, clear?: () => void, children: any[] }} [queuedInputContainer]
  * @param {() => VisibleToolBlock[]} [getVisibleToolBlocks]
  * @param {(progress: import('../../shared/session/session-runtime-events.js').RuntimeValidationProgress | null) => void} [onValidationProgress]
- * @returns {import('./types.js').UiAPI}
+ * @returns {InteractiveUiAPI}
  */
 export function createUiApi(
     documentLinks,
