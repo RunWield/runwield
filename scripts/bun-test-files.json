@@ -523,7 +523,7 @@
     "src/shared/work-records/recorder-contract.test.ts",
     "src/shared/work-records/remote-index.test.ts",
     "src/shared/work-records/supersession.test.ts",
-    "src/shared/work-records/work-records.test.js",
+    "src/shared/work-records/work-records.test.ts",
     "src/shared/workflow/agent-runners.integration.test.ts",
     "src/shared/workflow/authority-continuation.integration.test.ts",
     "src/shared/workflow/collaboration-pull.test.ts",

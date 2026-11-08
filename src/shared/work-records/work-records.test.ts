@@ -4,7 +4,13 @@ import { mkdtemp as fsMkdtemp, rm as fsRm, stat as fsStat, writeFile as fsWriteF
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
+import {
+    assertEquals,
+    assertExists,
+    assertRejects,
+    assertStringIncludes,
+    assertThrows,
+} from "../../testing/assertions.ts";
 import {
     buildWorkRecordIndexDocument,
     findWorkRecordById,
@@ -23,12 +29,14 @@ import {
     searchWorkRecords,
     syncWorkRecordToIndex,
     writeWorkRecord,
+    type GeneratedWorkRecordSections,
+    type WorkRecordFrontMatter,
 } from "./index.ts";
 import { archivePlan, loadArchivedPlan, loadPlan, savePlan } from "../../plan-store.js";
+import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
 
-/** @type {import('./schema.ts').WorkRecordFrontMatter} */
-const INTERNAL_ATTRS = {
+const INTERNAL_ATTRS: WorkRecordFrontMatter = {
     kind: "work_record",
     recordId: "11111111-1111-4111-8111-111111111111",
     status: "approved",
@@ -41,39 +49,34 @@ const INTERNAL_ATTRS = {
 
 const BODY = `# Example Work\n\n## Summary\n\nBuilt the durable store.\n\n## Future Planning Notes\n\nReuse this pattern.`;
 
-/** @param {string} stdout */
-function ok(stdout) {
+function ok(stdout: string) {
     return { success: true, code: 0, stdout: new TextEncoder().encode(stdout), stderr: new Uint8Array() };
 }
 
-/** @param {(command: string, args: string[], options?: { cwd?: string }) => Promise<ReturnType<typeof ok>>} commandOutput */
-function createCommandMnemotecaPort(commandOutput) {
+type MnemotecaCommand = (
+    command: string,
+    ...args: Parameters<WorkRecordMnemotecaPort["run"]>
+) => ReturnType<WorkRecordMnemotecaPort["run"]>;
+
+function createCommandMnemotecaPort(commandOutput: MnemotecaCommand): WorkRecordMnemotecaPort {
     return {
-        run: (/** @type {string[]} */ args, /** @type {{ cwd?: string }} */ options) =>
-            commandOutput("mnemoteca", args, options),
+        run: (args, options) => commandOutput("mnemoteca", args, options),
     };
 }
 
 /**
  * Script only the external Recorder model response. Prompt construction,
  * structured-output parsing, Work Record persistence, and Plan backlinks stay real.
- *
- * @param {import("./generation.js").GeneratedWorkRecordSections} sections
  */
-function recorderResponse(sections) {
+function recorderResponse(sections: GeneratedWorkRecordSections) {
     return () => Promise.resolve(sections);
 }
 
-/** @param {string} cwd */
-async function cleanupTempProject(cwd) {
+async function cleanupTempProject(cwd: string) {
     await fsRm(cwd, { recursive: true });
 }
 
-/**
- * @param {string} cwd
- * @param {string[]} args
- */
-async function git(cwd, args) {
+async function git(cwd: string, args: string[]) {
     const result = await captureForegroundProcess("git", {
         args,
         cwd,
@@ -120,10 +123,10 @@ test("Work Record supersession proposals reject every malformed candidate before
         assertThrows(
             () =>
                 formatWorkRecordMarkdown(
-                    /** @type {any} */ ({
+                    {
                         ...INTERNAL_ATTRS,
                         supersessionProposal: { candidates: [candidate] },
-                    }),
+                    },
                     BODY,
                 ),
             Error,
@@ -133,7 +136,7 @@ test("Work Record supersession proposals reject every malformed candidate before
     assertThrows(
         () =>
             formatWorkRecordMarkdown(
-                /** @type {any} */ ({
+                {
                     ...INTERNAL_ATTRS,
                     supersessionProposal: {
                         candidates: [
@@ -141,7 +144,7 @@ test("Work Record supersession proposals reject every malformed candidate before
                             { recordId: "33333333-3333-4333-8333-333333333333", reason: " " },
                         ],
                     },
-                }),
+                },
                 BODY,
             ),
         Error,
@@ -164,10 +167,7 @@ test("Work Record validation rejects missing required fields", () => {
         "recordId must be a plain UUID",
     );
     assertThrows(
-        () =>
-            parseWorkRecordMarkdown(
-                formatWorkRecordMarkdown(/** @type {any} */ ({ ...INTERNAL_ATTRS, provenance: undefined }), BODY),
-            ),
+        () => parseWorkRecordMarkdown(formatWorkRecordMarkdown({ ...INTERNAL_ATTRS, provenance: undefined }, BODY)),
         Error,
         "provenance.sourcePlans is required",
     );
@@ -178,13 +178,13 @@ test("Work Record validation reports malformed provenance evidence entries", () 
         () =>
             parseWorkRecordMarkdown(
                 formatWorkRecordMarkdown(
-                    /** @type {any} */ ({
+                    {
                         ...INTERNAL_ATTRS,
                         provenance: {
                             sourcePlans: ["22222222-2222-4222-8222-222222222222"],
                             evidence: [{ path: "src/example.js" }],
                         },
-                    }),
+                    },
                     BODY,
                 ),
             ),
@@ -725,8 +725,9 @@ test("Work Record generation preserves User Verification attribution and note", 
         assertEquals(record?.attrs.completionMode, "user_verified");
         assertStringIncludes(record?.summary || "", "The user attested verification");
         assertStringIncludes(record?.summary || "", "Checked in staging with Alice.");
+        assertExists(record);
         assertEquals(
-            formatHydratedWorkRecord(/** @type {any} */ (record)).notices.includes(
+            formatHydratedWorkRecord(record).notices.includes(
                 "NOTICE: verification was attested by the user, not RunWield Workflow Validation.",
             ),
             true,
@@ -940,14 +941,10 @@ test("Work Record index emptiness ignores Mnemoteca plain-list footer", async ()
     try {
         assertEquals(
             await isWorkRecordIndexEmpty(cwd, {
-                mnemotecaPort: createCommandMnemotecaPort(
-                    (/** @type {string} */ _command, /** @type {string[]} */ args) => {
-                        assertEquals(args[0], "list");
-                        return Promise.resolve(
-                            ok("[42] indexed\n\nShowing 1 of 90 documents. Use --limit to see more."),
-                        );
-                    },
-                ),
+                mnemotecaPort: createCommandMnemotecaPort((_command, args) => {
+                    assertEquals(args[0], "list");
+                    return Promise.resolve(ok("[42] indexed\n\nShowing 1 of 90 documents. Use --limit to see more."));
+                }),
             }),
             false,
         );
@@ -980,10 +977,9 @@ test("Work Record index sync adds absent records and strictly updates existing r
     const cwd = await fsMkdtemp(join(tmpdir(), "work-record-index-"));
     try {
         const record = await writeWorkRecord(cwd, INTERNAL_ATTRS, BODY, { fileName: "example.md" });
-        /** @type {string[][]} */
-        const calls = [];
+        const calls: string[][] = [];
         let listCalls = 0;
-        const commandOutput = (/** @type {string} */ _command, /** @type {string[]} */ args) => {
+        const commandOutput: MnemotecaCommand = (_command, args) => {
             calls.push(args);
             if (args[0] === "update" && args[1] === "--help") {
                 return Promise.resolve(ok("Usage: mnemoteca update <id> [text] --replace-tags"));
@@ -1034,16 +1030,14 @@ test("Work Record index sync rejects duplicate locator matches with rebuild guid
         await assertRejects(
             () =>
                 syncWorkRecordToIndex(cwd, record, {
-                    mnemotecaPort: createCommandMnemotecaPort(
-                        (/** @type {string} */ _command, /** @type {string[]} */ args) => {
-                            if (args[0] === "update" && args[1] === "--help") {
-                                return Promise.resolve(ok("Usage: mnemoteca update <id> [text] --replace-tags"));
-                            }
-                            if (args[0] === "init") return Promise.resolve(ok(""));
-                            if (args[0] === "list") return Promise.resolve(ok("[1] old\n[2] duplicate"));
-                            return Promise.resolve(ok(""));
-                        },
-                    ),
+                    mnemotecaPort: createCommandMnemotecaPort((_command, args) => {
+                        if (args[0] === "update" && args[1] === "--help") {
+                            return Promise.resolve(ok("Usage: mnemoteca update <id> [text] --replace-tags"));
+                        }
+                        if (args[0] === "init") return Promise.resolve(ok(""));
+                        if (args[0] === "list") return Promise.resolve(ok("[1] old\n[2] duplicate"));
+                        return Promise.resolve(ok(""));
+                    }),
                 }),
             Error,
             "wld wr index rebuild",
@@ -1060,30 +1054,28 @@ test("Work Record search rejects duplicate indexed locator candidates", async ()
         await assertRejects(
             () =>
                 searchWorkRecords(cwd, "durable", {
-                    mnemotecaPort: createCommandMnemotecaPort(
-                        (/** @type {string} */ _command, /** @type {string[]} */ args) => {
-                            if (args[0] === "list") return Promise.resolve(ok("[1] indexed"));
-                            if (args[0] === "search") {
-                                return Promise.resolve(
-                                    ok(
-                                        JSON.stringify({
-                                            results: [
-                                                {
-                                                    document_id: 1,
-                                                    metadata: { tags: [`work-record:${INTERNAL_ATTRS.recordId}`] },
-                                                },
-                                                {
-                                                    document_id: 2,
-                                                    metadata: { tags: [`work-record:${INTERNAL_ATTRS.recordId}`] },
-                                                },
-                                            ],
-                                        }),
-                                    ),
-                                );
-                            }
-                            return Promise.resolve(ok(""));
-                        },
-                    ),
+                    mnemotecaPort: createCommandMnemotecaPort((_command, args) => {
+                        if (args[0] === "list") return Promise.resolve(ok("[1] indexed"));
+                        if (args[0] === "search") {
+                            return Promise.resolve(
+                                ok(
+                                    JSON.stringify({
+                                        results: [
+                                            {
+                                                document_id: 1,
+                                                metadata: { tags: [`work-record:${INTERNAL_ATTRS.recordId}`] },
+                                            },
+                                            {
+                                                document_id: 2,
+                                                metadata: { tags: [`work-record:${INTERNAL_ATTRS.recordId}`] },
+                                            },
+                                        ],
+                                    }),
+                                ),
+                            );
+                        }
+                        return Promise.resolve(ok(""));
+                    }),
                 }),
             Error,
             "wld wr index rebuild",
@@ -1119,27 +1111,25 @@ test("Work Record search hydrates indexed candidates from a single canonical sca
         );
 
         const result = await searchWorkRecords(cwd, "durable", {
-            mnemotecaPort: createCommandMnemotecaPort(
-                async (/** @type {string} */ _command, /** @type {string[]} */ args) => {
-                    if (args[0] === "list") return Promise.resolve(ok("[1] indexed"));
-                    if (args[0] === "search") {
-                        // Once the external search begins, remove its canonical
-                        // source. Hydration must use the one completed scan.
-                        await fsRm(join(cwd, "docs", "work-records"), { recursive: true });
-                        return Promise.resolve(
-                            ok(
-                                JSON.stringify({
-                                    results: [first, second, third].map((record, index) => ({
-                                        document_id: index + 1,
-                                        metadata: { tags: [`work-record:${record.attrs.recordId}`] },
-                                    })),
-                                }),
-                            ),
-                        );
-                    }
-                    return Promise.resolve(ok(""));
-                },
-            ),
+            mnemotecaPort: createCommandMnemotecaPort(async (_command, args) => {
+                if (args[0] === "list") return Promise.resolve(ok("[1] indexed"));
+                if (args[0] === "search") {
+                    // Once the external search begins, remove its canonical
+                    // source. Hydration must use the one completed scan.
+                    await fsRm(join(cwd, "docs", "work-records"), { recursive: true });
+                    return Promise.resolve(
+                        ok(
+                            JSON.stringify({
+                                results: [first, second, third].map((record, index) => ({
+                                    document_id: index + 1,
+                                    metadata: { tags: [`work-record:${record.attrs.recordId}`] },
+                                })),
+                            }),
+                        ),
+                    );
+                }
+                return Promise.resolve(ok(""));
+            }),
         });
 
         assertEquals(
@@ -1156,18 +1146,16 @@ test("Work Record search bootstraps empty index, filters current records, and om
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         const currentRecord = await writeWorkRecord(cwd, INTERNAL_ATTRS, BODY, { fileName: "2026-07-14-example.md" });
-        const draftAttrs = { ...INTERNAL_ATTRS, recordId: "33333333-3333-4333-8333-333333333333", status: "draft" };
-        const draftRecord = await writeWorkRecord(
-            cwd,
-            /** @type {any} */ (draftAttrs),
-            BODY.replace("Example", "Draft"),
-            {
-                fileName: "2026-07-15-draft.md",
-            },
-        );
-        /** @type {string[][]} */
-        const calls = [];
-        const commandOutput = (/** @type {string} */ _command, /** @type {string[]} */ args) => {
+        const draftAttrs: WorkRecordFrontMatter = {
+            ...INTERNAL_ATTRS,
+            recordId: "33333333-3333-4333-8333-333333333333",
+            status: "draft",
+        };
+        const draftRecord = await writeWorkRecord(cwd, draftAttrs, BODY.replace("Example", "Draft"), {
+            fileName: "2026-07-15-draft.md",
+        });
+        const calls: string[][] = [];
+        const commandOutput: MnemotecaCommand = (_command, args) => {
             calls.push(args);
             if (args[0] === "update" && args[1] === "--help") {
                 return Promise.resolve(ok("Usage: mnemoteca update <id> [text] --replace-tags"));
@@ -1202,8 +1190,8 @@ test("Work Record search bootstraps empty index, filters current records, and om
             result.records.map((record) => record.recordId),
             [currentRecord.attrs.recordId],
         );
-        assertEquals(Object.hasOwn(/** @type {any} */ (result.records[0]), "record"), false);
-        assertEquals(Object.hasOwn(/** @type {any} */ (formatHydratedWorkRecord(currentRecord)), "body"), false);
+        assertEquals(Object.hasOwn(result.records[0], "record"), false);
+        assertEquals(Object.hasOwn(formatHydratedWorkRecord(currentRecord), "body"), false);
     } finally {
         await cleanupTempProject(cwd);
     }
@@ -1212,8 +1200,12 @@ test("Work Record search bootstraps empty index, filters current records, and om
 test("Work Record read current-only rejects non-current body while all mode returns it", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        const draftAttrs = { ...INTERNAL_ATTRS, recordId: "44444444-4444-4444-8444-444444444444", status: "draft" };
-        const draft = await writeWorkRecord(cwd, /** @type {any} */ (draftAttrs), BODY, {
+        const draftAttrs: WorkRecordFrontMatter = {
+            ...INTERNAL_ATTRS,
+            recordId: "44444444-4444-4444-8444-444444444444",
+            status: "draft",
+        };
+        const draft = await writeWorkRecord(cwd, draftAttrs, BODY, {
             fileName: "2026-07-15-draft.md",
         });
         await assertRejects(
@@ -1258,23 +1250,20 @@ test("Work Record index sync rejects locator listing without numeric document ID
     const cwd = await fsMkdtemp(join(tmpdir(), "work-record-index-"));
     try {
         const record = await writeWorkRecord(cwd, INTERNAL_ATTRS, BODY, { fileName: "example.md" });
-        /** @type {string[][]} */
-        const calls = [];
+        const calls: string[][] = [];
         await assertRejects(
             () =>
                 syncWorkRecordToIndex(cwd, record, {
-                    mnemotecaPort: createCommandMnemotecaPort(
-                        (/** @type {string} */ _command, /** @type {string[]} */ args) => {
-                            calls.push(args);
-                            if (args[0] === "update" && args[1] === "--help") {
-                                return Promise.resolve(ok("Usage: mnemoteca update <id> [text] --replace-tags"));
-                            }
-                            if (args[0] === "init") return Promise.resolve(ok(""));
-                            if (args[0] === "list") return Promise.resolve(ok("work-record row missing numeric id"));
-                            if (args[0] === "add") throw new Error("must not add duplicate");
-                            return Promise.resolve(ok(""));
-                        },
-                    ),
+                    mnemotecaPort: createCommandMnemotecaPort((_command, args) => {
+                        calls.push(args);
+                        if (args[0] === "update" && args[1] === "--help") {
+                            return Promise.resolve(ok("Usage: mnemoteca update <id> [text] --replace-tags"));
+                        }
+                        if (args[0] === "init") return Promise.resolve(ok(""));
+                        if (args[0] === "list") return Promise.resolve(ok("work-record row missing numeric id"));
+                        if (args[0] === "add") throw new Error("must not add duplicate");
+                        return Promise.resolve(ok(""));
+                    }),
                 }),
             Error,
             "parseable Mnemoteca numeric document ID",

@@ -88,7 +88,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 Use Bun 1.4.3 and run `bun run install:locked` before checks. Existing focused regression command:
 
 ```sh
-bun scripts/run-tests.js src/shared/plan-archive-retention.test.ts src/cmd/plans/prune.test.ts src/shared/work-records/work-records.test.js
+bun scripts/run-tests.js src/shared/plan-archive-retention.test.ts src/cmd/plans/prune.test.ts src/shared/work-records/work-records.test.ts
 ```
 
 New coverage below is proposed, not an existing passing test inventory. Planner must select concrete test files and
