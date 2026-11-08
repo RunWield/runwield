@@ -52,7 +52,7 @@ import {
     listPromptTemplates,
     listSkills,
 } from "../../../shared/session/session-runtime.ts";
-import { getRunWieldSessionDir } from "../../../shared/session/root-session.js";
+import { getRunWieldSessionDir } from "../../../shared/session/root-session.ts";
 import { projectAggregateTranscript } from "../../../shared/session/session-transcript-manifest.ts";
 import {
     captureTranscriptEvidence,

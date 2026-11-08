@@ -16,7 +16,7 @@ import { ok as assert } from "node:assert/strict";
 import { join } from "node:path";
 import { captureTranscriptEvidence } from "./session-transcript-projection.js";
 import { projectAggregateTranscript } from "./session-transcript-manifest.ts";
-import { getRunWieldSessionDir } from "./root-session.js";
+import { getRunWieldSessionDir } from "./root-session.ts";
 
 interface FixtureTranscriptMessage {
     role: "user" | "assistant";

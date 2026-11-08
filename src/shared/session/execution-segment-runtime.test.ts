@@ -7,7 +7,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { loadPlan, savePlan } from "../../plan-store.js";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { git } from "../git-test-fixture.ts";
-import { openPersistedRootSession } from "./root-session.js";
+import { openPersistedRootSession } from "./root-session.ts";
 import { RuntimeEventTypes } from "./session-runtime-events.js";
 import {
     readPersistedPendingSegmentContinuation,

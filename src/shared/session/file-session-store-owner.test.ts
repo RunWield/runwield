@@ -3,7 +3,7 @@ import { ok as assert, throws } from "node:assert/strict";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getRunWieldSessionDir } from "./root-session.js";
+import { getRunWieldSessionDir } from "./root-session.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
 import { FileSessionStoreOwner } from "./file-session-store-owner.ts";
 

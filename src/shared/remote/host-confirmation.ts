@@ -4,7 +4,7 @@ import {
     remoteProjectRoot,
     sameRemoteHost,
 } from "../session/file-session-storage.ts";
-import { getRunWieldSessionsBaseDir } from "../session/root-session.js";
+import { getRunWieldSessionsBaseDir } from "../session/root-session.ts";
 import type { RemoteHostIdentity, ResolvedRemoteTarget } from "./target.ts";
 
 function partialMatchReason(saved: RemoteHostIdentity, observed: RemoteHostIdentity): string | null {

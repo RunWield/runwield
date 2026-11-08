@@ -14,7 +14,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
 import { listProjectsFromDisk } from "../../shared/session/file-session-storage.ts";
-import { getRunWieldSessionsBaseDir } from "../../shared/session/root-session.js";
+import { getRunWieldSessionsBaseDir } from "../../shared/session/root-session.ts";
 import { startRemoteControlService } from "../../shared/remote/control.ts";
 import { RemoteSessionControl } from "../../shared/remote/session-control-client.ts";
 import { createInteractiveTuiComposition } from "./interactive-tui-composition.ts";

@@ -14,7 +14,7 @@ import {
     getRootSessionBranchEntries,
     getRunWieldSessionMemoryBackupDir,
     listCatalogSafeRootSessionLocators,
-} from ".././root-session.js";
+} from ".././root-session.ts";
 import {
     buildProjectedSessionContextProjection,
     buildProjectedSessionInfo,

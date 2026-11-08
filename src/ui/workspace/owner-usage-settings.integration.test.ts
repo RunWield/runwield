@@ -18,7 +18,7 @@ import { readMetricsExportStatus, runMetricsExportCycle } from "../../shared/wor
 import { getWorkflowMetricsFilePath, recordWorkflowMetric } from "../../shared/workflow/metrics.js";
 import { ExecutionMetricsRecorder } from "../../shared/workflow/execution-metrics.ts";
 import { openNativeFileLock } from "../../shared/native-file-lock.ts";
-import { encodeCwdForSessionDir } from "../../shared/session/root-session.js";
+import { encodeCwdForSessionDir } from "../../shared/session/root-session.ts";
 import type { OwnerUsageReport } from "./server/owner-usage.ts";
 import { resolveCollectionEpoch, setWorkflowMetricsRecording } from "../../shared/workflow/metrics-journal.ts";
 import { queryUsageReport } from "../../shared/workflow/usage-reporting.ts";

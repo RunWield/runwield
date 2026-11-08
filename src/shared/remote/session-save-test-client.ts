@@ -8,7 +8,7 @@ import {
     createRootSessionManager,
     getRemoteSessionSaveBridge,
     getRunWieldSessionsBaseDir,
-} from "../session/root-session.js";
+} from "../session/root-session.ts";
 import { openFileSessionStore } from "../session/file-session-store.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { recordManualModelSelection } from "../session/active-agent-session.ts";

@@ -9,7 +9,7 @@ import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import type { TranscriptContext } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../shared/session/session-runtime.ts";
-import { listPersistedRootSessions } from "../shared/session/root-session.js";
+import { listPersistedRootSessions } from "../shared/session/root-session.ts";
 import { openOwnerCoordinationStore } from "../shared/owner-coordination/index.ts";
 import { WorkspaceSessionContinuationService } from "./workspace/server/session-continuation.js";
 import { Container, TuiMainScreen } from "@earendil-works/pi-tui";

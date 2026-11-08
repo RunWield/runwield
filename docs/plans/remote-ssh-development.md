@@ -373,7 +373,7 @@ buildExecutionSession
 ```
 
 `session.js` currently combines one cwd with settings, prompt resources, tools, model runtime, and persistence.
-`root-session.js:installDenoSessionPersistence` intercepts synchronous Pi writes. Ordinary transcript appends bypass
+`root-session.ts:installSessionPersistence` intercepts synchronous Pi writes. Ordinary transcript appends bypass
 `file-session-store`, which owns manifests, locks, and generations. Changing `streamSimple` or the store alone cannot
 produce the requested split. Pi Session event listeners also run before persistence; they are not save acknowledgements.
 
@@ -443,7 +443,7 @@ platform scope, trust, persistence ownership, or dependency strategy returns for
   local personal authority, remote project precedence, mounted resource paths, both skill loaders, child context.
 - `src/shared/models/model-registry.ts`, `src/shared/session/backends/` — local model runtime, remote catalog/stream
   contract, supported-backend checks, refresh and cancellation.
-- `src/shared/session/root-session.js`, `file-session-*.ts`, `session-runtime.js`, `segment-rollover.ts`,
+- `src/shared/session/root-session.ts`, `file-session-*.ts`, `session-runtime.js`, `segment-rollover.ts`,
   `session-resume-list.ts`, and `image-attachments.ts` — explicit remote identity, mounted Pi files, local
   locks/commits, settlement, rollover, attachments, offline history and resume.
 - `src/extensions/mnemoteca/`, `src/cmd/sleep/`, and Work Record indexing — one explicit personal Memory mapping and

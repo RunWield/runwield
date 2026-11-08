@@ -8,7 +8,7 @@ import {
     validationCheckpointCanResume,
     type ValidationCheckpointPhase,
 } from "../../../shared/workflow/validation-checkpoint.ts";
-import { getRunWieldSessionDir } from "../../../shared/session/root-session.js";
+import { getRunWieldSessionDir } from "../../../shared/session/root-session.ts";
 import { projectAggregateTranscript } from "../../../shared/session/session-transcript-manifest.ts";
 import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./owner-projects.ts";
 import { validationStageLabel } from "../../../shared/workflow/validation-progress-presentation.ts";

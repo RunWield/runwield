@@ -34,7 +34,7 @@ import { captureTranscriptEvidence } from "../shared/session/session-transcript-
 import { openFileSessionStore } from "../shared/session/file-session-store.ts";
 import { __resetSettingsForTests, setCustomSetting } from "../shared/settings.js";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../shared/workflow/metrics.js";
-import { createRootSessionManager, resolveCreatedRootSessionPath } from "../shared/session/root-session.js";
+import { createRootSessionManager, resolveCreatedRootSessionPath } from "../shared/session/root-session.ts";
 import { VERSION } from "../shared/version.js";
 import { mapRuntimeEventToAcpUpdate } from "./event-mapper.ts";
 /** @typedef {import("@agentclientprotocol/sdk").ContentChunk} AcpContentChunk */

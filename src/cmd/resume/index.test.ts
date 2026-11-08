@@ -8,7 +8,7 @@ import { AGENTS } from "../../constants.js";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
-import { getRunWieldSessionDir } from "../../shared/session/root-session.js";
+import { getRunWieldSessionDir } from "../../shared/session/root-session.ts";
 import { __resetSettingsForTests } from "../../shared/settings.js";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { getResumeModelSelection, runResumeCommand } from "./index.ts";

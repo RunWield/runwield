@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { getHomeDir } from "../../constants.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
-import { getRunWieldSessionDir } from "./root-session.js";
+import { getRunWieldSessionDir } from "./root-session.ts";
 import { captureTranscriptEvidence } from "./session-transcript-projection.js";
 import { listRecentResumableSessions, RECENT_SESSION_LIMIT } from "./session-resume-list.ts";
 

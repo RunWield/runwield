@@ -44,7 +44,7 @@ import {
 import { HostedSession } from "./hosted-session.js";
 import type { RequestAttemptEntry } from "./request-dispatch.ts";
 import type { ImageAttachment } from "./types.js";
-import { getRunWieldSessionDir } from "./root-session.js";
+import { getRunWieldSessionDir } from "./root-session.ts";
 import { RunawayLoopGuardStoppedError } from "./runaway-loop-guard.ts";
 import { estimateContextTextTokens } from "./session-context-report.ts";
 import { createMnemotecaTools } from "../../extensions/mnemoteca/tools.ts";

@@ -29,7 +29,7 @@ import { createAssistantMessageEventStream, getCurrentSystemMessage } from "@ear
 import { formatProviderError, formatProviderRetryExhaustion, normalizeProviderStream } from "./provider-errors.ts";
 import { projectProviderSystemPrompt } from "./provider-system-prompt.ts";
 import { completeSimple } from "@earendil-works/pi-ai/compat";
-import { getRemoteSessionSaveBridge } from "./root-session.js";
+import { getRemoteSessionSaveBridge } from "./root-session.ts";
 import { createRunWieldCodemodeExtension } from "./codemode.ts";
 import { WorkflowStepCompleted } from "../workflow/workflow-tool-events.ts";
 import { createSingleEditToolDefinition } from "../../tools/edit.ts";

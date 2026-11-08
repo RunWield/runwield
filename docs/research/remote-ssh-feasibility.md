@@ -92,7 +92,7 @@ Official provider documentation confirms that remote browser login is not the sa
 - [ADR-014](../adr/014-file-authoritative-session-bundles.md) gives local transcript bundles authority. This fits local
   ownership, but current project locators require local paths. The existing live socket explicitly assumes the same user
   and machine/container; it is not already a remote transport. Sources:
-  [`root-session.js`](../../src/shared/session/root-session.js),
+  [`root-session.ts`](../../src/shared/session/root-session.ts),
   [`file-session-store.ts`](../../src/shared/session/file-session-store.ts),
   [`live-session-connection.ts`](../../src/shared/session/live-session-connection.ts).
 - Reviews currently bind a server to machine-local loopback. Remote reviews need laptop access and must return decisions

@@ -6,7 +6,7 @@
 import { REMOTE_SESSION_IDENTITY_ENTRY } from "../remote/session-protocol.ts";
 import type { ManagedSessionMetadata } from "./hosted-session.js";
 import type { FileActivationProof } from "./file-session-store-types.ts";
-import { createRootSessionManager, resolveCreatedRootSessionPath } from "./root-session.js";
+import { createRootSessionManager, resolveCreatedRootSessionPath } from "./root-session.ts";
 import { captureTranscriptEvidence, syncTranscriptFileAndParent } from "./session-transcript-projection.js";
 import {
     recordNormalizedWorkflowContext,

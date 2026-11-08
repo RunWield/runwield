@@ -7,7 +7,6 @@
     "src/shared/owner-coordination/sessions.js",
     "src/shared/session/agents.js",
     "src/shared/session/hosted-session.js",
-    "src/shared/session/root-session.js",
 
     "src/shared/session/session-runtime-events.js",
     "src/shared/session/session-transcript-projection.js",

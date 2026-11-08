@@ -28,7 +28,7 @@ import {
     openPersistedRootSession,
     readCatalogSafeRootSessionLocator,
     resolveCreatedRootSessionPath,
-} from "./root-session.js";
+} from "./root-session.ts";
 import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 
 type SessionMessage = Parameters<SessionManager["appendMessage"]>[0];

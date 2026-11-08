@@ -3,7 +3,7 @@
  * Builds the bounded, newest-first list used by the interactive resume picker.
  */
 
-import { listCatalogSafeRootSessionLocators } from "./root-session.js";
+import { listCatalogSafeRootSessionLocators } from "./root-session.ts";
 import {
     buildProjectedSessionInfo,
     captureTranscriptEvidence,

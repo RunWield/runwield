@@ -6,7 +6,7 @@ import {
     listCatalogSafeRootSessionLocators,
     listPersistedRootSessions,
     resolveCreatedRootSessionPath,
-} from ".././root-session.js";
+} from ".././root-session.ts";
 import { RuntimeEventTypes } from ".././session-runtime-events.js";
 import { captureTranscriptEvidence, syncTranscriptFileAndParent } from ".././session-transcript-projection.js";
 import { recordSegmentLineageEvidence } from ".././workflow-context-session.ts";

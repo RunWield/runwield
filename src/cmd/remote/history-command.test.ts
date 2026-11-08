@@ -6,7 +6,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
-import { getRunWieldSessionsBaseDir } from "../../shared/session/root-session.js";
+import { getRunWieldSessionsBaseDir } from "../../shared/session/root-session.ts";
 import { startRemoteControlService } from "../../shared/remote/control.ts";
 import { RemoteSessionControl } from "../../shared/remote/session-control-client.ts";
 import process from "node:process";
