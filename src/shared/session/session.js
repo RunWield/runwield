@@ -3004,7 +3004,19 @@ const ENGINEER_AGENT_NAMES = new Set([
     AGENTS.REVIEWER_FEEDBACK_ENGINEER,
 ]);
 
-/** @type {WeakMap<import('@earendil-works/pi-coding-agent').AgentSession, EngineerCompactionState>} */
+/**
+ * @typedef {import('@earendil-works/pi-coding-agent').AgentSession} PiAgentSession
+ */
+
+/**
+ * @typedef {Object} EngineerCompactionContext
+ * @property {Pick<NonNullable<PiAgentSession["model"]>, "contextWindow"> | undefined} model
+ * @property {Pick<PiAgentSession["settingsManager"], "getCompactionSettings">} settingsManager
+ */
+
+/** @typedef {EngineerCompactionContext & Pick<PiAgentSession, "subscribe" | "getContextUsage">} EngineerCompactionSession */
+
+/** @type {WeakMap<EngineerCompactionSession, EngineerCompactionState>} */
 const engineerCompactionStates = new WeakMap();
 
 /**
@@ -3021,7 +3033,7 @@ export function getEngineerCompactionThreshold(agentName, contextWindow) {
 }
 
 /**
- * @param {import('@earendil-works/pi-coding-agent').AgentSession} session
+ * @param {EngineerCompactionSession} session
  * @returns {EngineerCompactionState}
  */
 function getEngineerCompactionState(session) {
@@ -3038,7 +3050,7 @@ function getEngineerCompactionState(session) {
  * threshold. Re-arm immediately below the threshold. Above it, require new
  * context equal to 5% of the window, capped at 8K tokens.
  *
- * @param {import('@earendil-works/pi-coding-agent').AgentSession} session
+ * @param {EngineerCompactionSession} session
  * @param {number} currentTokens
  * @param {number} totalTokens
  * @param {number} threshold
@@ -3068,7 +3080,7 @@ function shouldRunEngineerCompaction(session, currentTokens, totalTokens, thresh
 }
 
 /**
- * @param {import('@earendil-works/pi-coding-agent').AgentSession} session
+ * @param {EngineerCompactionSession} session
  */
 function markEngineerCompactionComplete(session) {
     const state = getEngineerCompactionState(session);
@@ -3080,7 +3092,7 @@ function markEngineerCompactionComplete(session) {
  * Add the Engineer threshold to Pi's normal post-response compaction check.
  * Pi runs first so overflow recovery and its configured threshold stay intact.
  *
- * @param {import('@earendil-works/pi-coding-agent').AgentSession} session
+ * @param {EngineerCompactionSession} session
  * @param {string} agentName
  */
 export function installEngineerAutoCompactionThreshold(session, agentName) {

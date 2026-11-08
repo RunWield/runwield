@@ -478,7 +478,7 @@
     "src/shared/session/session-export.test.ts",
     "src/shared/session/session-host.test.ts",
     "src/shared/session/session-projected-usage.test.ts",
-    "src/shared/session/session-prompt.test.js",
+    "src/shared/session/session-prompt.test.ts",
     "src/shared/session/session-provider-replay.test.ts",
     "src/shared/session/session-provider-retry.test.ts",
     "src/shared/session/session-replay.test.ts",

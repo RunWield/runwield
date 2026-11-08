@@ -9,7 +9,7 @@ affectedPaths:
     - "src/shared/session/session-context-resilience.ts"
     - "src/shared/session/session-context-resilience.test.js"
     - "src/shared/session/session.js"
-    - "src/shared/session/session-prompt.test.js"
+    - "src/shared/session/session-prompt.test.ts"
     - "src/shared/session/session-subscribers.test.ts"
     - "src/shared/session/hosted-session.js"
     - "src/shared/session/hosted-session.test.ts"
@@ -304,7 +304,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/shared/session/session.js` — replace private compaction calls and Engineer wrappers with one public-policy path
   for root, foreground isolated, and background Pi turns. Preserve checkpoint/request snapshots and prepared prompt
   estimation. Classify pause before backend-failure recording; leave non-Pi backend dispatch unchanged.
-- `src/shared/session/session-prompt.test.js` — verify pre-request estimation, fail-before-provider behavior, internal
+- `src/shared/session/session-prompt.test.ts` — verify pre-request estimation, fail-before-provider behavior, internal
   continuation, no duplicate User Request/routing, and ordinary behavior below threshold.
 - `src/shared/session/session-subscribers.test.ts` — verify completed-turn observation and canonical context-resilience
   emission without duplicate generic compaction statuses.
@@ -456,7 +456,7 @@ unless the complete public AgentSession contract has been verified; a partial ga
   `withProcessGlobalTestLock`; production reads use `getCwd()`/`getHomeDir()`. No new owned injection seam is allowed.
 - Automated focused tests: run
   `deno run -A scripts/run-tests.js src/shared/session/session-context-resilience.test.js
-src/shared/session/session-prompt.test.js src/shared/session/session-subscribers.test.ts
+src/shared/session/session-prompt.test.ts src/shared/session/session-subscribers.test.ts
 src/shared/session/hosted-session.test.ts src/shared/session/abort-active-session.test.js
 src/shared/session/session-runtime-events.test.js src/shared/session/session-runtime.test.js
 src/shared/session/agent-handler.test.ts src/shared/session/request-dispatch.test.ts
