@@ -716,7 +716,7 @@
     "src/ui/theme/theme-registry.test.ts",
     "src/ui/tui/agent-mascot-view.test.ts",
     "src/ui/tui/agent-mascot.test.ts",
-    "src/ui/tui/api.test.js",
+    "src/ui/tui/api.test.ts",
     "src/ui/tui/blocks.test.ts",
     "src/ui/tui/boot-banner.test.ts",
     "src/ui/tui/chat-footer-model.test.ts",
