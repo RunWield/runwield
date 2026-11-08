@@ -248,7 +248,7 @@ deno run -A scripts/run-tests.js src/shared/workflow/planning-worktree.test.ts
 deno run -A scripts/run-tests.js src/shared/workflow/epic-branch-planning.integration.test.ts
 deno run -A scripts/run-tests.js src/shared/session/agent-switching.test.ts
 deno run -A scripts/run-tests.js src/shared/session/session-runtime.test.js
-deno run -A scripts/run-tests.js src/tools/__tests__/plan-written.test.js
+deno run -A scripts/run-tests.js src/tools/__tests__/plan-written.test.ts
 deno run -A scripts/run-tests.js src/shared/workflow/workflow.test.js
 deno run -A scripts/run-tests.js src/shared/workflow/execution-plan-file.test.ts
 deno task seams:check

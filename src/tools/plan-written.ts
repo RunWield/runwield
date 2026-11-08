@@ -127,7 +127,7 @@ interface PlanWrittenOptions {
     hostedSession?: HostedSession;
 }
 
-type ToolResult = AgentToolResult<ToolResultDetails | null>;
+export type PlanWrittenToolResult = AgentToolResult<ToolResultDetails | null>;
 type InteractionMeta = NonNullable<Awaited<ReturnType<typeof requestHostedSessionInteraction>>["_meta"]>;
 
 function parsePlanReviewMeta(meta: InteractionMeta | undefined): PlanReviewMeta {
@@ -232,8 +232,8 @@ function textResult(
     details: ToolResultDetails | null = null,
     terminate = false,
     images: ReviewImage[] = [],
-): ToolResult {
-    const result: ToolResult = {
+): PlanWrittenToolResult {
+    const result: PlanWrittenToolResult = {
         content: [{ type: "text" as const, text }, ...images.map(toToolImageContent)],
         details: details ?? null,
     };
@@ -261,7 +261,7 @@ function buildPlanWrittenToolOutput({
     return `${lines.join("\n")}\n`;
 }
 
-function emitToolUpdate(onUpdate: ((result: ToolResult) => void) | undefined, result: ToolResult): void {
+function emitToolUpdate(onUpdate: ((result: PlanWrittenToolResult) => void) | undefined, result: PlanWrittenToolResult): void {
     if (typeof onUpdate !== "function") return;
     try {
         onUpdate(result);
@@ -346,7 +346,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
     if (!hostedSession) throw new Error("createPlanWrittenTool: hostedSession is required");
     const cwd = hostedSession.cwd;
     const reviewPlanVersions = new Map<string, PlanReviewVersion[]>();
-    return defineTool({
+    return defineTool<typeof TOOL_PARAMS, ToolResultDetails | null>({
         name: "plan_written",
         exposure: "model-only",
         label: "Plan Written",
