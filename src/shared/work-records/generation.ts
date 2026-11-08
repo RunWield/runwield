@@ -3,6 +3,17 @@
  * Generate canonical internal Work Records from completed Plans.
  */
 
+import type { PlanFrontMatter, PlanTextLoaded } from "../../plan-store.js";
+import type { PlanDeviation } from "../plan-deviations.ts";
+import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
+import type {
+    WorkRecordCompletionMode,
+    WorkRecordFrontMatter,
+    WorkRecordResource,
+    WorkRecordScope,
+    WorkRecordSections,
+    WorkRecordSupersessionCandidate,
+} from "./schema.ts";
 import { ValidationHostRejected, ValidationHostWait } from "../workflow/validation-host-contract.ts";
 import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
 import {
@@ -36,83 +47,96 @@ const SKIPPED_VERIFICATION_TEXT = "RunWield Workflow Validation was skipped";
 const DONE_ENOUGH_TEXT = "The Epic was closed as done enough.";
 const USER_VERIFIED_TEXT = "The user attested verification; RunWield Workflow Validation did not establish this result";
 
-/**
- * @typedef {Object} WorkRecordSource
- * @property {boolean} [pendingPublication] - Explicit artifact preparation, never ordinary backfill eligibility
- * @property {"active"|"archived"} sourceKind
- * @property {string} name
- * @property {string} relativePath
- * @property {string} path
- * @property {string} planId
- * @property {string} [documentRevision] - Expected local document revision when recording a published source
- * @property {import('../../plan-store.js').PlanFrontMatter} attrs
- * @property {import('../plan-deviations.ts').PlanDeviation[]} [planDeviations]
- * @property {string} body
- * @property {string} markdown
- * @property {"planned_change"|"epic"} [scope]
- * @property {"verified"|"closed_without_verification"|"user_verified"|"done_enough"} [completionMode]
- * @property {string} [closureReason]
- * @property {string} [executionReport]
- * @property {WorkRecordSource[]} [children]
- * @property {string} [skipReason]
- * @property {import('./schema.ts').WorkRecordResource} [existingRecord]
- */
+type GeneratedWorkRecordScope = Extract<WorkRecordScope, "planned_change" | "epic">;
 
-/**
- * @typedef {Object} GeneratedWorkRecordSections
- * @property {string} title
- * @property {string} summary
- * @property {string} [outOfScope]
- * @property {string} [futurePlanningNotes]
- * @property {import('./schema.ts').WorkRecordSupersessionCandidate[]} [supersessionProposals]
- */
+export interface WorkRecordSource {
+    /** Explicit artifact preparation, never ordinary backfill eligibility. */
+    pendingPublication?: boolean;
+    sourceKind: "active" | "archived";
+    name: string;
+    relativePath: string;
+    path: string;
+    planId: string;
 
-/**
- * @typedef {Object} GenerationOptions
- * @property {AbortSignal} [signal] - Cancellation of the recording operation
- * @property {() => string} [idGenerator]
- * @property {() => Date} [now]
- * @property {(prompt: string) => Promise<GeneratedWorkRecordSections>} [runRecorderStep]
- * @property {import('./mnemoteca-port.ts').WorkRecordMnemotecaPort} [mnemotecaPort]
- */
+    /** Expected local document revision when recording a published source. */
+    documentRevision?: string;
+    attrs: PlanFrontMatter;
+    planDeviations?: PlanDeviation[];
+    body: string;
+    markdown: string;
+    scope?: GeneratedWorkRecordScope;
+    completionMode?: WorkRecordCompletionMode;
+    closureReason?: string;
+    executionReport?: string;
+    children?: WorkRecordSource[];
+    skipReason?: string;
+    existingRecord?: WorkRecordResource;
+}
 
-/**
- * @typedef {GenerationOptions & { mnemotecaPort: import('./mnemoteca-port.ts').WorkRecordMnemotecaPort }} WorkRecordGenerationOptions
- */
+export interface GeneratedWorkRecordSections extends Pick<WorkRecordSections, "title" | "summary"> {
+    outOfScope?: string;
+    futurePlanningNotes?: string;
+    supersessionProposals?: WorkRecordSupersessionCandidate[];
+}
 
-/**
- * @typedef {Object} BackfillResult
- * @property {WorkRecordSource[]} sources
- * @property {WorkRecordSource[]} eligible
- * @property {WorkRecordSource[]} skipped
- * @property {Array<{ source: WorkRecordSource, status: "generated"|"linked"|"failed", recordId?: string, path?: string, error?: string, indexWarning?: string, supersessionProposals?: import('./schema.ts').WorkRecordSupersessionCandidate[] }>} outcomes
- */
+export interface GenerationOptions {
+    /** Cancellation of the recording operation. */
+    signal?: AbortSignal;
+    idGenerator?: () => string;
+    now?: () => Date;
+    runRecorderStep?: (prompt: string) => Promise<GeneratedWorkRecordSections>;
+    mnemotecaPort?: WorkRecordMnemotecaPort;
+}
 
-/** @param {Date} date */
-function iso(date) {
+export interface WorkRecordGenerationOptions extends GenerationOptions {
+    mnemotecaPort: WorkRecordMnemotecaPort;
+}
+
+interface WorkRecordBackfillPreview {
+    sources: WorkRecordSource[];
+    eligible: WorkRecordSource[];
+    skipped: WorkRecordSource[];
+}
+
+export interface WorkRecordGenerationOutcome {
+    source: WorkRecordSource;
+    status: "generated" | "linked" | "failed";
+    recordId?: string;
+    path?: string;
+    error?: string;
+    indexWarning?: string;
+    supersessionProposals?: WorkRecordSupersessionCandidate[];
+}
+
+export interface BackfillResult extends WorkRecordBackfillPreview {
+    outcomes: WorkRecordGenerationOutcome[];
+}
+
+type ActiveWorkRecordPlan = Pick<PlanTextLoaded, "path" | "markdown" | "attrs" | "body">;
+type WorkRecordsBySourcePlanId = Map<string, WorkRecordResource[]>;
+type RecorderInputFields = Record<string, unknown>;
+type RecorderProposalFields = Partial<Record<keyof WorkRecordSupersessionCandidate, unknown>>;
+
+function iso(date: Date) {
     return date.toISOString();
 }
 
-/** @param {unknown} value */
-function nonEmptyString(value) {
+function nonEmptyString(value: string | null | undefined) {
     return typeof value === "string" && value.trim() ? value.trim() : "";
 }
 
-/** @param {unknown} value */
-function conciseError(value) {
+function conciseError(value: unknown) {
     const message = value instanceof Error ? value.message : String(value || "Unknown Work Record generation failure.");
     const normalized = message.replace(/\s+/g, " ").trim();
     if (value instanceof WorkRecordSupersessionRollbackError) return normalized;
     return normalized.slice(0, 240) || "Unknown Work Record generation failure.";
 }
 
-/** @param {unknown} value */
-function optionalTrimmedString(value) {
+function optionalTrimmedString(value: unknown) {
     return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-/** @param {string} text */
-function parseJsonObjectFromText(text) {
+function parseJsonObjectFromText(text: string): unknown {
     const trimmed = String(text || "").trim();
     if (!trimmed) throw new Error("Recorder returned no structured output.");
     try {
@@ -127,11 +151,7 @@ function parseJsonObjectFromText(text) {
     }
 }
 
-/**
- * @param {unknown} value
- * @returns {import('./schema.ts').WorkRecordSupersessionCandidate[] | undefined}
- */
-function normalizeSupersessionProposals(value) {
+function normalizeSupersessionProposals(value: unknown): WorkRecordSupersessionCandidate[] | undefined {
     if (value === undefined) return undefined;
     if (!Array.isArray(value)) throw new Error("Recorder supersessionProposals must be an array.");
     const candidates = [];
@@ -140,7 +160,7 @@ function normalizeSupersessionProposals(value) {
         if (!item || typeof item !== "object" || Array.isArray(item)) {
             throw new Error("Each Recorder supersession proposal must be an object.");
         }
-        const candidate = /** @type {Record<string, unknown>} */ (item);
+        const candidate = item as RecorderProposalFields;
         const recordId = optionalTrimmedString(candidate.recordId);
         const reason = optionalTrimmedString(candidate.reason);
         if (!recordId || !UUID_RE.test(recordId)) {
@@ -155,15 +175,12 @@ function normalizeSupersessionProposals(value) {
     return candidates.length ? candidates : undefined;
 }
 
-/**
- * @param {unknown} value
- * @returns {GeneratedWorkRecordSections}
- */
-export function normalizeRecorderOutput(value) {
+// Recorder submissions cross the model boundary and need runtime shape checks.
+export function normalizeRecorderOutput(value: unknown): GeneratedWorkRecordSections {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
         throw new Error("Recorder output must be a JSON object.");
     }
-    const record = /** @type {Record<string, unknown>} */ (value);
+    const record = value as RecorderInputFields;
     for (const key of Object.keys(record)) {
         if (
             ![
@@ -198,19 +215,11 @@ export function normalizeRecorderOutput(value) {
     };
 }
 
-/**
- * @param {string} text
- * @returns {GeneratedWorkRecordSections}
- */
-export function parseRecorderSections(text) {
+export function parseRecorderSections(text: string): GeneratedWorkRecordSections {
     return normalizeRecorderOutput(parseJsonObjectFromText(text));
 }
 
-/**
- * @param {WorkRecordSource} source
- * @returns {"verified"|"closed_without_verification"|"user_verified"|"done_enough"|""}
- */
-export function deriveWorkRecordCompletionMode(source) {
+export function deriveWorkRecordCompletionMode(source: WorkRecordSource): WorkRecordCompletionMode | "" {
     if (isProjectPlan(source.attrs) && source.attrs.epicCompletionMode === "done_enough") return "done_enough";
     if (source.attrs.status === "closed_without_verification") return "closed_without_verification";
     if (source.attrs.status === "user_verified") return "user_verified";
@@ -223,11 +232,7 @@ export function deriveWorkRecordCompletionMode(source) {
     return "";
 }
 
-/**
- * @param {WorkRecordSource} source
- * @returns {"planned_change"|"epic"|""}
- */
-export function deriveWorkRecordScope(source) {
+export function deriveWorkRecordScope(source: WorkRecordSource): GeneratedWorkRecordScope | "" {
     if (isProjectPlan(source.attrs)) return "epic";
     if (isPlannedChangeClassification(source.attrs.classification) && !isChildFeaturePlan(source)) {
         return "planned_change";
@@ -235,10 +240,8 @@ export function deriveWorkRecordScope(source) {
     return "";
 }
 
-/** @param {import('./schema.ts').WorkRecordResource[]} records */
-export function recordsBySourcePlanId(records) {
-    /** @type {Map<string, import('./schema.ts').WorkRecordResource[]>} */
-    const map = new Map();
+export function recordsBySourcePlanId(records: WorkRecordResource[]): WorkRecordsBySourcePlanId {
+    const map: WorkRecordsBySourcePlanId = new Map();
     for (const record of records) {
         for (const planId of record.attrs.provenance?.sourcePlans || []) {
             const existing = map.get(planId) || [];
@@ -249,11 +252,7 @@ export function recordsBySourcePlanId(records) {
     return map;
 }
 
-/**
- * @param {WorkRecordSource} source
- * @param {Map<string, import('./schema.ts').WorkRecordResource[]>} existingByPlanId
- */
-function findLinkableExistingRecord(source, existingByPlanId) {
+function findLinkableExistingRecord(source: WorkRecordSource, existingByPlanId: WorkRecordsBySourcePlanId) {
     const candidates = source.planId ? existingByPlanId.get(source.planId) || [] : [];
     return candidates.find(
         (record) =>
@@ -267,12 +266,10 @@ function findLinkableExistingRecord(source, existingByPlanId) {
     );
 }
 
-/**
- * @param {WorkRecordSource} source
- * @param {Map<string, import('./schema.ts').WorkRecordResource[]>} existingByPlanId
- * @returns {WorkRecordSource}
- */
-export function evaluateWorkRecordSource(source, existingByPlanId = new Map()) {
+export function evaluateWorkRecordSource(
+    source: WorkRecordSource,
+    existingByPlanId: WorkRecordsBySourcePlanId = new Map(),
+): WorkRecordSource {
     if (source.attrs.workRecord && source.attrs.workRecord.status !== "failed") {
         return { ...source, skipReason: "existing_backlink" };
     }
@@ -298,13 +295,8 @@ export function evaluateWorkRecordSource(source, existingByPlanId = new Map()) {
     };
 }
 
-/**
- * @param {string} cwd
- * @returns {Promise<WorkRecordSource[]>}
- */
-export async function discoverWorkRecordSources(cwd) {
-    /** @type {WorkRecordSource[]} */
-    const sources = [];
+export async function discoverWorkRecordSources(cwd: string): Promise<WorkRecordSource[]> {
+    const sources: WorkRecordSource[] = [];
     for (const entry of await listPlans(cwd)) {
         const loaded = await loadPlan(cwd, entry.name);
         if (!loaded) continue;
@@ -328,12 +320,7 @@ export async function discoverWorkRecordSources(cwd) {
     return sources;
 }
 
-/**
- * @param {string} name
- * @param {{ path: string, markdown: string, attrs: import('../../plan-store.js').PlanFrontMatter, body: string }} loaded
- * @returns {WorkRecordSource}
- */
-export function buildActiveWorkRecordSource(name, loaded) {
+export function buildActiveWorkRecordSource(name: string, loaded: ActiveWorkRecordPlan): WorkRecordSource {
     return {
         sourceKind: "active",
         name,
@@ -347,11 +334,7 @@ export function buildActiveWorkRecordSource(name, loaded) {
     };
 }
 
-/**
- * @param {WorkRecordSource[]} sources
- * @returns {WorkRecordSource[]}
- */
-export function attachEpicChildren(sources) {
+export function attachEpicChildren(sources: WorkRecordSource[]): WorkRecordSource[] {
     return sources.map((source) => {
         if (!isProjectPlan(source.attrs)) return source;
         const children = sources
@@ -365,11 +348,7 @@ export function attachEpicChildren(sources) {
     });
 }
 
-/**
- * @param {string} cwd
- * @returns {Promise<{ sources: WorkRecordSource[], eligible: WorkRecordSource[], skipped: WorkRecordSource[] }>}
- */
-export async function previewWorkRecordBackfill(cwd) {
+export async function previewWorkRecordBackfill(cwd: string): Promise<WorkRecordBackfillPreview> {
     const existingByPlanId = recordsBySourcePlanId(await listWorkRecords(cwd, { createDir: false }));
     const sources = attachEpicChildren(await discoverWorkRecordSources(cwd)).map((source) =>
         evaluateWorkRecordSource(source, existingByPlanId),
@@ -381,12 +360,7 @@ export async function previewWorkRecordBackfill(cwd) {
     };
 }
 
-/**
- * @param {string} cwd
- * @param {WorkRecordSource} source
- * @param {Partial<import('../../plan-store.js').PlanFrontMatter>} updates
- */
-async function updateSourceFrontMatter(cwd, source, updates) {
+async function updateSourceFrontMatter(cwd: string, source: WorkRecordSource, updates: Partial<PlanFrontMatter>) {
     if (source.sourceKind === "archived") return await updateArchivedPlanFrontMatter(cwd, source.name, updates);
     // A Work Record backlink is post-settlement bookkeeping, so it gets an ordinary
     // Plan transaction. Plan Recovery is deliberately not used here: recovery
@@ -404,16 +378,14 @@ async function updateSourceFrontMatter(cwd, source, updates) {
     if (transition.status !== "committed") {
         throw new Error(transition.message || `Could not link Work Record to Plan ${source.name}.`);
     }
-    return /** @type {import('../../plan-store.js').PlanFrontMatter} */ (transition.value);
+    return transition.value;
 }
 
-/**
- * @param {string} cwd
- * @param {WorkRecordSource} source
- * @param {WorkRecordGenerationOptions} options
- * @returns {Promise<WorkRecordSource>}
- */
-async function ensureSourcePlanId(cwd, source, options) {
+async function ensureSourcePlanId(
+    cwd: string,
+    source: WorkRecordSource,
+    options: WorkRecordGenerationOptions,
+): Promise<WorkRecordSource> {
     if (source.planId) return source;
     if (source.sourceKind === "active") {
         const resource = await ensurePlanIdentity(cwd, source.name, { idGenerator: options.idGenerator });
@@ -431,8 +403,7 @@ async function ensureSourcePlanId(cwd, source, options) {
     return { ...source, planId, attrs };
 }
 
-/** @param {WorkRecordSource} source */
-function declaredSupersessionIds(source) {
+function declaredSupersessionIds(source: WorkRecordSource) {
     const values = source.attrs.supersedes || [];
     const ids = [];
     const seen = new Set();
@@ -451,11 +422,8 @@ function declaredSupersessionIds(source) {
 
 /**
  * Validate against a fresh canonical read. The supersession operation repeats these checks under its lock.
- * @param {string} cwd
- * @param {string} successorRecordId
- * @param {string[]} predecessorRecordIds
  */
-async function validateDeclaredSupersession(cwd, successorRecordId, predecessorRecordIds) {
+async function validateDeclaredSupersession(cwd: string, successorRecordId: string, predecessorRecordIds: string[]) {
     if (!predecessorRecordIds.length) return [];
     const records = await listWorkRecords(cwd, { createDir: false });
     const byId = new Map(records.map((record) => [record.attrs.recordId.toLowerCase(), record]));
@@ -481,11 +449,12 @@ async function validateDeclaredSupersession(cwd, successorRecordId, predecessorR
 /**
  * Recorder proposals must identify canonical Work Records. Superseded records are
  * still valid candidates because the recorded reason supplies their status context.
- * @param {string} cwd
- * @param {string} successorRecordId
- * @param {import('./schema.ts').WorkRecordSupersessionCandidate[]} candidates
  */
-export async function validateRecorderProposals(cwd, successorRecordId, candidates) {
+export async function validateRecorderProposals(
+    cwd: string,
+    successorRecordId: string,
+    candidates: WorkRecordSupersessionCandidate[],
+) {
     if (!candidates.length) return [];
     const records = await listWorkRecords(cwd, { createDir: false });
     const byId = new Map(records.map((record) => [record.attrs.recordId.toLowerCase(), record]));
@@ -502,13 +471,7 @@ export async function validateRecorderProposals(cwd, successorRecordId, candidat
     });
 }
 
-/**
- * @param {WorkRecordSource} source
- * @param {string} successorRecordId
- * @param {string[]} settledSupersedes
- * @returns {string}
- */
-function buildRecorderPrompt(source, successorRecordId, settledSupersedes) {
+function buildRecorderPrompt(source: WorkRecordSource, successorRecordId: string, settledSupersedes: string[]) {
     return JSON.stringify(
         {
             successorRecordId,
@@ -540,21 +503,13 @@ function buildRecorderPrompt(source, successorRecordId, settledSupersedes) {
     );
 }
 
-/**
- * @param {string} cwd
- * @param {WorkRecordSource} source
- * @param {GenerationOptions} [options]
- * @param {string} [successorRecordId]
- * @param {string[]} [settledSupersedes]
- * @returns {Promise<GeneratedWorkRecordSections>}
- */
 export async function generateRecorderSections(
-    cwd,
-    source,
-    options = {},
-    successorRecordId = crypto.randomUUID(),
-    settledSupersedes = [],
-) {
+    cwd: string,
+    source: WorkRecordSource,
+    options: GenerationOptions = {},
+    successorRecordId: string = crypto.randomUUID(),
+    settledSupersedes: string[] = [],
+): Promise<GeneratedWorkRecordSections> {
     const prompt = buildRecorderPrompt(source, successorRecordId, settledSupersedes);
     if (options.runRecorderStep) return normalizeRecorderOutput(await options.runRecorderStep(prompt));
     const hostedSession = new HostedSession({ id: crypto.randomUUID(), cwd });
@@ -601,11 +556,7 @@ export async function generateRecorderSections(
     }
 }
 
-/**
- * @param {WorkRecordSource} source
- * @param {GeneratedWorkRecordSections} sections
- */
-function prepareGeneratedSections(source, sections) {
+function prepareGeneratedSections(source: WorkRecordSource, sections: GeneratedWorkRecordSections) {
     const normalized = normalizeRecorderOutput(sections);
     if (source.completionMode === "user_verified") {
         const note =
@@ -631,14 +582,7 @@ function prepareGeneratedSections(source, sections) {
     return { ...normalized, summary: [...summaryParts, normalized.summary].join(" ").trim() };
 }
 
-/**
- * @param {WorkRecordSource} source
- * @param {GeneratedWorkRecordSections} sections
- */
-/**
- * @param {WorkRecordSource} source
- */
-export function aggregateWorkRecordTickets(source) {
+export function aggregateWorkRecordTickets(source: WorkRecordSource) {
     if (source.scope === "epic") {
         return dedupeTicketReferencesByUrl(
             source.attrs.tickets,
@@ -648,8 +592,7 @@ export function aggregateWorkRecordTickets(source) {
     return dedupeTicketReferencesByUrl(source.attrs.tickets);
 }
 
-/** @param {WorkRecordSource} source */
-function aggregatePlanDeviations(source) {
+function aggregatePlanDeviations(source: WorkRecordSource) {
     const own = source.planDeviations || readPlanDeviations(source.attrs.planDeviations);
     if (source.scope !== "epic") return own;
     return [
@@ -663,11 +606,8 @@ function aggregatePlanDeviations(source) {
 /**
  * Plans may require durable, deterministic statements in their Work Record.
  * The recorder can improve prose around them, but it cannot omit this section.
- *
- * @param {string} body
- * @returns {string}
  */
-export function extractWorkRecordRequirements(body) {
+export function extractWorkRecordRequirements(body: string) {
     const lines = String(body || "").split(/\r?\n/);
     const heading = lines.findIndex((line) => line.trim() === "## Work Record Requirements");
     if (heading === -1) return "";
@@ -679,11 +619,7 @@ export function extractWorkRecordRequirements(body) {
     return collected.join("\n").trim();
 }
 
-/**
- * @param {WorkRecordSource} source
- * @param {GeneratedWorkRecordSections} sections
- */
-function buildBody(source, sections) {
+function buildBody(source: WorkRecordSource, sections: GeneratedWorkRecordSections) {
     const normalized = prepareGeneratedSections(source, sections);
     const lines = [`# ${normalized.title}`, "", "## Summary", "", normalized.summary];
     sections = normalized;
@@ -700,13 +636,7 @@ function buildBody(source, sections) {
     return lines.join("\n");
 }
 
-/**
- * @param {string} cwd
- * @param {WorkRecordSource} source
- * @param {import('./schema.ts').WorkRecordResource} record
- * @param {Date} now
- */
-async function linkSourceToRecord(cwd, source, record, now) {
+async function linkSourceToRecord(cwd: string, source: WorkRecordSource, record: WorkRecordResource, now: Date) {
     await updateSourceFrontMatter(cwd, source, {
         workRecord: {
             status: "generated",
@@ -717,12 +647,11 @@ async function linkSourceToRecord(cwd, source, record, now) {
     });
 }
 
-/**
- * @param {string} cwd
- * @param {import('./schema.ts').WorkRecordResource} record
- * @param {WorkRecordGenerationOptions} options
- */
-async function bestEffortSyncGeneratedRecord(cwd, record, options) {
+async function bestEffortSyncGeneratedRecord(
+    cwd: string,
+    record: WorkRecordResource,
+    options: WorkRecordGenerationOptions,
+) {
     try {
         await syncWorkRecordToIndex(cwd, record, {
             mnemotecaPort: options.mnemotecaPort,
@@ -735,13 +664,7 @@ async function bestEffortSyncGeneratedRecord(cwd, record, options) {
     }
 }
 
-/**
- * @param {string} cwd
- * @param {WorkRecordSource} source
- * @param {Date} now
- * @param {unknown} error
- */
-async function recordGenerationFailure(cwd, source, now, error) {
+async function recordGenerationFailure(cwd: string, source: WorkRecordSource, now: Date, error: unknown) {
     try {
         await updateSourceFrontMatter(cwd, source, {
             workRecord: {
@@ -755,17 +678,15 @@ async function recordGenerationFailure(cwd, source, now, error) {
     }
 }
 
-/** @param {import('./schema.ts').WorkRecordResource} record */
-function pendingSupersessionCandidates(record) {
+function pendingSupersessionCandidates(record: WorkRecordResource) {
     return record.attrs.supersessionProposal?.candidates || [];
 }
 
-/**
- * @param {string} cwd
- * @param {WorkRecordSource} inputSource
- * @param {WorkRecordGenerationOptions} options
- */
-export async function generateWorkRecordForSource(cwd, inputSource, options) {
+export async function generateWorkRecordForSource(
+    cwd: string,
+    inputSource: WorkRecordSource,
+    options: WorkRecordGenerationOptions,
+): Promise<WorkRecordGenerationOutcome> {
     const now = options.now ? options.now() : new Date();
     let source = inputSource;
     try {
@@ -816,17 +737,16 @@ export async function generateWorkRecordForSource(cwd, inputSource, options) {
             (candidate) => !declaredIdentities.has(candidate.recordId.toLowerCase()),
         );
         const supersessionProposals = await validateRecorderProposals(cwd, recordId, undeclaredProposals);
-        /** @type {import('./schema.ts').WorkRecordFrontMatter} */
-        const attrs = {
+
+        // A source without a scope or completion mode was rejected above.
+        const attrs: WorkRecordFrontMatter = {
             kind: "work_record",
             recordId,
             status: source.pendingPublication ? "pending_verification" : "approved",
-            scope: /** @type {"planned_change"|"epic"} */ (source.scope),
+            scope: source.scope!,
             workKind: source.attrs.workKind,
             origin: "internal",
-            completionMode: /** @type {"verified"|"closed_without_verification"|"user_verified"|"done_enough"} */ (
-                source.completionMode
-            ),
+            completionMode: source.completionMode!,
             createdAt: iso(now),
             ...(aggregateWorkRecordTickets(source) ? { tickets: aggregateWorkRecordTickets(source) } : {}),
             ...(declaredIds.length ? { supersedes: declaredIds } : {}),
@@ -885,27 +805,20 @@ export async function generateWorkRecordForSource(cwd, inputSource, options) {
     }
 }
 
-/**
- * @param {string} cwd
- * @param {WorkRecordGenerationOptions} options
- * @returns {Promise<BackfillResult>}
- */
-export async function runWorkRecordBackfill(cwd, options) {
+export async function runWorkRecordBackfill(
+    cwd: string,
+    options: WorkRecordGenerationOptions,
+): Promise<BackfillResult> {
     const preview = await previewWorkRecordBackfill(cwd);
-    /** @type {BackfillResult["outcomes"]} */
-    const outcomes = [];
+
+    const outcomes: WorkRecordGenerationOutcome[] = [];
     for (const source of preview.eligible) {
-        outcomes.push(
-            /** @type {BackfillResult["outcomes"][number]} */ (await generateWorkRecordForSource(cwd, source, options)),
-        );
+        outcomes.push(await generateWorkRecordForSource(cwd, source, options));
     }
     return { ...preview, outcomes };
 }
 
-/**
- * @param {BackfillResult | Awaited<ReturnType<typeof previewWorkRecordBackfill>>} result
- */
-export function formatWorkRecordBackfillPreview(result) {
+export function formatWorkRecordBackfillPreview(result: WorkRecordBackfillPreview | BackfillResult) {
     const linkable = result.eligible.filter((source) => source.existingRecord).length;
     const generatable = result.eligible.length - linkable;
     const lines = [
@@ -929,7 +842,7 @@ export function formatWorkRecordBackfillPreview(result) {
         const key = source.skipReason || "unknown";
         acc.set(key, (acc.get(key) || 0) + 1);
         return acc;
-    }, /** @type {Map<string, number>} */ (new Map()));
+    }, new Map<string, number>());
     if (skipCounts.size) {
         lines.push("", "Skipped sources:");
         for (const [reason, count] of skipCounts) lines.push(`  - ${reason}: ${count}`);
@@ -937,8 +850,7 @@ export function formatWorkRecordBackfillPreview(result) {
     return lines.join("\n");
 }
 
-/** @param {BackfillResult["outcomes"]} outcomes */
-export function formatWorkRecordBackfillOutcomes(outcomes) {
+export function formatWorkRecordBackfillOutcomes(outcomes: WorkRecordGenerationOutcome[]) {
     if (!outcomes.length) return "[RunWield] No Work Records generated or linked.";
     const lines = ["[RunWield] Work Record backfill results:"];
     for (const outcome of outcomes) {

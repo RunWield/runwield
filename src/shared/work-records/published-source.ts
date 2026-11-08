@@ -16,10 +16,10 @@ import {
     writeControllerState,
 } from "../workflow/controller-registry.ts";
 import type { PublicationAttempt } from "../workflow/publication-attempt.ts";
-import { attachEpicChildren, buildActiveWorkRecordSource } from "./generation.js";
+import { attachEpicChildren, buildActiveWorkRecordSource } from "./generation.ts";
 import { isTerminalWorkRecordParent } from "./auto-generation.ts";
 
-type WorkRecordSource = import("./generation.js").WorkRecordSource;
+type WorkRecordSource = import("./generation.ts").WorkRecordSource;
 
 async function git(root: string, args: string[]): Promise<string> {
     const result = await captureForegroundProcess("git", { cwd: root, args });

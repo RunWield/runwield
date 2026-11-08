@@ -521,7 +521,7 @@ Sources: [publication loop](../src/shared/workflow/validation-publication.ts),
 [repair dispatch/finalization](../src/shared/workflow/validation-merge-repair.ts),
 [Git worktree operations](../src/shared/worktree.js),
 [QA/Work Record handoffs](../src/shared/workflow/validation-helpers.ts),
-[Recorder event consumer](../src/shared/work-records/generation.js).
+[Recorder event consumer](../src/shared/work-records/generation.ts).
 
 ## X — Epic decomposition and next-child continuation
 

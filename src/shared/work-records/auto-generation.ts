@@ -21,9 +21,9 @@ import {
     buildActiveWorkRecordSource,
     evaluateWorkRecordSource,
     generateWorkRecordForSource,
-} from "./generation.js";
+} from "./generation.ts";
 
-type WorkRecordSource = import("./generation.js").WorkRecordSource;
+type WorkRecordSource = import("./generation.ts").WorkRecordSource;
 type WorkRecordSupersessionCandidate = import("./schema.ts").WorkRecordSupersessionCandidate;
 
 export interface WorkRecordAutoGenerationResult {
@@ -45,7 +45,7 @@ export interface AutoGenerateWorkRecordArgs {
     planName: string;
     mnemotecaPort: WorkRecordMnemotecaPort;
     signal?: AbortSignal;
-    runRecorderStep?: import("./generation.js").GenerationOptions["runRecorderStep"];
+    runRecorderStep?: import("./generation.ts").GenerationOptions["runRecorderStep"];
 }
 
 interface TargetedWorkRecordSource {
