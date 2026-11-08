@@ -7,33 +7,80 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { test } from "node:test";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { tmpdir } from "node:os";
-import { match as assertMatch } from "node:assert/strict";
+import { match as assertMatch, strictEqual } from "node:assert/strict";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
 import { SESSION_COMPLETE_GUIDANCE } from "../../shared/workflow/plan-review-recovery.ts";
-import { createPlanWrittenTool } from "../plan-written.ts";
+import { createPlanWrittenTool, type PlanWrittenToolResult, type TriageMeta } from "../plan-written.ts";
 import { getStoredPlanPath, loadPlan } from "../../plan-store.js";
 import { addEntry as addRegistryEntry } from "../../shared/worktree-registry.js";
 import { join } from "node:path";
-import { applySharedPlanReviewDecision } from "../../shared/workflow/plan-review-actions.ts";
+import type {
+    RuntimeInteractionRequest,
+    RuntimeInteractionResponse,
+} from "../../shared/session/session-runtime-interactions.ts";
+import type { PlanReviewConversation } from "../../shared/session/plan-review-conversation.ts";
+import type { SessionRuntimeEventSink } from "../../shared/types.js";
+import type { PlanApprovalAction } from "../../shared/workflow/plan-approval.ts";
+import {
+    applySharedPlanReviewDecision,
+    type SharedPlanReviewDecision,
+} from "../../shared/workflow/plan-review-actions.ts";
 
-/**
- * @param {Object} options
- * @param {"FEATURE" | "PROJECT" | "PLANNED_CHANGE"} [options.classification]
- * @param {"BUG_FIX" | "FEATURE" | "REFACTOR" | "MAINTENANCE" | "DOCUMENTATION"} [options.workKind]
- * @param {any} [options.reviewResponse]
- * @param {any[]} [options.reviewResponses]
- * @param {any} [options.retryResponse]
- * @param {"run" | "decompose" | "later"} [options.approvalAction]
- * @param {string} [options.parentPlan]
- * @param {boolean} [options.exists]
- * @param {string} [options.cwd]
- */
-async function makeHarness(options = {}) {
-    const events = /** @type {any[]} */ ([]);
-    const interactionRequests = /** @type {any[]} */ ([]);
+type InteractionMetadata = NonNullable<RuntimeInteractionResponse["_meta"]>;
+type ScriptedReviewMetadata = InteractionMetadata & SharedPlanReviewDecision;
+
+interface ScriptedReviewResponse extends RuntimeInteractionResponse {
+    _meta?: ScriptedReviewMetadata;
+}
+
+interface HarnessOptions extends Pick<TriageMeta, "classification" | "workKind" | "parentPlan"> {
+    reviewResponse?: ScriptedReviewResponse;
+    reviewResponses?: ScriptedReviewResponse[];
+    retryResponse?: RuntimeInteractionResponse;
+    approvalAction?: PlanApprovalAction;
+    exists?: boolean;
+    cwd?: string;
+}
+
+interface ReviewSurface {
+    url: string;
+}
+
+interface HarnessReviewMetadata {
+    cwd?: string;
+    planName?: string;
+    onSurfaceReady?: (surface: ReviewSurface) => void;
+}
+
+type RecordedEvent = Parameters<SessionRuntimeEventSink["emit"]>[0];
+
+interface RecordedPlanVersion {
+    plan: string;
+}
+
+interface RecordedReviewMetadata extends HarnessReviewMetadata {
+    agentLabel?: string;
+    reviewConversation?: PlanReviewConversation;
+    planId?: string;
+    planPath?: string;
+    expectedRevision?: string;
+    expectedStatus?: string;
+    previousPlan?: string;
+    planVersions?: RecordedPlanVersion[];
+}
+
+function recordedReviewMetadata(request: RuntimeInteractionRequest): RecordedReviewMetadata {
+    assertExists(request._meta);
+    return request._meta as RecordedReviewMetadata;
+}
+
+async function makeHarness(options: HarnessOptions = {}) {
+    const events: RecordedEvent[] = [];
+    const interactionRequests: RuntimeInteractionRequest[] = [];
     const reviewResponses = [...(options.reviewResponses || [])];
     const cwd = options.cwd || (await fsMkdtemp(join(tmpdir(), "portable-fixture-")));
     await fsMkdir(`${cwd}/docs/plans`, { recursive: true });
@@ -58,19 +105,20 @@ ${options.parentPlan ? `parentPlan: ${options.parentPlan}\n` : ""}---
         }
     }
     const hostedSession = new HostedSession({ id: crypto.randomUUID(), cwd });
-    hostedSession.setEventSink({ emit: (/** @type {any} */ event) => events.push(event) });
+    hostedSession.setEventSink({ emit: (event: RecordedEvent) => events.push(event) });
     hostedSession.setInteractionAdapter({
         requestInteraction: (request) => {
             interactionRequests.push(request);
             if (request.type === "approval") {
                 return Promise.resolve(options.retryResponse || { outcome: "canceled", value: false });
             }
-            const onSurfaceReady = /** @type {any} */ (request._meta)?.onSurfaceReady;
+            const meta = request._meta as HarnessReviewMetadata | undefined;
+            const onSurfaceReady = meta?.onSurfaceReady;
             onSurfaceReady?.({ url: "http://127.0.0.1:4567/review/plan?token=test" });
             // The reviewed revision has to be the Plan's real one: the transition
             // rejects a stale revision, so a made-up string would fail the write.
-            const reviewedName = /** @type {any} */ (request._meta)?.planName || "runtime-boundary";
-            const reviewedCwd = /** @type {any} */ (request._meta)?.cwd || cwd;
+            const reviewedName = meta?.planName || "runtime-boundary";
+            const reviewedCwd = meta?.cwd || cwd;
             return loadPlan(reviewedCwd, reviewedName).then(async (plan) => {
                 const revision = plan?.revision;
                 const scripted = reviewResponses.shift() || options.reviewResponse;
@@ -121,14 +169,26 @@ ${options.parentPlan ? `parentPlan: ${options.parentPlan}\n` : ""}---
 
 let nextToolCallSequence = 0;
 
-/**
- * @param {Awaited<ReturnType<typeof makeHarness>>["tool"]} tool
- * @param {string} [planName]
- * @param {(result: any) => void} [onUpdate]
- */
-function execute(tool, planName = "runtime-boundary", onUpdate = () => {}, params = {}) {
+type PlanWrittenTool = ToolDefinition<
+    ReturnType<typeof createPlanWrittenTool>["parameters"],
+    PlanWrittenToolResult["details"]
+>;
+type ExecuteParameters = Parameters<PlanWrittenTool["execute"]>;
+type PlanWrittenUpdate = NonNullable<ExecuteParameters[3]>;
+function toolText(result: PlanWrittenToolResult): string {
+    const content = result.content[0];
+    strictEqual(content.type, "text");
+    return content.text;
+}
+
+function execute(
+    tool: PlanWrittenTool,
+    planName = "runtime-boundary",
+    onUpdate: PlanWrittenUpdate = () => {},
+    params: Partial<ExecuteParameters[1]> = {},
+) {
     nextToolCallSequence += 1;
-    return /** @type {any} */ (tool.execute)(
+    return tool.execute(
         `call-${nextToolCallSequence}`,
         {
             planName,
@@ -136,14 +196,14 @@ function execute(tool, planName = "runtime-boundary", onUpdate = () => {}, param
         },
         new AbortController().signal,
         onUpdate,
-        {},
+        {} as ExecuteParameters[4],
     );
 }
 
 test("plan_written validates the declared plan before requesting review", async () => {
     const { tool } = await makeHarness({ exists: false });
     const result = await execute(tool);
-    assertMatch(result.content[0].text, /not found/);
+    assertMatch(toolText(result), /not found/);
     assertEquals(result.terminate, undefined);
 });
 
@@ -164,7 +224,7 @@ test("plan_written ignores legacy plans/ files and requires docs/plans/", async 
         });
 
         const legacyResult = await execute(tool, "runtime-boundary");
-        assertStringIncludes(legacyResult.content[0].text, "docs/plans/runtime-boundary.md not found");
+        assertStringIncludes(toolText(legacyResult), "docs/plans/runtime-boundary.md not found");
 
         await fsMkdir(`${cwd}/docs/plans`, { recursive: true });
         await fsWriteFile(
@@ -182,7 +242,7 @@ test("plan_written ignores legacy plans/ files and requires docs/plans/", async 
             }),
         });
         const currentResult = await execute(tool, "docs/plans/runtime-boundary.md");
-        assertEquals(currentResult.details.outcome, "approved_execute");
+        assertEquals(currentResult.details?.outcome, "approved_execute");
     } finally {
         await fsRm(cwd, { recursive: true }).catch(() => {});
     }
@@ -190,30 +250,34 @@ test("plan_written ignores legacy plans/ files and requires docs/plans/", async 
 
 test("plan_written streams declared plan details into the active tool block", async () => {
     const { tool, events } = await makeHarness();
-    const updates = /** @type {any[]} */ ([]);
+    const updates: Parameters<PlanWrittenUpdate>[0][] = [];
     await execute(tool, "runtime-boundary", (result) => updates.push(result));
 
     assertEquals(updates.length >= 2, true);
-    const firstText = updates[0].content[0].text;
+    const firstText = toolText(updates[0]);
     assertMatch(firstText, /Plan name: docs\/plans\/runtime-boundary\.md/);
     assertMatch(firstText, /Status: Opening browser review UI\./);
-    const readyText = updates[1].content[0].text;
+    const readyText = toolText(updates[1]);
     assertStringIncludes(readyText, "Plan name: docs/plans/runtime-boundary.md");
     assertStringIncludes(
         readyText,
         "Review Plan: \x1b]8;;http://127.0.0.1:4567/review/plan?token=test\x07http://127.0.0.1:4567/review/plan?token=test\x1b]8;;\x07",
     );
-    assertEquals(updates[1].details.reviewUrl, "http://127.0.0.1:4567/review/plan?token=test");
-    const finalUpdateText = updates.at(-1).content[0].text;
+    assertEquals(updates[1].details?.reviewUrl, "http://127.0.0.1:4567/review/plan?token=test");
+    const lastUpdate = updates.at(-1);
+    assertExists(lastUpdate);
+    const finalUpdateText = toolText(lastUpdate);
     assertEquals(finalUpdateText.includes("\x1b]8;;"), false);
     assertEquals(finalUpdateText.includes("Review Plan:"), false);
-    assertEquals(updates[0].details.planName, "runtime-boundary");
-    assertEquals(updates[0].details.planFileUrl.startsWith("file://"), true);
+    assertEquals(updates[0].details?.planName, "runtime-boundary");
+    assertEquals(updates[0].details?.planFileUrl?.startsWith("file://"), true);
     assertEquals(
         events.some(
             (event) =>
                 event.type === RuntimeEventTypes.SYSTEM_STATUS &&
-                String(event.message || "").includes("Plan name: docs/plans/runtime-boundary.md"),
+                String(("message" in event && event.message) || "").includes(
+                    "Plan name: docs/plans/runtime-boundary.md",
+                ),
         ),
         false,
     );
@@ -223,7 +287,8 @@ test("plan_written identifies Architect conversations and stops capture after fi
     const { tool, hostedSession, interactionRequests } = await makeHarness({ classification: "PROJECT" });
     await execute(tool, "runtime-epic");
 
-    const meta = interactionRequests[0]._meta;
+    const meta = recordedReviewMetadata(interactionRequests[0]);
+    assertExists(meta.reviewConversation);
     assertEquals(meta.agentLabel, "Architect");
     assertEquals(typeof meta.reviewConversation.id, "string");
     assertEquals(meta.reviewConversation.agentLabel, "Architect");
@@ -268,8 +333,8 @@ collaborationRecommendation: sometimes
 
         const result = await execute(tool);
 
-        assertEquals(result.details.outcome, "repair_required");
-        assertEquals(result.details.reason, "invalid_collaboration_recommendation");
+        assertEquals(result.details?.outcome, "repair_required");
+        assertEquals(result.details?.reason, "invalid_collaboration_recommendation");
         assertEquals(reviewRequested, false);
         // Rejected before review, so nothing may have advanced the Plan.
         assertEquals((await loadPlan(cwd, "runtime-boundary"))?.attrs.status, "draft");
@@ -285,7 +350,7 @@ test("plan_written persists declared execution policy to front matter before rev
         collaborationRecommendation: "pair",
     });
 
-    assertEquals(result.details.outcome, "approved_execute");
+    assertEquals(result.details?.outcome, "approved_execute");
     const attrs = (await readPlan())?.attrs;
     assertEquals(attrs?.executionAgent, "frontend-engineer");
     assertEquals(attrs?.collaborationRecommendation, "pair");
@@ -295,7 +360,7 @@ test("plan_written omitted execution policy leaves front matter untouched", asyn
     const { tool, readPlan } = await makeHarness({ classification: "PLANNED_CHANGE" });
     const result = await execute(tool);
 
-    assertEquals(result.details.outcome, "approved_execute");
+    assertEquals(result.details?.outcome, "approved_execute");
     const attrs = (await readPlan())?.attrs;
     assertEquals(attrs?.executionAgent, undefined);
     assertEquals(attrs?.collaborationRecommendation, undefined);
@@ -311,7 +376,7 @@ test("plan_written persists a pair recommendation declared for Engineer-owned ex
         collaborationRecommendation: "pair",
     });
 
-    assertEquals(result.details.outcome, "approved_execute");
+    assertEquals(result.details?.outcome, "approved_execute");
     const attrs = (await readPlan())?.attrs;
     assertEquals(attrs?.executionAgent, "engineer");
     assertEquals(attrs?.collaborationRecommendation, "pair");
@@ -323,8 +388,8 @@ test("plan_written rejects execution policy arguments on PROJECT Epics", async (
         executionAgent: "engineer",
     });
 
-    assertEquals(result.details.outcome, "repair_required");
-    assertEquals(result.details.reason, "project_execution_agent");
+    assertEquals(result.details?.outcome, "repair_required");
+    assertEquals(result.details?.reason, "project_execution_agent");
     const attrs = (await readPlan("runtime-epic"))?.attrs;
     assertEquals(attrs?.executionAgent, undefined);
     assertEquals(attrs?.status, "approved");
@@ -351,7 +416,7 @@ test("plan_written returns review feedback and images to the planning agent", as
         imageCount: 1,
     });
     assertEquals(
-        result.content.some((/** @type {any} */ item) => item.type === "image"),
+        result.content.some((item) => item.type === "image"),
         true,
     );
     // Feedback is not readiness: the Plan must still be sitting at `approved`.
@@ -372,12 +437,12 @@ test("plan_written does not present a stale review decision as Planner feedback"
 
     const result = await execute(tool);
 
-    assertEquals(result.details.outcome, "canceled");
+    assertEquals(result.details?.outcome, "canceled");
     assertEquals(result.terminate, true);
-    assertEquals(result.content[0].text.includes("Plan Review Feedback"), false);
-    assertEquals(result.content[0].text.includes("Your role as"), false);
-    assertEquals(result.content[0].text.includes("Do not generate any further text"), false);
-    assertStringIncludes(result.content[0].text, "Open the current Plan and review it again");
+    assertEquals(toolText(result).includes("Plan Review Feedback"), false);
+    assertEquals(toolText(result).includes("Your role as"), false);
+    assertEquals(toolText(result).includes("Do not generate any further text"), false);
+    assertStringIncludes(toolText(result), "Open the current Plan and review it again");
 });
 
 test("plan_written compares a revised Plan with the first reviewed Plan", async () => {
@@ -395,28 +460,30 @@ test("plan_written compares a revised Plan with the first reviewed Plan", async 
     });
 
     const firstResult = await execute(tool);
-    assertEquals(firstResult.details.outcome, "feedback");
+    assertEquals(firstResult.details?.outcome, "feedback");
 
     const planPath = `${cwd}/docs/plans/runtime-boundary.md`;
     const firstPlan = await fsReadFile(planPath, "utf8");
     await fsWriteFile(planPath, firstPlan.replace("# runtime-boundary", "# Revised runtime boundary"));
 
     const secondResult = await execute(tool);
-    assertEquals(secondResult.details.outcome, "saved");
+    assertEquals(secondResult.details?.outcome, "saved");
 
     const reviewRequests = interactionRequests.filter((request) => request.type === "plan_review");
     assertEquals(reviewRequests.length, 2);
+    const initialReview = recordedReviewMetadata(reviewRequests[0]);
+    const revisedReview = recordedReviewMetadata(reviewRequests[1]);
     const savedPlan = await loadPlan(cwd, "runtime-boundary");
     assertExists(savedPlan);
-    assertEquals(reviewRequests[0]._meta.planId, savedPlan.attrs.planId);
-    assertEquals(reviewRequests[1]._meta.planId, savedPlan.attrs.planId);
-    assertEquals(typeof reviewRequests[0]._meta.expectedRevision, "string");
-    assertEquals(reviewRequests[0]._meta.expectedStatus, "approved");
-    assertEquals(reviewRequests[0]._meta.previousPlan, undefined);
-    assertEquals(reviewRequests[1]._meta.previousPlan, firstPlan);
-    assertEquals(reviewRequests[0]._meta.planVersions.length, 1);
-    assertEquals(reviewRequests[1]._meta.planVersions.length, 2);
-    assertEquals(reviewRequests[1]._meta.planVersions[0].plan, firstPlan);
+    assertEquals(initialReview.planId, savedPlan.attrs.planId);
+    assertEquals(revisedReview.planId, savedPlan.attrs.planId);
+    assertEquals(typeof initialReview.expectedRevision, "string");
+    assertEquals(initialReview.expectedStatus, "approved");
+    assertEquals(initialReview.previousPlan, undefined);
+    assertEquals(revisedReview.previousPlan, firstPlan);
+    assertEquals(initialReview.planVersions?.length, 1);
+    assertEquals(revisedReview.planVersions?.length, 2);
+    assertEquals(revisedReview.planVersions?.[0]?.plan, firstPlan);
 });
 
 test("plan_written cancellation asks whether to reopen review before completing", async () => {
@@ -426,10 +493,12 @@ test("plan_written cancellation asks whether to reopen review before completing"
     });
     const result = await execute(tool);
 
-    assertEquals(result.details.outcome, "canceled");
+    assertEquals(result.details?.outcome, "canceled");
     assertEquals(result.terminate, true);
     assertEquals(
-        events.some((event) => String(event.message || "").includes("This session is complete")),
+        events.some((event) =>
+            String(("message" in event && event.message) || "").includes("This session is complete"),
+        ),
         true,
     );
 });
@@ -444,7 +513,7 @@ test("plan_written reopens review when recovery confirmation is accepted", async
     });
     const result = await execute(tool);
 
-    assertEquals(result.details.outcome, "approved_execute");
+    assertEquals(result.details?.outcome, "approved_execute");
     assertEquals(result.terminate, true);
 });
 
@@ -500,9 +569,12 @@ Live execution copy.
 
     const result = await execute(tool, "runtime-boundary");
 
-    assertEquals(result.details.outcome, "approved_execute");
-    assertEquals(interactionRequests[0]._meta.cwd, executionDir);
-    assertEquals(interactionRequests[0]._meta.planPath, getStoredPlanPath(executionDir, "runtime-boundary"));
+    assertEquals(result.details?.outcome, "approved_execute");
+    assertEquals(recordedReviewMetadata(interactionRequests[0]).cwd, executionDir);
+    assertEquals(
+        recordedReviewMetadata(interactionRequests[0]).planPath,
+        getStoredPlanPath(executionDir, "runtime-boundary"),
+    );
     assertEquals((await loadPlan(executionDir, "runtime-boundary"))?.attrs.status, "ready_for_work");
     assertEquals((await loadPlan(cwd, "runtime-boundary"))?.attrs.status, "approved");
 });
@@ -511,8 +583,8 @@ test("plan_written feature approval returns execution outcome", async () => {
     const { tool, readPlan } = await makeHarness({ classification: "FEATURE", approvalAction: "run" });
     const result = await execute(tool);
 
-    assertEquals(result.details.outcome, "approved_execute");
-    assertEquals(result.details.triageMeta.classification, "PLANNED_CHANGE");
+    assertEquals(result.details?.outcome, "approved_execute");
+    assertEquals(result.details?.triageMeta?.classification, "PLANNED_CHANGE");
     assertEquals(result.terminate, true);
     // `ready_for_work` is only reachable from `approved` via `readiness_passed`, so
     // the status is the transition, recorded by the real lifecycle.
@@ -552,8 +624,8 @@ status: approved
 
         const result = await execute(tool);
 
-        assertEquals(result.details.triageMeta.classification, "PLANNED_CHANGE");
-        assertEquals(result.details.triageMeta.workKind, "DOCUMENTATION");
+        assertEquals(result.details?.triageMeta?.classification, "PLANNED_CHANGE");
+        assertEquals(result.details?.triageMeta?.workKind, "DOCUMENTATION");
         // Readiness was recorded by the real lifecycle, which is what makes the
         // returned meta above a statement about a Plan that actually moved.
         assertEquals((await loadPlan(cwd, "runtime-boundary"))?.attrs.status, "ready_for_work");
@@ -584,8 +656,8 @@ test("plan_written preserves triage workKind when approved review attrs omit it"
     });
     const result = await execute(tool);
 
-    assertEquals(result.details.outcome, "approved_execute");
-    assertEquals(result.details.triageMeta.workKind, "BUG_FIX");
+    assertEquals(result.details?.outcome, "approved_execute");
+    assertEquals(result.details?.triageMeta?.workKind, "BUG_FIX");
     // The readiness transition really ran; `workKind` is not part of the canonical
     // Front Matter it writes, so the tool's own returned meta above is where that
     // preservation is observable.
@@ -613,9 +685,9 @@ test("plan_written feature approval uses post-review execution metadata for read
     });
     const result = await execute(tool);
 
-    assertEquals(result.details.outcome, "approved_execute");
-    assertEquals(result.details.triageMeta.executionAgent, "frontend-engineer");
-    assertEquals(result.details.triageMeta.collaborationRecommendation, "pair");
+    assertEquals(result.details?.outcome, "approved_execute");
+    assertEquals(result.details?.triageMeta?.executionAgent, "frontend-engineer");
+    assertEquals(result.details?.triageMeta?.collaborationRecommendation, "pair");
     assertEquals((await readPlan())?.attrs.status, "ready_for_work");
 });
 
@@ -640,11 +712,11 @@ test("plan_written saved feature approval keeps post-review execution metadata",
     });
     const result = await execute(tool);
 
-    assertEquals(result.details.outcome, "saved");
-    assertEquals(result.details.triageMeta.executionAgent, "engineer");
-    assertEquals(result.details.triageMeta.collaborationRecommendation, "autonomous");
-    assertEquals(result.content[0].text.includes("Your role as"), false);
-    assertEquals(result.content[0].text.includes("Do not generate any further text"), false);
+    assertEquals(result.details?.outcome, "saved");
+    assertEquals(result.details?.triageMeta?.executionAgent, "engineer");
+    assertEquals(result.details?.triageMeta?.collaborationRecommendation, "autonomous");
+    assertEquals(toolText(result).includes("Your role as"), false);
+    assertEquals(toolText(result).includes("Do not generate any further text"), false);
     assertEquals((await readPlan())?.attrs.status, "ready_for_work");
 });
 
@@ -652,15 +724,15 @@ test("plan_written feature approval can save without execution", async () => {
     const { tool, events } = await makeHarness({ classification: "FEATURE", approvalAction: "later" });
     const result = await execute(tool);
 
-    assertEquals(result.details.outcome, "saved");
+    assertEquals(result.details?.outcome, "saved");
     assertEquals(result.terminate, true);
-    assertStringIncludes(result.content[0].text, SESSION_COMPLETE_GUIDANCE);
+    assertStringIncludes(toolText(result), SESSION_COMPLETE_GUIDANCE);
     assertEquals(
-        events.some((event) => String(event.message || "").includes("Plan saved")),
+        events.some((event) => String(("message" in event && event.message) || "").includes("Plan saved")),
         true,
     );
     assertEquals(
-        events.some((event) => String(event.message || "").includes(SESSION_COMPLETE_GUIDANCE)),
+        events.some((event) => String(("message" in event && event.message) || "").includes(SESSION_COMPLETE_GUIDANCE)),
         true,
     );
 });
@@ -687,15 +759,15 @@ test("plan_written project approval can save for later with session-complete gui
     const { tool, events } = await makeHarness({ classification: "PROJECT", approvalAction: "later" });
     const result = await execute(tool, "runtime-epic");
 
-    assertEquals(result.details.outcome, "saved");
+    assertEquals(result.details?.outcome, "saved");
     assertEquals(result.terminate, true);
-    assertStringIncludes(result.content[0].text, SESSION_COMPLETE_GUIDANCE);
+    assertStringIncludes(toolText(result), SESSION_COMPLETE_GUIDANCE);
     assertEquals(
-        events.some((event) => String(event.message || "").includes("Plan saved")),
+        events.some((event) => String(("message" in event && event.message) || "").includes("Plan saved")),
         true,
     );
     assertEquals(
-        events.some((event) => String(event.message || "").includes(SESSION_COMPLETE_GUIDANCE)),
+        events.some((event) => String(("message" in event && event.message) || "").includes(SESSION_COMPLETE_GUIDANCE)),
         true,
     );
 });
@@ -704,8 +776,8 @@ test("plan_written project approval returns decomposition outcome", async () => 
     const { tool, readPlan } = await makeHarness({ classification: "PROJECT", approvalAction: "decompose" });
     const result = await execute(tool, "runtime-epic");
 
-    assertEquals(result.details.outcome, "approved_decompose");
-    assertEquals(result.details.triageMeta.classification, "PROJECT");
+    assertEquals(result.details?.outcome, "approved_decompose");
+    assertEquals(result.details?.triageMeta?.classification, "PROJECT");
     assertEquals((await readPlan("runtime-epic"))?.attrs.status, "ready_for_decomposition");
 });
 
@@ -716,7 +788,7 @@ test("plan_written missing approval action safely saves for later", async () => 
     });
     const result = await execute(tool);
 
-    assertEquals(result.details.outcome, "saved");
+    assertEquals(result.details?.outcome, "saved");
     assertEquals((await readPlan())?.attrs.status, "ready_for_work");
 });
 
@@ -724,9 +796,9 @@ test("plan_written mismatched project approval action safely saves for later", a
     const { tool, readPlan } = await makeHarness({ classification: "PROJECT", approvalAction: "run" });
     const result = await execute(tool, "runtime-epic");
 
-    assertEquals(result.details.outcome, "saved");
-    assertEquals(result.content[0].text.includes("Your role as"), false);
-    assertEquals(result.content[0].text.includes("Do not generate any further text"), false);
+    assertEquals(result.details?.outcome, "saved");
+    assertEquals(toolText(result).includes("Your role as"), false);
+    assertEquals(toolText(result).includes("Do not generate any further text"), false);
     assertEquals((await readPlan("runtime-epic"))?.attrs.status, "ready_for_decomposition");
 });
 
@@ -744,7 +816,7 @@ test("plan_written remote review emits a semantic review link", async () => {
     });
     const result = await execute(tool);
 
-    assertEquals(result.details.outcome, "saved");
-    assertEquals(result.details.remoteReview, true);
+    assertEquals(result.details?.outcome, "saved");
+    assertEquals(result.details?.remoteReview, true);
     assertEquals(events.filter((event) => event.type === RuntimeEventTypes.PLAN_REVIEW_LINK).length, 1);
 });

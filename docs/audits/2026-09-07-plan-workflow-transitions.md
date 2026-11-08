@@ -56,7 +56,7 @@ for decomposition.
   maps an absent event to `no_call`.
 - Probe: [epic-save.probe.js](probes/epic-save.probe.js).
 - Observed: `outcome="saved"`, `status="ready_for_decomposition"`, `events=[]`; required saved-event assertion fails.
-- Coverage gap: the existing [Plan tool test](../../src/tools/__tests__/plan-written.test.js) named “plan_written
+- Coverage gap: the existing [Plan tool test](../../src/tools/__tests__/plan-written.test.ts) named “plan_written
   project approval can save for later with session-complete guidance” checks the returned result, termination flag, and
   status messages, rather than this consumer-visible event.
 
