@@ -35,8 +35,19 @@ export interface TuiArtifactReviewMetadata
 export type TuiPlanReviewMetadata = Omit<Parameters<typeof submitPlanForReview>[0], "browser" | "signal">;
 export type TuiCodeReviewMetadata = Omit<Parameters<typeof runCodeReview>[0], "browser" | "signal">;
 
+type TuiInteractionUi = Pick<
+    UiAPI,
+    | "appendSystemMessage"
+    | "promptSelect"
+    | "promptText"
+    | "setBusy"
+    | "setValidationPanelVisible"
+    | "startToolExecution"
+> &
+    Partial<Pick<UiAPI, "abortActivePrompt">>;
+
 async function waitForPrompt(
-    uiAPI: UiAPI,
+    uiAPI: Pick<TuiInteractionUi, "abortActivePrompt">,
     signal: AbortSignal | undefined,
     openPrompt: () => Promise<string | null>,
 ): Promise<string | null> {
@@ -50,7 +61,10 @@ async function waitForPrompt(
     }
 }
 
-export function createTuiInteractionAdapter(uiAPI: UiAPI, ports: TuiInteractionPorts): RuntimeInteractionAdapter {
+export function createTuiInteractionAdapter(
+    uiAPI: TuiInteractionUi,
+    ports: TuiInteractionPorts,
+): RuntimeInteractionAdapter {
     return {
         supportsInteraction(type) {
             return (

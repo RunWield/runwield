@@ -6,7 +6,7 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { savePlan } from "../../plan-store.js";
-import { git } from "../workflow/validation-test-helpers.js";
+import { git } from "../workflow/validation-test-helpers.ts";
 import { assertRemoteStorageAbsent, withRemoteRuntimeFixture } from "./remote-runtime-test-fixture.ts";
 import type { BackgroundTaskStatus } from "../session/background-tasks.ts";
 import { scriptReviewAndRecord } from "./remote-runtime-workflows-fixture.ts";

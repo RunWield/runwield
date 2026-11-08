@@ -15,7 +15,7 @@ import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import { type SemanticReviewPort } from "./validation-session-adapter.ts";
 import { continueWorkflowValidation } from "./validation.ts";
 import { runLocalCI } from "./validation-local-ci.ts";
-import { attachRecorder, makeStubGitPort, makeUi, makeValidationProjectRoot } from "./validation-test-helpers.js";
+import { attachRecorder, makeStubGitPort, makeUi, makeValidationProjectRoot } from "./validation-test-helpers.ts";
 import process from "node:process";
 
 type HostedSessionManager = NonNullable<ConstructorParameters<typeof HostedSession>[0]["sessionManager"]>;

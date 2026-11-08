@@ -6,7 +6,7 @@ import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/
 import { loadPlan } from "../../plan-store.js";
 import { HostedSession } from "../session/hosted-session.js";
 import { continueWorkflowValidation } from "./validation.ts";
-import { makeValidationProjectRoot, NO_ISOLATED_AGENT_PORT } from "./validation-test-helpers.js";
+import { makeValidationProjectRoot, NO_ISOLATED_AGENT_PORT } from "./validation-test-helpers.ts";
 import { tuiSessionSidebarProjection } from "../../ui/tui/session-sidebar.ts";
 
 test("canceling Code Review settles a paused checkpoint and reopening skips finished checks", async () => {

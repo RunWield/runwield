@@ -5,7 +5,7 @@ import { readFile, writeFile, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { kill } from "node:process";
 import { assertEquals } from "../../testing/assertions.ts";
-import { git } from "../workflow/validation-test-helpers.js";
+import { git } from "../workflow/validation-test-helpers.ts";
 import { assertRemoteStorageAbsent, within, withRemoteRuntimeFixture } from "./remote-runtime-test-fixture.ts";
 import {
     ciRuns,

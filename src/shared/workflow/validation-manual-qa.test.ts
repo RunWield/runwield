@@ -61,7 +61,7 @@ import {
     makeUi,
     makeValidationProjectRoot,
     runValidationLoop,
-} from "./validation-test-helpers.js";
+} from "./validation-test-helpers.ts";
 
 test("Epic child Manual QA failure does not block verified delivery or continuation", async () => {
     const projectRoot = await makeValidationProjectRoot("epic/01-one", {

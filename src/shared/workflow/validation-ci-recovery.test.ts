@@ -17,19 +17,15 @@ import {
     NO_ISOLATED_AGENT_PORT,
     runValidationLoop,
     runValidationPhase,
-} from "./validation-test-helpers.js";
+    type ValidationUiRecorder,
+} from "./validation-test-helpers.ts";
 
 import type { SemanticReviewPort } from "./validation-session-adapter.ts";
-import type { UiAPI } from "../../ui/tui/types.js";
 import type { ActiveExecutionWorkflow } from "../types.js";
 import type { LocalCIPort } from "./validation-local-ci.ts";
 
 type RepairMessages = Awaited<ReturnType<SemanticReviewPort["runIsolatedAgentSession"]>>;
 type ImplementedPlanAttrs = PlanFrontMatterInput & Partial<Pick<ActiveExecutionWorkflow, "executionAgent">>;
-
-interface ValidationPromptUi extends Pick<UiAPI, "promptSelect"> {
-    promptSelections: string[];
-}
 
 interface IncompleteRepairFixture extends Awaited<ReturnType<typeof makeImplementedRun>> {
     prompts: string[];
@@ -71,11 +67,15 @@ function repairPort(outcomes = ["completed"]): SemanticReviewPort {
 }
 
 function makeValidationUi(cwd = getCwd()) {
-    const uiAPI: ValidationPromptUi = makeUi();
+    const uiAPI = makeUi();
     return { uiAPI, hostedSession: attachRecorder(new HostedSession({ id: "validation-repair-test", cwd }), uiAPI) };
 }
 
-function selectAndCaptureOptions(uiAPI: ValidationPromptUi, labels: string[], value: string) {
+function selectAndCaptureOptions(
+    uiAPI: Pick<ValidationUiRecorder, "promptSelect" | "promptSelections">,
+    labels: string[],
+    value: string,
+) {
     uiAPI.promptSelect = (_prompt, options) => {
         uiAPI.promptSelections.push("prompted");
         labels.splice(0, labels.length, ...options.map((option) => option.label));

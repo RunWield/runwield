@@ -17,7 +17,6 @@
     "src/shared/types.js",
     "src/shared/work-records/generation.js",
     "src/shared/workflow/metrics.js",
-    "src/shared/workflow/validation-test-helpers.js",
     "src/shared/worktree-registry.js",
     "src/shared/worktree.js",
     "src/ui/design-system/sidebar-motion.js",

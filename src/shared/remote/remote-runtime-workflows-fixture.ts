@@ -9,7 +9,7 @@ import {
     type FauxResponseFactory,
 } from "@earendil-works/pi-ai";
 import { assertEquals } from "../../testing/assertions.ts";
-import { git } from "../workflow/validation-test-helpers.js";
+import { git } from "../workflow/validation-test-helpers.ts";
 import { type RuntimeFixture, type RuntimeProcess } from "./remote-runtime-test-fixture.ts";
 import type { RuntimeClientReport } from "./remote-runtime-test-client.ts";
 

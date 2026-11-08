@@ -8,7 +8,7 @@ import { loadPlan } from "../../../src/plan-store.js";
 import { HostedSession } from "../../../src/shared/session/hosted-session.js";
 import type { SemanticReviewPort } from "../../../src/shared/workflow/validation-session-adapter.ts";
 import { continueWorkflowValidation } from "../../../src/shared/workflow/validation-supervisor.ts";
-import { makeStubGitPort, makeValidationProjectRoot } from "../../../src/shared/workflow/validation-test-helpers.js";
+import { makeStubGitPort, makeValidationProjectRoot } from "../../../src/shared/workflow/validation-test-helpers.ts";
 
 type ValidationArgs = Parameters<typeof continueWorkflowValidation>[0];
 type LocalCI = NonNullable<ValidationArgs["localCI"]>;

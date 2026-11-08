@@ -19,7 +19,7 @@ import {
     makeValidationProjectRoot,
     NO_ISOLATED_AGENT_PORT,
     runValidationPhase,
-} from "./validation-test-helpers.js";
+} from "./validation-test-helpers.ts";
 
 interface ReviewProgressObservation {
     type: string;

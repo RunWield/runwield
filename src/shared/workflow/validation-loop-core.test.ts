@@ -46,7 +46,7 @@ import {
     NO_ISOLATED_AGENT_PORT,
     runValidationLoop,
     runValidationPhase,
-} from "./validation-test-helpers.js";
+} from "./validation-test-helpers.ts";
 
 const footerExecutionRepo = defineGitFixture(async (repoPath) => {
     await savePlan(repoPath, "footer-plan", "# footer-plan\n\nvalidation fixture\n", {
