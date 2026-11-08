@@ -28,7 +28,7 @@ affectedPaths:
     - "src/ui/tui/interactive-session-port.ts"
     - "src/shared/workflow/validation.ts"
     - "src/shared/workflow/validation-*.ts"
-    - "src/shared/workflow/validation-test-helpers.js"
+    - "src/shared/workflow/validation-test-helpers.ts"
     - "src/shared/workflow/validation-*.test.*"
     - "src/shared/session/architecture-boundary.test.ts"
     - "src/shared/workflow/architecture-boundary.test.ts"
@@ -214,7 +214,7 @@ compatibility constraint, not a document to revise.
 
 - `src/shared/git-test-fixture.ts#defineGitFixture` — real Git repositories for execution, recovery, and Git-port
   contract tests.
-- `src/shared/workflow/validation-test-helpers.js#makeValidationProjectRoot` and `attachRecorder` — isolated real Plans,
+- `src/shared/workflow/validation-test-helpers.ts#makeValidationProjectRoot` and `attachRecorder` — isolated real Plans,
   project state, `HostedSession`, and Runtime events.
 - `src/testing/process-global-lock.ts#withProcessGlobalTestLock` — safe `HOME`, `PATH`, and working-directory mutation.
 - `src/ui/tui/testing/interactive-composition-fixture.ts` and existing Golden TUI fixtures — real command-to-TUI

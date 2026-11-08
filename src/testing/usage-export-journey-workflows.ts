@@ -1,3 +1,4 @@
+import type { UiAPI } from "../ui/tui/types.js";
 import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";
 import { join } from "node:path";
 import { ok as assert } from "node:assert/strict";
@@ -18,7 +19,7 @@ import { runPlanLifecycleEventTransition } from "../shared/workflow/state-transi
 import { makePublicationOutcomeFixture } from "../shared/workflow/testing/publication-outcome-fixture.ts";
 import { runValidationPhase } from "../shared/workflow/validation.ts";
 import { runLocalCI } from "../shared/workflow/validation-local-ci.ts";
-import { attachRecorder, makeUi, UNEXPECTED_VALIDATION_PORTS } from "../shared/workflow/validation-test-helpers.js";
+import { attachRecorder, makeUi, UNEXPECTED_VALIDATION_PORTS } from "../shared/workflow/validation-test-helpers.ts";
 import { handlePlanRecovery, SYSTEM_RECOVERY_FLOW_PORTS } from "../cmd/load-plan/plan-recovery-flow.ts";
 import { createPlanSessionSurface } from "../cmd/load-plan/plan-session-surface.ts";
 
@@ -163,13 +164,15 @@ export async function runJourneyRecovery(
         const ui = makeUi();
         const answers = ["abandon", "confirm", "cancel"];
         ui.promptSelect = () => Promise.resolve(answers.shift() || "cancel");
+        // This journey only uses these recorder methods from the legacy TUI interface.
+        const recoveryUi: Pick<UiAPI, "appendSystemMessage" | "promptSelect" | "promptText"> = ui;
         const plan = await loadPlan(entry.path, name);
         assert(plan);
         await handlePlanRecovery({
             projectRoot: root,
             plan: { ...plan, planName: name },
             agentName: "engineer",
-            uiAPI: ui,
+            uiAPI: recoveryUi as UiAPI,
             session: surface,
             recordedAttempt: entry,
             ports: SYSTEM_RECOVERY_FLOW_PORTS,

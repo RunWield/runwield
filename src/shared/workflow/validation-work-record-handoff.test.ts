@@ -8,7 +8,7 @@ import { HostedSession } from "../session/hosted-session.js";
 import { getRunWieldSessionDir } from "../session/root-session.js";
 import { listWorkRecords, writeWorkRecord } from "../work-records/store.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
-import { attachRecorder, makeUi } from "./validation-test-helpers.js";
+import { attachRecorder, makeUi } from "./validation-test-helpers.ts";
 import { runFeaturePostVerificationHandoffs } from "./validation-helpers.ts";
 
 const PREDECESSOR_RECORD_ID = "33333333-3333-4333-8333-333333333333";

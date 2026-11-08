@@ -15,7 +15,7 @@ import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "./metrics.js";
 import { cleanupStoredPublication } from "./publication-machine.ts";
 import { runLocalCI } from "./validation-local-ci.ts";
-import { attachRecorder, makeUi, runValidationPhase } from "./validation-test-helpers.js";
+import { attachRecorder, makeUi, runValidationPhase } from "./validation-test-helpers.ts";
 import { makePublicationOutcomeFixture } from "./testing/publication-outcome-fixture.ts";
 import type { WorkflowMetricFixtureRecord } from "../../testing/workflow-metrics-fixture.ts";
 

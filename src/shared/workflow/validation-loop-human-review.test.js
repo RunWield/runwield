@@ -25,7 +25,7 @@ import {
     NO_ISOLATED_AGENT_PORT,
     runValidationLoop,
     runValidationPhase,
-} from "./validation-test-helpers.js";
+} from "./validation-test-helpers.ts";
 
 function makeValidationUi() {
     const uiAPI = makeUi();
@@ -1005,7 +1005,8 @@ for (const answer of [{ outcome: "canceled" }, { outcome: "selected", value: "cl
     test(`Code Review offer ${answer.value || answer.outcome} stays pending without a skipped or approved outcome`, async () => {
         const projectRoot = await makeValidationProjectRoot("p", {
             classification: "QUICK_FIX",
-            status: "validated_reviewer",
+            // Keep exercising the legacy spelling that Plan storage normalizes on read.
+            status: /** @type {import("../../plan-store.js").PlanFrontMatter["status"]} */ ("validated_reviewer"),
             humanReviewMode: "ask",
             humanReviewDecision: null,
         });
@@ -1097,7 +1098,7 @@ test("Core resumes an edited reviewed candidate through CI and Semantic Review b
             }
             return Promise.resolve({ outcome: "selected", value: "stop" });
         });
-        /** @type {import("./validation-test-helpers.js").ValidationTestArgs} */
+        /** @type {import("./validation-test-helpers.ts").ValidationTestArgs} */
         const args = {
             hostedSession,
             planName: "p",

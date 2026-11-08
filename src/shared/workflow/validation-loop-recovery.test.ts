@@ -8,7 +8,7 @@ import {
     makeValidationProjectRoot,
     NO_ISOLATED_AGENT_PORT,
     runValidationLoop,
-} from "./validation-test-helpers.js";
+} from "./validation-test-helpers.ts";
 
 function makeValidationUi() {
     const uiAPI = makeUi();

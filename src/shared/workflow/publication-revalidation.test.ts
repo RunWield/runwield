@@ -32,7 +32,7 @@ import { HostedSession } from "../session/hosted-session.js";
 import { createPlanDeviationTool } from "../../tools/plan-deviation.ts";
 import { assertPreMergeCandidateUnchanged } from "../worktree.js";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
-import { makeRecordedSession, makeUi, NO_ISOLATED_AGENT_PORT, runValidationPhase } from "./validation-test-helpers.js";
+import { makeRecordedSession, makeUi, NO_ISOLATED_AGENT_PORT, runValidationPhase } from "./validation-test-helpers.ts";
 
 const repository = defineGitFixture(async (root) => {
     await savePlan(root, "rewrite", "# Rewrite recovery\n", {

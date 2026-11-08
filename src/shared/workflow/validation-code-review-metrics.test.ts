@@ -10,7 +10,7 @@ import {
     makeUi,
     makeValidationProjectRoot,
     runValidationPhase,
-} from "./validation-test-helpers.js";
+} from "./validation-test-helpers.ts";
 
 interface DecisionDetails {
     decision: "approved" | "changes_requested";

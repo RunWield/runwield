@@ -18,7 +18,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { loadPlan, savePlan } from "../../plan-store.js";
 import { HostedSession } from "../session/hosted-session.js";
 import { createValidationSessionPort } from "./validation-session-adapter.ts";
-import { attachRecorder, makeUi, makeValidationProjectRoot, runValidationLoop } from "./validation-test-helpers.js";
+import { attachRecorder, makeUi, makeValidationProjectRoot, runValidationLoop } from "./validation-test-helpers.ts";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
 import { runWorkflowValidationToStableBoundary } from "./validation.ts";
 import { createGitPort } from "../git-port.ts";

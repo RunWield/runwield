@@ -24,7 +24,7 @@ import {
     runValidationLoop,
     runValidationPhase,
     UNEXPECTED_VALIDATION_PORTS,
-} from "./validation-test-helpers.js";
+} from "./validation-test-helpers.ts";
 
 import { createValidationSessionPort } from "./validation-session-adapter.ts";
 

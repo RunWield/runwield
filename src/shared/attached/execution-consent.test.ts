@@ -11,7 +11,7 @@ import {
     getTransitionJournalPath,
     listTransitionRecoveryRecords,
 } from "../workflow/state-transition.ts";
-import { makeValidationProjectRoot } from "../workflow/validation-test-helpers.js";
+import { makeValidationProjectRoot } from "../workflow/validation-test-helpers.ts";
 import { EVIDENCE, readRecordBytes, runOperation, spawnAttachedCli, withProject } from "./attached-test-fixture.ts";
 import { completionInput, executionInput, readyPlan } from "./execution-test-fixture.ts";
 import { type AttachedWorkflowRecord, loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";

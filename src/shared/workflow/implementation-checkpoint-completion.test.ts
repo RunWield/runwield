@@ -6,7 +6,7 @@ import { createTaskCompletedTool } from "../../tools/task-completed.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { listPendingTaskCompletions } from "../session/task-completion-session.ts";
 import { finalizePlanImplementation } from "./implementation-checkpoint.ts";
-import { makeValidationProjectRoot } from "./validation-test-helpers.js";
+import { makeValidationProjectRoot } from "./validation-test-helpers.ts";
 
 const EXTENSION_CONTEXT = {} as ExtensionToolContext;
 type HostedSessionManager = NonNullable<ConstructorParameters<typeof HostedSession>[0]["sessionManager"]>;

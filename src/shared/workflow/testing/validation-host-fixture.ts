@@ -30,7 +30,7 @@ import {
 import { continueHostTurnValidation } from "../validation-host-turn.ts";
 import { readDeliveryEvidence } from "../delivery-evidence.ts";
 import { getWorkflowMetricsFilePath } from "../metrics.js";
-import { makeValidationProjectRoot } from "../validation-test-helpers.js";
+import { makeValidationProjectRoot } from "../validation-test-helpers.ts";
 
 import process from "node:process";
 

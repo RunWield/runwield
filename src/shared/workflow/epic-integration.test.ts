@@ -12,7 +12,7 @@ import type { IsolatedAgentSessionOptions, SemanticReviewPort } from "./validati
 import type { ReviewFinding, ReviewAdvisory } from "../../tools/review-complete.ts";
 import type { LocalCIPort, LocalCIResult } from "./validation-local-ci.ts";
 import { parseDiffFiles } from "./review-diff-tool.ts";
-import { makeRecordedSession, makeUi } from "./validation-test-helpers.js";
+import { makeRecordedSession, makeUi } from "./validation-test-helpers.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 import { buildPlanEventUpdates, recordPlanEvent } from "./plan-lifecycle.ts";
 import { HostedSession } from "../session/hosted-session.js";
