@@ -13,7 +13,7 @@ import {
     isPathInside,
     listCatalogSafeRootSessionLocators,
     readCatalogSafeRootSessionLocator,
-} from "../session/root-session.js";
+} from "../session/root-session.ts";
 import {
     normalizeSegmentLineageEvidence,
     PENDING_SEGMENT_CONTINUATION_CUSTOM_TYPE,
@@ -221,10 +221,10 @@ async function inspectSessionDirectory(path) {
  * @param {string} cwd
  * @param {string} sessionDir
  * @param {Set<string>} knownTranscriptPaths
- * @returns {Promise<{ locators: import('../session/root-session.js').CatalogSafeRootSessionLocator[], diagnostics: CatalogDiagnostic[], dirMtimeMs: number | null, scanned: boolean }>}
+ * @returns {Promise<{ locators: import('../session/root-session.ts').CatalogSafeRootSessionLocator[], diagnostics: CatalogDiagnostic[], dirMtimeMs: number | null, scanned: boolean }>}
  */
 async function listIncrementalRootSessionLocators(cwd, sessionDir, knownTranscriptPaths) {
-    /** @type {import('../session/root-session.js').CatalogSafeRootSessionLocator[]} */
+    /** @type {import('../session/root-session.ts').CatalogSafeRootSessionLocator[]} */
     const locators = [];
     /** @type {CatalogDiagnostic[]} */
     const diagnostics = [];
@@ -256,7 +256,7 @@ async function listIncrementalRootSessionLocators(cwd, sessionDir, knownTranscri
 }
 
 /**
- * @typedef {import('../session/root-session.js').CatalogSafeRootSessionLocator & { lineage: import('../types.js').SessionSegmentLineageEvidence | null }} LineageCatalogLocator
+ * @typedef {import('../session/root-session.ts').CatalogSafeRootSessionLocator & { lineage: import('../types.js').SessionSegmentLineageEvidence | null }} LineageCatalogLocator
  */
 
 /**
@@ -432,7 +432,7 @@ function catalogLineageSegmentGroup(database, projectId, group, options) {
 /**
  * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {{ projectId: string, piSessionId: string, transcriptPath: string, transcriptCwd: string }} locator
- * @returns {Promise<import('../session/root-session.js').CatalogSafeRootSessionLocator>}
+ * @returns {Promise<import('../session/root-session.ts').CatalogSafeRootSessionLocator>}
  */
 export async function validateSuccessorSegmentLocator(database, locator) {
     const rootEvidence = listProjectRootEvidence(database, locator.projectId);
@@ -466,7 +466,7 @@ export async function validateSuccessorSegmentLocator(database, locator) {
 
 /**
  * @param {CatalogedSession} existing
- * @param {import('../session/root-session.js').CatalogSafeRootSessionLocator} safeLocator
+ * @param {import('../session/root-session.ts').CatalogSafeRootSessionLocator} safeLocator
  */
 function assertStoredHeaderEvidence(existing, safeLocator) {
     if (
@@ -673,7 +673,7 @@ export function getCurrentSessionSegment(database, runwieldSessionId) {
 /**
  * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {{ runwieldSessionId: string, projectId: string, piSessionId: string, transcriptPath: string, transcriptCwd: string, kind: 'planning' | 'execution' | 'semantic_repair', lineageParentSegmentId?: string | null, lineageParentPiSessionId?: string | null, lineageGroupKey?: string | null, idFactory?: () => string, now?: () => string }} segment
- * @param {import('../session/root-session.js').CatalogSafeRootSessionLocator} safeLocator
+ * @param {import('../session/root-session.ts').CatalogSafeRootSessionLocator} safeLocator
  * @returns {import('../types.js').SessionTranscriptSegment}
  */
 export function insertSessionTranscriptSegmentRow(database, segment, safeLocator) {

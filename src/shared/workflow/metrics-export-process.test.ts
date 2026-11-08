@@ -17,7 +17,7 @@ import { type MetricsExportFixture, withMetricsExportFixture } from "../../testi
 import { withCollidingMetricProjects } from "../../testing/workflow-metrics-fixture.ts";
 import { setCustomSetting } from "../settings.js";
 import { getWorkflowMetricsFilePath, hashMetricCwd } from "./metrics.js";
-import { encodeCwdForSessionDir } from "../session/root-session.js";
+import { encodeCwdForSessionDir } from "../session/root-session.ts";
 import { metricsExportReference } from "./metrics-export-record.ts";
 import {
     readMetricsExportGrants,

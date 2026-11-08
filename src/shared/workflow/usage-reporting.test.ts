@@ -18,7 +18,7 @@ import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import { withCollidingMetricProjects, withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { getWorkflowMetricsFilePath, hashMetricCwd, recordWorkflowMetric } from "./metrics.js";
-import { encodeCwdForSessionDir } from "../session/root-session.js";
+import { encodeCwdForSessionDir } from "../session/root-session.ts";
 import { ExecutionMetricsRecorder } from "./execution-metrics.ts";
 import { UsageReporter, usageProjectIdentityForRoot } from "./usage-reporting.ts";
 import { openNativeFileLock } from "../native-file-lock.ts";

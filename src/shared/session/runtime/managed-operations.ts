@@ -6,7 +6,7 @@ import {
     recordManualModelSelection,
     resolveResumeAgentName,
 } from ".././active-agent-session.ts";
-import { isPathInside, openPersistedRootSession } from ".././root-session.js";
+import { isPathInside, openPersistedRootSession } from ".././root-session.ts";
 import { RuntimeEventTypes } from ".././session-runtime-events.js";
 import { captureTranscriptEvidence, syncTranscriptFileAndParent } from ".././session-transcript-projection.js";
 import { openLiveSessionConnection } from ".././live-session-connection.ts";

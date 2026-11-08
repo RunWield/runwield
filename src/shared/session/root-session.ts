@@ -3,6 +3,17 @@
  * Root interactive session lifecycle helpers (persisted in ~/.wld/sessions).
  */
 
+import type { SessionEntry, SessionHeader, SessionInfo, SessionManager } from "@earendil-works/pi-coding-agent";
+import type { JsonValue } from "../jsonc.ts";
+import type { RemoteSessionConnection } from "../remote/session-protocol.ts";
+import type { RemoteSessionSaveBridge } from "../remote/session-save-bridge.ts";
+import type {
+    CatalogDiagnostic,
+    CatalogedSession,
+    FileSessionProject,
+    FileSessionStore,
+} from "./file-session-store.ts";
+import type { MinimalSessionManagerLike } from "./hosted-session.js";
 import { mkdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { open, readdir, realpath, stat as fsStat, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve, sep as SEPARATOR } from "node:path";
@@ -12,10 +23,102 @@ import { requireLocalSessionWriter } from "../remote/personal-resources.ts";
 import { getHomeDir } from "../../constants.js";
 import { parseRemoteSessionTranscript } from "../remote/session-protocol.ts";
 
+export type RootSessionStartMode = "new" | "continue";
+
+export type PersistedRootSessionInfo = Pick<SessionInfo, "id" | "path" | "cwd"> &
+    Partial<Pick<SessionInfo, "messageCount" | "firstMessage" | "name">> & {
+        modified?: Date | string | number;
+    };
+
+export interface ResolvePersistedRootSessionOptions {
+    cwd: string;
+    sessionId: string;
+    sessionPath?: string;
+    sessionDir?: string;
+    managedProjectRoot?: string;
+    managedSegmentCwd?: string;
+}
+
+export interface ResolvedPersistedRootSession {
+    cwd: string;
+    sessionDir: string;
+    sessionId: string;
+    sessionPath: string;
+    info: PersistedRootSessionInfo | null;
+}
+
+interface OpenedPersistedRootSession {
+    sessionManager: SessionManager;
+    resolved: ResolvedPersistedRootSession;
+}
+
+interface ClassifyRootSessionLocatorOptions {
+    cwd: string;
+    sessionId?: string;
+    sessionPath?: string;
+    ownerCoordinationStore?: FileSessionStore | null;
+    allowCatalog?: boolean;
+}
+
+interface RootSessionProjectLocator {
+    projectId: string;
+    cwd: string;
+}
+
+export interface RootSessionLocatorClassification {
+    kind: "uncataloged" | "managed" | "blocked";
+    reason?: string;
+    session?: CatalogedSession;
+    project?: RootSessionProjectLocator;
+    locator?: CatalogSafeRootSessionLocator;
+}
+
+export interface CatalogSafeRootSessionLocator {
+    cwd: string;
+    sessionDir: string;
+    sessionPath: string;
+    piSessionId: string;
+    headerCwd: string;
+    headerVersion: number | null;
+    headerTimestamp: string | null;
+    modified: Date | null;
+}
+
+export type CatalogSafeLocatorDiagnostic = CatalogDiagnostic;
+export type CatalogSafeRootSessionCandidate = Pick<CatalogSafeRootSessionLocator, "sessionPath" | "modified">;
+
+interface CatalogSafeLocatorOptions {
+    sessionDir?: string;
+    maxHeaderBytes?: number;
+}
+
+interface ReadCatalogSafeLocatorOptions extends CatalogSafeLocatorOptions {
+    cwd: string;
+    sessionPath: string;
+}
+
+interface ListCatalogSafeLocatorsOptions extends CatalogSafeLocatorOptions {
+    recentLimit?: number;
+}
+
+interface CatalogSafeLocatorList {
+    locators: CatalogSafeRootSessionLocator[];
+    diagnostics: CatalogSafeLocatorDiagnostic[];
+}
+
+interface RootSessionBranchReader<Entry> {
+    getBranch?: () => Entry[];
+    getEntries?: () => Entry[];
+}
+
+type RootSessionHeaderFields = Pick<SessionHeader, "type" | "id" | "cwd" | "timestamp" | "version">;
+type RawRootSessionHeader = Partial<Record<keyof RootSessionHeaderFields, JsonValue>>;
+type CreatedSessionTranscriptSource = Pick<MinimalSessionManagerLike, "getEntries"> &
+    Partial<Pick<SessionManager, "getHeader">>;
+type DisposableSessionManager = SessionManager & Pick<MinimalSessionManagerLike, "dispose">;
+
 /**
  * Resolve the root RunWield sessions base directory.
- *
- * @returns {string}
  */
 export function getRunWieldSessionsBaseDir() {
     requireLocalSessionWriter();
@@ -23,11 +126,7 @@ export function getRunWieldSessionsBaseDir() {
     return join(home, ".wld", "sessions");
 }
 
-/**
- * @param {string} cwd
- * @returns {string}
- */
-function canonicalizeCwd(cwd) {
+function canonicalizeCwd(cwd: string) {
     let canonicalCwd = resolve(cwd);
     try {
         canonicalCwd = realpathSync.native(canonicalCwd);
@@ -39,58 +138,41 @@ function canonicalizeCwd(cwd) {
 
 /**
  * Resolve RunWield root session directory for a cwd.
- *
- * @param {string} cwd
- * @returns {string}
  */
-export function getRunWieldSessionDir(cwd) {
+export function getRunWieldSessionDir(cwd: string) {
     return join(getRunWieldSessionsBaseDir(), encodeCwdForSessionDir(canonicalizeCwd(cwd)));
 }
 
 /**
  * Resolve the image-artifact directory for a persisted root session.
- *
- * @param {string} cwd
- * @param {string} sessionId
- * @returns {string}
  */
-export function getRunWieldSessionImageDir(cwd, sessionId) {
+export function getRunWieldSessionImageDir(cwd: string, sessionId: string) {
     return join(getRunWieldSessionDir(cwd), `${sessionId}_images`);
 }
 
 /**
  * Resolve the memory-backup artifact directory for a persisted root session.
- *
- * @param {string} cwd
- * @param {string} sessionId
- * @returns {string}
  */
-export function getRunWieldSessionMemoryBackupDir(cwd, sessionId) {
+export function getRunWieldSessionMemoryBackupDir(cwd: string, sessionId: string) {
     return join(getRunWieldSessionDir(cwd), `${sessionId}_memory-backups`);
 }
 
 /**
  * Ensure a directory exists.
- *
- * @param {string} dir
  */
-function ensureDir(dir) {
+function ensureDir(dir: string) {
     mkdirSync(dir, { recursive: true });
 }
 
 /**
- * @typedef {"new" | "continue"} RootSessionStartMode
- */
-
-/**
  * Create or continue the persisted root session manager.
- *
- * @param {RootSessionStartMode} mode
- * @param {string} cwd
- * @param {string} [directory] Laptop-owned remote Project directory.
- * @returns {Promise<import('@earendil-works/pi-coding-agent').SessionManager>}
+ * @param directory Laptop-owned remote Project directory.
  */
-export async function createRootSessionManager(mode, cwd, directory) {
+export async function createRootSessionManager(
+    mode: RootSessionStartMode,
+    cwd: string,
+    directory?: string,
+): Promise<SessionManager> {
     requireLocalSessionWriter();
     const { SessionManager } = await import("@earendil-works/pi-coding-agent");
     const canonicalCwd = directory ? cwd : canonicalizeCwd(cwd);
@@ -104,22 +186,20 @@ export async function createRootSessionManager(mode, cwd, directory) {
     return installSessionPersistence(manager);
 }
 
-/** @type {WeakMap<import('@earendil-works/pi-coding-agent').SessionManager, import('../remote/session-save-bridge.ts').RemoteSessionSaveBridge>} */
-const remoteSessionBridges = new WeakMap();
+const remoteSessionBridges = new WeakMap<SessionManager, RemoteSessionSaveBridge>();
 
-/** @param {import('@earendil-works/pi-coding-agent').SessionManager | undefined} manager */
-export function getRemoteSessionSaveBridge(manager) {
+export function getRemoteSessionSaveBridge(manager: SessionManager | undefined) {
     return manager ? remoteSessionBridges.get(manager) : undefined;
 }
 
 /**
  * Hydrate only from the laptop owner. No Session file or remote transcript directory is created.
  * The caller owns the remote project identity and must discard this manager after any bridge fault.
- * @param {string} cwd
- * @param {import('../remote/session-protocol.ts').RemoteSessionConnection} connection
- * @returns {Promise<import('@earendil-works/pi-coding-agent').SessionManager>}
  */
-export async function createRemoteRootSessionManager(cwd, connection) {
+export async function createRemoteRootSessionManager(
+    cwd: string,
+    connection: RemoteSessionConnection,
+): Promise<SessionManager> {
     const { RemoteSessionSaveBridge } = await import("../remote/session-save-bridge.ts");
     const bridge = new RemoteSessionSaveBridge(connection);
     try {
@@ -145,20 +225,14 @@ export async function createRemoteRootSessionManager(cwd, connection) {
     }
 }
 
-/** @param {import('@earendil-works/pi-coding-agent').SessionManager} sessionManager */
-function getSessionManagerFileContents(sessionManager) {
+function getSessionManagerFileContents(sessionManager: SessionManager) {
     const header = sessionManager.getHeader?.();
     const entries = sessionManager.getEntries?.();
     if (!header || !Array.isArray(entries)) return null;
     return [header, ...entries].map((entry) => `${JSON.stringify(entry)}\n`).join("");
 }
 
-/**
- * @param {import('@earendil-works/pi-coding-agent').SessionManager} sessionManager
- * @param {import('../remote/session-save-bridge.ts').RemoteSessionSaveBridge} [bridge]
- * @returns {import('@earendil-works/pi-coding-agent').SessionManager}
- */
-function installSessionPersistence(sessionManager, bridge) {
+function installSessionPersistence(sessionManager: SessionManager, bridge?: RemoteSessionSaveBridge): SessionManager {
     function rewriteFile() {
         if (bridge) {
             bridge.assertHealthy();
@@ -173,8 +247,7 @@ function installSessionPersistence(sessionManager, bridge) {
         writeFileSync(transcriptPath, contents);
     }
 
-    /** @param {import('@earendil-works/pi-coding-agent').SessionEntry} entry */
-    function persist(entry) {
+    function persist(entry: SessionEntry) {
         if (bridge) {
             bridge.assertHealthy();
             bridge.request("append", `${JSON.stringify(entry)}\n`);
@@ -213,16 +286,16 @@ function installSessionPersistence(sessionManager, bridge) {
                 return () =>
                     bridge.fail(new Error(`Remote Session lifecycle path is not captured: ${String(property)}`));
             }
-            const value =
+            const value: unknown =
                 property === "_rewriteFile"
                     ? rewriteFile
                     : property === "_persist"
                       ? persist
                       : Reflect.get(target, property, receiver);
             if (!bridge || typeof value !== "function") return value;
+            // Pi methods come through a reflective boundary with arbitrary arguments and return values.
             // Retained method references must also fail after a swallowed persistence error.
-            /** @param {unknown[]} args */
-            const guarded = (...args) => {
+            const guarded = (...args: unknown[]): unknown => {
                 bridge.assertHealthy();
                 try {
                     return Reflect.apply(value, receiver, args);
@@ -244,8 +317,10 @@ function installSessionPersistence(sessionManager, bridge) {
     });
 }
 
-/** @param {any} sessionManager @param {string} transcriptPath */
-async function ensureCreatedSessionTranscriptFile(sessionManager, transcriptPath) {
+async function ensureCreatedSessionTranscriptFile(
+    sessionManager: CreatedSessionTranscriptSource,
+    transcriptPath: string,
+) {
     try {
         const stat = await fsStat(transcriptPath);
         if (stat.isFile()) return;
@@ -264,8 +339,11 @@ async function ensureCreatedSessionTranscriptFile(sessionManager, transcriptPath
     if (!stat.isFile()) throw new Error(`Created Session transcript was not persisted: ${transcriptPath}`);
 }
 
-/** @param {string} cwd @param {import("./hosted-session.js").MinimalSessionManagerLike} sessionManager @param {string} [directory] */
-export async function resolveCreatedRootSessionPath(cwd, sessionManager, directory) {
+export async function resolveCreatedRootSessionPath(
+    cwd: string,
+    sessionManager: MinimalSessionManagerLike,
+    directory?: string,
+) {
     requireLocalSessionWriter();
     const piSessionId = sessionManager.getSessionId?.();
     if (!piSessionId) throw new Error("The Session could not be persisted");
@@ -287,44 +365,12 @@ export async function resolveCreatedRootSessionPath(cwd, sessionManager, directo
     return transcriptPath;
 }
 
-/**
- * @typedef {Object} PersistedRootSessionInfo
- * @property {string} id
- * @property {string} path
- * @property {string} cwd
- * @property {Date | string | number} [modified]
- * @property {number} [messageCount]
- * @property {string} [firstMessage]
- * @property {string} [name]
- */
-
-/**
- * @typedef {Object} ResolvePersistedRootSessionOptions
- * @property {string} cwd
- * @property {string} sessionId
- * @property {string} [sessionPath]
- * @property {string} [sessionDir]
- * @property {string} [managedProjectRoot]
- * @property {string} [managedSegmentCwd]
- */
-
-/**
- * @typedef {Object} ResolvedPersistedRootSession
- * @property {string} cwd
- * @property {string} sessionDir
- * @property {string} sessionId
- * @property {string} sessionPath
- * @property {PersistedRootSessionInfo | null} info
- */
-
-/** @param {string} path @param {string} baseDir */
-export function isPathInside(path, baseDir) {
+export function isPathInside(path: string, baseDir: string) {
     const child = relative(resolve(baseDir), resolve(path));
     return child === "" || (child !== ".." && !child.startsWith(`..${SEPARATOR}`) && !isAbsolute(child));
 }
 
-/** @param {string} path @param {string} baseDir */
-async function assertRealPathInside(path, baseDir) {
+async function assertRealPathInside(path: string, baseDir: string) {
     const realPath = await realpath(path);
     const realBase = await realpath(baseDir);
     if (!isPathInside(realPath, realBase)) {
@@ -332,35 +378,23 @@ async function assertRealPathInside(path, baseDir) {
     }
 }
 
-/** @param {unknown} value */
-function getManagerCwd(value) {
+function getManagerCwd(value: Pick<SessionManager, "getCwd">) {
     if (!value || typeof value !== "object" || !("getCwd" in value) || typeof value.getCwd !== "function") return "";
     const cwd = value.getCwd();
     return typeof cwd === "string" ? cwd : "";
 }
 
-/**
- * @typedef {Object} RootSessionLocatorClassification
- * @property {"uncataloged" | "managed" | "blocked"} kind
- * @property {string} [reason]
- * @property {import('../owner-coordination/sessions.js').CatalogedSession} [session]
- * @property {{ projectId: string, cwd: string }} [project]
- * @property {CatalogSafeRootSessionLocator} [locator]
- */
-
-/** @param {string} child @param {string} parent */
-function isSameOrInsidePath(child, parent) {
+function isSameOrInsidePath(child: string, parent: string) {
     return isPathInside(resolve(child), resolve(parent));
 }
 
 /**
  * Resolve a root Session locator through the file-backed Session catalog before
  * any Pi SessionManager API is used.
- *
- * @param {{ cwd: string, sessionId?: string, sessionPath?: string, ownerCoordinationStore?: ReturnType<typeof import('./file-session-store.ts').openFileSessionStore> | null, allowCatalog?: boolean }} options
- * @returns {Promise<RootSessionLocatorClassification>}
  */
-export async function classifyRootSessionLocator(options) {
+export async function classifyRootSessionLocator(
+    options: ClassifyRootSessionLocatorOptions,
+): Promise<RootSessionLocatorClassification> {
     if (!options?.cwd || !isAbsolute(options.cwd)) {
         return { kind: "blocked", reason: "invalid_cwd" };
     }
@@ -377,14 +411,10 @@ export async function classifyRootSessionLocator(options) {
         return { kind: "uncataloged", reason: "session_catalog_empty" };
     }
     const requestedCwd = resolve(options.cwd);
-    /** @type {Array<{ projectId: string, lifecycle: string, currentRoot: string }>} */
-    const exactCurrentProjects = [];
-    /** @type {Array<{ projectId: string, lifecycle: string, currentRoot: string }>} */
-    const canonicalCurrentProjects = [];
-    /** @type {Array<{ projectId: string, lifecycle: string, currentRoot: string }>} */
-    const exactHistoricalProjects = [];
-    /** @type {Array<{ projectId: string, lifecycle: string, currentRoot: string }>} */
-    const canonicalHistoricalProjects = [];
+    const exactCurrentProjects: FileSessionProject[] = [];
+    const canonicalCurrentProjects: FileSessionProject[] = [];
+    const exactHistoricalProjects: FileSessionProject[] = [];
+    const canonicalHistoricalProjects: FileSessionProject[] = [];
     for (const project of projects) {
         const roots = store.listProjectRootEvidence(project.projectId);
         const exactCurrent = roots.some(
@@ -505,21 +535,16 @@ export async function classifyRootSessionLocator(options) {
 
 /**
  * List persisted RunWield root sessions for a cwd.
- *
- * @param {string} cwd
- * @returns {Promise<PersistedRootSessionInfo[]>}
  */
-export async function listPersistedRootSessions(cwd) {
+export async function listPersistedRootSessions(cwd: string): Promise<PersistedRootSessionInfo[]> {
     if (!cwd || !isAbsolute(cwd)) throw new Error("listPersistedRootSessions requires an absolute cwd");
     const { SessionManager } = await import("@earendil-works/pi-coding-agent");
     const canonicalCwd = canonicalizeCwd(cwd);
     const enteredCwd = resolve(cwd);
     const sessionDir = getRunWieldSessionDir(canonicalCwd);
-    const sessions = /** @type {PersistedRootSessionInfo[]} */ (await SessionManager.list(canonicalCwd, sessionDir));
+    const sessions = await SessionManager.list(canonicalCwd, sessionDir);
     if (enteredCwd !== canonicalCwd) {
-        const legacySessions = /** @type {PersistedRootSessionInfo[]} */ (
-            await SessionManager.list(enteredCwd, sessionDir)
-        );
+        const legacySessions = await SessionManager.list(enteredCwd, sessionDir);
         const seen = new Set(sessions.map((session) => `${session.id}:${resolve(session.path)}`));
         for (const session of legacySessions) {
             const key = `${session.id}:${resolve(session.path)}`;
@@ -531,11 +556,10 @@ export async function listPersistedRootSessions(cwd) {
 
 /**
  * Resolve a persisted RunWield root session by id or guarded file path.
- *
- * @param {ResolvePersistedRootSessionOptions} options
- * @returns {Promise<ResolvedPersistedRootSession>}
  */
-export async function resolvePersistedRootSession(options) {
+export async function resolvePersistedRootSession(
+    options: ResolvePersistedRootSessionOptions,
+): Promise<ResolvedPersistedRootSession> {
     if (!options?.cwd || !isAbsolute(options.cwd)) {
         throw new Error("resolvePersistedRootSession requires an absolute cwd");
     }
@@ -603,17 +627,20 @@ export async function resolvePersistedRootSession(options) {
 
 /**
  * Open a persisted RunWield root session by id or guarded file path.
- *
- * @param {ResolvePersistedRootSessionOptions} options
- * @returns {Promise<{ sessionManager: import('@earendil-works/pi-coding-agent').SessionManager, resolved: ResolvedPersistedRootSession }>}
  */
-export async function openPersistedRootSession(options) {
+export async function openPersistedRootSession(
+    options: ResolvePersistedRootSessionOptions,
+): Promise<OpenedPersistedRootSession> {
     const { SessionManager } = await import("@earendil-works/pi-coding-agent");
     const resolved = await resolvePersistedRootSession(options);
-    const sessionManager = SessionManager.open(resolved.sessionPath, resolved.sessionDir, resolved.cwd);
+    const sessionManager: DisposableSessionManager = SessionManager.open(
+        resolved.sessionPath,
+        resolved.sessionDir,
+        resolved.cwd,
+    );
     if (canonicalizeCwd(getManagerCwd(sessionManager)) !== canonicalizeCwd(resolved.cwd)) {
         try {
-            /** @type {{ dispose?: () => void }} */ (sessionManager).dispose?.();
+            sessionManager.dispose?.();
         } catch {
             // Best-effort cleanup for rejected cross-cwd loads.
         }
@@ -622,43 +649,19 @@ export async function openPersistedRootSession(options) {
     return { sessionManager: installSessionPersistence(sessionManager), resolved };
 }
 
-/**
- * @param {import('@earendil-works/pi-coding-agent').SessionManager | { getBranch?: Function, getEntries?: Function }} sessionManager
- * @returns {unknown[]}
- */
-export function getRootSessionBranchEntries(sessionManager) {
+export function getRootSessionBranchEntries<Entry>(sessionManager: RootSessionBranchReader<Entry>): Entry[] {
     const entries = sessionManager?.getBranch?.() || sessionManager?.getEntries?.() || [];
     return Array.isArray(entries) ? entries : [];
 }
 
 /**
- * @typedef {Object} CatalogSafeRootSessionLocator
- * @property {string} cwd
- * @property {string} sessionDir
- * @property {string} sessionPath
- * @property {string} piSessionId
- * @property {string} headerCwd
- * @property {number | null} headerVersion
- * @property {string | null} headerTimestamp
- * @property {Date | null} modified
- */
-
-/**
- * @typedef {Object} CatalogSafeLocatorDiagnostic
- * @property {string} sessionPath
- * @property {string} code
- * @property {string} message
- */
-
-/**
  * Read only the first JSONL record from a persisted root Session file.
  * This helper intentionally avoids Pi SessionManager.open() so cataloging does
  * not migrate, rewrite, or otherwise mutate legacy transcripts.
- *
- * @param {{ cwd: string, sessionPath: string, sessionDir?: string, maxHeaderBytes?: number }} options
- * @returns {Promise<CatalogSafeRootSessionLocator>}
  */
-export async function readCatalogSafeRootSessionLocator(options) {
+export async function readCatalogSafeRootSessionLocator(
+    options: ReadCatalogSafeLocatorOptions,
+): Promise<CatalogSafeRootSessionLocator> {
     if (!options?.cwd || !isAbsolute(options.cwd)) {
         throw new Error("readCatalogSafeRootSessionLocator requires an absolute cwd");
     }
@@ -683,7 +686,7 @@ export async function readCatalogSafeRootSessionLocator(options) {
         }
         const firstLine = (newlineIndex === -1 ? chunk : chunk.slice(0, newlineIndex)).trim();
         if (!firstLine) throw new Error("Persisted session header is empty");
-        const header = JSON.parse(firstLine);
+        const header: RawRootSessionHeader | null = JSON.parse(firstLine);
         if (!header || typeof header !== "object" || header.type !== "session") {
             throw new Error("Persisted session header is not a session record");
         }
@@ -720,30 +723,16 @@ export async function readCatalogSafeRootSessionLocator(options) {
  * Enumerate catalog-safe metadata for persisted root Session JSONL files.
  * Invalid candidates are returned as diagnostics so callers can continue
  * cataloging valid transcripts.
- *
- * @typedef {Object} CatalogSafeRootSessionCandidate
- * @property {string} sessionPath
- * @property {Date | null} modified
  */
-
-/**
- * Enumerate catalog-safe metadata for persisted root Session JSONL files.
- * Invalid candidates are returned as diagnostics so callers can continue
- * cataloging valid transcripts.
- *
- * @param {string} cwd
- * @param {{ sessionDir?: string, maxHeaderBytes?: number, recentLimit?: number }} [options]
- * @returns {Promise<{ locators: CatalogSafeRootSessionLocator[], diagnostics: CatalogSafeLocatorDiagnostic[] }>}
- */
-export async function listCatalogSafeRootSessionLocators(cwd, options = {}) {
+export async function listCatalogSafeRootSessionLocators(
+    cwd: string,
+    options: ListCatalogSafeLocatorsOptions = {},
+): Promise<CatalogSafeLocatorList> {
     if (!cwd || !isAbsolute(cwd)) throw new Error("listCatalogSafeRootSessionLocators requires an absolute cwd");
     const sessionDir = options.sessionDir || getRunWieldSessionDir(cwd);
-    /** @type {CatalogSafeRootSessionLocator[]} */
-    const locators = [];
-    /** @type {CatalogSafeLocatorDiagnostic[]} */
-    const diagnostics = [];
-    /** @type {CatalogSafeRootSessionCandidate[]} */
-    const candidates = [];
+    const locators: CatalogSafeRootSessionLocator[] = [];
+    const diagnostics: CatalogSafeLocatorDiagnostic[] = [];
+    const candidates: CatalogSafeRootSessionCandidate[] = [];
     const recentLimit =
         typeof options.recentLimit === "number" && Number.isFinite(options.recentLimit)
             ? Math.max(0, Math.floor(options.recentLimit))

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { CURRENT_SESSION_VERSION } from "@earendil-works/pi-coding-agent";
 import type { FileSessionManifest, FileSessionProject, FileSessionStore } from "../session/file-session-store-types.ts";
 import { openFileSessionStore, type RemoteSessionOwner } from "../session/file-session-store.ts";
-import { getRunWieldSessionsBaseDir } from "../session/root-session.js";
+import { getRunWieldSessionsBaseDir } from "../session/root-session.ts";
 import {
     ensurePrivateDir,
     ensureRemoteProject,

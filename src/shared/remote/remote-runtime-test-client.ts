@@ -23,7 +23,7 @@ import { RuntimeEventTypes } from "../session/session-runtime-events.js";
 import { HostedSession } from "../session/hosted-session.js";
 import { SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { buildAgentSession } from "../session/session.js";
-import { createRemoteRootSessionManager, getRemoteSessionSaveBridge } from "../session/root-session.js";
+import { createRemoteRootSessionManager, getRemoteSessionSaveBridge } from "../session/root-session.ts";
 import { readImageRef } from "../session/image-attachments.ts";
 import { recordNormalizedWorkflowContext } from "../session/workflow-context-session.ts";
 import { recordTutorialContext } from "../session/tutorial-context-session.ts";

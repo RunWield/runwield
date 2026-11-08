@@ -6,7 +6,7 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { getRunWieldSessionDir } from "../../shared/session/root-session.js";
+import { getRunWieldSessionDir } from "../../shared/session/root-session.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runSessionCommand } from "./index.ts";
 

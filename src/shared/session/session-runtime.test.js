@@ -40,7 +40,7 @@ import { RuntimeEventTypes } from "./session-runtime-events.js";
 import { RuntimeInteractionTypes } from "./session-runtime-interactions.ts";
 import { createSessionRuntime, SessionRuntime, SessionTurnInProgressError } from "./session-runtime.ts";
 import { buildAgentSession, getRootSessionRebuildOptions } from "./session.js";
-import { createRootSessionManager, getRunWieldSessionDir, resolveCreatedRootSessionPath } from "./root-session.js";
+import { createRootSessionManager, getRunWieldSessionDir, resolveCreatedRootSessionPath } from "./root-session.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
 import { sessionDirForRoot } from "./file-session-storage.ts";
 import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";

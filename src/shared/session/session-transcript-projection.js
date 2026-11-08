@@ -15,7 +15,7 @@ import { normalizeRuntimeToolResult, normalizeRuntimeUsage, RuntimeEventTypes } 
 import { describeRuntimeTool } from "./tool-event-title.ts";
 import { formatProviderError } from "./provider-errors.ts";
 import { formatTaskCompletedMarkdown, readManualQaChecklistMessage } from "./workflow-messages.ts";
-import { isPathInside, readCatalogSafeRootSessionLocator } from "./root-session.js";
+import { isPathInside, readCatalogSafeRootSessionLocator } from "./root-session.ts";
 import {
     namedInvocationCompactText,
     namedInvocationDisplayText,

@@ -5,7 +5,7 @@ import {
     writeFile as fsWriteFile,
     symlink as fsSymlink,
 } from "node:fs/promises";
-import { getRunWieldSessionDir } from "../../shared/session/root-session.js";
+import { getRunWieldSessionDir } from "../../shared/session/root-session.ts";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";

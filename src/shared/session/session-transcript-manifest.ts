@@ -5,7 +5,7 @@ import { stat as fsStat } from "node:fs/promises";
  */
 
 import { dirname, resolve } from "node:path";
-import { readCatalogSafeRootSessionLocator } from "./root-session.js";
+import { readCatalogSafeRootSessionLocator } from "./root-session.ts";
 import type { TutorialContextCandidate } from "./tutorial-context-session.ts";
 import {
     buildProjectedSessionInfo,

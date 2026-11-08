@@ -6,7 +6,7 @@ import {
     isPathInside,
     listPersistedRootSessions,
     openPersistedRootSession,
-} from ".././root-session.js";
+} from ".././root-session.ts";
 import { createSessionRuntimeEvent, RuntimeEventTypes } from ".././session-runtime-events.js";
 import { createReplayEvents as createProjectedReplayEvents } from ".././session-transcript-projection.js";
 import { requestHostedSessionInteraction } from ".././session-runtime-interactions.ts";

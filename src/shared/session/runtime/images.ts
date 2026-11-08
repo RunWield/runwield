@@ -4,7 +4,7 @@ import { loadAgentDef } from ".././agents.js";
 import { resolveModel } from ".././session.js";
 import { resolvePromptTemplateSettings } from "../prompt-template-settings.ts";
 import { resolveNamedInvocation } from ".././named-invocation.ts";
-import { isPathInside, openPersistedRootSession } from ".././root-session.js";
+import { isPathInside, openPersistedRootSession } from ".././root-session.ts";
 import { sessionDirForRoot } from ".././file-session-storage.ts";
 import {
     modelSupportsImageInput,

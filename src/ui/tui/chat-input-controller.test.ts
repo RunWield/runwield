@@ -13,7 +13,7 @@ import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { getRunWieldSessionDir } from "../../shared/session/root-session.js";
+import { getRunWieldSessionDir } from "../../shared/session/root-session.ts";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
 import { savePlan } from "../../plan-store.js";
 import { getSettingsManager } from "../../shared/settings.js";

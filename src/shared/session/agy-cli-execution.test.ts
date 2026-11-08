@@ -35,7 +35,7 @@ import { setCustomSetting } from "../settings.js";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/metrics.js";
 import { installAgyCliMcpSetup } from "./backends/agy-cli/mcp-setup.ts";
 import { startMcpIntegration } from "../mcp/integration.ts";
-import { getRootSessionBranchEntries } from "./root-session.js";
+import { getRootSessionBranchEntries } from "./root-session.ts";
 import { createReplayEvents } from "./session-transcript-projection.js";
 import { runActiveAgentTurn } from "./agent-switching.ts";
 import { listPendingWorkflowToolEvents } from "../workflow/workflow-tool-events.ts";
