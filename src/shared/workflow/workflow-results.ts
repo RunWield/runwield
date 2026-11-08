@@ -7,10 +7,20 @@
  */
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { JsonValue } from "@earendil-works/pi-ai";
+import type { AssistantMessage, JsonValue, ToolResultMessage } from "@earendil-works/pi-ai";
 import type { ImageAttachment } from "../session/types.js";
 import type { TriageMeta } from "../../tools/plan-written.ts";
 import type { ReviewAdvisory, ReviewFinding } from "./review-outcome.ts";
+
+/** Older transcripts may omit tool-result metadata or use legacy assistant content. */
+type LegacyTranscriptToolResult = Pick<ToolResultMessage, "role" | "toolName" | "details"> &
+    Partial<Pick<ToolResultMessage, "content">>;
+
+interface LegacyTranscriptAssistant extends Pick<AssistantMessage, "role"> {
+    content: JsonValue;
+}
+
+type WorkflowTranscriptMessage = AgentMessage | LegacyTranscriptToolResult | LegacyTranscriptAssistant;
 
 /** Legacy message content is inspected without changing the existing field checks. */
 interface RawTextBlock {
@@ -131,7 +141,7 @@ export function readLatestTaskCompletedMessage(messages: AgentMessage[], fromInd
  * report their summary through the terminal tool call instead of a final text
  * response.
  */
-export function extractAssistantOutput(messages: AgentMessage[]): string | null {
+export function extractAssistantOutput(messages: WorkflowTranscriptMessage[]): string | null {
     let taskCompletedMessage: string | null = null;
 
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -210,7 +220,10 @@ export function readLatestReviewOutcome(messages: AgentMessage[], fromIndex?: nu
  * When `fromIndex` is provided, only messages at or after that index are searched,
  * preventing stale outcomes from earlier turns from being picked up.
  */
-export function readLatestPlanOutcome(messages: AgentMessage[], fromIndex?: number): PlanOutcomeResult | null {
+export function readLatestPlanOutcome(
+    messages: WorkflowTranscriptMessage[],
+    fromIndex?: number,
+): PlanOutcomeResult | null {
     const start = fromIndex != null ? fromIndex : 0;
     for (let i = messages.length - 1; i >= start; i--) {
         const msg = messages[i];
