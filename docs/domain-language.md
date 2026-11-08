@@ -258,11 +258,10 @@ agents root and installed package roots, not arbitrary personal roots. The
 [Core qualified matrix](prd/runwield-core-prd.md#remote-connection) bounds support; this term is not a proof record.
 _Avoid_: Resource sync, copied profile, confined mount
 
-**Project Runtime State**: Machine-owned RunWield state inside a Project checkout. The current reserved root is
-`.wld/internal/`. User-derived `.wld/settings.json`, `.wld/agents/`, `.wld/skills/`, and `.wld/prompts/` are not Project
-Runtime State. Remote location discovery alone does not enter or create Project Runtime State. Remote project-owned
-state stays with the remote checkout, not with laptop personal history. Delivery workflows use that remote state;
-artifacts, Plan Associations, review references, and Session segments are saved by the laptop owner.
+**Project Runtime State**: Machine-owned RunWield state owned by a Project, repository, or checkout. Ordinary local
+and manual SSH execution stores it under the executing account's `~/.wld/projects/<projectId>/`. Explicit
+managed-remote execution retains its admitted versioned checkout layout until managed transport adoption. User settings,
+Agents, Skills, and prompts are configuration, not runtime. Remote discovery alone creates no runtime state.
 _Avoid_: project settings, project config, all of `.wld/`
 
 **Project Runtime Entry**: Action-owned admission before Project Runtime State mutation locks or writes. It can adopt
@@ -276,15 +275,16 @@ ready, pending, and blocked evidence without writes, writer-lock probes, migrati
 no runtime storage; adopted authority stays readable when legacy recovery input returns. Inspection reuse ends with
 its bounded operation and never satisfies Project Runtime Entry. _Avoid_: entry, adoption, initialization, lock test
 
-**Project Internal Root**: The `.wld/internal/` directory in the checkout that owns a Project Runtime State item. It is
-a path contract only; it does not mean migration or writer cutover is complete. _Avoid_: `.wld`, runtime directory when
-the selected or primary checkout matters
+**Project Internal Root**: The shared layout's home directory for repository-owned legacy runtime, migration receipts,
+and recovery. Ordinary execution leaves no `.wld/internal/` in a checkout. Resolving this path does not establish
+admission or completed migration. Managed-remote version admission retains its separate layout.
+_Avoid_: `.wld`, runtime directory when the resource owner matters
 
-**Primary-Checkout Runtime State**: Project Runtime State shared through the primary checkout. It includes controller
-Plan records, the worktree registry and its lock, registry migration reports, publication staging, the project
-collaboration secret store at `.wld/internal/collaboration-secrets.json`, and the no-home fallback worktrees root. The
-home-directory collaboration secret store stays under `~/.wld/` and is not Project Runtime State. _Avoid_: global
-runtime state, selected-checkout locks
+**Primary-Checkout Runtime State**: Runtime logically shared by linked checkouts of one repository. Its home paths
+include legacy controllers, the registry and lock, staging, delivery evidence, and relocated fallback worktrees.
+Project secrets and indexes belong to the personal Project owner. Explicitly linked clones retain separate registries
+and attempts. Normal external execution worktrees keep their paths; unavailable home access never creates a fallback.
+_Avoid_: global runtime state, selected-checkout locks
 
 **Selected-Checkout Runtime State**: Project Runtime State owned by the selected checkout. It includes Plan locks, the
 Plan catalog lock, transition journals, and Work Record supersession locks. _Avoid_: primary runtime state, shared
@@ -583,8 +583,26 @@ _Avoid_: Remote plan database, hosted board, task board
 Projects while repository artifacts remain canonical. _Avoid_: Project root, browser IDE, database-only knowledge base,
 replacement for Plans
 
-**Project**: A trusted repository or directory registered in Workspace as a boundary for Sessions, artifacts, code, and
-workflows, distinct from the uppercase `PROJECT` Routing Intent. _Avoid_: Workspace, workspace root, project space
+**Project**: A repository or directory used as a boundary for Sessions, artifacts, code, and workflows. Core admits
+Projects independently of optional Workspace registration. Distinct from the uppercase `PROJECT` Routing Intent.
+_Avoid_: Workspace, workspace root, project space
+
+**Project Identity**: An opaque Core Project ID, stable across folder moves and linked worktrees. A matching clone
+shares it only after an explicit linking choice. Git's common configuration or a non-Git marker supplies local identity;
+paths and remote URLs do not. Workspace registration IDs are separate identifiers associated with existing Core identity.
+Verified personal locator bindings connect legacy Session IDs and Attached Workflow directories to this identity across
+moves and accepted clone links. They do not own transcript generations, workflow revisions, or execution attempts.
+Physical bundles and native locks retain their paths; Plan/runtime relocation remains separate.
+
+**Repository binding**: One local repository instance associated with a Project ID. Linked worktrees share a repository
+binding; explicitly linked clones share Project identity while keeping separate repository bindings.
+
+**Checkout binding**: One execution checkout within a repository binding, distinct from its current cwd. Each linked
+worktree has its own binding. A non-Git folder preserves both bindings when it adopts Git.
+
+**Personal Project owner**: The explicit account whose personal Project state is authoritative. Ordinary execution,
+including manual SSH, uses its execution account. Managed remote activation names the laptop owner separately from the
+execution account home; a mount path is not ownership evidence.
 
 **Attention Dashboard**: The Workspace surface aggregating work needing user judgment and active or recent workflow
 state across Projects. It has Needs You, Ready to Continue, In Progress, and Recently Finished groups. _Avoid_: Project

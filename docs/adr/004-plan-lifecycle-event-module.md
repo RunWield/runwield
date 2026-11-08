@@ -22,10 +22,18 @@ Transitions either commit all owned state or retain durable evidence from which 
 For irreversible effects, inspect repository facts before proceeding; never guess success, blindly replay uncertain Git
 operations, or claim a rollback that did not occur. A failed transition remains an intermediate workflow condition.
 
-Metadata transitions compare front matter identity and preserve the latest user-written body. Writers that replace the
+Legacy metadata transitions compare front matter identity and preserve the latest user-written body. Writers that replace the
 body still compare the whole file to prevent overwriting concurrent edits. A compensating transition may restore only
 its owned front matter onto the latest body. Details live in the
 [Plan lifecycle reference](../plan-lifecycle.md#plan-body-ownership-and-external-adoption).
+
+Explicitly admitted canonical packages use those same event and review rules, with definition and controller metadata
+committed together beside the documents. Immutable input and complex-controller references preserve the evidence used
+by an action. Package metadata compensation never restores document bytes. The package owner takes catalog and sorted
+Plan-ID native locks before repository/attempt locks, with nested writes reusing ownership. A package-wide attempt
+binding prevents two linked clones from creating competing unfinished executions; the recorded repository registry
+continues to own physical Git facts. Neither a path nor a matching name admits package authority. This bounded internal
+path does not change ordinary public selection or the publication decision in ADR-016.
 
 Diagnostics must inspect malformed stores without first requiring the invariants they diagnose. Retain per-item facts
 and corruption details; a migration must not create state that RunWield then refuses to inspect. Automatic repair uses

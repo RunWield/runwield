@@ -1,7 +1,9 @@
-import { test } from "node:test";
+import { after, test } from "node:test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { installFakeClipboardCommands } from "./testing/clipboard-command-fixture.ts";
 import { readdir as fsReaddir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
-import { statSync as fsStatSync } from "node:fs";
+import { statSync as fsStatSync, mkdtempSync, rmSync } from "node:fs";
 import process from "node:process";
 import { ok as assert, throws as assertThrows } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
@@ -10,6 +12,7 @@ import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { admitProjectIdentity } from "../../shared/project-identity.ts";
 import { getRunWieldSessionDir } from "../../shared/session/root-session.js";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
 import { savePlan } from "../../plan-store.js";
@@ -217,6 +220,7 @@ async function seedActiveElsewhereManagedSession(
 ): Promise<ReturnType<typeof openOwnerCoordinationStore>> {
     const store = openOwnerCoordinationStore();
     try {
+        assertEquals((await admitProjectIdentity(projectRoot)).kind, "existing");
         store.registerProject({ root: projectRoot, now: () => "2026-01-01T00:00:01.000Z" });
         const runtime = createSessionRuntime({
             sessionStore: store,
@@ -773,6 +777,11 @@ interface PreviewChild {
     id?: string;
 }
 
+const controllerProjectRoots: string[] = [];
+after(() => {
+    for (const root of controllerProjectRoots) rmSync(root, { recursive: true, force: true });
+});
+
 function createControllerHarness(runtimeOverrides: ControllerRuntimeOverrides = {}) {
     const editor = {
         disableSubmit: false,
@@ -859,12 +868,14 @@ function createControllerHarness(runtimeOverrides: ControllerRuntimeOverrides = 
         enableInput() {},
         abortActivePrompt() {},
     };
+    const projectRoot = mkdtempSync(join(tmpdir(), "chat-input-project-"));
+    controllerProjectRoots.push(projectRoot);
     const controller = createChatInputController({
         view: view as never,
         uiAPI: uiAPI as never,
         runtime: runtime as never,
         getSessionId: () => "session-1",
-        getProjectRoot: () => "/tmp/runwield-test",
+        getProjectRoot: () => projectRoot,
         managedSyncController: { pause: () => Promise.resolve(), resume() {} },
         shouldBlockForModelSetup: () => false,
         isModelSetupRecoveryCommand: () => false,

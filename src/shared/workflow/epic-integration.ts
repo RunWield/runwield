@@ -1,9 +1,11 @@
+import { currentPackageSelection } from "./package-workflow.ts";
+import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { REVIEW_DIFF_FORMAT_ARGS } from "./git-snapshot.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
 import { captureForegroundProcess } from "../captured-process.ts";
-import { mkdir as fsMkdir, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { rm as fsRm } from "node:fs/promises";
 /**
  * @module shared/workflow/epic-integration
  * How an Epic with its own branch finishes.
@@ -40,7 +42,7 @@ import {
     PROCESS_STREAM_OUTPUT_LIMIT_BYTES,
 } from "./process-output.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
-import { EPIC_INTEGRATION_REPORT_FILE_NAME, getEpicArtifactPath } from "../epic-artifacts.ts";
+import { EPIC_INTEGRATION_REPORT_FILE_NAME, resolveEpicArtifactPath, saveEpicArtifact } from "../epic-artifacts.ts";
 import type { HostedSession } from "../session/hosted-session.js";
 import { recordPlanEvent } from "./plan-lifecycle.js";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
@@ -790,6 +792,7 @@ async function withGateCheckout<T>(primaryRoot: string, commit: string, run: (pa
     const path = join(parent, "checkout");
     await runGit(primaryRoot, ["worktree", "add", "--detach", path, commit]);
     try {
+        await enterProjectRuntime(path);
         return await run(path);
     } finally {
         await runGitResult(primaryRoot, ["worktree", "remove", "--force", "--force", path]);
@@ -977,15 +980,21 @@ export async function runEpicIntegrationGate(
                 };
             }
             const findings = [...(checks.finding ? [checks.finding] : []), ...reviewFindings(ledger, review.outcome)];
-            const reportPath = getEpicArtifactPath(
+            const reportPath = await resolveEpicArtifactPath(
                 location.documentRoot,
                 epicPlanName,
                 EPIC_INTEGRATION_REPORT_FILE_NAME,
             );
-            const reportRelativePath = `docs/plans/${epicPlanName}/${EPIC_INTEGRATION_REPORT_FILE_NAME}`;
+            const reportRelativePath = currentPackageSelection()
+                ? reportPath
+                : `docs/plans/${epicPlanName}/${EPIC_INTEGRATION_REPORT_FILE_NAME}`;
             if (findings.length) {
-                await fsMkdir(join(location.documentRoot, "docs", "plans", epicPlanName), { recursive: true });
-                await fsWriteFile(reportPath, renderReport(epicPlanName, state, base, findings));
+                await saveEpicArtifact(
+                    location.documentRoot,
+                    epicPlanName,
+                    EPIC_INTEGRATION_REPORT_FILE_NAME,
+                    renderReport(epicPlanName, state, base, findings),
+                );
                 await recordPlanEvent({
                     cwd: primaryRoot,
                     planName: epicPlanName,
@@ -1100,8 +1109,12 @@ export async function runEpicIntegrationGate(
             }
             if (codeReview?.kind === "changes_requested") {
                 findings.push(codeReview.finding);
-                await fsMkdir(join(location.documentRoot, "docs", "plans", epicPlanName), { recursive: true });
-                await fsWriteFile(reportPath, renderReport(epicPlanName, state, base, findings));
+                await saveEpicArtifact(
+                    location.documentRoot,
+                    epicPlanName,
+                    EPIC_INTEGRATION_REPORT_FILE_NAME,
+                    renderReport(epicPlanName, state, base, findings),
+                );
                 await recordPlanEvent({
                     cwd: primaryRoot,
                     planName: epicPlanName,

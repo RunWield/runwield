@@ -113,6 +113,7 @@ for (const scenario of [
                         JSON.stringify({
                             connection: f.connection,
                             resources: f.resources,
+                            laptopHome: f.homeDir,
                             cwd: f.remoteProject,
                             commandLog: f.remoteCommandLog,
                             scenario,

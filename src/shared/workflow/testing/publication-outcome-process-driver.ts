@@ -55,7 +55,7 @@ runtime.spawn = (options) => {
     return nativeSpawn(options);
 };
 let coverageFaults = 0;
-let coverageFaultStarted = 0;
+let coverageReadBlocked = false;
 const nativeReadFile = fsPromises.readFile;
 const controllerPath = controllerRecordPath(projectRoot, { planId: attempt.planId, planName: attempt.planName });
 const readFileWithFault = async (...args: Parameters<typeof nativeReadFile>) => {
@@ -70,9 +70,11 @@ const readFileWithFault = async (...args: Parameters<typeof nativeReadFile>) => 
         }
         if (recorded) {
             coverageFaults++;
-            coverageFaultStarted ||= Date.now();
             if (boundary.includes("throw")) throw new Error("private controller filesystem diagnostic");
-            await new Promise((resolve) => setTimeout(resolve, 5500));
+            // Keep the read unresolved until this process exits. Successful cleanup
+            // proves the observation deadline detached it, independent of scheduler lag.
+            coverageReadBlocked = true;
+            await new Promise<void>(() => {});
         }
     }
     return await nativeReadFile(...args);
@@ -89,6 +91,6 @@ console.log(
         metadataReads,
         injectedFaults,
         coverageFaults,
-        afterCoverageFaultMs: coverageFaultStarted ? Date.now() - coverageFaultStarted : null,
+        coverageReadBlocked,
     }),
 );

@@ -1,3 +1,5 @@
+import { currentPackageSelection, selectedPackage } from "./workflow/package-workflow.ts";
+import { savePlanPackageDocument } from "./plan-package-store.ts";
 import { recoverWindowsRename } from "./native-file-replace-windows.ts";
 import { rename as fsRename } from "node:fs/promises";
 import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
@@ -78,6 +80,35 @@ export function getEpicArtifactPath(projectRoot: string, epicPlanName: string, f
     return join(projectRoot, "docs", "plans", segments[0], fileName);
 }
 
+/** Explicit package workflows resolve artifacts beside their ID-selected parent documents. */
+export async function resolveEpicArtifactPath(
+    projectRoot: string,
+    epicPlanName: string,
+    fileName: string,
+): Promise<string> {
+    if (!currentPackageSelection()) return getEpicArtifactPath(projectRoot, epicPlanName, fileName);
+    if (!EPIC_ARTIFACT_FILE_NAMES.includes(fileName)) throw new Error(`Unknown Epic Artifact: ${fileName}`);
+    return join((await selectedPackage(epicPlanName)).path, fileName);
+}
+
+/** Save through the same package document owner used by editor writes. */
+export async function saveEpicArtifact(
+    projectRoot: string,
+    epicPlanName: string,
+    fileName: string,
+    text: string,
+): Promise<void> {
+    const path = await resolveEpicArtifactPath(projectRoot, epicPlanName, fileName);
+    const selection = currentPackageSelection();
+    if (selection) {
+        const plan = await selectedPackage(epicPlanName);
+        const document = plan.documents.find((doc) => doc.name === fileName);
+        if (fileName !== EPIC_INTEGRATION_REPORT_FILE_NAME && fileName !== EPIC_MANUAL_QA_FILE_NAME)
+            throw new Error("Unsupported Epic artifact.");
+        await savePlanPackageDocument(selection.identity, plan.metadata.planId, fileName, document?.hash ?? null, text);
+    } else await writeAtomic(path, text);
+}
+
 function markerChild(childPlanName: string): string {
     return childPlanName.replaceAll("&", "&amp;").replaceAll('"', "&quot;");
 }
@@ -91,10 +122,16 @@ export async function findEpicManualQaSection(
     epicPlanName: string,
     childPlanName: string,
 ): Promise<{ exists: boolean; relativePath: string }> {
-    const path = getEpicArtifactPath(projectRoot, epicPlanName, EPIC_MANUAL_QA_FILE_NAME);
+    const path = await resolveEpicArtifactPath(projectRoot, epicPlanName, EPIC_MANUAL_QA_FILE_NAME);
     const existing = await readTextIfExists(path);
     return {
-        exists: Boolean(existing?.includes(sectionStartMarker(childPlanName))),
+        exists: Boolean(
+            existing?.includes(
+                sectionStartMarker(
+                    currentPackageSelection() ? (await selectedPackage(childPlanName)).metadata.planId : childPlanName,
+                ),
+            ),
+        ),
         relativePath: projectRelativePath(projectRoot, path),
     };
 }
@@ -144,8 +181,9 @@ export async function appendEpicManualQaSection(
 ): Promise<AppendEpicManualQaSectionResult> {
     const epicSegments = assertSafePlanName(args.epicPlanName, "Epic Plan name");
     const childSegments = assertSafePlanName(args.childPlanName, "Child Plan name");
-    if (epicSegments.length !== 1) throw new Error(`Epic Plan name must be top-level: ${args.epicPlanName}`);
-    if (childSegments.length !== 2 || childSegments[0] !== epicSegments[0]) {
+    if (!currentPackageSelection() && epicSegments.length !== 1)
+        throw new Error(`Epic Plan name must be top-level: ${args.epicPlanName}`);
+    if (!currentPackageSelection() && (childSegments.length !== 2 || childSegments[0] !== epicSegments[0])) {
         throw new Error(`Child Plan ${args.childPlanName} must belong to Epic ${args.epicPlanName}.`);
     }
 
@@ -159,10 +197,17 @@ export async function appendEpicManualQaSection(
     if (epic.attrs.classification !== "PROJECT") throw new Error(`${args.epicPlanName} is not an Epic Plan.`);
 
     const checklist = validateChecklistMarkdown(args.childPlanName, args.checklistMarkdown);
-    const path = getEpicArtifactPath(args.projectRoot, args.epicPlanName, EPIC_MANUAL_QA_FILE_NAME);
+    const packagePlan = currentPackageSelection() ? await selectedPackage(args.epicPlanName) : null;
+    const packageDoc = packagePlan?.documents.find((doc) => doc.name === EPIC_MANUAL_QA_FILE_NAME);
+    const path = await resolveEpicArtifactPath(args.projectRoot, args.epicPlanName, EPIC_MANUAL_QA_FILE_NAME);
     const relativePath = projectRelativePath(args.projectRoot, path);
-    const existing = await readTextIfExists(path);
-    const startMarker = sectionStartMarker(args.childPlanName);
+    const existing = packagePlan
+        ? packageDoc
+            ? new TextDecoder().decode(packageDoc.bytes)
+            : null
+        : await readTextIfExists(path);
+    const markerIdentity = packagePlan ? child.attrs.planId! : args.childPlanName;
+    const startMarker = sectionStartMarker(markerIdentity);
     if (existing?.includes(startMarker)) return { status: "already_present", relativePath };
     if (existing && existing.includes("runwield:manual-qa:start") && !existing.includes("runwield:manual-qa:end")) {
         throw new Error(`Manual QA artifact appears malformed: ${relativePath}`);
@@ -172,14 +217,22 @@ export async function appendEpicManualQaSection(
         `# Manual QA for ${args.epicPlanName}\n\n` +
         "This checklist is advisory. It does not change RunWield verification status.\n";
     const section = [
-        sectionStartMarker(args.childPlanName),
+        sectionStartMarker(markerIdentity),
         `## ${args.childHeading.trim() || args.childPlanName}`,
         "",
         checklist,
-        sectionEndMarker(args.childPlanName),
+        sectionEndMarker(markerIdentity),
     ].join("\n");
     const base = existing === null ? header : existing.trimEnd();
-    await writeAtomic(path, `${base}\n\n${section}\n`);
+    if (packagePlan)
+        await savePlanPackageDocument(
+            currentPackageSelection()!.identity,
+            packagePlan.metadata.planId,
+            EPIC_MANUAL_QA_FILE_NAME,
+            packageDoc?.hash ?? null,
+            `${base}\n\n${section}\n`,
+        );
+    else await writeAtomic(path, `${base}\n\n${section}\n`);
     return { status: "recorded", relativePath };
 }
 
@@ -214,6 +267,7 @@ export async function moveEpicArtifactsToArchive(
     projectRoot: string,
     epicPlanName: string,
 ): Promise<MoveEpicArtifactResult[]> {
+    if (currentPackageSelection()) return [];
     const moved: MoveEpicArtifactResult[] = [];
     try {
         for (const fileName of EPIC_ARTIFACT_FILE_NAMES) {
@@ -236,6 +290,7 @@ export async function moveEpicArtifactsFromArchive(
     projectRoot: string,
     epicPlanName: string,
 ): Promise<MoveEpicArtifactResult[]> {
+    if (currentPackageSelection()) return [];
     const moved: MoveEpicArtifactResult[] = [];
     try {
         for (const fileName of EPIC_ARTIFACT_FILE_NAMES) {

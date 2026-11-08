@@ -170,7 +170,8 @@ export async function hostFixture(options: HostFixtureOptions = {}) {
                     fromFileUrl(new URL("./validation-host-process.ts", import.meta.url)),
                     JSON.stringify({ projectRoot: root, planName: "p", resume }),
                 ]),
-                env: { PATH: `${bin}:${process.env["PATH"] || ""}` },
+                // Keep runtime compilation outside the product write-footprint assertion.
+                env: { PATH: `${bin}:${process.env["PATH"] || ""}`, BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0" },
                 cwd: getCwd(),
             });
             assert(output.success, new TextDecoder().decode(output.stderr));

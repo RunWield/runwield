@@ -1,3 +1,11 @@
+import {
+    currentPackageSelection,
+    selectedPackage,
+    withPackageWorkflow,
+    capturePackageWorkflowInput,
+    assertPackageWorkflowInput,
+    updatePackageWorkflowMetadata,
+} from "./package-workflow.ts";
 import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { isEpicPlan, isProjectPlan } from "../project-plan.ts";
 export { isEpicPlan, isProjectPlan, isSequencePlan } from "../project-plan.ts";
@@ -1020,9 +1028,27 @@ async function advanceParentEpicWhenAllChildrenVerified({ cwd, planName, event, 
  * @param {PlanStatus} opts.currentStatus
  * @param {PlanEventDetails} [opts.details]
  * @param {string} [opts.expectedRevision]
+ * @param {import("./package-workflow.ts").PackageWorkflowSelection} [opts.packageSelection]
  * @returns {Promise<import('../../plan-store.js').PlanFrontMatter>}
  */
-export async function recordPlanEvent({ cwd, planName, event, currentStatus, details = {}, expectedRevision }) {
+export async function recordPlanEvent({
+    cwd,
+    planName,
+    event,
+    currentStatus,
+    details = {},
+    expectedRevision,
+    packageSelection,
+}) {
+    if (packageSelection)
+        return await withPackageWorkflow(
+            cwd,
+            packageSelection,
+            () => recordPlanEvent({ cwd, planName, event, currentStatus, details, expectedRevision }),
+            planName,
+        );
+    if (currentPackageSelection() && ["validation_passed", "manual_user_verified"].includes(event))
+        throw new Error("Package publication is pending; retain this attempt and its input for continuation.");
     await preparePlanWorkflow(cwd, planName);
     // The caller's project root locates the controller, not necessarily the Plan.
     // Resolve once before the transaction, then keep that document locked even
@@ -1049,6 +1075,25 @@ export async function recordPlanEvent({ cwd, planName, event, currentStatus, det
             triageMeta: { ...(details.triageMeta || {}), ...beforePlan.attrs },
         };
         const updates = buildPlanEventUpdates(event, canonicalStatus, canonicalDetails);
+        if (currentPackageSelection()) {
+            const selected = await selectedPackage(planName);
+            const workflow = { ...selected.metadata.workflow };
+            if (event === "readiness_passed" || event === "execution_started") {
+                const input = event === "readiness_passed" ? workflow.review : workflow.readiness;
+                if (!input) throw new Error("Current package review/readiness evidence is required.");
+                await assertPackageWorkflowInput(planName, input);
+            }
+            if (event === "hold_reset_to_draft") {
+                workflow.review = undefined;
+                workflow.readiness = undefined;
+            }
+            if (event === "implementation_finished" && workflow.attempt)
+                await assertPackageWorkflowInput(planName, workflow.readiness || workflow.attempt.input);
+            if (event === "review_approved") workflow.review = await capturePackageWorkflowInput(planName);
+            if (event === "readiness_passed") workflow.readiness = await capturePackageWorkflowInput(planName);
+            const attrs = await updatePackageWorkflowMetadata(planName, updates, beforePlan.revision, workflow);
+            return { attrs, details: canonicalDetails };
+        }
         const attrs = await updatePlanFrontMatter(cwd, planName, updates, canonicalDetails.triageMeta, {
             expectedRevision: beforePlan.revision,
         });
