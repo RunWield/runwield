@@ -1,135 +1,119 @@
 /** @module shared/collaboration/protocol */
 
-import { assertCapabilityScope } from "./capabilities.ts";
+import { assertCapabilityScope, type CapabilityScope } from "./capabilities.ts";
 
-/**
- * @typedef {Object} SharedSpaceMetadata
- * @property {string} spaceId
- * @property {string} planId
- * @property {string} createdAt
- * @property {string} updatedAt
- * @property {number} latestRevision
- * @property {"open" | "closed"} [status]
- * @property {string} [closedAt]
- * @property {string} [expiresAt]
- */
+/** Validated as a non-array record. Individual fields are checked by the normalizers. */
+export interface ProtocolRecord {
+    [key: string]: unknown;
+}
 
-/**
- * @typedef {Object} CreateSharedSpacePayload
- * @property {string} planId
- * @property {{ payloadCiphertext: string }} initialRevision
- * @property {CapabilityRecord[]} capabilities
- */
+export interface SharedSpaceMetadata {
+    spaceId: string;
+    planId: string;
+    createdAt: string;
+    updatedAt: string;
+    latestRevision: number;
+    status?: "open" | "closed";
+    closedAt?: string;
+    expiresAt?: string;
+}
 
-/**
- * @typedef {Object} AppendRevisionPayload
- * @property {string} payloadCiphertext
- * @property {number} [expectedRevision]
- */
+interface InitialRevision {
+    payloadCiphertext: string;
+}
 
-/**
- * @typedef {Object} AppendCommentPayload
- * @property {string} ciphertext
- */
+export interface CreateSharedSpacePayload {
+    planId: string;
+    initialRevision: InitialRevision;
+    capabilities: CapabilityRecord[];
+}
 
-/**
- * @typedef {Object} RevisionMetadata
- * @property {string} spaceId
- * @property {number} revision
- * @property {string} createdAt
- * @property {string} payloadCiphertext
- */
+export interface AppendRevisionPayload {
+    payloadCiphertext: string;
+    expectedRevision?: number;
+}
 
-/**
- * @typedef {Object} EncryptedPlanPayload
- * @property {string} planId
- * @property {string} title
- * @property {Record<string, unknown>} metadata
- * @property {string} body
- */
+export interface AppendCommentPayload {
+    ciphertext: string;
+}
 
-/**
- * @typedef {Object} EncryptedCommentRecord
- * @property {string} id
- * @property {string} spaceId
- * @property {string} ciphertext
- * @property {string} createdAt
- * @property {boolean} resolved
- */
+export interface RevisionMetadata {
+    spaceId: string;
+    revision: number;
+    createdAt: string;
+    payloadCiphertext: string;
+}
 
-/**
- * @typedef {Object} DecryptedReviewCommentPayload
- * @property {number} schemaVersion
- * @property {"comment" | "global_comment"} type
- * @property {string} displayName
- * @property {string} body
- * @property {string} [originalText]
- * @property {Record<string, unknown> | null} [anchor]
- * @property {string} [createdAt]
- */
+export interface EncryptedPlanPayload {
+    planId: string;
+    title: string;
+    metadata: ProtocolRecord;
+    body: string;
+}
 
-/**
- * @typedef {Object} CapabilityRecord
- * @property {"reviewer" | "maintainer"} scope
- * @property {string} capabilityHash
- */
+export interface EncryptedCommentRecord {
+    id: string;
+    spaceId: string;
+    ciphertext: string;
+    createdAt: string;
+    resolved: boolean;
+}
 
-/**
- * @typedef {Object} CommentStateChangePayload
- * @property {string} commentId
- * @property {"resolve" | "reopen"} action
- */
+export interface DecryptedReviewCommentPayload {
+    schemaVersion: number;
+    type: "comment" | "global_comment";
+    displayName: string;
+    body: string;
+    originalText?: string;
+    anchor?: ProtocolRecord | null;
+    createdAt?: string;
+}
 
-/**
- * @typedef {Object} SharedSpaceLifecyclePayload
- * @property {string} spaceId
- * @property {"close" | "delete"} action
- */
+export interface CapabilityRecord {
+    scope: CapabilityScope;
+    capabilityHash: string;
+}
 
-/**
- * @typedef {Object} ApiErrorPayload
- * @property {string} error
- * @property {string} message
- * @property {number} [status]
- */
+export interface CommentStateChangePayload {
+    commentId: string;
+    action: "resolve" | "reopen";
+}
 
-/**
- * @typedef {Object} LocalSecretRecord
- * @property {string} planId
- * @property {string} [spaceId]
- * @property {string} contentKey
- * @property {string} [reviewerCapability]
- * @property {string} [maintainerCapability]
- * @property {string} updatedAt
- */
+export interface SharedSpaceLifecyclePayload {
+    spaceId: string;
+    action: "close" | "delete";
+}
 
-/**
- * @param {unknown} value
- * @param {string} name
- * @returns {string}
- */
-export function assertNonEmptyString(value, name) {
+export interface ApiErrorPayload {
+    error: string;
+    message: string;
+    status?: number;
+}
+
+export interface LocalSecretRecord {
+    planId: string;
+    spaceId?: string;
+    contentKey: string;
+    reviewerCapability?: string;
+    maintainerCapability?: string;
+    updatedAt: string;
+}
+
+export function assertNonEmptyString(value: unknown, name: string): string {
     if (typeof value !== "string" || value.trim() === "") throw new Error(`${name} must be a non-empty string`);
     return value.trim();
 }
 
-/**
- * @param {unknown} value
- * @param {string} name
- * @returns {number}
- */
-export function assertPositiveInteger(value, name) {
-    if (!Number.isInteger(value) || /** @type {number} */ (value) < 1) {
+export function assertPositiveInteger(value: unknown, name: string): number {
+    // Number.isInteger does not narrow a wire value in TypeScript.
+    const integer = value as number;
+    if (!Number.isInteger(integer) || integer < 1) {
         throw new Error(`${name} must be a positive integer`);
     }
-    return /** @type {number} */ (value);
+    return integer;
 }
 
-/**
- * @param {unknown} value
- * @param {string} name
- */
-export function assertIsoDateTimeString(value, name) {
+export function assertIsoDateTimeString(value: unknown, name: string): string {
     const text = assertNonEmptyString(value, name);
     if (!/^\d{4}-\d{2}-\d{2}T/.test(text) || Number.isNaN(Date.parse(text))) {
         throw new Error(`${name} must be an ISO-8601 date-time string`);
@@ -137,14 +121,9 @@ export function assertIsoDateTimeString(value, name) {
     return text;
 }
 
-/**
- * @param {unknown} value
- * @returns {SharedSpaceMetadata}
- */
-export function normalizeSharedSpaceMetadata(value) {
+export function normalizeSharedSpaceMetadata(value: unknown): SharedSpaceMetadata {
     const record = assertRecord(value, "Shared space metadata");
-    /** @type {SharedSpaceMetadata} */
-    const normalized = {
+    const normalized: SharedSpaceMetadata = {
         spaceId: assertNonEmptyString(record.spaceId, "spaceId"),
         planId: assertNonEmptyString(record.planId, "planId"),
         createdAt: assertNonEmptyString(record.createdAt, "createdAt"),
@@ -160,11 +139,7 @@ export function normalizeSharedSpaceMetadata(value) {
     return normalized;
 }
 
-/**
- * @param {unknown} value
- * @returns {RevisionMetadata}
- */
-export function normalizeRevisionMetadata(value) {
+export function normalizeRevisionMetadata(value: unknown): RevisionMetadata {
     const record = assertRecord(value, "Revision metadata");
     return {
         spaceId: assertNonEmptyString(record.spaceId, "spaceId"),
@@ -174,11 +149,7 @@ export function normalizeRevisionMetadata(value) {
     };
 }
 
-/**
- * @param {unknown} value
- * @returns {CapabilityRecord}
- */
-export function normalizeCapabilityRecord(value) {
+export function normalizeCapabilityRecord(value: unknown): CapabilityRecord {
     const record = assertRecord(value, "Capability record");
     return {
         scope: assertCapabilityScope(record.scope),
@@ -186,11 +157,7 @@ export function normalizeCapabilityRecord(value) {
     };
 }
 
-/**
- * @param {unknown} value
- * @returns {CreateSharedSpacePayload}
- */
-export function normalizeCreateSharedSpacePayload(value) {
+export function normalizeCreateSharedSpacePayload(value: unknown): CreateSharedSpacePayload {
     const record = assertRecord(value, "Create Shared Space payload");
     rejectPlaintextFields(record);
     const initialRevision = assertRecord(record.initialRevision, "initialRevision");
@@ -206,36 +173,25 @@ export function normalizeCreateSharedSpacePayload(value) {
     };
 }
 
-/**
- * @param {unknown} value
- * @returns {AppendRevisionPayload}
- */
-export function normalizeAppendRevisionPayload(value) {
+export function normalizeAppendRevisionPayload(value: unknown): AppendRevisionPayload {
     const record = assertRecord(value, "Append revision payload");
     rejectPlaintextFields(record);
-    /** @type {AppendRevisionPayload} */
-    const normalized = { payloadCiphertext: assertNonEmptyString(record.payloadCiphertext, "payloadCiphertext") };
+    const normalized: AppendRevisionPayload = {
+        payloadCiphertext: assertNonEmptyString(record.payloadCiphertext, "payloadCiphertext"),
+    };
     if (record.expectedRevision !== undefined) {
         normalized.expectedRevision = assertPositiveInteger(record.expectedRevision, "expectedRevision");
     }
     return normalized;
 }
 
-/**
- * @param {unknown} value
- * @returns {AppendCommentPayload}
- */
-export function normalizeAppendCommentPayload(value) {
+export function normalizeAppendCommentPayload(value: unknown): AppendCommentPayload {
     const record = assertRecord(value, "Append comment payload");
     rejectPlaintextFields(record);
     return { ciphertext: assertNonEmptyString(record.ciphertext, "ciphertext") };
 }
 
-/**
- * @param {unknown} value
- * @returns {EncryptedPlanPayload}
- */
-export function normalizeEncryptedPlanPayload(value) {
+export function normalizeEncryptedPlanPayload(value: unknown): EncryptedPlanPayload {
     const record = assertRecord(value, "Encrypted plan payload");
     if (typeof record.body !== "string" || record.body.trim() === "") {
         throw new Error("body must be a non-empty string");
@@ -248,11 +204,7 @@ export function normalizeEncryptedPlanPayload(value) {
     };
 }
 
-/**
- * @param {unknown} value
- * @returns {EncryptedCommentRecord}
- */
-export function normalizeEncryptedCommentRecord(value) {
+export function normalizeEncryptedCommentRecord(value: unknown): EncryptedCommentRecord {
     const record = assertRecord(value, "Encrypted comment record");
     if (typeof record.resolved !== "boolean") throw new Error("resolved must be a boolean");
     return {
@@ -264,18 +216,13 @@ export function normalizeEncryptedCommentRecord(value) {
     };
 }
 
-/**
- * @param {unknown} value
- * @returns {DecryptedReviewCommentPayload}
- */
-export function normalizeDecryptedReviewCommentPayload(value) {
+export function normalizeDecryptedReviewCommentPayload(value: unknown): DecryptedReviewCommentPayload {
     const record = assertRecord(value, "Decrypted review comment payload");
     if (record.schemaVersion !== 1) throw new Error("Review comment schemaVersion must be 1");
     if (record.type !== "comment" && record.type !== "global_comment") {
         throw new Error("Review comment type must be comment or global_comment");
     }
-    /** @type {DecryptedReviewCommentPayload} */
-    const normalized = {
+    const normalized: DecryptedReviewCommentPayload = {
         schemaVersion: 1,
         type: record.type,
         displayName: assertNonEmptyString(record.displayName, "displayName"),
@@ -292,11 +239,7 @@ export function normalizeDecryptedReviewCommentPayload(value) {
     return normalized;
 }
 
-/**
- * @param {unknown} value
- * @returns {CommentStateChangePayload}
- */
-export function normalizeCommentStateChangePayload(value) {
+export function normalizeCommentStateChangePayload(value: unknown): CommentStateChangePayload {
     const record = assertRecord(value, "Comment state change payload");
     if (record.action !== "resolve" && record.action !== "reopen") {
         throw new Error("Comment action must be resolve or reopen");
@@ -307,11 +250,7 @@ export function normalizeCommentStateChangePayload(value) {
     };
 }
 
-/**
- * @param {unknown} value
- * @returns {SharedSpaceLifecyclePayload}
- */
-export function normalizeSharedSpaceLifecyclePayload(value) {
+export function normalizeSharedSpaceLifecyclePayload(value: unknown): SharedSpaceLifecyclePayload {
     const record = assertRecord(value, "Shared space lifecycle payload");
     if (record.action !== "close" && record.action !== "delete") {
         throw new Error("Shared Space lifecycle action must be close or delete");
@@ -322,14 +261,9 @@ export function normalizeSharedSpaceLifecyclePayload(value) {
     };
 }
 
-/**
- * @param {unknown} value
- * @returns {ApiErrorPayload}
- */
-export function normalizeApiErrorPayload(value) {
+export function normalizeApiErrorPayload(value: unknown): ApiErrorPayload {
     const record = assertRecord(value, "API error payload");
-    /** @type {ApiErrorPayload} */
-    const normalized = {
+    const normalized: ApiErrorPayload = {
         error: assertNonEmptyString(record.error, "error"),
         message: assertNonEmptyString(record.message, "message"),
     };
@@ -337,14 +271,9 @@ export function normalizeApiErrorPayload(value) {
     return normalized;
 }
 
-/**
- * @param {unknown} value
- * @returns {LocalSecretRecord}
- */
-export function normalizeLocalSecretRecord(value) {
+export function normalizeLocalSecretRecord(value: unknown): LocalSecretRecord {
     const record = assertRecord(value, "Local secret record");
-    /** @type {LocalSecretRecord} */
-    const normalized = {
+    const normalized: LocalSecretRecord = {
         planId: assertNonEmptyString(record.planId, "planId"),
         contentKey: assertNonEmptyString(record.contentKey, "contentKey"),
         updatedAt: assertNonEmptyString(record.updatedAt, "updatedAt"),
@@ -359,14 +288,9 @@ export function normalizeLocalSecretRecord(value) {
     return normalized;
 }
 
-/**
- * @param {unknown} value
- * @param {string} name
- * @returns {Record<string, any>}
- */
-export function assertRecord(value, name) {
+export function assertRecord(value: unknown, name: string): ProtocolRecord {
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${name} must be an object`);
-    return /** @type {Record<string, any>} */ (value);
+    return value as ProtocolRecord;
 }
 
 const PLAINTEXT_FIELD_NAMES = new Set([
@@ -380,8 +304,7 @@ const PLAINTEXT_FIELD_NAMES = new Set([
     "anchors",
 ]);
 
-/** @param {Record<string, any>} record */
-function rejectPlaintextFields(record) {
+function rejectPlaintextFields(record: ProtocolRecord) {
     for (const key of Object.keys(record)) {
         if (PLAINTEXT_FIELD_NAMES.has(key)) throw new Error(`${key} must be encrypted inside ciphertext payloads`);
     }

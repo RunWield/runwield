@@ -19,7 +19,7 @@ import { PROJECT_SECRET_STORE_RELATIVE_PATH } from "../../constants.js";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import type { LocalSecretRecord } from "./protocol.js";
+import type { LocalSecretRecord } from "./protocol.ts";
 import {
     type SecretStoreLocation,
     type SecretStoreDocument,

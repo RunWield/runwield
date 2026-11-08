@@ -11,12 +11,12 @@ import {
 
 import { dirname, join } from "node:path";
 import { redactCapabilityValue, redactSecrets } from "./capabilities.ts";
-import { assertRecord, normalizeLocalSecretRecord } from "./protocol.js";
+import { assertRecord, normalizeLocalSecretRecord } from "./protocol.ts";
 import { getHomeDir, PROJECT_SECRET_STORE_RELATIVE_PATH } from "../../constants.js";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { ensureRunWieldOwnedGitignoreBlock } from "../runwield-owned-paths.ts";
 
-import type { LocalSecretRecord } from "./protocol.js";
+import type { LocalSecretRecord } from "./protocol.ts";
 
 export interface SecretStoreDocument {
     schemaVersion: number;
