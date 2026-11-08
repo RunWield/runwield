@@ -9,7 +9,7 @@ import {
     normalizeCommentStateChangePayload,
     normalizeCreateSharedSpacePayload,
     normalizeSharedSpaceLifecyclePayload,
-} from "../../../shared/collaboration/protocol.js";
+} from "../../../shared/collaboration/protocol.ts";
 import { RemoteWorkspaceError } from "../server/remote-adapter.ts";
 
 import type { CapabilityScope } from "../../../shared/collaboration/capabilities.ts";

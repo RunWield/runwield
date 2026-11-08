@@ -23,7 +23,7 @@ import {
     normalizeEncryptedPlanPayload,
     normalizeRevisionMetadata,
     normalizeSharedSpaceMetadata,
-} from "../../shared/collaboration/protocol.js";
+} from "../../shared/collaboration/protocol.ts";
 import {
     assertCompatiblePullSecretRecord,
     ensureProjectSecretStoreIgnored,

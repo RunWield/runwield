@@ -12,7 +12,7 @@ import { redactSecrets, REVIEWER_SCOPE } from "../../shared/collaboration/capabi
 import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../../shared/collaboration/client.ts";
 import { encryptJsonPayload, importContentKey } from "../../shared/collaboration/crypto.ts";
 import { COLLABORATION_LOCK_BYPASS, COLLABORATION_STATE_REMOTE_CANONICAL } from "../../shared/collaboration/lock.ts";
-import { normalizeRevisionMetadata, normalizeSharedSpaceMetadata } from "../../shared/collaboration/protocol.js";
+import { normalizeRevisionMetadata, normalizeSharedSpaceMetadata } from "../../shared/collaboration/protocol.ts";
 import {
     getGlobalSecretStoreLocation,
     getProjectSecretStoreLocation,

@@ -5,7 +5,7 @@ import {
     normalizeAppendCommentPayload,
     normalizeAppendRevisionPayload,
     normalizeCreateSharedSpacePayload,
-} from "./protocol.js";
+} from "./protocol.ts";
 import { buildApiUrl, normalizeServerUrl } from "./urls.ts";
 
 import type {
@@ -14,9 +14,9 @@ import type {
     CommentStateChangePayload,
     CreateSharedSpacePayload,
     SharedSpaceLifecyclePayload,
-} from "./protocol.js";
+} from "./protocol.ts";
 
-export type { AppendCommentPayload, AppendRevisionPayload, CreateSharedSpacePayload } from "./protocol.js";
+export type { AppendCommentPayload, AppendRevisionPayload, CreateSharedSpacePayload } from "./protocol.ts";
 
 export interface CollaborationClientOptions {
     serverUrl: string;

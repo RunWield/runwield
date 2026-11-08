@@ -5,7 +5,7 @@ import { AGENTS, CLI_BIN, normalizePlanClassification } from "../../constants.js
 import { redactSecrets } from "../collaboration/capabilities.ts";
 
 import type { PlanFrontMatter } from "../../plan-store.js";
-import type { DecryptedReviewCommentPayload } from "../collaboration/protocol.js";
+import type { DecryptedReviewCommentPayload } from "../collaboration/protocol.ts";
 
 export interface PullReviewComment {
     id: string;
