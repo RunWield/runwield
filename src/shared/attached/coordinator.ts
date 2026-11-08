@@ -18,7 +18,7 @@ import { resolveCodexRoleSettings } from "./codex-role-settings.ts";
 import { readTextPage } from "../text-page.ts";
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
 import { readPublishedDeliverySources } from "../work-records/published-source.ts";
-import { parseRecorderSections } from "../work-records/generation.js";
+import { parseRecorderSections } from "../work-records/generation.ts";
 import { stat as fsStat } from "node:fs/promises";
 import { captureForegroundProcess } from "../captured-process.ts";
 import {

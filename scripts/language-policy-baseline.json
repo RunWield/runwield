@@ -14,7 +14,6 @@
     "src/shared/session/types.js",
     "src/shared/settings.js",
     "src/shared/types.js",
-    "src/shared/work-records/generation.js",
     "src/shared/workflow/metrics.js",
     "src/shared/worktree-registry.js",
     "src/shared/worktree.js",

@@ -1,7 +1,7 @@
 import { readDeliveryEvidence } from "./delivery-evidence.ts";
 /** Recorder turn transport. Generation, persistence and indexing remain shared. */
 import { autoGenerateWorkRecordForCompletedPlan } from "../work-records/auto-generation.ts";
-import { parseRecorderSections, validateRecorderProposals } from "../work-records/generation.js";
+import { parseRecorderSections, validateRecorderProposals } from "../work-records/generation.ts";
 import { sameHostIdentity, ValidationHostRejected, ValidationHostWait } from "./validation-host-contract.ts";
 import { saveHostCheckpoint } from "./validation-host-state.ts";
 import { emitStatus } from "./validation-emit.ts";

@@ -37,7 +37,7 @@ export type HostRecorderState = {
     recordId: string;
     request: Extract<import("./validation-host-contract.ts").ValidationHostRequest, { kind: "recorder" }>;
     invalidSubmissions: number;
-    sections?: import("../work-records/generation.js").GeneratedWorkRecordSections;
+    sections?: import("../work-records/generation.ts").GeneratedWorkRecordSections;
     failure?: string;
 };
 
