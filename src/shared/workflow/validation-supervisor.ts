@@ -1,4 +1,4 @@
-import { currentPackageSelection, selectedPackage } from "./package-workflow.ts";
+import { currentPackageSelection, selectedPackage, assertPackageWorkflowInput } from "./package-workflow.ts";
 import { preparePlanController } from "./plan-preparation.ts";
 import { type OutcomeSession, recordWorkflowOutcome } from "./outcome-observations.ts";
 import {
@@ -446,21 +446,10 @@ export async function runValidationAttempt(args: RunValidationAttemptArgs): Prom
     if (currentPackageSelection()) {
         const plan = await selectedPackage(args.planName);
         const binding = plan.metadata.workflow?.attempt;
-        return {
-            kind: "paused",
-            planName: args.planName,
-            projectRoot: args.projectRoot,
-            reason: "Package publication is pending; continue this retained attempt when package delivery is available.",
-            ...(binding
-                ? {
-                      packageContinuation: {
-                          attemptId: binding.attemptId,
-                          repositoryRoot: binding.repositoryRoot,
-                          input: binding.input,
-                      },
-                  }
-                : {}),
-        };
+        if (binding && binding.repositoryRoot !== resolvePrimaryCheckoutRoot(args.projectRoot))
+            throw new Error("Continue package validation in its recorded repository.");
+        if (binding && !plan.metadata.workflow?.publication)
+            await assertPackageWorkflowInput(args.planName, binding.input);
     }
     return await continueValidationAttempt({ ...args, projectRoot: resolvePrimaryCheckoutRoot(args.projectRoot) }, 0);
 }

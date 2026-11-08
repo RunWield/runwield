@@ -25,10 +25,13 @@ and [recovery requirements](runwield-core-prd.md#execution-validation-and-recove
 Explicit internal lifecycle selection now connects home packages to existing review, readiness, Sequence, execution and
 checkpoint/recovery rules. The [Core lifecycle requirements](runwield-core-prd.md#plan-lifecycle) own this bounded path.
 Complete required inputs and one owner-wide unfinished-attempt binding survive restart; an imported unfinished legacy
-attempt retains its original owner. Package validation/publication pauses with that continuation rather than producing
-a final receipt. Ordinary public discovery and activation still select repository Plans. Managed-remote transport,
-package publication/delivery copies, Work Records and milestone retention remain target journeys below. A captured input
-alone is persistence evidence, not approval or delivery evidence.
+attempt retains its original owner. Admitted packages now complete existing validation/publication from immutable
+personal-store inputs and settle matching receipts before cleanup. The internal copy policy defaults off; enabled Plan
+Markdown and supplied prepared Work Record payloads share one artifacts-only commit. Frozen bytes and destinations
+survive retry, rename and target advancement; retained family/Ticket sources remain readable after code cleanup.
+Ordinary public discovery still selects repository Plans. Public copy settings, canonical Work Record persistence and
+generation, managed-remote transport and milestone retention remain target journeys below. A captured input alone is
+persistence evidence, not approval or delivery evidence.
 
 ## Problem Description
 
@@ -171,8 +174,8 @@ change that delivers the behavior.
 
 ### Plan store
 
-**Scope and maturity:** Internal package persistence and explicitly selected lifecycle through implementation/checkpoint
-recovery are current. Ordinary public activation and package publication remain target. Changes
+**Scope and maturity:** Internal package persistence and explicitly selected lifecycle through validation, publication
+and retained Recorder input are current. Ordinary public activation remains target. Changes
 [Plan authoring and external adoption](runwield-core-prd.md#plan-authoring-and-external-adoption) and every capability
 that reads Plans from a checkout.
 
@@ -324,7 +327,10 @@ accident.
 
 ### Repository footprint and delivery copies
 
-**Scope and maturity:** Target. Changes
+**Scope and maturity:** The explicit internal package contract currently freezes optional Plan copies (default off)
+and accepts prepared Work Record payloads in one artifacts-only commit. Proven unchanged prior copies can be replaced;
+unchanged payloads need no empty commit. Public independent settings, automatic package
+Work Record generation/defaults and copy cleanup remain target. Changes
 [Keep Project Runtime State out of repository changes](runwield-core-prd.md#work-protection).
 
 **Requirement: Plan and Work Record copies have separate project settings.** Each project has one setting for Plan
@@ -367,7 +373,8 @@ is used only to tidy up when the item is pruned.
 
 ### Work Record store
 
-**Scope and maturity:** Target. Changes [Work records](runwield-core-prd.md#work-records), which today calls them
+**Scope and maturity:** Canonical persistence remains target. The current internal package publication contract retains
+exact Recorder documents, metadata and family/Ticket inputs independently of code cleanup. Changes [Work records](runwield-core-prd.md#work-records), which today calls them
 repository-owned.
 
 **Requirement: Work Records live in the store.** RunWield writes, lists, searches, and retrieves Work Records from the

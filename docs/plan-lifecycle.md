@@ -65,9 +65,16 @@ only owned metadata and preserves all current editor bytes.
 An unfinished imported legacy attempt returns its original continuation after live registry/controller/authority checks.
 It cannot acquire a second package attempt. Code execution still uses an isolated worktree, implementation commits and
 checkpoints. A missing code checkout leaves the home documents readable; it does not prove code recovery or completion.
-The internal slice stops validation/publication with a paused result retaining the attempt/input. It emits no final
-receipt, delivery copy or `verified` status. Package publication and ordinary CLI/TUI/Workspace/Connect activation remain
-separate work; the following checkout rules apply to legacy selection.
+The admitted package continues through the existing validation supervisor and publication state machine. Before
+publication, a durable manifest freezes retained documents, metadata, relevant family/Tickets, copy policy and paths.
+With no copies, the validated code commit is the artifact boundary and no empty commit is invented. Enabled copies
+contain exact Markdown resources under the frozen Plan name; prepared Work Record payloads use the same single copies
+commit. Prior delivery copies may be replaced only with retained ownership, ancestry and unchanged-byte proof;
+unchanged payloads need no new copies commit. Personal metadata never enters Git. Real target proof settles the package receipt and verified status together
+with owner-guard release before registry cleanup, preserving current documents. Retry reads the frozen input, and
+changed code re-enters validation. Recorder source survives execution cleanup. Non-Git execution instead retains its
+explicit in-place evidence. Public selection/copy settings and canonical Work Record storage remain separate work;
+the following checkout rules apply to legacy selection.
 
 ## Passive reads and action preparation
 
@@ -188,8 +195,10 @@ claims delivery.
 
 `verified`: The reviewed work reached its recorded landing branch, including a default Plan branch, and publication
 was confirmed. This does not prove an onward merge to the intended target. The delivery commit
-contains the verified Plan and any successfully prepared Work Record in approved state; the checked candidate and
-published commit remain separate identities. Non-Git projects reach verified after their in-place checks and review.
+contains the verified Plan and any successfully prepared Work Record in approved state for legacy selection.
+An explicitly admitted package instead records verified state in personal metadata after exact code/copy target proof;
+its optional delivery copies never represent live status. The checked candidate and published commit remain separate
+identities. Non-Git projects reach verified after their in-place checks and review.
 Runtime receipts preserve this outcome when a remote delivery leaves the primary checkout behind.
 
 Legacy `validated_reviewer` reads as reviewed. Legacy `validated_ci` reads as implemented with the semantic phase ready.

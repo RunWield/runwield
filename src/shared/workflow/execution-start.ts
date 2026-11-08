@@ -425,7 +425,12 @@ async function startActiveExecutionWorkflowInScope({
             );
         }
         emitPreparingInPlaceExecution(hostedSession);
-        const attemptId = triageMeta.worktreeId || `non-git-${crypto.randomUUID().slice(0, 8)}`;
+        const packagePlan = currentPackageSelection() ? await selectedPackage(planName) : undefined;
+        const attemptId =
+            packagePlan?.metadata.workflow?.attempt?.attemptId ||
+            triageMeta.worktreeId ||
+            `non-git-${crypto.randomUUID().slice(0, 8)}`;
+        if (currentPackageSelection()) await reservePackageExecution(planName, attemptId, "non_git_in_place");
         const canonicalPlan = await loadPlan(projectRoot, planName);
         if (!canonicalPlan) throw new Error(`Plan not found: ${planName}`);
         await healSettledTransitionRecords(projectRoot, { planName, evidenceProjectRoot: projectRoot });
@@ -448,6 +453,12 @@ async function startActiveExecutionWorkflowInScope({
                     executionCwd: projectRoot,
                     executionMode: /** @type {const} */ "non_git_in_place",
                     nonGitInPlace: true,
+                    ...(packagePlan
+                        ? {
+                              packageSelection: currentPackageSelection(),
+                              packageInput: packagePlan.metadata.workflow?.readiness,
+                          }
+                        : {}),
                 };
                 if (needsExecutionStartedEvent) {
                     emitUpdatingPlanStatusToInProgress(hostedSession);

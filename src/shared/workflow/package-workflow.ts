@@ -12,6 +12,7 @@ import {
     readPlanPackage,
     readPlanImportEvidence,
     readPlanPackageInput,
+    readPlanPackagePublication,
     updatePlanPackageMetadata,
     withPlanPackageLocks,
     packageDefinitionStrings,
@@ -36,10 +37,16 @@ import { findById } from "../worktree-registry.js";
 import { inspectImportFile } from "../plan-package-import.ts";
 import type { PlanFrontMatter } from "../../plan-store.js";
 
+export interface PackageDeliveryCopyPolicy {
+    plans: boolean;
+    workRecords?: import("../plan-package-store.ts").DeliveryCopy[];
+}
+
 export interface PackageWorkflowSelection {
     identity: ProjectIdentity;
     planId: string;
     expectedRevision: number;
+    deliveryCopies?: PackageDeliveryCopyPolicy;
 }
 export class LegacyPackageContinuation extends Error {
     constructor(
@@ -153,24 +160,49 @@ export async function withPackageWorkflow<T>(
     return await sources.run({ selection }, run);
 }
 
-export async function selectedPackage(planName: string): Promise<LoadedPlanPackage> {
+interface PackagePlanIdentity {
+    planId: string;
+}
+type PackageWorkflowTarget = string | PackagePlanIdentity;
+
+export async function selectedPackage(target: PackageWorkflowTarget): Promise<LoadedPlanPackage> {
     const selection = currentPackageSelection();
     if (!selection) throw new Error("Package authority requires explicit admission.");
+    // Known identities never pass through the admitted publication's frozen-name alias.
+    if (typeof target !== "string") {
+        const plan = await readPlanPackage(selection.identity, target);
+        if (plan.kind !== "loaded") throw new Error(plan.message);
+        return plan;
+    }
+    const planName = target;
     const catalog = await listPlanPackages(selection.identity, true);
     if (catalog.issues.length) throw new Error(catalog.issues[0].message);
+    const admitted = catalog.packages.find((p) => p.metadata.planId === selection.planId);
+    if (admitted?.metadata.name === planName) return admitted;
+    const reference = admitted?.metadata.workflow?.publication;
+    if (reference) {
+        const retained = await readPlanPackagePublication(selection.identity, reference);
+        if (
+            retained.members.some(
+                (member) => member.metadata.planId === selection.planId && member.metadata.name === planName,
+            )
+        )
+            return admitted;
+    }
     const selected = catalog.packages.find((p) => p.metadata.name === planName);
     if (!selected) throw new Error(`No canonical package named ${planName}.`);
     return selected;
 }
 
-export async function packageWorkflowLocks<T>(planNames: string[], run: () => Promise<T>): Promise<T> {
+export async function packageWorkflowLocks<T>(planNames: PackageWorkflowTarget[], run: () => Promise<T>): Promise<T> {
     const selection = currentPackageSelection();
     if (!selection) return await run();
     const packages = await Promise.all(planNames.map(selectedPackage));
     const catalog = await listPlanPackages(selection.identity, true);
     for (const parent of [...packages]) {
-        if (parent.metadata.definition.classification === "PROJECT")
-            packages.push(...catalog.packages.filter((p) => p.metadata.parentPlanId === parent.metadata.planId));
+        const ownerId = parent.metadata.parentPlanId || parent.metadata.planId;
+        if (parent.metadata.definition.classification === "PROJECT" || parent.metadata.parentPlanId)
+            packages.push(...catalog.packages.filter((p) => p.metadata.parentPlanId === ownerId));
     }
     const ids = [
         ...new Set(
@@ -183,11 +215,16 @@ export async function packageWorkflowLocks<T>(planNames: string[], run: () => Pr
 function hash(value: string): string {
     return createHash("sha256").update(value).digest("hex");
 }
-function definitionHash(packages: LoadedPlanPackage[]): string {
+function definitionHash(packages: LoadedPlanPackage[], ignoreCompletion = true): string {
     return hash(
         JSON.stringify(
             packages.map(({ metadata }) => {
                 const { status: _status, ...definition } = metadata.definition;
+                if (ignoreCompletion) {
+                    delete definition.epicCompletionMode;
+                    delete definition.epicDoneEnoughAt;
+                    delete definition.epicDoneEnoughSummary;
+                }
                 return {
                     planId: metadata.planId,
                     definition,
@@ -243,7 +280,12 @@ export async function assertPackageWorkflowInput(
 ): Promise<void> {
     const selection = currentPackageSelection()!;
     const packages = await requiredPackages((await selectedPackage(planName))!);
-    if (input.definitionHash !== definitionHash(packages) || input.inputs.length !== packages.length) {
+    // Accept legacy full-definition digests; new inputs omit Core-authored completion facts.
+    if (
+        (input.definitionHash !== definitionHash(packages) &&
+            input.definitionHash !== definitionHash(packages, false)) ||
+        input.inputs.length !== packages.length
+    ) {
         throw new Error("Required Plan definition or membership changed; review the current input.");
     }
     for (const plan of packages) {
@@ -310,7 +352,7 @@ export async function releaseSettledPackageAttempt(planName: string): Promise<vo
         const plan = await selectedPackage(planName);
         const binding = plan.metadata.workflow?.attempt;
         const entry = binding ? await findById(binding.repositoryRoot, binding.attemptId) : null;
-        if (entry && ["merged", "abandoned"].includes(entry.status)) await updatePackageWorkflowMetadata(planName, {});
+        if (entry?.status === "abandoned") await updatePackageWorkflowMetadata(planName, {});
     });
 }
 
@@ -319,7 +361,7 @@ export async function packageController(plan: LoadedPlanPackage): Promise<Workfl
     const evidence = ref ? await readPackageControllerEvidence(currentPackageSelection()!.identity, ref) : {};
     return { ...evidence, ...plan.metadata.controller };
 }
-export async function loadPackageWorkflowPlan(planName: string) {
+export async function loadPackageWorkflowPlan(planName: PackageWorkflowTarget) {
     const plan = await selectedPackage(planName);
 
     const selection = currentPackageSelection()!;
@@ -350,6 +392,7 @@ export async function loadPackageWorkflowPlan(planName: string) {
     const attrs = {
         ...plan.metadata.definition,
         ...(await packageController(plan)),
+        workRecord: plan.metadata.workflow?.workRecord,
         planId: plan.metadata.planId,
         createdAt: plan.metadata.createdAt,
         parentPlan: plan.metadata.parentPlanId ? name(plan.metadata.parentPlanId) : undefined,
@@ -386,7 +429,7 @@ export async function loadPackageWorkflowPlan(planName: string) {
 }
 
 export async function updatePackageWorkflowMetadata(
-    planName: string,
+    planName: PackageWorkflowTarget,
     updates: Partial<PlanFrontMatter>,
     expectedRevision?: string,
     workflowUpdate?: PackageWorkflowEvidence,
@@ -414,9 +457,10 @@ export async function updatePackageWorkflowMetadata(
         if (expectedRevision !== undefined && view.revision !== expectedRevision)
             throw new Error("Package input changed before the metadata write.");
         const workflow = { ...current.metadata.workflow, ...workflowUpdate };
+        if (Object.hasOwn(updates, "workRecord")) workflow.workRecord = updates.workRecord;
         const binding = workflow.attempt;
         const entry = binding ? await findById(binding.repositoryRoot, binding.attemptId) : null;
-        if (entry && ["merged", "abandoned"].includes(entry.status)) workflow.attempt = undefined;
+        if (entry?.status === "abandoned") workflow.attempt = undefined;
         const definition: PackageDefinition = { ...current.metadata.definition };
         const controller: PackageControllerState = { ...current.metadata.controller };
         const state = { ...(await packageController(current)), ...pickControllerState(updates) };
@@ -465,7 +509,11 @@ export class PackageExecutionContinuation extends Error {
         this.name = "PackageExecutionContinuation";
     }
 }
-export async function reservePackageExecution(planName: string, attemptId: string): Promise<void> {
+export async function reservePackageExecution(
+    planName: string,
+    attemptId: string,
+    executionMode?: "non_git_in_place",
+): Promise<void> {
     const selection = currentPackageSelection()!;
     const plan = await selectedPackage(planName);
     const existing = plan.metadata.workflow?.attempt;
@@ -480,7 +528,7 @@ export async function reservePackageExecution(planName: string, attemptId: strin
             throw new Error("Execution attempt binding changed.");
         const entry = await findById(existing.repositoryRoot, existing.attemptId);
         if (
-            (!entry && plan.metadata.definition.status !== "ready_for_work") ||
+            (!entry && !existing.executionMode && plan.metadata.definition.status !== "ready_for_work") ||
             (entry && entry.planId !== plan.metadata.planId)
         )
             throw new Error("Recorded package execution attempt is missing or replaced.");
@@ -494,6 +542,7 @@ export async function reservePackageExecution(planName: string, attemptId: strin
         workflow: {
             ...plan.metadata.workflow,
             attempt: {
+                ...(executionMode ? { executionMode } : {}),
                 personalOwner: selection.identity.personalOwner.identity,
                 repositoryId: selection.identity.repositoryId,
                 repositoryRoot: resolvePrimaryCheckoutRoot(selection.identity.checkoutRoot),

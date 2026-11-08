@@ -339,6 +339,10 @@ export async function ensureExecutionPlanFile({
     reconcileFromCanonical = true,
     replaceFromCanonical = false,
 }) {
+    if (currentPackageSelection()) {
+        const source = await loadPackageWorkflowPlan(planName);
+        return { kind: "present", path: source.path, relativePath: "context.md" };
+    }
     const targetPath = getStoredPlanPath(executionCwd, planName);
     const relativePath = projectRelativePath(executionCwd, targetPath);
     const targetDir = dirname(targetPath);
