@@ -6,7 +6,7 @@ complexity: "HIGH"
 affectedPaths:
     - "AGENTS.md"
     - "docs/domain-language.md"
-    - "scripts/check-injection-seams.js"
+    - "scripts/check-injection-seams.ts"
     - "scripts/check-injection-seams.test.ts"
     - "scripts/external-capability-ports.json"
     - "src/shared/git-port.ts"
@@ -45,7 +45,7 @@ userVerifiedAt: null
 ## Context
 
 The original migration is complete. RunWield moved from 155 detected injection seams across 13 modules to a zero-seam
-baseline. `scripts/check-injection-seams.js` scans production code under `src/` and `scripts/`, its empty baseline
+baseline. `scripts/check-injection-seams.ts` scans production code under `src/` and `scripts/`, its empty baseline
 cannot adopt new entries, and `deno task ci` runs the check. Tests now use isolated projects, repositories, Plans,
 settings, SQLite stores, and home directories instead of replacing Plan, lifecycle, registry, lock, Work Record, Session
 Runtime, or transaction machinery.
@@ -185,7 +185,7 @@ the Implementation Steps need, including files not named here. Stop and report o
 intent — the change reaches another subsystem, public behavior or architecture shifts, migration or compatibility risk
 grows, or the Verification Plan no longer proves the objective.
 
-- `scripts/check-injection-seams.js` and `scripts/check-injection-seams.test.ts` — resolve and validate required
+- `scripts/check-injection-seams.ts` and `scripts/check-injection-seams.test.ts` — resolve and validate required
   behavioral contracts against the exact ownership manifest; preserve optional-fallback and test-hook detection.
 - `scripts/external-capability-ports.json` — declare every current genuine production external capability with no debt
   or internal-machinery entries.
@@ -231,7 +231,7 @@ compatibility constraint, not a document to revise.
 - `scripts/external-capability-ports.json` has a validated, deterministic schema keyed by source declaration; every
   entry has one external owner and an exact non-empty member set, and duplicate, missing, stale, or
   implementation-valued entries fail `seams:check`.
-- `scripts/check-injection-seams.js` resolves local, imported, and JSDoc required behavioral types and constructor
+- `scripts/check-injection-seams.ts` resolves local, imported, and JSDoc required behavioral types and constructor
   arguments without a suffix exemption. Undeclared behavioral collaborators and mixed-owner aggregates fail while
   ordinary data objects pass.
 - The complete current production-port inventory is accounted for: each genuine external contract is in the manifest,

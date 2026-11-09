@@ -9,7 +9,7 @@ import {
     collectSeamNames,
     collectSeams,
     findRegressions,
-} from "./check-injection-seams.js";
+} from "./check-injection-seams.ts";
 
 test("collectSeams scans production source and scripts but excludes tests", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "wld-seam-scan-roots-"));
