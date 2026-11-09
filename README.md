@@ -73,19 +73,19 @@ for current rates. Local models remain free to run through Ollama.
 **RunWield Workspace** provides the browser Session and collaboration surfaces.
 
 The Claude Code **FEATURE Preview** keeps the conversation and every model call in Claude Code. Core needs no model
-credentials or RunWield account. After the Preview is published to the default branch, install it in Claude Code:
+credentials or RunWield account. Install the `wld` plugin from the **RunWield** marketplace in Claude Code:
 
 ```text
-/plugin marketplace add gandazgul/runwield
-/plugin install runwield@runwield
+/plugin marketplace add RunWield/plugins
+/plugin install wld@runwield
 ```
 
-Until then, use the local marketplace install in the [Claude guide](docs/user-documentation/connect-claude-code.md).
+Start with `/wld:request`. See the [Claude guide](docs/user-documentation/connect-claude-code.md) for setup and migration.
 
-[RunWield Connect for Codex](docs/user-documentation/connect-codex.md) provides one explicit `$runwield:run` skill for
+[RunWield Connect for Codex](docs/user-documentation/connect-codex.md) provides one explicit `$wld:run` skill for
 starting or resuming work in the desktop app and CLI. The native package is available for FEATURE Preview qualification;
 neither surface has a qualified complete workflow yet. The guide distinguishes package probes, live execution, and
-desktop evidence, with source-checkout installation instructions until publication.
+desktop evidence, with installation through the same RunWield marketplace.
 
 Both adapters use Core's workflow and can continue the same local repository's saved work across hosts without importing
 conversation history. Their guides list evidence limits, recovery, and plugin management. Unlike Core's Session flow

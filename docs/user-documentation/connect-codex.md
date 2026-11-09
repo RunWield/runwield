@@ -9,7 +9,7 @@ The [Claude Code guide](connect-claude-code.md) has its own tested scope.
 
 ## Scope and evidence
 
-The native package provides one explicitly invoked skill, `$runwield:run`, for starting and resuming work. It uses the
+The native package provides one explicitly invoked skill, `$wld:run`, for starting and resuming work. It uses the
 same Core workflow as Claude Code, including browser review, fresh implementation and review workers, repair,
 publication, and Work Records. Other request types, hooks, and enforced worker tool restrictions are outside this Preview.
 
@@ -36,25 +36,23 @@ available for Core's saved workflow records.
 Core needs **no model credentials, model preset, or RunWield account** for Connect. Install Core with the
 [Quickstart](quickstart.md#install) or your package manager. Its model-login instructions apply to Core-owned Sessions.
 
-Before publication, use a Core build and marketplace from the same source checkout. An installed release is compatible
-only if it contains the Codex adapter. The GitHub commands below become usable after the package reaches that branch;
-they do not make an unreleased adapter available in an older Core binary.
+The stable plugin is distributed through [RunWield/plugins](https://github.com/RunWield/plugins). The marketplace
+is **RunWield**, with install identity `runwield`; the plugin is `wld`.
 
 ### Codex CLI
 
-For a local checkout containing this adapter:
-
 ```bash
-codex plugin marketplace add /absolute/path/to/runwield
-codex plugin add runwield@runwield
+codex plugin marketplace add RunWield/plugins
+codex plugin add wld@runwield
 ```
 
-After the adapter is published to the default branch, use this marketplace source instead:
+For source development, add `/absolute/path/to/runwield` as the marketplace and install `runwield@runwield`.
+That upstream package retains `$runwield:run`; the distribution exporter supplies the public `wld` namespace.
+Use a compatible Core build from the same checkout when testing unpublished behavior.
 
-```bash
-codex plugin marketplace add RunWield/runwield
-codex plugin add runwield@runwield
-```
+If migrating from `connect@runwield`, remove it before installing `wld@runwield` and refresh the marketplace.
+If the marketplace still points to `RunWield/runwield`, remove the old plugin and marketplace before adding
+`RunWield/plugins`. See the [migration guide](https://github.com/RunWield/plugins#migrate-from-an-older-plugin-name).
 
 Start a new Codex session in your project. `/plugins` opens the native plugin browser; `/skills` lists available skills.
 If your Codex build lacks these plugin commands, use a build with native plugin support. See OpenAI's
@@ -90,10 +88,10 @@ role instructions and project Skill overrides are fetched when needed; the packa
 Explicitly choose the **RunWield** skill in Codex's skill picker or invoke it by name:
 
 ```text
-$runwield:run Add an export button for the current report.
+$wld:run Add an export button for the current report.
 ```
 
-The general form is `$runwield:run <request>`. In the CLI, use `/skills` or type `$` to select the installed skill.
+Type `$wld` to find the installed skill. The full invocation is `$wld:run <request>`. In the CLI, use `/skills` or type `$` to select the installed skill.
 See OpenAI's [skill invocation guidance](https://learn.chatgpt.com/docs/build-skills).
 
 RunWield applies to this request. It does not take over later ordinary prompts. Core checks host and adapter
@@ -169,7 +167,7 @@ still apply. Use the updated Core and plugin together; older compatible Core wit
 Use the same skill to resume:
 
 ```text
-$runwield:run resume
+$wld:run resume
 ```
 
 Core selects the latest open workflow in this local repository. Codex shows its Plan name and current step before
@@ -204,8 +202,8 @@ codex plugin marketplace upgrade runwield
 For a local source, update that checkout instead. Reinstall the plugin to load the updated package:
 
 ```bash
-codex plugin remove runwield@runwield
-codex plugin add runwield@runwield
+codex plugin remove wld@runwield
+codex plugin add wld@runwield
 ```
 
 Start a new session or chat afterward. Update Core with the installer or package manager you originally used, and
@@ -213,7 +211,7 @@ update Codex through its installation's update mechanism. Keep the plugin and Co
 follow Core's exact update guidance if it rejects an operation. Status remains available for recovery.
 
 To disable the plugin, turn it off in the native plugin browser. In the CLI, open `/plugins` and press **Space** on the
-installed entry. To uninstall, use the browser's uninstall action or `codex plugin remove runwield@runwield`. To stop
+installed entry. To uninstall, use the browser's uninstall action or `codex plugin remove wld@runwield`. To stop
 tracking the marketplace too, use `codex plugin marketplace remove runwield`.
 
 Disabling, removing, or reinstalling the plugin does not delete Plans, Work Records, saved decisions, or execution

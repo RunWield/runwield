@@ -48,24 +48,25 @@ You need:
 Core needs **no model credentials, model preset, or RunWield account** for Connect. The model setup in the
 [Quickstart](quickstart.md) is for Core-owned Sessions, not this workflow.
 
-Install Core with the [Quickstart](quickstart.md#install), Homebrew, or winget. Before the Preview is published,
-use a Core build and local marketplace from the same checkout; the published default branch and release must contain
-this Preview before the GitHub form below can install it.
-
-In Claude Code, after publication:
+Install Core with the [Quickstart](quickstart.md#install), Homebrew, or winget. The stable plugin is distributed
+through [RunWield/plugins](https://github.com/RunWield/plugins). The marketplace is **RunWield**, with install identity
+`runwield`; the plugin is `wld`.
 
 ```text
-/plugin marketplace add gandazgul/runwield
-/plugin install runwield@runwield
+/plugin marketplace add RunWield/plugins
+/plugin install wld@runwield
 ```
 
-For a local checkout that contains the Preview, replace the first command with:
+Restart Claude Code if it requests a restart to load the plugin. Claude uses `/wld:request` to start work;
+`$wld:run` is Codex syntax.
 
-```text
-/plugin marketplace add /absolute/path/to/runwield
-```
+For source development, add `/absolute/path/to/runwield` as the marketplace and install `runwield@runwield`.
+That upstream package retains `/runwield:` commands; the distribution exporter supplies the public `/wld:` namespace.
+Use a compatible Core build from the same checkout when testing unpublished behavior.
 
-The second command stays the same. Restart Claude Code if it requests a restart to load the plugin.
+If migrating from `connect@runwield`, uninstall it, update the marketplace, and install `wld@runwield`.
+If the marketplace still points to `RunWield/runwield`, remove the old plugin and marketplace before adding
+`RunWield/plugins`. See the [migration guide](https://github.com/RunWield/plugins#migrate-from-an-older-plugin-name).
 
 Start Claude Code from your project root with a timeout long enough for local checks:
 
@@ -97,17 +98,17 @@ These references are supplied at run time. Connect does not bundle Skill files o
 In Claude Code:
 
 ```text
-/runwield:request Add an export button for the current report.
+/wld:request Add an export button for the current report.
 ```
 
 This activates RunWield for that request, not the whole conversation. Core checks the adapter contract and Claude
 version first. The host performs Triage and planning with current Core instructions. A project does not need an
-existing `.wld` directory or `AGENTS.md`. `/runwield:init` is not provided.
+existing `.wld` directory or `AGENTS.md`. `/wld:init` is not provided.
 
 1. Review the Plan in the browser. Ask questions in review chat, request a change in chat, or send structured Feedback.
 2. A changed Plan opens a new review round on the same page. Approve the exact Plan before implementation starts.
    **Approve & Run** continues immediately. **Approve for Later** leaves it Ready For Work and starts nothing; use
-   `/runwield:implement` when you want to start it.
+   `/wld:implement` when you want to start it.
 3. Core prepares the execution checkout. Claude discloses its directory and branch and starts a fresh worker there.
    Non-Git execution needs explicit consent; it edits current files without Git isolation or publication.
 4. Core runs the configured validation command. Fresh Claude workers review the diff and repair findings. Core checks
@@ -143,15 +144,15 @@ Connect does not push a new model turn into an idle Claude session. Closing the 
 
 Use these commands in the same project, including from a new Claude Code conversation:
 
-| Command                 | Purpose                                                                 |
-| ----------------------- | ----------------------------------------------------------------------- |
-| `/runwield:plan-review` | Restore pending Triage, planning, or Plan review and its saved outcome. |
-| `/runwield:implement`   | Start a saved ready Plan or restore its implementation handoff.         |
-| `/runwield:validate`    | Continue or restore validation, code review, recording, and delivery.   |
+| Command            | Purpose                                                                 |
+| ------------------ | ----------------------------------------------------------------------- |
+| `/wld:plan-review` | Restore pending Triage, planning, or Plan review and its saved outcome. |
+| `/wld:implement`   | Start a saved ready Plan or restore its implementation handoff.         |
+| `/wld:validate`    | Continue or restore validation, code review, recording, and delivery.   |
 
-Do not start another `/runwield:request` to resume the same work. Core loads its saved action and revision. A review
+Do not start another `/wld:request` to resume the same work. Core loads its saved action and revision. A review
 page hosted by the old Claude process stops when that process closes; the resume command hosts the pending review
-again. Closing Claude also stops running Core checks. `/runwield:validate` runs interrupted checks again without
+again. Closing Claude also stops running Core checks. `/wld:validate` runs interrupted checks again without
 recording a failure for the stopped run. Work already accepted by Core remains recorded. A stale action, changed diff,
 or process interruption cannot supply a new approval or duplicate an accepted outcome.
 
@@ -166,7 +167,7 @@ Update the marketplace and plugin from Claude Code:
 
 ```text
 /plugin marketplace update runwield
-/plugin update runwield@runwield
+/plugin update wld@runwield
 ```
 
 Update Core with the installer or package manager you used. For example, rerun the Quickstart installer, or use
@@ -188,8 +189,8 @@ available for recovery, but does not continue validation for a rejected host:
 In Claude Code:
 
 ```text
-/plugin disable runwield@runwield
-/plugin uninstall runwield@runwield
+/plugin disable wld@runwield
+/plugin uninstall wld@runwield
 ```
 
 Use either command as needed. This removes access to the plugin; it does not delete Plans, Work Records, pending
@@ -221,5 +222,5 @@ copy of your host conversation.
   [Using RunWield](usage.md).
 
 This Preview covers one FEATURE journey in Claude Code. Its acceptance evidence does not qualify Codex or any other
-External Agent Host. It does not claim stable support, other Routing Intents, `/runwield:init`, hooks, or enforced host
+External Agent Host. It does not claim stable support, other Routing Intents, `/wld:init`, hooks, or enforced host
 role restrictions.

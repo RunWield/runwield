@@ -98,7 +98,7 @@ requirements live in [runwield-connect-prd.md](runwield-connect-prd.md). That do
 **Attached Workflow** as internal architectural terms while using RunWield Connect as the public product name.
 
 The Claude Code FEATURE Preview has recorded live acceptance with explicit source and permission limits. The Codex
-adapter targets desktop and CLI through the native `$runwield:run` skill and the same Core coordinator; both surfaces
+adapter targets desktop and CLI through the native `$wld:run` skill and the same Core coordinator; both surfaces
 remain unqualified for a complete live workflow. Installation, continuation across hosts, and qualification evidence belong to
 the [Connect capabilities](runwield-connect-prd.md#capability-requirements) and the
 [Codex guide](../user-documentation/connect-codex.md). Available source code does not imply published package or Stable
