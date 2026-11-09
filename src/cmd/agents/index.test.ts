@@ -13,7 +13,7 @@ import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { setCustomSetting } from "../../shared/settings.js";
 import { getEditorTheme } from "../../ui/theme/theme.ts";
-import { createUiApi } from "../../ui/tui/api.js";
+import { createUiApi } from "../../ui/tui/api.ts";
 import { SpinnerBlock } from "../../ui/tui/blocks.js";
 import { VirtualTerminal } from "../../ui/tui/testing/virtual-terminal.ts";
 import { runAgentsCommand } from "./index.ts";

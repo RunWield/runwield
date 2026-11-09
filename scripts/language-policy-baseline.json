@@ -17,7 +17,6 @@
     "src/shared/worktree-registry.js",
     "src/shared/worktree.js",
     "src/ui/design-system/sidebar-motion.js",
-    "src/ui/tui/api.js",
     "src/ui/tui/blocks.js",
     "src/ui/tui/golden-scenarios/planned-change-workflow.js",
     "src/ui/tui/testing/scenario-runner.js",

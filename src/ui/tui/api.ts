@@ -1,7 +1,10 @@
-import { Image, isFocusable, Spacer } from "@earendil-works/pi-tui";
+import { Image, isFocusable, Spacer, type Component, type Container, type Focusable } from "@earendil-works/pi-tui";
 import { getSettingsManager } from "../../shared/settings.js";
 import { WORKFLOW_TOOL_NAMES } from "../../tools/registry.ts";
 import { imageTheme } from "../theme/theme.ts";
+import type { RuntimeValidationProgress } from "../../shared/session/session-runtime-events.js";
+import type { DocumentLinkHost } from "../review/document-link-host.ts";
+import type { ManagedSyncStatus, TuiAPI, UiAPI } from "./types.js";
 import {
     AgentMessageBlock,
     KeyboardHelpBlock,
@@ -10,6 +13,7 @@ import {
     PromptTextBlock,
     ReviewResultBlock,
     SystemMessageBlock,
+    type SpinnerBlock,
     ThinkingBlock,
     ToolExecutionBlock,
     ToolExecutionGroupBlock,
@@ -20,22 +24,73 @@ import {
 const MAX_MESSAGE_LIST_CHILDREN = 1000;
 const WORKFLOW_TOOL_NAME_SET = new Set(WORKFLOW_TOOL_NAMES);
 
-/**
- * @typedef {Object} ToolElapsedTimerState
- * @property {ReturnType<typeof setTimeout> | null} renderTimer
- * @typedef {ToolExecutionGroupBlock | ToolExecutionBlock} VisibleToolBlock
- */
+export type { UiAPI } from "./types.js";
+
+export interface ToolElapsedTimerState {
+    renderTimer: ReturnType<typeof setTimeout> | null;
+}
+
+export type VisibleToolBlock = ToolExecutionGroupBlock | ToolExecutionBlock;
+
+export type InteractiveUiAPI = UiAPI &
+    Required<
+        Pick<
+            UiAPI,
+            | "advanceSpinner"
+            | "appendQueuedMessage"
+            | "appendUserMessage"
+            | "clearMessages"
+            | "getActiveToolBlock"
+            | "isOutputSuppressed"
+            | "removeQueuedMessage"
+            | "setBusy"
+            | "setManagedSyncStatus"
+            | "setRunningTasks"
+            | "showKeyboardHelp"
+            | "startToolExecution"
+            | "suppressOutput"
+            | "toggleToolOutputsExpanded"
+            | "updateValidationProgress"
+            | "updateValidationReport"
+        >
+    >;
+
+type UiRenderTarget = Pick<TuiAPI, "requestRender" | "setFocus">;
+
+// Pi keeps the current focus in a private field. Preserve the existing runtime read.
+interface UiFocusView extends UiRenderTarget {
+    focusedComponent?: Component | null;
+}
+
+interface UiBlockContainer extends Pick<Container, "children" | "addChild" | "removeChild"> {
+    clear?: Container["clear"];
+}
+
+interface UiMessageList extends UiBlockContainer {
+    clear: Container["clear"];
+    invalidateChild?: (child: Component) => void;
+}
+
+interface BlockWithSpacer<Block> {
+    block: Block;
+    spacer: Spacer;
+}
+
+type InvalidatableMessageBlock =
+    ToolExecutionBlock | ToolExecutionGroupBlock | ThinkingBlock | AgentMessageBlock | SystemMessageBlock;
+type ValidationHandoffState = ConstructorParameters<typeof ValidationHandoffBlock>[0];
+type EngineerReport = NonNullable<ValidationHandoffState["engineer"]>;
+type ReviewerReport = NonNullable<ValidationHandoffState["reviewer"]>;
+type ValidationProgressListener = (progress: RuntimeValidationProgress | null) => void;
 
 /**
  * Returns a fully-stubbed UiAPI whose methods all no-op. Use to suppress
  * output for parallel subagents that share the parent UI but should not
  * stream their own thinking/text blocks. Implements every method on the
- * UiAPI surface so adding a new method to api.js doesn't silently fall
+ * UiAPI surface so adding a new method to api.ts doesn't silently fall
  * through to stdout in subagent contexts.
- *
- * @returns {import('./types.js').UiAPI}
  */
-export function createSilentUiApi() {
+export function createSilentUiApi(): UiAPI {
     return {
         appendThinkingStart: () => ({ appendDelta: () => {}, end: () => {} }),
         appendUserMessage: () => {},
@@ -81,11 +136,8 @@ export function createSilentUiApi() {
 /**
  * Like createSilentUiApi(), but keeps footer-facing session state live by
  * allowing isolated Agent sessions to push agent/model info and by forwarding renders.
- *
- * @param {Pick<import('./types.js').UiAPI, 'requestRender'> | undefined} parentUiAPI
- * @returns {import('./types.js').UiAPI}
  */
-export function createFooterOnlyUiApi(parentUiAPI) {
+export function createFooterOnlyUiApi(parentUiAPI: Pick<UiAPI, "requestRender"> | undefined): UiAPI {
     const uiAPI = createSilentUiApi();
     return {
         ...uiAPI,
@@ -94,58 +146,34 @@ export function createFooterOnlyUiApi(parentUiAPI) {
     };
 }
 
-/** @typedef {import("./types.js").UiAPI} UiAPI */
-
-/**
- * @typedef {UiAPI & Required<Pick<UiAPI,
- *     "advanceSpinner" | "appendQueuedMessage" | "appendUserMessage" | "clearMessages" | "getActiveToolBlock" |
- *     "isOutputSuppressed" | "removeQueuedMessage" | "setBusy" | "setManagedSyncStatus" | "setRunningTasks" |
- *     "showKeyboardHelp" | "startToolExecution" | "suppressOutput" | "toggleToolOutputsExpanded" |
- *     "updateValidationProgress" | "updateValidationReport"
- * >>} InteractiveUiAPI
- */
-
 /**
  * Creates a UiAPI object for RunWield TUI.
- *
- * @param {import('../review/document-link-host.ts').DocumentLinkHost | null} documentLinks
- * @param {{ requestRender: () => void, setFocus: (component: any) => void }} tui
- * @param {{ addChild: (child: any) => void, removeChild: (child: any) => void, clear: () => void, children: any[], invalidateChild?: (child: any) => void }} messageList
- * @param {import('./blocks.js').SpinnerBlock} spinner
- * @param {{ addChild: (child: any) => void, removeChild: (child: any) => void, children: any[] }} [inputAccessoryContainer]
- * @param {{ addChild: (child: any) => void, removeChild: (child: any) => void, clear?: () => void, children: any[] }} [validationPanelContainer]
- * @param {{ addChild: (child: any) => void, removeChild: (child: any) => void, clear?: () => void, children: any[] }} [activeInteractionContainer]
- * @param {{ addChild: (child: any) => void, removeChild: (child: any) => void, clear?: () => void, children: any[] }} [queuedInputContainer]
- * @param {() => VisibleToolBlock[]} [getVisibleToolBlocks]
- * @param {(progress: import('../../shared/session/session-runtime-events.js').RuntimeValidationProgress | null) => void} [onValidationProgress]
- * @returns {InteractiveUiAPI}
  */
 export function createUiApi(
-    documentLinks,
-    tui,
-    messageList,
-    spinner,
-    inputAccessoryContainer,
-    validationPanelContainer,
-    activeInteractionContainer,
-    queuedInputContainer,
-    getVisibleToolBlocks,
-    onValidationProgress,
-) {
-    const activeToolBlocks = new Map();
-    /** @type {Map<string, { block: SystemMessageBlock, spacer: Spacer }>} */
-    const queuedMessageBlocks = new Map();
-    /** @type {Map<string, ToolElapsedTimerState>} */
-    const toolElapsedTimers = new Map();
-    /** @type {{ block: KeyboardHelpBlock, spacer: Spacer } | null} */
-    let keyboardHelp = null;
-    /** @type {{ block: ManagedSyncStatusBlock, spacer: Spacer } | null} */
-    let managedSyncStatus = null;
-    /** @type {import('./types.js').ManagedSyncStatus | null} */
-    let visibleManagedSyncState = null;
+    documentLinks: DocumentLinkHost | null,
+    tui: UiRenderTarget,
+    messageList: UiMessageList,
+    spinner: SpinnerBlock,
+    inputAccessoryContainer?: UiBlockContainer,
+    validationPanelContainer?: UiBlockContainer,
+    activeInteractionContainer?: UiBlockContainer,
+    queuedInputContainer?: UiBlockContainer,
+    getVisibleToolBlocks?: () => VisibleToolBlock[],
+    onValidationProgress?: ValidationProgressListener,
+): InteractiveUiAPI {
+    const activeToolBlocks = new Map<string, ToolExecutionBlock>();
 
-    /** @param {import('./types.js').ManagedSyncStatus} state */
-    const isSameVisibleManagedSyncState = (state) => {
+    const queuedMessageBlocks = new Map<string, BlockWithSpacer<SystemMessageBlock>>();
+
+    const toolElapsedTimers = new Map<string, ToolElapsedTimerState>();
+
+    let keyboardHelp: BlockWithSpacer<KeyboardHelpBlock> | null = null;
+
+    let managedSyncStatus: BlockWithSpacer<ManagedSyncStatusBlock> | null = null;
+
+    let visibleManagedSyncState: ManagedSyncStatus | null = null;
+
+    const isSameVisibleManagedSyncState = (state: ManagedSyncStatus) => {
         return (
             visibleManagedSyncState?.status === state.status &&
             visibleManagedSyncState.localGeneration === state.localGeneration &&
@@ -155,28 +183,26 @@ export function createUiApi(
         );
     };
 
-    /** @type {(() => void) | null} */
-    let activePromptCancel = null;
-    /** @type {(() => void) | null} */
-    let activePromptFocus = null;
+    let activePromptCancel: (() => void) | null = null;
 
-    /** @type {ToolExecutionGroupBlock | null} */
-    let currentToolGroup = null;
+    let activePromptFocus: (() => void) | null = null;
+
+    let currentToolGroup: ToolExecutionGroupBlock | null = null;
     let outputSuppressed = false;
     let runtimeBusy = false;
     let promptActive = false;
     let toolElapsedTimersPaused = false;
-    /** @type {(import('@earendil-works/pi-tui').Component & import('@earendil-works/pi-tui').Focusable) | null} */
-    let busyBlurredFocus = null;
-    /** @type {import('../../shared/session/session-runtime-events.js').RuntimeValidationProgress | null} */
-    let validationProgress = null;
-    /** @type {{ agentName: string, markdown: string, completedOrder: number } | null} */
-    let latestEngineerReport = null;
-    /** @type {{ agentName: string, markdown: string, approved: boolean, completedOrder: number } | null} */
-    let latestReviewerReport = null;
+
+    let busyBlurredFocus: (Component & Focusable) | null = null;
+
+    let validationProgress: RuntimeValidationProgress | null = null;
+
+    let latestEngineerReport: EngineerReport | null = null;
+
+    let latestReviewerReport: ReviewerReport | null = null;
     let validationReportOrder = 0;
-    /** @type {ValidationHandoffBlock | null} */
-    let validationPanelBlock = null;
+
+    let validationPanelBlock: ValidationHandoffBlock | null = null;
     let validationPanelVisible = true;
 
     const removeInputAccessoryResources = () => {
@@ -223,10 +249,9 @@ export function createUiApi(
 
     const activePromptContainer = activeInteractionContainer || messageList;
 
-    /** @param {any} child */
-    const isActiveMessageListChild = (child) => {
+    const isActiveMessageListChild = (child: Component) => {
         if (activeToolBlocks.size === 0) return false;
-        const retainedActiveToolBlocks = new Set(activeToolBlocks.values());
+        const retainedActiveToolBlocks = new Set<Component>(activeToolBlocks.values());
         if (retainedActiveToolBlocks.has(child)) return true;
         return (
             child instanceof ToolExecutionGroupBlock &&
@@ -260,14 +285,12 @@ export function createUiApi(
         }
     };
 
-    /** @param {any} child */
-    const appendMessageListChild = (child) => {
+    const appendMessageListChild = (child: Component) => {
         messageList.addChild(child);
         pruneMessageList();
     };
 
-    /** @param {ToolExecutionBlock | ToolExecutionGroupBlock | ThinkingBlock | AgentMessageBlock | SystemMessageBlock} block */
-    const invalidateMessageBlock = (block) => {
+    const invalidateMessageBlock = (block: InvalidatableMessageBlock) => {
         const messageChild = messageList.children.includes(block)
             ? block
             : block instanceof ToolExecutionBlock
@@ -277,9 +300,7 @@ export function createUiApi(
     };
 
     const suppressFocusedCursorForBusy = () => {
-        const tuiFocus = /** @type {{ focusedComponent?: import('@earendil-works/pi-tui').Component | null }} */ (
-            /** @type {unknown} */ (tui)
-        );
+        const tuiFocus: UiFocusView = tui;
         const focused = tuiFocus.focusedComponent || null;
         if (!isFocusable(focused) || !focused.focused) return;
         busyBlurredFocus = focused;
@@ -288,17 +309,14 @@ export function createUiApi(
 
     const restoreFocusedCursorAfterBusy = () => {
         if (!busyBlurredFocus) return;
-        const tuiFocus = /** @type {{ focusedComponent?: import('@earendil-works/pi-tui').Component | null }} */ (
-            /** @type {unknown} */ (tui)
-        );
+        const tuiFocus: UiFocusView = tui;
         if (tuiFocus.focusedComponent === busyBlurredFocus) {
             busyBlurredFocus.focused = true;
         }
         busyBlurredFocus = null;
     };
 
-    /** @type {ReturnType<typeof setInterval> | null} */
-    let busyFrameTimer = null;
+    let busyFrameTimer: ReturnType<typeof setInterval> | null = null;
 
     const stopBusyFrameTimer = () => {
         if (busyFrameTimer === null) return;
@@ -336,26 +354,19 @@ export function createUiApi(
         }
     };
 
-    /**
-     * @param {string} id
-     */
-    const clearToolElapsedTimer = (id) => {
+    const clearToolElapsedTimer = (id: string) => {
         const timer = toolElapsedTimers.get(id);
         if (!timer) return;
         if (timer.renderTimer) clearTimeout(timer.renderTimer);
         toolElapsedTimers.delete(id);
     };
 
-    /**
-     * @param {string} id
-     * @param {ToolExecutionBlock} block
-     */
-    const startToolElapsedTimer = (id, block) => {
+    const startToolElapsedTimer = (id: string, block: ToolExecutionBlock) => {
         clearToolElapsedTimer(id);
         if (toolElapsedTimersPaused || outputSuppressed || block.ended) return;
-        const timer = /** @type {ToolElapsedTimerState} */ ({
+        const timer: ToolElapsedTimerState = {
             renderTimer: null,
-        });
+        };
         const renderElapsedFrame = () => {
             if (outputSuppressed || block.ended || activeToolBlocks.get(id) !== block) {
                 clearToolElapsedTimer(id);
@@ -376,9 +387,8 @@ export function createUiApi(
     /**
      * Code review can leave a tool pending for hours. Stop its repaint loop
      * along with the spinner; keep the block and start time for continuation.
-     * @param {boolean} paused
      */
-    const setToolElapsedTimersPaused = (paused) => {
+    const setToolElapsedTimersPaused = (paused: boolean) => {
         if (toolElapsedTimersPaused === paused) return;
         toolElapsedTimersPaused = paused;
         if (paused) {
@@ -391,7 +401,6 @@ export function createUiApi(
     return {
         /**
          * Start streaming a thinking block into the message list.
-         * @returns {{ appendDelta: (delta: string) => void, end: () => void }}
          */
         appendThinkingStart: () => {
             if (outputSuppressed) {
@@ -404,7 +413,6 @@ export function createUiApi(
             appendMessageListChild(new Spacer(1));
             tui.requestRender();
             return {
-                /** @param {string} delta */
                 appendDelta: (delta) => {
                     block.appendText(delta);
                     invalidateMessageBlock(block);
@@ -418,7 +426,6 @@ export function createUiApi(
             };
         },
 
-        /** @param {string} text */
         appendUserMessage: (text) => {
             if (outputSuppressed) return;
             closeCurrentToolGroup();
@@ -441,7 +448,6 @@ export function createUiApi(
             tui.requestRender();
         },
 
-        /** @param {string} id @param {string} text */
         appendQueuedMessage: (id, text) => {
             if (outputSuppressed || queuedMessageBlocks.has(id)) return;
             closeCurrentToolGroup();
@@ -454,7 +460,6 @@ export function createUiApi(
             tui.requestRender();
         },
 
-        /** @param {string} id */
         removeQueuedMessage: (id) => {
             const queued = queuedMessageBlocks.get(id);
             if (!queued) return;
@@ -465,7 +470,6 @@ export function createUiApi(
             tui.requestRender();
         },
 
-        /** @param {string} agentName */
         appendAgentMessageStart: (agentName) => {
             if (outputSuppressed) {
                 return {
@@ -478,7 +482,6 @@ export function createUiApi(
             appendMessageListChild(new Spacer(1));
             tui.requestRender();
             return {
-                /** @param {string} delta */
                 appendText: (delta) => {
                     block.appendText(delta);
                     invalidateMessageBlock(block);
@@ -487,11 +490,6 @@ export function createUiApi(
             };
         },
 
-        /**
-         * @param {string} agentName
-         * @param {string} markdown
-         * @param {boolean} approved
-         */
         appendReviewResult: (agentName, markdown, approved) => {
             if (outputSuppressed) return;
             closeCurrentToolGroup();
@@ -501,7 +499,6 @@ export function createUiApi(
             tui.requestRender();
         },
 
-        /** @param {import('../../shared/session/session-runtime-events.js').RuntimeValidationProgress} progress */
         updateValidationProgress: (progress) => {
             if (outputSuppressed) return;
             validationProgress = structuredClone(progress);
@@ -510,10 +507,6 @@ export function createUiApi(
             tui.requestRender();
         },
 
-        /**
-         * @param {"engineer" | "reviewer"} role
-         * @param {{ agentName: string, markdown: string, approved?: boolean }} report
-         */
         updateValidationReport: (role, report) => {
             if (outputSuppressed) return;
             const completedOrder = ++validationReportOrder;
@@ -533,14 +526,12 @@ export function createUiApi(
             }
         },
 
-        /** @param {boolean} visible */
         setValidationPanelVisible: (visible) => {
             validationPanelVisible = visible;
             renderValidationPanel();
             tui.requestRender();
         },
 
-        /** @param {boolean} [preserveProgress=false] */
         clearValidationPanel: (preserveProgress = false) => {
             validationProgress = null;
             if (!preserveProgress) onValidationProgress?.(null);
@@ -552,12 +543,6 @@ export function createUiApi(
             tui.requestRender();
         },
 
-        /**
-         * @param {string} text
-         * @param {boolean} [isError=false]
-         * @param {string} [header='']
-         * @param {{ headingColor?: string, bodyColor?: string }} [style]
-         */
         appendSystemMessage: (text, isError = false, header = "", style = {}) => {
             if (outputSuppressed) return;
             closeCurrentToolGroup();
@@ -593,11 +578,6 @@ export function createUiApi(
             tui.requestRender();
         },
 
-        /**
-         * @param {string} id
-         * @param {string} toolName
-         * @param {string} title
-         */
         startToolExecution: (id, toolName, title) => {
             if (outputSuppressed) {
                 return {
@@ -630,7 +610,7 @@ export function createUiApi(
             activeToolBlocks.set(id, block);
             const children = messageList.children;
             if (children.at(-1) instanceof Spacer && children.at(-2) instanceof ThinkingBlock) {
-                messageList.removeChild(children.at(-1));
+                messageList.removeChild(children.at(-1)!);
             }
             const isLocalShellCommand = title.startsWith("! ") || title.startsWith("!! ");
             if (isLocalShellCommand) {
@@ -657,10 +637,8 @@ export function createUiApi(
         },
 
         toggleToolOutputsExpanded: () => {
-            const toolBlocks = /** @type {VisibleToolBlock[]} */ (
-                messageList.children.filter(
-                    (child) => child instanceof ToolExecutionGroupBlock || child instanceof ToolExecutionBlock,
-                )
+            const toolBlocks = messageList.children.filter(
+                (child) => child instanceof ToolExecutionGroupBlock || child instanceof ToolExecutionBlock,
             );
             const retainedToolBlocks = new Set(toolBlocks);
             const requestedBlocks = getVisibleToolBlocks?.() ?? toolBlocks.slice(-1);
@@ -675,7 +653,6 @@ export function createUiApi(
             tui.requestRender();
         },
 
-        /** @param {import('../../shared/session/session-help.ts').SessionHelpPayload} help */
         showKeyboardHelp: (help) => {
             if (!inputAccessoryContainer || outputSuppressed) return;
             if (keyboardHelp) {
@@ -701,7 +678,6 @@ export function createUiApi(
             tui.requestRender();
         },
 
-        /** @param {import('./types.js').ManagedSyncStatus} state */
         setManagedSyncStatus: (state) => {
             if (!inputAccessoryContainer || outputSuppressed) return;
             if (state.status === "syncing" && !managedSyncStatus) return;
@@ -744,7 +720,6 @@ export function createUiApi(
             tui.requestRender();
         },
 
-        /** @param {boolean} busy */
         setBusy: (busy) => {
             if (outputSuppressed && busy) return;
 
@@ -762,13 +737,11 @@ export function createUiApi(
             tui.requestRender();
         },
 
-        /** @param {readonly string[] | undefined} lines */
         setAgentBusyLines: (lines) => {
             spinner.setBusyLines(lines);
             if (!outputSuppressed) tui.requestRender();
         },
 
-        /** @param {Array<{task: number, assignee: string, description: string}>} tasks */
         setRunningTasks: (tasks) => {
             spinner.tasks = tasks;
             if (!outputSuppressed) tui.requestRender();
@@ -789,11 +762,6 @@ export function createUiApi(
             return true;
         },
 
-        /**
-         * @param {string} title
-         * @param {Array<{value: string, label: string}>} options
-         * @param {{ onSelectionChange?: (value: string) => void, layout?: import('@earendil-works/pi-tui').SelectListLayoutOptions, hint?: string, persistResult?: boolean }} [hooks]
-         */
         promptSelect: (title, options, hooks) => {
             return new Promise((resolve) => {
                 beginPromptWait();
@@ -809,7 +777,7 @@ export function createUiApi(
                 const shouldPersistResult = hooks?.persistResult !== false && title !== "Switch agent:";
 
                 // Single path for settling and cleanup
-                const settleAndCleanup = (/** @type {string | null} */ value) => {
+                const settleAndCleanup = (value: string | null) => {
                     activePromptCancel = null;
                     activePromptFocus = null;
                     activePromptContainer.removeChild(block);
@@ -839,10 +807,6 @@ export function createUiApi(
             });
         },
 
-        /**
-         * @param {string} title
-         * @param {{ defaultValue?: string, placeholder?: string, allowEmpty?: boolean, persistResult?: boolean }} [opts]
-         */
         promptText: (title, opts = {}) => {
             const { defaultValue, placeholder, allowEmpty = true, persistResult = true } = opts;
 
@@ -866,7 +830,7 @@ export function createUiApi(
                 tui.requestRender();
 
                 // Single path for settling and cleanup
-                const settleAndCleanup = (/** @type {string | null} */ value) => {
+                const settleAndCleanup = (value: string | null) => {
                     activePromptCancel = null;
                     activePromptFocus = null;
                     activePromptContainer.removeChild(block);
