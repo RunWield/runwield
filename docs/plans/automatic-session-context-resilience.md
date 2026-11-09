@@ -455,7 +455,7 @@ unless the complete public AgentSession contract has been verified; a partial ga
   locks, or Runtime. Use real Git/Session fixtures and the sandboxed runner. Tests that mutate cwd or HOME use
   `withProcessGlobalTestLock`; production reads use `getCwd()`/`getHomeDir()`. No new owned injection seam is allowed.
 - Automated focused tests: run
-  `deno run -A scripts/run-tests.js src/shared/session/session-context-resilience.test.js
+  `bun scripts/run-tests.ts src/shared/session/session-context-resilience.test.js
 src/shared/session/session-prompt.test.ts src/shared/session/session-subscribers.test.ts
 src/shared/session/hosted-session.test.ts src/shared/session/abort-active-session.test.js
 src/shared/session/session-runtime-events.test.js src/shared/session/session-runtime.test.js

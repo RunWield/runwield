@@ -73,7 +73,7 @@ The boundaries this change is expected to touch. This list is guidance, not an a
 
 ## Verification Plan
 
-- Use Bun 1.4.3 and `bun run install:locked`. Run `bun scripts/run-tests.js src/ui/workspace/workspace-renderer-lifecycle.test.ts src/ui/workspace/workspace-operation-memory.test.ts src/acp/managed-session.integration.test.ts` and `bun run seams:check`.
+- Use Bun 1.4.3 and `bun run install:locked`. Run `bun scripts/run-tests.ts src/ui/workspace/workspace-renderer-lifecycle.test.ts src/ui/workspace/workspace-operation-memory.test.ts src/acp/managed-session.integration.test.ts` and `bun run seams:check`.
 - Planner defines built-host process tests for window close/reopen, renderer kill, main kill, runtime kill, two simultaneous Projects, a blocked cancellation, and observation overflow/gaps. Actual process death is required; a mocked transcript cannot prove survival.
 - Assert uncertain accepted actions are not resubmitted on restart. Inspect canonical records and effect counts, not only labels. Verify cancellation settles before owned process exit and ordinary idle TUI continuation still works.
 - Use headed Electron verification for close/reopen, native Quit choices, restored navigation, shortcuts, and interrupted-state recovery. Discover and record the normal desktop dev command and renderer URL/origin.

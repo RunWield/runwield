@@ -240,10 +240,10 @@ Reuse `src/cmd/testing/runtime-command-fixture.ts::withRuntimeCommandFixture` an
 Focused commands:
 
 ```sh
-bun scripts/run-tests.js src/tools/session-directory.test.ts src/shared/session/session-directory.test.ts src/shared/session/checkout-context.test.ts
-bun scripts/run-tests.js src/shared/session/session-runtime.test.js src/shared/session/agent-switching.test.ts src/shared/session/session-prompt.test.ts src/shared/session/__tests__/session-tools-policy.test.js
-bun scripts/run-tests.js src/shared/workflow/planning-worktree-inspection.test.ts src/shared/workflow/controller-registry.integration.test.ts src/acp/managed-session.integration.test.ts
-bun scripts/run-tests.js src/shared/session/execution-segment-runtime.test.ts src/shared/session/segment-rollover.test.ts src/cmd/load-plan/plan-review-conversation.integration.test.ts src/shared/workflow/plan-execution-runtime-boundaries.integration.test.ts src/shared/workflow/validation-tool-continuation.integration.test.ts
+bun scripts/run-tests.ts src/tools/session-directory.test.ts src/shared/session/session-directory.test.ts src/shared/session/checkout-context.test.ts
+bun scripts/run-tests.ts src/shared/session/session-runtime.test.js src/shared/session/agent-switching.test.ts src/shared/session/session-prompt.test.ts src/shared/session/__tests__/session-tools-policy.test.js
+bun scripts/run-tests.ts src/shared/workflow/planning-worktree-inspection.test.ts src/shared/workflow/controller-registry.integration.test.ts src/acp/managed-session.integration.test.ts
+bun scripts/run-tests.ts src/shared/session/execution-segment-runtime.test.ts src/shared/session/segment-rollover.test.ts src/cmd/load-plan/plan-review-conversation.integration.test.ts src/shared/workflow/plan-execution-runtime-boundaries.integration.test.ts src/shared/workflow/validation-tool-continuation.integration.test.ts
 bun run seams:check
 bun run doc-links:check
 ```

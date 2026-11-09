@@ -21,8 +21,8 @@ import process from "node:process";
  * isolated; process-global environment or cwd changes cannot affect other files.
  *
  * Usage:
- *   bun scripts/run-tests.js                    isolated run of every test file
- *   bun scripts/run-tests.js --isolated <paths>  isolated run of matching files
+ *   bun scripts/run-tests.ts                    isolated run of every test file
+ *   bun scripts/run-tests.ts --isolated <paths>  isolated run of matching files
  *
  * `--exclude <path>` removes matching files from discovery. `bun run test`
  * excludes the Golden portfolio; `bun run ci` includes source and Golden tests.
@@ -36,7 +36,47 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { listCiFiles } from "./ci-files.ts";
 import { runBoundedTest } from "./run-with-snip.ts";
-import { mergeTestTimings, orderTestsByTiming, readTestTimings, writeTestTimings } from "./test-timings.ts";
+import {
+    mergeTestTimings,
+    orderTestsByTiming,
+    readTestTimings,
+    writeTestTimings,
+    type ObservedTestTiming,
+} from "./test-timings.ts";
+
+export interface RunnerArguments {
+    /** Absolute file or directory paths to drop from discovery. */
+    excludedPaths: string[];
+    /** Stop scheduling files after the first failure. */
+    failFast: boolean;
+    /** Timing history input and output path. */
+    timingsFile: string | undefined;
+    /** One-based shard index/count. */
+    shard: string | undefined;
+    /** Directory for per-test JUnit reports. */
+    reportDir: string | undefined;
+    /** Deno-compatible test name substring or /regular expression/. */
+    filter: string | undefined;
+    /** Every remaining argument, in the order it was given. */
+    rest: string[];
+}
+
+export interface SuiteOptions {
+    failFast?: boolean;
+    timingsFile?: string;
+    reportDir: string;
+    shard?: string;
+    filter?: string;
+}
+
+interface TestFileFailure {
+    file: string;
+    failureLogPath: string;
+}
+
+export interface TestSandboxEnvironment extends Record<string, string> {
+    WLD_TEST_SANDBOX_HOME: string;
+}
 
 const TEST_FILE_TIMEOUT_MS = 10 * 60 * 1000;
 const REPO_ROOT = dirname(dirname(fromFileUrl(import.meta.url)));
@@ -60,8 +100,7 @@ const DENO_SNIP_FILTER_FILES = [
     "deno-task.yaml",
 ];
 
-/** @param {string} dir @returns {AsyncGenerator<string>} */
-async function* findTestFiles(dir) {
+async function* findTestFiles(dir: string): AsyncGenerator<string> {
     for await (const entry of await fsReaddir(dir, { withFileTypes: true })) {
         if (entry.isDirectory()) {
             if (SKIP_DIRS.has(entry.name)) continue;
@@ -75,12 +114,7 @@ async function* findTestFiles(dir) {
     }
 }
 
-/**
- * @param {string} sandboxRoot
- * @param {string} name
- * @returns {Promise<Record<string, string>>}
- */
-export async function createSandboxEnv(sandboxRoot, name) {
+export async function createSandboxEnv(sandboxRoot: string, name: string): Promise<TestSandboxEnvironment> {
     const home = join(sandboxRoot, name);
     const temp = join(home, "tmp");
     const snipFiltersDir = join(home, ".config", "snip", "filters");
@@ -138,26 +172,9 @@ export async function createSandboxEnv(sandboxRoot, name) {
     };
 }
 
-/**
- * @typedef {Object} RunnerArguments
- * @property {string[]} excludedPaths absolute file or directory paths to drop from discovery
- * @property {boolean} failFast stop scheduling files after the first failure
- * @property {string | undefined} timingsFile timing history input and output path
- * @property {string | undefined} shard one-based shard index/count
- * @property {string | undefined} reportDir directory for per-test JUnit reports
- * @property {string | undefined} filter Deno-compatible test name substring or /regular expression/
- * @property {string[]} rest every remaining argument, in the order it was given
- */
-
-/**
- * @param {string[]} args
- * @returns {RunnerArguments}
- */
-export function parseRunnerArguments(args) {
-    /** @type {string[]} */
-    const excludedPaths = [];
-    /** @type {string[]} */
-    const rest = [];
+export function parseRunnerArguments(args: string[]): RunnerArguments {
+    const excludedPaths: string[] = [];
+    const rest: string[] = [];
     let failFast = false;
     let filter;
     let timingsFile;
@@ -205,11 +222,8 @@ export function parseRunnerArguments(args) {
 /**
  * Assign every file exactly once, independent of each runner's timing cache.
  * Sorting before round-robin assignment makes filesystem traversal irrelevant.
- * @param {string[]} files
- * @param {string | undefined} shard
- * @returns {string[]}
  */
-export function selectTestShard(files, shard) {
+export function selectTestShard(files: string[], shard: string | undefined) {
     if (!shard) return files;
     const match = /^(\d+)\/(\d+)$/.exec(shard);
     const index = Number(match?.[1]);
@@ -222,11 +236,8 @@ export function selectTestShard(files, shard) {
 
 /**
  * Prepare shared immutable repositories when the selected suite has Golden scenarios.
- * @param {string[]} files
- * @param {string} sandboxRoot
- * @returns {Promise<string>}
  */
-export async function prepareGoldenFixtures(files, sandboxRoot) {
+export async function prepareGoldenFixtures(files: string[], sandboxRoot: string) {
     if (!files.some((file) => file.replaceAll("\\", "/").includes("/src/ui/tui/golden-scenarios/"))) return "";
     const { prepareGoldenRepositoryTemplates } = await import("../src/ui/tui/testing/isolated-environment.ts");
     const root = join(sandboxRoot, "golden-fixtures");
@@ -234,12 +245,7 @@ export async function prepareGoldenFixtures(files, sandboxRoot) {
     return root;
 }
 
-/**
- * @param {string} root
- * @param {string} file
- * @returns {boolean}
- */
-function isPathAtOrBelow(root, file) {
+function isPathAtOrBelow(root: string, file: string) {
     if (file === root) return true;
     const child = relative(root, file);
     return (
@@ -251,35 +257,20 @@ function isPathAtOrBelow(root, file) {
     );
 }
 
-/**
- * @param {string} file
- * @param {string[]} excludedPaths
- * @returns {boolean}
- */
-function isExcluded(file, excludedPaths) {
+function isExcluded(file: string, excludedPaths: string[]) {
     return excludedPaths.some((excluded) => isPathAtOrBelow(excluded, file));
 }
 
 /**
- * @typedef {Object} SuiteOptions
- * @property {boolean} [failFast]
- * @property {string} [timingsFile]
- * @property {string} reportDir
- * @property {string} [shard]
- * @property {string} [filter]
- */
-
-/**
  * Read the pinned Bun reporter's summary and require recorded test cases.
  * Assertions may be zero for node:assert tests, so they are not a completion signal.
- * @param {string} xml
  */
-function readBunTestReport(xml) {
+function readBunTestReport(xml: string) {
     const markup = xml.replace(/<!\[CDATA\[[\s\S]*?\]\]>|<!--[\s\S]*?-->/g, "");
     const summary = /<testsuites\b([^>]*)>/.exec(markup)?.[1];
     if (!summary || !/<\/testsuites>\s*$/.test(markup)) throw new Error("Incomplete Bun JUnit report.");
-    /** @param {string} name */
-    const count = (name) => {
+
+    const count = (name: string) => {
         const value = new RegExp(`(?:^|\\s)${name}="(\\d+)"`).exec(summary)?.[1];
         if (value === undefined) throw new Error(`Missing JUnit ${name} count.`);
         return Number(value);
@@ -293,14 +284,12 @@ function readBunTestReport(xml) {
     return { tests, skipped };
 }
 
-/**
- * @param {string} sandboxRoot
- * @param {string[]} roots
- * @param {string[]} excludedPaths
- * @param {SuiteOptions} options
- * @returns {Promise<number>} process exit code
- */
-async function runIsolatedSuite(sandboxRoot, roots, excludedPaths, options) {
+async function runIsolatedSuite(
+    sandboxRoot: string,
+    roots: string[],
+    excludedPaths: string[],
+    options: SuiteOptions,
+): Promise<number> {
     const suiteStart = performance.now();
     const reportDir = options.reportDir;
     await fsMkdir(reportDir, { recursive: true });
@@ -314,7 +303,7 @@ async function runIsolatedSuite(sandboxRoot, roots, excludedPaths, options) {
             await fsRm(join(reportDir, entry.name));
         }
     }
-    const discovered = new Set();
+    const discovered = new Set<string>();
     const repositoryFiles = (await listCiFiles(REPO_ROOT)).map((file) => resolve(REPO_ROOT, file));
     for (const root of roots) {
         const path = resolve(REPO_ROOT, root);
@@ -352,17 +341,14 @@ async function runIsolatedSuite(sandboxRoot, roots, excludedPaths, options) {
             ? Math.max(1, Math.floor(configured))
             : Math.max(1, Math.min(navigator.hardwareConcurrency || 4, 8));
     const queue = [...files];
-    /** @type {Array<{ file: string, failureLogPath: string }>} */
-    const failures = [];
-    /** @type {import("./test-timings.ts").ObservedTestTiming[]} */
-    const observedTimings = [];
+    const failures: TestFileFailure[] = [];
+    const observedTimings: ObservedTestTiming[] = [];
     let completed = 0;
     let skippedFiles = 0;
     let stopScheduling = false;
     const startedAt = Date.now();
 
-    /** @param {number} slot */
-    const worker = async (slot) => {
+    const worker = async (slot: number) => {
         let slotRuns = 0;
         while (queue.length > 0 && !stopScheduling) {
             const file = queue.shift();

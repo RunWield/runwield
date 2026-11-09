@@ -78,7 +78,7 @@ matches `skills/LICENSE`.
 Run the focused checks after updating either copy:
 
 ```sh
-bun scripts/run-tests.js scripts/check-skill-sync.test.ts src/shared/session/skill-catalog.test.ts
+bun scripts/run-tests.ts scripts/check-skill-sync.test.ts src/shared/session/skill-catalog.test.ts
 bun run skills:sync:check
 bun run compile:bun .ci-cache/write-tests-package/wld
 bun run check:package:bun .ci-cache/write-tests-package/wld

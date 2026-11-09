@@ -114,7 +114,7 @@ test("original compound task names preserve argument boundaries and prerequisite
             task: "test",
             args: ["a directory/test.ts", "--filter", "literal [name]"],
             last: {
-                path: "scripts/run-tests.js",
+                path: "scripts/run-tests.ts",
                 args: [
                     "--exclude",
                     "src/ui/tui/golden-scenarios",
@@ -129,7 +129,7 @@ test("original compound task names preserve argument boundaries and prerequisite
         {
             task: "test:all",
             args: ["--fail-fast", "a directory/test.ts"],
-            last: { path: "scripts/run-tests.js", args: ["--fail-fast", "a directory/test.ts"] },
+            last: { path: "scripts/run-tests.ts", args: ["--fail-fast", "a directory/test.ts"] },
         },
         {
             task: "workspace:build",

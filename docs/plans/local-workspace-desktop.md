@@ -267,9 +267,9 @@ Prerequisite: Bun 1.4.3 and `bun run install:locked`. Child Plans add focused ca
 `scripts/bun-test-files.json` when required. Existing relevant commands include:
 
 ```sh
-bun scripts/run-tests.js src/acp/server.test.js src/acp/managed-session.integration.test.ts
-bun scripts/run-tests.js src/ui/workspace/workspace-session-ux.test.tsx src/ui/workspace/workspace-plan-review.integration.test.ts src/ui/workspace/workspace-code-review.integration.test.ts
-bun scripts/run-tests.js src/ui/workspace/workspace-renderer-lifecycle.test.ts src/ui/workspace/workspace-operation-memory.test.ts
+bun scripts/run-tests.ts src/acp/server.test.js src/acp/managed-session.integration.test.ts
+bun scripts/run-tests.ts src/ui/workspace/workspace-session-ux.test.tsx src/ui/workspace/workspace-plan-review.integration.test.ts src/ui/workspace/workspace-code-review.integration.test.ts
+bun scripts/run-tests.ts src/ui/workspace/workspace-renderer-lifecycle.test.ts src/ui/workspace/workspace-operation-memory.test.ts
 bun run workspace:check
 bun run seams:check
 bun run doc-links:check

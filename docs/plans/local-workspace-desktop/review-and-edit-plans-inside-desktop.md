@@ -70,7 +70,7 @@ The boundaries this change is expected to touch. This list is guidance, not an a
 
 ## Verification Plan
 
-- Use Bun 1.4.3 and `bun run install:locked`. Run `bun scripts/run-tests.js src/ui/workspace/owner-plan-actions.test.ts src/ui/workspace/workspace-plan-review.integration.test.ts src/ui/workspace/workspace-plan-review-ux.test.tsx src/ui/workspace/plan-review-cross-surface.integration.test.ts` and `bun run seams:check`.
+- Use Bun 1.4.3 and `bun run install:locked`. Run `bun scripts/run-tests.ts src/ui/workspace/owner-plan-actions.test.ts src/ui/workspace/workspace-plan-review.integration.test.ts src/ui/workspace/workspace-plan-review-ux.test.tsx src/ui/workspace/plan-review-cross-surface.integration.test.ts` and `bun run seams:check`.
 - Planner names new real-process Plan read/save/review checks. Assert duplicate request, reused request ID with different input, stale generation/revision, wrong Project, competing writer, and approval-for-later behavior against real stores/locks.
 - Headed verification uses desktop Plan/Epic board -> detail -> edit -> review -> approve for later. Discover and record the normal desktop dev command and renderer URL/origin. Exercise annotations, saved conversation, version changes, keyboard access, and a large Plan.
 - Assert no standalone browser page opens for desktop review. Separately verify standalone Plan review remains functional without Electron; changing imports/transport must not delete its behavioral coverage.

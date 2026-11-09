@@ -80,7 +80,7 @@ The boundaries this change is expected to touch. This list is guidance, not an a
 
 ## Verification Plan
 
-- Use Bun 1.4.3 and `bun run install:locked`. Run `bun scripts/run-tests.js src/ui/workspace/workspace-review.test.js src/ui/workspace/standalone-ai-review.test.ts src/ui/workspace/routes/api/review-actions.test.ts src/ui/workspace/routes/api/review-file-containment.test.ts src/ui/workspace/routes/api/review-file-content.test.ts` with any relocated paths selected by Planner.
+- Use Bun 1.4.3 and `bun run install:locked`. Run `bun scripts/run-tests.ts src/ui/workspace/workspace-review.test.js src/ui/workspace/standalone-ai-review.test.ts src/ui/workspace/routes/api/review-actions.test.ts src/ui/workspace/routes/api/review-file-containment.test.ts src/ui/workspace/routes/api/review-file-content.test.ts` with any relocated paths selected by Planner.
 - New negative launch tests must fail before removal and pass after: old workbench commands/entrypoints cannot start the local browser workbench. Do not replace them with always-passing source-existence assertions.
 - Prove retained Plan/Code Review, document/artifact reading, and browser questions from TUI, Connect, and external ACP without Electron installed. Exercise token refusal, stale decisions, safe files/images, review actions, and relocated compiled executable assets.
 - Run `bun run compile`, `bun run check:package:bun`, `bun run workspace:remote:build`, `bun run workspace:remote:image:check`, and `bun run doc-links:check`, adapting renamed build commands only while preserving their retained obligations.

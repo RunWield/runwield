@@ -474,7 +474,7 @@ This Epic defines architectural evidence; executable child Plans provide the con
 not prove a remote user journey.
 
 **Automated foundations:** `deno task doc-links:check`, `deno task seams:check`, and `deno task ci`. Use
-`deno task test` or `deno run -A scripts/run-tests.js <arguments>` for isolated tests, never direct `deno test`. Use
+`deno task test` or `bun scripts/run-tests.ts <arguments>` for isolated tests, never direct `deno test`. Use
 sandboxed home/Memory storage and real Git fixtures. Do not add injection seams for owned storage, locks, Plan writes,
 or lifecycle rules. External subprocess, transport, model, and clock behavior can use genuine external boundaries.
 

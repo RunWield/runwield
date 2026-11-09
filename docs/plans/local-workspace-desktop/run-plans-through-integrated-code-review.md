@@ -71,7 +71,7 @@ The boundaries this change is expected to touch. This list is guidance, not an a
 
 ## Verification Plan
 
-- Use Bun 1.4.3 and `bun run install:locked`. Run `bun scripts/run-tests.js src/ui/workspace/workspace-code-review.integration.test.ts src/ui/workspace/plan-workflow-review.integration.test.ts src/ui/workspace/plan-workflow-gates.integration.test.ts src/ui/workspace/plan-workflow-resume.integration.test.ts src/ui/workspace/standalone-ai-review.test.ts` and `bun run seams:check`.
+- Use Bun 1.4.3 and `bun run install:locked`. Run `bun scripts/run-tests.ts src/ui/workspace/workspace-code-review.integration.test.ts src/ui/workspace/plan-workflow-review.integration.test.ts src/ui/workspace/plan-workflow-gates.integration.test.ts src/ui/workspace/plan-workflow-resume.integration.test.ts src/ui/workspace/standalone-ai-review.test.ts` and `bun run seams:check`.
 - Planner names new real-process workflow/review tests using real Git/Plan fixtures. Assert stale review/resource identity, wrong Project, duplicate requests, generation changes, cancellation settlement, publication interruption, and restart without repeated decisions/effects.
 - Headed verification uses desktop approved Plan -> explicit Run -> progress -> Code Review -> accepted decision -> publication evidence. Also exercise approval-for-later, feedback, resume, guided review, and AI review cancellation. Discover and record the desktop dev command and URL/origin.
 - Confirm long diffs remain bounded and keyboard/screen-reader operation works. No standalone browser window/page supplies desktop review.

@@ -8,14 +8,14 @@ import { withProcessGlobalTestLock } from "./process-global-lock.ts";
 // Tripwire. The suite writes to ~/.wld through both a live Deno.env.get("HOME")
 // and a HOME_DIR snapshot taken when each test realm loads src/constants.js, so
 // running it against a real home silently rewrites the developer's global
-// settings, sessions and workflow metrics. scripts/run-tests.js sandboxes HOME;
+// settings, sessions and workflow metrics. scripts/run-tests.ts sandboxes HOME;
 // this fails loudly when the suite is launched some other way.
 
 test("suite runs against a sandboxed HOME", async () => {
     const sandbox = process.env["WLD_TEST_SANDBOX_HOME"];
     assert(
         sandbox,
-        "Tests must run via `bun run test` (or scripts/run-tests.js), which points HOME at a sandbox. " +
+        "Tests must run via `bun run test` (or scripts/run-tests.ts), which points HOME at a sandbox. " +
             "Running `deno test` directly lets tests write to the real ~/.wld.",
     );
 

@@ -390,7 +390,7 @@ child decomposition. If discovery changes approved scope or ownership, return th
 
 ## Verification Plan
 
-- Automated: every Attached child Plan runs targeted tests through `deno run -A scripts/run-tests.js <test paths>`; the
+- Automated: every Attached child Plan runs targeted tests through `bun scripts/run-tests.ts <test paths>`; the
   integrated Epic gate is `deno task ci`. Never run `deno test` directly.
 - Automated: black-box Claude adapter coverage runs against each declared Preview-compatible Claude Code version and
   records the tested capability matrix. Test fixtures must verify that ordinary prompts outside Attached Workflows reach

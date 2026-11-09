@@ -241,16 +241,16 @@ No Work Record supersession is proposed.
 ## Verification Plan
 
 Use sandboxed tests only. Add focused cases to existing suites or new adjacent integration files and run them through
-`scripts/run-tests.js`.
+`scripts/run-tests.ts`.
 
 ```sh
-deno run -A scripts/run-tests.js src/shared/workflow/planning-worktree.test.ts
-deno run -A scripts/run-tests.js src/shared/workflow/epic-branch-planning.integration.test.ts
-deno run -A scripts/run-tests.js src/shared/session/agent-switching.test.ts
-deno run -A scripts/run-tests.js src/shared/session/session-runtime.test.js
-deno run -A scripts/run-tests.js src/tools/__tests__/plan-written.test.ts
-bun scripts/run-tests.js src/shared/workflow/workflow.test.ts
-deno run -A scripts/run-tests.js src/shared/workflow/execution-plan-file.test.ts
+bun scripts/run-tests.ts src/shared/workflow/planning-worktree.test.ts
+bun scripts/run-tests.ts src/shared/workflow/epic-branch-planning.integration.test.ts
+bun scripts/run-tests.ts src/shared/session/agent-switching.test.ts
+bun scripts/run-tests.ts src/shared/session/session-runtime.test.js
+bun scripts/run-tests.ts src/tools/__tests__/plan-written.test.ts
+bun scripts/run-tests.ts src/shared/workflow/workflow.test.ts
+bun scripts/run-tests.ts src/shared/workflow/execution-plan-file.test.ts
 deno task seams:check
 deno task ci
 ```

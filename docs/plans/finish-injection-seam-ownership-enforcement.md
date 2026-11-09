@@ -279,19 +279,19 @@ session-independent validation extraction rather than replacing their historical
 
 ## Verification Plan
 
-- Automated checker contract: `deno run -A scripts/run-tests.js scripts/check-injection-seams.test.ts`. Tests must fail
+- Automated checker contract: `bun scripts/run-tests.ts scripts/check-injection-seams.test.ts`. Tests must fail
   for an undeclared imported `*Port`, a local all-required mixed port, a constructor-injected renamed collaborator, a
   stale manifest member, a missing declaration, a manifest entry for known RunWield machinery, and a declared generic
   dispatcher that routes an operation discriminator to both external and RunWield-owned work. They must pass for exact
   cohesive external declarations and ordinary immutable data.
 - Automated focused behavior:
-  `deno run -A scripts/run-tests.js src/shared/git-port.test.ts src/shared/package-resources.test.ts src/shared/extensions/wld-extension-manifest.test.ts src/cmd/load-plan/plan-recovery-flow.test.ts src/cmd/auth/index.test.ts src/cmd/sleep/index.test.ts src/cmd/router/index.test.ts src/cmd/agents/index.test.ts src/cmd/init/index.test.ts src/cmd/init/init-verification-confirmation.integration.test.ts src/cmd/resume/index.test.ts src/ui/theme/theme-discovery.test.ts src/ui/tui/boot-banner.test.ts src/ui/tui/system-notifications.test.ts src/shared/session/architecture-boundary.test.ts src/shared/workflow/architecture-boundary.test.ts`.
+  `bun scripts/run-tests.ts src/shared/git-port.test.ts src/shared/package-resources.test.ts src/shared/extensions/wld-extension-manifest.test.ts src/cmd/load-plan/plan-recovery-flow.test.ts src/cmd/auth/index.test.ts src/cmd/sleep/index.test.ts src/cmd/router/index.test.ts src/cmd/agents/index.test.ts src/cmd/init/index.test.ts src/cmd/init/init-verification-confirmation.integration.test.ts src/cmd/resume/index.test.ts src/ui/theme/theme-discovery.test.ts src/ui/tui/boot-banner.test.ts src/ui/tui/system-notifications.test.ts src/shared/session/architecture-boundary.test.ts src/shared/workflow/architecture-boundary.test.ts`.
 - Automated execution and validation behavior:
-  `bun scripts/run-tests.js src/shared/workflow/workflow.test.ts src/shared/workflow/execution-progress.test.ts src/shared/workflow/plan-location.integration.test.ts src/shared/workflow/authority-continuation.integration.test.ts src/shared/workflow/orchestrator.test.ts src/shared/workflow/validation-*.test.*`.
+  `bun scripts/run-tests.ts src/shared/workflow/workflow.test.ts src/shared/workflow/execution-progress.test.ts src/shared/workflow/plan-location.integration.test.ts src/shared/workflow/authority-continuation.integration.test.ts src/shared/workflow/orchestrator.test.ts src/shared/workflow/validation-*.test.*`.
 - Automated repository gates: `deno task seams:check`, then `deno task ci`. The seam check reports zero without changing
   `scripts/injection-seam-baseline.json` or creating another exception source.
 - Concurrency: run the complete `src/shared/workflow/validation-*.test.*` set twice in parallel through
-  `scripts/run-tests.js`. Both runs use separate sandboxed homes, projects, Plans, and repositories and produce no lock,
+  `scripts/run-tests.ts`. Both runs use separate sandboxed homes, projects, Plans, and repositories and produce no lock,
   journal, or settings contention.
 - Mutation proof:
     - add an internal method such as `recordWorkflowMetric` to a declared external port; the manifest/checker test fails;

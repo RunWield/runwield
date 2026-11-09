@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { createSandboxEnv } from "./run-tests.js";
+import { createSandboxEnv } from "./run-tests.ts";
 import { withProcessGlobalTestLock } from "../src/testing/process-global-lock.ts";
 
 for (const installed of [true, false]) {

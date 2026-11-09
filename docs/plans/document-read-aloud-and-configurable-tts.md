@@ -252,7 +252,7 @@ the owner's built-in-download choice is already settled.
 ## Verification Plan
 
 - Use Bun 1.4.3 and `bun run install:locked` before checks. Run focused tests with
-  `bun scripts/run-tests.js src/shared/speech src/tools/read-aloud.test.ts` and the relevant modified Workspace/Session
+  `bun scripts/run-tests.ts src/shared/speech src/tools/read-aloud.test.ts` and the relevant modified Workspace/Session
   test files. Run `bun run workspace:check`, `bun run workspace:build`, `bun run seams:check`, and
   `bun run fmt:check <changed files>`. RunWield owns the full CI gate after implementation.
 - Conversion fixtures include front matter, headings, tables, callouts, links, inline/fenced code, diagrams, HTML,

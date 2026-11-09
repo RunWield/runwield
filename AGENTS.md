@@ -19,7 +19,7 @@ types.
 
 ## Running Tests
 
-Use `bun run test` or `bun scripts/run-tests.js <test paths or runner options>`.
+Use `bun run test` or `bun scripts/run-tests.ts <test paths or runner options>`.
 Never run `bun test` directly. The isolated runner and preload guard give every
 test file its own process, disposable HOME, temporary directory, and
 `MNEMOTECA_DB_PATH`. `bun run ci` includes the full source and Golden portfolio;

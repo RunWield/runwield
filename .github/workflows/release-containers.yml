@@ -63,7 +63,10 @@ jobs:
                     bun scripts/build-plan-server-runtime.js
                   fi
             - name: Verify relocated remote runtime and diagnostic compilation
-              run: bun scripts/run-tests.js scripts/bun-remote-runtime.test.ts scripts/compile-entrypoint.test.ts
+              run: |
+                  runner=scripts/run-tests.ts
+                  if [ ! -f "$runner" ]; then runner=scripts/run-tests.js; fi
+                  bun "$runner" scripts/bun-remote-runtime.test.ts scripts/compile-entrypoint.test.ts
             - name: Qualify migrated tooling and Astro development without Deno
               run: bun run test:suite scripts/check-owned-runtime.test.ts scripts/task-compatibility.test.ts scripts/ci-policy.test.ts src/ui/workspace/workspace-dev-imports.integration.test.ts src/shared/http-server.test.ts src/shared/native-file-lock.test.ts src/shared/foreground-process.test.ts
             - name: Print toolchain failure logs

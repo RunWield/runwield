@@ -43,7 +43,7 @@ coordinate a real filesystem read across refresh; admission therefore needs `mkf
 process groups (`process.kill(-pid)`). Its proof uses POSIX `env -u` to disable inherited Bun orphan cleanup so it
 exercises command cancellation itself. RV-D10 needs `git` on PATH and sets its own author and committer identity
 through environment variables. Its tests and proofs create repositories only in temporary directories outside the
-materialized project, then remove them in `finally`. Run `bun run test` inside a materialized fixture. RunWield's own test suite uses `bun scripts/run-tests.js`, not these package scripts.
+materialized project, then remove them in `finally`. Run `bun run test` inside a materialized fixture. RunWield's own test suite uses `bun scripts/run-tests.ts`, not these package scripts.
 
 ## Fixture revisions after owner adjudication
 
@@ -168,7 +168,7 @@ invalid or stale finding labels stop scoring.
 Run the runner's tests without model spending:
 
 ```bash
-bun scripts/run-tests.js scripts/reviewer-benchmark
+bun scripts/run-tests.ts scripts/reviewer-benchmark
 ```
 
 ## Manual proof check

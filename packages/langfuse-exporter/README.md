@@ -132,7 +132,7 @@ uses `input_cache_creation`, not the Plan's provisional `input_cache_write`; it 
 From the repository, run the isolated test runner:
 
 ```sh
-bun scripts/run-tests.js packages/langfuse-exporter
+bun scripts/run-tests.ts packages/langfuse-exporter
 ```
 
 Tests capture local HTTP requests through `deliver` and `confirm`. The integration test copies only production

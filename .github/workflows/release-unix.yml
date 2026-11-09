@@ -71,7 +71,10 @@ jobs:
             - name: Run isolated source and Golden shard
               env:
                   WLD_TEST_SHARD: ${{ matrix.shard }}/4
-              run: bun scripts/run-tests.js
+              run: |
+                  runner=scripts/run-tests.ts
+                  if [ ! -f "$runner" ]; then runner=scripts/run-tests.js; fi
+                  bun "$runner"
             - name: Retain test reports
               if: always()
               uses: actions/upload-artifact@v5
