@@ -9,7 +9,7 @@ import { SUBAGENTS } from "../../constants.js";
 import { loadSubAgentDefinition } from "../session/subagent-definitions.ts";
 
 // Validation prompts use the same layered role names in every runtime.
-export { getAgentDisplayName } from "../session/agents.js";
+export { getAgentDisplayName } from "../session/agents.ts";
 
 /**
  * Load reviewer as a bare workflow prompt instead of a normal agent definition.

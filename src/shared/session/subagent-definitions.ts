@@ -9,7 +9,7 @@ import { extractYaml } from "../front-matter.ts";
 import { join } from "node:path";
 import { AGENT_DEFS_DIR, AGENTS, SUBAGENTS } from "../../constants.js";
 import { ensureBundledAgentDefFile } from "./agent-assets.ts";
-import { composeSharedPracticePrompt, loadAgentDefFromPath } from "./agents.js";
+import { composeSharedPracticePrompt, loadAgentDefFromPath } from "./agents.ts";
 import type { AgentDefinition } from "./types.js";
 import { normalizeBashAllowedCommands } from "../bash-command-policy.ts";
 

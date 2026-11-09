@@ -6,7 +6,7 @@ import { deliveryReportText } from "./delivery-report-text.ts";
  */
 
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
-import { normalizeAgentInternalName } from "../../shared/session/agents.js";
+import { normalizeAgentInternalName } from "../../shared/session/agents.ts";
 import { formatImageAttachmentMarker } from "../../shared/session/image-attachments.ts";
 import { createTuiInteractionAdapter } from "./runtime-interaction-adapter.ts";
 import { setTerminalTitleForName } from "./terminal-title.ts";

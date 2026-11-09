@@ -12,7 +12,7 @@ import { fileURLToPath as fromFileUrl } from "node:url";
 import { AGENTS, isPlannedChangeClassification, SUBAGENTS } from "../../constants.js";
 import { loadPlan } from "../../plan-store.js";
 
-import { getAgentDisplayName } from "../session/agents.js";
+import { getAgentDisplayName } from "../session/agents.ts";
 
 import { runIsolatedAgentSession } from "../session/session.js";
 import { type LocalCIPort, runLocalCI } from "./validation-local-ci.ts";

@@ -15,7 +15,7 @@ import {
     getPromptTemplatePaths,
     resolveModel,
 } from "../session/session.js";
-import { loadAgentDef } from "../session/agents.js";
+import { loadAgentDef } from "../session/agents.ts";
 import { assertModelExecutionBackendSupported } from "../models/model-execution.ts";
 import { parseProviderModel } from "../models/model-validation.ts";
 import { modelSupportsImageInput, resolveVisionFallbackModel } from "../session/image-attachments.ts";

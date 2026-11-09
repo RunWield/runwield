@@ -5,7 +5,6 @@
     "src/plan-store.js",
     "src/shared/owner-coordination/session-activations.js",
     "src/shared/owner-coordination/sessions.js",
-    "src/shared/session/agents.js",
     "src/shared/session/hosted-session.js",
 
     "src/shared/session/session-runtime-events.js",

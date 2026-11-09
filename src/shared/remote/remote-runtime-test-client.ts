@@ -5,7 +5,7 @@ import { Type } from "typebox";
 import { createMnemotecaTools, type MemoryParams } from "../../extensions/mnemoteca/tools.ts";
 import { denoHelperBinaryExec } from "../../extensions/helper-binary-exec.ts";
 import { assembleFinalSystemPrompt } from "../session/session.js";
-import { loadAgentDef } from "../session/agents.js";
+import { loadAgentDef } from "../session/agents.ts";
 import { runSleepCommand, SYSTEM_SLEEP_MNEMOTECA_PORT } from "../../cmd/sleep/index.ts";
 import { startInteractiveSession } from "../../ui/tui/chat-session.ts";
 import { stdinStream } from "../../testing/stdin-stream.ts";

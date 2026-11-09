@@ -31,7 +31,7 @@ import {
 } from "../session/session.js";
 import { resolveInstalledPackagePromptResources } from "../package-resources.ts";
 import { expandSkillRecord, listSkills } from "../session/skill-catalog.ts";
-import { getAgentDisplayName, listAgentDefNames, loadAgentDef, resolveAgentDefsDir } from "../session/agents.js";
+import { getAgentDisplayName, listAgentDefNames, loadAgentDef, resolveAgentDefsDir } from "../session/agents.ts";
 import { createRootSessionManager, getRunWieldSessionsBaseDir } from "../session/root-session.ts";
 import { openFileSessionStore } from "../session/file-session-store.ts";
 

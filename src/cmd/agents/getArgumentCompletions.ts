@@ -1,5 +1,5 @@
 import { getCwd } from "../../constants.js";
-import { listAvailableAgents } from "../../shared/session/agents.js";
+import { listAvailableAgents } from "../../shared/session/agents.ts";
 import { AGENTS } from "../../constants.js";
 import type { CommandCompletionItem } from "../registry.js";
 

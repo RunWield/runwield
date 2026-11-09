@@ -21,7 +21,7 @@ import {
     namedInvocationDisplayText,
     namedInvocationImageReferences,
 } from "./named-invocation.ts";
-import { getAgentDisplayName, normalizeAgentInternalName } from "./agents.js";
+import { getAgentDisplayName, normalizeAgentInternalName } from "./agents.ts";
 import { RuntimeUsageTotals } from "./runtime-usage-totals.ts";
 import { WORKFLOW_TOOL_EVENT_CUSTOM_TYPE } from "../workflow/workflow-tool-events.ts";
 

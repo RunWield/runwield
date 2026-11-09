@@ -23,7 +23,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { basename, join } from "node:path";
 import { AGENTS } from "../../constants.js";
-import { loadAgentDef } from "./agents.js";
+import { loadAgentDef } from "./agents.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import {
     __getRootSessionMetadataForTests,

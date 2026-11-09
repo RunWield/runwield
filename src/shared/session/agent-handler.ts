@@ -26,7 +26,7 @@ import {
 } from "../workflow/validation.ts";
 import { runWorkflowValidationToStableBoundary } from "../workflow/validation.ts";
 import { switchActiveAgent } from "./agent-switching.ts";
-import { getAgentDisplayName } from "./agents.js";
+import { getAgentDisplayName } from "./agents.ts";
 import { emitHostedSessionRuntimeEvent, emitSystemStatus, RuntimeEventTypes } from "./session-runtime-events.js";
 import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "./session-runtime-interactions.ts";
 import {

@@ -6,7 +6,7 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { theme } from "../theme/theme.ts";
 import { AGENTS, getCwd, getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.js";
 import { getSettingsManager } from "../../shared/settings.js";
-import { getAgentDisplayName } from "../../shared/session/agents.js";
+import { getAgentDisplayName } from "../../shared/session/agents.ts";
 import { createSessionSnapshotWindow } from "./session-snapshot-window.ts";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
 import { readRunWieldPackageInstallSync } from "../../shared/package-install.ts";

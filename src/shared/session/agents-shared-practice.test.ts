@@ -10,7 +10,7 @@ import { test } from "node:test";
 import { match as assertMatch } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { listAgentDefNames, loadAgentDef } from "./agents.js";
+import { listAgentDefNames, loadAgentDef } from "./agents.ts";
 
 const BUNDLED_AGENT_DEFS = join("src", "agent-definitions");
 const SHARED_PRACTICE_DIR = join(BUNDLED_AGENT_DEFS, "shared-practice");

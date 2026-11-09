@@ -5,7 +5,7 @@
 
 import { createAgentHandler } from "./agent-handler.ts";
 import { readPersistedActiveAgentName, readPersistedManualModelState } from "./active-agent-session.ts";
-import { getAgentBusyLines, normalizeAgentInternalName } from "./agents.js";
+import { getAgentBusyLines, normalizeAgentInternalName } from "./agents.ts";
 import {
     appendDebugLog,
     ensureRootAgentSession,

@@ -39,7 +39,7 @@ import { buildAgentSession, composeClaudeCliBridgedTools } from "../shared/sessi
 import { CLAUDE_CLI_MCP_PROVENANCE, startRunWieldMcpBridge } from "../shared/session/backends/claude-cli/mcp-bridge.ts";
 import { resolveImageGenerationSettings } from "../shared/image-generation-settings.ts";
 import type { ImageGenerationSettings } from "../shared/image-generation-settings.ts";
-import { loadAgentDef } from "../shared/session/agents.js";
+import { loadAgentDef } from "../shared/session/agents.ts";
 import { loadSubAgentDefinition } from "../shared/session/subagent-definitions.ts";
 import { resolveDelegatedToolNames } from "./delegate-agent.ts";
 

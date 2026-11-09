@@ -32,7 +32,7 @@ import { hasNonGitExecutionConsent, rememberNonGitExecutionConsent } from "../no
 import { resolvePlanExecutionRuntimeAgent } from "./execution-agent.ts";
 import { switchActiveAgent } from "../session/agent-switching.ts";
 import { runRootTurn } from "../session/session.js";
-import { getAgentDisplayName } from "../session/agents.js";
+import { getAgentDisplayName } from "../session/agents.ts";
 import { sanitizeSessionName } from "../session-name.ts";
 import { normalizeTriageOutcome, type TriageOutcome, type TriageOutcomeInput } from "./triage-outcome.ts";
 import {
