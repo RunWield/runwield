@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { assertEquals, assertInstanceOf } from "../../testing/assertions.ts";
 import { Container, Editor, Spacer, TuiMainScreen, type Component } from "@earendil-works/pi-tui";
-import { createUiApi, type VisibleToolBlock } from "./api.js";
+import { createUiApi, type VisibleToolBlock } from "./api.ts";
 import type { ManagedSyncStatus, ToolExecutionBlockApi } from "./types.js";
 import {
     KeyboardHelpBlock,

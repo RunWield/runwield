@@ -33,7 +33,7 @@ import {
     SYSTEM_UPDATE_CHECK_PORTS,
 } from "../../shared/update-check.ts";
 import { endBlink, renderBootLogo } from "./boot-logo.ts";
-import { createUiApi } from "./api.js";
+import { createUiApi, type VisibleToolBlock } from "./api.ts";
 import { SpinnerBlock, ToolExecutionBlock, ToolExecutionGroupBlock } from "./blocks.js";
 import { createSessionSnapshotWindow } from "./session-snapshot-window.ts";
 import { type FooterTheme, renderUpdateNoticeLine } from "./chat-footer.ts";
@@ -107,8 +107,6 @@ interface RenderedContainerContent {
     lines: string[];
     children: RenderedChildLayout[];
 }
-
-type VisibleToolBlock = ToolExecutionGroupBlock | ToolExecutionBlock;
 
 class MeasuredContainer extends Container {
     renderedChildren: RenderedChildLayout[] = [];
