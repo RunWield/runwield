@@ -89,7 +89,7 @@ function runtimeProjectRoot() {
     const sandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
     const home = getHomeDir();
     if (!sandboxHome) {
-        throw new Error("SessionRuntime tests must run through scripts/run-tests.js with an isolated HOME");
+        throw new Error("SessionRuntime tests must run through scripts/run-tests.ts with an isolated HOME");
     }
     const projectRoot = join(home, "runtime-project");
     fsMkdirSync(projectRoot, { recursive: true });
@@ -100,7 +100,7 @@ function ensureRuntimeModelFixture() {
     const sandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
     const home = getHomeDir();
     if (!sandboxHome) {
-        throw new Error("SessionRuntime tests must run through scripts/run-tests.js with an isolated HOME");
+        throw new Error("SessionRuntime tests must run through scripts/run-tests.ts with an isolated HOME");
     }
     const runwieldDir = join(home, ".wld");
     fsMkdirSync(runwieldDir, { recursive: true });

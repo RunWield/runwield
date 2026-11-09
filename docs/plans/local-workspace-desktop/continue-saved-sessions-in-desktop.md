@@ -69,7 +69,7 @@ The boundaries this change is expected to touch. This list is guidance, not an a
 
 ## Verification Plan
 
-- Use Bun 1.4.3 and `bun run install:locked`. Run `bun scripts/run-tests.js src/acp/server.test.js src/acp/managed-session.integration.test.ts src/ui/workspace/workspace-session-ux.test.tsx src/ui/workspace/session-continuation.integration.test.ts src/ui/workspace/background-continuation.integration.test.ts` and `bun run seams:check`.
+- Use Bun 1.4.3 and `bun run install:locked`. Run `bun scripts/run-tests.ts src/acp/server.test.js src/acp/managed-session.integration.test.ts src/ui/workspace/workspace-session-ux.test.tsx src/ui/workspace/session-continuation.integration.test.ts src/ui/workspace/background-continuation.integration.test.ts` and `bun run seams:check`.
 - Planner assigns exact new real-process Session parity tests. Prove wrong-Project, duplicate request, stale generation, oversized image, busy writer, unknown capability, and archived/unarchived outcomes against real Core stores and locks.
 - Existing tests may change transport/import location, but committed history, writer exclusion, configuration hydration, background delivery, and interaction semantics remain protected.
 - Headed verification uses desktop Session discovery/detail and new-Session flows. Discover and record the normal desktop dev command and URL/origin. Exercise long history, keyboard interaction, image preview, a question, steering, cancellation, and a background result after the original prompt returns.

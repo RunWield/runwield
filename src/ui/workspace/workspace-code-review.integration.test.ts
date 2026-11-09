@@ -1,6 +1,6 @@
 import { rmdir as fsRmdir } from "node:fs/promises";
-// @ts-nocheck: test fixture types are checked by scripts/run-tests.js, not Astro check.
-// @ts-nocheck: test fixture types are checked by scripts/run-tests.js, not Astro check.
+// @ts-nocheck: This fixture runs through scripts/run-tests.ts outside Astro check.
+// @ts-nocheck: This fixture runs through scripts/run-tests.ts outside Astro check.
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
 import { join } from "node:path";
 import { tmpdir } from "node:os";

@@ -1,4 +1,4 @@
-// @ts-nocheck: Deno test imports are checked by scripts/run-tests.js, not Astro check.
+// @ts-nocheck: This fixture runs through scripts/run-tests.ts outside Astro check.
 import { test } from "node:test";
 import { Window } from "happy-dom";
 import { readSessionDraft, saveSessionDraft } from "./browser/session-drafts.ts";

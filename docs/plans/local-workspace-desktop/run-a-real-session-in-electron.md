@@ -76,7 +76,7 @@ The boundaries this change is expected to touch. This list is guidance, not an a
 
 ## Verification Plan
 
-- Use Bun 1.4.3 and `bun run install:locked`. Run `bun scripts/run-tests.js src/acp/server.test.js src/acp/managed-session.integration.test.ts` and `bun run seams:check`.
+- Use Bun 1.4.3 and `bun run install:locked`. Run `bun scripts/run-tests.ts src/acp/server.test.js src/acp/managed-session.integration.test.ts` and `bun run seams:check`.
 - Planner defines the exact new process/desktop test paths and commands. Tests execute the built host boundary and real runtime; a mocked ACP transcript or a bridge that never reaches `wld` must fail.
 - Prove missing capabilities prevent dependent mutation, malformed bridge requests are refused, and an ordinary external ACP client still works without Workspace extensions.
 - Discover and document the new normal desktop dev command and renderer URL/origin. Headed browser verification must exercise input, streamed output, and question/answer in Electron. A plain browser check does not replace Electron preload/process evidence.

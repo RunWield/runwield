@@ -69,7 +69,7 @@ The boundaries this change is expected to touch. This list is guidance, not an a
 
 ## Verification Plan
 
-- Use Bun 1.4.3 and `bun run install:locked`. Run `bun scripts/run-tests.js src/ui/workspace/owner-usage-report.integration.test.ts src/ui/workspace/owner-usage-scale.integration.test.ts src/ui/workspace/owner-usage-settings.integration.test.ts src/ui/workspace/owner-usage-settings-remote.integration.test.ts src/ui/workspace/usage-export-journey.integration.test.ts` and `bun run seams:check`.
+- Use Bun 1.4.3 and `bun run install:locked`. Run `bun scripts/run-tests.ts src/ui/workspace/owner-usage-report.integration.test.ts src/ui/workspace/owner-usage-scale.integration.test.ts src/ui/workspace/owner-usage-settings.integration.test.ts src/ui/workspace/owner-usage-settings-remote.integration.test.ts src/ui/workspace/usage-export-journey.integration.test.ts` and `bun run seams:check`.
 - Planner defines new real-process protocol tests for exact report parity, alias deduplication, unauthorized Project rejection, duplicate mutations, write-only credentials, explicit export approval, destination changes, revocation, and clear-history confirmation.
 - Headed verification uses desktop Usage -> period/filter -> linked work, then Settings -> recording -> approved export -> credential replacement -> revoke/clear selected history. Discover and record the desktop dev command and URL/origin.
 - Verify no secret appears in renderer read payloads, diagnostics, persisted UI preferences, or screenshots. Test canceled destructive confirmation and an in-flight delivery warning.

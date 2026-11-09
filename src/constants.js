@@ -273,7 +273,7 @@ const UNSANDBOXED_TEST_RUN_MESSAGE =
     "MNEMOTECA_DB_PATH at a sandbox. Direct test commands can overwrite real ~/.wld and memory databases.";
 
 // Fail the moment a test realm loads this module without the sandbox marker
-// that only scripts/run-tests.js sets. The lazy guard below is what makes the
+// that only scripts/run-tests.ts sets. The lazy guard below is what makes the
 // damage impossible; this makes the mistake obvious immediately, before a
 // half-finished run leaves confusing state behind. Nearly every test reaches
 // this module transitively, so it needs no per-file opt-in.
@@ -287,7 +287,7 @@ if (IS_TEST_REALM && !readOptionalEnv("WLD_TEST_SANDBOX_HOME")) {
  * Returns the failure message, or null when resolution is safe.
  *
  * The check is whether the run is sandboxed at all, not which home was asked
- * for. Once scripts/run-tests.js owns HOME, the developer's real home is simply
+ * for. Once scripts/run-tests.ts owns HOME, the developer's real home is simply
  * not reachable, so tests are free to point HOME wherever they like — at their
  * own temp directories, or at a fictional path like /home/tester for pure path
  * math. Without the sandbox there is nothing standing between the suite and the

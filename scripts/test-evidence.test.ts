@@ -8,7 +8,7 @@ import { assertEquals, assertStringIncludes } from "../src/testing/assertions.ts
 
 async function runFixture(file: string, reports: string, extra: string[] = []) {
     const result = await captureScriptProcess(process.execPath, {
-        args: ["scripts/run-tests.js", "--report-dir", reports, "--isolated", file, ...extra],
+        args: ["scripts/run-tests.ts", "--report-dir", reports, "--isolated", file, ...extra],
         env: { WLD_TEST_CONCURRENCY: "1" },
         stdout: "piped",
         stderr: "piped",

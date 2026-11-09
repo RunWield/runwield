@@ -50,7 +50,7 @@ test("the test runner skips excluded paths it would otherwise discover", async (
             args: runtimeSourceArgs([
                 "run",
                 "-A",
-                fileURLToPath(new URL("./run-tests.js", import.meta.url)),
+                fileURLToPath(new URL("./run-tests.ts", import.meta.url)),
                 "--isolated",
                 root,
                 "--exclude",
@@ -104,7 +104,7 @@ test("isolated shards execute the whole fixture portfolio exactly once with real
                     args: runtimeSourceArgs([
                         "run",
                         "-A",
-                        "scripts/run-tests.js",
+                        "scripts/run-tests.ts",
                         "--isolated",
                         root,
                         "--shard",
@@ -153,7 +153,7 @@ test("prepared dependencies preserve isolated execution and changed-source failu
                 });\n`,
             );
         }
-        const args = ["run", "-A", "scripts/run-tests.js", "--report-dir", reports, "--isolated", root];
+        const args = ["run", "-A", "scripts/run-tests.ts", "--report-dir", reports, "--isolated", root];
         const command = () =>
             captureScriptProcess(process.execPath, {
                 args: runtimeSourceArgs(args),

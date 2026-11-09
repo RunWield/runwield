@@ -54,7 +54,7 @@ can still suspend CI.
 
 `bun run test` remains the focused source suite. `bun run test:golden-tui` runs the composed TUI scenarios and their
 harness tests; `test:golden-tui:extensive` runs the same complete portfolio. Always use these tasks or
-`bun scripts/run-tests.js <test paths or runner options>`; never invoke `bun test` directly. Each file gets a separate
+`bun scripts/run-tests.ts <test paths or runner options>`; never invoke `bun test` directly. Each file gets a separate
 process, HOME, temporary directory, and Mnemoteca database.
 
 Workspace memory diagnostics use the same Bun compiler and embedded payload as the CLI:

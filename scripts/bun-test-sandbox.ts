@@ -7,7 +7,7 @@ import { requirePinnedBun } from "./check-bun-runtime.ts";
 requirePinnedBun();
 const home = env.WLD_TEST_SANDBOX_HOME;
 if (!home || env.HOME !== home || env.USERPROFILE !== home) {
-    throw new Error("Refusing unsandboxed Bun tests. Use `bun run test` (scripts/run-tests.js).");
+    throw new Error("Refusing unsandboxed Bun tests. Use `bun run test` (scripts/run-tests.ts).");
 }
 const root = realpathSync(home);
 for (

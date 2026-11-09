@@ -69,7 +69,7 @@ The boundaries this change is expected to touch. This list is guidance, not an a
 
 ## Verification Plan
 
-- Use Bun 1.4.3 and `bun run install:locked`. Run `bun scripts/run-tests.js src/ui/workspace/server/workspace-search.test.ts src/ui/workspace/session-artifact-route.integration.test.ts src/ui/workspace/routes/api/review-file-containment.test.ts src/ui/workspace/routes/api/review-file-content.test.ts` and `bun run seams:check`.
+- Use Bun 1.4.3 and `bun run install:locked`. Run `bun scripts/run-tests.ts src/ui/workspace/server/workspace-search.test.ts src/ui/workspace/session-artifact-route.integration.test.ts src/ui/workspace/routes/api/review-file-containment.test.ts src/ui/workspace/routes/api/review-file-content.test.ts` and `bun run seams:check`.
 - Planner defines focused real-process reader/search tests using real canonical data. Prove refresh after external edits, stale hit exclusion, map revocation, safe symlink/path handling, pagination after revalidation, cache corruption, and bounded large-resource behavior.
 - Headed verification uses desktop knowledge navigation -> document -> provenance -> return, and search -> filter/page -> result -> back. Discover and record the desktop dev command and URL/origin. Exercise images, contents navigation, print, keyboard access, and long documents.
 - Confirm desktop does not launch/embed standalone reader pages. Separately prove retained standalone reading works without Electron and does not gain broader access.

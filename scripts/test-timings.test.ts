@@ -13,7 +13,7 @@ import { test } from "node:test";
 import process from "node:process";
 import { assertEquals, assertThrows } from "../src/testing/assertions.ts";
 import { join } from "node:path";
-import { parseRunnerArguments, selectTestShard } from "./run-tests.js";
+import { parseRunnerArguments, selectTestShard } from "./run-tests.ts";
 import { mergeTestTimings, orderTestsByTiming, readTestTimings, writeTestTimings } from "./test-timings.ts";
 
 test("test runner parses scheduling controls without passing them to Deno", () => {
@@ -100,7 +100,7 @@ test("release fail-fast stops scheduling new isolated test files", async () => {
         const output = await captureScriptProcess(process.execPath, {
             args: process.versions.bun
                 ? ["run", "--silent", "test:all:suite", "--fail-fast", "--isolated", root]
-                : runtimeSourceArgs(["run", "-A", "scripts/run-tests.js", "--fail-fast", "--isolated", root]),
+                : runtimeSourceArgs(["run", "-A", "scripts/run-tests.ts", "--fail-fast", "--isolated", root]),
             cwd: getCwd(),
             env: { WLD_TEST_CONCURRENCY: "1" },
             stdout: "piped",

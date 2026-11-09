@@ -371,7 +371,7 @@ conform to the same application state model rather than create parallel lifecycl
 ## Verification Plan
 
 - Automated: run focused Plan-store, Slicer, Ticket Reference, Work Record, validation, publication, recovery, TUI, and
-  Workspace tests through `deno run -A scripts/run-tests.js <test paths>`; run `deno task seams:check`; run
+  Workspace tests through `bun scripts/run-tests.ts <test paths>`; run `deno task seams:check`; run
   `deno task
 ci` for the integrated branch. Tests that change `HOME` or current working directory must use the project
   process lock, and Git scenarios must use real isolated fixtures.
