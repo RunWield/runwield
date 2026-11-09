@@ -31,7 +31,7 @@ import {
 import { runSnipFiltersCommand } from "./snip-filters/index.ts";
 import { getMcpCompletions, runMcpCommand } from "./mcp/index.ts";
 import { runWorkspaceCommand } from "./workspace/index.ts";
-import { getAgentDisplayName } from "../shared/session/agents.js";
+import { getAgentDisplayName } from "../shared/session/agents.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../shared/work-records/mnemoteca-port.ts";
 
 /** Known CLI / slash command names. Defined alongside the registry so adding a new command only touches one file. */

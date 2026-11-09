@@ -112,7 +112,7 @@ import {
     normalizeAgentInternalName,
     resolveAgentDefsDir as _resolveAgentDefsDir,
     resolveSessionToolNames,
-} from "./agents.js";
+} from "./agents.ts";
 import {
     getCustomSetting,
     getMergedCustomSetting,

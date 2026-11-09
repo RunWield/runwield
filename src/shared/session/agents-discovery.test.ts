@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { listAllAgentDefinitions, loadAgentDef } from "./agents.js";
+import { listAllAgentDefinitions, loadAgentDef } from "./agents.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 
 import process from "node:process";

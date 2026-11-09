@@ -12,7 +12,7 @@ import {
     readGlobalAgentMd,
 } from "./session.js";
 
-import { getAgentDisplayName, listAvailableAgents } from "./agents.js";
+import { getAgentDisplayName, listAvailableAgents } from "./agents.ts";
 import { getCustomSetting } from "../settings.js";
 import { loadPlan } from "../../plan-store.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";

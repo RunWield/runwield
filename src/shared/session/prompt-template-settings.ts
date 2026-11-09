@@ -1,5 +1,5 @@
 import { AGENTS } from "../../constants.js";
-import { loadAgentDef } from "./agents.js";
+import { loadAgentDef } from "./agents.ts";
 import { readPersistedActiveAgentName, readPersistedManualModelState } from "./active-agent-session.ts";
 import {
     assertThinkingLevelBackendSupportedForInvocation,

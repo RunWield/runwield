@@ -34,7 +34,7 @@ import {
     EMPTY_PROJECT_DIRECTORY_WELCOME_BODY,
     isEmptyProjectDirectory,
 } from "../../shared/project-state.ts";
-import { listAvailableAgents } from "../../shared/session/agents.js";
+import { listAvailableAgents } from "../../shared/session/agents.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
 import {
     getCustomSetting,

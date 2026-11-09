@@ -1,7 +1,7 @@
 import process from "node:process";
 import { AGENTS } from "../../constants.js";
 import { createSessionRuntime } from "../session/session-runtime.ts";
-import { getAgentDisplayName } from "../session/agents.js";
+import { getAgentDisplayName } from "../session/agents.ts";
 import { formatCodeReviewAnnotations, runCodeReview } from "../../ui/review/code-review.ts";
 import {
     type ReviewConversation,

@@ -367,7 +367,7 @@ function windowsHomeDir() {
  * Canonical agent identifiers. Most values match an agent definition filename
  * (without the `.md` extension) in `src/agent-definitions/`. The display name
  * for standard agents is the `name:` field inside that file and must be loaded
- * via `getAgentDisplayName()` from `shared/session/agents.js` — never
+ * via `getAgentDisplayName()` from `shared/session/agents.ts` — never
  * hardcoded.
  *
  * `INIT`, `SLICER`, `REVIEWER`, `REVIEWER_FEEDBACK_ENGINEER`, and `DELEGATED`

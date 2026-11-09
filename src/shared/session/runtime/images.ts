@@ -1,6 +1,6 @@
 import { AGENTS } from "../../../constants.js";
 import { readPersistedManualModelState, resolveResumeAgentName } from ".././active-agent-session.ts";
-import { loadAgentDef } from ".././agents.js";
+import { loadAgentDef } from ".././agents.ts";
 import { resolveModel } from ".././session.js";
 import { resolvePromptTemplateSettings } from "../prompt-template-settings.ts";
 import { resolveNamedInvocation } from ".././named-invocation.ts";

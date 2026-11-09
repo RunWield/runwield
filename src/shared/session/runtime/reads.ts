@@ -1,4 +1,4 @@
-import { getAgentDisplayName } from ".././agents.js";
+import { getAgentDisplayName } from ".././agents.ts";
 import {
     expandPromptTemplate,
     expandSkillCommand,

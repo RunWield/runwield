@@ -105,7 +105,7 @@ structured agent outcomes, calls Plan and execution services, and decides which 
 | Workflow application logic  | Interpret tool outcomes, route requests, choose post-planning and post-execution actions                             | `src/shared/session/agent-handler.ts`, `src/shared/workflow/orchestrator.js`, `src/shared/workflow/decisions.ts`                                         |
 | Plan domain                 | Canonical Markdown persistence, identities, hierarchy, lifecycle state machine, collaboration write lock             | `src/plan-store.js`, `src/shared/workflow/plan-lifecycle.ts`                                                                                             |
 | Execution domain            | Worktree preparation, Engineer completion gate, local validation, repair, merge-back, recovery metadata              | `src/shared/workflow/workflow.ts`, `src/shared/workflow/validation.ts`, `src/shared/worktree.js`                                                         |
-| Configuration and policy    | Layered agent definitions, settings, model resolution, protected tools, skills/prompts/extensions                    | `src/shared/session/agents.js`, `src/shared/settings.js`, `src/shared/models/`, `src/tools/registry.ts`                                                  |
+| Configuration and policy    | Layered agent definitions, settings, model resolution, protected tools, skills/prompts/extensions                    | `src/shared/session/agents.ts`, `src/shared/settings.js`, `src/shared/models/`, `src/tools/registry.ts`                                                  |
 | Local platform services     | Git probing, worktree registry, metrics, collaboration crypto/protocol/secrets, binary preflight                     | `src/shared/git.ts`, `src/shared/worktree-registry.js`, `src/shared/workflow/metrics.js`, `src/shared/collaboration/`, `src/shared/runtime-preflight.js` |
 
 Presentation details, terminal widgets, ACP wire types, HTTP routes, Astro/React components, and browser review
@@ -1092,7 +1092,7 @@ The highest-value cross-boundary paths for later confidence analysis are visible
 | Runtime event contract                    | `src/shared/session/session-runtime-events.js`                                |
 | Interaction contract                      | `src/shared/session/session-runtime-interactions.ts`                          |
 | Pi session construction and prompt bridge | `src/shared/session/session.js`                                               |
-| Agent definition layering                 | `src/shared/session/agents.js`                                                |
+| Agent definition layering                 | `src/shared/session/agents.ts`                                                |
 | Agent switching                           | `src/shared/session/agent-switching.ts`                                       |
 | Workflow-aware turn handling              | `src/shared/session/agent-handler.ts`                                         |
 | Routing orchestration                     | `src/shared/workflow/orchestrator.js`                                         |

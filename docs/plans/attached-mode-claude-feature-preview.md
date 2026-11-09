@@ -349,7 +349,7 @@ child decomposition. If discovery changes approved scope or ownership, return th
   so both carriers use one semantic contract. This Epic must not recreate validation sequencing here or in the adapter.
 - `src/tools/` — make existing Core Session protected tools consume the same structured outcome contracts where needed
   to prevent semantic drift; tools remain Session carriers, not sources of workflow policy.
-- `src/shared/session/agent-assets.ts`, `agents.js`, and related asset-resolution modules — resolve the effective
+- `src/shared/session/agent-assets.ts`, `agents.ts`, and related asset-resolution modules — resolve the effective
   layered role instructions for Attached responses. Attached code may import them; it must not start a model turn.
 - `src/shared/workflow/plan-lifecycle.ts`, `state-transition.ts`, and `controller-registry.ts` — reused unchanged for
   Plan transitions, revision checks, and transition guards.

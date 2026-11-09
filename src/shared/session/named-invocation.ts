@@ -5,7 +5,7 @@ import { fileExists } from "../helpers.ts";
 import { parseProviderModel } from "../models/model-validation.ts";
 import { resolveInstalledPackagePromptResources } from "../package-resources.ts";
 import { assertPersonalResourcePath, PersonalResourcePathError } from "../remote/personal-resources.ts";
-import { isWorkflowOnlyAgent, loadAgentDef, normalizeAgentInternalName } from "./agents.js";
+import { isWorkflowOnlyAgent, loadAgentDef, normalizeAgentInternalName } from "./agents.ts";
 import { getPromptTemplatePaths } from "./session.js";
 import { expandSkillRecord, findSkill } from "./skill-catalog.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";

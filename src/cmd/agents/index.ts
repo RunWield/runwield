@@ -7,7 +7,7 @@ import {
     buildWorkflowOnlyAgentMessage,
     isWorkflowOnlyAgent,
     listAvailableAgents,
-} from "../../shared/session/agents.js";
+} from "../../shared/session/agents.ts";
 import { applyUserAgentSelection, listUserAgentOptions } from "../../shared/session/user-selection.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { AGENTS, getCwd } from "../../constants.js";

@@ -10,7 +10,7 @@
 
 import { getBundledAgentDefsPath } from "../session/agent-assets.ts";
 import { listVisibleSkillCatalog } from "../session/skill-catalog.ts";
-import { loadAgentDef } from "../session/agents.js";
+import { loadAgentDef } from "../session/agents.ts";
 import { buildBridgedToolPromptAppendix } from "../session/bridged-tools/prompt.ts";
 import type { AttachedHostRole } from "./operations.ts";
 import { ATTACHED_HOSTS, type AttachedHostId } from "./hosts.ts";

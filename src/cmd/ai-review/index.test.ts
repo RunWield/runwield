@@ -5,7 +5,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { parseGuidedReviewMetadataLine, parseGuidedReviewUsageEventLine } from "../guided-review/protocol.ts";
 import { AGENTS } from "../../constants.js";
-import { listAvailableAgents, loadAgentDef } from "../../shared/session/agents.js";
+import { listAvailableAgents, loadAgentDef } from "../../shared/session/agents.ts";
 import { getCliCommandDefinitions, requiresProjectDirectoryConsent } from "../registry.js";
 import { runAiReviewCommand } from "./index.ts";
 

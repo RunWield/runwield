@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { SUBAGENTS } from "../../constants.js";
-import { isWorkflowOnlyAgent, listAllAgentDefinitions, listAvailableAgents, loadAgentDef } from "./agents.js";
+import { isWorkflowOnlyAgent, listAllAgentDefinitions, listAvailableAgents, loadAgentDef } from "./agents.ts";
 import { loadSubAgentDefinition } from "./subagent-definitions.ts";
 
 const EXECUTION_CONTRACTS: ReadonlyArray<{
