@@ -1,7 +1,7 @@
 import { Container, TuiMainScreen } from "@earendil-works/pi-tui";
 import { initRunWieldTheme } from "../theme/theme.ts";
 import { createUiApi } from "./api.ts";
-import { SpinnerBlock } from "./blocks.js";
+import { SpinnerBlock } from "./blocks.ts";
 import stripAnsi from "strip-ansi";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 

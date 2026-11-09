@@ -9,7 +9,7 @@ import { getCwdInitState } from "../../cmd/init/init-state.ts";
 import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { getSettingsManager } from "../../shared/settings.js";
 import { createUiApi } from "./api.ts";
-import { SpinnerBlock } from "./blocks.js";
+import { SpinnerBlock } from "./blocks.ts";
 import { renderBootBanner } from "./boot-banner.ts";
 import { normalizeScreenText, VirtualTerminal } from "./testing/virtual-terminal.ts";
 

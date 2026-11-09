@@ -8,7 +8,7 @@ import {
     inspectMissingManagedProjectDirectory,
     inspectProjectDirectory,
 } from "../../shared/project-directory.ts";
-import { PromptSelectBlock } from "./blocks.js";
+import { PromptSelectBlock } from "./blocks.ts";
 import { getTUI, initTUI, stopTUI } from "./tui.ts";
 
 const acknowledgedRoots = new Set<string>();

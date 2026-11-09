@@ -7,7 +7,7 @@ import { getSettingsManager } from "../../shared/settings.js";
 import { AgyCliMcpSetupApprovalError } from "../../shared/session/backends/agy-cli/mcp-setup.ts";
 import { getEditorTheme, initRunWieldTheme } from "../theme/theme.ts";
 import { createUiApi } from "./api.ts";
-import { SpinnerBlock, ToolExecutionGroupBlock } from "./blocks.js";
+import { SpinnerBlock, ToolExecutionGroupBlock } from "./blocks.ts";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { installUiApiOverrides } from "./ui-api-overrides.ts";
 

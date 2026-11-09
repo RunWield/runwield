@@ -6,7 +6,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { StdinBuffer, TuiAltScreen } from "@earendil-works/pi-tui";
 import { createChatView } from "./chat-view.ts";
-import { ToolExecutionBlock, UserPromptBlock } from "./blocks.js";
+import { ToolExecutionBlock, UserPromptBlock } from "./blocks.ts";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { RunWieldTui } from "./tui.ts";
 import { installTerminalFocusState } from "./terminal-focus-state.ts";

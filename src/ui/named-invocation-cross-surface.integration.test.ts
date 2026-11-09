@@ -15,7 +15,7 @@ import { WorkspaceSessionContinuationService } from "./workspace/server/session-
 import { Container, TuiMainScreen } from "@earendil-works/pi-tui";
 import { VirtualTerminal } from "./tui/testing/virtual-terminal.ts";
 import { createUiApi } from "./tui/api.ts";
-import { SpinnerBlock } from "./tui/blocks.js";
+import { SpinnerBlock } from "./tui/blocks.ts";
 import { initRunWieldTheme } from "./theme/theme.ts";
 import { runScopedSubmitHandoffLoop } from "./tui/chat-session.ts";
 import { startRunWieldAcpServer } from "../acp/server.js";

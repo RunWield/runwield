@@ -15,7 +15,7 @@ import {
     ToolExecutionBlock,
     ToolExecutionGroupBlock,
     ValidationHandoffBlock,
-} from "./blocks.js";
+} from "./blocks.ts";
 import stripAnsi from "strip-ansi";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { getEditorTheme, initRunWieldTheme } from "../theme/theme.ts";

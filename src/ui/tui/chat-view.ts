@@ -34,7 +34,7 @@ import {
 } from "../../shared/update-check.ts";
 import { endBlink, renderBootLogo } from "./boot-logo.ts";
 import { createUiApi, type VisibleToolBlock } from "./api.ts";
-import { SpinnerBlock, ToolExecutionBlock, ToolExecutionGroupBlock } from "./blocks.js";
+import { SpinnerBlock, ToolExecutionBlock, ToolExecutionGroupBlock } from "./blocks.ts";
 import { createSessionSnapshotWindow } from "./session-snapshot-window.ts";
 import { type FooterTheme, renderUpdateNoticeLine } from "./chat-footer.ts";
 import { installUiApiOverrides } from "./ui-api-overrides.ts";
