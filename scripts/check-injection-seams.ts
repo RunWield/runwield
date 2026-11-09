@@ -43,7 +43,7 @@ import process from "node:process";
  * Renaming a seam looks like removing one and adding another, which the ratchet is
  * right to reject. Declare it instead:
  *
- *     bun scripts/check-injection-seams.js --update --rename old=new
+ *     bun scripts/check-injection-seams.ts --update --rename old=new
  *
  * A rename rewrites the name in the baseline before comparing, so it can carry an
  * existing seam to a new name but can never introduce one — the old name has to be
@@ -52,7 +52,7 @@ import process from "node:process";
  * Splitting a module moves seams between files, which looks like a removal in one
  * and an addition in the other. Declare the move:
  *
- *     bun scripts/check-injection-seams.js --update --move src/a.js:name=src/b.ts
+ *     bun scripts/check-injection-seams.ts --update --move src/a.js:name=src/b.ts
  *
  * A move relocates a seam already recorded against the source module before
  * comparing, so it can carry an existing seam to a new home but can never
@@ -62,7 +62,7 @@ import process from "node:process";
  * When the scan itself is fixed, modules and seam spellings it could never see before
  * appear all at once and look exactly like regressions. Adopt them explicitly:
  *
- *     bun scripts/check-injection-seams.js --update --adopt-newly-visible
+ *     bun scripts/check-injection-seams.ts --update --adopt-newly-visible
  *
  * This is only ever correct in the same change as a detection fix. It records newly
  * visible modules and newly visible seams inside known modules, then puts both under
@@ -75,6 +75,31 @@ import { dirname } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { listCiFiles } from "./ci-files.ts";
 
+export interface SeamScanRoot {
+    rootUrl: URL;
+    pathPrefix: string;
+}
+
+export interface ConditionalSeamHit {
+    offender: string;
+    key: string;
+}
+
+interface SeamFileEntry {
+    seams: string[];
+    machinery: string[];
+    conditional?: string[];
+}
+
+export type SeamEntry = Record<string, SeamFileEntry>;
+
+interface SeamBaselineDocument {
+    files: SeamEntry;
+}
+
+type SeamRename = [from: string, to: string];
+type SeamMove = [fromPath: string, name: string, toPath: string];
+
 const BASELINE_PATH = new URL("./injection-seam-baseline.json", import.meta.url);
 const REPO_ROOT = dirname(dirname(fromFileUrl(import.meta.url)));
 const SOURCE_ROOT = new URL("../src/", import.meta.url);
@@ -83,7 +108,7 @@ const PRODUCTION_ROOTS = Object.freeze([
     { rootUrl: SOURCE_ROOT, pathPrefix: "src" },
     { rootUrl: SCRIPTS_ROOT, pathPrefix: "scripts" },
 ]);
-const SCAN_EXCLUDED_PATHS = new Set(["scripts/check-injection-seams.js"]);
+const SCAN_EXCLUDED_PATHS = new Set(["scripts/check-injection-seams.ts"]);
 const SKIP_DIRS = new Set([
     ".astro",
     ".vite",
@@ -174,13 +199,11 @@ const MACHINERY_SEAMS = [
     "_agentDefOverride",
 ];
 
-/** @param {string} path */
-function toPosixPath(path) {
+function toPosixPath(path: string) {
     return path.replaceAll("\\", "/");
 }
 
-/** @param {string} relativePath */
-function isProductionSourcePath(relativePath) {
+function isProductionSourcePath(relativePath: string) {
     const normalized = toPosixPath(relativePath);
     if (!SOURCE_FILE_PATTERN.test(normalized)) return false;
     const parts = normalized.split("/");
@@ -189,8 +212,7 @@ function isProductionSourcePath(relativePath) {
     return !parts.some((part) => SKIP_DIRS.has(part));
 }
 
-/** @param {string} name */
-export function isMachinerySeam(name) {
+export function isMachinerySeam(name: string) {
     const normalizedName = /^_(?:buildAgentSession|attachSessionEventSubscribers|runPrompt)$/.test(name)
         ? normalizeCollaboratorName(name)
         : name;
@@ -213,10 +235,8 @@ export function isMachinerySeam(name) {
  * Compare a local override binding with the implementation it falls back to.
  * `_buildAgentSession`, `buildAgentSessionFn`, and `buildAgentSessionImpl` are
  * the same collaborator wearing different call-site conventions.
- *
- * @param {string} name
  */
-function normalizeCollaboratorName(name) {
+function normalizeCollaboratorName(name: string) {
     return name.replace(/^_+/, "").replace(/(?:Fn|Impl|Override)$/g, "");
 }
 
@@ -226,10 +246,8 @@ function normalizeCollaboratorName(name) {
  * `resource.planId || attrs.planId`; only the first is an injection seam. Explicit
  * bags are still exhaustive. This predicate is only for ordinary option/member
  * fallbacks where the behavioral shape must carry the evidence.
- *
- * @param {string} name
  */
-function isBehavioralCollaborator(name) {
+function isBehavioralCollaborator(name: string) {
     if (isMachinerySeam(name)) return true;
     const normalized = normalizeCollaboratorName(name);
     if (isMachinerySeam(normalized)) return true;
@@ -246,10 +264,8 @@ function isBehavioralCollaborator(name) {
  * second half of the evidence, not the whole of it. `SCREAMING_SNAKE` names are the
  * project's spelling for constants (`runtimeTools = DEFAULT_RUNTIME_TOOLS` is a tool
  * list, not an injected collaborator), and a literal cannot be an implementation at all.
- *
- * @param {string} expression
  */
-function isImplementationDefault(expression) {
+function isImplementationDefault(expression: string) {
     const name = finalMemberName(expression);
     if (/^(?:true|false|null|undefined|NaN|Infinity|await|new|typeof)$/.test(name)) return false;
     if (/^[A-Z0-9_$]+$/.test(name)) return false;
@@ -272,20 +288,19 @@ function isImplementationDefault(expression) {
  * to migrate *to* — and flagging it would punish the fix. Callers pass `broad: false`
  * there.
  *
- * @param {string} property Declared member or parameter name.
- * @param {string} local Local binding it lands in.
- * @param {string} implementation Default expression.
- * @param {boolean} broad Whether the different-name rule applies at this position.
+ * @param property Declared member or parameter name.
+ * @param local Local binding it lands in.
+ * @param implementation Default expression.
+ * @param broad Whether the different-name rule applies at this position.
  */
-function substitutesImplementation(property, local, implementation, broad) {
+function substitutesImplementation(property: string, local: string, implementation: string, broad: boolean) {
     if (isMachinerySeam(normalizeCollaboratorName(property))) return true;
     if (!isBehavioralCollaborator(property)) return false;
     if (normalizeCollaboratorName(local) === normalizeCollaboratorName(implementation)) return true;
     return broad && isImplementationDefault(implementation);
 }
 
-/** @param {string} expression */
-function finalMemberName(expression) {
+function finalMemberName(expression: string) {
     return (
         expression
             .trim()
@@ -320,15 +335,13 @@ const CAPABILITY_NAMED = /(?:PORT|Port|CLI|Cli|CLIENT|Client|REGISTRY|Registry|A
  * is a capability with a fallback. Without that distinction the front-matter defaults all
  * over plan-store.js would land in the baseline as imaginary seams.
  *
- * @param {string} text Comment-free source.
- * @returns {string[]}
+ * @param text Comment-free source.
  */
-function collectCapabilityFallbacks(text) {
-    /** @type {string[]} */
-    const found = [];
+function collectCapabilityFallbacks(text: string): string[] {
+    const found: string[] = [];
     for (const override of text.matchAll(/\.\s*(_agentDefOverride)\b/g)) found.push(override[1]);
-    /** @param {string} name Local binding the fallback lands in. */
-    const isInvoked = (name) =>
+    /** @param name Local binding the fallback lands in. */
+    const isInvoked = (name: string) =>
         new RegExp(`\\b${name}\\s*(?:\\(|(?:\\?\\.|\\.)\\s*[A-Za-z_$][\\w$]*\\s*\\()`).test(text);
 
     // Any position: `X.prop || SYSTEM_PROP_PORT`. Where the capability is used decides
@@ -410,10 +423,9 @@ function collectCapabilityFallbacks(text) {
  * Cache-only reset functions take no replacement argument and therefore add
  * nothing; this finds actual behavior substitution without punishing cleanup.
  *
- * @param {string} text Comment-free source.
- * @returns {string[]}
+ * @param text Comment-free source.
  */
-function collectTestHookAssignments(text) {
+function collectTestHookAssignments(text: string): string[] {
     const assigned = [];
     const hook = /export\s+function\s+__(?:set|reset)[A-Za-z_$][\w$]*Tests?\s*\(([^)]*)\)\s*\{/g;
     for (const match of text.matchAll(hook)) {
@@ -449,11 +461,10 @@ function collectTestHookAssignments(text) {
  * caller is forced to supply it. Required arguments are the right shape for a
  * genuine external port, not permission to replace RunWield transactions.
  *
- * @param {string} text Original source, including JSDoc.
- * @returns {string[]}
+ * @param text Original source, including JSDoc.
  */
-function collectDeclaredMachinery(text) {
-    const names = new Set();
+function collectDeclaredMachinery(text: string): string[] {
+    const names = new Set<string>();
     for (const declaration of text.matchAll(
         /(?:interface|type)\s+[A-Za-z_$][\w$]*(?:\s*<[^>]+>)?[^\{=]*(?:=\s*)?\{([^}]*)\}/g,
     )) {
@@ -469,11 +480,8 @@ function collectDeclaredMachinery(text) {
 
 /**
  * Literal contents are data, but code in a template interpolation still counts.
- * @param {import("typescript").Node} node
- * @param {number} position
- * @returns {boolean}
  */
-function isLiteralTextAt(node, position) {
+function isLiteralTextAt(node: ts.Node, position: number): boolean {
     if (position < node.getStart() || position >= node.getEnd()) return false;
     if (ts.isStringLiteralLike(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node))
         return true;
@@ -486,18 +494,15 @@ function isLiteralTextAt(node, position) {
  * Reads the source text rather than the module graph on purpose: the point is to
  * see the declared seams, and a text scan cannot be defeated by indirection that
  * would also defeat a reviewer.
- *
- * @param {string} text
- * @returns {string[]}
  */
-export function collectSeamNames(text) {
+export function collectSeamNames(text: string): string[] {
     const scannedText = blankComments(text);
-    /** @type {Set<string>} */
-    const names = new Set();
+
+    const names = new Set<string>();
     /**
-     * @param {string} bag A source expression naming the dependency bag.
+     * @param bag A source expression naming the dependency bag.
      */
-    const collectFromBag = (bag) => {
+    const collectFromBag = (bag: string) => {
         const source = bag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         // Member reads: `bag.name`, `bag?.name`.
         //
@@ -624,8 +629,8 @@ export function collectSeamNames(text) {
         }
         return [open, scannedText.length];
     });
-    /** @param {number} index */
-    const allowsBroadRule = (index) =>
+
+    const allowsBroadRule = (index: number) =>
         !statementDestructureRanges.some(([open, close]) => index > open && index < close);
     for (const fallback of scannedText.matchAll(
         /(?:^|[{,]\s*)([A-Za-z_$][\w$]*)(?:\s*:\s*([A-Za-z_$][\w$]*))?\s*=\s*([A-Za-z_$][\w$]*)(?=\s*[,}])/gm,
@@ -637,8 +642,7 @@ export function collectSeamNames(text) {
             names.add(property);
     }
 
-    /** @type {import("typescript").SourceFile | undefined} */
-    let parsedSource;
+    let parsedSource: ts.SourceFile | undefined;
     // Positional parameter defaults are another spelling of the same seam:
     // `getModelRegistry = getModelRegistryFn` and `readTextFile = Deno.readTextFile`.
     //
@@ -720,10 +724,9 @@ export function collectSeamNames(text) {
  * new name: callers may selectively replace RunWield machinery while production
  * silently falls back to the imported implementation.
  *
- * @param {string} text Comment-free source text.
- * @returns {boolean}
+ * @param text Comment-free source text.
  */
-function declaresOptionalFallbackPorts(text) {
+function declaresOptionalFallbackPorts(text: string): boolean {
     return /\bports\s*=\s*\{\}/.test(text) || /\bports\s*\?\./.test(text);
 }
 
@@ -737,11 +740,9 @@ function declaresOptionalFallbackPorts(text) {
  * capability-port shape this check tells people to move to. Flagging it would
  * punish the fix.
  *
- * @param {string} text Source of the file declaring the type.
- * @param {string} typeName
- * @returns {boolean}
+ * @param text Source of the file declaring the type.
  */
-function isOverrideBagType(text, typeName) {
+function isOverrideBagType(text: string, typeName: string): boolean {
     const declaration = new RegExp(`(?:interface|type)\\s+${typeName}\\b[^{]*\\{([^}]*)\\}`).exec(text);
     if (!declaration) return true;
     const members = declaration[1]
@@ -758,11 +759,8 @@ function isOverrideBagType(text, typeName) {
  * JSDoc describes these bags in TypeScript-ish syntax (`__deps?: { … }`), which
  * looks exactly like a ternary to a text scan. Newlines are preserved so reported
  * line numbers still point at the real source line.
- *
- * @param {string} text
- * @returns {string}
  */
-function blankComments(text) {
+function blankComments(text: string): string {
     return text
         .replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, " "))
         .replace(/(^|[^:])\/\/[^\n]*/g, (line, prefix) => prefix + " ".repeat(line.length - prefix.length));
@@ -783,11 +781,9 @@ function blankComments(text) {
  * (`===`, `!==`, `<=`, `>=`) are stepped over rather than treated as assignments, so a
  * branch on an injected *value* is still seen in full.
  *
- * @param {string} text
- * @param {number} index Position of the `?`.
- * @returns {number} Start index of the condition expression.
+ * @param index Position of the `?`.
  */
-function findConditionStart(text, index) {
+function findConditionStart(text: string, index: number): number {
     let depth = 0;
     for (let cursor = index - 1; cursor >= 0; cursor--) {
         const char = text[cursor];
@@ -817,8 +813,7 @@ function findConditionStart(text, index) {
     return 0;
 }
 
-/** @param {string} expression @param {Set<string>} bagNames */
-function containsOverrideBagReference(expression, bagNames) {
+function containsOverrideBagReference(expression: string, bagNames: Set<string>) {
     if (/__(?:test)?[Dd]eps/.test(expression) || /\.__test[A-Za-z_$][\w$]*/.test(expression)) return true;
     if (new RegExp(`\\b[A-Za-z_$][\\w$]*${NESTED_OVERRIDE_PROPERTY_SUFFIX}\\s*\\?\\.`).test(expression)) return true;
     return [...bagNames].some((name) => new RegExp(`\\b${name}\\b`).test(expression));
@@ -831,13 +826,10 @@ function containsOverrideBagReference(expression, bagNames) {
  * being replaced is the durable identity: `deps.now ? … : …` is `members:now`, and
  * a condition involving two override members records both. A direct branch on the
  * whole bag is recorded as `bags:__deps`.
- *
- * @param {string} condition
- * @param {Set<string>} bagNames
  */
-function conditionalSeamKey(condition, bagNames) {
-    const members = new Set();
-    const bags = new Set();
+function conditionalSeamKey(condition: string, bagNames: Set<string>) {
+    const members = new Set<string>();
+    const bags = new Set<string>();
     for (const read of condition.matchAll(/\b(__testDeps|__deps|__Deps)\s*(?:\?\.|\.)\s*([A-Za-z_$][\w$]*)/g)) {
         members.add(read[2]);
     }
@@ -863,17 +855,10 @@ function conditionalSeamKey(condition, bagNames) {
     return parts.join("|");
 }
 
-/** @typedef {{ offender: string, key: string }} ConditionalSeamHit */
-
-/**
- * @param {string} text
- * @returns {ConditionalSeamHit[]}
- */
-function scanConditionalSeams(text) {
-    /** @type {ConditionalSeamHit[]} */
-    const hits = [];
+function scanConditionalSeams(text: string): ConditionalSeamHit[] {
+    const hits: ConditionalSeamHit[] = [];
     const scanned = blankComments(text);
-    const bagNames = new Set();
+    const bagNames = new Set<string>();
     for (const bag of scanned.matchAll(/\b(deps|dependencies)\s*=\s*\{\}/gi)) bagNames.add(bag[1]);
     for (const bag of scanned.matchAll(
         /(?:let|var)\s+([A-Za-z_$][\w$]*(?:Deps|Dependencies))\s*=\s*[A-Za-z_$][\w$]*(?:Deps|Dependencies)\b/g,
@@ -901,11 +886,8 @@ function scanConditionalSeams(text) {
 
 /**
  * Seams whose value depends on whether anything at all was injected.
- *
- * @param {string} text
- * @returns {string[]}
  */
-export function collectConditionalSeams(text) {
+export function collectConditionalSeams(text: string): string[] {
     return scanConditionalSeams(text).map((hit) => hit.offender);
 }
 
@@ -913,26 +895,18 @@ export function collectConditionalSeams(text) {
  * Stable conditional seam identities for the shrink-only baseline. Duplicates are
  * intentional: two branches on `deps.now` are two seams, and removing either one
  * should tighten the ratchet.
- *
- * @param {string} text
- * @returns {string[]}
  */
-export function collectConditionalSeamKeys(text) {
+export function collectConditionalSeamKeys(text: string): string[] {
     return scanConditionalSeams(text)
         .map((hit) => hit.key)
         .sort();
 }
 
-/**
- * @param {ReadonlyArray<{ rootUrl: URL, pathPrefix: string }>} [roots]
- */
-export async function collectSeams(roots = PRODUCTION_ROOTS) {
-    /** @type {SeamEntry} */
-    const seams = {};
+export async function collectSeams(roots: readonly SeamScanRoot[] = PRODUCTION_ROOTS): Promise<SeamEntry> {
+    const seams: SeamEntry = {};
     const ciFiles = roots === PRODUCTION_ROOTS ? new Set(await listCiFiles(REPO_ROOT)) : null;
 
-    /** @param {URL} directoryUrl @param {string} relativeDirectory @param {string} pathPrefix */
-    async function walk(directoryUrl, relativeDirectory, pathPrefix) {
+    async function walk(directoryUrl: URL, relativeDirectory: string, pathPrefix: string) {
         for await (const entry of await fsReaddir(directoryUrl, { withFileTypes: true })) {
             const relativePath = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
             if (entry.isDirectory()) {
@@ -964,20 +938,14 @@ export async function collectSeams(roots = PRODUCTION_ROOTS) {
     return seams;
 }
 
-/** @param {string[]} entries */
-function formatList(entries) {
+function formatList(entries: string[]) {
     return entries.map((entry) => `  - ${entry}`).join("\n");
 }
 
-/** @typedef {Record<string, { seams: string[], machinery: string[], conditional?: string[] }>} SeamEntry */
-
 /**
  * Values present more times in `current` than in `baseline`.
- *
- * @param {string[]} current
- * @param {string[]} baseline
  */
-function multisetAdditions(current, baseline) {
+function multisetAdditions(current: string[], baseline: string[]) {
     const remaining = [...baseline];
     return current.filter((value) => {
         const index = remaining.indexOf(value);
@@ -987,27 +955,24 @@ function multisetAdditions(current, baseline) {
     });
 }
 
-async function readBaseline() {
-    const parsed = JSON.parse(await fsReadFile(BASELINE_PATH, "utf8"));
+async function readBaseline(): Promise<SeamEntry> {
+    const parsed: SeamBaselineDocument | null = JSON.parse(await fsReadFile(BASELINE_PATH, "utf8"));
     if (!parsed || typeof parsed.files !== "object") {
         throw new Error(
             "injection-seam-baseline.json must contain a { files: { path: { seams, machinery, conditional } } } object",
         );
     }
-    return /** @type {SeamEntry} */ (parsed.files);
+    return parsed.files;
 }
 
 /**
- * @param {SeamEntry} current
- * @param {SeamEntry} baseline
- * @param {boolean} [adoptNewlyVisible] Record modules or individual seams the scan can
+ * @param adoptNewlyVisible Record modules or individual seams the scan can
  *   now see for the first time. Only ever correct together with a detection fix: the
  *   seams were always there, and once recorded they can only shrink like every other
  *   entry.
  */
-export function findRegressions(current, baseline, adoptNewlyVisible = false) {
-    /** @type {string[]} */
-    const problems = [];
+export function findRegressions(current: SeamEntry, baseline: SeamEntry, adoptNewlyVisible = false) {
+    const problems: string[] = [];
     for (const [path, entry] of Object.entries(current)) {
         const before = baseline[path];
         if (!before) {
@@ -1050,13 +1015,8 @@ export function findRegressions(current, baseline, adoptNewlyVisible = false) {
     return problems;
 }
 
-/**
- * @param {SeamEntry} current
- * @param {SeamEntry} baseline
- */
-function findStaleBaseline(current, baseline) {
-    /** @type {string[]} */
-    const stale = [];
+function findStaleBaseline(current: SeamEntry, baseline: SeamEntry) {
+    const stale: string[] = [];
     for (const [path, before] of Object.entries(baseline)) {
         const entry = current[path];
         if (!entry) {
@@ -1085,16 +1045,11 @@ function findStaleBaseline(current, baseline) {
     return stale;
 }
 
-/**
- * @param {SeamEntry} baseline
- * @param {Array<[string, string]>} renames
- * @returns {SeamEntry}
- */
-function applyRenames(baseline, renames) {
+function applyRenames(baseline: SeamEntry, renames: SeamRename[]): SeamEntry {
     if (renames.length === 0) return baseline;
     const map = new Map(renames);
-    /** @type {SeamEntry} */
-    const renamed = {};
+
+    const renamed: SeamEntry = {};
     for (const [path, entry] of Object.entries(baseline)) {
         renamed[path] = {
             seams: [...new Set(entry.seams.map((name) => map.get(name) || name))].sort(),
@@ -1115,14 +1070,12 @@ function applyRenames(baseline, renames) {
  * another. This carries it across, and refuses anything that would invent one —
  * the seam must already be recorded against the source.
  *
- * @param {SeamEntry} baseline
- * @param {Array<[string, string, string]>} moves `[fromPath, name, toPath]`
- * @returns {SeamEntry}
+ * @param moves `[fromPath, name, toPath]`
  */
-function applyMoves(baseline, moves) {
+function applyMoves(baseline: SeamEntry, moves: SeamMove[]): SeamEntry {
     if (moves.length === 0) return baseline;
-    /** @type {SeamEntry} */
-    const moved = {};
+
+    const moved: SeamEntry = {};
     for (const [path, entry] of Object.entries(baseline)) {
         moved[path] = {
             seams: [...entry.seams],
@@ -1152,8 +1105,8 @@ if (import.meta.main) {
     // Only meaningful alongside a fix to the scan itself: it adopts modules and seams
     // the scan could not previously see. The resulting baseline remains shrink-only.
     const adopt = process.argv.slice(2).includes("--adopt-newly-visible");
-    /** @type {Array<[string, string, string]>} */
-    const moves = [];
+
+    const moves: SeamMove[] = [];
     for (let index = 0; index < process.argv.slice(2).length; index++) {
         if (process.argv.slice(2)[index] !== "--move") continue;
         const spec = process.argv.slice(2)[index + 1] || "";
@@ -1165,8 +1118,8 @@ if (import.meta.main) {
         }
         moves.push([source.slice(0, separator), source.slice(separator + 1), toPath]);
     }
-    /** @type {Array<[string, string]>} */
-    const renames = [];
+
+    const renames: SeamRename[] = [];
     for (let index = 0; index < process.argv.slice(2).length; index++) {
         if (process.argv.slice(2)[index] !== "--rename") continue;
         const pair = process.argv.slice(2)[index + 1] || "";
