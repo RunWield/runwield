@@ -12,7 +12,7 @@ import { buildWorkflowPresentation } from "../../shared/workflow/workflow-presen
 import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
 import { ownerProjectPlanProgressApi } from "./routes/owner-api.ts";
 import { ownerPlanContinuationApi } from "./routes/owner-plan-continuation.ts";
-import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.js";
+import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.ts";
 
 interface FixturePlanProgress extends OwnerPlanProgress {
     expectedRevision: string;

@@ -22,7 +22,7 @@ import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout
 import { writeWorkRecord } from "../../shared/work-records/store.ts";
 import { buildWorkflowPresentation } from "../../shared/workflow/workflow-presentation.ts";
 import { createOwnerWorkspaceApp } from "./server.js";
-import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.js";
+import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.ts";
 import { latestLiveWorkflowInteraction } from "./islands/SessionSurface.jsx";
 import { WorkflowSidebar } from "./react/WorkflowSidebar.tsx";
 import { loadOwnerDashboard } from "./server/owner-dashboard.ts";

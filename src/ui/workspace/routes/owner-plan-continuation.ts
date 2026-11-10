@@ -8,17 +8,20 @@ import {
 import { runWorkspaceResumeCheck } from "../server/plan-adapter.js";
 import { runOwnerPlanAction } from "../server/owner-plan-actions.ts";
 import { requireOwnerProjectRoot } from "../server/owner-projects.ts";
-import { associatedPlanSession, ownerErrorJson, ownerJson } from "./owner-api.ts";
+import {
+    associatedPlanSession,
+    ownerErrorJson,
+    ownerJson,
+    type OwnerRouteContext,
+    type OwnerSessionState,
+    type ProjectPlanParams,
+} from "./owner-api.ts";
 
-type PlanContinuationContext = {
-    req: Request;
-    params: { projectId: string; planId: string; runwieldSessionId?: string };
-    state: {
-        store: import("../../../shared/owner-coordination/index.ts").OwnerCoordinationStore;
-        sessionContinuation: import("../server/session-continuation.js").WorkspaceSessionContinuationService;
-        ownerDevice?: { deviceId: string };
-    };
-};
+interface PlanContinuationParams extends ProjectPlanParams {
+    runwieldSessionId?: string;
+}
+
+type PlanContinuationContext = OwnerRouteContext<OwnerSessionState, PlanContinuationParams>;
 
 type PlanContinuationRequest = {
     requestId: string;

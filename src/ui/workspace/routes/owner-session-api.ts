@@ -1,63 +1,154 @@
+/** @module ui/workspace/routes/owner-session-api */
+
 import { readControllerRecord } from "../../../shared/workflow/controller-registry.ts";
 import { ownerPlanContinuationApi } from "./owner-plan-continuation.ts";
 import { resolveWorkflowPlanLocation } from "../../../shared/workflow/plan-location.ts";
-/* @module ui/workspace/routes/owner-session-api */
-
-import { ImageSubmissionValidationError } from "../server/session-continuation.js";
-import { ownerErrorJson, ownerJson, sanitizeOwnerError } from "./owner-api.ts";
+import {
+    ImageSubmissionValidationError,
+    type WorkspaceSessionContinuationService,
+    type SessionListOptions,
+} from "../server/session-continuation.js";
+import {
+    ownerErrorJson,
+    ownerJson,
+    sanitizeOwnerError,
+    type OwnerParamsContext,
+    type OwnerRouteContext,
+    type OwnerSessionState,
+    type OwnerStateContext,
+    type OwnerStoreState,
+    type OwnerUrlContext,
+    type ProjectParams,
+} from "./owner-api.ts";
 import { ownerSecurityHeaders } from "../server/owner-origin.ts";
 import { findPlanEvidenceById } from "../../../plan-store.js";
 import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "../server/owner-projects.ts";
 import { getSlashCommandDefinition } from "../../../cmd/registry.ts";
 
-const MAX_JSON_BYTES = 12 * 1024 * 1024;
+import type { JsonValue } from "../../../shared/jsonc.ts";
+import type { CatalogDiagnostic } from "../../../shared/session/file-session-store-types.ts";
+import type { RuntimeToolStartEvent } from "../../../shared/session/session-runtime-events.js";
+import type { recordSlashCommandMetric } from "../../../shared/workflow/command-metrics.ts";
+import type { OwnerConnectionRegistry } from "../server/owner-connections.ts";
 
-/**
- * @typedef {Object} SessionPlanAssociation
- * @property {string} [planId]
- * @property {number | null} [committedGeneration]
- */
+type SessionService = WorkspaceSessionContinuationService;
+type SessionPage = Awaited<ReturnType<SessionService["listSessions"]>>;
+type OwnerSessionSummary = SessionPage["sessions"][number];
+type TimelineResult = Awaited<ReturnType<SessionService["timeline"]>>;
+type OperationSnapshot = ReturnType<SessionService["getOperation"]>;
+type SessionPageOptions = SessionListOptions & Required<Pick<SessionListOptions, "page" | "pageSize">>;
 
-/**
- * @typedef {Object} OwnerSessionSummary
- * @property {string} [runwieldSessionId]
- */
-
-/** @param {Request} request */
-async function readJson(request) {
-    const text = await request.text();
-    if (new TextEncoder().encode(text).byteLength > MAX_JSON_BYTES) throw new Error("Request body is too large.");
-    return text ? JSON.parse(text) : {};
+interface SessionParams extends ProjectParams {
+    runwieldSessionId: string;
 }
 
-/** @param {unknown} value @param {string} field @param {number} max */
-function requireBoundedString(value, field, max) {
+interface OperationParams {
+    operationId: string;
+}
+
+interface ProjectOperationParams extends ProjectParams, OperationParams {}
+
+interface InteractionParams extends ProjectOperationParams {
+    interactionId: string;
+}
+
+interface SessionServiceState {
+    sessionContinuation: SessionService;
+}
+
+interface SessionStreamState extends SessionServiceState {
+    ownerDevice: NonNullable<OwnerSessionState["ownerDevice"]>;
+    ownerConnections: OwnerConnectionRegistry;
+}
+
+type SessionListContext = OwnerParamsContext<OwnerSessionState, ProjectParams> & OwnerUrlContext<OwnerSessionState>;
+type SessionTimelineContext = OwnerParamsContext<OwnerSessionState, SessionParams> & OwnerUrlContext<OwnerSessionState>;
+
+type EventMetadata = Pick<RuntimeToolStartEvent, "args" | "_meta">;
+
+interface TimelineSegments {
+    segments?: readonly unknown[];
+}
+
+interface WorkflowHandoffError {
+    error?: string | null;
+}
+
+type WorkflowHandoffResult = Awaited<ReturnType<SessionService["startPlanWorkflowHandoff"]>> & WorkflowHandoffError;
+
+type CommandMetric = Parameters<typeof recordSlashCommandMetric>[0];
+type CommandObservation = Pick<CommandMetric, "kind" | "command" | "alias" | "invocationId" | "sessionId"> &
+    (CommandProgressObservation | CommandFinishObservation);
+
+interface CommandProgressObservation {
+    phase: Exclude<CommandMetric["phase"], "finish">;
+    outcome?: never;
+    durationMs?: never;
+    dispatched?: never;
+}
+
+interface CommandFinishObservation {
+    phase: "finish";
+    outcome: NonNullable<CommandMetric["outcome"]>;
+    durationMs: number;
+    dispatched?: boolean;
+}
+
+interface SessionRequestBody {
+    action?: JsonValue;
+    agentName?: JsonValue;
+    confirmed?: JsonValue;
+    expectedCurrentSegmentId?: JsonValue;
+    expectedGeneration?: JsonValue;
+    images?: JsonValue;
+    model?: JsonValue;
+    planId?: JsonValue;
+    provider?: JsonValue;
+    requestId?: JsonValue;
+    response?: JsonValue;
+    runwieldSessionId?: JsonValue;
+    text?: JsonValue;
+    thinkingLevel?: JsonValue;
+}
+
+interface SubmittedImage {
+    base64?: JsonValue;
+    mimeType?: JsonValue;
+}
+
+const MAX_JSON_BYTES = 12 * 1024 * 1024;
+
+async function readJson(request: Request): Promise<SessionRequestBody> {
+    const text = await request.text();
+    if (new TextEncoder().encode(text).byteLength > MAX_JSON_BYTES) throw new Error("Request body is too large.");
+    // Route-specific checks below still receive the original wire payload.
+    return (text ? JSON.parse(text) : {}) as SessionRequestBody;
+}
+
+function requireBoundedString(value: JsonValue | undefined, field: string, max: number) {
     if (typeof value !== "string" || value.length < 1 || value.length > max) {
         throw new Error(`${field} is invalid.`);
     }
     return value;
 }
 
-/** @param {unknown} value */
-function requireExpectedGeneration(value) {
+function requireExpectedGeneration(value: JsonValue | undefined) {
     const generation = Number(value);
     if (!Number.isInteger(generation) || generation < 0) throw new Error("expectedGeneration is invalid.");
     return generation;
 }
 
-/** @param {string | null} value @param {string} field @param {number} fallback @param {number} max */
-function readPageValue(value, field, fallback, max) {
+function readPageValue(value: string | null, field: string, fallback: number, max: number) {
     if (value === null || value === "") return fallback;
     const parsed = Number(value);
     if (!Number.isInteger(parsed) || parsed < 0 || parsed > max) throw new Error(`${field} is invalid.`);
     return parsed;
 }
 
-/** @param {unknown} value */
-function readSubmittedImages(value) {
+function readSubmittedImages(value: JsonValue | undefined) {
     if (!Array.isArray(value)) return [];
-    return value.map((image) => {
-        const source = image && typeof image === "object" ? /** @type {Record<string, unknown>} */ (image) : {};
+    return value.map((image: JsonValue) => {
+        const source = image && typeof image === "object" ? (image as SubmittedImage) : {};
         const base64 = requireBoundedString(source.base64, "image.base64", 10 * 1024 * 1024);
         const mimeType = requireBoundedString(source.mimeType, "image.mimeType", 80);
         if (!mimeType.startsWith("image/")) throw new Error("Only image attachments are supported.");
@@ -65,20 +156,18 @@ function readSubmittedImages(value) {
     });
 }
 
-/** @param {unknown} value */
-function safeEvent(value) {
+function safeEvent(value: NonNullable<TimelineResult["events"]>[number]) {
     if (!value || typeof value !== "object") return value;
-    const source = /** @type {Record<string, unknown>} */ (value);
-    const safe = { ...source };
+    const source = value;
+    const safe: typeof source & EventMetadata = { ...source };
     delete safe._meta;
     delete safe.args;
     return safe;
 }
 
-/** @param {unknown} value */
-function safeDiagnostic(value) {
+function safeDiagnostic(value: CatalogDiagnostic) {
     if (!value || typeof value !== "object") return { code: "catalog_diagnostic", message: String(value || "") };
-    const source = /** @type {Record<string, unknown>} */ (value);
+    const source = value;
     return {
         code: typeof source.code === "string" ? source.code : "catalog_diagnostic",
         message:
@@ -88,22 +177,19 @@ function safeDiagnostic(value) {
     };
 }
 
-/** @param {Record<string, unknown>} result */
-function safeTimelineResult(result) {
-    const safe = { ...result };
+function safeTimelineResult(result: TimelineResult) {
+    const safe: TimelineResult & TimelineSegments = { ...result };
     delete safe.segments;
     return safe;
 }
 
-/** @param {Record<string, unknown>} body @param {string} field @param {number} maxLength */
-function readOptionalBoundedString(body, field, maxLength) {
+function readOptionalBoundedString(body: SessionRequestBody, field: keyof SessionRequestBody, maxLength: number) {
     return typeof body[field] === "string" && body[field]
         ? requireBoundedString(body[field], field, maxLength)
         : undefined;
 }
 
-/** @param {any} ctx */
-export async function ownerSessionOptionsApi(ctx) {
+export async function ownerSessionOptionsApi(ctx: OwnerParamsContext<OwnerSessionState, ProjectParams>) {
     try {
         requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
         const result = await ctx.state.sessionContinuation.listSessionOptions(ctx.params.projectId);
@@ -113,13 +199,7 @@ export async function ownerSessionOptionsApi(ctx) {
     }
 }
 
-/**
- * @param {OwnerSessionSummary} session
- * @param {{ listSessionPlanAssociations?: (runwieldSessionId?: string, projectId?: string) => SessionPlanAssociation[] }} store
- * @param {string} projectId
- * @returns {string[]}
- */
-function committedPlanIdsForSession(session, store, projectId) {
+function committedPlanIdsForSession(session: OwnerSessionSummary, store: OwnerStoreState["store"], projectId: string) {
     const associations = store.listSessionPlanAssociations?.(session.runwieldSessionId, projectId) || [];
     return associations
         .filter((association) => association.committedGeneration !== null)
@@ -127,12 +207,13 @@ function committedPlanIdsForSession(session, store, projectId) {
         .filter(Boolean);
 }
 
-/** @param {any} sessionContinuation @param {string} projectId @param {{ page: number, pageSize: number, includeEmpty: boolean }} options */
-async function listAllSessionsForFilter(sessionContinuation, projectId, options) {
-    /** @type {OwnerSessionSummary[]} */
-    const sessions = [];
-    /** @type {Array<{ code?: string, message?: string, source?: string }>} */
-    const diagnostics = [];
+async function listAllSessionsForFilter(
+    sessionContinuation: SessionService,
+    projectId: string,
+    options: SessionPageOptions,
+) {
+    const sessions: OwnerSessionSummary[] = [];
+    const diagnostics: CatalogDiagnostic[] = [];
     let page = 0;
     let hasNext = true;
     while (hasNext) {
@@ -153,16 +234,18 @@ async function listAllSessionsForFilter(sessionContinuation, projectId, options)
     };
 }
 
-/** @param {any} ctx */
-export async function ownerProjectSessionsApi(ctx) {
+export async function ownerProjectSessionsApi(ctx: SessionListContext) {
     try {
         requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
         const page = readPageValue(ctx.url.searchParams.get("page"), "page", 0, 10_000);
         const pageSize = readPageValue(ctx.url.searchParams.get("pageSize"), "pageSize", 30, 100);
         const archiveState = ctx.url.searchParams.get("archiveState") || "active";
         if (!["active", "archived", "all"].includes(archiveState)) throw new Error("archiveState is invalid.");
-        const listOptions = {
-            archiveState: ctx.url.searchParams.get("plan") ? "all" : archiveState,
+        // The includes check validates the wire value without narrowing it in TypeScript.
+        const listOptions: SessionPageOptions = {
+            archiveState: ctx.url.searchParams.get("plan")
+                ? "all"
+                : (archiveState as SessionListOptions["archiveState"]),
             page,
             pageSize,
             includeEmpty: ctx.url.searchParams.get("includeEmpty") === "true",
@@ -184,7 +267,7 @@ export async function ownerProjectSessionsApi(ctx) {
             planId || excludeAssociated
                 ? await listAllSessionsForFilter(ctx.state.sessionContinuation, ctx.params.projectId, listOptions)
                 : await ctx.state.sessionContinuation.listSessions(ctx.params.projectId, listOptions);
-        let sessions = /** @type {OwnerSessionSummary[]} */ (result.sessions || []);
+        let sessions = result.sessions || [];
         if (planId || excludeAssociated) {
             const nested = new Set(nestedPlanIds);
             sessions = sessions.filter((session) => {
@@ -216,14 +299,7 @@ export async function ownerProjectSessionsApi(ctx) {
     }
 }
 
-/**
- * @typedef {Object} SessionArchiveRouteContext
- * @property {Request} req
- * @property {{ projectId: string, runwieldSessionId: string }} params
- * @property {{ store: import('../../../shared/owner-coordination/index.ts').OwnerCoordinationStore, sessionContinuation: import('../server/session-continuation.js').WorkspaceSessionContinuationService }} state
- */
-/** @param {SessionArchiveRouteContext} ctx */
-export async function ownerSessionArchiveApi(ctx) {
+export async function ownerSessionArchiveApi(ctx: OwnerRouteContext<OwnerSessionState, SessionParams>) {
     try {
         requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
         const body = await readJson(ctx.req);
@@ -241,8 +317,7 @@ export async function ownerSessionArchiveApi(ctx) {
     }
 }
 
-/** @param {SessionArchiveRouteContext} ctx */
-export async function ownerSessionUnarchiveApi(ctx) {
+export async function ownerSessionUnarchiveApi(ctx: OwnerRouteContext<OwnerSessionState, SessionParams>) {
     try {
         requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
         return ownerJson(await ctx.state.sessionContinuation.unarchiveSession(ctx.params));
@@ -251,8 +326,7 @@ export async function ownerSessionUnarchiveApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-export async function ownerSessionTimelineApi(ctx) {
+export async function ownerSessionTimelineApi(ctx: SessionTimelineContext) {
     try {
         const cursor = ctx.url.searchParams.get("cursorEventId") || undefined;
         const cursorEventId = cursor ? requireBoundedString(cursor, "cursorEventId", 200) : undefined;
@@ -275,13 +349,7 @@ export async function ownerSessionTimelineApi(ctx) {
     }
 }
 
-/**
- * @typedef {Object} LiveSessionRouteContext
- * @property {{ projectId: string, runwieldSessionId: string }} params
- * @property {{ store: import('../../../shared/owner-coordination/index.ts').OwnerCoordinationStore, sessionContinuation: import('../server/session-continuation.js').WorkspaceSessionContinuationService }} state
- */
-/** @param {LiveSessionRouteContext} ctx */
-export async function ownerSessionLiveApi(ctx) {
+export async function ownerSessionLiveApi(ctx: OwnerParamsContext<OwnerSessionState, SessionParams>) {
     try {
         requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
         const result = await ctx.state.sessionContinuation.liveSession(
@@ -299,8 +367,7 @@ export async function ownerSessionLiveApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-export async function ownerSessionBootstrapApi(ctx) {
+export async function ownerSessionBootstrapApi(ctx: OwnerRouteContext<OwnerSessionState, SessionParams>) {
     try {
         const body = await readJson(ctx.req);
         requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
@@ -317,8 +384,7 @@ export async function ownerSessionBootstrapApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-export async function ownerSessionCreateApi(ctx) {
+export async function ownerSessionCreateApi(ctx: OwnerRouteContext<OwnerSessionState, ProjectParams>) {
     try {
         const body = await readJson(ctx.req);
         requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
@@ -356,8 +422,7 @@ export async function ownerSessionCreateApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-export async function ownerSessionContinuationStartApi(ctx) {
+export async function ownerSessionContinuationStartApi(ctx: OwnerRouteContext<OwnerSessionState, SessionParams>) {
     try {
         const body = await readJson(ctx.req);
         requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
@@ -386,8 +451,7 @@ export async function ownerSessionContinuationStartApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-export async function ownerSessionPlanReviewApi(ctx) {
+export async function ownerSessionPlanReviewApi(ctx: OwnerRouteContext<OwnerSessionState, SessionParams>) {
     try {
         const body = await readJson(ctx.req);
         requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
@@ -405,8 +469,7 @@ export async function ownerSessionPlanReviewApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-export async function ownerSessionPlanWorkflowApi(ctx) {
+export async function ownerSessionPlanWorkflowApi(ctx: OwnerRouteContext<OwnerSessionState, SessionParams>) {
     try {
         const body = await readJson(ctx.req);
         const projectRoot = requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
@@ -432,7 +495,7 @@ export async function ownerSessionPlanWorkflowApi(ctx) {
         if (!plan || plan.attrs.planId !== primary.planId) {
             throw new Error("Plan evidence is unavailable. Refresh and try again.");
         }
-        const result = await ctx.state.sessionContinuation.startPlanWorkflowHandoff({
+        const result: WorkflowHandoffResult = await ctx.state.sessionContinuation.startPlanWorkflowHandoff({
             requestId: readOptionalBoundedString(body, "requestId", 128) || crypto.randomUUID(),
             deviceId: ctx.state.ownerDevice?.deviceId || null,
             action: readOptionalBoundedString(body, "action", 32) || "run",
@@ -451,8 +514,7 @@ export async function ownerSessionPlanWorkflowApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-export async function ownerSessionConfigureApi(ctx) {
+export async function ownerSessionConfigureApi(ctx: OwnerRouteContext<OwnerSessionState, SessionParams>) {
     try {
         const body = await readJson(ctx.req);
         requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
@@ -472,8 +534,7 @@ export async function ownerSessionConfigureApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-export async function ownerSessionForceRecoverApi(ctx) {
+export async function ownerSessionForceRecoverApi(ctx: OwnerRouteContext<OwnerSessionState, SessionParams>) {
     try {
         const body = await readJson(ctx.req);
         requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
@@ -493,8 +554,7 @@ export async function ownerSessionForceRecoverApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-export async function ownerSessionInteractionAnswerApi(ctx) {
+export async function ownerSessionInteractionAnswerApi(ctx: OwnerRouteContext<OwnerSessionState, InteractionParams>) {
     try {
         const body = await readJson(ctx.req);
         requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
@@ -516,14 +576,7 @@ export async function ownerSessionInteractionAnswerApi(ctx) {
     }
 }
 
-/**
- * @typedef {Object} SessionSteerRouteContext
- * @property {Request} req
- * @property {{ projectId: string, operationId: string }} params
- * @property {{ store: import('../../../shared/owner-coordination/index.ts').OwnerCoordinationStore, sessionContinuation: import('../server/session-continuation.js').WorkspaceSessionContinuationService }} state
- */
-/** @param {SessionSteerRouteContext} ctx */
-export async function ownerSessionSteerApi(ctx) {
+export async function ownerSessionSteerApi(ctx: OwnerRouteContext<OwnerSessionState, ProjectOperationParams>) {
     try {
         const body = await readJson(ctx.req);
         requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
@@ -540,8 +593,7 @@ export async function ownerSessionSteerApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-export async function ownerSessionOperationCancelApi(ctx) {
+export async function ownerSessionOperationCancelApi(ctx: OwnerParamsContext<SessionServiceState, OperationParams>) {
     try {
         const result = await ctx.state.sessionContinuation.cancelOperation({ operationId: ctx.params.operationId });
         return ownerJson(result, 202);
@@ -550,14 +602,12 @@ export async function ownerSessionOperationCancelApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-export async function ownerSessionOperationStatusApi(ctx) {
+export async function ownerSessionOperationStatusApi(ctx: OwnerParamsContext<SessionServiceState, OperationParams>) {
     const result = await ctx.state.sessionContinuation.refreshOperation(ctx.params.operationId);
     return ownerJson({ ...result, events: (result.events || []).map(safeEvent) });
 }
 
-/** @param {any} ctx */
-export function ownerSessionOperationStreamApi(ctx) {
+export function ownerSessionOperationStreamApi(ctx: OwnerRouteContext<SessionStreamState, OperationParams>) {
     const encoder = new TextEncoder();
     const service = ctx.state.sessionContinuation;
     const operationId = ctx.params.operationId;
@@ -566,10 +616,8 @@ export function ownerSessionOperationStreamApi(ctx) {
     let closed = false;
     let dirty = true;
     let terminal = false;
-    /** @type {Record<string, unknown> | null} */
-    let finalResult = null;
-    /** @type {ReadableStreamDefaultController<Uint8Array> | null} */
-    let streamController = null;
+    let finalResult: OperationSnapshot | null = null;
+    let streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
     const detach = () => {
         unsubscribe();
         unregister();
@@ -605,7 +653,7 @@ export function ownerSessionOperationStreamApi(ctx) {
             close();
         }
     };
-    const body = new ReadableStream({
+    const body = new ReadableStream<Uint8Array>({
         start(controller) {
             streamController = controller;
             if (ctx.req.signal.aborted) {
@@ -615,7 +663,7 @@ export function ownerSessionOperationStreamApi(ctx) {
             ctx.req.signal.addEventListener("abort", close, { once: true });
             unregister = ctx.state.ownerConnections.register(ctx.state.ownerDevice.deviceId, { close });
             // A synchronous initial callback may finish before subscribeOperation returns.
-            const stop = service.subscribeOperationChanges(operationId, (/** @type {string} */ status) => {
+            const stop = service.subscribeOperationChanges(operationId, (status) => {
                 if (closed) return;
                 dirty = true;
                 if (["completed", "failed", "unknown"].includes(status)) {
@@ -639,22 +687,12 @@ export function ownerSessionOperationStreamApi(ctx) {
     return new Response(body, { headers });
 }
 
-/**
- * @typedef {Object} NotificationStreamState
- * @property {import('../server/session-continuation.js').WorkspaceSessionContinuationService} sessionContinuation
- * @property {{ deviceId: string }} ownerDevice
- * @property {import('../server/owner-connections.ts').OwnerConnectionRegistry} ownerConnections
- */
-/**
- * @typedef {Object} NotificationStreamContext
- * @property {NotificationStreamState} state
- */
-/** Live alerts belong to the Workspace, independent of the displayed page. @param {NotificationStreamContext} ctx */
-export function ownerNotificationsStreamApi(ctx) {
+/** Live alerts belong to the Workspace, independent of the displayed page. */
+export function ownerNotificationsStreamApi(ctx: OwnerStateContext<SessionStreamState>) {
     const encoder = new TextEncoder();
     let unsubscribe = () => {};
     let unregister = () => {};
-    const body = new ReadableStream({
+    const body = new ReadableStream<Uint8Array>({
         start(controller) {
             controller.enqueue(encoder.encode(": connected\n\n"));
             unregister = ctx.state.ownerConnections.register(ctx.state.ownerDevice.deviceId, {
@@ -664,13 +702,9 @@ export function ownerNotificationsStreamApi(ctx) {
                     controller.close();
                 },
             });
-            unsubscribe = ctx.state.sessionContinuation.subscribeNotifications(
-                (
-                    /** @type {import('../server/session-continuation.js').WorkspaceAttentionNotification} */ notification,
-                ) => {
-                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(notification)}\n\n`));
-                },
-            );
+            unsubscribe = ctx.state.sessionContinuation.subscribeNotifications((notification) => {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify(notification)}\n\n`));
+            });
         },
         cancel() {
             unregister();
@@ -685,22 +719,15 @@ export function ownerNotificationsStreamApi(ctx) {
 }
 
 /**
- * @typedef {Object} OwnerCommandMetricsContext
- * @property {Request} req
- * @property {{ projectId: string }} params
- * @property {{ store: import('../../../shared/owner-coordination/index.ts').OwnerCoordinationStore }} state
- */
-
-/**
  * Record slash command metric from Workspace client.
- * @param {OwnerCommandMetricsContext} ctx
  */
-export async function ownerProjectCommandMetricsApi(ctx) {
+export async function ownerProjectCommandMetricsApi(ctx: OwnerRouteContext<OwnerStoreState, ProjectParams>) {
     try {
         const root = requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
         const raw = await ctx.req.text();
         if (raw.length > 2048) throw new Error("Command observation is too large.");
-        const payload = JSON.parse(raw);
+        // Keep the existing checks as the validation boundary for the wire payload.
+        const payload = JSON.parse(raw) as CommandObservation;
         if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
             throw new Error("Invalid command observation.");
         }

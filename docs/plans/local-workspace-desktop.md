@@ -75,7 +75,7 @@ Source inspected on 2026-11-01:
 1. `src/ui/workspace/static/workspace-shell.ts`, React surfaces, and Astro pages use HTTP APIs and server-provided
    data. `components/OwnerDashboard.astro` streams dashboard updates directly. A shared React library alone will not
    remove host coupling; composition, data access, and subscriptions need a common client boundary.
-2. `src/ui/workspace/routes/owner-session-api.js` reaches `WorkspaceSessionContinuationService` in
+2. `src/ui/workspace/routes/owner-session-api.ts` reaches `WorkspaceSessionContinuationService` in
    `server/session-continuation.js`. Its constructor calls `createSessionRuntime` with the coordination store and owns
    live operations, retained Sessions, listeners, and background work. That runtime ownership moves into `wld`.
 3. `server/owner-plan-actions.ts` calls Core Plan actions and manages operation receipts, generation checks, and writer
