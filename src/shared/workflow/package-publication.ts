@@ -1,5 +1,8 @@
+import type { WorkRecordMnemotecaPort } from "../work-records/mnemoteca-port.ts";
+import { getDeliveryCopyPolicy, shouldAutoGenerateWorkRecordsOnPlanCompletion } from "../settings.js";
+import { preparedPackageRecordCopy, settlePreparedPackageRecord } from "../work-records/package-recording.ts";
 /** Package input and settlement at the existing publication state-machine boundary. */
-import { retainPublishedWorkRecordSource } from "../work-records/published-source.ts";
+import { retainPublishedWorkRecordSource, readPublishedDeliverySources } from "../work-records/published-source.ts";
 import fs from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { captureForegroundProcess } from "../captured-process.ts";
@@ -14,6 +17,7 @@ import {
     readPlanPackage,
     withPlanPackageLocks,
     findPlanPackagePublication,
+    findPlanPackageRecordingPreparation,
     samePackagePublicationReference,
     type PackagePublicationReference,
     type PackagePublicationManifest,
@@ -55,6 +59,7 @@ export async function sealPackagePublication(
     attemptId: string,
     validatedCommit: string,
     targetBranch: string,
+    preparation = false,
 ) {
     const selection = currentPackageSelection();
     if (!selection) throw new Error("Package publication requires explicit admission.");
@@ -74,10 +79,11 @@ export async function sealPackagePublication(
         async () => {
             const current = await selectedPackage(planName);
             const workflow = current.metadata.workflow;
-            if (workflow?.publication) {
-                const prior = await readPlanPackagePublication(selection.identity, workflow.publication);
+            const priorReference = preparation ? workflow?.recordingPreparation : workflow?.publication;
+            if (priorReference) {
+                const prior = await readPlanPackagePublication(selection.identity, priorReference);
                 if (prior.attemptId === attemptId && prior.targetBranch === targetBranch) {
-                    if (prior.validatedCommit === validatedCommit) return workflow.publication;
+                    if (preparation || prior.validatedCommit === validatedCommit) return priorReference;
                     const controller = await packageController(current);
                     if (current.metadata.definition.status !== "reviewed" || controller.validationPhase !== "delivery")
                         throw new Error("The changed candidate requires validation and review.");
@@ -105,6 +111,7 @@ export async function sealPackagePublication(
                 current.metadata.planId,
                 attemptId,
                 validatedCommit,
+                preparation ? "recording" : undefined,
             );
             if (durable) {
                 const retained = await readPlanPackagePublication(selection.identity, durable);
@@ -118,8 +125,29 @@ export async function sealPackagePublication(
                     )
                 )
                     throw new Error("Durable publication input does not match this attempt.");
-                await updatePackageWorkflowMetadata(planName, {}, undefined, { ...workflow, publication: durable });
+                await updatePackageWorkflowMetadata(planName, {}, undefined, {
+                    ...workflow,
+                    [preparation ? "recordingPreparation" : "publication"]: durable,
+                });
                 return durable;
+            }
+            if (!preparation && workflow?.recordingPreparation) {
+                const frozen = await readPlanPackagePublication(selection.identity, workflow.recordingPreparation);
+                if (frozen.attemptId !== attemptId || frozen.targetBranch !== targetBranch)
+                    throw new Error("Recording preparation belongs to another delivery attempt.");
+                const record = await preparedPackageRecordCopy(frozen.attemptId);
+                const recordingOwner = await readPlanPackage(selection.identity, { planId: ownerId });
+                if (recordingOwner.kind !== "loaded") throw new Error(recordingOwner.message);
+                const source = await retainPlanPackagePublication(selection.identity, {
+                    ...frozen,
+                    stage: undefined,
+                    validatedCommit,
+                    preparedRecord: record,
+                    recordingOutcome: recordingOwner.metadata.workflow?.workRecord,
+                    copies: [...frozen.copies, ...(record && frozen.workRecordCopies && targetBranch ? [record] : [])],
+                });
+                await updatePackageWorkflowMetadata(planName, {}, undefined, { ...workflow, publication: source });
+                return source;
             }
             await assertPackageWorkflowInput(planName, binding.input);
             const members = [];
@@ -131,10 +159,12 @@ export async function sealPackagePublication(
                     (await capturePlanPackageInput(selection.identity, fresh.metadata.planId));
                 members.push({ metadata: fresh.metadata, controller: await packageController(fresh), input });
             }
+            const policy = getDeliveryCopyPolicy(selection.identity.checkoutRoot);
+            const planCopies = Boolean(targetBranch) && (selection.deliveryCopies?.plans ?? policy.plans);
             const copies: DeliveryCopy[] = [...(selection.deliveryCopies?.workRecords || [])];
             if (copies.some((copy) => copy.kind !== "work-record"))
                 throw new Error("Prepared Work Record payload has another document kind.");
-            if (selection.deliveryCopies?.plans) {
+            if (planCopies) {
                 const retained = await readPlanPackageInput(
                     selection.identity,
                     binding.input.inputs.find((ref) => ref.planId === current.metadata.planId)!,
@@ -152,11 +182,23 @@ export async function sealPackagePublication(
                 attemptId,
                 validatedCommit,
                 targetBranch,
-                planCopies: selection.deliveryCopies?.plans === true,
+                planCopies,
+                ...(preparation
+                    ? {
+                          stage: "recording" as const,
+                          workRecordCopies: policy.workRecords,
+                          autoGenerateRecords: shouldAutoGenerateWorkRecordsOnPlanCompletion(
+                              selection.identity.checkoutRoot,
+                          ),
+                      }
+                    : {}),
                 members,
                 copies,
             });
-            await updatePackageWorkflowMetadata(planName, {}, undefined, { ...workflow, publication: source });
+            await updatePackageWorkflowMetadata(planName, {}, undefined, {
+                ...workflow,
+                [preparation ? "recordingPreparation" : "publication"]: source,
+            });
             return source;
         },
     );
@@ -413,6 +455,11 @@ export async function settlePackagePublication(root: string, attempt: Publicatio
         await settlePackageParent(manifest, attempt.verifiedAt);
         return;
     }
+    if (prior && (plan.metadata.definition.status !== "reviewed" || binding?.attemptId !== attempt.attemptId)) {
+        // Historical receipt proof can settle records, but cannot mutate a reopened/newer Plan attempt.
+        await readPublishedDeliverySources(root, { ...attempt, phase: "publication_verified" });
+        return;
+    }
     if (
         plan.metadata.definition.status !== "reviewed" ||
         !binding ||
@@ -468,7 +515,7 @@ export async function packageTargetEvidence(
     return true;
 }
 
-export async function settlePackageInPlace(planName: string): Promise<void> {
+export async function settlePackageInPlace(planName: string, mnemotecaPort: WorkRecordMnemotecaPort): Promise<void> {
     const selected = await selectedPackage(planName);
     const attemptId = selected.metadata.workflow?.attempt?.attemptId;
     if (!attemptId) throw new Error("In-place completion requires its bound execution attempt.");
@@ -495,6 +542,11 @@ export async function settlePackageInPlace(planName: string): Promise<void> {
             verifiedAt,
         },
     });
+    await settlePreparedPackageRecord(
+        currentPackageSelection()!.identity.checkoutRoot,
+        await readPlanPackagePublication(currentPackageSelection()!.identity, source),
+        mnemotecaPort,
+    );
     await retainPublishedWorkRecordSource(currentPackageSelection()!.identity.checkoutRoot, {
         phase: "publication_verified",
         packageInput: source,
@@ -655,4 +707,37 @@ export async function assertPackagePublicationCandidate(
     };
     if (!(await packageTargetEvidence(ownerRoot, gitRoot, evidence, integrated)))
         throw new Error("Publication candidate differs from its retained code or delivery copies.");
+}
+
+/** A durable recording snapshot already owns source selection during delivery resumption. */
+export async function recoverPackageRecordingPreparation(planName: string): Promise<boolean> {
+    const selection = currentPackageSelection();
+    if (!selection) return false;
+    const plan = await selectedPackage(planName);
+    const binding = plan.metadata.workflow?.attempt;
+    if (!binding) return false;
+    const reference =
+        plan.metadata.workflow?.recordingPreparation ||
+        (await findPlanPackageRecordingPreparation(selection.identity, plan.metadata.planId, binding.attemptId));
+    if (!reference) return false;
+    const manifest = await readPlanPackagePublication(selection.identity, reference);
+    const controller = await packageController(plan);
+    if (
+        manifest.stage !== "recording" ||
+        manifest.attemptId !== binding.attemptId ||
+        binding.repositoryId !== manifest.repositoryId ||
+        binding.personalOwner !== manifest.personalOwner ||
+        plan.metadata.definition.status !== "reviewed" ||
+        controller.validationPhase !== "delivery" ||
+        binding.input.inputs.some(
+            (input) =>
+                !manifest.members.some(
+                    (member) => member.input.planId === input.planId && member.input.inputId === input.inputId,
+                ),
+        )
+    )
+        throw new Error("Retained recording input does not apply to this delivery attempt.");
+    if (!plan.metadata.workflow?.recordingPreparation)
+        await updatePackageWorkflowMetadata(planName, {}, undefined, { recordingPreparation: reference });
+    return true;
 }

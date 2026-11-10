@@ -1,3 +1,4 @@
+import { importWorkRecords } from "../../shared/work-records/import.ts";
 /**
  * @module cmd/wr
  * List, search, read, index, and backfill canonical Work Records.
@@ -49,7 +50,7 @@ async function chooseSupersessionDecision(
             { value: "later", label: "Decide later" },
         ]);
         return ["confirm", "reject", "later"].includes(String(answer))
-            ? answer as WorkRecordSupersessionDecision
+            ? (answer as WorkRecordSupersessionDecision)
             : null;
     }
     const answer = prompt(`${promptText}\nType confirm, reject, or later:`)?.trim().toLowerCase();
@@ -106,16 +107,10 @@ async function openWorkRecordReadSurface(
 async function stopReadSurface(
     server: Pick<Awaited<ReturnType<typeof startArtifactReadSurface>>, "stop">,
 ): Promise<void> {
-    await Promise.race([
-        Promise.resolve(server.stop()),
-        new Promise<void>((resolve) => setTimeout(resolve, 1000)),
-    ]);
+    await Promise.race([Promise.resolve(server.stop()), new Promise<void>((resolve) => setTimeout(resolve, 1000))]);
 }
 
-function rejectUnknownFlags(
-    parsed: ReturnType<typeof parseArgs>,
-    allowedFlags: string[] = [],
-): void {
+function rejectUnknownFlags(parsed: ReturnType<typeof parseArgs>, allowedFlags: string[] = []): void {
     const allowed = new Set(["_", "help", "h", ...allowedFlags]);
     for (const key of Object.keys(parsed)) {
         if (!allowed.has(key)) throw new Error(`Unsupported flag: --${key}`);
@@ -135,13 +130,19 @@ function formatRebuildResult(result: Awaited<ReturnType<typeof rebuildWorkRecord
     return lines.join("\n");
 }
 
-export async function runWorkRecordsCommand(
-    argv: string[],
-    options: WorkRecordCommandOptions,
-): Promise<void> {
+export async function runWorkRecordsCommand(argv: string[], options: WorkRecordCommandOptions): Promise<void> {
     const mnemotecaPort = options.mnemotecaPort;
     const subcommand = argv[0] && !argv[0].startsWith("-") ? argv[0] : "list";
     const rest = subcommand === "list" ? (argv[0] === "list" ? argv.slice(1) : argv) : argv.slice(1);
+
+    if (subcommand === "import") {
+        if (rest.length !== 1 || rest[0].startsWith("-")) throw new Error("Usage: wld wr import <path>");
+        for (const result of await importWorkRecords(getCwd(), rest[0], { mnemotecaPort })) {
+            console.log(`[RunWield] Imported Work Record: ${result.record.path}`);
+            if (result.indexWarning) console.log(`[RunWield] Index warning: ${result.indexWarning}`);
+        }
+        return;
+    }
 
     if (subcommand === "help") {
         printCommandHelp("wr");
@@ -178,9 +179,11 @@ export async function runWorkRecordsCommand(
                 return;
             }
             if (!preview.eligible.length) return;
-            const confirmed = parsed.yes || promptForBackfillConfirmation(
-                `[RunWield] Backfill will process ${preview.eligible.length} eligible source(s).`,
-            );
+            const confirmed =
+                parsed.yes ||
+                promptForBackfillConfirmation(
+                    `[RunWield] Backfill will process ${preview.eligible.length} eligible source(s).`,
+                );
             if (!confirmed) {
                 console.log("[RunWield] Backfill canceled; no Work Records or Plan backlinks were written.");
                 return;
@@ -190,7 +193,8 @@ export async function runWorkRecordsCommand(
             console.log(formatWorkRecordBackfillOutcomes(result.outcomes));
             for (const outcome of result.outcomes) {
                 if (
-                    (outcome.status === "generated" || outcome.status === "linked") && outcome.recordId &&
+                    (outcome.status === "generated" || outcome.status === "linked") &&
+                    outcome.recordId &&
                     outcome.supersessionProposals?.length
                 ) {
                     await resolveCommandProposals(outcome.recordId, outcome.supersessionProposals, options);
@@ -248,13 +252,13 @@ export async function runWorkRecordsCommand(
             }
             return;
         }
-        const candidates = proposals.filter((proposal) =>
-            proposal.successorRecordId.toLowerCase() === successorRecordId.toLowerCase()
+        const candidates = proposals.filter(
+            (proposal) => proposal.successorRecordId.toLowerCase() === successorRecordId.toLowerCase(),
         );
         if (parsed.confirm || parsed.reject) {
             const predecessorRecordId = String(parsed.confirm || parsed.reject);
-            const proposal = candidates.find((item) =>
-                item.predecessorRecordId.toLowerCase() === predecessorRecordId.toLowerCase()
+            const proposal = candidates.find(
+                (item) => item.predecessorRecordId.toLowerCase() === predecessorRecordId.toLowerCase(),
             );
             if (!proposal) {
                 throw new Error(
@@ -264,17 +268,18 @@ export async function runWorkRecordsCommand(
             const decision = parsed.confirm ? "confirm" : "reject";
             const canonicalSuccessorRecordId = proposal.successorRecordId;
             const canonicalPredecessorRecordId = proposal.predecessorRecordId;
-            const result = decision === "confirm"
-                ? await confirmWorkRecordSupersessionProposal(getCwd(), {
-                    successorRecordId: canonicalSuccessorRecordId,
-                    predecessorRecordId: canonicalPredecessorRecordId,
-                    mnemotecaPort,
-                })
-                : await rejectWorkRecordSupersessionProposal(getCwd(), {
-                    successorRecordId: canonicalSuccessorRecordId,
-                    predecessorRecordId: canonicalPredecessorRecordId,
-                    mnemotecaPort,
-                });
+            const result =
+                decision === "confirm"
+                    ? await confirmWorkRecordSupersessionProposal(getCwd(), {
+                          successorRecordId: canonicalSuccessorRecordId,
+                          predecessorRecordId: canonicalPredecessorRecordId,
+                          mnemotecaPort,
+                      })
+                    : await rejectWorkRecordSupersessionProposal(getCwd(), {
+                          successorRecordId: canonicalSuccessorRecordId,
+                          predecessorRecordId: canonicalPredecessorRecordId,
+                          mnemotecaPort,
+                      });
             console.log(
                 `[RunWield] ${
                     decision === "confirm" ? "Confirmed" : "Rejected"

@@ -85,6 +85,17 @@ for (const remote of [false, true])
                             if (result.kind === "verified") break;
                             ok(result.kind === "host_request", JSON.stringify(result));
                             const request = result.hostRequest;
+                            if (request?.kind === "recorder") {
+                                resume = {
+                                    kind: "recorder",
+                                    identity: request.identity,
+                                    sections: JSON.stringify({
+                                        title: "Published package",
+                                        summary: "Delivered verified implementation.",
+                                    }),
+                                };
+                                continue;
+                            }
                             ok(request?.kind === "reviewer", JSON.stringify(request));
                             reviews++;
                             resume = {
@@ -176,11 +187,26 @@ for (const child of [false, true]) {
                 equal(workflow.executionMode, "non_git_in_place");
                 await fs.writeFile(join(root, "result.txt"), "in-place work\n");
                 await finalizePlanImplementation({ projectRoot: root, planName: "one", executionContext: workflow });
-                const result = await runValidationAttempt({
+                let result = await runValidationAttempt({
                     projectRoot: root,
                     planName: "one",
                     runtime: { kind: "host" },
                 });
+                if (result.kind === "host_request" && result.hostRequest?.kind === "recorder") {
+                    result = await runValidationAttempt({
+                        projectRoot: root,
+                        planName: "one",
+                        runtime: { kind: "host" },
+                        hostResume: {
+                            kind: "recorder",
+                            identity: result.hostRequest.identity,
+                            sections: JSON.stringify({
+                                title: "In-place outcome",
+                                summary: "Completed explicit non-Git work.",
+                            }),
+                        },
+                    });
+                }
                 equal(result.kind, "verified", JSON.stringify(result));
                 const settled = await read(identity);
                 equal(settled.metadata.workflow?.delivery?.mode, "non_git_in_place");

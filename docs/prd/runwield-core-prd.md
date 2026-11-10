@@ -2076,11 +2076,11 @@ or Session. Failures, text-only output, malformed bytes, cancellation, and timeo
 
 ### Work records
 
-**Scope and maturity:** Current generation and retrieval baseline. Manual or external record creation and richer
-authorship are follow-up scope.
+**Scope and maturity:** Current generation and retrieval baseline, plus explicit internal personal-store admission for
+packages and Work Record import. Ordinary public commands retain their repository owner until activation. Richer
+authorship and retention remain follow-up scope.
 
-**Requirement: Preserve outcomes with truthful completion confidence.** Work Records are concise, repository-owned
-Markdown accounts of permanent facts: the delivered outcome, recorded Plan Deviations, out-of-scope facts, and durable
+**Requirement: Preserve outcomes with truthful completion confidence.** Work Records are concise Markdown accounts of permanent facts: the delivered outcome, recorded Plan Deviations, out-of-scope facts, and durable
 lessons. They keep source Plan and Ticket links, not validation receipts, delivery status, run events, to-dos, or known
 defects. Identity and links survive renaming, and search can be rebuilt from the documents.
 
@@ -2106,12 +2106,48 @@ explicit backfill stay available.
 publication manifest supplies exact delivered documents, metadata, relevant children and Tickets. A delivered child
 keeps its own identity while its eligible terminal Epic remains the recording owner. Recorder retry reads that source
 after checkout, branch and publication-clone removal; edits, rename or missing repository copies do not replace it.
-Retained bytes alone never promote an unconfirmed attempt to verified. External recording/index failure preserves
-confirmed delivery and its source reference. This internal input contract does not relocate canonical Work Records or
-activate automatic package record generation, public copy settings, import or pruning.
+Missing retained source or matching delivery proof makes retry/backfill fail recoverably without generating from live
+package content, including for imported verified Plans. Retained bytes alone never promote an unconfirmed attempt to
+verified. External recording/index failure preserves confirmed delivery and its source reference. Explicit internal
+admission selects canonical Markdown under the personal
+Project's `work-records/` directory. Identity discovery alone does not select that store. Missing admitted storage never
+falls back to repository copies; legacy attempts retain their existing owner.
+
+**Requirement: Prepare once and retain truthful delivery copies.** Admitted automatic recording freezes source,
+copy policy and destinations before Recorder acceptance. Accepted sections, record identity and pending canonical bytes
+survive interruption. Internal `plans.deliveryCopies` defaults off and `workRecords.deliveryCopies` defaults on,
+independently of automatic generation. The existing publisher combines enabled Markdown into one artifacts-only commit.
+After confirmed proof, backlinks, copy locations and declared supersession settle before approval exposes the canonical
+record to ordinary retrieval. Approval preserves its body; the Git copy keeps its preparation-time pending
+confidence. Importing that copy cannot approve it. No eligible source, disabled generation or Recorder failure produces
+no fabricated record. A late recording retry never republishes code or adds a copies commit. Older sealed manifests
+retain their original policy.
+
+**Requirement: Import and locate records without a second authority.** Under explicit internal owner admission,
+`wld wr import <path>` accepts a file or directory, preserves exact Markdown and status, and resumes identical imports.
+Conflicting same-ID content refuses without overwriting either source. Core retains source/copy paths and digests by
+record ID independently of the derived index. External origins remain provenance, never repository-delete authority.
+Admitted retrieval hydrates canonical files by ID, uses stable Project/personal-owner index identity, and returns home
+paths. Linked clones share records while retaining distinct repository destinations. Public activation, managed-remote
+transport and pruning remain target.
+
+**Internal store acceptance scenarios:**
+
+- Given default copy settings, validation prepares one pending record, publishes its frozen copy, and approves only the
+  canonical record after matching proof. With both copies off, the canonical record remains retrievable.
+- Given process loss after accepted sections or canonical persistence, a fresh process reuses the record identity and
+  accepted output. Later editor/archive/supersession decisions and reopened Plan state survive settlement replay.
+- Given interruption while copy locations or multiple declared predecessors settle, list/search and index rebuild
+  exclude the pending successor until those relationships finish; recovery approves the same record without republishing.
+- Given exact imports with draft, pending or archived status, repetition preserves their bytes and creates no duplicate.
+  Same-ID changed content and symbolic-link destinations refuse without overwriting existing records.
+- Given a Project move, accepted linked clone or lost index, rebuild uses canonical Markdown with unchanged identity;
+  stale index tags and edited repository copies cannot make pending or archived records current.
 
 **Package source acceptance scenarios:**
 
+- Given an imported verified Plan without retained publication input, targeted retry and backfill report missing
+  evidence and leave canonical records and backlinks unchanged.
 - Given a delivered child or Epic and removed code checkouts, a fresh Recorder read returns exact retained text,
   provenance and child Tickets, preserves live editor bytes, and creates no repository Plan.
 - Given a renamed delivered child whose terminal parent takes its sealed name, publication retains the recording

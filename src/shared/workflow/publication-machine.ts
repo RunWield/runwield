@@ -1,3 +1,4 @@
+import { settlePreparedPackageRecord } from "../work-records/package-recording.ts";
 import { retainPublishedWorkRecordSource } from "../work-records/published-source.ts";
 import { currentPackageSelection } from "./package-workflow.ts";
 import {
@@ -695,6 +696,20 @@ export async function cleanupStoredPublication(
             throw new Error("Package delivery cannot be confirmed on its target.");
         await settlePackagePublication(projectRoot, attempt);
         await retainPublishedWorkRecordSource(projectRoot, attempt);
+        const warning = await settlePreparedPackageRecord(
+            projectRoot,
+            await packagePublicationInput(projectRoot, attempt.packageInput),
+            workRecordMnemotecaPort,
+        );
+        if (warning)
+            return {
+                complete: false,
+                attempt,
+                worktreeKept: true,
+                branchKept: true,
+                details: [warning],
+                preservedFiles,
+            };
     }
     let planKinds = new Map<string, string>();
     if (!attempt.packageInput && (attempt.phase === "publication_verified" || attempt.phase === "cleanup_complete")) {

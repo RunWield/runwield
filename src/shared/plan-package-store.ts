@@ -1,3 +1,4 @@
+import { parseWorkRecordMarkdown } from "./work-records/markdown.js";
 /** Explicit personal Plan packages. Legacy discovery and lifecycle admission remain separate. */
 import fs from "node:fs/promises";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -12,7 +13,7 @@ import {
     writeTextAtomically,
 } from "./private-json-file.ts";
 import { EPIC_ARTIFACT_FILE_NAMES } from "./epic-artifacts.ts";
-import { canonicalPlanStatus, normalizePlanId, StalePlanWriteError } from "../plan-store.js";
+import { canonicalPlanStatus, normalizePlanId, StalePlanWriteError, type PlanFrontMatter } from "../plan-store.js";
 import {
     preparePlanPackageImport,
     revalidatePlanImport,
@@ -143,6 +144,7 @@ export interface PackageWorkflowEvidence {
     controller?: PackageControllerReference;
     publication?: PackagePublicationReference;
     recordingSource?: PackagePublicationReference;
+    recordingPreparation?: PackagePublicationReference;
     delivery?: PackageDeliveryReceipt;
 }
 export interface DeliveryCopy {
@@ -176,6 +178,11 @@ export interface PackagePublicationManifest {
     validatedCommit: string;
     targetBranch: string;
     planCopies: boolean;
+    stage?: "recording";
+    workRecordCopies?: boolean;
+    autoGenerateRecords?: boolean;
+    preparedRecord?: DeliveryCopy;
+    recordingOutcome?: PlanFrontMatter["workRecord"];
     members: PackagePublicationMember[];
     copies: DeliveryCopy[];
 }
@@ -633,17 +640,13 @@ function metadataFrom(value: PlanPackageMetadata): PlanPackageMetadata {
             "controller",
             "publication",
             "recordingSource",
+            "recordingPreparation",
             "delivery",
             "workRecord",
         ]);
-        if (workflow.workRecord !== undefined) {
-            const record = fields(workflow.workRecord, ["status", "recordId", "path", "lastAttemptAt", "error"]);
-            if (
-                Object.values(record).some((value) => typeof value !== "string") ||
-                (record.status !== undefined && !["generated", "failed"].includes(String(record.status)))
-            )
-                fail("malformed_metadata", "Invalid package recording outcome.");
-        }
+        if (workflow.workRecord !== undefined) validateRecordingOutcome(workflow.workRecord);
+        if (workflow.recordingPreparation !== undefined)
+            assertPackagePublicationReference(JSON.parse(JSON.stringify(workflow.recordingPreparation)));
         if (workflow.recordingSource !== undefined)
             assertPackagePublicationReference(JSON.parse(JSON.stringify(workflow.recordingSource)));
         if (workflow.publication !== undefined) {
@@ -1748,6 +1751,15 @@ export function assertDeliveryCopies(copies: DeliveryCopy[]): void {
     }
 }
 
+function validateRecordingOutcome(value: JsonValue): void {
+    const record = fields(value, ["status", "recordId", "path", "lastAttemptAt", "error"]);
+    if (
+        Object.values(record).some((item) => typeof item !== "string") ||
+        (record.status !== undefined && !["generated", "failed"].includes(String(record.status)))
+    )
+        fail("malformed_metadata", "Invalid package recording outcome.");
+}
+
 async function validatePublicationManifest(
     identity: ProjectIdentity,
     manifest: PackagePublicationManifest,
@@ -1763,6 +1775,11 @@ async function validatePublicationManifest(
         "validatedCommit",
         "targetBranch",
         "planCopies",
+        "stage",
+        "workRecordCopies",
+        "autoGenerateRecords",
+        "preparedRecord",
+        "recordingOutcome",
         "members",
         "copies",
     ]);
@@ -1779,6 +1796,34 @@ async function validatePublicationManifest(
     )
         fail("malformed_metadata", "Publication manifest does not belong to this owner and repository.");
     assertDeliveryCopies(manifest.copies);
+    if (manifest.stage !== undefined && manifest.stage !== "recording")
+        fail("malformed_metadata", "Invalid publication stage.");
+    for (const value of [manifest.workRecordCopies, manifest.autoGenerateRecords])
+        if (value !== undefined && typeof value !== "boolean") fail("malformed_metadata", "Invalid recording policy.");
+    if (manifest.recordingOutcome !== undefined)
+        validateRecordingOutcome(JSON.parse(JSON.stringify(manifest.recordingOutcome)));
+    if (manifest.preparedRecord) {
+        assertDeliveryCopies([manifest.preparedRecord]);
+        const record = parseWorkRecordMarkdown(manifest.preparedRecord.text);
+        const ownerId =
+            manifest.members.find((member) => member.metadata.planId === manifest.planId)?.metadata.parentPlanId ||
+            manifest.planId;
+        if (
+            manifest.preparedRecord.kind !== "work-record" ||
+            record.attrs.status !== "pending_verification" ||
+            !record.attrs.provenance?.sourcePlans?.includes(ownerId) ||
+            (manifest.recordingOutcome?.recordId && manifest.recordingOutcome.recordId !== record.attrs.recordId)
+        )
+            fail("malformed_metadata", "Prepared Work Record does not match its retained source.");
+        const copies = manifest.copies.filter((copy) => copy.kind === "work-record");
+        if (
+            copies.some(
+                (copy) => copy.path !== manifest.preparedRecord!.path || copy.text !== manifest.preparedRecord!.text,
+            ) ||
+            (manifest.workRecordCopies === false && copies.length)
+        )
+            fail("malformed_metadata", "Work Record copies do not match retained recording policy.");
+    }
     const ids = new Set<string>();
     for (const member of manifest.members) {
         fields(JSON.parse(JSON.stringify(member)), ["metadata", "input", "controller"]);
@@ -1817,12 +1862,23 @@ export async function retainPlanPackagePublication(
     const manifest: PackagePublicationManifest = {
         ...input,
         version: 1,
-        inputId: publicationInputId(identity, input.planId, input.attemptId, input.validatedCommit),
+        inputId: publicationInputId(
+            identity,
+            input.planId,
+            input.attemptId,
+            input.validatedCommit + (input.stage ? ":recording" : ""),
+        ),
         projectId: identity.projectId,
         personalOwner: identity.personalOwner.identity,
         repositoryId: identity.repositoryId,
     };
-    const previous = await findPlanPackagePublication(identity, input.planId, input.attemptId, input.validatedCommit);
+    const previous = await findPlanPackagePublication(
+        identity,
+        input.planId,
+        input.attemptId,
+        input.validatedCommit,
+        input.stage,
+    );
     if (previous) return previous;
     await validatePublicationManifest(identity, manifest);
     const paths = layout(identity);
@@ -1891,8 +1947,9 @@ export async function findPlanPackagePublication(
     planId: string,
     attemptId: string,
     commit: string,
+    stage?: "recording",
 ): Promise<PackagePublicationReference | null> {
-    const inputId = publicationInputId(identity, planId, attemptId, commit);
+    const inputId = publicationInputId(identity, planId, attemptId, commit + (stage ? ":recording" : ""));
     const paths = layout(identity);
     const bytes = await file(paths.home, join(paths.internal, "publications", `${inputId}.json`));
     if (!bytes) return null;
@@ -1927,4 +1984,48 @@ export function samePackagePublicationReference(
         left.inputId === right.inputId &&
         left.digest === right.digest,
     );
+}
+
+/** Recover recording input published before its Plan reference, without consulting newer documents. */
+export async function findPlanPackageRecordingPreparation(
+    identity: ProjectIdentity,
+    planId: string,
+    attemptId: string,
+): Promise<PackagePublicationReference | null> {
+    const paths = layout(identity);
+    const root = join(paths.internal, "publications");
+    await safe(paths.home, root);
+    const entries = await fs.readdir(root).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return [];
+        throw error;
+    });
+    let found: PackagePublicationReference | null = null;
+    for (const entry of entries) {
+        if (!entry.endsWith(".json")) continue;
+        const bytes = await file(paths.home, join(root, entry));
+        if (!bytes) throw new Error("Retained recording input disappeared during recovery.");
+        const manifest: PackagePublicationManifest = JSON.parse(decodePackageMarkdown(bytes));
+        if (
+            manifest.stage !== "recording" ||
+            manifest.planId !== planId ||
+            manifest.attemptId !== attemptId ||
+            manifest.repositoryId !== identity.repositoryId
+        )
+            continue;
+        const reference: PackagePublicationReference = {
+            kind: "package",
+            projectId: manifest.projectId,
+            personalOwner: manifest.personalOwner,
+            repositoryId: manifest.repositoryId,
+            planId,
+            attemptId,
+            inputId: manifest.inputId,
+            digest: createHash("sha256").update(bytes).digest("hex"),
+        };
+        await readPlanPackagePublication(identity, reference);
+        if (found && found.inputId !== reference.inputId)
+            throw new Error("Multiple recording inputs claim this attempt.");
+        found = reference;
+    }
+    return found;
 }

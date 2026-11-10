@@ -1,3 +1,4 @@
+import { currentWorkRecordOwner } from "./owner.ts";
 /**
  * @module shared/work-records/search
  * Canonical Work Record retrieval hydrated from Markdown, using Mnemoteca only for candidates.
@@ -89,7 +90,7 @@ export function formatHydratedWorkRecord(record: WorkRecordResource): WorkRecord
         completionMode: record.attrs.completionMode,
         sourcePlans: record.attrs.provenance?.sourcePlans || [],
         tickets: record.attrs.tickets || [],
-        path: record.relativePath,
+        path: currentWorkRecordOwner() ? record.path : record.relativePath,
         notices: workRecordNotices(record),
     };
 }

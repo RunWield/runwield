@@ -1,3 +1,4 @@
+import { workRecordOwnerLayout, assertWorkRecordPath } from "./owner.ts";
 import { mkdir as fsMkdir } from "node:fs/promises";
 import { captureForegroundProcess } from "../captured-process.ts";
 /**
@@ -64,6 +65,7 @@ function resolveWorkRecordIndexProjectName(cwd: string, gitCommonDir: string) {
 }
 
 export async function getWorkRecordIndexCollectionName(cwd: string) {
+    if (workRecordOwnerLayout()) return workRecordOwnerLayout()!.collection;
     return `${resolveWorkRecordIndexProjectName(cwd, await resolveGitCommonDir(cwd))}:work-records`;
 }
 
@@ -125,16 +127,23 @@ export async function runMnemotecaWorkRecordCommand(cwd: string, args: string[],
     const mnemotecaPort = options.mnemotecaPort;
     let result;
     try {
-        const layout = (await checkedProjectRuntimeLayout(cwd)).primary;
-        if (remoteProjectOwner()?.kind === "managed-remote" || inspectProjectIdentity(cwd).kind === "existing") {
-            await fsMkdir(dirname(layout.workRecordIndexDatabasePath), { recursive: true, mode: 0o700 });
-            result = await mnemotecaPort.run(args, {
-                cwd,
-                env: { MNEMOTECA_DB_PATH: layout.workRecordIndexDatabasePath },
-            });
+        const admitted = workRecordOwnerLayout();
+        if (admitted) {
+            assertWorkRecordPath(admitted.database);
+            await fsMkdir(dirname(admitted.database), { recursive: true, mode: 0o700 });
+            result = await mnemotecaPort.run(args, { cwd, env: { MNEMOTECA_DB_PATH: admitted.database } });
         } else {
-            // An identity-free Project retains its existing derived collection until deliberate admission.
-            result = await mnemotecaPort.run(args, { cwd });
+            const layout = (await checkedProjectRuntimeLayout(cwd)).primary;
+            if (remoteProjectOwner()?.kind === "managed-remote" || inspectProjectIdentity(cwd).kind === "existing") {
+                await fsMkdir(dirname(layout.workRecordIndexDatabasePath), { recursive: true, mode: 0o700 });
+                result = await mnemotecaPort.run(args, {
+                    cwd,
+                    env: { MNEMOTECA_DB_PATH: layout.workRecordIndexDatabasePath },
+                });
+            } else {
+                // An identity-free Project retains its existing derived collection until deliberate admission.
+                result = await mnemotecaPort.run(args, { cwd });
+            }
         }
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

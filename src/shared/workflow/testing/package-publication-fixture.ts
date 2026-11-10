@@ -15,6 +15,7 @@ export async function publicationFixture(
     family?: "child" | "epic" | "last-child",
     local = false,
     documents?: PackageDocuments,
+    supersedes?: string[],
 ) {
     const f = await packageFixture();
     const remote = `${f.root}-remote.git`;
@@ -62,6 +63,7 @@ export async function publicationFixture(
             classification: family === "epic" ? "PROJECT" : "PLANNED_CHANGE",
             ...(family === "epic" ? { type: "sequence" as const } : {}),
             status: "draft",
+            ...(supersedes ? { supersedes } : {}),
             ...(family === "epic" ? {} : { executionAgent: "engineer", collaborationRecommendation: "autonomous" }),
             targetBranch: "main",
         },
