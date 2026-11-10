@@ -3,7 +3,7 @@ import { ok as assert } from "node:assert/strict";
 import type { GoldenScenario, GoldenScenarioResult } from "../testing/scenario-runner.js";
 import { assertEventIncludes } from "../testing/scenario-runner.js";
 import type { ScriptedInteractionSurface } from "../testing/scripted-review-surface.ts";
-import { plannedChangeCiRepairReentryScenario } from "./planned-change-workflow.js";
+import { plannedChangeCiRepairReentryScenario } from "./planned-change-workflow.ts";
 import { startupInitScenario } from "./slash-command-tree-lifecycle.ts";
 
 const command = "test -f ci-fix.txt";

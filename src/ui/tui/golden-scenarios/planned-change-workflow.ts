@@ -9,42 +9,112 @@ import { assertEquals, assertStringIncludes } from "../../../testing/assertions.
 import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.js";
 import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-assertions.ts";
 
-/** @typedef {import('../testing/scenario-runner.js').GoldenScenarioResult} GoldenScenarioResult */
-/** @typedef {{ shownExplanationIds?: string[], recapShown?: boolean }} TutorialContextSnapshot */
-/** @typedef {{ runtimeSnapshot?: { tutorialContext?: TutorialContextSnapshot } }} TutorialCapturedState */
-/** @typedef {{ remoteHead?: string, remotePlanStatus?: string, deliveredText?: string }} TutorialPublicationState */
-/**
- * @typedef {object} TutorialScenarioState
- * @property {{ head?: string }} [publicationBaseline]
- * @property {TutorialCapturedState} [tutorialPausedState]
- * @property {TutorialCapturedState} [tutorialRepairedState]
- * @property {TutorialCapturedState} [projectState]
- * @property {TutorialCapturedState} [tutorialCompletedState]
- * @property {TutorialCapturedState} [tutorialReloadedCompletedState]
- * @property {TutorialPublicationState} [tutorialPublicationBeforeReload]
- * @property {TutorialPublicationState} [tutorialPublicationAfterReload]
- */
+import type { PlanFrontMatter } from "../../../plan-store.js";
+import type { TutorialContext } from "../../../shared/session/tutorial-context-session.ts";
+import type { WorkflowControllerState } from "../../../shared/workflow/controller-state.ts";
+import type { WorktreeRegistryEntry } from "../../../shared/worktree-registry.js";
+import type {
+    ConsumedScriptedInteraction,
+    GoldenScenario,
+    GoldenScenarioResult,
+    PublicationBaseline,
+} from "../testing/mod.ts";
 
-/**
- * @param {GoldenScenarioResult} result
- * @param {string} text
- * @returns {number}
- */
-function countVisibleOccurrences(result, text) {
+export type { GoldenScenarioResult } from "../testing/mod.ts";
+
+export type TutorialContextSnapshot = Partial<Pick<TutorialContext, "shownExplanationIds" | "recapShown">>;
+
+interface OnboardingTutorialScenario extends GoldenScenario {
+    slashCommands: string[];
+}
+
+interface TutorialRuntimeSnapshot {
+    tutorialContext?: TutorialContextSnapshot;
+}
+
+export interface TutorialCapturedState {
+    runtimeSnapshot?: TutorialRuntimeSnapshot;
+}
+
+export interface TutorialPublicationState {
+    remoteHead?: string;
+    remotePlanStatus?: string;
+    deliveredText?: string;
+}
+
+type TutorialPublicationBaseline = Partial<Pick<PublicationBaseline, "head">>;
+
+export interface TutorialScenarioState {
+    publicationBaseline?: TutorialPublicationBaseline;
+    tutorialPausedState?: TutorialCapturedState;
+    tutorialRepairedState?: TutorialCapturedState;
+    projectState?: TutorialCapturedState;
+    tutorialCompletedState?: TutorialCapturedState;
+    tutorialReloadedCompletedState?: TutorialCapturedState;
+    tutorialPublicationBeforeReload?: TutorialPublicationState;
+    tutorialPublicationAfterReload?: TutorialPublicationState;
+}
+
+interface CapturedPlanReviewEvent {
+    event: string;
+    status?: string;
+}
+
+interface CapturedPlanReview {
+    lifecycleEvents?: CapturedPlanReviewEvent[];
+    plan?: string;
+}
+
+interface CapturedWorkflowDurability {
+    goldenFileExists?: boolean;
+    trackedFiles?: string;
+    deliveryLog?: string;
+    deliveryEvidence?: string;
+    status?: string;
+    validatedExecutionCommit?: string;
+    executionCommitPublished?: boolean;
+    editorUsable?: boolean;
+}
+
+interface CapturedPlanAttrs extends Pick<
+    Partial<PlanFrontMatter>,
+    "executionMode" | "deliveryEvidence" | "status" | "planId"
+> {
+    validationCiAttempts?: number;
+}
+
+interface CapturedProjectPlan {
+    attrs?: CapturedPlanAttrs | null;
+}
+
+interface CapturedProjectState {
+    plans?: CapturedProjectPlan[];
+    registryEntries?: WorktreeRegistryEntry[];
+}
+
+interface CapturedPublication {
+    remotePlanAttrs?: CapturedPlanAttrs;
+    controllerState?: WorkflowControllerState;
+    registryEntries?: WorktreeRegistryEntry[];
+}
+
+interface CapturedExecutionPlan {
+    attrs?: CapturedPlanAttrs | null;
+    registryEntry?: Pick<WorktreeRegistryEntry, "status"> | null;
+}
+
+function countVisibleOccurrences(result: GoldenScenarioResult, text: string) {
     const haystack = `${result.scrollbackText || ""}\n${result.screenText || ""}`;
     return haystack.split(text).length - 1;
 }
 
-/** @param {GoldenScenarioResult} result */
-function assertRealPlanReviewRevisionAndApproval(result) {
+function assertRealPlanReviewRevisionAndApproval(result: GoldenScenarioResult) {
     assertEventIncludes(result, "interaction:PLAN_REVIEW:feedback");
     assertEventIncludes(result, "interaction:PLAN_REVIEW:approved");
     assertEventIncludes(result, "review_feedback");
     assertEventIncludes(result, "review_approved");
-    const planReview =
-        /** @type {{ lifecycleEvents?: Array<{ event: string, status?: unknown }>, plan?: string } | undefined} */ (
-            result.state.planReview
-        );
+    // The JavaScript runner stores captures by dynamic keys in an opaque state record.
+    const planReview = result.state.planReview as CapturedPlanReview | undefined;
     assert(planReview, "Expected production Plan Review transaction state.");
     assert(
         planReview.lifecycleEvents?.map((event) => `${event.event}:${event.status}`).join(",") ===
@@ -69,10 +139,7 @@ function assertRealPlanReviewRevisionAndApproval(result) {
     assertEventIncludes(result, "workflow:durability:ancestry-checked");
     assertEventIncludes(result, "workflow:durability:evidence-recorded");
     assertEventIncludes(result, "workflow:durability:terminal-ready");
-    const durability =
-        /** @type {{ goldenFileExists?: boolean, trackedFiles?: string, deliveryLog?: string, deliveryEvidence?: string, status?: string, validatedExecutionCommit?: string, executionCommitPublished?: boolean, editorUsable?: boolean } | undefined} */ (
-            result.state.workflowDurability
-        );
+    const durability = result.state.workflowDurability as CapturedWorkflowDurability | undefined;
     assert(durability?.goldenFileExists === true, "Expected delivered Golden file to exist after Workflow Validation.");
     assert(
         String(durability?.trackedFiles || "").includes("golden-planned-change.txt"),
@@ -396,17 +463,12 @@ export const plannedChangeReviewRepairValidationScenario = {
             );
         }),
         assertsGoldenCoverage("durable:plan-lifecycle", (result) => {
-            const planReview =
-                /** @type {{ lifecycleEvents?: Array<{ event: string, status?: unknown }> } | undefined} */ (
-                    result.state.planReview
-                );
+            const planReview = result.state.planReview as CapturedPlanReview | undefined;
             assert(planReview?.lifecycleEvents?.some((event) => event.event === "review_feedback"));
             assert(planReview?.lifecycleEvents?.some((event) => event.event === "review_approved"));
         }),
         assertsGoldenCoverage("durable:worktree-publication", (result) => {
-            const durability = /** @type {{ executionCommitPublished?: boolean } | undefined} */ (
-                result.state.workflowDurability
-            );
+            const durability = result.state.workflowDurability as CapturedWorkflowDurability | undefined;
             assert(durability?.executionCommitPublished === true, "Expected validated commit publication.");
         }),
         assertRuntimeEvent("durable:registry-cleanup", "workflow:durability:registry-clean"),
@@ -436,7 +498,7 @@ export const plannedChangeReviewRepairValidationScenario = {
             assertStringIncludes(transcript, "reviewer latest AI review");
         }),
     ],
-};
+} satisfies GoldenScenario;
 
 export const onboardingTutorialDeliveryScenario = {
     ...plannedChangeReviewRepairValidationScenario,
@@ -595,7 +657,7 @@ export const onboardingTutorialDeliveryScenario = {
                     `Reload must preserve ${id} instead of running it again.`,
                 );
             }
-            const tutorialState = /** @type {TutorialScenarioState} */ (result.state);
+            const tutorialState: TutorialScenarioState = result.state;
             const pausedContext = tutorialState.tutorialPausedState?.runtimeSnapshot?.tutorialContext;
             const repairedContext = tutorialState.tutorialRepairedState?.runtimeSnapshot?.tutorialContext;
             const tutorialContext = tutorialState.projectState?.runtimeSnapshot?.tutorialContext;
@@ -646,14 +708,12 @@ export const onboardingTutorialDeliveryScenario = {
             }
         }),
     ],
-};
+} satisfies OnboardingTutorialScenario;
 
 /**
  * Reuse a turn from the main PLANNED_CHANGE script by name.
- *
- * @param {string} id
  */
-function plannedChangeTurn(id) {
+function plannedChangeTurn(id: string) {
     const turn = plannedChangeReviewRepairValidationScenario.script.find((entry) => entry.id === id);
     if (!turn) throw new Error(`Golden PLANNED_CHANGE script has no turn "${id}".`);
     return turn;
@@ -772,10 +832,7 @@ export const plannedChangeCiRepairReentryScenario = {
             // this is the proof that re-entry landed in the right place.
             assertScreenIncludes(result, "found no need for a fix");
             assertScreenIncludes(result, "Merging work into main");
-            const durability =
-                /** @type {{ goldenFileExists?: boolean, trackedFiles?: string, executionCommitPublished?: boolean } | undefined} */ (
-                    result.state.workflowDurability
-                );
+            const durability = result.state.workflowDurability as CapturedWorkflowDurability | undefined;
             assert(
                 durability?.executionCommitPublished === true,
                 "Expected delivery only after a passing CI run and an approved review.",
@@ -792,10 +849,9 @@ export const plannedChangeCiRepairReentryScenario = {
             );
         }),
     ],
-};
+} satisfies GoldenScenario;
 
-/** @type {import('../testing/scenario-runner.js').GoldenScenario} */
-export const plannedChangeNonGitInPlaceScenario = {
+export const plannedChangeNonGitInPlaceScenario: GoldenScenario = {
     globalSettings: { defaultProvider: "golden", defaultModel: "faux", codereview: "none" },
     name: "planned-change-non-git-in-place-delivery",
     composedTui: true,
@@ -876,23 +932,18 @@ export const plannedChangeNonGitInPlaceScenario = {
     ],
     assertions: [
         assertsGoldenCoverage("durable:non-git-in-place", (result) => {
-            const interactions = /** @type {Array<{ interaction?: { value?: string } }> | undefined} */ (
-                result.state.scriptedInteractions
-            );
+            const interactions = result.state.scriptedInteractions as ConsumedScriptedInteraction[] | undefined;
             assert(
                 interactions?.some((entry) => entry.interaction?.value === "proceed"),
                 "Expected non-Git execution prompt to be handled through production interaction.",
             );
-            const projectState =
-                /** @type {{ plans?: Array<{ attrs?: Record<string, unknown> | null }>, registryEntries?: unknown[] } | undefined} */ (
-                    result.state.projectState
-                );
+            const projectState = result.state.projectState as CapturedProjectState | undefined;
             const attrs = projectState?.plans?.[0]?.attrs;
             assert(
                 attrs?.executionMode === "non_git_in_place",
                 `Expected non_git_in_place; got ${attrs?.executionMode}`,
             );
-            const deliveryEvidence = /** @type {{ mode?: string } | undefined} */ (attrs?.deliveryEvidence);
+            const deliveryEvidence = attrs?.deliveryEvidence;
             assert(deliveryEvidence?.mode === "non_git_in_place", "Expected non-Git Delivery Evidence.");
             assert(
                 result.state.nonGitDeliveredFileText === "non-git",
@@ -903,8 +954,7 @@ export const plannedChangeNonGitInPlaceScenario = {
     ],
 };
 
-/** @type {import('../testing/scenario-runner.js').GoldenScenario} */
-export const plannedChangeValidationFailureRetryScenario = {
+export const plannedChangeValidationFailureRetryScenario: GoldenScenario = {
     globalSettings: {
         defaultProvider: "golden",
         defaultModel: "faux",
@@ -1055,10 +1105,7 @@ export const plannedChangeValidationFailureRetryScenario = {
         assertsGoldenCoverage("recovery:validation-failure-retry", (result) => {
             assertScreenIncludes(result, "Running the tests in");
             assertScreenIncludes(result, "Repaired retry fixture after CI failure.");
-            const publication =
-                /** @type {{ remotePlanAttrs?: Record<string, unknown>, controllerState?: import('../../../shared/workflow/controller-state.ts').WorkflowControllerState, registryEntries?: Array<unknown> }} */ (
-                    result.state.publication
-                );
+            const publication = result.state.publication as CapturedPublication;
             const attrs = publication.remotePlanAttrs;
             const ciRuns = countVisibleOccurrences(result, "Running the tests in");
             assert(ciRuns >= 2, `Expected failed CI plus retry CI; saw ${ciRuns} CI runs.`);
@@ -1085,8 +1132,7 @@ export const plannedChangeValidationFailureRetryScenario = {
     ],
 };
 
-/** @type {import('../testing/scenario-runner.js').GoldenScenario} */
-export const plannedChangeValidationExhaustedScenario = {
+export const plannedChangeValidationExhaustedScenario: GoldenScenario = {
     globalSettings: { defaultProvider: "golden", defaultModel: "faux", codereview: "none" },
     name: "planned-change-validation-ci-exhausted-recoverable",
     composedTui: true,
@@ -1188,10 +1234,7 @@ export const plannedChangeValidationExhaustedScenario = {
         assertsGoldenCoverage("recovery:validation-exhausted", (result) => {
             assertScreenIncludes(result, "Tests and CI failed");
             assertScreenIncludes(result, "tests for");
-            const executionPlan =
-                /** @type {{ attrs?: Record<string, unknown> | null, registryEntry?: { status?: string } | null }} */ (
-                    result.state.executionPlan
-                );
+            const executionPlan = result.state.executionPlan as CapturedExecutionPlan;
             const attrs = executionPlan.attrs;
             const completedTurns = result.events.filter(
                 (event) => event === "runtime:tool:start:task_completed",
@@ -1215,8 +1258,7 @@ export const plannedChangeValidationExhaustedScenario = {
     ],
 };
 
-/** @type {import('../testing/scenario-runner.js').GoldenScenario} */
-export const plannedChangeFrontendIdentityScenario = {
+export const plannedChangeFrontendIdentityScenario: GoldenScenario = {
     globalSettings: {
         defaultProvider: "golden",
         defaultModel: "faux",

@@ -1,5 +1,5 @@
 export type { GoldenChildOptions, GoldenChildResult } from "./subprocess-runner.ts";
-export type { GoldenScenario, GoldenScenarioResult } from "./scenario-runner.js";
+export type { GoldenScenario, GoldenScenarioResult, PublicationBaseline } from "./scenario-runner.js";
 export { GoldenScenarioActor } from "./scenario-actor.ts";
 export { assertEventIncludes, assertScreenIncludes, runGoldenScenario } from "./scenario-runner.js";
 export { runGoldenChild, sanitizeGoldenChildEnv } from "./subprocess-runner.ts";

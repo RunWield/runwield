@@ -1,6 +1,6 @@
 import { assertEquals } from "../../../testing/assertions.ts";
 import type { GoldenScenarioResult } from "../testing/scenario-runner.js";
-import { plannedChangeReviewRepairValidationScenario } from "./planned-change-workflow.js";
+import { plannedChangeReviewRepairValidationScenario } from "./planned-change-workflow.ts";
 import { withValidationBranches } from "./validation-workflow-tree-shared.ts";
 
 function humanReviewSettings(codereview: "none" | "ask" | "always"): string {
