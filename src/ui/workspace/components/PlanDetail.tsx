@@ -1,3 +1,15 @@
+import type {
+    PlanFrontMatter,
+    PlanFrontMatterInput,
+    resolveSiblingChildPlanDependencyStates,
+} from "../../../plan-store.js";
+import type { TicketReference } from "../../../shared/ticket-references.ts";
+import type { WorkflowPresentationInput } from "../../../shared/workflow/workflow-presentation.ts";
+import type { PlanBodyEditorPlan } from "../islands/PlanBodyEditor.tsx";
+import type { LifecycleActions, PlanLifecycleActionPlan } from "../islands/PlanLifecycleActions.tsx";
+import type { BoardCardData, BoardColumnData } from "./BoardColumn.tsx";
+import type { ProjectCardProgress } from "./EpicCard.tsx";
+import type { PlanCardData } from "./PlanCard.tsx";
 import {
     PLAN_FRONT_MATTER_KEY_ORDER as FRONT_MATTER_KEY_ORDER,
     PLAN_FRONT_MATTER_KEYS as FM,
@@ -11,20 +23,147 @@ import { ComplexityLabel, workspaceHref } from "./PlanCard.tsx";
 import { buildWorkflowPresentation } from "../../../shared/workflow/workflow-presentation.ts";
 import { WorkflowSidebar } from "../react/WorkflowSidebar.tsx";
 
+type DependencyState = ReturnType<typeof resolveSiblingChildPlanDependencyStates>[number];
+type HoldMetadata = Pick<PlanLifecycleActionPlan, "holdReason"> & Pick<PlanCardData, "heldFromStatus" | "heldAt">;
+type DetailProgressSummary = Pick<ProjectCardProgress, "verified" | "userVerified" | "total" | "active" | "remaining">;
+type DetailPlanFields = Partial<
+    Pick<
+        PlanFrontMatter,
+        | "classification"
+        | "workKind"
+        | "parentPlan"
+        | "worktreeBranch"
+        | "failureReason"
+        | "failedAt"
+        | "implementedAt"
+        | "verifiedAt"
+        | "userVerifiedAt"
+        | "closedWithoutVerificationAt"
+        | "executionMode"
+        | "deliveryEvidence"
+        | "epicDoneEnoughSummary"
+        | "epicDoneEnoughAt"
+        | "type"
+    >
+>;
+
+interface DetailChild
+    extends
+        HoldMetadata,
+        Pick<PlanCardData, "planId" | "planName" | "missingDependencyCount" | "unverifiedDependencyCount"> {
+    failureReason?: PlanFrontMatter["failureReason"];
+    dependencyStates: DependencyState[];
+}
+
+interface DetailChildHealth {
+    failed?: DetailChild[];
+    held?: DetailChild[];
+    blocked?: DetailChild[];
+    missingDependencies?: DetailChild[];
+}
+
+interface DetailChildColumn extends BoardColumnData {
+    orphanChildren: BoardCardData[];
+}
+
+export interface PlanDetailData
+    extends
+        PlanBodyEditorPlan,
+        PlanLifecycleActionPlan,
+        DetailPlanFields,
+        HoldMetadata,
+        Pick<
+            PlanCardData,
+            "planName" | "hierarchyRole" | "complexity" | "summary" | "readAvailability" | "blockedByDependencies"
+        > {
+    title?: string;
+    path?: string;
+    markdown?: string;
+    frontMatter?: PlanFrontMatterInput;
+    attrs?: PlanFrontMatterInput;
+    relativePath?: string;
+    worktreeStatus?: PlanFrontMatter["worktreeStatus"] | "";
+    humanReviewMode?: PlanFrontMatter["humanReviewMode"] | "";
+    workRecord?: PlanFrontMatter["workRecord"] | null;
+    epicCompletionMode?: PlanFrontMatter["epicCompletionMode"] | "";
+    dependsOn?: string[];
+    dependencyStates?: DependencyState[];
+    orphanReason?: string;
+    inheritedEpicTickets?: TicketReference[];
+    isEpic?: boolean;
+    doneEnough?: boolean;
+    childProgress?: DetailProgressSummary;
+    childHealth?: DetailChildHealth;
+    childColumns?: DetailChildColumn[];
+    children?: DetailChild[];
+}
+
+type PlanDetailProgressPlan = Pick<WorkflowPresentationInput, "status" | "validationPhase">;
+interface PlanDetailProgressSession {
+    state?: string;
+    runwieldSessionId?: string;
+}
+interface PlanDetailDegradation {
+    message?: string;
+}
+interface PlanDetailProgress extends Pick<WorkflowPresentationInput, "progressFacts"> {
+    plan?: PlanDetailProgressPlan | null;
+    session?: PlanDetailProgressSession | null;
+    degraded?: PlanDetailDegradation | null;
+}
+
+interface DetailPlanProps {
+    plan: PlanDetailData;
+}
+
+interface PlanWorkflowSummaryProps extends DetailPlanProps {
+    progress?: PlanDetailProgress | null;
+    projectId?: string;
+    runwieldSessionId?: string;
+}
+
+export interface PlanDetailProps extends PlanWorkflowSummaryProps {
+    url: URL | string;
+    editIntent?: boolean;
+    staticRender?: boolean;
+}
+
+interface EpicSummaryProps {
+    epic: PlanDetailData;
+}
+
+interface EpicDetailSectionsProps extends EpicSummaryProps {
+    url: URL | string;
+}
+
+type Metadata = Record<string, unknown>;
+type TicketLink = Pick<TicketReference, "url">;
+
+interface MetadataEntry {
+    key: string;
+    label: string;
+    value: unknown;
+}
+
+interface MetadataGroupProps {
+    title: string;
+    entries: MetadataEntry[];
+}
+
+interface TicketReferenceGroupProps {
+    title: string;
+    tickets: TicketLink[];
+}
+
 const CLOSED_STATUSES = new Set(["validated", "verified", "user_verified", "closed_without_verification"]);
 
-/** @param {string} status */
-export function tabForPlanStatus(status) {
+export function tabForPlanStatus(status: string) {
     if (status === "on_hold") return "on-hold";
     if (CLOSED_STATUSES.has(status)) return "closed";
     return "active";
 }
 
-/**
- * @param {string} status
- * @param {URL | string} url
- */
-export function boardHrefForPlanStatus(status, url) {
+export function boardHrefForPlanStatus(status: string, url: URL | string) {
     const currentUrl = new URL(String(url));
     if (currentUrl.searchParams.get("from") === "dashboard") return "/";
     const tab = tabForPlanStatus(status);
@@ -33,8 +172,7 @@ export function boardHrefForPlanStatus(status, url) {
     return workspaceHref("/", url);
 }
 
-/** @param {any} plan */
-function holdMetadata(plan) {
+function holdMetadata(plan: HoldMetadata) {
     const metadata = [];
     if (plan.heldFromStatus) metadata.push(`held from ${plan.heldFromStatus}`);
     if (plan.heldAt) metadata.push(`held at ${plan.heldAt}`);
@@ -42,30 +180,24 @@ function holdMetadata(plan) {
     return metadata.length ? metadata.join("; ") : "No hold metadata provided.";
 }
 
-/** @param {any} plan */
-function isEpicDetail(plan) {
+function isEpicDetail(plan: PlanDetailData) {
     return Boolean(plan.isEpic || plan.classification === "PROJECT");
 }
 
-/** @param {any} entry */
-function dependencyLabel(entry) {
+function dependencyLabel(entry: DependencyState) {
     return `${entry.dependency}: ${entry.state}${entry.status ? ` (${entry.status})` : ""}`;
 }
 
-/** @type {string[]} */
-const FRONT_MATTER_KEYS_IN_ORDER = [...FRONT_MATTER_KEY_ORDER];
-/** @type {Set<string>} */
-const FRONT_MATTER_KEY_SET = new Set(FRONT_MATTER_KEYS_IN_ORDER);
-/** @type {Set<string>} */
-const HIDDEN_METADATA_KEYS = new Set([FM.worktreePath, FM.tickets]);
+const FRONT_MATTER_KEYS_IN_ORDER: string[] = [...FRONT_MATTER_KEY_ORDER];
+const FRONT_MATTER_KEY_SET: Set<string> = new Set(FRONT_MATTER_KEYS_IN_ORDER);
+const HIDDEN_METADATA_KEYS: Set<string> = new Set([FM.worktreePath, FM.tickets]);
 const RESOURCE_METADATA_KEYS = Object.freeze({
     relativePath: "relativePath",
     dependencyState: "dependencyState",
     repairParent: "repairParent",
 });
 
-/** @type {Record<string, string>} */
-const METADATA_LABELS = Object.freeze({
+const METADATA_LABELS: Record<string, string> = Object.freeze({
     [FM.planId]: "Plan ID",
     [RESOURCE_METADATA_KEYS.relativePath]: "Path",
     [FM.origin]: "Origin",
@@ -167,25 +299,16 @@ const METADATA_GROUPS = Object.freeze([
     },
 ]);
 
-/** @param {unknown} value */
-function hasMetadataValue(value) {
+function hasMetadataValue(value: unknown) {
     return value !== undefined && value !== null && value !== "";
 }
 
-/**
- * @param {string} key
- * @returns {string}
- */
-function metadataLabel(key) {
+function metadataLabel(key: string) {
     if (METADATA_LABELS[key]) return METADATA_LABELS[key];
     return key.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/^./, (char) => char.toUpperCase());
 }
 
-/**
- * @param {any} plan
- * @returns {Record<string, unknown>}
- */
-function planMetadata(plan) {
+function planMetadata(plan: PlanDetailData): Metadata {
     const source = plan.frontMatter || plan.attrs || {};
     return {
         ...source,
@@ -222,8 +345,7 @@ function planMetadata(plan) {
         [FM.epicDoneEnoughAt]: source[FM.epicDoneEnoughAt] ?? plan.epicDoneEnoughAt,
         [RESOURCE_METADATA_KEYS.dependencyState]: plan.dependencyStates?.length
             ? plan.dependencyStates.map(
-                  /** @param {any} entry */ (entry) =>
-                      `${entry.dependency}: ${entry.state}${entry.status ? ` (${entry.status})` : ""}`,
+                  (entry) => `${entry.dependency}: ${entry.state}${entry.status ? ` (${entry.status})` : ""}`,
               )
             : undefined,
         [RESOURCE_METADATA_KEYS.repairParent]:
@@ -233,33 +355,20 @@ function planMetadata(plan) {
     };
 }
 
-/**
- * @param {unknown} value
- * @returns {string}
- */
-function stringifyMetadataValue(value) {
+function stringifyMetadataValue(value: unknown): string {
     if (Array.isArray(value)) return value.length ? value.map(stringifyMetadataValue).join(", ") : "[]";
     if (value && typeof value === "object") return JSON.stringify(value);
     return String(value);
 }
 
-/**
- * @param {string} key
- * @param {unknown} value
- */
-function metadataValue(key, value) {
+function metadataValue(key: string, value: unknown) {
     if (key === FM.complexity && hasMetadataValue(value)) {
         return <ComplexityLabel complexity={String(value)} />;
     }
     return stringifyMetadataValue(value);
 }
 
-/**
- * @param {Record<string, unknown>} metadata
- * @param {string[]} keys
- * @param {Set<string>} renderedKeys
- */
-function metadataEntries(metadata, keys, renderedKeys) {
+function metadataEntries(metadata: Metadata, keys: string[], renderedKeys: Set<string>) {
     const entries = [];
     for (const key of keys) {
         renderedKeys.add(key);
@@ -271,11 +380,7 @@ function metadataEntries(metadata, keys, renderedKeys) {
     return entries;
 }
 
-/**
- * @param {Record<string, unknown>} metadata
- * @param {Set<string>} renderedKeys
- */
-function additionalMetadataEntries(metadata, renderedKeys) {
+function additionalMetadataEntries(metadata: Metadata, renderedKeys: Set<string>) {
     return Object.entries(metadata)
         .filter(([key, value]) => !renderedKeys.has(key) && !HIDDEN_METADATA_KEYS.has(key) && hasMetadataValue(value))
         .sort(([a], [b]) => {
@@ -289,15 +394,13 @@ function additionalMetadataEntries(metadata, renderedKeys) {
         .map(([key, value]) => ({ key, label: metadataLabel(key), value }));
 }
 
-/** @param {unknown} value */
-function ticketReferences(value) {
+function ticketReferences(value: unknown): TicketLink[] {
     return Array.isArray(value)
         ? value.filter((ticket) => ticket && typeof ticket === "object" && typeof ticket.url === "string")
         : [];
 }
 
-/** @param {{ title: string, tickets: any[] }} props */
-function TicketReferenceGroup({ title, tickets }) {
+function TicketReferenceGroup({ title, tickets }: TicketReferenceGroupProps) {
     if (!tickets.length) return null;
     return (
         <section className="metadata-group metadata-reference-group" aria-label={`${title} metadata`}>
@@ -328,8 +431,7 @@ function TicketReferenceGroup({ title, tickets }) {
     );
 }
 
-/** @param {{ title: string, entries: Array<{ key: string, label: string, value: unknown }> }} props */
-function MetadataGroup({ title, entries }) {
+function MetadataGroup({ title, entries }: MetadataGroupProps) {
     if (!entries.length) return null;
     return (
         <section className="metadata-group" aria-label={`${title} metadata`}>
@@ -346,10 +448,9 @@ function MetadataGroup({ title, entries }) {
     );
 }
 
-/** @param {{ plan: any }} props */
-function DetailMetadata({ plan }) {
+function DetailMetadata({ plan }: DetailPlanProps) {
     const metadata = planMetadata(plan);
-    const renderedKeys = new Set();
+    const renderedKeys = new Set<string>();
     const groups = METADATA_GROUPS.map((group) => ({
         title: group.title,
         entries: metadataEntries(metadata, group.keys, renderedKeys),
@@ -371,10 +472,9 @@ function DetailMetadata({ plan }) {
     );
 }
 
-/** @param {{ epic: any }} props */
-function EpicSummary({ epic }) {
+function EpicSummary({ epic }: EpicSummaryProps) {
     const progress = epic.childProgress || { verified: 0, userVerified: 0, total: 0, active: 0, remaining: 0 };
-    const health = epic.childHealth || {};
+    const health: DetailChildHealth = epic.childHealth || {};
     const failed = health.failed?.length || 0;
     const held = health.held?.length || 0;
     const blocked = health.blocked?.length || 0;
@@ -426,19 +526,16 @@ function EpicSummary({ epic }) {
     );
 }
 
-/** @param {{ epic: any, url: URL | string }} props */
-function EpicDetailSections({ epic, url }) {
-    const health = epic.childHealth || {};
+function EpicDetailSections({ epic, url }: EpicDetailSectionsProps) {
+    const health: DetailChildHealth = epic.childHealth || {};
     const failed = health.failed?.length || 0;
     const held = health.held?.length || 0;
     const blocked = health.blocked?.length || 0;
     const missing = health.missingDependencies?.length || 0;
     const visibleColumns = (epic.childColumns || []).filter(
-        (/** @type {any} */ column) => column.cards.length || column.orphanChildren.length,
+        (column) => column.cards.length || column.orphanChildren.length,
     );
-    const childrenWithDependencies = (epic.children || []).filter(
-        (/** @type {any} */ child) => child.dependencyStates?.length,
-    );
+    const childrenWithDependencies = (epic.children || []).filter((child) => child.dependencyStates?.length);
 
     return (
         <>
@@ -446,41 +543,33 @@ function EpicDetailSections({ epic, url }) {
                 <h3>Child health</h3>
                 {failed || held || blocked || missing ? (
                     <ul className="health-list">
-                        {(health.failed || []).map(
-                            /** @param {any} child */ (child) => (
-                                <li key={`failed-${child.planId}`}>
-                                    <strong>Failed:</strong> {child.planName}{" "}
-                                    {child.failureReason || "needs recovery attention"}
-                                </li>
-                            ),
-                        )}
-                        {(health.held || []).map(
-                            /** @param {any} child */ (child) => (
-                                <li key={`held-${child.planId}`}>
-                                    <strong>Held:</strong> {child.planName} {holdMetadata(child)}
-                                </li>
-                            ),
-                        )}
-                        {(health.blocked || []).map(
-                            /** @param {any} child */ (child) => (
-                                <li key={`blocked-${child.planId}`}>
-                                    <strong>Blocked:</strong> {child.planName} has{" "}
-                                    {child.unverifiedDependencyCount || 0} unverified and{" "}
-                                    {child.missingDependencyCount || 0} missing dependencies.
-                                    {child.dependencyStates?.length ? (
-                                        <ul>
-                                            {child.dependencyStates.map(
-                                                /** @param {any} entry */ (entry) => (
-                                                    <li key={`${child.planId}-${entry.dependency}`}>
-                                                        {dependencyLabel(entry)}
-                                                    </li>
-                                                ),
-                                            )}
-                                        </ul>
-                                    ) : null}
-                                </li>
-                            ),
-                        )}
+                        {(health.failed || []).map((child) => (
+                            <li key={`failed-${child.planId}`}>
+                                <strong>Failed:</strong> {child.planName}{" "}
+                                {child.failureReason || "needs recovery attention"}
+                            </li>
+                        ))}
+                        {(health.held || []).map((child) => (
+                            <li key={`held-${child.planId}`}>
+                                <strong>Held:</strong> {child.planName} {holdMetadata(child)}
+                            </li>
+                        ))}
+                        {(health.blocked || []).map((child) => (
+                            <li key={`blocked-${child.planId}`}>
+                                <strong>Blocked:</strong> {child.planName}
+                                {" has"} {child.unverifiedDependencyCount || 0}
+                                {" unverified and"} {child.missingDependencyCount || 0} missing dependencies.
+                                {child.dependencyStates?.length ? (
+                                    <ul>
+                                        {child.dependencyStates.map((entry) => (
+                                            <li key={`${child.planId}-${entry.dependency}`}>
+                                                {dependencyLabel(entry)}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                ) : null}
+                            </li>
+                        ))}
                     </ul>
                 ) : (
                     <p className="empty">No failed, held, or dependency-blocked children.</p>
@@ -490,14 +579,12 @@ function EpicDetailSections({ epic, url }) {
                 <h3>Child dependencies</h3>
                 {childrenWithDependencies.length ? (
                     <ul className="health-list dependency-health-list">
-                        {childrenWithDependencies.map(
-                            /** @param {any} child */ (child) => (
-                                <li key={`dependencies-${child.planId}`}>
-                                    <strong>{child.planName}:</strong>{" "}
-                                    {child.dependencyStates.map(dependencyLabel).join(", ")}
-                                </li>
-                            ),
-                        )}
+                        {childrenWithDependencies.map((child) => (
+                            <li key={`dependencies-${child.planId}`}>
+                                <strong>{child.planName}:</strong>{" "}
+                                {child.dependencyStates.map(dependencyLabel).join(", ")}
+                            </li>
+                        ))}
                     </ul>
                 ) : (
                     <p className="empty">No child planned change Plan dependencies declared.</p>
@@ -507,11 +594,9 @@ function EpicDetailSections({ epic, url }) {
                 <h3>Child Plans</h3>
                 {visibleColumns.length ? (
                     <div className="status-board child-status-board">
-                        {visibleColumns.map(
-                            /** @param {any} column */ (column) => (
-                                <BoardColumn key={column.status} column={column} url={url} />
-                            ),
-                        )}
+                        {visibleColumns.map((column) => (
+                            <BoardColumn key={column.status} column={column} url={url} />
+                        ))}
                     </div>
                 ) : (
                     <p className="empty">No child Plans are attached to this Epic.</p>
@@ -521,8 +606,7 @@ function EpicDetailSections({ epic, url }) {
     );
 }
 
-/** @param {{ plan: any }} props */
-function StaticPlanBody({ plan }) {
+function StaticPlanBody({ plan }: DetailPlanProps) {
     const body = plan.body || "";
     const planBodyJson = JSON.stringify({ body }).replace(/</g, "\\u003c");
     return (
@@ -541,8 +625,7 @@ function StaticPlanBody({ plan }) {
     );
 }
 
-/** @param {{ plan: any, progress?: any, projectId?: string, runwieldSessionId?: string }} props */
-function PlanWorkflowSummary({ plan, progress, projectId = "", runwieldSessionId = "" }) {
+function PlanWorkflowSummary({ plan, progress, projectId = "", runwieldSessionId = "" }: PlanWorkflowSummaryProps) {
     const presentation = buildWorkflowPresentation({
         planName: plan.planName || plan.planId,
         epicName: plan.parentPlan,
@@ -566,13 +649,12 @@ function PlanWorkflowSummary({ plan, progress, projectId = "", runwieldSessionId
     return <WorkflowSidebar presentation={presentation} payload={{ sessionHref }} title="Plan workflow" />;
 }
 
-/** @param {{ plan: any }} props */
-function StaticLifecycleActions({ plan }) {
-    const actions = plan.actions || {};
+function StaticLifecycleActions({ plan }: DetailPlanProps) {
+    const actions: LifecycleActions = plan.actions || {};
     return (
         <section className="lifecycle-actions compact" aria-label="Lifecycle actions">
             <div className="lifecycle-action-list">
-                {(actions.manualTargetOptions || []).map((/** @type {any} */ option) => (
+                {(actions.manualTargetOptions || []).map((option) => (
                     <button
                         key={option.status}
                         type="button"
@@ -602,7 +684,6 @@ function StaticLifecycleActions({ plan }) {
     );
 }
 
-/** @param {{ plan: any, url: URL | string, editIntent?: boolean, staticRender?: boolean, progress?: any, projectId?: string, runwieldSessionId?: string }} props */
 export function PlanDetail({
     plan,
     url,
@@ -611,7 +692,7 @@ export function PlanDetail({
     progress = null,
     projectId = "",
     runwieldSessionId = "",
-}) {
+}: PlanDetailProps) {
     const isEpic = isEpicDetail(plan);
     const canEditBody = plan.capabilities?.bodyEditing !== false && !isEpic;
     const closeHref = boardHrefForPlanStatus(plan.status, url);

@@ -18,7 +18,7 @@ import { loadBoard, loadWorkspaceDetail, workspaceMetadata as _workspaceMetadata
 import { PlanBoard } from "./components/Board.tsx";
 import { PlanBoardToolbar } from "./components/PlanBoardToolbar.tsx";
 
-import { PlanDetail } from "./components/PlanDetail.jsx";
+import { PlanDetail } from "./components/PlanDetail.tsx";
 
 import { createWorkspaceApp } from "./server.js";
 import { createWorkRecordMnemotecaFixture } from "../../shared/work-records/test-fixtures/mnemoteca-port.ts";
@@ -166,7 +166,7 @@ test("Workspace API and detail route return readable editable Plan body metadata
                 classification: "FEATURE",
                 complexity: "HIGH",
                 summary: "Detail summary",
-                affectedPaths: ["src/ui/workspace/components/PlanDetail.jsx"],
+                affectedPaths: ["src/ui/workspace/components/PlanDetail.tsx"],
                 tickets: [{ url: "https://example.com/tickets/DETAIL-123" }, { url: "javascript:alert(1)" }],
                 dependencies: ["sibling-plan"],
                 implementedAt: "2026-06-30T10:00:00.000Z",
@@ -252,7 +252,7 @@ test("Workspace API and detail route return readable editable Plan body metadata
             assertStringIncludes(html, "Plan ID");
             assertStringIncludes(html, "detail-id");
             assertStringIncludes(html, "Affected paths");
-            assertStringIncludes(html, "src/ui/workspace/components/PlanDetail.jsx");
+            assertStringIncludes(html, "src/ui/workspace/components/PlanDetail.tsx");
             assertStringIncludes(html, "Depends on");
             assertStringIncludes(html, "sibling-plan");
             assertStringIncludes(html, "Implemented at");

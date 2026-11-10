@@ -74,7 +74,7 @@ export interface PlanLifecycleActionPlan
         Partial<Pick<PlanResource, "revision">>,
         Pick<PlanFrontMatter, "holdReason" | "userVerificationNote" | "closedWithoutVerificationReason"> {
     status: string;
-    actions?: LifecycleActions;
+    actions?: LifecycleActions | null;
 }
 
 export interface PlanLifecycleActionsProps {
