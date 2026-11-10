@@ -1,3 +1,12 @@
+import {
+    currentPackageSelection,
+    selectedPackage,
+    loadPackageWorkflowPlan,
+    capturePackageWorkflowInput,
+    assertPackageWorkflowInput,
+    updatePackageWorkflowMetadata,
+} from "./package-workflow.ts";
+import { savePlanPackageDocument, type PackageWorkflowInput } from "../plan-package-store.ts";
 import { withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
 import { resolvePlanQuestions, type PlanQuestionAnswer } from "../plan-questions.ts";
 import { loadReviewFeedbackImages, type ReviewImageDecision } from "./review-feedback-images.ts";
@@ -36,6 +45,7 @@ export interface SequenceChildInput {
 }
 
 export interface SequenceReviewDocument {
+    packageInput?: PackageWorkflowInput;
     planId: string;
     planName: string;
     planPath: string;
@@ -86,7 +96,12 @@ async function requirePlan(cwd: string, name: string): Promise<StoredPlan> {
     if (!UNSTARTED.has(plan.attrs.status) || plan.attrs.worktreeId) {
         throw new Error(`Plan ${name} has already started or is on hold. Use its ordinary review/recovery flow.`);
     }
-    return { ...plan, name: relative(join(cwd, "docs/plans"), plan.path).replace(/\\/g, "/").replace(/\.md$/, "") };
+    return {
+        ...plan,
+        name: currentPackageSelection()
+            ? name
+            : relative(join(cwd, "docs/plans"), plan.path).replace(/\\/g, "/").replace(/\.md$/, ""),
+    };
 }
 
 async function sequenceMembers(cwd: string, planName: string): Promise<StoredPlan[]> {
@@ -150,7 +165,9 @@ export async function prepareSequenceReview(
         }
     }
     for (const [index, member] of members.entries()) {
-        const identified = await ensurePlanIdentity(cwd, member.name);
+        const identified = currentPackageSelection()
+            ? { revision: member.revision }
+            : await ensurePlanIdentity(cwd, member.name);
         const input = index > 0 ? inputs?.[index - 1] : undefined;
         if (input?.executionAgent || input?.collaborationRecommendation) {
             await updatePlanFrontMatter(
@@ -186,7 +203,8 @@ export async function snapshotSequenceReview(cwd: string, planName: string): Pro
                 planId: evidence.evidence.planId,
                 planName: member.name,
                 planPath: member.path,
-                plan: planDocumentMarkdown(member.markdown),
+                plan: currentPackageSelection() ? member.markdown : planDocumentMarkdown(member.markdown),
+                ...(currentPackageSelection() ? { packageInput: await capturePackageWorkflowInput(member.name) } : {}),
                 revision: member.revision,
                 frontmatter: member.attrs,
                 ...(policy.ok
@@ -223,18 +241,27 @@ export async function validateSequenceReviewDecision(
     }
     for (const [index, doc] of current.entries()) {
         const original = documents[index];
+        if (currentPackageSelection()) {
+            if (!original.packageInput) throw new Error("Sequence review requires complete package inputs.");
+            await assertPackageWorkflowInput(doc.planName, original.packageInput, (left, right) =>
+                reviewSourceStillMatches({ attrs: original.frontmatter, body: right }, original.frontmatter, left),
+            );
+        }
         if (
             !reviewSourceStillMatches(
-                { attrs: doc.frontmatter, body: parsePlanFrontMatter(doc.plan).body },
+                {
+                    attrs: doc.frontmatter,
+                    body: currentPackageSelection() ? doc.plan : parsePlanFrontMatter(doc.plan).body,
+                },
                 original.frontmatter,
-                parsePlanFrontMatter(original.plan).body,
+                currentPackageSelection() ? original.plan : parsePlanFrontMatter(original.plan).body,
             )
         ) {
             throw new Error(`Plan ${doc.planName} changed while review was open. Refresh the Sequence review.`);
         }
         const edit = decision.documents.find((item) => item.planId === doc.planId);
         if (!edit || typeof edit.plan !== "string") throw new Error(`Missing decision for ${doc.planName}.`);
-        if (/^---\r?\n/.test(edit.plan)) {
+        if (!currentPackageSelection() && /^---\r?\n/.test(edit.plan)) {
             const edited = parsePlanFrontMatter(edit.plan).attrs;
             for (const key of [
                 "planId",
@@ -321,12 +348,12 @@ export async function applySequenceReviewDecision({
             const writes = await Promise.all(
                 current.map(async (doc, index) => {
                     const original = documents[index];
-                    const currentBody = parsePlanFrontMatter(doc.plan).body;
+                    const currentBody = currentPackageSelection() ? doc.plan : parsePlanFrontMatter(doc.plan).body;
                     if (
                         !reviewSourceStillMatches(
                             { attrs: doc.frontmatter, body: currentBody },
                             original.frontmatter,
-                            parsePlanFrontMatter(original.plan).body,
+                            currentPackageSelection() ? original.plan : parsePlanFrontMatter(original.plan).body,
                         )
                     ) {
                         throw new Error(
@@ -334,14 +361,26 @@ export async function applySequenceReviewDecision({
                         );
                     }
                     const edit = edits.find((item) => item.planId === doc.planId)!;
-                    const edited = parsePlanFrontMatter(
-                        decision.approved ? resolvePlanQuestions(edit.plan, edit.questionAnswers) : edit.plan,
-                    );
+                    const edited = currentPackageSelection()
+                        ? {
+                              body: decision.approved
+                                  ? resolvePlanQuestions(
+                                        edit.plan === original.plan ? currentBody : edit.plan,
+                                        edit.questionAnswers,
+                                    )
+                                  : edit.plan,
+                              attrs: doc.frontmatter,
+                          }
+                        : parsePlanFrontMatter(
+                              decision.approved ? resolvePlanQuestions(edit.plan, edit.questionAnswers) : edit.plan,
+                          );
                     // Only document content and explicit execution-policy controls are editable here.
                     // Membership, type, lifecycle and identity always come from canonical storage.
                     let attrs = {
                         ...doc.frontmatter,
-                        ...(/^---\r?\n/.test(edit.plan) ? stripRuntimeFields(edited.attrs) : {}),
+                        ...(!currentPackageSelection() && /^---\r?\n/.test(edit.plan)
+                            ? stripRuntimeFields(edited.attrs)
+                            : {}),
                     };
                     if (index > 0) {
                         const policy = resolvePlanExecutionPolicy({
@@ -407,7 +446,9 @@ export async function applySequenceReviewDecision({
                     const markdown =
                         decision.conversationTurn && edit.plan === doc.plan
                             ? doc.plan
-                            : planDocumentMarkdown(injectFrontMatter(edited.body, attrs));
+                            : currentPackageSelection()
+                              ? edited.body
+                              : planDocumentMarkdown(injectFrontMatter(edited.body, attrs));
                     return { doc, markdown, attrs, revision: await getPlanRevisionForText(markdown) };
                 }),
             );
@@ -423,6 +464,21 @@ export async function applySequenceReviewDecision({
             });
             for (const write of writes) {
                 if (decision.conversationTurn && write.markdown === write.doc.plan) continue;
+                if (currentPackageSelection()) {
+                    const selected = await selectedPackage(write.doc.planName);
+                    const doc = selected.documents.find((entry) => entry.name === "context.md")!;
+                    if (new TextDecoder().decode(doc.bytes) !== write.doc.plan)
+                        throw new Error(`Plan ${write.doc.planName} changed before saving review edits.`);
+                    if (write.markdown !== write.doc.plan)
+                        await savePlanPackageDocument(
+                            currentPackageSelection()!.identity,
+                            selected.metadata.planId,
+                            "context.md",
+                            doc.hash,
+                            write.markdown,
+                        );
+                    continue;
+                }
                 registerRollback(`Restore ${write.doc.planName}`, async () => {
                     const now = await loadPlan(cwd, write.doc.planName);
                     if (now?.revision === write.doc.revision) return;
@@ -432,6 +488,60 @@ export async function applySequenceReviewDecision({
                     await writePlanMarkdownWithRevision(write.doc.planPath, write.doc.plan, write.revision);
                 });
                 await writePlanMarkdownWithRevision(write.doc.planPath, write.markdown, write.doc.revision);
+            }
+            if (currentPackageSelection()) {
+                // Every intended document edit lands before any approval metadata. Compare
+                // against the opened review, permitting only these explicit context edits.
+                const matchesReviewedDocument = (left: string, right: string, name: string, id: string) => {
+                    const edited = writes.find((item) => item.doc.planId === id);
+                    return name === "context.md" && edited
+                        ? right === edited.markdown
+                        : reviewSourceStillMatches(
+                              { attrs: parent.frontmatter, body: right },
+                              parent.frontmatter,
+                              left,
+                          );
+                };
+                for (const [index, write] of writes.entries())
+                    await assertPackageWorkflowInput(
+                        write.doc.planName,
+                        documents[index].packageInput!,
+                        matchesReviewedDocument,
+                    );
+                for (const write of writes) {
+                    if (decision.conversationTurn && write.markdown === write.doc.plan) continue;
+                    const selected = await selectedPackage(write.doc.planName);
+                    const writeRevision = (await loadPackageWorkflowPlan(write.doc.planName)).revision;
+                    const definition = {
+                        ...selected.metadata.definition,
+                        status: write.attrs.status,
+                        ...(typeof write.attrs.executionAgent === "string"
+                            ? { executionAgent: write.attrs.executionAgent }
+                            : {}),
+                        ...(typeof write.attrs.collaborationRecommendation === "string"
+                            ? { collaborationRecommendation: write.attrs.collaborationRecommendation }
+                            : {}),
+                    };
+                    const input = await capturePackageWorkflowInput(write.doc.planName, definition);
+                    const original = documents.find((doc) => doc.planId === write.doc.planId)!;
+                    await assertPackageWorkflowInput(
+                        write.doc.planName,
+                        original.packageInput!,
+                        matchesReviewedDocument,
+                    );
+                    await updatePackageWorkflowMetadata(write.doc.planName, write.attrs, writeRevision, {
+                        review: decision.approved ? input : undefined,
+                        readiness: decision.approved ? input : undefined,
+                    });
+                    write.revision = (await loadPlan(cwd, write.doc.planName))!.revision;
+                }
+                await markEffect("sequence_review_prepared", {
+                    plans: writes.map((write) => ({
+                        planName: write.doc.planName,
+                        beforeRevision: write.doc.revision,
+                        afterRevision: write.revision,
+                    })),
+                });
             }
             const feedback = [
                 decision.feedback,
@@ -467,6 +577,18 @@ export async function applySequenceReviewDecision({
                 feedback,
                 ...(images.length ? { images } : {}),
             };
+            if (currentPackageSelection() && decision.approved) {
+                const members = await sequenceMembers(cwd, parent.planName);
+                if (
+                    members.length !== documents.length ||
+                    members.some((member, index) => member.attrs.planId !== documents[index].planId)
+                )
+                    throw new Error("Sequence membership or order changed before approval.");
+                for (const write of writes) {
+                    const selected = await selectedPackage(write.doc.planName);
+                    await assertPackageWorkflowInput(write.doc.planName, selected.metadata.workflow!.review!);
+                }
+            }
             await markEffect("sequence_review_accepted", { planIds: documents.map((doc) => doc.planId), toolCallId });
             result = {
                 approved: decision.approved === true,

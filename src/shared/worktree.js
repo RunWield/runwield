@@ -1,3 +1,4 @@
+import { currentPackageSelection } from "./workflow/package-workflow.ts";
 import { isMissingExecutableError } from "./foreground-process.ts";
 import { captureForegroundProcess } from "./captured-process.ts";
 import {
@@ -26,8 +27,8 @@ import {
 import { assertGitRepository, GitRepositoryRequiredError } from "./git.ts";
 import { resolvePublicationUpstream } from "./publication-target.ts";
 import { getWorkflowDiff, REVIEW_DIFF_FORMAT_ARGS } from "./workflow/git-snapshot.ts";
-import { addEntry, listEntries, pruneStaleEntries, removeEntry } from "./worktree-registry.js";
-import { enterProjectRuntime, resolveProjectRoot, resolveProjectRuntimeLayout } from "./project-runtime-layout.ts";
+import { addEntry, findById, updateEntry, listEntries, pruneStaleEntries, removeEntry } from "./worktree-registry.js";
+import { enterProjectRuntime } from "./project-runtime-layout.ts";
 import {
     isRunWieldOwnedGitignoreChange,
     isRunWieldOwnedRuntimePath,
@@ -727,7 +728,7 @@ async function commitDirtyWorktreeState(
  * @param {string} opts.branch
  * @param {string} opts.baseCommit
  * @param {string} opts.planName
- * @param {string} opts.planRelativePath
+ * @param {string} [opts.planRelativePath]
  * @param {string} [opts.preparationToken]
  * @param {"preparation"|"planning"} [opts.phase]
  * @param {string[]} [opts.relatedPlanPaths]
@@ -751,7 +752,9 @@ export async function checkpointExecutionPreparation({
         if (!isRunWieldOwnedRuntimePath(path) && (await isPreparationChange(worktreePath, path, "HEAD")))
             dirtyPreparationPaths.push(path);
     }
-    const preparationPaths = [...new Set([planRelativePath, ...relatedPlanPaths, ...dirtyPreparationPaths])];
+    const preparationPaths = [
+        ...new Set([...(planRelativePath ? [planRelativePath] : []), ...relatedPlanPaths, ...dirtyPreparationPaths]),
+    ];
     const headBefore = (await runGit(worktreePath, ["rev-parse", "HEAD"])).trim();
     if (headBefore !== baseCommit) {
         const baseIsAncestor = await runGitResult(worktreePath, [
@@ -780,14 +783,12 @@ export async function checkpointExecutionPreparation({
     }
     await commitDirtyWorktreeState(worktreePath, branch, { planName, phase, preparationToken }, preparationPaths);
     const preparationCommit = (await runGit(worktreePath, ["rev-parse", "HEAD"])).trim();
-    if (preparationCommit === baseCommit) {
+    if (planRelativePath && preparationCommit === baseCommit) {
         throw new Error(`Execution preparation for ${planName} did not create its required Plan commit.`);
     }
-    const committedPlan = await runGitResult(worktreePath, [
-        "cat-file",
-        "-e",
-        `${preparationCommit}:${planRelativePath}`,
-    ]);
+    const committedPlan = planRelativePath
+        ? await runGitResult(worktreePath, ["cat-file", "-e", `${preparationCommit}:${planRelativePath}`])
+        : { code: 0 };
     if (committedPlan.code !== 0) {
         throw new Error(`Execution preparation commit ${preparationCommit} does not contain ${planRelativePath}.`);
     }
@@ -923,7 +924,7 @@ export function resolveWorktreeParent(projectRoot, worktreeRoot) {
     if (worktreeRoot) return worktreeRoot;
     const homeDir = getHomeDir();
     if (homeDir) return join(homeDir, RUNWIELD_DIR_NAME, "worktrees", encodeCwdForSessionDir(projectRoot));
-    return resolveProjectRuntimeLayout(resolveProjectRoot(projectRoot)).primary.fallbackWorktreesRoot;
+    throw new Error("An accessible account home is required to create an execution worktree.");
 }
 
 /**
@@ -967,15 +968,59 @@ export async function createWorktreeGitArtifacts({
     const path = join(parent, `${repoName}-${slug}-${id}`);
     const now = new Date().toISOString();
     const resolvedBaseBranch = baseBranch || (await resolveCurrentCheckoutBranch(projectRoot)) || "HEAD";
-    const baseCommit = (await runGit(projectRoot, ["rev-parse", baseRef])).trim();
+    const reserved = currentPackageSelection() ? await findById(projectRoot, id) : null;
+    if (
+        reserved &&
+        (reserved.planId !== planId ||
+            reserved.path !== path ||
+            reserved.branch !== branch ||
+            !reserved.creationContext)
+    )
+        throw new Error("Reserved worktree creation belongs to different or completed execution evidence.");
+    const baseCommit = reserved?.baseCommit || (await runGit(projectRoot, ["rev-parse", baseRef])).trim();
     const baseTree = (await runGit(projectRoot, ["rev-parse", `${baseCommit}^{tree}`])).trim();
 
-    const projectContext = await captureWorktreeProjectContext(projectRoot, baseCommit);
+    const projectContext = reserved?.creationContext || (await captureWorktreeProjectContext(projectRoot, baseCommit));
+    const entry = {
+        id,
+        planName,
+        planId,
+        baseBranch: reserved?.baseBranch || resolvedBaseBranch,
+        baseRef: reserved?.baseRef || baseRef,
+        baseCommit,
+        baseTree,
+        branch,
+        path,
+        status: /** @type {const} */ ("active"),
+        createdAt: reserved?.createdAt || now,
+        updatedAt: now,
+    };
+    if (currentPackageSelection() && !reserved)
+        await addEntry(projectRoot, { ...entry, creationContext: projectContext });
     await fsMkdir(parent, { recursive: true });
-    await runGit(projectRoot, ["worktree", "add", "-b", branch, path, baseCommit]);
+    if (reserved && (await pathExists(path))) {
+        const registeredPath = findWorktreePathForBranch(
+            await runGit(projectRoot, ["worktree", "list", "--porcelain"]),
+            branch,
+        );
+        if (
+            !registeredPath ||
+            (await fsRealpath(registeredPath)) !== (await fsRealpath(path)) ||
+            (await runGit(path, ["rev-parse", "HEAD"])).trim() !== baseCommit
+        )
+            throw new Error("Interrupted worktree creation has changed Git evidence; preserve its files.");
+    } else {
+        const branchExists = await gitRefExists(projectRoot, `refs/heads/${branch}`);
+        if (branchExists) {
+            if (!reserved || (await runGit(projectRoot, ["rev-parse", `refs/heads/${branch}`])).trim() !== baseCommit)
+                throw new Error("Reserved execution branch changed before worktree creation.");
+            await runGit(projectRoot, ["worktree", "add", path, branch]);
+        } else await runGit(projectRoot, ["worktree", "add", "-b", branch, path, baseCommit]);
+    }
     try {
-        await materializeWorktreeProjectContext(path, projectContext);
+        await materializeWorktreeProjectContext(path, projectContext, reserved ? baseCommit : undefined);
     } catch (error) {
+        if (currentPackageSelection()) throw error;
         await runGit(projectRoot, ["worktree", "remove", "--force", path]);
         await runGit(projectRoot, ["branch", "-D", branch]);
         throw error;
@@ -984,6 +1029,10 @@ export async function createWorktreeGitArtifacts({
         await runGit(path, ["submodule", "update", "--init", "--recursive"]);
     }
 
+    if (currentPackageSelection()) {
+        await updateEntry(projectRoot, id, { creationContext: undefined });
+        return entry;
+    }
     return {
         id,
         planName,
@@ -1006,6 +1055,18 @@ export async function createWorktreeGitArtifacts({
  * @param {import('./worktree-registry.js').WorktreeRegistryEntry} entry
  */
 export async function settleWorktreeAttempt(projectRoot, entry) {
+    if (currentPackageSelection()) {
+        const reserved = await findById(projectRoot, entry.id);
+        if (
+            reserved &&
+            reserved.planId === entry.planId &&
+            reserved.path === entry.path &&
+            reserved.branch === entry.branch &&
+            !reserved.creationContext
+        )
+            return reserved;
+        throw new Error("Package execution registry reservation did not settle.");
+    }
     try {
         await addEntry(projectRoot, entry);
     } catch (error) {
@@ -1998,6 +2059,7 @@ export async function findReusableWorktree({ projectRoot, planName, planId, work
     await pruneStaleEntries(projectRoot);
     const entries = await listEntries(projectRoot);
     for (const entry of entries) {
+        if (entry.creationContext) continue;
         if (entry.planId !== planId) continue;
         if (entry.planName !== planName) continue;
         if (worktreeId && entry.id !== worktreeId) continue;

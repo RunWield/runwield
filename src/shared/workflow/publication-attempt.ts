@@ -1,3 +1,4 @@
+import { assertPackagePublicationReference, type PackagePublicationReference } from "../plan-package-store.ts";
 /**
  * Durable authority for publishing one validated execution attempt.
  *
@@ -35,6 +36,8 @@ export type PublicationFailure = {
 
 export type PublicationAttempt = {
     deliveryMetadataVersion?: 1;
+    packageInput?: PackagePublicationReference;
+    copiesPrepared?: boolean;
     version: 1;
     revision: number;
     phase: PublicationPhase;
@@ -70,6 +73,7 @@ export type PublicationRevalidation = {
 };
 
 export type PublicationPhaseEvidence = {
+    copiesPrepared?: boolean;
     artifactCommit?: string;
     planPaths?: string[];
     targetBaseCommit?: string;
@@ -131,7 +135,9 @@ export function createPublicationAttempt(args: {
 function assertPhaseEvidence(phase: PublicationPhase, attempt: PublicationAttempt): void {
     if (
         publicationPhaseAtLeast(phase, "artifacts_committed") &&
-        (!attempt.artifactCommit || !attempt.planPaths?.length)
+        (attempt.packageInput
+            ? attempt.copiesPrepared !== true || !Array.isArray(attempt.planPaths)
+            : !attempt.artifactCommit || !attempt.planPaths?.length)
     ) {
         throw new Error("Publication phase artifacts_committed requires artifactCommit and planPaths.");
     }
@@ -141,10 +147,7 @@ function assertPhaseEvidence(phase: PublicationPhase, attempt: PublicationAttemp
     ) {
         throw new Error("Publication phase target_integrated requires targetBaseCommit and integrationCommit.");
     }
-    if (
-        publicationPhaseAtLeast(phase, "target_published") &&
-        (!attempt.publicationMode || !attempt.publishedCommit)
-    ) {
+    if (publicationPhaseAtLeast(phase, "target_published") && (!attempt.publicationMode || !attempt.publishedCommit)) {
         throw new Error("Publication phase target_published requires publicationMode and publishedCommit.");
     }
     if (publicationPhaseAtLeast(phase, "publication_verified") && !attempt.verifiedAt) {
@@ -210,28 +213,42 @@ export function assertPublicationAttempt(value: PublicationAttempt): void {
     if (!Number.isInteger(value.revision) || value.revision < 1) {
         throw new Error("Publication attempt revision must be a positive integer.");
     }
-    for (
-        const field of [
-            "attemptId",
-            "planId",
-            "planName",
-            "targetBranch",
-            "executionBranch",
-            "executionCwd",
-            "publicationRoot",
-            "validatedCommit",
-            "targetHeadAtSeal",
-            "createdAt",
-            "updatedAt",
-        ] as const
-    ) {
+    for (const field of [
+        "attemptId",
+        "planId",
+        "planName",
+        "targetBranch",
+        "executionBranch",
+        "executionCwd",
+        "publicationRoot",
+        "validatedCommit",
+        "targetHeadAtSeal",
+        "createdAt",
+        "updatedAt",
+    ] as const) {
         if (!value[field]) throw new Error(`Publication attempt requires ${field}.`);
+    }
+    if (value.packageInput !== undefined) {
+        assertPackagePublicationReference(value.packageInput);
+        if (
+            value.deliveryMetadataVersion !== undefined ||
+            value.packageInput.planId !== value.planId ||
+            value.packageInput.attemptId !== value.attemptId
+        )
+            throw new Error("Mixed or mismatched package publication evidence.");
+    } else if (
+        value.copiesPrepared !== undefined ||
+        (value.deliveryMetadataVersion !== undefined && value.deliveryMetadataVersion !== 1)
+    ) {
+        throw new Error("Unknown publication input format.");
     }
     assertPhaseEvidence(value.phase, value);
     if (value.revalidation) {
         if (
             !["candidate_sealed", "artifacts_committed"].includes(value.phase) ||
-            !value.revalidation.sourceHead || !value.revalidation.archiveRoot
-        ) throw new Error("Publication revalidation requires an unpublished snapshot and recovery location.");
+            !value.revalidation.sourceHead ||
+            !value.revalidation.archiveRoot
+        )
+            throw new Error("Publication revalidation requires an unpublished snapshot and recovery location.");
     }
 }

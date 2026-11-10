@@ -1,3 +1,11 @@
+import { listPlanPackages, savePlanPackageDocument } from "./shared/plan-package-store.ts";
+import {
+    currentPackageSelection,
+    selectedPackage,
+    loadPackageWorkflowPlan,
+    packageWorkflowLocks,
+    updatePackageWorkflowMetadata,
+} from "./shared/workflow/package-workflow.ts";
 import { hasApplicablePublicationReceipt } from "./shared/workflow/publication-receipt.ts";
 import { recoverWindowsRename } from "./shared/native-file-replace-windows.ts";
 import fs from "node:fs/promises";
@@ -15,6 +23,22 @@ import {
 import { pid, platform } from "node:process";
 import { isProjectPlan } from "./shared/project-plan.ts";
 export { isEpicPlan, isProjectPlan, isSequencePlan } from "./shared/project-plan.ts";
+export {
+    importPlanPackages,
+    readPlanImportEvidence,
+    createPlanPackage,
+    readPlanPackage,
+    listPlanPackages,
+    updatePlanPackageMetadata,
+    savePlanPackageDocument,
+    renamePlanPackage,
+    archivePlanPackage,
+    restorePlanPackage,
+    recoverPlanPackages,
+    capturePlanPackageInput,
+    readPlanPackageInput,
+    PlanPackageError,
+} from "./shared/plan-package-store.ts";
 /**
  * @module plan-store
  * Manages plan persistence: front matter injection, save/load/list, and
@@ -844,7 +868,7 @@ function optionalExecutionPolicyValue(overrides, existingFm, key) {
  * @param {unknown} value
  * @returns {string | undefined}
  */
-function normalizePlanId(value) {
+export function normalizePlanId(value) {
     if (typeof value !== "string") return undefined;
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : undefined;
@@ -1897,6 +1921,7 @@ async function withProcessAwarePlanLock(key, lockPath, fn) {
  * @returns {Promise<T>}
  */
 export async function withPlanLock(cwd, planName, fn) {
+    if (currentPackageSelection() && !planName.startsWith("__")) return await packageWorkflowLocks([planName], fn);
     const layout = await enterProjectRuntime(cwd);
     const key = `${resolve(cwd)}:${lockSafeSegment(planName)}`;
     return await withProcessAwarePlanLock(
@@ -1913,6 +1938,7 @@ export async function withPlanLock(cwd, planName, fn) {
  * @returns {Promise<T>}
  */
 export async function withPlanCatalogLock(cwd, fn) {
+    if (currentPackageSelection()) return await packageWorkflowLocks([], fn);
     const layout = await enterProjectRuntime(cwd);
     const key = `${resolve(cwd)}:catalog`;
     return await withProcessAwarePlanLock(key, layout.selected.planCatalogLockPath, fn);
@@ -2083,6 +2109,7 @@ export function getKnownFrontMatterRevision(revision) {
  * @returns {Promise<Awaited<ReturnType<typeof loadPlanFileStrict>>>}
  */
 export async function loadPlanStrict(cwd, planName) {
+    if (currentPackageSelection()) return await loadPackageWorkflowPlan(planName);
     const { name, filePath } = getStoredPlanLocation(cwd, planName);
     if (isEpicArtifactPlanName(name)) return { kind: "not_found", path: filePath };
     return await loadPlanFileStrict(filePath);
@@ -2093,6 +2120,7 @@ export async function loadPlanStrict(cwd, planName) {
  * @param {string} planName
  */
 export async function inspectPlanStrict(cwd, planName) {
+    if (currentPackageSelection()) return await loadPackageWorkflowPlan(planName);
     const { name, filePath } = getStoredPlanLocation(cwd, planName);
     if (isEpicArtifactPlanName(name)) return { kind: "not_found", path: filePath };
     return await inspectPlanFileStrict(filePath);
@@ -2726,6 +2754,8 @@ export async function updatePlanStatus(cwd, planName, status, recoveryAttrs = {}
  * @returns {Promise<PlanFrontMatter>}
  */
 export async function updatePlanFrontMatter(cwd, planName, updates, recoveryAttrs = {}, options = {}) {
+    if (currentPackageSelection())
+        return await updatePackageWorkflowMetadata(planName, updates, options.expectedRevision);
     return await withPlanLock(cwd, planName, async () => {
         const result = await preparePlanFileStrict(getStoredPlanPath(cwd, planName));
         if (result.kind === "not_found") throw new Error(`Plan not found: ${planName}`);
@@ -3033,6 +3063,17 @@ export function comparePlansForList(a, b) {
  * @returns {Promise<Array<{ name: string, path: string, attrs: PlanFrontMatter, readAvailability?: PlanReadAvailability }>>}
  */
 export async function listPlans(cwd) {
+    const packageSelection = currentPackageSelection();
+    if (packageSelection) {
+        const catalog = await listPlanPackages(packageSelection.identity);
+        if (catalog.issues.length) throw new Error(catalog.issues[0].message);
+        return await Promise.all(
+            catalog.packages.map(async (p) => ({
+                name: p.metadata.name,
+                ...(await loadPackageWorkflowPlan(p.metadata.name)),
+            })),
+        );
+    }
     return await listPlansWithTargetChildren(cwd, null);
 }
 
@@ -3213,6 +3254,7 @@ async function readPlansWithTargetChildren(cwd, onlyEpic, display) {
  * @returns {Promise<Array<{ name: string, path: string, attrs: PlanFrontMatter, readAvailability?: PlanReadAvailability }>>}
  */
 export async function listPlanDocuments(cwd) {
+    if (currentPackageSelection()) return await listPlans(cwd);
     /** @type {Array<{ name: string, path: string, attrs: PlanFrontMatter, readAvailability?: PlanReadAvailability }>} */
     const plans = [];
     /** @type {PlanParseIssue[]} */
@@ -4100,6 +4142,8 @@ async function ensurePlanIdentityLocked(cwd, planName, options = {}) {
  * @returns {Promise<PlanResource>}
  */
 export async function ensurePlanIdentity(cwd, planName, options = {}) {
+    if (currentPackageSelection())
+        return await findPlanEvidenceById(cwd, (await selectedPackage(planName)).metadata.planId);
     return await withPlanCatalogLock(cwd, async () => await ensurePlanIdentityLocked(cwd, planName, options));
 }
 
@@ -4126,6 +4170,7 @@ export async function ensurePlanIdentity(cwd, planName, options = {}) {
  * @returns {Promise<{ resource: PlanResource, onboarded: boolean }>}
  */
 export async function onboardExternalPlan(cwd, planName, options = {}) {
+    if (currentPackageSelection()) return { resource: await ensurePlanIdentity(cwd, planName), onboarded: false };
     const { name } = canonicalizeStoredPlanName(planName);
     const existing = await loadPlan(cwd, name);
     if (!existing) throw new Error(`Plan not found: ${planName}`);
@@ -4180,6 +4225,10 @@ export async function onboardExternalPlan(cwd, planName, options = {}) {
  * @returns {Promise<PlanResource[]>}
  */
 export async function listPlanResources(cwd) {
+    if (currentPackageSelection())
+        return await Promise.all(
+            (await listPlans(cwd)).map((plan) => findPlanEvidenceById(cwd, plan.attrs.planId || "")),
+        );
     return (await readPlanResources(cwd, false)).resources;
 }
 
@@ -4365,8 +4414,8 @@ export async function loadPlanBodyById(cwd, planId) {
         throw new Error("Epic Plan bodies are not editable in the workspace body editor.");
     }
     const markdown = resource.markdown;
-    parsePlanFrontMatter(markdown);
-    const { body } = splitPlanMarkdownBody(markdown);
+    if (!currentPackageSelection()) parsePlanFrontMatter(markdown);
+    const body = currentPackageSelection() ? markdown : splitPlanMarkdownBody(markdown).body;
     return {
         ...resource,
         body,
@@ -4385,6 +4434,14 @@ export async function loadPlanBodyById(cwd, planId) {
  * @returns {Promise<PlanBodyResource>}
  */
 export async function savePlanBodyById(cwd, planId, newBody, expectedBodyHash, options = {}) {
+    const selection = currentPackageSelection();
+    if (selection) {
+        const resource = await findPlanEvidenceById(cwd, planId);
+        const actual = await hashPlanBody(resource.body);
+        if (actual !== expectedBodyHash) throw new StalePlanBodyError(expectedBodyHash, actual);
+        await savePlanPackageDocument(selection.identity, planId, "context.md", actual, newBody);
+        return { ...(await findPlanEvidenceById(cwd, planId)), bodyHash: await hashPlanBody(newBody) };
+    }
     await prepareWorktreeRegistry(cwd);
     return await withPlanCatalogLock(cwd, async () => {
         const resource = await findPlanById(cwd, planId);
@@ -4439,6 +4496,19 @@ export async function savePlanBodyById(cwd, planId, newBody, expectedBodyHash, o
  * @returns {Promise<Array<{ name: string, path: string, attrs: PlanFrontMatter, readAvailability?: PlanReadAvailability }>>}
  */
 export async function findPlansByParent(cwd, parentPlan) {
+    const packageSelection = currentPackageSelection();
+    if (packageSelection) {
+        const parent = await selectedPackage(parentPlan);
+        const catalog = await listPlanPackages(packageSelection.identity);
+        if (catalog.issues.length) throw new Error(catalog.issues[0].message);
+        return (
+            await Promise.all(
+                catalog.packages
+                    .filter((p) => p.metadata.parentPlanId === parent.metadata.planId)
+                    .map(async (p) => ({ name: p.metadata.name, ...(await loadPackageWorkflowPlan(p.metadata.name)) })),
+            )
+        ).sort(compareChildPlansByOrder);
+    }
     const { name } = canonicalizeStoredPlanName(parentPlan);
     const plans = await listPlansWithTargetChildren(cwd, name);
     return plans.filter((plan) => plan.attrs.parentPlan === name).sort(compareChildPlansByOrder);
@@ -4633,6 +4703,7 @@ export function countChildPlanProgress(children) {
  * @returns {Promise<{ path: string, markdown: string, attrs: PlanFrontMatter, body: string, revision: string, planName: string, hasFrontMatter?: boolean, readAvailability?: PlanReadAvailability }>}
  */
 export async function resolvePlan(cwd, arg) {
+    if (currentPackageSelection()) return { ...(await loadPackageWorkflowPlan(arg)), planName: arg };
     try {
         const plan = await loadPlan(cwd, arg);
         if (plan) {

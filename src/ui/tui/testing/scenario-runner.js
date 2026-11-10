@@ -54,7 +54,7 @@ import {
     WORKTREE_REGISTRY_FILE,
 } from "../../../constants.js";
 import { getWorktreeRegistryPath } from "../../../shared/worktree-registry.js";
-import { enterProjectRuntime } from "../../../shared/project-runtime-layout.ts";
+import { enterProjectRuntime, withProjectRuntimeReadScope } from "../../../shared/project-runtime-layout.ts";
 import { isCurrentProjectRuntimePath } from "../../../shared/runwield-owned-paths.ts";
 import { PLAN_STATUSES } from "../../../shared/workflow/plan-lifecycle.js";
 import { readScenarioRegistryForPoll } from "./scenario-registry-poll.ts";
@@ -950,8 +950,21 @@ async function runComposedTuiScenario(scenario, options) {
         let terminal = new VirtualTerminal(scenario.terminal);
         /** @type {Awaited<ReturnType<typeof createInteractiveTuiComposition>> | null} */
         let composition = null;
-        /** @type {Map<string, { terminal: VirtualTerminal, composition: Awaited<ReturnType<typeof createInteractiveTuiComposition>>, unsubscribe: () => void }>} */
+        /** @typedef {{ timestamp: string, message: string }} ConcurrentStatus */
+        /** @typedef {{ terminal: VirtualTerminal, composition: Awaited<ReturnType<typeof createInteractiveTuiComposition>>, unsubscribe: () => void, statuses: ConcurrentStatus[] }} ConcurrentScenarioSession */
+        /** @type {Map<string, ConcurrentScenarioSession>} */
         const concurrentSessions = new Map();
+        const concurrentDiagnostics = () =>
+            Object.fromEntries(
+                [...concurrentSessions].map(([name, session]) => [
+                    name,
+                    {
+                        runtime: session.composition.runtime.getSessionSnapshot(session.composition.sessionId),
+                        screenText: session.terminal.getScreenText(),
+                        statuses: session.statuses,
+                    },
+                ]),
+            );
         /** @type {string[]} */
         const events = [];
         /** @type {string[]} */
@@ -999,6 +1012,7 @@ async function runComposedTuiScenario(scenario, options) {
                             .then((text) => text.slice(-65_536))
                             .catch(() => ""),
                         runtime: composition?.runtime.getSessionSnapshot(composition.sessionId),
+                        concurrentSessions: concurrentDiagnostics(),
                         cwd: getCwd(),
                         home: getHomeDir(),
                     },
@@ -1495,10 +1509,15 @@ async function runComposedTuiScenario(scenario, options) {
                                 : `${GOLDEN_FAUX_PROVIDER}/${GOLDEN_FAUX_MODEL}`,
                         configureUiAPI: configureScriptedUiAPI,
                     });
+                    /** @type {ConcurrentStatus[]} */
+                    const statuses = [];
                     const concurrentUnsubscribe = concurrentComposition.runtime.subscribeSessionEvents(
                         concurrentComposition.sessionId,
                         (event) => {
                             events.push(`concurrent:${name}:runtime:${event.type}`);
+                            if (event.type === "system_status") {
+                                statuses.push({ timestamp: event.timestamp, message: event.message });
+                            }
                             if (event.type === "tool_start") {
                                 const eventToolName = /** @type {{ toolName?: string }} */ (event).toolName || "";
                                 events.push(`concurrent:${name}:runtime:tool:start:${eventToolName}`);
@@ -1513,6 +1532,7 @@ async function runComposedTuiScenario(scenario, options) {
                         terminal: concurrentTerminal,
                         composition: concurrentComposition,
                         unsubscribe: concurrentUnsubscribe,
+                        statuses,
                     });
                     state.concurrentSessions = [...concurrentSessions.keys()];
                     events.push(`tui:concurrent-session:${name}:started`);
@@ -2332,68 +2352,86 @@ async function runComposedTuiScenario(scenario, options) {
                     events.push("project:git-state:captured");
                     await writeHeartbeat();
                 } else if (typed.type === "captureProjectState") {
+                    const captureComposition = composition;
                     const planNames = Array.isArray(typed.planNames) ? typed.planNames.map(String) : [];
                     const primaryPlanNames = new Set(
                         Array.isArray(typed.primaryPlanNames) ? typed.primaryPlanNames.map(String) : [],
                     );
-                    const { inspectWorktreeRegistry } = await import("../../../shared/worktree-registry.js");
-                    const registry = await inspectWorktreeRegistry(getCwd());
-                    const branch = await runGoldenGit(["branch", "--show-current"], getCwd()).catch(() => "");
-                    const remote = branch
-                        ? await runGoldenGit(["config", "--get", `branch.${branch}.remote`], getCwd()).catch(
-                              () => "origin",
-                          )
-                        : "";
-                    const remotePath = remote
-                        ? await runGoldenGit(["remote", "get-url", remote], getCwd()).catch(() => "")
-                        : "";
-                    const plans = [];
-                    for (const planName of planNames) {
-                        const primaryPlan = primaryPlanNames.has(planName) ? await loadPlan(getCwd(), planName) : null;
-                        const entry = registry.entries.find((candidate) => candidate.planName === planName);
-                        const executionPlan = entry?.path
-                            ? await loadPlan(entry.path, planName).catch(() => null)
-                            : null;
-                        const remotePlanText =
-                            !executionPlan && remotePath && branch
-                                ? await runGoldenGit(
-                                      [
-                                          "--git-dir",
-                                          remotePath,
-                                          "show",
-                                          `refs/heads/${branch}:docs/plans/${planName}.md`,
-                                      ],
-                                      getCwd(),
-                                  ).catch(() => "")
+                    const timeoutMs = typed.timeoutMs || scenario.timeoutMs || DEFAULT_WAIT_TIMEOUT_MS;
+                    const startedAt = performance.now();
+                    let capturedProjectState;
+                    while (!capturedProjectState) {
+                        capturedProjectState = await withProjectRuntimeReadScope(async () => {
+                            const registry = await readScenarioRegistryForPoll(getCwd());
+                            if (!registry) return null;
+                            const branch = await runGoldenGit(["branch", "--show-current"], getCwd()).catch(() => "");
+                            const remote = branch
+                                ? await runGoldenGit(["config", "--get", `branch.${branch}.remote`], getCwd()).catch(
+                                      () => "origin",
+                                  )
                                 : "";
-                        const localPlan =
-                            !executionPlan && !remotePlanText
-                                ? await loadPlan(getCwd(), planName).catch(() => null)
-                                : null;
-                        const attrs =
-                            primaryPlan?.attrs ||
-                            executionPlan?.attrs ||
-                            (remotePlanText ? parsePlanFrontMatter(remotePlanText).attrs : localPlan?.attrs) ||
-                            null;
-                        const controller = attrs
-                            ? await readControllerRecord(getCwd(), { planName, planId: attrs.planId })
-                            : null;
-                        plans.push({ name: planName, attrs, controllerState: controller?.state || null });
+                            const remotePath = remote
+                                ? await runGoldenGit(["remote", "get-url", remote], getCwd()).catch(() => "")
+                                : "";
+                            const plans = [];
+                            for (const planName of planNames) {
+                                const primaryPlan = primaryPlanNames.has(planName)
+                                    ? await loadPlan(getCwd(), planName)
+                                    : null;
+                                const entry = registry.entries.find((candidate) => candidate.planName === planName);
+                                const executionPlan = entry?.path
+                                    ? await loadPlan(entry.path, planName).catch(() => null)
+                                    : null;
+                                const remotePlanText =
+                                    !executionPlan && remotePath && branch
+                                        ? await runGoldenGit(
+                                              [
+                                                  "--git-dir",
+                                                  remotePath,
+                                                  "show",
+                                                  `refs/heads/${branch}:docs/plans/${planName}.md`,
+                                              ],
+                                              getCwd(),
+                                          ).catch(() => "")
+                                        : "";
+                                const localPlan =
+                                    !executionPlan && !remotePlanText
+                                        ? await loadPlan(getCwd(), planName).catch(() => null)
+                                        : null;
+                                const attrs =
+                                    primaryPlan?.attrs ||
+                                    executionPlan?.attrs ||
+                                    (remotePlanText ? parsePlanFrontMatter(remotePlanText).attrs : localPlan?.attrs) ||
+                                    null;
+                                const controller = attrs
+                                    ? await readControllerRecord(getCwd(), { planName, planId: attrs.planId })
+                                    : null;
+                                plans.push({ name: planName, attrs, controllerState: controller?.state || null });
+                            }
+                            const { listWorkRecords } = await import("../../../shared/work-records/store.ts");
+                            const records = await listWorkRecords(getCwd(), { createDir: false }).catch(() => []);
+                            return {
+                                runtimeSnapshot: captureComposition.runtime.getSessionSnapshot(
+                                    captureComposition.sessionId,
+                                ),
+                                plans,
+                                registryEntries: registry.entries,
+                                nonTerminalRegistryEntries: registry.entries.filter((entry) =>
+                                    ["active", "execution_failed", "validation_failed", "merge_conflict"].includes(
+                                        String(entry.status || ""),
+                                    ),
+                                ),
+                                registryIntegrityIssues: registry.integrityIssues,
+                                workRecordNames: records.map((record) => record.relativePath),
+                            };
+                        });
+                        if (capturedProjectState) break;
+                        if (performance.now() - startedAt > timeoutMs) {
+                            throw new Error("Timed out capturing Project state: workflow authority is still pending.");
+                        }
+                        await terminal.flush();
+                        await new Promise((resolve) => setTimeout(resolve, 20));
                     }
-                    const { listWorkRecords } = await import("../../../shared/work-records/store.ts");
-                    const records = await listWorkRecords(getCwd(), { createDir: false }).catch(() => []);
-                    const capturedProjectState = {
-                        runtimeSnapshot: composition.runtime.getSessionSnapshot(composition.sessionId),
-                        plans,
-                        registryEntries: registry.entries,
-                        nonTerminalRegistryEntries: registry.entries.filter((entry) =>
-                            ["active", "execution_failed", "validation_failed", "merge_conflict"].includes(
-                                String(entry.status || ""),
-                            ),
-                        ),
-                        registryIntegrityIssues: registry.integrityIssues,
-                        workRecordNames: records.map((record) => record.relativePath),
-                    };
                     state.projectState = capturedProjectState;
                     if (typed.key) state[String(typed.key)] = capturedProjectState;
                     events.push("project:state:captured");
@@ -3066,6 +3104,8 @@ async function runComposedTuiScenario(scenario, options) {
                                 .then((text) => text.slice(-65_536))
                                 .catch(() => ""),
                             runtime: composition?.runtime.getSessionSnapshot(composition.sessionId),
+                            concurrentSessions: concurrentDiagnostics(),
+                            errorStack: error instanceof Error ? error.stack : undefined,
                             cwd: getCwd(),
                             home: getHomeDir(),
                         },

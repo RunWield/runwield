@@ -46,7 +46,10 @@ interface SettingsProcess {
 async function runSettingsClient() {
     const lines = processLines(stdinStream());
     const input: RuntimeClientInput = JSON.parse((await lines.read()).value || "{}");
-    configureRemotePersonalResources({ globalRoot: input.resources });
+    configureRemotePersonalResources({
+        globalRoot: input.resources,
+        personalOwner: { kind: "managed-remote", identity: input.laptopHome },
+    });
     configureRemoteSettingsConnection(input.connection);
     const clearMemory = configureRemoteMemoryConnection({ ...input.connection, collection: input.memoryCollection });
     const clearModels = await configureRemoteModelConnection(input.connection);
@@ -163,6 +166,7 @@ async function startSettingsProcess(f: RuntimeFixture): Promise<SettingsProcess>
     await send({
         connection: f.control.connection,
         resources: f.resources,
+        laptopHome: f.homeDir,
         cwd: f.remoteProject,
         memoryCollection: f.memoryCollection,
     });

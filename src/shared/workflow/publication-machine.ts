@@ -1,3 +1,13 @@
+import { retainPublishedWorkRecordSource } from "../work-records/published-source.ts";
+import { currentPackageSelection } from "./package-workflow.ts";
+import {
+    sealPackagePublication,
+    packageArtifactEvidence,
+    packagePublicationInput,
+    settlePackagePublication,
+    packageTargetEvidence,
+    assertPackagePublicationOwner,
+} from "./package-publication.ts";
 import { resolvePublicationUpstream as resolveRemoteTarget } from "../publication-target.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
@@ -58,6 +68,8 @@ async function gitAncestor(cwd: string, ancestor: string, descendant: string): P
 
 async function artifactEvidence(attempt: PublicationAttempt): Promise<PublicationPhaseEvidence | null> {
     const head = await git(attempt.executionCwd, ["rev-parse", `refs/heads/${attempt.executionBranch}`]);
+    if (attempt.packageInput)
+        return head.code === 0 ? await packageArtifactEvidence(attempt.executionCwd, attempt, head.stdout) : null;
     if (head.code !== 0 || !head.stdout || head.stdout === attempt.validatedCommit) return null;
     if (!(await gitAncestor(attempt.executionCwd, attempt.validatedCommit, head.stdout))) return null;
     const count = await git(attempt.executionCwd, [
@@ -82,12 +94,29 @@ async function integratedEvidence(
     projectRoot: string,
     attempt: PublicationAttempt,
 ): Promise<PublicationPhaseEvidence | null> {
+    if (attempt.packageInput && !(await resolveRemoteTarget(projectRoot, attempt.targetBranch))) {
+        const target = await git(projectRoot, ["rev-parse", `refs/heads/${attempt.targetBranch}`]);
+        if (
+            target.code === 0 &&
+            (await packageTargetEvidence(projectRoot, projectRoot, attempt, target.stdout)) &&
+            (await gitAncestor(projectRoot, attempt.targetHeadAtSeal, target.stdout))
+        )
+            return { targetBaseCommit: attempt.targetHeadAtSeal, integrationCommit: target.stdout };
+        return null;
+    }
     const stat = await fsStat(attempt.publicationRoot).catch(() => null);
     if (!stat?.isDirectory()) return null;
     if ((await git(attempt.publicationRoot, ["rev-parse", "--verify", "MERGE_HEAD"])).code === 0) return null;
     const head = await git(attempt.publicationRoot, ["rev-parse", "HEAD"]);
     if (head.code !== 0 || !head.stdout) return null;
-    if (!(await gitAncestor(attempt.publicationRoot, attempt.artifactCommit || "", head.stdout))) return null;
+    if (
+        !(await gitAncestor(
+            attempt.publicationRoot,
+            attempt.artifactCommit || (attempt.packageInput ? attempt.validatedCommit : ""),
+            head.stdout,
+        ))
+    )
+        return null;
     if (
         attempt.deliveryMetadataVersion &&
         !(await hasFinalizedPublicationLifecycle(
@@ -101,6 +130,11 @@ async function integratedEvidence(
         ))
     )
         return null;
+    if (
+        attempt.packageInput &&
+        !(await packageTargetEvidence(projectRoot, attempt.publicationRoot, attempt, head.stdout))
+    )
+        return null;
     const merges = await git(attempt.publicationRoot, ["rev-list", "--merges", "--first-parent", "HEAD"]);
     let assembledTargetBase: string | null = null;
     for (const merge of merges.stdout.split("\n").filter(Boolean)) {
@@ -110,7 +144,11 @@ async function integratedEvidence(
         if (!firstParent || !secondParent) continue;
         if (
             secondParent === attempt.artifactCommit ||
-            (await gitAncestor(attempt.publicationRoot, attempt.artifactCommit || "", secondParent))
+            (await gitAncestor(
+                attempt.publicationRoot,
+                attempt.artifactCommit || (attempt.packageInput ? attempt.validatedCommit : ""),
+                secondParent,
+            ))
         ) {
             assembledTargetBase = firstParent;
             break;
@@ -187,6 +225,11 @@ async function publishedEvidence(
             ))
         )
             return null;
+        if (
+            attempt.packageInput &&
+            !(await packageTargetEvidence(projectRoot, projectRoot, attempt, integrationCommit))
+        )
+            return null;
         return {
             targetBaseCommit,
             integrationCommit,
@@ -198,7 +241,7 @@ async function publishedEvidence(
     if (remoteHead.code !== 0) return null;
     const head = remoteHead.stdout.split(/\s+/)[0] || "";
     if (!head) return null;
-    if (head !== integrationCommit || attempt.deliveryMetadataVersion) {
+    if (head !== integrationCommit || attempt.deliveryMetadataVersion || attempt.packageInput) {
         // The publication clone may already have been cleaned up. Fetch into an
         // independent bare repository, never the user's checkout or its refs.
         const inspectionRoot = await mkdtemp(join(tmpdir(), "runwield-publication-proof-"));
@@ -216,6 +259,11 @@ async function publishedEvidence(
             if (fetched.code !== 0 || !(await gitAncestor(inspectionRoot, integrationCommit, "FETCH_HEAD"))) {
                 return null;
             }
+            if (
+                attempt.packageInput &&
+                !(await packageTargetEvidence(projectRoot, inspectionRoot, attempt, integrationCommit))
+            )
+                return null;
             if (
                 attempt.deliveryMetadataVersion &&
                 !(await hasFinalizedPublicationLifecycle(
@@ -300,7 +348,14 @@ export async function startPublicationAttempt(args: {
         validatedCommit: args.validatedCommit,
         targetHeadAtSeal: args.targetHeadAtSeal,
     });
-    publication.deliveryMetadataVersion = 1;
+    if (currentPackageSelection())
+        publication.packageInput = await sealPackagePublication(
+            args.planName,
+            args.attemptId,
+            args.validatedCommit,
+            args.targetBranch,
+        );
+    else publication.deliveryMetadataVersion = 1;
     await updatePublication(args.projectRoot, args.attemptId, null, publication);
     return publication;
 }
@@ -377,6 +432,10 @@ export async function reconcileStoredPublication(
             : await advanceStoredPublication(projectRoot, current, phase, evidence);
     if (initial.revalidation) return initial;
     let current = initial;
+    if (current.packageInput) {
+        await assertPackagePublicationOwner(current);
+        await packagePublicationInput(projectRoot, current.packageInput);
+    }
     if (current.phase === "candidate_sealed") {
         const evidence = await artifactEvidence(current);
         if (evidence) current = await advance(current, "artifacts_committed", evidence);
@@ -397,6 +456,11 @@ export async function reconcileStoredPublication(
             current = await advance(current, "publication_verified", {
                 verifiedAt: new Date().toISOString(),
             });
+        } else if (current.packageInput) {
+            // A recorded push is irreversible evidence. Lost target history cannot authorize another push.
+            throw new Error(
+                "The published package target cannot be confirmed; restore its recorded history before retrying.",
+            );
         }
     }
     return current;
@@ -626,8 +690,14 @@ export async function cleanupStoredPublication(
     let attempt = await reconcileStoredPublication(projectRoot, initial);
     let preservedFiles = await existingPublicationSavedFiles(attempt.executionCwd);
     let completion: RetainedPublicationCompletion | null = null;
+    if (attempt.packageInput && ["publication_verified", "cleanup_complete"].includes(attempt.phase)) {
+        if (!(await publishedEvidence(projectRoot, attempt)))
+            throw new Error("Package delivery cannot be confirmed on its target.");
+        await settlePackagePublication(projectRoot, attempt);
+        await retainPublishedWorkRecordSource(projectRoot, attempt);
+    }
     let planKinds = new Map<string, string>();
-    if (attempt.phase === "publication_verified" || attempt.phase === "cleanup_complete") {
+    if (!attempt.packageInput && (attempt.phase === "publication_verified" || attempt.phase === "cleanup_complete")) {
         // Index availability must not hide delivery already proven by Git.
         completion = await retainPublicationCompletion(projectRoot, attempt);
         try {
@@ -741,6 +811,10 @@ export async function cleanupStoredPublication(
 
 /** Read recording outcome from the sealed delivery, even after its worktree is removed. */
 export async function publishedWorkRecordFailed(projectRoot: string, attempt: PublicationAttempt): Promise<boolean> {
+    if (attempt.packageInput) {
+        await packagePublicationInput(projectRoot, attempt.packageInput);
+        return false;
+    }
     if (!attempt.artifactCommit) throw new Error("Published Plan artifact commit is missing.");
     for (const path of attempt.planPaths || []) {
         const result = await git(projectRoot, ["show", `${attempt.artifactCommit}:${path}`]);

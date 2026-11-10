@@ -1,3 +1,13 @@
+import { isValidationCheckpoint } from "./validation-checkpoint.ts";
+import {
+    currentPackageSelection,
+    packageWorkflowLocks,
+    selectedPackage,
+    packageController,
+    updatePackageWorkflowMetadata,
+} from "./package-workflow.ts";
+import { checkedPlanPackageControllerDirectory, type PackageControllerReference } from "../plan-package-store.ts";
+import type { ProjectIdentity } from "../project-identity.ts";
 import { recoverWindowsRename } from "../native-file-replace-windows.ts";
 import { platform } from "node:process";
 import { open as fsOpen } from "node:fs/promises";
@@ -164,6 +174,18 @@ export async function readControllerRecordAtPath(
 }
 
 export async function readControllerRecord(cwd: string, identity: WorkflowIdentity): Promise<ControllerRecord | null> {
+    if (currentPackageSelection()) {
+        const plan = (await selectedPackage(identity.planName))!;
+        if (identity.planId && identity.planId !== plan.metadata.planId)
+            throw new Error("Package controller identity mismatch.");
+        return {
+            version: 1,
+            revision: plan.metadata.revision,
+            planId: plan.metadata.planId,
+            planName: plan.metadata.name,
+            state: await packageController(plan),
+        };
+    }
     const layout = await checkedProjectRuntimeLayout(selectedRoot(cwd));
     return await readControllerRecordAtPath(layout.primary.controllerPlansDir, identity);
 }
@@ -259,6 +281,16 @@ export async function writeControllerState(
     updates: WorkflowControllerState,
     options: ControllerWriteOptions = {},
 ): Promise<ControllerRecord> {
+    if (currentPackageSelection()) {
+        return await packageWorkflowLocks([identity.planName], async () => {
+            const before = await readControllerRecord(cwd, identity);
+            if (options.initializeOnly) return before!;
+            if (options.expectedRevision !== undefined && options.expectedRevision !== before?.revision)
+                throw new StaleControllerWriteError();
+            await updatePackageWorkflowMetadata(identity.planName, updates);
+            return (await readControllerRecord(cwd, identity))!;
+        });
+    }
     invalidateProjectRuntimeReadScope();
     try {
         const path = await enteredControllerRecordPath(cwd, identity);
@@ -567,4 +599,42 @@ export async function prepareControllerView(
         }
         return await inspectControllerView(cwd, identity, legacy);
     });
+}
+
+/** Immutable complex controller evidence; package metadata is the sole live pointer. */
+export async function writePackageControllerEvidence(
+    identity: ProjectIdentity,
+    planId: string,
+    state: WorkflowControllerState,
+): Promise<PackageControllerReference> {
+    const revisionId = crypto.randomUUID();
+    const directory = await checkedPlanPackageControllerDirectory(identity, true);
+    await atomicWrite(join(directory, `${revisionId}.json`), {
+        version: 1,
+        revision: 1,
+        planId,
+        planName: planId,
+        state,
+    });
+    return { revisionId, planId };
+}
+export async function readPackageControllerEvidence(
+    identity: ProjectIdentity,
+    reference: PackageControllerReference,
+): Promise<WorkflowControllerState> {
+    if (!/^[0-9a-f-]{36}$/.test(reference.revisionId)) throw new Error("Invalid package controller reference.");
+    const directory = await checkedPlanPackageControllerDirectory(identity);
+    const path = join(directory, `${reference.revisionId}.json`);
+    const stat = await fsLstat(path);
+    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("Package controller evidence is not a regular file.");
+    const record: ControllerRecord = JSON.parse(await fsReadFile(path, "utf8"));
+    if (record.version !== 1 || record.planId !== reference.planId || record.revision !== 1 || !record.state)
+        throw new Error("Package controller evidence does not match its reference.");
+    if (
+        Object.keys(record.state).some((key) => !CONTROLLER_STATE_FIELDS.includes(key as keyof WorkflowControllerState))
+    )
+        throw new Error("Unsupported package controller evidence.");
+    if (record.state.validationCheckpoint && !isValidationCheckpoint(record.state.validationCheckpoint))
+        throw new Error("Invalid package validation checkpoint.");
+    return record.state;
 }

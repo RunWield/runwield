@@ -1,3 +1,5 @@
+import { readPlanPackage } from "../plan-package-store.ts";
+import { currentPackageSelection, withPackageWorkflow } from "../workflow/package-workflow.ts";
 /**
  * @module shared/work-records/auto-generation
  * Targeted Work Record auto-generation after terminal Plan outcomes.
@@ -58,9 +60,11 @@ type WorkRecordParentState = Pick<import("../../plan-store.js").PlanFrontMatter,
 
 /** The parent must be terminal before a child completion can record its Epic. */
 export function isTerminalWorkRecordParent(attrs: WorkRecordParentState): boolean {
-    return (["verified", "closed_without_verification"].includes(attrs.status) &&
-        attrs.epicCompletionMode === "done_enough") ||
-        attrs.status === "user_verified";
+    return (
+        (["verified", "closed_without_verification"].includes(attrs.status) &&
+            attrs.epicCompletionMode === "done_enough") ||
+        attrs.status === "user_verified"
+    );
 }
 
 function conciseError(value: Error | string): string {
@@ -119,8 +123,11 @@ export async function resolveTargetedWorkRecordSource(
         const parentWithChildren = await withEpicChildren(cwd, parent);
         if (
             !isTerminalWorkRecordParent(parentWithChildren.attrs) &&
-            !(pendingPublication && parentWithChildren.attrs.status === "reviewed" &&
-                parentWithChildren.attrs.epicCompletionMode === "done_enough")
+            !(
+                pendingPublication &&
+                parentWithChildren.attrs.status === "reviewed" &&
+                parentWithChildren.attrs.epicCompletionMode === "done_enough"
+            )
         ) {
             return { skipReason: "parent_not_terminal", targetPlanName: parent.name };
         }
@@ -152,9 +159,9 @@ export function formatWorkRecordAutoGenerationResult(result: WorkRecordAutoGener
     const verb = result.status === "linked" ? "linked" : "generated";
     const warning = result.indexWarning ? ` Warning: ${result.indexWarning}` : "";
     const proposals = result.supersessionProposals?.length
-        ? ` Pending supersession proposals: ${
-            result.supersessionProposals.map((candidate) => `${candidate.recordId} (${candidate.reason})`).join(", ")
-        }. Run wld wr supersede ${result.recordId}.`
+        ? ` Pending supersession proposals: ${result.supersessionProposals
+              .map((candidate) => `${candidate.recordId} (${candidate.reason})`)
+              .join(", ")}. Run wld wr supersede ${result.recordId}.`
         : "";
     return `Work Record ${verb}: ${result.path || result.recordId || "record available"}.${proposals}${warning}`;
 }
@@ -195,7 +202,8 @@ async function generateTargetedWorkRecord(
             });
         }
 
-        const sourceRoot = getPlanDocumentRoot(resolved.source.path);
+        const sourceRoot =
+            currentPackageSelection()?.identity.checkoutRoot || getPlanDocumentRoot(resolved.source.path);
         // Store discovery belongs inside generation's failure-persistence boundary.
         // Eligibility alone does not need existing records; generation reconciles them.
         const evaluated = evaluateWorkRecordSource({
@@ -212,11 +220,27 @@ async function generateTargetedWorkRecord(
             });
         }
 
-        const outcome = await generateWorkRecordForSource(sourceRoot, evaluated, {
-            mnemotecaPort,
-            signal,
-            runRecorderStep,
-        });
+        const generate = () =>
+            generateWorkRecordForSource(sourceRoot, evaluated, {
+                mnemotecaPort,
+                signal,
+                runRecorderStep,
+            });
+        const selection = currentPackageSelection();
+        let outcome;
+        if (selection) {
+            const owner = await readPlanPackage(selection.identity, { planId: evaluated.planId });
+            if (owner.kind !== "loaded") throw new Error(owner.message);
+            outcome = await withPackageWorkflow(
+                sourceRoot,
+                {
+                    ...selection,
+                    planId: evaluated.planId,
+                    expectedRevision: owner.metadata.revision,
+                },
+                generate,
+            );
+        } else outcome = await generate();
         const status = outcome.status === "generated" || outcome.status === "linked" ? outcome.status : "failed";
         return withMessage({
             status,

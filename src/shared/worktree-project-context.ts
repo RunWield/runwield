@@ -112,9 +112,32 @@ export async function captureWorktreeProjectContext(root: string, targetRef: str
 }
 
 /** Only call on a newly created checkout; resumed worktrees own their local edits. */
-export async function materializeWorktreeProjectContext(root: string, context: WorktreeProjectContext): Promise<void> {
+export async function materializeWorktreeProjectContext(
+    root: string,
+    context: WorktreeProjectContext,
+    reservedBase?: string,
+): Promise<void> {
+    if (
+        !context ||
+        typeof context.ownedGitignore !== "boolean" ||
+        !Array.isArray(context.files) ||
+        context.files.some(
+            (file) =>
+                !file ||
+                !PROJECT_CONTEXT_PATHS.some((path) => path === file.path) ||
+                typeof file.content !== "string" ||
+                (file.sourceDigest !== undefined && !/^[0-9a-f]{64}$/.test(file.sourceDigest)),
+        )
+    )
+        throw new Error("Invalid recorded worktree project context.");
     for (const file of context.files) {
-        await readProjectContextFile(root, file.path);
+        const current = await readProjectContextFile(root, file.path);
+        if (
+            reservedBase &&
+            current !== file.content &&
+            current !== (await readProjectContextRevision(root, reservedBase, file.path))
+        )
+            throw new Error(`Project context changed during interrupted worktree creation: ${file.path}`);
         await fsMkdir(dirname(join(root, file.path)), { recursive: true });
         await fsWriteFile(join(root, file.path), file.content);
     }

@@ -1,3 +1,5 @@
+import { currentPackageSelection, withPackageWorkflow } from "./package-workflow.ts";
+import { readPlanPackage } from "../plan-package-store.ts";
 /**
  * @module shared/workflow/validation
  * Workflow Validation public entry point.
@@ -151,11 +153,10 @@ function validationProjectRoot(args: ContinueWorkflowValidationArgs): string {
     return resolvePrimaryCheckoutRoot(args.executionContext?.projectRoot || args.hostedSession.cwd);
 }
 
-async function validationPlanCwd(args: ContinueWorkflowValidationArgs): Promise<string> {
-    const projectRoot = validationProjectRoot(args);
-    const attempt = await findWorktreeByPlanName(projectRoot, args.planName);
+async function validationPlanCwd(projectRoot: string, planName: string): Promise<string> {
+    const attempt = await findWorktreeByPlanName(projectRoot, planName);
     if (attempt) return attempt.path;
-    return (await resolveWorkflowPlanLocation(projectRoot, args.planName)).documentRoot;
+    return (await resolveWorkflowPlanLocation(projectRoot, planName)).documentRoot;
 }
 
 function presentPausedProgress(args: ContinueWorkflowValidationArgs, result: WorkflowValidationResult): void {
@@ -185,8 +186,24 @@ function presentPausedProgress(args: ContinueWorkflowValidationArgs, result: Wor
 export async function continueWorkflowValidation(
     args: ContinueWorkflowValidationArgs,
 ): Promise<WorkflowValidationResult> {
+    const active = args.hostedSession.getActiveExecutionWorkflow();
+    if (active?.packageSelection && !currentPackageSelection()) {
+        const selection = active.packageSelection;
+        const current = await readPlanPackage(selection.identity, { planId: selection.planId });
+        if (current.kind !== "loaded") throw new Error(current.message);
+        if (current.metadata.workflow?.attempt?.attemptId !== active.worktreeId)
+            throw new Error("Package validation attempt changed.");
+        return await withPackageWorkflow(
+            args.hostedSession.cwd,
+            { ...selection, expectedRevision: current.metadata.revision },
+            () => continueWorkflowValidation(args),
+            args.planName,
+        );
+    }
+    // Publication can remove the execution checkout before this call settles.
+    const projectRoot = validationProjectRoot(args);
     const result = await runValidationAttempt({
-        projectRoot: validationProjectRoot(args),
+        projectRoot,
         planName: args.planName,
         trigger: args.trigger,
         taskCompletionId: args.taskCompletionId,
@@ -196,7 +213,7 @@ export async function continueWorkflowValidation(
         result.recovery?.code !== "validation_owner_active" &&
         result.recovery?.code !== "task_completion_already_settled"
     ) {
-        const settledPlan = await loadPlan(await validationPlanCwd(args), args.planName);
+        const settledPlan = await loadPlan(await validationPlanCwd(projectRoot, args.planName), args.planName);
         if (settledPlan) {
             const progress = getCurrentValidationProgress(args.hostedSession);
             const active = args.hostedSession.getActiveExecutionWorkflow();
@@ -240,7 +257,7 @@ export async function runWorkflowValidationToStableBoundary(
     // explicit decisions below still stop immediately at Agent/user boundaries.
     for (let phase = 0; phase < 5; phase += 1) {
         if (result?.kind !== "paused" || !result.continueValidation) break;
-        const planCwd = await validationPlanCwd(args);
+        const planCwd = await validationPlanCwd(validationProjectRoot(args), args.planName);
         const plan = await loadPlan(planCwd, args.planName).catch(() => null);
         const status = String(plan?.attrs.status || "");
         if (!plan) break;
