@@ -11,12 +11,12 @@ import { createPlanSessionSurface } from "./plan-session-surface.ts";
 import { getDirectPlanReviewEligibility, reviewLoadedPlanDirectly } from "./plan-review-flow.ts";
 import type { DirectPlanReviewResult } from "./plan-review-flow.ts";
 
-export interface ReopenPlanReviewResult {
+export type ReopenPlanReviewResult = {
     kind: "complete" | "unanswered" | "missing_plan" | "identity_mismatch" | "not_reviewable";
     message: string;
     url?: string;
     executionToStart?: DirectPlanReviewResult["executionToStart"];
-}
+};
 
 /** Start execution only after the review's managed operation releases its Session writer. */
 export async function startReopenedPlanExecution(

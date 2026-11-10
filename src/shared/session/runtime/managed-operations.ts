@@ -95,7 +95,7 @@ export class RuntimeManagedOperations {
     private activeManagedOperation = new AsyncLocalStorage<import("./support.ts").ManagedOperationContext>();
     private pendingManagedCreations = new Map<
         string,
-        import("../../owner-coordination/session-activations.js").ActivationProof
+        import("../../owner-coordination/session-activations.ts").ActivationProof
     >();
     private currentManagedOperations = new Map<string, import("../managed-operation.ts").ManagedOperationCapability>();
     private currentManagedOperationSettlements = new Map<string, Promise<void>>();
@@ -157,7 +157,7 @@ export class RuntimeManagedOperations {
 
     setPendingCreationProof(
         sessionId: string,
-        proof: import("../../owner-coordination/session-activations.js").ActivationProof,
+        proof: import("../../owner-coordination/session-activations.ts").ActivationProof,
     ) {
         this.pendingManagedCreations.set(sessionId, proof);
     }
@@ -174,7 +174,7 @@ export class RuntimeManagedOperations {
         name?: string,
     ) {
         const sessionStore = this.services.sessionStoreOwner.ensure();
-        let proof: import("../../owner-coordination/session-activations.js").ActivationProof | null = null;
+        let proof: import("../../owner-coordination/session-activations.ts").ActivationProof | null = null;
         try {
             const acquired = await sessionStore.ensureSessionCatalogRecordAndAcquire({
                 locator: {
@@ -235,7 +235,7 @@ export class RuntimeManagedOperations {
 
     async runPendingCreation<T>(
         hostedSession: import("../hosted-session.js").HostedSession,
-        pendingCreation: import("../../owner-coordination/session-activations.js").ActivationProof,
+        pendingCreation: import("../../owner-coordination/session-activations.ts").ActivationProof,
         body: (capability: import("../managed-operation.ts").ManagedOperationCapability) => Promise<T>,
     ): Promise<T> {
         if (!this.services.sessionStore) throw new Error("Session coordination is unavailable");

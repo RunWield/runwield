@@ -1,4 +1,4 @@
-type ActivationProof = import("../../owner-coordination/session-activations.js").ActivationProof;
+type ActivationProof = import("../../owner-coordination/session-activations.ts").ActivationProof;
 type FileSessionStore = import("../file-session-store-types.ts").FileSessionStore;
 interface ManagedOperationCapabilityOptions {
     runtimeSessionId: string;
