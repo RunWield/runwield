@@ -49,7 +49,7 @@ The boundaries this change is expected to touch. This list is guidance, not an a
 
 - `src/acp/`, existing Plan-store and `src/shared/workflow/` owners — scoped Plan reads, revision-checked edits and review decisions.
 - `src/ui/workspace/server/owner-plan-actions.ts`, Plan adapters, and relevant `session-continuation.js` behavior — move reusable authority out of UI server code.
-- `src/ui/workspace/components/Board.tsx`, `PlanDetail.jsx`, Epic/Plan cards, and `react/PlanReviewSurface.tsx` — shared composition and navigation.
+- `src/ui/workspace/components/Board.tsx`, `PlanDetail.tsx`, Epic/Plan cards, and `react/PlanReviewSurface.tsx` — shared composition and navigation.
 - `src/ui/desktop/` and shared client — integrated Plan destinations and resources.
 - Workspace/ACP/Core applicable scenarios, contract inventory, and ADR references — same-change synchronization.
 

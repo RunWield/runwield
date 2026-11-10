@@ -1,9 +1,8 @@
 ---
-import type { PlanReadAvailability } from "../../../../../../plan-store.js";
 import LoadingSurface from "../../../../components/LoadingSurface.astro";
 import WorkspaceLayout from "../../../../layouts/WorkspaceLayout.astro";
 import ReviewLayout from "../../../../layouts/ReviewLayout.astro";
-import { PlanDetail } from "../../../../components/PlanDetail.jsx";
+import { PlanDetail, type PlanDetailData } from "../../../../components/PlanDetail.tsx";
 import { PlanReviewSurface } from "../../../../react/PlanReviewSurface.tsx";
 import { PlanHomeSurface } from "../../../../react/PlanHomeSurface.tsx";
 import { serializeCanonicalPlanError } from "../../../../server/astro-canonical-data.ts";
@@ -12,27 +11,6 @@ import {
     getAstroOwnerWorkspaceStore,
     loadOwnerProjectPlanDetail,
 } from "../../../../server/astro-owner-data.ts";
-
-type WorkspacePlanAttrs = {
-    status?: string;
-    classification?: string;
-    type?: string;
-    parentPlan?: string;
-};
-
-type WorkspacePlanDetail = {
-    readAvailability?: PlanReadAvailability;
-    planName?: string;
-    title?: string;
-    status?: string;
-    classification?: string;
-    type?: string;
-    parentPlan?: string;
-    path?: string;
-    markdown?: string;
-    body?: string;
-    attrs?: WorkspacePlanAttrs;
-};
 
 type CanonicalPlanError = { error: string; repair: string };
 
@@ -70,7 +48,7 @@ const requestedSessionId = Astro.url.searchParams.get("session") || "";
 const operationId = Astro.url.searchParams.get("operation") || "";
 const interactionId = Astro.url.searchParams.get("interaction") || "";
 let liveReview: Awaited<ReturnType<NonNullable<WorkspaceSessionContinuation["getLivePlanReview"]>>> | null = null;
-let plan: WorkspacePlanDetail | null = null;
+let plan: PlanDetailData | null = null;
 let error: CanonicalPlanError | null = null;
 let recoveryGeneration: number | null = null;
 let recoveryCurrentSegmentId: string | null = null;
@@ -231,7 +209,7 @@ const Layout = reviewPayload ? ReviewLayout : WorkspaceLayout;
         </PlanHomeSurface>
     ) : (
         <PlanDetail
-            plan={plan}
+            plan={plan!}
             url={Astro.url.href}
             editIntent={false}
             progress={null}

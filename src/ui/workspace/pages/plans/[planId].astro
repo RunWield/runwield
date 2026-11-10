@@ -1,7 +1,7 @@
 ---
 import { getCwd } from "../../../../constants.ts";
 import ReviewLayout from "../../layouts/ReviewLayout.astro";
-import { PlanDetail } from "../../components/PlanDetail.jsx";
+import { PlanDetail } from "../../components/PlanDetail.tsx";
 import { loadCanonicalWorkspaceDetail, serializeCanonicalPlanError } from "../../server/astro-canonical-data.ts";
 
 const workspaceCwd = Astro.request.headers.get("x-runwield-workspace-cwd") || getCwd();

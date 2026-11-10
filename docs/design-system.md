@@ -119,7 +119,7 @@ The rest of Workspace should reuse that language through these implementation la
 - shell and navigation: `src/ui/workspace/layouts/WorkspaceLayout.astro`
 - shared Plan Board page composition: `src/ui/workspace/components/PlanBoardPage.astro`
 - board patterns: `src/ui/workspace/components/BoardColumn.tsx`, `PlanCard.tsx`, and `EpicCard.tsx`
-- detail patterns: `src/ui/workspace/components/PlanDetail.jsx`
+- detail patterns: `src/ui/workspace/components/PlanDetail.tsx`
 - editor and action islands: `src/ui/workspace/islands/`
 
 When documentation and implementation disagree, inspect Plan Review and Code Review first, then update the shared system

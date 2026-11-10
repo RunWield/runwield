@@ -14,7 +14,6 @@
     "src/ui/design-system/sidebar-motion.js",
     "src/ui/tui/testing/scenario-runner.js",
 
-    "src/ui/workspace/components/PlanDetail.jsx",
     "src/ui/workspace/components/SessionTimeline.jsx",
     "src/ui/workspace/islands/SessionSurface.jsx",
 
