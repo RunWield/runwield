@@ -5,7 +5,7 @@
 
 import { arch, platform } from "node:process";
 import { VERSION } from "../../shared/version.js";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { UiAPI } from "../../ui/tui/api.ts";
 
 export interface VersionCommandOptions {
     uiAPI?: UiAPI;

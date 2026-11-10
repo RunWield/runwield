@@ -51,7 +51,7 @@ interface AgentTuiHarness {
     editor: Editor;
     terminal: CompatibleVirtualTerminal;
     tui: TUI;
-    uiAPI: import("../../ui/tui/types.js").UiAPI;
+    uiAPI: import("../../ui/tui/api.ts").UiAPI;
 }
 
 async function writeFixtureAgent(projectRoot: string): Promise<void> {

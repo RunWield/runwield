@@ -75,7 +75,7 @@ test("Epic child recovery repairs moved submodule links and preserves unfinished
         assertEquals(await readFile(config, "utf8"), before);
         const { confirmRecoveryWorktreeAvailable } = await import("../cmd/load-plan/plan-recovery-worktree.ts");
         const messages: string[] = [];
-        const ui: Partial<import("../ui/tui/types.js").UiAPI> = {
+        const ui: Partial<import("../ui/tui/api.ts").UiAPI> = {
             appendSystemMessage: (message) => messages.push(message),
         };
         assertEquals(
@@ -83,7 +83,7 @@ test("Epic child recovery repairs moved submodule links and preserves unfinished
                 movedRoot,
                 "epic/child",
                 { path: child, branch: "epic-child", status: "completed" },
-                ui as import("../ui/tui/types.js").UiAPI,
+                ui as import("../ui/tui/api.ts").UiAPI,
             ),
             true,
         );

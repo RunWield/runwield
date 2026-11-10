@@ -17,7 +17,7 @@ import type {
     RuntimeInteractionAdapter,
     RuntimeInteractionRequest,
 } from "../../shared/session/session-runtime-interactions.ts";
-import type { UiAPI } from "./types.js";
+import type { UiAPI } from "./api.ts";
 
 export interface TuiInteractionPorts {
     browser: BrowserPort;

@@ -2,7 +2,7 @@ import process from "node:process";
 import { parseArgs } from "../../shared/cli-args.ts";
 import { COMMAND_NAMES } from "../registry.js";
 import { printCommandHelp } from "../help/index.ts";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { UiAPI } from "../../ui/tui/api.ts";
 import type { InteractiveSessionPort } from "../../ui/tui/interactive-session-port.ts";
 
 interface OnboardCommandOptions {

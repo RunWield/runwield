@@ -11,7 +11,7 @@ import { cleanupAgentBrowserSessionSync } from "../../shared/agent-browser-sessi
 import type { ImageAttachment } from "../../shared/session/image-attachments.ts";
 import { imageTheme } from "../theme/theme.ts";
 import type { GenerationGuard } from "./generation-guard.ts";
-import type { UiAPI } from "./types.js";
+import type { UiAPI } from "./api.ts";
 
 interface KeyboardHelpResult {
     ok: boolean;

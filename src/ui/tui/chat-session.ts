@@ -67,7 +67,7 @@ import {
 } from "./onboarding-content.ts";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 import type { ImageAttachment } from "../../shared/session/image-attachments.ts";
-import type { UiAPI } from "./types.js";
+import type { UiAPI } from "./api.ts";
 
 const CHAT_PROMPT_AGENT_NAME = AGENTS.OPERATOR;
 export type SessionRuntime = ReturnType<typeof createSessionRuntime>;

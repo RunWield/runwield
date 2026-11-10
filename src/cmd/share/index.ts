@@ -24,7 +24,7 @@ export interface GitHubCliPort {
 }
 
 export interface ShareCommandOptions {
-    uiAPI?: Pick<import("../../ui/tui/types.js").UiAPI, "appendSystemMessage">;
+    uiAPI?: Pick<import("../../ui/tui/api.ts").UiAPI, "appendSystemMessage">;
     sessionRuntime?: SessionRuntime;
     sessionId?: string;
     githubCli: GitHubCliPort;

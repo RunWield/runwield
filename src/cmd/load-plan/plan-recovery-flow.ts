@@ -48,7 +48,7 @@ import { resetRecoveryPlan } from "./plan-recovery-reset.ts";
 
 import type { PlanSessionSurface, RecoveryWorktreeContext } from "./plan-session-types.ts";
 import type { PlanFrontMatter } from "../../plan-store.js";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { UiAPI } from "../../ui/tui/api.ts";
 import type {
     RecoveryActionContext,
     RecoveryActionName,

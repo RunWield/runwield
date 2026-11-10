@@ -19,7 +19,7 @@ import type {
     SessionRuntimeEvent,
     RuntimeSessionReplacedEvent,
 } from "../../shared/session/session-runtime-events.js";
-import type { UiAPI } from "./types.js";
+import type { UiAPI } from "./api.ts";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 import type { notifyRunWieldEventQuietly } from "./system-notifications.ts";
 

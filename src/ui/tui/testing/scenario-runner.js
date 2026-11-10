@@ -1064,7 +1064,7 @@ async function runComposedTuiScenario(scenario, options) {
         if (interactionSurface) state.scriptedInteractions = interactionSurface.consumed;
         /** @type {"select"|"text"|"approval"|null} */
         let activeScriptedInteractionType = null;
-        /** @param {import('../types.js').UiAPI} uiAPI */
+        /** @param {import('../api.ts').UiAPI} uiAPI */
         const configureScriptedUiAPI = (uiAPI) => {
             if (scenario.captureSystemMessages) {
                 const originalAppendSystemMessage = uiAPI.appendSystemMessage.bind(uiAPI);

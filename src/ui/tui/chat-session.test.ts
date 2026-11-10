@@ -1,5 +1,5 @@
 import { getTUI } from "./tui.ts";
-import type { UiAPI } from "./types.js";
+import type { UiAPI } from "./api.ts";
 import { readdirSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 

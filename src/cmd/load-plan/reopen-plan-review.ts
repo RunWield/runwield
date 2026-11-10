@@ -6,7 +6,7 @@ import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location
 import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
 import type { LastPlanReviewReference } from "../../shared/session/file-session-store-types.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { UiAPI } from "../../ui/tui/api.ts";
 import { createPlanSessionSurface } from "./plan-session-surface.ts";
 import { getDirectPlanReviewEligibility, reviewLoadedPlanDirectly } from "./plan-review-flow.ts";
 import type { DirectPlanReviewResult } from "./plan-review-flow.ts";

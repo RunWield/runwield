@@ -34,7 +34,7 @@ import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location
 import { completeUserVerification } from "./user-verification-completion.ts";
 import { resolvePrimaryCheckoutRoot } from "../../shared/project-checkout.ts";
 import type { PlanFrontMatter } from "../../plan-store.js";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { UiAPI } from "../../ui/tui/api.ts";
 import type { PlanSessionSurface } from "./plan-session-types.ts";
 
 /** A Plan the hold flow reads Front Matter from. */
@@ -139,7 +139,7 @@ export function hasRecordedWorktreeMetadata(attrs: PlanFrontMatter): boolean {
 }
 
 /**
- * @param {import('../../ui/tui/types.js').UiAPI} uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} uiAPI
  * @param {string} message
  * @returns {Promise<boolean>}
  */
@@ -156,7 +156,7 @@ export async function confirmHoldWarning(uiAPI: UiAPI, message: string): Promise
  * @param {Object} opts
  * @param {string} opts.projectRoot
  * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter }} opts.plan
- * @param {import('../../ui/tui/types.js').UiAPI} opts.uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @returns {Promise<boolean>}
  */
 export async function putPlanOnHold({ projectRoot, plan, uiAPI }: PutPlanOnHoldOptions): Promise<boolean> {
@@ -212,7 +212,7 @@ export async function putPlanOnHold({ projectRoot, plan, uiAPI }: PutPlanOnHoldO
  * @param {Object} opts
  * @param {string} opts.projectRoot
  * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter }} opts.plan
- * @param {import('../../ui/tui/types.js').UiAPI} opts.uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @returns {Promise<boolean>}
  */
 export async function markPlanUserVerified({
@@ -308,7 +308,7 @@ export async function markPlanUserVerified({
  * @param {Object} opts
  * @param {string} opts.projectRoot
  * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter }} opts.plan
- * @param {import('../../ui/tui/types.js').UiAPI} opts.uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @returns {Promise<{ status: "pass" | "warn" | "fail", messages: string[] }>}
  */
 export async function runResumeCheck({
@@ -398,7 +398,7 @@ export async function runResumeCheck({
  * @param {Object} opts
  * @param {string} opts.projectRoot
  * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter }} opts.plan
- * @param {import('../../ui/tui/types.js').UiAPI} opts.uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @returns {Promise<boolean>}
  */
 export async function resetHeldPlanToDraft({ projectRoot, plan, uiAPI }: ResetHeldPlanOptions): Promise<boolean> {
@@ -505,7 +505,7 @@ export async function resetHeldPlanToDraft({ projectRoot, plan, uiAPI }: ResetHe
  * @param {Object} opts
  * @param {string} opts.projectRoot
  * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter, body: string, markdown?: string }} opts.plan
- * @param {import('../../ui/tui/types.js').UiAPI} opts.uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @param {PlanSessionSurface} opts.session
  * @returns {Promise<"resume" | "handled">}
  */

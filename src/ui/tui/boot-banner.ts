@@ -18,7 +18,7 @@ interface BootRuntimeToolsPort {
 }
 
 interface RenderBootBannerOptions {
-    uiAPI: import("./types.js").UiAPI;
+    uiAPI: import("./api.ts").UiAPI;
     invokablePromptTemplates: PromptTemplate[];
     blockedPromptTemplates: PromptTemplate[];
     chatPromptAgentName: string;

@@ -8,7 +8,7 @@ import { persistThinkingLevel, recordUserInputHistory, type SessionRuntime } fro
 import { createGenerationGuard } from "./generation-guard.ts";
 import { type ChatView, createPastedImagePreview } from "./chat-view.ts";
 import type { ImageAttachment } from "../../shared/session/image-attachments.ts";
-import type { UiAPI } from "./types.js";
+import type { UiAPI } from "./api.ts";
 import type { TutorialContext } from "../../shared/session/tutorial-context-session.ts";
 import { AGENTS } from "../../constants.js";
 import { ClaudeCliBackendError } from "../../shared/session/backends/claude-cli/failure.ts";

@@ -108,7 +108,7 @@ export interface ResolveWorkRecordSupersessionProposalsWithUiOptions {
     successorRecordId: string;
     proposals: WorkRecordSupersessionCandidate[];
     mnemotecaPort: WorkRecordMnemotecaPort;
-    uiAPI: Pick<import("../../ui/tui/types.js").UiAPI, "promptSelect" | "appendSystemMessage">;
+    uiAPI: Pick<import("../../ui/tui/api.ts").UiAPI, "promptSelect" | "appendSystemMessage">;
 }
 
 /** Resolve generated proposals on a direct TUI surface. */
