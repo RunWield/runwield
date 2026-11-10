@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { recordSlashCommandMetric, SlashCommandMetricsTracker } from "./command-metrics.ts";
-import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "./metrics.js";
+import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "./metrics.ts";
 
 test("recordSlashCommandMetric records direct start and finish observations", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {

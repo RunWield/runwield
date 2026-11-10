@@ -3,7 +3,7 @@ import fsPromises from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { mock } from "bun:test";
 import { controllerRecordPath } from "../controller-registry.ts";
-import { getWorkflowMetricsFilePath } from "../metrics.js";
+import { getWorkflowMetricsFilePath } from "../metrics.ts";
 import type { PublicationAttempt } from "../publication-attempt.ts";
 import process from "node:process";
 import { cleanupStoredPublication, loadPublicationAttempt } from "../publication-machine.ts";

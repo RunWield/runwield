@@ -19,7 +19,7 @@ import {
     SESSION_COMPLETE_GUIDANCE,
 } from "./plan-review-recovery.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
-import { recordWorkflowMetric } from "./metrics.js";
+import { recordWorkflowMetric } from "./metrics.ts";
 import { CollaborationStyles, selectRuntimeCollaborationStyle } from "./execution-collaboration.ts";
 import { finalizePlanImplementation } from "./implementation-checkpoint.ts";
 import { runPlanningAgent } from "./planning-agent.ts";

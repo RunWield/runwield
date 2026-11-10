@@ -43,7 +43,7 @@ import {
 import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.ts";
 import { decidePostExecution, decidePostPlanning, summarizeWorkflowDecision } from "./decisions.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
-import { recordWorkflowMetric } from "./metrics.js";
+import { recordWorkflowMetric } from "./metrics.ts";
 import { buildPostTriageRequest } from "./workflow-prompts.ts";
 import {
     executePlan,

@@ -20,7 +20,7 @@ import { getModelRegistry } from "../models/model-registry.ts";
 import { buildAgentSession, runIsolatedAgentSession } from "./session.js";
 import { HostedSession } from "./hosted-session.js";
 import { UsageReporter } from "../workflow/usage-reporting.ts";
-import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/metrics.js";
+import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/metrics.ts";
 
 interface VisionCoverage {
     usage: MeasurementAvailability;

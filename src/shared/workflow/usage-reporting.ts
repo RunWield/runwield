@@ -2,7 +2,7 @@ import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 import { statSync, readFileSync } from "node:fs";
 /** Read-only reporting over collected Project measurements. No Session or Plan reads. */
 import { dirname, join } from "node:path";
-import { resolveMeasurementProject, MeasurementProjectUnavailableError, readLegacyWorkflowMetric } from "./metrics.js";
+import { resolveMeasurementProject, MeasurementProjectUnavailableError, readLegacyWorkflowMetric } from "./metrics.ts";
 import { clearWorkflowMetricJournal } from "./metrics-journal.ts";
 
 export interface UsagePeriod {

@@ -23,7 +23,7 @@ import { enterProjectRuntime, withProjectRuntimeReadScope } from "../project-run
 import { resolveTargetBranchName } from "../worktree.js";
 import { getWorkflowDiff } from "./git-snapshot.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
-import { recordWorkflowMetric } from "./metrics.js";
+import { recordWorkflowMetric } from "./metrics.ts";
 import { isInValidation } from "./plan-lifecycle.ts";
 import { hasImplementationDiff, requiresImplementationDiff } from "./validation-scope.ts";
 import type { ValidationRecoveryNotice } from "./validation-user-messages.ts";

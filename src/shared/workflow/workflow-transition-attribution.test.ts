@@ -5,7 +5,7 @@ import { assertEquals } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import type { WorkflowMetricFixtureRecord } from "../../testing/workflow-metrics-fixture.ts";
-import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "./metrics.js";
+import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "./metrics.ts";
 import { git } from "../git-test-fixture.ts";
 import { resolveValidationExecutionContext } from "./execution-context.ts";
 import {

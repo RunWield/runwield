@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import { getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.ts";
+import type { JsonRecord, JsonValue } from "../jsonc.ts";
 import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import {
@@ -15,34 +16,59 @@ import {
     hasWorkflowMetricsEnablementOverride,
     isWorkflowMetricsEnabled,
     resolveCollectionEpoch,
+    type JournalResult,
 } from "./metrics-journal.ts";
 export { isWorkflowMetricsEnabled } from "./metrics-journal.ts";
 
-/**
- * @typedef {"routing"|"planning"|"execution"|"validation"|"recovery"|"model_selection"|"tool_usage"|"command"|"model_usage"|"context"} WorkflowMetricCategory
- */
+export type WorkflowMetricCategory =
+    | "routing"
+    | "planning"
+    | "execution"
+    | "validation"
+    | "recovery"
+    | "model_selection"
+    | "tool_usage"
+    | "command"
+    | "model_usage"
+    | "context";
 
-/**
- * @typedef {string|number|boolean|null|Array<unknown>|Record<string, unknown>} SafeMetricDetails
- */
+export type SafeMetricDetails = JsonValue;
+type MetricFields = Record<string, unknown>;
+type FrontendMetricDetails = Record<string, string | number | boolean>;
 
-/**
- * @typedef {Object} WorkflowMetricRecord
- * @property {1} v
- * @property {string} ts
- * @property {WorkflowMetricCategory} category
- * @property {string} event
- * @property {string} cwdHash
- * @property {string} [sessionId]
- * @property {string} [planName]
- * @property {string} [agentName]
- * @property {SafeMetricDetails} [details]
- */
+interface ActiveToolCall {
+    subUsage: string;
+    startedAt: number;
+}
 
-/**
- * @typedef {Object} WorkflowMetricsSettings
- * @property {boolean} [enabled]
- */
+export type WorkflowMetricRecord = {
+    v: 1;
+    ts: string;
+    /** Legacy records preserve the category string provided by the caller. */
+    category: string;
+    event: string;
+    cwdHash: string;
+    sessionId?: string;
+    planName?: string;
+    agentName?: string;
+    details?: SafeMetricDetails;
+};
+
+interface WorkflowMetricV2Record {
+    [key: string]: string | number | boolean | null | MetricFields | undefined;
+    v: 2;
+    ts: string;
+    eventId: string;
+    recorderId: string;
+    seq: number;
+    category: string;
+    event: string;
+    cwdHash: string;
+}
+
+export type WorkflowMetricsSettings = {
+    enabled?: boolean;
+};
 
 const METRICS_DIR_NAME = "workflow-metrics";
 const MAX_STRING_LENGTH = 240;
@@ -77,22 +103,20 @@ const PAIR_CHECKPOINT_REASONS = new Set([
 const FRONTEND_COMPLETION_PHASES = new Set(["implementation", "validation_repair"]);
 const BROWSER_PREFLIGHT_OUTCOMES = new Set(["succeeded", "failed", "externally_blocked"]);
 
-/** @type {Map<string, string>} */
-const cwdHashCache = new Map();
-/** @type {Map<string, { subUsage: string, startedAt: number }>} */
-const activeToolCalls = new Map();
+const cwdHashCache = new Map<string, string>();
+const activeToolCalls = new Map<string, ActiveToolCall>();
 
-/**
- * @typedef {Object} MeasurementProject
- * @property {string} root
- * @property {string} key
- * @property {string} journalPath
- */
+export type MeasurementProject = {
+    root: string;
+    key: string;
+    journalPath: string;
+};
 
 /** A report can retain the canonical identity while withholding unavailable history. */
 export class MeasurementProjectUnavailableError extends Error {
-    /** @param {MeasurementProject} project */
-    constructor(project) {
+    declare project: MeasurementProject;
+
+    constructor(project: MeasurementProject) {
         super("measurement_project_unavailable");
         this.project = project;
     }
@@ -100,10 +124,8 @@ export class MeasurementProjectUnavailableError extends Error {
 
 /**
  * One identity for the primary checkout, including symlink and worktree aliases.
- * @param {string} root
- * @returns {MeasurementProject}
  */
-export function resolveMeasurementProject(root) {
+export function resolveMeasurementProject(root: string): MeasurementProject {
     if (!root) throw new Error("resolveMeasurementProject: root is required");
     const spellings = new Set([resolvePrimaryCheckoutRoot(root)]);
     let canonical = resolve(root);
@@ -141,16 +163,11 @@ export function resolveMeasurementProject(root) {
     return project;
 }
 
-/** @param {string} cwd @returns {string} */
-export function getWorkflowMetricsFilePath(cwd) {
+export function getWorkflowMetricsFilePath(cwd: string): string {
     return resolveMeasurementProject(cwd).journalPath;
 }
 
-/**
- * @param {string} value
- * @returns {Promise<string>}
- */
-export async function hashMetricCwd(value) {
+export async function hashMetricCwd(value: string): Promise<string> {
     if (!value) throw new Error("hashMetricCwd: value is required");
     const cached = cwdHashCache.get(value);
     if (cached) return cached;
@@ -163,41 +180,24 @@ export async function hashMetricCwd(value) {
     return hash;
 }
 
-/**
- * @param {unknown} value
- * @returns {value is Record<string, unknown>}
- */
-function isPlainObject(value) {
+function isPlainObject(value: unknown): value is MetricFields {
     if (!value || typeof value !== "object" || Array.isArray(value)) return false;
     const proto = Object.getPrototypeOf(value);
     return proto === Object.prototype || proto === null;
 }
 
-/**
- * @param {string} value
- * @returns {boolean}
- */
-function looksLikeAbsolutePath(value) {
+function looksLikeAbsolutePath(value: string): boolean {
     if (!value) return false;
     if (isAbsolute(value)) return true;
     return /^[A-Za-z]:[\\/]/.test(value) || value.startsWith("file://");
 }
 
-/**
- * @param {string} value
- * @returns {boolean}
- */
-function looksLikeRelativePath(value) {
+function looksLikeRelativePath(value: string): boolean {
     if (!value || looksLikeAbsolutePath(value)) return false;
     return value.startsWith("./") || value.startsWith("../") || value.includes("/") || value.includes("\\");
 }
 
-/**
- * @param {string} key
- * @param {unknown} value
- * @returns {SafeMetricDetails | undefined}
- */
-function sanitizeMetricValue(key, value) {
+function sanitizeMetricValue(key: string, value: unknown): SafeMetricDetails | undefined {
     if (value === undefined) return undefined;
     if (SENSITIVE_KEY_PATTERN.test(key)) return REDACTED;
     if (value == null) return null;
@@ -216,8 +216,7 @@ function sanitizeMetricValue(key, value) {
             .filter((item) => item !== undefined);
     }
     if (isPlainObject(value)) {
-        /** @type {{[key: string]: SafeMetricDetails}} */
-        const output = {};
+        const output: JsonRecord = {};
         for (const [entryKey, entryValue] of Object.entries(value).slice(0, MAX_OBJECT_KEYS)) {
             const sanitized = sanitizeMetricValue(entryKey, entryValue);
             if (sanitized !== undefined) output[entryKey] = sanitized;
@@ -227,36 +226,19 @@ function sanitizeMetricValue(key, value) {
     return undefined;
 }
 
-/**
- * @param {unknown} details
- * @returns {SafeMetricDetails | undefined}
- */
-export function sanitizeMetricDetails(details) {
+export function sanitizeMetricDetails(details: unknown): SafeMetricDetails | undefined {
     return sanitizeMetricValue("details", details);
 }
 
-/**
- * @param {unknown} value
- * @returns {value is string}
- */
-function isString(value) {
+function isString(value: unknown): value is string {
     return typeof value === "string";
 }
 
-/**
- * @param {unknown} value
- * @param {Set<string>} allowed
- * @returns {string | undefined}
- */
-function allowEnum(value, allowed) {
+function allowEnum(value: unknown, allowed: Set<string>): string | undefined {
     return isString(value) && allowed.has(value) ? value : undefined;
 }
 
-/**
- * @param {string} value
- * @returns {string | null}
- */
-export function normalizeObservedTime(value) {
+export function normalizeObservedTime(value: string): string | null {
     const parts =
         /^(\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d)(?:\.(\d{1,3}))?(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.exec(
             value,
@@ -268,42 +250,22 @@ export function normalizeObservedTime(value) {
     return Number.isFinite(time) ? new Date(time).toISOString() : null;
 }
 
-/**
- * @param {unknown} value
- * @returns {number | undefined}
- */
-function allowNonNegativeInteger(value) {
+function allowNonNegativeInteger(value: unknown): number | undefined {
     return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 
-/**
- * @param {unknown} value
- * @returns {number | undefined}
- */
-function allowPositiveInteger(value) {
+function allowPositiveInteger(value: unknown): number | undefined {
     return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : undefined;
 }
 
-/**
- * @param {Record<string, unknown>} output
- * @param {string} key
- * @param {unknown} value
- * @param {Set<string>} allowed
- */
-function setAllowedEnum(output, key, value, allowed) {
+function setAllowedEnum(output: FrontendMetricDetails, key: string, value: unknown, allowed: Set<string>) {
     const normalized = allowEnum(value, allowed);
     if (normalized !== undefined) output[key] = normalized;
 }
 
-/**
- * @param {string} event
- * @param {unknown} details
- * @returns {Record<string, unknown> | undefined}
- */
-function sanitizeDedicatedFrontendMetricDetails(event, details) {
+function sanitizeDedicatedFrontendMetricDetails(event: string, details: unknown): FrontendMetricDetails | undefined {
     if (!isPlainObject(details)) return undefined;
-    /** @type {Record<string, unknown>} */
-    const output = {};
+    const output: FrontendMetricDetails = {};
     if (event === "frontend_runtime_style_resolved") {
         setAllowedEnum(output, "policySource", details.policySource, FRONTEND_POLICY_SOURCES);
         setAllowedEnum(output, "recommendation", details.recommendation, COLLABORATION_VALUES);
@@ -332,8 +294,7 @@ function sanitizeDedicatedFrontendMetricDetails(event, details) {
 }
 
 // Each event owns its fields. Nothing from an unrecognized event is persisted.
-/** @type {Record<string, string[]>} */
-const V2_EVENTS = {
+const V2_EVENTS: Record<string, string[]> = {
     mechanical_validation_finished: ["outcome"],
     operation_completed_observed: ["outcome"],
     quick_fix_completed_observed: ["outcome"],
@@ -485,8 +446,7 @@ const V2_EVENTS = {
         "phase",
     ],
 };
-/** @type {Record<string, string>} */
-const V2_EVENT_CATEGORIES = {
+const V2_EVENT_CATEGORIES: Record<string, string> = {
     mechanical_validation_finished: "validation",
     operation_completed_observed: "execution",
     quick_fix_completed_observed: "execution",
@@ -524,8 +484,7 @@ const V2_EVENT_CATEGORIES = {
     command_dispatched: "command",
     command_finished: "command",
 };
-/** @type {Record<string, Set<string>>} */
-const V2_ENUMS = {
+const V2_ENUMS: Record<string, Set<string>> = {
     planKind: new Set(["PLANNED_CHANGE", "PROJECT", "QUICK_FIX", "OPERATION"]),
     outcome: new Set([
         "succeeded",
@@ -837,13 +796,8 @@ const V2_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 const V2_NAME = /^[A-Za-z][A-Za-z0-9_.:/-]{0,127}$/;
 let metricsWriteQueue = Promise.resolve();
 
-/**
- * @param {Promise<unknown>} pending
- * @param {number} timeoutMs
- * @returns {Promise<void>}
- */
-function waitForMetrics(pending, timeoutMs) {
-    return new Promise((resolve) => {
+function waitForMetrics(pending: Promise<void>, timeoutMs: number): Promise<void> {
+    return new Promise<void>((resolve) => {
         const timer = setTimeout(resolve, timeoutMs);
         void pending.then(
             () => {
@@ -858,24 +812,17 @@ function waitForMetrics(pending, timeoutMs) {
     });
 }
 
-/** @param {number} [timeoutMs] */
-export function drainWorkflowMetrics(timeoutMs = 5000) {
+export function drainWorkflowMetrics(timeoutMs: number = 5000) {
     return waitForMetrics(metricsWriteQueue, timeoutMs);
 }
 
-/**
- * @param {Record<string, unknown>} metric
- * @param {string} cwdHash
- * @returns {Record<string, unknown> | null}
- */
-function sanitizeV2MetricRecord(metric, cwdHash) {
+function sanitizeV2MetricRecord(metric: MetricFields, cwdHash: string): WorkflowMetricV2Record | null {
     const event = typeof metric.event === "string" ? metric.event : "";
     if (!Object.hasOwn(V2_EVENTS, event) || metric.category !== V2_EVENT_CATEGORIES[event]) return null;
     if (typeof metric.recorderId !== "string" || !V2_IDENTIFIER.test(metric.recorderId)) return null;
     const seq = allowNonNegativeInteger(metric.seq);
     if (seq === undefined) return null;
-    /** @type {Record<string, unknown>} */
-    const record = {
+    const record: WorkflowMetricV2Record = {
         v: 2,
         ts:
             typeof metric.ts === "string" && Number.isFinite(Date.parse(metric.ts))
@@ -959,14 +906,9 @@ function sanitizeV2MetricRecord(metric, cwdHash) {
     return record;
 }
 
-/**
- * @typedef {import("./metrics-journal.ts").JournalResult & Pick<WorkflowMetricRecord, "details">} WorkflowMetricResult
- *
- * @param {Record<string, unknown>} metric
- * @param {string} cwd
- * @returns {Promise<WorkflowMetricResult>}
- */
-export async function recordWorkflowMetric(metric, cwd) {
+export type WorkflowMetricResult = JournalResult & Pick<WorkflowMetricRecord, "details">;
+
+export async function recordWorkflowMetric(metric: MetricFields, cwd: string): Promise<WorkflowMetricResult> {
     try {
         if (!cwd) throw new Error("recordWorkflowMetric: cwd is required");
         const project = resolveMeasurementProject(cwd);
@@ -995,21 +937,17 @@ export async function recordWorkflowMetric(metric, cwd) {
         };
         const cwdHash = project.key;
 
-        let record;
+        let record: WorkflowMetricRecord | WorkflowMetricV2Record | null;
         if (metric.v === 2) {
             record = sanitizeV2MetricRecord(metric, cwdHash);
             if (!record) return { persisted: false, reason: "invalid_record" };
         } else {
             const eventName = typeof metric.event === "string" ? metric.event : "";
-            const categoryName =
-                typeof metric.category === "string"
-                    ? /** @type {WorkflowMetricCategory} */ (metric.category)
-                    : "execution";
+            const categoryName = typeof metric.category === "string" ? metric.category : "execution";
             const dedicatedFrontendEvent = DEDICATED_FRONTEND_EVENTS.has(eventName);
             const dedicatedDetails = dedicatedFrontendEvent
                 ? sanitizeDedicatedFrontendMetricDetails(eventName, metric.details)
                 : undefined;
-            /** @type {WorkflowMetricRecord} */
             record = {
                 v: 1,
                 ts: new Date().toISOString(),
@@ -1040,11 +978,7 @@ export async function recordWorkflowMetric(metric, cwd) {
     }
 }
 
-/**
- * @param {string} command
- * @returns {string}
- */
-function classifyBashCommand(command) {
+function classifyBashCommand(command: string): string {
     const trimmed = command.trim();
     if (/^(deno|npm|pnpm|yarn|bun|make|ninja|cargo|go|pytest|python\s+-m\s+pytest|mvn|gradle)\b/.test(trimmed)) {
         return /(test|check|lint|fmt|format|ci|build|pytest)/.test(trimmed) ? "validation_command" : "package_manager";
@@ -1054,12 +988,7 @@ function classifyBashCommand(command) {
     return "shell_other";
 }
 
-/**
- * @param {string} toolName
- * @param {unknown} args
- * @returns {string}
- */
-export function classifyToolSubUsage(toolName, args = undefined) {
+export function classifyToolSubUsage(toolName: string, args: unknown = undefined): string {
     if (toolName === "bash") {
         const command = isPlainObject(args) && typeof args.command === "string" ? args.command : "";
         return classifyBashCommand(command);
@@ -1104,15 +1033,13 @@ export function classifyToolSubUsage(toolName, args = undefined) {
     return "other";
 }
 
-/**
- * @param {string} toolCallId
- * @param {string} toolName
- * @param {unknown} args
- * @param {string} cwd
- * @param {string} [agentName]
- * @returns {Promise<import("./metrics-journal.ts").JournalResult>}
- */
-export function recordToolCallStarted(toolCallId, toolName, args, cwd, agentName) {
+export function recordToolCallStarted(
+    toolCallId: string,
+    toolName: string,
+    args: unknown,
+    cwd: string,
+    agentName?: string,
+): Promise<JournalResult> {
     const subUsage = classifyToolSubUsage(toolName, args);
     activeToolCalls.set(toolCallId, { subUsage, startedAt: Date.now() });
     return recordWorkflowMetric(
@@ -1126,15 +1053,13 @@ export function recordToolCallStarted(toolCallId, toolName, args, cwd, agentName
     );
 }
 
-/**
- * @param {string} toolCallId
- * @param {string} toolName
- * @param {boolean} isError
- * @param {string} cwd
- * @param {string} [agentName]
- * @returns {Promise<import("./metrics-journal.ts").JournalResult>}
- */
-export function recordToolCallFinished(toolCallId, toolName, isError, cwd, agentName) {
+export function recordToolCallFinished(
+    toolCallId: string,
+    toolName: string,
+    isError: boolean,
+    cwd: string,
+    agentName?: string,
+): Promise<JournalResult> {
     const started = activeToolCalls.get(toolCallId);
     activeToolCalls.delete(toolCallId);
     const now = Date.now();
@@ -1154,23 +1079,18 @@ export function recordToolCallFinished(toolCallId, toolName, isError, cwd, agent
     );
 }
 
-/**
- * @typedef {Object} LegacyWorkflowMetricInput
- * @property {number} v
- * @property {string} ts
- * @property {string} event
- *
- * @typedef {Object} LegacyWorkflowMetricReport
- * @property {string} timestamp
- * @property {string} event
- * @property {"legacy/partial"} availability
- */
+export type LegacyWorkflowMetricInput = Pick<WorkflowMetricRecord, "ts" | "event"> & { v: number };
 
-/** Read only understood v1 fields. Generic details and mutable Plan names are never report joins.
- * @param {LegacyWorkflowMetricInput} record
- * @returns {LegacyWorkflowMetricReport | null}
+export interface LegacyWorkflowMetricReport {
+    timestamp: string;
+    event: string;
+    availability: "legacy/partial";
+}
+
+/**
+ * Read only understood v1 fields. Generic details and mutable Plan names are never report joins.
  */
-export function readLegacyWorkflowMetric(record) {
+export function readLegacyWorkflowMetric(record: LegacyWorkflowMetricInput): LegacyWorkflowMetricReport | null {
     if (
         record.v !== 1 ||
         !Number.isFinite(Date.parse(record.ts)) ||

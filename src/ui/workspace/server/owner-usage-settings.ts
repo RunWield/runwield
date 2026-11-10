@@ -4,7 +4,7 @@ import type {
     InstalledMetricsExporter,
     MetricsExporterCredentialField,
 } from "../../../shared/extensions/metrics-exporter.ts";
-import { MeasurementProjectUnavailableError, resolveMeasurementProject } from "../../../shared/workflow/metrics.js";
+import { MeasurementProjectUnavailableError, resolveMeasurementProject } from "../../../shared/workflow/metrics.ts";
 import { remotePersonalResourcesActive } from "../../../shared/remote/personal-resources.ts";
 import { getCustomSetting, getMergedCustomSetting } from "../../../shared/settings.js";
 import {

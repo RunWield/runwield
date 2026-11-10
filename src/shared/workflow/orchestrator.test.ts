@@ -19,7 +19,7 @@ import { setCustomSetting } from "../settings.js";
 import type { SessionRuntimeEvent } from "../session/session-runtime-events.js";
 import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.ts";
 import { dispatchPostTriage, type DispatchPostTriageArgs, readLatestTriageOutcome } from "./orchestrator.ts";
-import { getWorkflowMetricsFilePath } from "./metrics.js";
+import { getWorkflowMetricsFilePath } from "./metrics.ts";
 import { publishWorkflowToolEvent } from "./workflow-tool-events.ts";
 import type { LocalCIPort, LocalCIResult } from "./validation-local-ci.ts";
 

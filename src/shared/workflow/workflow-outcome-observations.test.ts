@@ -12,7 +12,7 @@ import { ensureRootAgentSession } from "../session/session.js";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { ExecutionMetricsRecorder } from "./execution-metrics.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
-import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "./metrics.js";
+import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "./metrics.ts";
 import { cleanupStoredPublication } from "./publication-machine.ts";
 import { runLocalCI } from "./validation-local-ci.ts";
 import { attachRecorder, makeUi, runValidationPhase } from "./validation-test-helpers.ts";

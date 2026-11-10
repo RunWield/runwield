@@ -25,7 +25,7 @@ import {
     deleteRemotelyPublishedWorktreeBranch,
     removeWorktreeGitArtifacts,
 } from "../worktree.js";
-import { getWorkflowMetricsFilePath } from "./metrics.js";
+import { getWorkflowMetricsFilePath } from "./metrics.ts";
 import { type JournalResult, resolveCollectionEpoch } from "./metrics-journal.ts";
 import { recordWorkflowOutcome, workflowOutcomeEventId } from "./outcome-observations.ts";
 import { type ControllerRecord, readControllerRecord, writeControllerState } from "./controller-registry.ts";

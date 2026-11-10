@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { openNativeFileLock } from "../native-file-lock.ts";
-import { drainWorkflowMetrics, getWorkflowMetricsFilePath, recordWorkflowMetric } from "./metrics.js";
+import { drainWorkflowMetrics, getWorkflowMetricsFilePath, recordWorkflowMetric } from "./metrics.ts";
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { spawnNativeProcess } from "../foreground-process.ts";
@@ -15,7 +15,7 @@ import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixtu
 
 test("a producer lost after a flushed call start leaves no fabricated terminal row", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
-        const metricsModule = new URL("./metrics.js", import.meta.url).href;
+        const metricsModule = new URL("./metrics.ts", import.meta.url).href;
         const script = `const { recordWorkflowMetric, drainWorkflowMetrics } = await import(${JSON.stringify(
             metricsModule,
         )});
@@ -46,7 +46,7 @@ test("a producer lost after a flushed call start leaves no fabricated terminal r
 
 test("two local producers preserve saved observations and report lock budget skips", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
-        const metricsModule = new URL("./metrics.js", import.meta.url).href;
+        const metricsModule = new URL("./metrics.ts", import.meta.url).href;
         const script = `const { recordWorkflowMetric, drainWorkflowMetrics } = await import(${JSON.stringify(
             metricsModule,
         )});

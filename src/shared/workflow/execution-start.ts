@@ -67,7 +67,7 @@ import {
     emitUpdatingPlanStatusToInProgress,
 } from "./execution-preparation-progress.ts";
 import { recordPlanEvent, buildPlanEventUpdates } from "./plan-lifecycle.ts";
-import { recordWorkflowMetric } from "./metrics.js";
+import { recordWorkflowMetric } from "./metrics.ts";
 import { listTransitionRecoveryRecords, runExecutionPreparationTransition } from "./state-transition.ts";
 import { healSettledTransitionRecords } from "./transition-recovery.ts";
 import { CollaborationStyles, resolveExecutionOwner } from "./execution-collaboration.ts";

@@ -3,7 +3,7 @@
  * Records structured observation events for slash commands across TUI, ACP, and Workspace.
  */
 
-import { drainWorkflowMetrics, recordWorkflowMetric } from "./metrics.js";
+import { drainWorkflowMetrics, recordWorkflowMetric } from "./metrics.ts";
 
 export type SlashCommandKind = "builtin" | "template" | "skill";
 export type SlashCommandSurface = "tui" | "workspace" | "acp";

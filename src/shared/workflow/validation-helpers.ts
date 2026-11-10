@@ -39,7 +39,7 @@ import {
 } from "../session/session-runtime-interactions.ts";
 
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
-import { recordWorkflowMetric } from "./metrics.js";
+import { recordWorkflowMetric } from "./metrics.ts";
 
 import { autoGenerateWorkRecordForCompletedPlan } from "../work-records/auto-generation.ts";
 import type { WorkRecordMnemotecaPort } from "../work-records/mnemoteca-port.ts";

@@ -33,7 +33,7 @@ import { savePlan } from "../plan-store.js";
 import { captureTranscriptEvidence } from "../shared/session/session-transcript-projection.js";
 import { openFileSessionStore } from "../shared/session/file-session-store.ts";
 import { __resetSettingsForTests, setCustomSetting } from "../shared/settings.js";
-import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../shared/workflow/metrics.js";
+import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../shared/workflow/metrics.ts";
 import { createRootSessionManager, resolveCreatedRootSessionPath } from "../shared/session/root-session.ts";
 import { VERSION } from "../shared/version.js";
 import { mapRuntimeEventToAcpUpdate } from "./event-mapper.ts";

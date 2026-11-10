@@ -15,7 +15,7 @@ import { buildGuidedReviewPrompt, validateGuidedReviewExplainer } from "../../..
 import { RuntimeUsageTotals } from "../../../../shared/session/runtime-usage-totals.ts";
 import { ExecutionMetricsRecorder } from "../../../../shared/workflow/execution-metrics.ts";
 import { buildAiReviewPrompt, validateAiReviewResult } from "../../../../shared/standalone-review/ai-review.ts";
-import { recordWorkflowMetric } from "../../../../shared/workflow/metrics.js";
+import { recordWorkflowMetric } from "../../../../shared/workflow/metrics.ts";
 import { parseDiffFiles } from "../../../../shared/workflow/review-diff-tool.ts";
 import { createReviewWidgetStore } from "./review-widget-handlers.ts";
 

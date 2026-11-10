@@ -14,7 +14,7 @@ import {
     recordPairCheckpointReport,
     resolvePairCheckpoint,
 } from "../shared/session/pair-checkpoint-session.ts";
-import { recordWorkflowMetric } from "../shared/workflow/metrics.js";
+import { recordWorkflowMetric } from "../shared/workflow/metrics.ts";
 
 const PARAMETERS = Type.Object(
     {

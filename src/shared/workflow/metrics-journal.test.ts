@@ -19,7 +19,7 @@ import lockfile from "proper-lockfile";
 import { openNativeFileLock } from "../native-file-lock.ts";
 import { setCustomSetting } from "../settings.js";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
-import { getWorkflowMetricsFilePath, recordWorkflowMetric } from "./metrics.js";
+import { getWorkflowMetricsFilePath, recordWorkflowMetric } from "./metrics.ts";
 import {
     appendWorkflowMetric,
     clearWorkflowMetricJournal,
@@ -184,7 +184,7 @@ console.log("ready"); await (await import("node:events")).once((await import("no
 test("two processes preserve complete unique saved observations and report budget skips", async () => {
     await withWorkflowMetricsFixture(async ({ homeDir, projectRoot }) => {
         const script = join(projectRoot, "writer.js");
-        const module = new URL("./metrics.js", import.meta.url).href;
+        const module = new URL("./metrics.ts", import.meta.url).href;
         await fsWriteFile(
             script,
             `import { recordWorkflowMetric } from ${JSON.stringify(module)};

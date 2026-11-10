@@ -13,7 +13,7 @@ import { getHomeDir } from "../../constants.ts";
 import { updatePlanFrontMatter } from "../../plan-store.js";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { getWorkspaceSearchRefreshMarker } from "../workspace-search-refresh.ts";
-import { getWorkflowMetricsFilePath } from "./metrics.js";
+import { getWorkflowMetricsFilePath } from "./metrics.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import { createLedger } from "./review-ledger.ts";
 import { complete, coverage, hostFixture, hostRequest } from "./testing/validation-host-fixture.ts";

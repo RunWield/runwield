@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { type InstalledMetricsExporter, resolveApprovedMetricsExporters } from "../extensions/metrics-exporter.ts";
 import { remotePersonalResourcesActive } from "../remote/personal-resources.ts";
 import { getCustomSetting, setCustomSetting } from "../settings.js";
-import { resolveMeasurementProject } from "./metrics.js";
+import { resolveMeasurementProject } from "./metrics.ts";
 import { readWorkflowMetricLegacyAdoption, withWorkflowMetricJournalLock } from "./metrics-journal.ts";
 import { metricsDeliveryInFlight } from "./metrics-export-ledger.ts";
 import { metricsExportDirectory, replaceExportFile, withExportConfigurationLock } from "./metrics-export-storage.ts";

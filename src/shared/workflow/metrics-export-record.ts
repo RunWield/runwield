@@ -1,6 +1,6 @@
 /** The only owner of export payload contents. Never copy a journal row. */
 import type { MetricsExportHostIdentity } from "./metrics-export-grants.ts";
-import { normalizeObservedTime } from "./metrics.js";
+import { normalizeObservedTime } from "./metrics.ts";
 
 export interface MetricsJournalRow {
     v: number;

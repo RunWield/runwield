@@ -17,7 +17,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { dirname, join } from "node:path";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { queryUsageReport } from "../../shared/workflow/usage-reporting.ts";
-import { getWorkflowMetricsFilePath } from "../../shared/workflow/metrics.js";
+import { getWorkflowMetricsFilePath } from "../../shared/workflow/metrics.ts";
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";

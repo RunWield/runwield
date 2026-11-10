@@ -17,7 +17,7 @@ import {
     getWorkflowMetricsFilePath,
     normalizeObservedTime,
     recordWorkflowMetric,
-} from "./metrics.js";
+} from "./metrics.ts";
 
 import { getCustomSetting, getMergedCustomSetting } from "../settings.js";
 import {

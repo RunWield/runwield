@@ -35,7 +35,7 @@ import {
 } from "../../src/shared/workflow/metrics-export-grants.ts";
 import { readMetricsExportLedger } from "../../src/shared/workflow/metrics-export-ledger.ts";
 import { readMetricsExportStatus, runMetricsExportCycle } from "../../src/shared/workflow/metrics-export-scheduler.ts";
-import { recordWorkflowMetric } from "../../src/shared/workflow/metrics.js";
+import { recordWorkflowMetric } from "../../src/shared/workflow/metrics.ts";
 import { withProcessGlobalTestLock } from "../../src/testing/process-global-lock.ts";
 import { initRunWieldTheme } from "../../src/ui/theme/theme.js";
 import {

@@ -29,7 +29,7 @@ import {
 } from "../validation-host-contract.ts";
 import { continueHostTurnValidation } from "../validation-host-turn.ts";
 import { readDeliveryEvidence } from "../delivery-evidence.ts";
-import { getWorkflowMetricsFilePath } from "../metrics.js";
+import { getWorkflowMetricsFilePath } from "../metrics.ts";
 import { makeValidationProjectRoot } from "../validation-test-helpers.ts";
 
 import process from "node:process";

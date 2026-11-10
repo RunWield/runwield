@@ -16,7 +16,7 @@ import { getModelRegistry } from "../shared/models/model-registry.ts";
 import { createRootSessionManager } from "../shared/session/root-session.ts";
 import { ClaudeCliExecutionSession } from "../shared/session/backends/claude-cli/execution-session.ts";
 import { AgyCliExecutionSession } from "../shared/session/backends/agy-cli/execution-session.ts";
-import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../shared/workflow/metrics.js";
+import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../shared/workflow/metrics.ts";
 import type { MetricsJournalRow } from "../shared/workflow/metrics-export-record.ts";
 import {
     cleanupReviewAgentState,

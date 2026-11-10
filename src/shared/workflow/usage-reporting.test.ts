@@ -17,7 +17,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import { withCollidingMetricProjects, withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
-import { getWorkflowMetricsFilePath, hashMetricCwd, recordWorkflowMetric } from "./metrics.js";
+import { getWorkflowMetricsFilePath, hashMetricCwd, recordWorkflowMetric } from "./metrics.ts";
 import { encodeCwdForSessionDir } from "../session/root-session.ts";
 import { ExecutionMetricsRecorder } from "./execution-metrics.ts";
 import { UsageReporter, usageProjectIdentityForRoot } from "./usage-reporting.ts";
@@ -627,7 +627,7 @@ test("concurrent processes report every persisted identity once across refreshes
         const script = join(projectRoot, "concurrent.ts");
         await fsWriteFile(
             script,
-            `import { recordWorkflowMetric } from ${JSON.stringify(new URL("./metrics.js", import.meta.url).href)};
+            `import { recordWorkflowMetric } from ${JSON.stringify(new URL("./metrics.ts", import.meta.url).href)};
 for (let seq=0;seq<6;seq++) console.log(JSON.stringify(await recordWorkflowMetric({v:2,category:"command",event:"command_started",recorderId:(await import("node:process")).argv.slice(2)[1],seq,command:"help"},(await import("node:process")).argv.slice(2)[0])));`,
         );
         const outputs = await Promise.all(

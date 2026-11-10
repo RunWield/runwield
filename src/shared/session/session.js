@@ -133,7 +133,7 @@ import { getBundledAgentDefsPath } from "./agent-assets.ts";
 import { expandSkill, listVisibleSkillCatalog } from "./skill-catalog.ts";
 import { getPackagePromptTemplatePaths, resolveInstalledPackagePromptResources } from "../package-resources.ts";
 import { getWldExtensionPaths, resolveInstalledWldExtensionResources } from "../extensions/wld-extension-manifest.ts";
-import { recordToolCallFinished, recordToolCallStarted, recordWorkflowMetric } from "../workflow/metrics.js";
+import { recordToolCallFinished, recordToolCallStarted, recordWorkflowMetric } from "../workflow/metrics.ts";
 import { ExecutionMetricsRecorder, SessionContextMetricsRecorder } from "../workflow/execution-metrics.ts";
 import { describeRuntimeTool } from "./tool-event-title.ts";
 import { createSessionContextProjection, estimateContextTextTokens } from "./session-context-report.ts";

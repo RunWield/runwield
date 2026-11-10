@@ -22,7 +22,7 @@ import { getModelRegistry } from "../../../models/model-registry.ts";
 import { createTaskCompletedTool } from "../../../../tools/task-completed.ts";
 import { HostedSession } from "../../hosted-session.js";
 import { setCustomSetting } from "../../../settings.js";
-import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../../../workflow/metrics.js";
+import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../../../workflow/metrics.ts";
 import { readLatestTaskCompletedOutcome } from "../../../workflow/workflow-results.ts";
 import { prepareClaudeCliCommand, removeClaudeCliPromptFile } from "./command.ts";
 import { ClaudeCliExecutionSession } from "./execution-session.ts";
