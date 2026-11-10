@@ -66,7 +66,7 @@ import {
     ONBOARDING_WARNING,
 } from "./onboarding-content.ts";
 import type { BrowserPort } from "../../shared/browser-port.ts";
-import type { ImageAttachment } from "../../shared/session/types.js";
+import type { ImageAttachment } from "../../shared/session/image-attachments.ts";
 import type { UiAPI } from "./types.js";
 
 const CHAT_PROMPT_AGENT_NAME = AGENTS.OPERATOR;

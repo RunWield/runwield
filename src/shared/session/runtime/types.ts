@@ -3,7 +3,7 @@ import type { ContextUsageSnapshot } from "../../types.js";
 import type { McpServerDefinition } from "../../mcp/config.ts";
 import type { FileSessionStore } from "../file-session-store-types.ts";
 import type { MinimalSessionManagerLike } from "../hosted-session.js";
-import type { ImageAttachment } from "../types.js";
+import type { ImageAttachment } from "../image-attachments.ts";
 import type { RuntimeQueuedMessage, SessionRuntimeEvent } from "../session-runtime-events.js";
 import type { NamedInvocationPayload } from "../named-invocation.ts";
 import type { SessionHost } from "../session-host.ts";

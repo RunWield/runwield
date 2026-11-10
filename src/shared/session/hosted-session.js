@@ -64,7 +64,7 @@ import { PlanReviewConversationOwner } from "./plan-review-conversation.ts";
 /**
  * @typedef {Object} AgentTransitionSteering
  * @property {string} text
- * @property {import('./types.js').ImageAttachment[]} images
+ * @property {import('./image-attachments.ts').ImageAttachment[]} images
  * @property {import('./session-runtime-events.js').RuntimeQueuedMessage} [message]
  * @property {number} [submissionOrder]
  */
@@ -798,7 +798,7 @@ export class HostedSession {
 
     /**
      * @param {string} text
-     * @param {import('./types.js').ImageAttachment[]} images
+     * @param {import('./image-attachments.ts').ImageAttachment[]} images
      * @param {import('./session-runtime-events.js').RuntimeQueuedMessage} [message]
      * @param {number} [submissionOrder]
      * @returns {boolean}

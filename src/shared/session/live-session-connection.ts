@@ -6,7 +6,7 @@ import { createServer as createSocketServer, type Socket } from "node:net";
 import { createServer, request as httpRequest, type ServerResponse } from "node:http";
 import { getHomeDir } from "../../constants.js";
 
-import type { ImageAttachment } from "./types.js";
+import type { ImageAttachment } from "./image-attachments.ts";
 import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "./session-runtime-interactions.ts";
 import type {
     NotificationSurface,

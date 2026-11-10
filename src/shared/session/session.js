@@ -304,7 +304,7 @@ function contextCapacityGuidance(model, totalTokens, contextWindow) {
 }
 
 /**
- * @param {{ agentName: string, cwd: string, agentDef: import('./types.js').AgentDefinition, thinkingLevelOverride?: string }} options
+ * @param {{ agentName: string, cwd: string, agentDef: import('./agents.ts').AgentDefinition, thinkingLevelOverride?: string }} options
  */
 export function resolveExecutionThinkingLevel(options) {
     let thinkingLevelSource = undefined;
@@ -655,8 +655,8 @@ export function clearAgentSessionQueueForTransition(rootAgentSession) {
  * Steer a concrete AgentSession and return the session that accepted the message.
  *
  * @param {any} session
- * @param {string | import('./types.js').ImageAttachment[]} [text]
- * @param {import('./types.js').ImageAttachment[]} [images]
+ * @param {string | import('./image-attachments.ts').ImageAttachment[]} [text]
+ * @param {import('./image-attachments.ts').ImageAttachment[]} [images]
  * @returns {Promise<import('@earendil-works/pi-coding-agent').AgentSession | null>}
  */
 export async function steerAgentSessionWithTarget(session, text, images) {
@@ -704,8 +704,8 @@ export async function steerAgentSessionWithPreparedInput(session, text, images) 
  * Foreground sub-agent steering uses steerActiveSessionWithTarget instead.
  *
  * @param {import('./hosted-session.js').HostedSession | string} hostedSession
- * @param {string | import('./types.js').ImageAttachment[]} [text]
- * @param {import('./types.js').ImageAttachment[]} [images]
+ * @param {string | import('./image-attachments.ts').ImageAttachment[]} [text]
+ * @param {import('./image-attachments.ts').ImageAttachment[]} [images]
  * @returns {Promise<boolean>} true when the root session was steered
  */
 export async function steerRootSession(hostedSession, text, images) {
@@ -716,8 +716,8 @@ export async function steerRootSession(hostedSession, text, images) {
  * Steer the root session and return the AgentSession that accepted the message.
  *
  * @param {import('./hosted-session.js').HostedSession | string} hostedSession
- * @param {string | import('./types.js').ImageAttachment[]} [text]
- * @param {import('./types.js').ImageAttachment[]} [images]
+ * @param {string | import('./image-attachments.ts').ImageAttachment[]} [text]
+ * @param {import('./image-attachments.ts').ImageAttachment[]} [images]
  * @param {(target: import('@earendil-works/pi-coding-agent').AgentSession) => void} [beforeSteer]
  * @returns {Promise<import('@earendil-works/pi-coding-agent').AgentSession | null>}
  */
@@ -733,8 +733,8 @@ export async function steerRootSessionWithTarget(hostedSession, text, images, be
  * Steer the current foreground session if it is streaming, otherwise the streaming root session.
  *
  * @param {import('./hosted-session.js').HostedSession | string} hostedSession
- * @param {string | import('./types.js').ImageAttachment[]} [text]
- * @param {import('./types.js').ImageAttachment[]} [images]
+ * @param {string | import('./image-attachments.ts').ImageAttachment[]} [text]
+ * @param {import('./image-attachments.ts').ImageAttachment[]} [images]
  * @returns {Promise<import('@earendil-works/pi-coding-agent').AgentSession | null>}
  */
 export async function steerActiveSessionWithTarget(hostedSession, text, images) {
@@ -1149,7 +1149,7 @@ function emitAgentModelFallback(hostedSession, agentName, displayName, engineerM
  * 5) Agent definition model from layered frontmatter
  *
  * @param {string | undefined} modelOverride
- * @param {import('./types.js').AgentDefinition} agentDef
+ * @param {import('./agents.ts').AgentDefinition} agentDef
  * @param {string} [agentName] - Used to look up settings-based model override.
  * @param {ReturnType<typeof getModelRegistry>} [modelRegistry]
  * @param {import('./hosted-session.js').HostedSession} [hostedSession]
@@ -1596,7 +1596,7 @@ async function readGlobalInstructionFile(homeDir) {
 /**
  * Assemble the final system prompt and resident-context projection by resolving placeholders.
  *
- * @param {import('./types.js').AgentDefinition} agentDef
+ * @param {import('./agents.ts').AgentDefinition} agentDef
  * @param {string[]} tools
  * @param {import('@earendil-works/pi-coding-agent').ToolDefinition[]} finalCustomTools
  * @param {string | undefined} cwd
@@ -1865,7 +1865,7 @@ export async function assembleFinalSystemPromptWithContextProjection(
 /**
  * Assemble the final system prompt by resolving placeholders.
  *
- * @param {import('./types.js').AgentDefinition} agentDef
+ * @param {import('./agents.ts').AgentDefinition} agentDef
  * @param {string[]} tools
  * @param {import('@earendil-works/pi-coding-agent').ToolDefinition[]} finalCustomTools
  * @param {string} [cwd]
@@ -2022,7 +2022,7 @@ function repairNamedInvocationContextEdits(sessionManager) {
  *
  * @returns {Promise<{
  *   session: import('@earendil-works/pi-coding-agent').AgentSession,
- *   agentDef: import('./types.js').AgentDefinition,
+ *   agentDef: import('./agents.ts').AgentDefinition,
  *   promptState: { text: string },
  *   tools: string[],
  *   finalCustomTools: import('@earendil-works/pi-coding-agent').ToolDefinition[],
@@ -2576,7 +2576,7 @@ export async function buildAgentSession({
  * configuration checks remain valid while Pi wiring stays unchanged.
  *
  * @param {{
- *   agentDef: import('./types.js').AgentDefinition,
+ *   agentDef: import('./agents.ts').AgentDefinition,
  *   inheritedBashAllowedCommands?: import('../bash-command-policy.ts').BashAllowedCommands,
  *   agentName: string,
  *   hostedSession: import('./hosted-session.js').HostedSession | null,
@@ -2707,7 +2707,7 @@ export async function composeClaudeCliBridgedTools({
  * The host-specific backend still owns its command, parser, and setup.
  *
  * @param {{
- *   agentDef: import('./types.js').AgentDefinition,
+ *   agentDef: import('./agents.ts').AgentDefinition,
  *   inheritedBashAllowedCommands?: import('../bash-command-policy.ts').BashAllowedCommands,
  *   agentName: string,
  *   hostedSession: import('./hosted-session.js').HostedSession | null,
@@ -2743,7 +2743,7 @@ function assertAgyCliImageInputSupported(images) {
  * @returns {Promise<{
  *   executionSession: import('./execution-backend.ts').ExecutionSession,
  *   session: any,
- *   agentDef: import('./types.js').AgentDefinition,
+ *   agentDef: import('./agents.ts').AgentDefinition,
  *   promptState: { text: string },
  *   tools: string[],
  *   finalCustomTools: import('@earendil-works/pi-coding-agent').ToolDefinition[],
@@ -3570,7 +3570,7 @@ function attachSessionMetricsObserver(session, hostedSession, projection) {
  * state between prompts.
  *
  * @param {import('@earendil-works/pi-coding-agent').AgentSession} session
- * @param {import('./types.js').AgentDefinition} agentDef
+ * @param {import('./agents.ts').AgentDefinition} agentDef
  * @param {string} [debugLogPath]
  * @param {import('./hosted-session.js').HostedSession} [hostedSession]
  * @param {AbortSignal} [cancellationSignal] Explicit cancellation is not an API failure.
@@ -3992,13 +3992,13 @@ export function attachSessionEventSubscribers(
 /**
  * @typedef {Object} AgentTransitionSteeringEntry
  * @property {string} text
- * @property {import('./types.js').ImageAttachment[]} images
+ * @property {import('./image-attachments.ts').ImageAttachment[]} images
  * @property {import('./session-runtime-events.js').RuntimeQueuedMessage} [message]
  */
 
 /**
  * @param {string} userRequest
- * @param {import('./types.js').ImageAttachment[]} images
+ * @param {import('./image-attachments.ts').ImageAttachment[]} images
  * @param {AgentTransitionSteeringEntry[]} steering
  */
 function buildAgentTransitionPrompt(userRequest, images, steering) {
@@ -4031,7 +4031,7 @@ function agentTransitionSteeringSignature(steering) {
  *
  * @param {Object} opts
  * @param {import('@earendil-works/pi-coding-agent').AgentSession} opts.session
- * @param {import('./types.js').AgentDefinition} opts.agentDef
+ * @param {import('./agents.ts').AgentDefinition} opts.agentDef
  * @param {string} opts.agentName
  * @param {string} opts.userRequest
  * @param {string} opts.finalSystemPrompt  Used only for debug log.
@@ -4266,7 +4266,7 @@ export async function runPrompt({
 /** @type {WeakMap<import('@earendil-works/pi-coding-agent').AgentSession, ExecutionMetricsRecorder>} */
 const executionMetricsForSession = new WeakMap();
 
-/** @type {WeakMap<import('@earendil-works/pi-coding-agent').AgentSession, { agentDef: import('./types.js').AgentDefinition, subAgentDefinition?: { id: import('./subagent-definitions.ts').SubAgentDefinitionId, options?: import('./subagent-definitions.ts').LoadSubAgentDefinitionOptions }, promptState: { text: string }, subscriberState: SubscriberState, unsubscribeMetrics: () => void, agentName: string, tools: string[], finalCustomTools: import('@earendil-works/pi-coding-agent').ToolDefinition[], callerCustomTools?: import('@earendil-works/pi-coding-agent').ToolDefinition[], effectiveToolDefinitions: import('@earendil-works/pi-coding-agent').ToolDefinition[], mcpToolNames?: string[], projectStateContext: string, cwd: string, model?: string, resolvedModel?: import('../models/model-registry.ts').RunWieldModel, contextProjection?: import('./session-context-report.ts').SessionContextProjection, imageMode?: string, visionFallbackModelRef?: string, steeringTargetId?: string }>} */
+/** @type {WeakMap<import('@earendil-works/pi-coding-agent').AgentSession, { agentDef: import('./agents.ts').AgentDefinition, subAgentDefinition?: { id: import('./subagent-definitions.ts').SubAgentDefinitionId, options?: import('./subagent-definitions.ts').LoadSubAgentDefinitionOptions }, promptState: { text: string }, subscriberState: SubscriberState, unsubscribeMetrics: () => void, agentName: string, tools: string[], finalCustomTools: import('@earendil-works/pi-coding-agent').ToolDefinition[], callerCustomTools?: import('@earendil-works/pi-coding-agent').ToolDefinition[], effectiveToolDefinitions: import('@earendil-works/pi-coding-agent').ToolDefinition[], mcpToolNames?: string[], projectStateContext: string, cwd: string, model?: string, resolvedModel?: import('../models/model-registry.ts').RunWieldModel, contextProjection?: import('./session-context-report.ts').SessionContextProjection, imageMode?: string, visionFallbackModelRef?: string, steeringTargetId?: string }>} */
 const rootSessionMetadata = new WeakMap();
 
 /** @type {WeakMap<import('./hosted-session.js').HostedSession, { agentName: string, debugLogPath?: string }>} */
@@ -4426,7 +4426,7 @@ export function disposeRootAgentSessionForNewSession(hostedSession) {
  * @param {string} [opts.cwd]
  * @param {string} [opts.projectStateContext]
  * @param {boolean} [opts.includeEditFallback]
- * @param {import('./types.js').AgentMessageHandler} [opts.activeHandler]
+ * @param {import('./agent-handler.ts').AgentMessageHandler} [opts.activeHandler]
  * @param {string} [opts.debugLogPath]
  * @param {import('./managed-operation.ts').ManagedOperationCapability} [opts.managedOperationCapability]
  *

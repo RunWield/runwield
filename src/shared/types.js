@@ -52,7 +52,7 @@
 /**
  * @typedef {Object} SessionPromptRequest
  * @property {string} initialRequest
- * @property {import('./session/types.js').ImageAttachment[]} [initialImages]
+ * @property {import('./session/image-attachments.ts').ImageAttachment[]} [initialImages]
  */
 
 /**

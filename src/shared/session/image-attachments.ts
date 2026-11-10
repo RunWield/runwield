@@ -16,8 +16,14 @@ import { Buffer } from "node:buffer";
 
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { ImageContent } from "@earendil-works/pi-ai";
-import type { ImageAttachment } from "./types.js";
 import type { ModelDiscoveryNetworkPort, RunWieldModel, RunWieldModelRegistry } from "../models/model-registry.ts";
+
+export type ImageAttachment = {
+    base64: string;
+    mimeType: string;
+    ref?: string;
+    path?: string;
+};
 
 export interface ImageInputModel {
     input?: string[];

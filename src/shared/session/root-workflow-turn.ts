@@ -14,7 +14,7 @@ import {
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "./hosted-session.js";
-import type { ImageAttachment } from "./types.js";
+import type { ImageAttachment } from "./image-attachments.ts";
 
 interface RootAgentSessionState {
     dispose?: () => void | Promise<void>;

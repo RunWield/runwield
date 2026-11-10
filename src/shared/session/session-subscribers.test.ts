@@ -14,7 +14,7 @@ import type {
     CompactionResult,
 } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage, AssistantMessageEvent, TextContent, Usage } from "@earendil-works/pi-ai";
-import type { AgentDefinition } from "./types.js";
+import type { AgentDefinition } from "./agents.ts";
 import type {
     RuntimeAssistantThinkingDeltaEvent,
     RuntimeToolEndEvent,

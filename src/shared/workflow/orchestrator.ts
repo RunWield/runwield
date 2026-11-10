@@ -74,7 +74,7 @@ export interface DispatchPostTriageArgs {
     hostedSession: import("../session/hosted-session.js").HostedSession;
     triage: TriageOutcomeInput;
     userRequest: string;
-    images?: import("../session/types.js").ImageAttachment[];
+    images?: import("../session/image-attachments.ts").ImageAttachment[];
     sessionManager?: SessionManager;
     localCI: LocalCIPort;
     signal?: AbortSignal;
@@ -132,7 +132,7 @@ async function runRootTurnUntilTaskCompletion(args: {
     hostedSession: import("../session/hosted-session.js").HostedSession;
     agentName: string;
     userRequest: string;
-    images?: import("../session/types.js").ImageAttachment[];
+    images?: import("../session/image-attachments.ts").ImageAttachment[];
     dispatchKind?: import("../session/request-dispatch.ts").RequestDispatchKind;
     signal?: AbortSignal;
 }): Promise<AgentMessage[]> {

@@ -4,7 +4,7 @@
  */
 
 import type { EditorAPI, TuiAPI, UiAPI } from "./types.js";
-import type { ImageAttachment } from "../../shared/session/types.js";
+import type { ImageAttachment } from "../../shared/session/image-attachments.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import type { GenerationGuard } from "./generation-guard.ts";
 import { setTerminalTitleForName } from "./terminal-title.ts";

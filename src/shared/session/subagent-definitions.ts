@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { AGENT_DEFS_DIR, AGENTS, SUBAGENTS } from "../../constants.js";
 import { ensureBundledAgentDefFile } from "./agent-assets.ts";
 import { composeSharedPracticePrompt, loadAgentDefFromPath } from "./agents.ts";
-import type { AgentDefinition } from "./types.js";
+import type { AgentDefinition } from "./agents.ts";
 import { normalizeBashAllowedCommands } from "../bash-command-policy.ts";
 
 const SUBAGENT_DEFINITIONS_DIR = "subagent-definitions";

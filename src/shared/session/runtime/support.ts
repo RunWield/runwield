@@ -42,7 +42,7 @@ export async function restorePublishedSessionProjectRoot(
 }
 
 /**
- * @param {import('.././types.js').ImageAttachment[]} images
+ * @param {import('.././image-attachments.ts').ImageAttachment[]} images
  * @returns {import('.././named-invocation.ts').ImageReference[]}
  */
 export type RuntimeRootSessionManager = import("@earendil-works/pi-coding-agent").SessionManager & {
@@ -112,7 +112,7 @@ export function getRuntimeRootAgentSession(session: import("../hosted-session.js
     return isRuntimeAgentSession(root) ? root : null;
 }
 
-export function imageReferencesForNamedInvocation(images: import(".././types.js").ImageAttachment[]) {
+export function imageReferencesForNamedInvocation(images: import(".././image-attachments.ts").ImageAttachment[]) {
     return images.map((image) => ({
         ...(image.ref ? { ref: image.ref } : {}),
         ...(image.path ? { path: image.path } : {}),
