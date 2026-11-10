@@ -30,7 +30,7 @@ import { listOwnerProjects, requireOwnerProjectRoot, serializeOwnerProject } fro
 import { ownerSecurityHeaders } from "../server/owner-origin.ts";
 import { reviewFileContentApi } from "./api/review-file-handlers.ts";
 
-interface OwnerStoreState {
+export interface OwnerStoreState {
     store: OwnerCoordinationStore;
 }
 
@@ -47,7 +47,7 @@ interface OwnerPairingState extends OwnerStoreState {
     bootstrapProofCookieHeader(proof: string): string;
 }
 
-interface OwnerSessionState extends OwnerStoreState {
+export interface OwnerSessionState extends OwnerDeviceState {
     sessionContinuation: WorkspaceSessionContinuationService;
 }
 
@@ -59,7 +59,7 @@ interface OwnerDeviceRevocationState extends OwnerDeviceState, OwnerCookieOrigin
     ownerConnections?: Partial<Pick<OwnerConnectionRegistry, "closeDevice">>;
 }
 
-interface OwnerStateContext<State> {
+export interface OwnerStateContext<State> {
     state: State;
 }
 
@@ -67,15 +67,18 @@ interface OwnerRequestContext<State> extends OwnerStateContext<State> {
     req: Request;
 }
 
-interface OwnerUrlContext<State> extends OwnerStateContext<State> {
+export interface OwnerUrlContext<State> extends OwnerStateContext<State> {
     url: URL;
 }
 
-interface OwnerRouteContext<State, Params> extends OwnerRequestContext<State> {
+export interface OwnerParamsContext<State, Params> extends OwnerStateContext<State> {
     params: Params;
 }
 
-interface ProjectParams {
+export interface OwnerRouteContext<State, Params>
+    extends OwnerRequestContext<State>, OwnerParamsContext<State, Params> {}
+
+export interface ProjectParams {
     projectId: string;
 }
 
@@ -83,7 +86,7 @@ interface ProjectBoardParams extends ProjectParams {
     view?: string;
 }
 
-interface ProjectPlanParams extends ProjectParams {
+export interface ProjectPlanParams extends ProjectParams {
     planId: string;
 }
 

@@ -15,7 +15,7 @@ import { WorkspaceSessionContinuationService } from "./server/session-continuati
 import { loadWorkspaceDetail } from "./server/plan-adapter.js";
 import { ownerProjectPlanProgressApi } from "./routes/owner-api.ts";
 import { loadOwnerPlanProgress } from "./server/owner-plan-progress.ts";
-import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.js";
+import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.ts";
 
 type SessionRuntime = ReturnType<typeof createSessionRuntime>;
 type InteractiveSessionOptions = Parameters<SessionRuntime["createInteractiveSession"]>[0];

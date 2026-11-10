@@ -25,7 +25,7 @@ import {
     ownerSessionContinuationStartApi,
     ownerSessionCreateApi,
     ownerSessionUnarchiveApi,
-} from "./routes/owner-session-api.js";
+} from "./routes/owner-session-api.ts";
 import { associatedPlanSession } from "./routes/owner-api.ts";
 import { createOwnerConnectionRegistry } from "./server/owner-connections.ts";
 import { AGENTS, getHomeDir } from "../../constants.ts";

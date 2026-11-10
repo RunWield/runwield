@@ -8,7 +8,7 @@ import type { ManagedSessionFixture } from "../../testing/managed-session-fixtur
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
-import { ownerSessionOperationStreamApi } from "./routes/owner-session-api.js";
+import { ownerSessionOperationStreamApi } from "./routes/owner-session-api.ts";
 import { createOwnerConnectionRegistry, type OwnerConnectionRegistry } from "./server/owner-connections.ts";
 import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
 

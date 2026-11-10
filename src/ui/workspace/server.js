@@ -101,7 +101,7 @@ import {
     ownerSessionSteerApi,
     ownerSessionTimelineApi,
     ownerSessionUnarchiveApi,
-} from "./routes/owner-session-api.js";
+} from "./routes/owner-session-api.ts";
 import {
     assertOwnerHost,
     assertOwnerOrigin,

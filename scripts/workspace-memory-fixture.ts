@@ -263,7 +263,7 @@ async function runOperationWorkload(root: string, combined: boolean, forceGc: bo
     const { makeManagedSessionFixture } = await import("../src/testing/managed-session-fixture.ts");
     const { WorkspaceSessionContinuationService } = await import("../src/ui/workspace/server/session-continuation.js");
     const { ownerSessionOperationStatusApi, ownerSessionOperationStreamApi } =
-        await import("../src/ui/workspace/routes/owner-session-api.js");
+        await import("../src/ui/workspace/routes/owner-session-api.ts");
     const { createOwnerConnectionRegistry } = await import("../src/ui/workspace/server/owner-connections.ts");
     const home = process.env["HOME"]!;
     const projectRoot = join(root, "operation-project");
