@@ -21,7 +21,7 @@ import {
 import { MermaidMarkdown } from "./mermaid-markdown.ts";
 import stripAnsi from "strip-ansi";
 import type { SessionHelpItem, SessionHelpPayload } from "../../shared/session/session-help.ts";
-import type { RuntimeValidationProgress } from "../../shared/session/session-runtime-events.js";
+import type { RuntimeValidationProgress } from "../../shared/session/session-runtime-events.ts";
 import type { DocumentLinkHost } from "../review/document-link-host.ts";
 import type { ManagedSyncStatus, RunningTask, UiAPI } from "./api.ts";
 

@@ -1,6 +1,6 @@
 import { AgyCliBackendError } from ".././backends/agy-cli/failure.ts";
 import { listPromptTemplates, listSkills } from ".././session.js";
-import { createSessionRuntimeEvent, RuntimeEventTypes } from ".././session-runtime-events.js";
+import { createSessionRuntimeEvent, RuntimeEventTypes } from ".././session-runtime-events.ts";
 import { appendLiveSessionEvent } from ".././live-session-events.ts";
 import type { SessionRuntimeEventListener } from "./types.ts";
 
@@ -17,8 +17,8 @@ export class RuntimeEvents {
     private eventListeners = new Map<string, Set<SessionRuntimeEventListener>>();
     private busyOperationDepths = new Map<string, number>();
     private busyOperationSettlements = new Map<string, BusyOperationSettlement>();
-    private pendingReplayEvents = new Map<string, import("../session-runtime-events.js").SessionRuntimeEvent[]>();
-    private liveSessionEvents = new Map<string, import("../session-runtime-events.js").SessionRuntimeEvent[]>();
+    private pendingReplayEvents = new Map<string, import("../session-runtime-events.ts").SessionRuntimeEvent[]>();
+    private liveSessionEvents = new Map<string, import("../session-runtime-events.ts").SessionRuntimeEvent[]>();
 
     cleanupSession(sessionId: string) {
         this.eventListeners.delete(sessionId);
@@ -41,7 +41,7 @@ export class RuntimeEvents {
 
     replacePendingReplayEvents(
         sessionId: string,
-        events: import("../session-runtime-events.js").SessionRuntimeEvent[],
+        events: import("../session-runtime-events.ts").SessionRuntimeEvent[],
     ) {
         this.pendingReplayEvents.set(sessionId, events);
     }
@@ -51,7 +51,7 @@ export class RuntimeEvents {
     }
 
     beginLiveCapture(sessionId: string) {
-        const events: import("../session-runtime-events.js").SessionRuntimeEvent[] = [];
+        const events: import("../session-runtime-events.ts").SessionRuntimeEvent[] = [];
         this.liveSessionEvents.set(sessionId, events);
         return events;
     }
@@ -188,7 +188,7 @@ export class RuntimeEvents {
         if (!hostedSession) throw new Error("SessionRuntime.attachRuntimeEventSink: session not found");
         hostedSession.setEventSink({
             emit: (
-                event: Partial<import("../session-runtime-events.js").SessionRuntimeEvent> & { type: string },
+                event: Partial<import("../session-runtime-events.ts").SessionRuntimeEvent> & { type: string },
             ) => {
                 this.emitSessionEvent(hostedSession.id, event);
             },

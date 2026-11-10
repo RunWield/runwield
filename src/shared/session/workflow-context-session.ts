@@ -8,7 +8,7 @@ import { COMPLEXITIES, normalizeRoutingIntent } from "../../constants.ts";
 
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { SegmentHandoffPayload } from "../workflow/execution-segment-handoff.ts";
-import type { RuntimeValidationProgress } from "./session-runtime-events.js";
+import type { RuntimeValidationProgress } from "./session-runtime-events.ts";
 import type { WorkflowProgressFact } from "../workflow/workflow-presentation.ts";
 import type { SessionSegmentLineageEvidence } from "./file-session-store-types.ts";
 
@@ -284,7 +284,7 @@ export function recordNormalizedWorkflowContext(
 }
 
 export function readPersistedWorkflowContext(
-    sessionManager: SessionManager | undefined | null,
+    sessionManager: Pick<LineageSessionManager, "getBranch" | "getEntries"> | undefined | null,
 ): WorkflowContext | null {
     try {
         const entries = getSessionEntries(sessionManager);

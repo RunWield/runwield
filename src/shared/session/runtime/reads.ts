@@ -24,7 +24,7 @@ import {
     getCommittedTranscriptAuthorityFacts,
     inspectProjectedTranscript,
     toProjectionFailure,
-} from ".././session-transcript-projection.js";
+} from ".././session-transcript-projection.ts";
 import {
     projectAggregateTranscript,
     type TranscriptEntry,

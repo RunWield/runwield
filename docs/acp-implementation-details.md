@@ -103,7 +103,7 @@ The implementation evidence comes from these source files:
 - `src/acp/event-mapper.ts`
 - `src/acp/interaction-mapper.ts`
 - `src/shared/session/session-runtime.ts`
-- `src/shared/session/session-runtime-events.js`
+- `src/shared/session/session-runtime-events.ts`
 - `src/shared/session/session-runtime-interactions.ts`
 - `src/acp/protocol-smoke.test.ts`
 - `src/acp/session-map.test.js`

@@ -27,7 +27,7 @@ import {
     emitSystemStatus,
     normalizeRuntimeToolResult,
     RuntimeEventTypes,
-} from "../session/session-runtime-events.js";
+} from "../session/session-runtime-events.ts";
 import { describeRuntimeTool } from "../session/tool-event-title.ts";
 import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.ts";
 import { buildValidationUserMessage } from "./validation-user-messages.ts";

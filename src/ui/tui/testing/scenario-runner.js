@@ -19,7 +19,7 @@ import process from "node:process";
 
 import { dirname, join, relative } from "node:path";
 import { createSessionRuntime } from "../../../shared/session/session-runtime.ts";
-import { RuntimeEventTypes } from "../../../shared/session/session-runtime-events.js";
+import { RuntimeEventTypes } from "../../../shared/session/session-runtime-events.ts";
 import { openFileSessionStore } from "../../../shared/session/file-session-store.ts";
 import { ok as assert } from "node:assert/strict";
 import { extractYaml } from "../../../shared/front-matter.ts";
@@ -1375,7 +1375,7 @@ async function runComposedTuiScenario(scenario, options) {
             // parent can switch from its startup budget to the scenario budget.
             options.onReady?.();
             const runtime = composition.runtime;
-            /** @param {import('../../../shared/session/session-runtime-events.js').SessionRuntimeEvent} event */
+            /** @param {import('../../../shared/session/session-runtime-events.ts').SessionRuntimeEvent} event */
             const handleRuntimeEvent = (event) => {
                 events.push(`runtime:${event.type}`);
                 if (event.type === "agent_changed") {

@@ -30,7 +30,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
 import { savePlan } from "../plan-store.js";
-import { captureTranscriptEvidence } from "../shared/session/session-transcript-projection.js";
+import { captureTranscriptEvidence } from "../shared/session/session-transcript-projection.ts";
 import { openFileSessionStore } from "../shared/session/file-session-store.ts";
 import { __resetSettingsForTests, setCustomSetting } from "../shared/settings.js";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../shared/workflow/metrics.ts";
@@ -2481,7 +2481,7 @@ test("ACP session/load maps a persisted Session with no configured model to auth
 });
 
 test("ACP event mapper forwards structured validation progress", () => {
-    const progress = /** @type {import('../shared/session/session-runtime-events.js').RuntimeValidationProgress} */ ({
+    const progress = /** @type {import('../shared/session/session-runtime-events.ts').RuntimeValidationProgress} */ ({
         kind: "workflow",
         outcome: "paused",
         stage: "engineer_repair",

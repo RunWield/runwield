@@ -18,12 +18,12 @@ import { runActiveAgentTurn, switchActiveAgent } from "./agent-switching.ts";
 import { __getRootSessionMetadataForTests } from "./session.js";
 import { HostedSession } from "./hosted-session.js";
 import { buildPostTriageRequest } from "../workflow/workflow-prompts.ts";
-import { RuntimeEventTypes } from "./session-runtime-events.js";
-import { createReplayEvents } from "./session-transcript-projection.js";
+import { RuntimeEventTypes } from "./session-runtime-events.ts";
+import { createReplayEvents } from "./session-transcript-projection.ts";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { TranscriptContext } from "@earendil-works/pi-ai";
 import type { ActiveExecutionWorkflow } from "./hosted-session.js";
-import type { SessionRuntimeEvent } from "./session-runtime-events.js";
+import type { SessionRuntimeEvent } from "./session-runtime-events.ts";
 
 interface TranscriptContentBlock {
     type: string;

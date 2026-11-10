@@ -7,8 +7,8 @@ import type { TranscriptContext } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
-import { RuntimeEventTypes } from "./session-runtime-events.js";
-import { createReplayEvents } from "./session-transcript-projection.js";
+import { RuntimeEventTypes } from "./session-runtime-events.ts";
+import { createReplayEvents } from "./session-transcript-projection.ts";
 
 test("an idle managed Session receives a completed shell task without another user prompt", async () => {
     await withRuntimeCommandFixture("background-delivery-", async ({ projectRoot, setModelResponseFactories }) => {

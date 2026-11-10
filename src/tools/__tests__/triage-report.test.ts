@@ -4,7 +4,7 @@ import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 import type { TextContent } from "@earendil-works/pi-ai";
 import type { Static } from "typebox";
-import type { RuntimeSystemStatusEvent } from "../../shared/session/session-runtime-events.js";
+import type { RuntimeSystemStatusEvent } from "../../shared/session/session-runtime-events.ts";
 import { createTriageReportTool } from "../triage-report.ts";
 import type { TriageOutcome } from "../../shared/workflow/triage-outcome.ts";
 import { makeToolProjectFixture, withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";

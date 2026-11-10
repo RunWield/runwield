@@ -4,6 +4,14 @@
  */
 
 import { isRuntimeAttentionNotificationEventName } from "./notification-content.ts";
+import type { ImageAttachment } from "./image-attachments.ts";
+import type { RuntimeToolKind } from "./tool-event-title.ts";
+import type { DeliveryReport } from "../workflow/delivery-report.ts";
+import type { WorkflowContext } from "./workflow-context-session.ts";
+import type { BackgroundTaskState } from "./background-tasks.ts";
+import type { SessionHelpItem } from "./session-help.ts";
+import type { PromptTemplateMeta, SkillMeta } from "./session.js";
+import type { HostedSession } from "./hosted-session.js";
 
 export const RuntimeEventTypes = Object.freeze({
     SESSION_CREATED: "session_created",
@@ -43,218 +51,345 @@ export const RuntimeEventTypes = Object.freeze({
     COMMAND_CATALOG_CHANGED: "command_catalog_changed",
 });
 
-/**
- * @typedef {Object} RuntimeEventBase
- * @property {string} type
- * @property {string} sessionId
- * @property {string} timestamp
- * @property {string} [turnId]
- * @property {Record<string, unknown>} [_meta]
- * @property {string} [eventId] Stable committed transcript projection cursor.
- */
+export interface RuntimeEventBase {
+    type: string;
+    sessionId: string;
+    timestamp: string;
+    turnId?: string;
+    _meta?: Record<string, unknown>;
+    /** Stable committed transcript projection cursor. */
+    eventId?: string;
+}
 
-/**
- * @typedef {RuntimeEventBase & { type: "session_created" | "session_loaded" | "session_closed", cwd?: string }} RuntimeSessionLifecycleEvent
- */
+export type RuntimeSessionLifecycleEvent = RuntimeEventBase & {
+    type: "session_created" | "session_loaded" | "session_closed";
+    cwd?: string;
+};
 
-/**
- * @typedef {RuntimeEventBase & { type: "session_replaced", oldSessionId: string, newSessionId: string, reason: "epic_continuation", parentPlanName: string, completedPlanName: string, childPlanName: string, action: "plan" | "readiness_execute" | "execute" }} RuntimeEpicContinuationSessionReplacedEvent
- * @typedef {RuntimeEventBase & { type: "session_replaced", oldSessionId: string, newSessionId: string, reason: "execution_follow_up", planName: string }} RuntimeExecutionFollowUpSessionReplacedEvent
- * @typedef {RuntimeEventBase & { type: "session_replaced", oldSessionId: string, newSessionId: string, reason: "prompt_template", templateName: string }} RuntimePromptTemplateSessionReplacedEvent
- * @typedef {RuntimeEpicContinuationSessionReplacedEvent | RuntimeExecutionFollowUpSessionReplacedEvent | RuntimePromptTemplateSessionReplacedEvent} RuntimeSessionReplacedEvent
- */
+export type RuntimeEpicContinuationSessionReplacedEvent = RuntimeEventBase & {
+    type: "session_replaced";
+    oldSessionId: string;
+    newSessionId: string;
+    reason: "epic_continuation";
+    parentPlanName: string;
+    completedPlanName: string;
+    childPlanName: string;
+    action: "plan" | "readiness_execute" | "execute";
+};
+export type RuntimeExecutionFollowUpSessionReplacedEvent = RuntimeEventBase & {
+    type: "session_replaced";
+    oldSessionId: string;
+    newSessionId: string;
+    reason: "execution_follow_up";
+    planName: string;
+};
+export type RuntimePromptTemplateSessionReplacedEvent = RuntimeEventBase & {
+    type: "session_replaced";
+    oldSessionId: string;
+    newSessionId: string;
+    reason: "prompt_template";
+    templateName: string;
+};
+export type RuntimeSessionReplacedEvent =
+    | RuntimeEpicContinuationSessionReplacedEvent
+    | RuntimeExecutionFollowUpSessionReplacedEvent
+    | RuntimePromptTemplateSessionReplacedEvent;
 
-/**
- * @typedef {RuntimeEventBase & { type: "user_message", text: string, messageId: string, images: import('./image-attachments.ts').ImageAttachment[], origin?: "background_task_result", taskId?: string }} RuntimeUserMessageEvent
- */
+export type RuntimeUserMessageEvent = RuntimeEventBase & {
+    type: "user_message";
+    text: string;
+    messageId: string;
+    images: ImageAttachment[];
+    origin?: "background_task_result";
+    taskId?: string;
+};
 
-/**
- * @typedef {RuntimeEventBase & { type: "assistant_text_delta", delta: string, messageId: string, agentName: string, messageKind: "assistant" | "workflow" | "review_result", workflowMessage?: string, toolCallId?: string, approved?: boolean }} RuntimeAssistantTextDeltaEvent
- */
+export type RuntimeAssistantTextDeltaEvent = RuntimeEventBase & {
+    type: "assistant_text_delta";
+    delta: string;
+    messageId: string;
+    agentName: string;
+    messageKind: "assistant" | "workflow" | "review_result";
+    workflowMessage?: string;
+    toolCallId?: string;
+    approved?: boolean;
+};
 
-/**
- * @typedef {RuntimeEventBase & { type: "assistant_thinking_delta", delta: string, messageId: string, agentName: string }} RuntimeAssistantThinkingDeltaEvent
- */
+export type RuntimeAssistantThinkingDeltaEvent = RuntimeEventBase & {
+    type: "assistant_thinking_delta";
+    delta: string;
+    messageId: string;
+    agentName: string;
+};
 
-/**
- * @typedef {RuntimeEventBase & { type: "assistant_thinking_end", messageId: string, agentName: string }} RuntimeAssistantThinkingEndEvent
- */
+export type RuntimeAssistantThinkingEndEvent = RuntimeEventBase & {
+    type: "assistant_thinking_end";
+    messageId: string;
+    agentName: string;
+};
 
-/**
- * @typedef {import('./tool-event-title.ts').RuntimeToolKind} RuntimeToolKind
- */
+export type { RuntimeToolKind } from "./tool-event-title.ts";
 
-/**
- * @typedef {{ toolCallId: string, toolName: string, title: string, kind: RuntimeToolKind }} RuntimeToolIdentity
- */
+export type RuntimeToolIdentity = { toolCallId: string; toolName: string; title: string; kind: RuntimeToolKind };
 
-/**
- * @typedef {RuntimeEventBase & RuntimeToolIdentity & { type: "tool_start", args?: unknown }} RuntimeToolStartEvent
- */
+export type RuntimeToolStartEvent = RuntimeEventBase & RuntimeToolIdentity & { type: "tool_start"; args?: unknown };
 
-/**
- * @typedef {{ type: "text", text: string } | { type: "image", data: string, mimeType: string }} RuntimeToolContentBlock
- */
+export type RuntimeToolContentBlock =
+    { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
 
-/**
- * @typedef {Object} RuntimeToolResult
- * @property {RuntimeToolContentBlock[]} content Complete displayable content snapshot.
- * @property {string} output Complete text-only projection for text surfaces.
- * @property {Record<string, unknown> | null} details Structured tool result details such as truncation metadata.
- */
+export interface RuntimeToolResult {
+    /** Complete displayable content snapshot. */
+    content: RuntimeToolContentBlock[];
+    /** Complete text-only projection for text surfaces. */
+    output: string;
+    /** Structured tool result details such as truncation metadata. */
+    details: Record<string, unknown> | null;
+}
 
-/**
- * @typedef {RuntimeEventBase & RuntimeToolIdentity & RuntimeToolResult & { type: "tool_update" }} RuntimeToolUpdateEvent
- */
+export type RuntimeToolUpdateEvent = RuntimeEventBase &
+    RuntimeToolIdentity &
+    RuntimeToolResult & { type: "tool_update" };
 
-/**
- * @typedef {RuntimeEventBase & RuntimeToolIdentity & RuntimeToolResult & { type: "tool_end", isError: boolean, durationMs: number | null }} RuntimeToolEndEvent
- */
+export type RuntimeToolEndEvent = RuntimeEventBase &
+    RuntimeToolIdentity &
+    RuntimeToolResult & { type: "tool_end"; isError: boolean; durationMs: number | null };
 
-/**
- * @typedef {"pending" | "running" | "passed" | "failed" | "skipped" | "canceled"} RuntimeValidationCheckResult
- */
+export type RuntimeValidationCheckResult = "pending" | "running" | "passed" | "failed" | "skipped" | "canceled";
 
-/**
- * @typedef {Object} RuntimeValidationCheckResults
- * @property {RuntimeValidationCheckResult} ci
- * @property {RuntimeValidationCheckResult} semanticReview
- * @property {RuntimeValidationCheckResult} humanReview
- * @property {RuntimeValidationCheckResult} merge
- */
+export interface RuntimeValidationCheckResults {
+    ci: RuntimeValidationCheckResult;
+    semanticReview: RuntimeValidationCheckResult;
+    humanReview: RuntimeValidationCheckResult;
+    merge: RuntimeValidationCheckResult;
+}
 
-/**
- * @typedef {Object} RuntimeValidationProgress
- * @property {"workflow" | "mechanical"} kind
- * @property {"running" | "paused" | "verified" | "failed"} outcome
- * @property {"cycle" | "ci" | "engineer_repair" | "semantic_review" | "human_review" | "merge" | "manual_qa" | "terminal"} stage
- * @property {RuntimeValidationCheckResults} checks
- * @property {number} [cycle]
- * @property {number} [maxCycles]
- * @property {number} [totalCycle]
- * @property {number} [repairAttempt]
- * @property {number} [maxRepairAttempts]
- * @property {string} [message]
- * @property {boolean} [workRecordFailed]
- * @property {string} [workRecordPlanName]
- * @property {import("../workflow/delivery-report.ts").DeliveryReport} [deliveryReport]
- */
+export interface RuntimeValidationProgress {
+    kind: "workflow" | "mechanical";
+    outcome: "running" | "paused" | "verified" | "failed";
+    stage: "cycle" | "ci" | "engineer_repair" | "semantic_review" | "human_review" | "merge" | "manual_qa" | "terminal";
+    checks: RuntimeValidationCheckResults;
+    cycle?: number;
+    maxCycles?: number;
+    totalCycle?: number;
+    repairAttempt?: number;
+    maxRepairAttempts?: number;
+    message?: string;
+    workRecordFailed?: boolean;
+    workRecordPlanName?: string;
+    deliveryReport?: DeliveryReport;
+}
 
-/**
- * @typedef {RuntimeEventBase & { type: "system_status", messageId: string, message: string, level: "info" | "success" | "warning" | "error", header?: string, validationProgress?: RuntimeValidationProgress }} RuntimeSystemStatusEvent
- */
+export type RuntimeSystemStatusEvent = RuntimeEventBase & {
+    type: "system_status";
+    messageId: string;
+    message: string;
+    level: "info" | "success" | "warning" | "error";
+    header?: string;
+    validationProgress?: RuntimeValidationProgress;
+};
 
-/**
- * @typedef {RuntimeEventBase & { type: "turn_start" | "turn_end", ok?: boolean, stopReason?: string, result?: unknown }} RuntimeTurnEvent
- */
+export type RuntimeTurnEvent = RuntimeEventBase & {
+    type: "turn_start" | "turn_end";
+    ok?: boolean;
+    stopReason?: string;
+    result?: unknown;
+};
 
-/**
- * @typedef {RuntimeEventBase & { type: "busy_changed", busy: boolean }} RuntimeBusyChangedEvent
- */
+export type RuntimeBusyChangedEvent = RuntimeEventBase & { type: "busy_changed"; busy: boolean };
 
-/**
- * @typedef {RuntimeEventBase & { type: "agent_changed", messageId: string, agentName: string, displayName?: string, model?: string, rootHandoff?: boolean, busyLines?: readonly string[] }} RuntimeAgentChangedEvent
- */
+export type RuntimeAgentChangedEvent = RuntimeEventBase & {
+    type: "agent_changed";
+    messageId: string;
+    agentName: string;
+    displayName?: string;
+    model?: string;
+    rootHandoff?: boolean;
+    busyLines?: readonly string[];
+};
 
-/**
- * @typedef {RuntimeEventBase & { type: "model_changed", model: string, provider?: string }} RuntimeModelChangedEvent
- */
+export type RuntimeModelChangedEvent = RuntimeEventBase & { type: "model_changed"; model: string; provider?: string };
 
-/**
- * @typedef {RuntimeEventBase & { type: "thinking_level_changed", thinkingLevel: string }} RuntimeThinkingLevelChangedEvent
- */
+export type RuntimeThinkingLevelChangedEvent = RuntimeEventBase & {
+    type: "thinking_level_changed";
+    thinkingLevel: string;
+};
 
-/**
- * @typedef {RuntimeEventBase & { type: "workflow_context_changed", workflowContext: import('./workflow-context-session.ts').WorkflowContext }} RuntimeWorkflowContextChangedEvent
- */
+export type RuntimeWorkflowContextChangedEvent = RuntimeEventBase & {
+    type: "workflow_context_changed";
+    workflowContext: WorkflowContext;
+};
 
-/**
- * @typedef {RuntimeEventBase & { type: "session_renamed", name: string }} RuntimeSessionRenamedEvent
- */
+export type RuntimeSessionRenamedEvent = RuntimeEventBase & { type: "session_renamed"; name: string };
 
-/**
- * @typedef {RuntimeEventBase & { type: "input_state_changed", enabled: boolean } | RuntimeEventBase & { type: "messages_cleared" }} RuntimePresentationStateEvent
- */
+export type RuntimePresentationStateEvent =
+    | (RuntimeEventBase & { type: "input_state_changed"; enabled: boolean })
+    | (RuntimeEventBase & { type: "messages_cleared" });
 
-/**
- * @typedef {Object} RuntimeQueuedMessage
- * @property {NotificationSurface} [inputSurface]
- * @property {string} id
- * @property {string} text
- * @property {import('./image-attachments.ts').ImageAttachment[]} images
- * @property {"steer" | "next_turn"} delivery
- * @property {string} queuedAt
- */
+export interface RuntimeQueuedMessage {
+    inputSurface?: NotificationSurface;
+    id: string;
+    text: string;
+    images: ImageAttachment[];
+    delivery: "steer" | "next_turn";
+    queuedAt: string;
+}
 
-/**
- * @typedef {RuntimeEventBase & { type: "queued_message_changed", status: "queued" | "consumed" | "dequeued", message: RuntimeQueuedMessage, reason?: string }} RuntimeQueuedMessageEvent
- */
+export type RuntimeQueuedMessageEvent = RuntimeEventBase & {
+    type: "queued_message_changed";
+    status: "queued" | "consumed" | "dequeued";
+    message: RuntimeQueuedMessage;
+    reason?: string;
+};
 
-/**
- * @typedef {Object} RuntimeUsage
- * @property {number | null} inputTokens
- * @property {number | null} outputTokens
- * @property {number | null} cacheReadTokens
- * @property {number | null} cacheWriteTokens
- * @property {number | null} costUsd
- * @property {number} [contextWindow]
- */
+export interface RuntimeUsage {
+    inputTokens: number | null;
+    outputTokens: number | null;
+    cacheReadTokens: number | null;
+    cacheWriteTokens: number | null;
+    costUsd: number | null;
+    contextWindow?: number;
+}
 
-/**
- * @typedef {RuntimeEventBase & { type: "usage", usage: RuntimeUsage }} RuntimeUsageEvent
- */
+export type RuntimeUsageEvent = RuntimeEventBase & { type: "usage"; usage: RuntimeUsage };
 
-/**
- * @typedef {RuntimeEventBase & { type: "cancellation", messageId: string, reason?: string, aborted?: boolean, message?: string, scope?: "agent" | "operation" | "session" }} RuntimeCancellationEvent
- * @typedef {RuntimeEventBase & { type: "background_task_settled", taskId: string, state: import('./background-tasks.ts').BackgroundTaskState }} RuntimeBackgroundTaskSettledEvent
- */
+export type RuntimeCancellationEvent = RuntimeEventBase & {
+    type: "cancellation";
+    messageId: string;
+    reason?: string;
+    aborted?: boolean;
+    message?: string;
+    scope?: "agent" | "operation" | "session";
+};
+export type RuntimeBackgroundTaskSettledEvent = RuntimeEventBase & {
+    type: "background_task_settled";
+    taskId: string;
+    state: BackgroundTaskState;
+};
 
-/**
- * @typedef {RuntimeEventBase & { type: "terminal_error", messageId: string, message: string, messageAlreadyReported?: boolean, error?: unknown }} RuntimeTerminalErrorEvent
- */
+export type RuntimeTerminalErrorEvent = RuntimeEventBase & {
+    type: "terminal_error";
+    messageId: string;
+    message: string;
+    messageAlreadyReported?: boolean;
+    error?: unknown;
+};
 
-/**
- * @typedef {RuntimeEventBase & { type: "interaction_requested" | "interaction_resolved" | "interaction_canceled", interactionId: string, interactionType?: string, prompt?: string, review?: Record<string, unknown>, outcome?: string, message?: string }} RuntimeInteractionLifecycleEvent
- */
+export type RuntimeInteractionLifecycleEvent = RuntimeEventBase & {
+    type: "interaction_requested" | "interaction_resolved" | "interaction_canceled";
+    interactionId: string;
+    interactionType?: string;
+    prompt?: string;
+    review?: Record<string, unknown>;
+    outcome?: string;
+    message?: string;
+};
 
-/**
- * @typedef {RuntimeEventBase & { type: "plan_review_link", messageId: string, planName: string, reviewerUrl: string, spaceId?: string, serverUrl?: string, revision?: number, reused?: boolean, message: string }} RuntimePlanReviewLinkEvent
- */
+export type RuntimePlanReviewLinkEvent = RuntimeEventBase & {
+    type: "plan_review_link";
+    messageId: string;
+    planName: string;
+    reviewerUrl: string;
+    spaceId?: string;
+    serverUrl?: string;
+    revision?: number;
+    reused?: boolean;
+    message: string;
+};
 
-/**
- * @typedef {"workspace" | "tui" | "acp" | "test"} NotificationSurface
- */
+export type NotificationSurface = "workspace" | "tui" | "acp" | "test";
 
-/**
- * @typedef {RuntimeEventBase & { notificationSurface?: NotificationSurface, type: "attention_requested", reason: "agentStopped" | "planWritten" | "userInterview", agentName?: string, sessionName?: string }} RuntimeAttentionRequestedEvent
- */
+export type RuntimeAttentionRequestedEvent = RuntimeEventBase & {
+    notificationSurface?: NotificationSurface;
+    type: "attention_requested";
+    reason: "agentStopped" | "planWritten" | "userInterview";
+    agentName?: string;
+    sessionName?: string;
+};
 
-/**
- * @typedef {import('./session-help.ts').SessionHelpItem} RuntimeKeyboardHelpItem
- */
+export type RuntimeKeyboardHelpItem = SessionHelpItem;
 
-/**
- * @typedef {RuntimeEventBase & { type: "keyboard_help", title: string, items: RuntimeKeyboardHelpItem[] }} RuntimeKeyboardHelpEvent
- */
+export type RuntimeKeyboardHelpEvent = RuntimeEventBase & {
+    type: "keyboard_help";
+    title: string;
+    items: RuntimeKeyboardHelpItem[];
+};
 
-/**
- * @typedef {"current" | "syncing" | "active_elsewhere" | "blocked" | "degraded"} RuntimeManagedSyncStatus
- */
+export type RuntimeManagedSyncStatus = "current" | "syncing" | "active_elsewhere" | "blocked" | "degraded";
 
-/**
- * @typedef {RuntimeEventBase & { type: "managed_sync_state_changed", status: RuntimeManagedSyncStatus, localGeneration: number | null, latestGeneration: number | null, owningSurfaceKind?: "workspace" | "tui" | "acp" | "unknown", message?: string }} RuntimeManagedSyncStateEvent
- */
+export type RuntimeManagedSyncStateEvent = RuntimeEventBase & {
+    type: "managed_sync_state_changed";
+    status: RuntimeManagedSyncStatus;
+    localGeneration: number | null;
+    latestGeneration: number | null;
+    owningSurfaceKind?: "workspace" | "tui" | "acp" | "unknown";
+    message?: string;
+};
 
-/**
- * @typedef {RuntimeEventBase & { type: "command_catalog_changed", promptTemplates: import('./session.js').PromptTemplateMeta[], skills: import('./session.js').SkillMeta[] }} RuntimeCommandCatalogChangedEvent
- */
+export type RuntimeCommandCatalogChangedEvent = RuntimeEventBase & {
+    type: "command_catalog_changed";
+    promptTemplates: PromptTemplateMeta[];
+    skills: SkillMeta[];
+};
 
-/**
- * @typedef {RuntimeSessionLifecycleEvent | RuntimeSessionReplacedEvent | RuntimeUserMessageEvent | RuntimeAssistantTextDeltaEvent | RuntimeAssistantThinkingDeltaEvent | RuntimeAssistantThinkingEndEvent | RuntimeToolStartEvent | RuntimeToolUpdateEvent | RuntimeToolEndEvent | RuntimeSystemStatusEvent | RuntimeTurnEvent | RuntimeBusyChangedEvent | RuntimeAgentChangedEvent | RuntimeModelChangedEvent | RuntimeThinkingLevelChangedEvent | RuntimeWorkflowContextChangedEvent | RuntimeSessionRenamedEvent | RuntimePresentationStateEvent | RuntimeQueuedMessageEvent | RuntimeUsageEvent | RuntimeCancellationEvent | RuntimeBackgroundTaskSettledEvent | RuntimeTerminalErrorEvent | RuntimeInteractionLifecycleEvent | RuntimePlanReviewLinkEvent | RuntimeAttentionRequestedEvent | RuntimeKeyboardHelpEvent | RuntimeManagedSyncStateEvent | RuntimeCommandCatalogChangedEvent} SessionRuntimeEvent
- */
+export type SessionRuntimeEvent =
+    | RuntimeSessionLifecycleEvent
+    | RuntimeSessionReplacedEvent
+    | RuntimeUserMessageEvent
+    | RuntimeAssistantTextDeltaEvent
+    | RuntimeAssistantThinkingDeltaEvent
+    | RuntimeAssistantThinkingEndEvent
+    | RuntimeToolStartEvent
+    | RuntimeToolUpdateEvent
+    | RuntimeToolEndEvent
+    | RuntimeSystemStatusEvent
+    | RuntimeTurnEvent
+    | RuntimeBusyChangedEvent
+    | RuntimeAgentChangedEvent
+    | RuntimeModelChangedEvent
+    | RuntimeThinkingLevelChangedEvent
+    | RuntimeWorkflowContextChangedEvent
+    | RuntimeSessionRenamedEvent
+    | RuntimePresentationStateEvent
+    | RuntimeQueuedMessageEvent
+    | RuntimeUsageEvent
+    | RuntimeCancellationEvent
+    | RuntimeBackgroundTaskSettledEvent
+    | RuntimeTerminalErrorEvent
+    | RuntimeInteractionLifecycleEvent
+    | RuntimePlanReviewLinkEvent
+    | RuntimeAttentionRequestedEvent
+    | RuntimeKeyboardHelpEvent
+    | RuntimeManagedSyncStateEvent
+    | RuntimeCommandCatalogChangedEvent;
 
-/** @type {Set<string>} */
-const MESSAGE_ID_EVENT_TYPES = new Set([
+interface RuntimeEventTypeDraft {
+    type: string;
+}
+
+type RuntimeEventDraft = Partial<SessionRuntimeEvent> & RuntimeEventTypeDraft;
+type RuntimeEventFields = RuntimeEventBase & Record<string, unknown>;
+type ValidationCheck = keyof RuntimeValidationCheckResults;
+type ValidationCounter = "cycle" | "maxCycles" | "totalCycle" | "repairAttempt" | "maxRepairAttempts";
+type UsageMeasurement = Exclude<keyof RuntimeUsage, "contextWindow">;
+type SystemStatusOptions = Partial<Pick<RuntimeSystemStatusEvent, "level" | "header" | "validationProgress">>;
+type AssistantMessageOptions = Partial<
+    Pick<RuntimeAssistantTextDeltaEvent, "messageKind" | "workflowMessage" | "toolCallId" | "approved">
+>;
+
+// Tool adapters can supply arbitrary JS values. Narrow the display fields at the normalization boundary.
+interface RawToolResult {
+    content?: unknown;
+    details?: unknown;
+}
+
+interface RawToolBlock {
+    type?: unknown;
+    text?: unknown;
+    data?: unknown;
+    mimeType?: unknown;
+}
+
+const MESSAGE_ID_EVENT_TYPES = new Set<string>([
     RuntimeEventTypes.USER_MESSAGE,
     RuntimeEventTypes.ASSISTANT_TEXT_DELTA,
     RuntimeEventTypes.ASSISTANT_THINKING_DELTA,
@@ -266,7 +401,7 @@ const MESSAGE_ID_EVENT_TYPES = new Set([
     RuntimeEventTypes.AGENT_CHANGED,
 ]);
 
-const RUNTIME_EVENT_TYPE_VALUES = new Set(Object.values(RuntimeEventTypes));
+const RUNTIME_EVENT_TYPE_VALUES = new Set<string>(Object.values(RuntimeEventTypes));
 const TOOL_KINDS = new Set([
     "read",
     "edit",
@@ -306,29 +441,25 @@ const FORBIDDEN_SYNC_STATE_KEYS = new Set([
     "leaseProof",
 ]);
 
-/**
- * @param {unknown} progress
- * @param {string} type
- */
-function validateRuntimeValidationProgress(progress, type) {
+function validateRuntimeValidationProgress(progress: RuntimeValidationProgress, type: string) {
     requireRuntimeEvent(
         Boolean(progress && typeof progress === "object"),
         type,
         "validationProgress must be an object",
     );
-    const value = /** @type {Record<string, any>} */ (progress);
+    const value = progress;
     requireRuntimeEvent(VALIDATION_KINDS.has(value.kind), type, "validationProgress.kind is invalid");
     requireRuntimeEvent(VALIDATION_OUTCOMES.has(value.outcome), type, "validationProgress.outcome is invalid");
     requireRuntimeEvent(VALIDATION_STAGES.has(value.stage), type, "validationProgress.stage is invalid");
     requireRuntimeEvent(value.checks && typeof value.checks === "object", type, "validationProgress.checks required");
-    for (const field of ["ci", "semanticReview", "humanReview", "merge"]) {
+    for (const field of ["ci", "semanticReview", "humanReview", "merge"] satisfies ValidationCheck[]) {
         requireRuntimeEvent(
             VALIDATION_CHECK_RESULTS.has(value.checks[field]),
             type,
             `validationProgress.checks.${field} is invalid`,
         );
     }
-    const requirePositiveInteger = (/** @type {string} */ field) => {
+    const requirePositiveInteger = (field: ValidationCounter) => {
         if (value[field] === undefined) return;
         requireRuntimeEvent(
             Number.isInteger(value[field]) && value[field] > 0,
@@ -336,11 +467,17 @@ function validateRuntimeValidationProgress(progress, type) {
             `validationProgress.${field} must be a positive integer`,
         );
     };
-    for (const field of ["cycle", "maxCycles", "totalCycle", "repairAttempt", "maxRepairAttempts"]) {
+    for (const field of [
+        "cycle",
+        "maxCycles",
+        "totalCycle",
+        "repairAttempt",
+        "maxRepairAttempts",
+    ] satisfies ValidationCounter[]) {
         requirePositiveInteger(field);
     }
     if (value.kind === "workflow") {
-        for (const field of ["cycle", "maxCycles", "totalCycle"]) {
+        for (const field of ["cycle", "maxCycles", "totalCycle"] satisfies ValidationCounter[]) {
             requireRuntimeEvent(value[field] !== undefined, type, `validationProgress.${field} required for workflow`);
         }
     }
@@ -355,7 +492,7 @@ function validateRuntimeValidationProgress(progress, type) {
     );
     if (value.maxRepairAttempts !== undefined) {
         requireRuntimeEvent(
-            value.repairAttempt <= value.maxRepairAttempts,
+            value.repairAttempt! <= value.maxRepairAttempts,
             type,
             "validationProgress.repairAttempt must be <= maxRepairAttempts",
         );
@@ -487,23 +624,19 @@ function validateRuntimeValidationProgress(progress, type) {
     }
 }
 
-/**
- * @param {boolean} condition
- * @param {string} type
- * @param {string} requirement
- */
-function requireRuntimeEvent(condition, type, requirement) {
+function requireRuntimeEvent(
+    condition: boolean | null | undefined,
+    type: string,
+    requirement: string,
+): asserts condition {
     if (!condition) throw new TypeError(`Invalid SessionRuntime event "${type}": ${requirement}`);
 }
 
 /**
  * Fail at the one outward boundary when a producer violates the semantic
  * contract. Consumer listeners are isolated separately by SessionRuntime.
- *
- * @param {SessionRuntimeEvent} event
- * @returns {SessionRuntimeEvent}
  */
-export function assertSessionRuntimeEvent(event) {
+export function assertSessionRuntimeEvent(event: SessionRuntimeEvent): SessionRuntimeEvent {
     requireRuntimeEvent(RUNTIME_EVENT_TYPE_VALUES.has(event.type), event.type, "unknown event type");
     requireRuntimeEvent(
         typeof event.sessionId === "string" && event.sessionId.length > 0,
@@ -515,12 +648,16 @@ export function assertSessionRuntimeEvent(event) {
         event.type,
         "timestamp required",
     );
-    const value = /** @type {any} */ (event);
-    const requireString = (/** @type {string} */ field) =>
-        requireRuntimeEvent(typeof value[field] === "string", event.type, `${field} must be a string`);
+    const value = event;
+    const requireString = (field: string) =>
+        requireRuntimeEvent(
+            typeof (value as RuntimeEventFields)[field] === "string",
+            event.type,
+            `${field} must be a string`,
+        );
 
     if (MESSAGE_ID_EVENT_TYPES.has(event.type)) requireString("messageId");
-    switch (event.type) {
+    switch (value.type) {
         case RuntimeEventTypes.SESSION_REPLACED:
             for (const field of ["oldSessionId", "newSessionId"]) requireString(field);
             requireRuntimeEvent(
@@ -568,7 +705,7 @@ export function assertSessionRuntimeEvent(event) {
             requireString("toolName");
             requireString("title");
             requireRuntimeEvent(TOOL_KINDS.has(value.kind), event.type, "kind is invalid");
-            if (event.type !== RuntimeEventTypes.TOOL_START) {
+            if (value.type !== RuntimeEventTypes.TOOL_START) {
                 requireString("output");
                 requireRuntimeEvent(Array.isArray(value.content), event.type, "content must be an array");
                 for (const block of value.content) {
@@ -583,7 +720,7 @@ export function assertSessionRuntimeEvent(event) {
                     "details must be an object or null",
                 );
             }
-            if (event.type === RuntimeEventTypes.TOOL_END) {
+            if (value.type === RuntimeEventTypes.TOOL_END) {
                 requireRuntimeEvent(typeof value.isError === "boolean", event.type, "isError must be boolean");
                 requireRuntimeEvent(
                     value.durationMs === null || (typeof value.durationMs === "number" && value.durationMs >= 0),
@@ -614,8 +751,7 @@ export function assertSessionRuntimeEvent(event) {
             }
             if (value.busyLines !== undefined) {
                 requireRuntimeEvent(
-                    Array.isArray(value.busyLines) &&
-                        value.busyLines.every(/** @param {unknown} line */ (line) => typeof line === "string"),
+                    Array.isArray(value.busyLines) && value.busyLines.every((line) => typeof line === "string"),
                     event.type,
                     "busyLines must be an array of strings",
                 );
@@ -681,7 +817,13 @@ export function assertSessionRuntimeEvent(event) {
             break;
         case RuntimeEventTypes.USAGE:
             requireRuntimeEvent(value.usage && typeof value.usage === "object", event.type, "usage required");
-            for (const field of ["inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens", "costUsd"]) {
+            for (const field of [
+                "inputTokens",
+                "outputTokens",
+                "cacheReadTokens",
+                "cacheWriteTokens",
+                "costUsd",
+            ] satisfies UsageMeasurement[]) {
                 requireRuntimeEvent(
                     value.usage[field] === null ||
                         (typeof value.usage[field] === "number" &&
@@ -759,42 +901,34 @@ export function assertSessionRuntimeEvent(event) {
     return event;
 }
 
-/**
- * @typedef {Object} ProviderUsageCost
- * @property {number | null} [total]
- */
+export interface ProviderUsageCost {
+    total?: number | null;
+}
 
-/**
- * @typedef {Object} ProviderUsage
- * @property {unknown} [input]
- * @property {unknown} [inputTokens]
- * @property {unknown} [output]
- * @property {unknown} [outputTokens]
- * @property {unknown} [cacheRead]
- * @property {unknown} [cacheReadTokens]
- * @property {unknown} [cacheWrite]
- * @property {unknown} [cacheWriteTokens]
- * @property {number | null | ProviderUsageCost} [cost]
- * @property {unknown} [costUsd]
- * @property {unknown} [contextWindow]
- * @property {unknown} [context_window]
- */
+export interface ProviderUsage {
+    input?: unknown;
+    inputTokens?: unknown;
+    output?: unknown;
+    outputTokens?: unknown;
+    cacheRead?: unknown;
+    cacheReadTokens?: unknown;
+    cacheWrite?: unknown;
+    cacheWriteTokens?: unknown;
+    cost?: number | null | ProviderUsageCost;
+    costUsd?: unknown;
+    contextWindow?: unknown;
+    context_window?: unknown;
+}
 
-/**
- * @param {unknown} value
- * @returns {number | null}
- */
-function reportedUsageNumber(value) {
+function reportedUsageNumber(value: unknown): number | null {
     return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
 }
 
 /**
  * Normalize provider-specific usage once at the Runtime boundary. Absence is not zero.
- * @param {unknown} value
- * @returns {RuntimeUsage}
  */
-export function normalizeRuntimeUsage(value) {
-    const usage = /** @type {ProviderUsage} */ (value && typeof value === "object" ? value : {});
+export function normalizeRuntimeUsage(value: unknown): RuntimeUsage {
+    const usage = (value && typeof value === "object" ? value : {}) as ProviderUsage;
     const contextWindow = reportedUsageNumber(usage.contextWindow ?? usage.context_window);
     const normalized = {
         inputTokens: reportedUsageNumber(usage.input ?? usage.inputTokens),
@@ -812,15 +946,8 @@ export function normalizeRuntimeUsage(value) {
  * Normalize tool output once at the Runtime boundary. The text projection is
  * intentionally included beside structured content so terminal consumers do
  * not flatten blocks and richer consumers do not have to recover structure.
- *
- * @param {unknown} value
- * @returns {RuntimeToolResult}
  */
-/**
- * @param {string} output
- * @returns {string}
- */
-function removeModelOnlyImageOmissionNotes(output) {
+function removeModelOnlyImageOmissionNotes(output: string) {
     return output
         .split("\n")
         .filter(
@@ -831,15 +958,15 @@ function removeModelOnlyImageOmissionNotes(output) {
         .trimEnd();
 }
 
-/**
- * @param {unknown} value
- * @returns {RuntimeToolResult}
- */
-export function normalizeRuntimeToolResult(value) {
-    const source = value && typeof value === "object" ? /** @type {any} */ (value) : null;
-    const rawContent = Array.isArray(value) ? value : Array.isArray(source?.content) ? source.content : [value];
-    /** @type {RuntimeToolContentBlock[]} */
-    const content = [];
+export function normalizeRuntimeToolResult(value: unknown): RuntimeToolResult {
+    const source = value && typeof value === "object" ? (value as RawToolResult) : null;
+    const rawContent: unknown[] = Array.isArray(value)
+        ? value
+        : Array.isArray(source?.content)
+          ? source.content
+          : [value];
+
+    const content: RuntimeToolContentBlock[] = [];
     for (const rawBlock of rawContent) {
         if (typeof rawBlock === "string") {
             content.push({ type: "text", text: rawBlock });
@@ -851,7 +978,7 @@ export function normalizeRuntimeToolResult(value) {
             }
             continue;
         }
-        const block = /** @type {any} */ (rawBlock);
+        const block = rawBlock as RawToolBlock;
         if (block.type === "image" && typeof block.data === "string" && typeof block.mimeType === "string") {
             content.push({ type: "image", data: block.data, mimeType: block.mimeType });
             continue;
@@ -859,9 +986,7 @@ export function normalizeRuntimeToolResult(value) {
         if (typeof block.text === "string") content.push({ type: "text", text: block.text });
     }
     const details =
-        source?.details && typeof source.details === "object"
-            ? /** @type {Record<string, unknown>} */ (source.details)
-            : null;
+        source?.details && typeof source.details === "object" ? (source.details as RuntimeToolResult["details"]) : null;
     let output =
         details?.runwieldDisplay === "binary_display_suppressed"
             ? ""
@@ -879,20 +1004,17 @@ export function normalizeRuntimeToolResult(value) {
     };
 }
 
-/**
- * @template {{ type: string }} T
- * @param {string} sessionId
- * @param {T} event
- * @returns {SessionRuntimeEvent}
- */
-export function createSessionRuntimeEvent(sessionId, event) {
+export function createSessionRuntimeEvent<T extends RuntimeEventTypeDraft>(
+    sessionId: string,
+    event: T,
+): SessionRuntimeEvent {
     const messageId =
         MESSAGE_ID_EVENT_TYPES.has(event.type) && !("messageId" in event)
             ? `${sessionId}:${event.type}:${crypto.randomUUID()}`
             : undefined;
     const level = event.type === RuntimeEventTypes.SYSTEM_STATUS && !("level" in event) ? "info" : undefined;
     const images = event.type === RuntimeEventTypes.USER_MESSAGE && !("images" in event) ? [] : undefined;
-    const runtimeEvent = /** @type {SessionRuntimeEvent} */ ({
+    const runtimeEvent = {
         ...event,
         ...(messageId ? { messageId } : {}),
         ...(level ? { level } : {}),
@@ -900,7 +1022,7 @@ export function createSessionRuntimeEvent(sessionId, event) {
         sessionId,
         timestamp:
             "timestamp" in event && typeof event.timestamp === "string" ? event.timestamp : new Date().toISOString(),
-    });
+    } as SessionRuntimeEvent;
     return assertSessionRuntimeEvent(runtimeEvent);
 }
 
@@ -908,12 +1030,8 @@ export function createSessionRuntimeEvent(sessionId, event) {
  * Publish a semantic event draft through a Hosted Session's Runtime-installed
  * internal sink. SessionRuntime validates before fanout and isolates consumer
  * listener failures; producer and contract failures propagate here.
- *
- * @param {import('./hosted-session.js').HostedSession | undefined} hostedSession
- * @param {Partial<SessionRuntimeEvent> & { type: string }} event
- * @returns {boolean}
  */
-export function emitHostedSessionRuntimeEvent(hostedSession, event) {
+export function emitHostedSessionRuntimeEvent(hostedSession: HostedSession | undefined, event: RuntimeEventDraft) {
     hostedSession?.publishRuntimeEvent?.(event);
     const sink = hostedSession?.getEventSink?.();
     if (!sink) return false;
@@ -932,13 +1050,12 @@ export function emitHostedSessionRuntimeEvent(hostedSession, event) {
  * Publish a user-visible status without coupling the producer to an adapter.
  * SessionRuntime owns the installed event sink and fans the event out to its
  * registered listeners.
- *
- * @param {import('./hosted-session.js').HostedSession | undefined} hostedSession
- * @param {string} message
- * @param {{ level?: "info" | "success" | "warning" | "error", header?: string, validationProgress?: RuntimeValidationProgress }} [options]
- * @returns {boolean}
  */
-export function emitSystemStatus(hostedSession, message, options = {}) {
+export function emitSystemStatus(
+    hostedSession: HostedSession | undefined,
+    message: string,
+    options: SystemStatusOptions = {},
+) {
     return emitHostedSessionRuntimeEvent(hostedSession, {
         type: RuntimeEventTypes.SYSTEM_STATUS,
         messageId: crypto.randomUUID(),
@@ -953,14 +1070,13 @@ export function emitSystemStatus(hostedSession, message, options = {}) {
  * Publish a complete synthetic assistant message as one semantic delta. This
  * is used for workflow-owned messages such as completion and review results;
  * adapters decide how to render or encode it.
- *
- * @param {import('./hosted-session.js').HostedSession | undefined} hostedSession
- * @param {string} agentName
- * @param {string} text
- * @param {{ messageKind?: "assistant" | "workflow" | "review_result", workflowMessage?: string, toolCallId?: string, approved?: boolean }} [options]
- * @returns {boolean}
  */
-export function emitAssistantMessage(hostedSession, agentName, text, options = {}) {
+export function emitAssistantMessage(
+    hostedSession: HostedSession | undefined,
+    agentName: string,
+    text: string,
+    options: AssistantMessageOptions = {},
+) {
     return emitHostedSessionRuntimeEvent(hostedSession, {
         type: RuntimeEventTypes.ASSISTANT_TEXT_DELTA,
         messageId: crypto.randomUUID(),
@@ -973,11 +1089,7 @@ export function emitAssistantMessage(hostedSession, agentName, text, options = {
     });
 }
 
-/**
- * @param {unknown} value
- * @returns {string}
- */
-export function getRuntimeErrorMessage(value) {
+export function getRuntimeErrorMessage(value: unknown) {
     if (value instanceof Error) return value.message;
     return String(value || "Unknown runtime error");
 }

@@ -1,5 +1,5 @@
 import type { HostedSession } from "../hosted-session.js";
-import { emitSystemStatus } from "../session-runtime-events.js";
+import { emitSystemStatus } from "../session-runtime-events.ts";
 
 /** Retry a delivered Plan's Work Record within the current managed capability. */
 export async function retrySessionWorkRecord(session: HostedSession, planName: string) {

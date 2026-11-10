@@ -19,7 +19,7 @@ import { RemoteSessionControl, type RemoteSessionControlConnection } from "./ses
 import { SessionHost } from "../session/session-host.ts";
 import { createPlanWrittenTool } from "../../tools/plan-written.ts";
 import { SessionRuntime } from "../session/session-runtime.ts";
-import { RuntimeEventTypes } from "../session/session-runtime-events.js";
+import { RuntimeEventTypes } from "../session/session-runtime-events.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { buildAgentSession } from "../session/session.js";

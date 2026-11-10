@@ -18,7 +18,7 @@ affectedPaths:
     - "src/shared/session/runtime/agent-settings.ts"
     - "src/shared/session/runtime/managed-operations.ts"
     - "src/shared/session/session-runtime.test.js"
-    - "src/shared/session/session-runtime-events.js"
+    - "src/shared/session/session-runtime-events.ts"
     - "src/shared/session/session-runtime-events.test.js"
     - "src/shared/session/agent-handler.ts"
     - "src/shared/session/agent-handler.test.ts"
@@ -34,7 +34,7 @@ affectedPaths:
     - "src/acp/event-mapper.ts"
     - "src/acp/server.test.js"
     - "src/ui/workspace/components/SessionTimeline.jsx"
-    - "src/shared/session/session-transcript-projection.js"
+    - "src/shared/session/session-transcript-projection.ts"
     - "docs/sessions.md"
     - "docs/prd/runwield-core-prd.md"
     - "docs/prd/session-context-resilience-prd.md"
@@ -318,7 +318,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   `session-runtime.ts` as the public facade; policy belongs in the private owners.
 - `src/shared/session/session-runtime.test.js` — cover cancellation races, recoverable paused settlement, busy-state
   continuity, root/transient parity, and independent Hosted Session progress.
-- `src/shared/session/session-runtime-events.js` — add one canonical `context_resilience` event with validated status,
+- `src/shared/session/session-runtime-events.ts` — add one canonical `context_resilience` event with validated status,
   reason, message, and content-free pressure/recovery fields.
 - `src/shared/session/session-runtime-events.test.js` — enforce the new event's exact required fields/enums and producer
   payload allowlist.
@@ -347,7 +347,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/ui/workspace/components/SessionTimeline.jsx` and Session history/event projection tests — render the new event
   once with the existing system-event row, in both live and saved history. Reuse `docs/design-system.md` patterns and
   `--rw-*` tokens; no redesign is in scope.
-- `src/shared/session/session-transcript-projection.js` and the existing live-event persistence path — preserve semantic
+- `src/shared/session/session-transcript-projection.ts` and the existing live-event persistence path — preserve semantic
   context outcomes and exclude the hidden continuation from user-message replay.
 - `docs/sessions.md` — document Engineer-only early compaction, standard thresholds for other Agents, useful recovery,
   continuation, pause/re-arm, cancellation, and `/compact`, `/context`, and `/session` behavior.
@@ -367,7 +367,7 @@ Existing functions, modules, or patterns to reuse:
   summaries and transcript format; do not infer missing behavior from hook names.
 - `src/shared/session/session.js` — reuse prepared User Request token estimation, Agent Session metadata, and
   subscription lifecycle while moving compaction policy out of this broad module.
-- `src/shared/session/session-runtime-events.js` — reuse fail-fast canonical event creation so TUI and ACP remain
+- `src/shared/session/session-runtime-events.ts` — reuse fail-fast canonical event creation so TUI and ACP remain
   sibling consumers of one semantic contract.
 - `src/shared/session/hosted-session.js` — reuse per-Session turn ownership and transient Agent registration to scope
   the arbiter and cancellation.
@@ -416,7 +416,7 @@ Existing functions, modules, or patterns to reuse:
       pending user queues and unstarted internal continuation, preserves already persisted entries, emits one Runtime
       cancellation and at most one context cancellation, and holds busy/writer ownership until settlement. It does not
       emit `TERMINAL_ERROR`. `WorkflowStepCompleted` follows handoff rules instead of user-cancel cleanup.
-- [ ] Step 10: `session-runtime-events.js` validates one canonical `context_resilience` event with statuses
+- [ ] Step 10: `session-runtime-events.ts` validates one canonical `context_resilience` event with statuses
       `compacting`, `compacted`, `continuing`, `continued`, `ineffective`, `paused`, `canceled`, `failed`, and
       `rearmed`; reasons `threshold`, `oversized_request`, `compaction_failed`, `insufficient_recovery`, `user_cancel`,
       `manual_recovery`, and `capacity_recovery`; a Core-generated `message`; and optional finite numeric

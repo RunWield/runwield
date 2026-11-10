@@ -48,7 +48,7 @@ import {
     normalizeRuntimeToolResult,
     normalizeRuntimeUsage,
     RuntimeEventTypes,
-} from "./session-runtime-events.js";
+} from "./session-runtime-events.ts";
 import mnemotecaExtension, { memoryToolDef } from "../../extensions/mnemoteca/index.ts";
 import cymbalExtension, {
     codeBatchToolDef,
@@ -3607,7 +3607,7 @@ export function attachSessionEventSubscribers(
     const nextThinkingMessageId = () => `${currentRuntimeTurnId}:thinking:${++thinkingMessageSequence}`;
 
     /**
-     * @param {Partial<import('./session-runtime-events.js').SessionRuntimeEvent> & { type: string }} runtimeEvent
+     * @param {Partial<import('./session-runtime-events.ts').SessionRuntimeEvent> & { type: string }} runtimeEvent
      */
     const emitRuntimeEvent = (runtimeEvent) => {
         const eventWithTurnId = runtimeEvent.turnId ? runtimeEvent : { turnId: currentRuntimeTurnId, ...runtimeEvent };
@@ -3993,7 +3993,7 @@ export function attachSessionEventSubscribers(
  * @typedef {Object} AgentTransitionSteeringEntry
  * @property {string} text
  * @property {import('./image-attachments.ts').ImageAttachment[]} images
- * @property {import('./session-runtime-events.js').RuntimeQueuedMessage} [message]
+ * @property {import('./session-runtime-events.ts').RuntimeQueuedMessage} [message]
  */
 
 /**

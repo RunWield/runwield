@@ -8,7 +8,7 @@ import {
     emitHostedSessionRuntimeEvent,
     normalizeRuntimeUsage,
     RuntimeEventTypes,
-} from "../../session-runtime-events.js";
+} from "../../session-runtime-events.ts";
 import type { ImageAttachment } from "../../image-attachments.ts";
 import { WorkflowStepCompleted } from "../../../workflow/workflow-tool-events.ts";
 import {

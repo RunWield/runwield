@@ -14,7 +14,7 @@ import type { PersistedActiveAgentState } from "./active-agent-session.ts";
 import { tmpdir } from "node:os";
 import { ok as assert } from "node:assert/strict";
 import { join } from "node:path";
-import { captureTranscriptEvidence } from "./session-transcript-projection.js";
+import { captureTranscriptEvidence } from "./session-transcript-projection.ts";
 import { projectAggregateTranscript } from "./session-transcript-manifest.ts";
 import { getRunWieldSessionDir } from "./root-session.ts";
 

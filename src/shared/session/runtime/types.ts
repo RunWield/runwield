@@ -3,7 +3,7 @@ import type { McpServerDefinition } from "../../mcp/config.ts";
 import type { FileSessionStore } from "../file-session-store-types.ts";
 import type { MinimalSessionManagerLike } from "../hosted-session.js";
 import type { ImageAttachment } from "../image-attachments.ts";
-import type { RuntimeQueuedMessage, SessionRuntimeEvent } from "../session-runtime-events.js";
+import type { RuntimeQueuedMessage, SessionRuntimeEvent } from "../session-runtime-events.ts";
 import type { NamedInvocationPayload } from "../named-invocation.ts";
 import type { SessionHost } from "../session-host.ts";
 
@@ -75,7 +75,7 @@ export interface PromptTurnContext {
 }
 
 export interface PromptSessionOptions {
-    inputSurface?: import("../session-runtime-events.js").NotificationSurface;
+    inputSurface?: import("../session-runtime-events.ts").NotificationSurface;
     generatedTaskId?: string;
     onGeneratedTurnAccepted?: () => void;
     initialRequest: string;
@@ -153,7 +153,7 @@ export interface DequeueQueuedMessageResult {
 }
 
 export interface RuntimeQueuedMessageState {
-    inputSurface?: import("../session-runtime-events.js").NotificationSurface;
+    inputSurface?: import("../session-runtime-events.ts").NotificationSurface;
     id: string;
     text: string;
     images: ImageAttachment[];
@@ -219,7 +219,7 @@ export function isManagedOperationFailure<T>(value: T | ManagedOperationFailure)
 
 export interface ActiveSessionInfoCacheEntry {
     leafId: string | null;
-    info: ReturnType<typeof import("../session-transcript-projection.js").buildProjectedSessionInfo>;
+    info: ReturnType<typeof import("../session-transcript-projection.ts").buildProjectedSessionInfo>;
 }
 
 export type ActiveSessionInfoCache = WeakMap<MinimalSessionManagerLike, ActiveSessionInfoCacheEntry>;

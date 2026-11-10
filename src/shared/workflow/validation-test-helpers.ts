@@ -10,7 +10,7 @@ import type { GitPort } from "../git-port.ts";
 import type { SessionRuntimeEventSink } from "../session/session-host.ts";
 import type { RuntimeToolTitleArgs } from "../session/tool-event-title.ts";
 import { HostedSession } from "../session/hosted-session.js";
-import { createSessionRuntimeEvent, type RuntimeSystemStatusEvent } from "../session/session-runtime-events.js";
+import { createSessionRuntimeEvent, type RuntimeSystemStatusEvent } from "../session/session-runtime-events.ts";
 import {
     runValidationLoop as runValidationLoopImpl,
     runValidationPhase as runValidationPhaseImpl,

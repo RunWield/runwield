@@ -9,7 +9,7 @@ import { createSessionRuntime, SessionRuntime } from "./session-runtime.ts";
 import { SessionHost } from "./session-host.ts";
 import { getRuntimeRootAgentSession } from "./runtime/support.ts";
 import { createTaskCompletedTool } from "../../tools/task-completed.ts";
-import { RuntimeEventTypes } from "./session-runtime-events.js";
+import { RuntimeEventTypes } from "./session-runtime-events.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
 import { HostedSession } from "./hosted-session.js";
 import { createValidationSessionPort } from "../workflow/validation-session-adapter.ts";

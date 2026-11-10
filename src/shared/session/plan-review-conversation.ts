@@ -1,5 +1,5 @@
 import type { PlanFrontMatter } from "../../plan-store.js";
-import { RuntimeEventTypes } from "./session-runtime-events.js";
+import { RuntimeEventTypes } from "./session-runtime-events.ts";
 import type { HostedRuntimeEventObservation } from "./hosted-session.js";
 
 export interface PlanReviewConversationEvent {

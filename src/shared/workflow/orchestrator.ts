@@ -39,7 +39,7 @@ import {
     emitHostedSessionRuntimeEvent,
     emitSystemStatus,
     RuntimeEventTypes,
-} from "../session/session-runtime-events.js";
+} from "../session/session-runtime-events.ts";
 import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.ts";
 import { decidePostExecution, decidePostPlanning, summarizeWorkflowDecision } from "./decisions.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";

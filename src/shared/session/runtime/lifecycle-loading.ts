@@ -7,8 +7,8 @@ import {
     listPersistedRootSessions,
     openPersistedRootSession,
 } from ".././root-session.ts";
-import { createSessionRuntimeEvent, RuntimeEventTypes } from ".././session-runtime-events.js";
-import { createReplayEvents as createProjectedReplayEvents } from ".././session-transcript-projection.js";
+import { createSessionRuntimeEvent, RuntimeEventTypes } from ".././session-runtime-events.ts";
+import { createReplayEvents as createProjectedReplayEvents } from ".././session-transcript-projection.ts";
 import { requestHostedSessionInteraction } from ".././session-runtime-interactions.ts";
 import { sessionDirForRoot } from ".././file-session-storage.ts";
 import { recordSegmentLineageEvidence } from ".././workflow-context-session.ts";

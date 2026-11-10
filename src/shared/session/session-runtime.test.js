@@ -34,9 +34,9 @@ import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { __resetSettingsForTests, setCustomSetting } from "../settings.js";
 import { SessionHost } from "./session-host.ts";
-import { captureTranscriptEvidence } from "./session-transcript-projection.js";
+import { captureTranscriptEvidence } from "./session-transcript-projection.ts";
 import { switchActiveAgent } from "./agent-switching.ts";
-import { RuntimeEventTypes } from "./session-runtime-events.js";
+import { RuntimeEventTypes } from "./session-runtime-events.ts";
 import { RuntimeInteractionTypes } from "./session-runtime-interactions.ts";
 import { createSessionRuntime, SessionRuntime, SessionTurnInProgressError } from "./session-runtime.ts";
 import { buildAgentSession, getRootSessionRebuildOptions } from "./session.js";
@@ -313,7 +313,7 @@ test("SessionRuntime commits a Claude CLI model reconfiguration only after root 
     session.setRootAgentSession(previousAgentSession);
     session.setActiveOnMessage(previousHandler);
     const runtime = makeRuntime({ sessionHost });
-    /** @type {import('./session-runtime-events.js').SessionRuntimeEvent[]} */
+    /** @type {import('./session-runtime-events.ts').SessionRuntimeEvent[]} */
     const events = [];
     runtime.subscribeSessionEvents("claude-model-commit", (event) => {
         events.push(event);
@@ -338,7 +338,7 @@ test("SessionRuntime restores the previous user model override when active root 
     session.setActiveOnMessage(previousHandler);
     session.setActiveModelState("sonnet", "anthropic", true);
     const runtime = makeRuntime({ sessionHost });
-    /** @type {import('./session-runtime-events.js').SessionRuntimeEvent[]} */
+    /** @type {import('./session-runtime-events.ts').SessionRuntimeEvent[]} */
     const events = [];
     runtime.subscribeSessionEvents("model-rollback", (event) => {
         events.push(event);
@@ -2233,7 +2233,7 @@ test("SessionRuntime snapshots and events keep workflow footer context separate 
     const sessionId = hostedSession.id;
     /** @type {any[]} */
     const events = [];
-    /** @param {import('./session-runtime-events.js').SessionRuntimeEvent} event */
+    /** @param {import('./session-runtime-events.ts').SessionRuntimeEvent} event */
     const captureEvent = (event) => events.push(event);
     hostedSession.setEventSink({ emit: captureEvent });
 
@@ -2774,7 +2774,7 @@ test("SessionRuntime /reload publishes replacement Prompt Template and Skill cat
         });
         const runtime = createSessionRuntime();
         const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
-        /** @type {Array<import('./session-runtime-events.js').SessionRuntimeEvent>} */
+        /** @type {Array<import('./session-runtime-events.ts').SessionRuntimeEvent>} */
         const catalogEvents = [];
         runtime.subscribeSessionEvents(created.sessionId, (event) => {
             if (event.type === RuntimeEventTypes.COMMAND_CATALOG_CHANGED) catalogEvents.push(event);
@@ -2796,7 +2796,7 @@ test("SessionRuntime /reload publishes replacement Prompt Template and Skill cat
 
         assertEquals(await runtime.reloadSession(created.sessionId), { ok: true });
         assertEquals(catalogEvents.length, 1);
-        const catalogEvent = /** @type {import('./session-runtime-events.js').RuntimeCommandCatalogChangedEvent} */ (
+        const catalogEvent = /** @type {import('./session-runtime-events.ts').RuntimeCommandCatalogChangedEvent} */ (
             catalogEvents[0]
         );
         assertEquals(
@@ -2910,7 +2910,7 @@ test("SessionRuntime delivers steering submitted from the Triage report to Plann
     };
     setRuntimeModelResponseFactories(Array.from({ length: 6 }, () => response));
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot(), agentName: "router" });
-    /** @type {import('./session-runtime-events.js').SessionRuntimeEvent[]} */
+    /** @type {import('./session-runtime-events.ts').SessionRuntimeEvent[]} */
     const runtimeEvents = [];
     /** @type {Promise<SteeringResult> | null} */
     let steeringSubmission = null;
@@ -2990,7 +2990,7 @@ test("SessionRuntime delivers steering submitted from the Triage report to Plann
         ).length,
         1,
     );
-    const deliveredSteering = /** @type {import('./session-runtime-events.js').RuntimeUserMessageEvent[]} */ (
+    const deliveredSteering = /** @type {import('./session-runtime-events.ts').RuntimeUserMessageEvent[]} */ (
         runtimeEvents.filter(
             (event) =>
                 event.type === RuntimeEventTypes.USER_MESSAGE &&
@@ -3001,7 +3001,7 @@ test("SessionRuntime delivers steering submitted from the Triage report to Plann
     const imageSteeringEvent = deliveredSteering.find((event) => event.messageId === steered.message?.id);
     assertExists(imageSteeringEvent);
     assertEquals(
-        /** @type {import('./session-runtime-events.js').RuntimeUserMessageEvent} */ (imageSteeringEvent).images.length,
+        /** @type {import('./session-runtime-events.ts').RuntimeUserMessageEvent} */ (imageSteeringEvent).images.length,
         1,
     );
     assertEquals(runtime.getQueuedMessages(sessionId), []);
@@ -3362,7 +3362,7 @@ test("SessionRuntime buffers identifiable steering for the replacement Agent and
     const sessionId = await attachExternalAgentSession(runtime, sessionHost, rootSession);
     const hostedSession = sessionHost.requireSession(sessionId);
     const transitionId = hostedSession.beginAgentTransition();
-    /** @type {import('./session-runtime-events.js').RuntimeQueuedMessageEvent[]} */
+    /** @type {import('./session-runtime-events.ts').RuntimeQueuedMessageEvent[]} */
     const events = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
         if (event.type === RuntimeEventTypes.QUEUED_MESSAGE_CHANGED) events.push(event);
@@ -3801,7 +3801,7 @@ test("SessionRuntime interaction adapter resolves through semantic lifecycle eve
     const sessionId = session.id;
     /** @type {string[]} */
     const types = [];
-    /** @param {import('./session-runtime-events.js').SessionRuntimeEvent} event */
+    /** @param {import('./session-runtime-events.ts').SessionRuntimeEvent} event */
     const captureEvent = (event) => types.push(event.type);
     session.setEventSink({ emit: captureEvent });
     runtime.setInteractionAdapter(sessionId, {
@@ -3833,7 +3833,7 @@ test("SessionRuntime emits canceled lifecycle for an already-aborted interaction
     const sessionId = session.id;
     /** @type {string[]} */
     const types = [];
-    /** @param {import('./session-runtime-events.js').SessionRuntimeEvent} event */
+    /** @param {import('./session-runtime-events.ts').SessionRuntimeEvent} event */
     const captureEvent = (event) => types.push(event.type);
     session.setEventSink({ emit: captureEvent });
     runtime.setInteractionAdapter(sessionId, {
@@ -4304,7 +4304,7 @@ test("Workspace gets a stop alert even when the handler suppresses its normal at
                 hosted.suppressNextAgentStoppedAttention();
                 return fauxAssistantMessage(fauxText("Finished."));
             });
-            /** @type {import('./session-runtime-events.js').RuntimeAttentionRequestedEvent[]} */
+            /** @type {import('./session-runtime-events.ts').RuntimeAttentionRequestedEvent[]} */
             const attention = [];
             runtime.subscribeSessionEvents(sessionId, (event) => {
                 if (event.type === RuntimeEventTypes.ATTENTION_REQUESTED) attention.push(event);
@@ -4388,7 +4388,7 @@ test("managed image paste acquires dormant ownership and pending prompt images s
         const runtime = createSessionRuntime();
         const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
         const image = { base64: RUNTIME_TEST_PNG, mimeType: "image/png" };
-        /** @type {import('./session-runtime-events.js').SessionRuntimeEvent[]} */
+        /** @type {import('./session-runtime-events.ts').SessionRuntimeEvent[]} */
         const events = [];
         runtime.subscribeSessionEvents(created.sessionId, (event) => {
             events.push(event);
@@ -4439,7 +4439,7 @@ test("managed turn reconciles steering when the external SDK omits queue notific
         });
         const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
         await runtime.switchAgent(created.sessionId, { agentName: "guide" });
-        /** @type {import('./session-runtime-events.js').SessionRuntimeEvent[]} */
+        /** @type {import('./session-runtime-events.ts').SessionRuntimeEvent[]} */
         const events = [];
         runtime.subscribeSessionEvents(created.sessionId, (event) => {
             events.push(event);

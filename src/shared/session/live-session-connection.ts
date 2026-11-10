@@ -13,7 +13,7 @@ import type {
     RuntimeAttentionRequestedEvent,
     RuntimeQueuedMessage,
     SessionRuntimeEvent,
-} from "./session-runtime-events.js";
+} from "./session-runtime-events.ts";
 import type { SessionRuntime, SteerSessionResult } from "./session-runtime.ts";
 import type { HostedSession } from "./hosted-session.js";
 

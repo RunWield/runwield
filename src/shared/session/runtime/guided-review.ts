@@ -1,11 +1,11 @@
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { buildAgentSession } from "../session.js";
-import { normalizeRuntimeUsage } from "../session-runtime-events.js";
+import { normalizeRuntimeUsage } from "../session-runtime-events.ts";
 
 interface InMemoryGuideOptions {
     cwd: string;
     signal?: AbortSignal;
-    onUsage?: (usage: import("../session-runtime-events.js").RuntimeUsage) => void | Promise<void>;
+    onUsage?: (usage: import("../session-runtime-events.ts").RuntimeUsage) => void | Promise<void>;
 }
 
 interface InMemoryGuideResult {

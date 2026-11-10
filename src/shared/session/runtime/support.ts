@@ -180,7 +180,7 @@ export function resolvePersistedExecutionRootConfiguration(
 
 /**
  * @param {import("./types.ts").RuntimeQueuedMessageState} message
- * @returns {import('.././session-runtime-events.js').RuntimeQueuedMessage}
+ * @returns {import('.././session-runtime-events.ts').RuntimeQueuedMessage}
  */
 export function toRuntimeQueuedMessage(message: import("./types.ts").RuntimeQueuedMessageState) {
     return {

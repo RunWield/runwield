@@ -3,7 +3,7 @@ import { isEpicPlan } from "../project-plan.ts";
 import { AGENTS, CLI_BIN, PLANS_DIR_NAME } from "../../constants.ts";
 import { resolvePlanExecutionPolicy } from "../../plan-store.js";
 import { join } from "node:path";
-import { emitSystemStatus } from "../session/session-runtime-events.js";
+import { emitSystemStatus } from "../session/session-runtime-events.ts";
 import { getAgentDisplayName } from "../session/agents.ts";
 import {
     requestHostedSessionInteraction,

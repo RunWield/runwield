@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
-import { emitHostedSessionRuntimeEvent, type RuntimeUsage } from "../../shared/session/session-runtime-events.js";
+import { emitHostedSessionRuntimeEvent, type RuntimeUsage } from "../../shared/session/session-runtime-events.ts";
 import { createChatFooterController } from "./chat-footer.ts";
 import { initRunWieldTheme } from "../theme/theme.ts";
 

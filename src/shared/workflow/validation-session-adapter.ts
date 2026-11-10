@@ -4,7 +4,7 @@ import { type AgentMessage } from "@earendil-works/pi-agent-core";
 import { type HostedSession } from "../session/hosted-session.js";
 import { runIsolatedAgentSession } from "../session/session.js";
 import { readRequestAttemptEntries } from "../session/request-dispatch.ts";
-import { emitAssistantMessage, type RuntimeValidationProgress } from "../session/session-runtime-events.js";
+import { emitAssistantMessage, type RuntimeValidationProgress } from "../session/session-runtime-events.ts";
 import { requestHostedSessionInteraction } from "../session/session-runtime-interactions.ts";
 import { getAgentDisplayName as getSessionAgentDisplayName } from "../session/agents.ts";
 import { ClaudeCliBackendError } from "../session/backends/claude-cli/failure.ts";

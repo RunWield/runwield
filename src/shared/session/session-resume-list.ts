@@ -8,7 +8,7 @@ import {
     buildProjectedSessionInfo,
     captureTranscriptEvidence,
     summarizeResumableTranscript,
-} from "./session-transcript-projection.js";
+} from "./session-transcript-projection.ts";
 import type { FileSessionStore } from "./file-session-store-types.ts";
 
 export const RECENT_SESSION_LIMIT = 30;

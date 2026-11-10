@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 
 import { HostedSession } from "../session/hosted-session.js";
-import { createSessionRuntimeEvent } from "../session/session-runtime-events.js";
+import { createSessionRuntimeEvent } from "../session/session-runtime-events.ts";
 import {
     createValidationProgress,
     emitRunWieldSystemStatus,

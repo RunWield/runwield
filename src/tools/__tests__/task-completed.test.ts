@@ -5,7 +5,7 @@ import { validateToolArguments, fauxAssistantMessage, fauxText } from "@earendil
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
-import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
+import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
 import { createPairCheckpointTool } from "../pair-checkpoint.ts";
 import { readCurrentPairCheckpoint } from "../../shared/session/pair-checkpoint-session.ts";
 import { createTaskCompletedTool } from "../task-completed.ts";
@@ -17,7 +17,7 @@ import type { RequestDispatchKind } from "../../shared/session/request-dispatch.
 import type {
     RuntimeAssistantTextDeltaEvent,
     SessionRuntimeEvent,
-} from "../../shared/session/session-runtime-events.js";
+} from "../../shared/session/session-runtime-events.ts";
 import type { PairCheckpointDecision } from "../../shared/session/pair-checkpoint-session.ts";
 import type { PairCheckpointDetails, PairCheckpointParameters } from "../pair-checkpoint.ts";
 import type { BrowserPreflightOutcome, TaskCompletedDetails } from "../task-completed.ts";

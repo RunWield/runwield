@@ -9,7 +9,7 @@ import {
     normalizeRuntimeToolResult,
     normalizeRuntimeUsage,
     RuntimeEventTypes,
-} from "../../session-runtime-events.js";
+} from "../../session-runtime-events.ts";
 import { describeRuntimeTool } from "../../tool-event-title.ts";
 import {
     cleanupAgyCustomAgent,

@@ -1,7 +1,7 @@
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import { getHomeDir } from "../../../../constants.ts";
 import type { HostedSession } from "../../hosted-session.js";
-import { emitSystemStatus } from "../../session-runtime-events.js";
+import { emitSystemStatus } from "../../session-runtime-events.ts";
 
 export type AgyCliBackendStatusKind =
     | "missing_executable"

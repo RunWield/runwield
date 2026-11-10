@@ -7,7 +7,7 @@ import { ok as assert } from "node:assert/strict";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
-import { RuntimeEventTypes } from "./session-runtime-events.js";
+import { RuntimeEventTypes } from "./session-runtime-events.ts";
 
 test("Stop while the root is idle cancels independent work without a late model turn", async () => {
     await withRuntimeCommandFixture("background-stop-", async ({ projectRoot, setModelResponseFactories }) => {

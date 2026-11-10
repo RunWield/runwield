@@ -14,7 +14,7 @@ import {
     projectCommittedTranscript,
     selectProjectedEventsAfterCursor,
     summarizeProjectedEntries,
-} from "./session-transcript-projection.js";
+} from "./session-transcript-projection.ts";
 
 async function removeTempDir(path: string) {
     let lastError;
@@ -150,8 +150,8 @@ test("committed projection replays Agy backend status as display-only system sta
         events.map((event) => event.level),
         ["error", "warning", "warning"],
     );
-    assertEquals(events[0].messageId.includes("agy-cli-backend-status"), true);
-    assertEquals(events[2].messageId.includes("claude-cli-backend-status"), true);
+    assertEquals(events[0].messageId!.includes("agy-cli-backend-status"), true);
+    assertEquals(events[2].messageId!.includes("claude-cli-backend-status"), true);
     assertEquals(JSON.stringify(events).includes("workflow_tool_event"), false);
 });
 
@@ -655,7 +655,7 @@ test("accepted workflow transitions replay their result even when the tool stopp
     ]);
     assertEquals(triage[0].type, "tool_end");
     assertEquals(triage[0].toolName, "triage_report");
-    assertEquals(triage[0].details.summary, "Fix the broken image send.");
+    assertEquals(triage[0].details!.summary, "Fix the broken image send.");
 });
 
 test("Session replay preserves images and every text block as one user message", () => {
