@@ -30,7 +30,7 @@ import { createEngineValidationArgs } from "./validation.ts";
 import { resolvePhaseContext } from "./validation-context.ts";
 import { runReviewerRound } from "./validation-semantic.ts";
 import { createLedger, type ReviewLedger } from "./review-ledger.ts";
-import { getWorkflowMetricsFilePath } from "./metrics.js";
+import { getWorkflowMetricsFilePath } from "./metrics.ts";
 import {
     git,
     makeRecordedSession,

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { ok as assert, strictEqual as equal } from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { setCustomSetting } from "../../../shared/settings.js";
-import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../../../shared/workflow/metrics.js";
+import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../../../shared/workflow/metrics.ts";
 import { applyAttachedReviewDecision, openAttachedReviewRound } from "../../../shared/attached/coordinator.ts";
 import {
     planWrittenInput,

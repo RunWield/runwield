@@ -15,7 +15,7 @@ import { setSystemTime } from "bun:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { HostedSession } from "../../hosted-session.js";
 import { setCustomSetting } from "../../../settings.js";
-import { getWorkflowMetricsFilePath } from "../../../workflow/metrics.js";
+import { getWorkflowMetricsFilePath } from "../../../workflow/metrics.ts";
 import { UsageReporter } from "../../../workflow/usage-reporting.ts";
 import { tmpdir } from "node:os";
 import { ok as assert } from "node:assert/strict";

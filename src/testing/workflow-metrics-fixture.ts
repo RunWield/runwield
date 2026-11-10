@@ -5,7 +5,7 @@ import process from "node:process";
 import { realpath as fsRealpath, mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 import { join } from "node:path";
 import { setCustomSetting } from "../shared/settings.js";
-import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../shared/workflow/metrics.js";
+import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../shared/workflow/metrics.ts";
 import { withProcessGlobalTestLock } from "./process-global-lock.ts";
 
 export type WorkflowMetricFixtureValue =

@@ -15,7 +15,7 @@ import {
 import { getCustomSetting, setCustomSetting } from "../../shared/settings.js";
 import { readMetricsExportGrants } from "../../shared/workflow/metrics-export-grants.ts";
 import { readMetricsExportStatus, runMetricsExportCycle } from "../../shared/workflow/metrics-export-scheduler.ts";
-import { getWorkflowMetricsFilePath, recordWorkflowMetric } from "../../shared/workflow/metrics.js";
+import { getWorkflowMetricsFilePath, recordWorkflowMetric } from "../../shared/workflow/metrics.ts";
 import { ExecutionMetricsRecorder } from "../../shared/workflow/execution-metrics.ts";
 import { openNativeFileLock } from "../../shared/native-file-lock.ts";
 import { encodeCwdForSessionDir } from "../../shared/session/root-session.ts";

@@ -5,7 +5,7 @@ import { test as registerTest } from "node:test";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { createPlanSessionSurface } from "./plan-session-surface.ts";
-import { recordWorkflowMetric } from "../../shared/workflow/metrics.js";
+import { recordWorkflowMetric } from "../../shared/workflow/metrics.ts";
 
 import {
     mkdir as fsMkdir,

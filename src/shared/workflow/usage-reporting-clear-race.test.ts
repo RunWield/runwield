@@ -9,7 +9,7 @@ import { assertEquals } from "../../testing/assertions.ts";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { ExecutionMetricsRecorder } from "./execution-metrics.ts";
-import { getWorkflowMetricsFilePath } from "./metrics.js";
+import { getWorkflowMetricsFilePath } from "./metrics.ts";
 import { setCustomSetting } from "../settings.js";
 
 // Bun snapshots built-in named imports. Load the reporter after controlling this

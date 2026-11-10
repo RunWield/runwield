@@ -5,7 +5,7 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { UsageReporter } from "./usage-reporting.ts";
 import { ok as assert } from "node:assert/strict";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
-import { getWorkflowMetricsFilePath, recordWorkflowMetric } from "./metrics.js";
+import { getWorkflowMetricsFilePath, recordWorkflowMetric } from "./metrics.ts";
 import { rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import { openNativeFileLock } from "../native-file-lock.ts";

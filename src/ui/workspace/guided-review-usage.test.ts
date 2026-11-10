@@ -5,7 +5,7 @@ import process from "node:process";
 import { test } from "node:test";
 import { writeFile as fsWriteFile } from "node:fs/promises";
 import { setCustomSetting } from "../../shared/settings.js";
-import { recordWorkflowMetric } from "../../shared/workflow/metrics.js";
+import { recordWorkflowMetric } from "../../shared/workflow/metrics.ts";
 import { clearUsageHistory, UsageReporter } from "../../shared/workflow/usage-reporting.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";

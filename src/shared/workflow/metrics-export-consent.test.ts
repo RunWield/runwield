@@ -76,7 +76,7 @@ test("start boundaries exclude old operations and include only explicitly grante
         );
         await setCustomSetting("workflowMetrics", false, "project", f.project);
         // A disabled interval has no journal payload to export.
-        const { recordWorkflowMetric } = await import("./metrics.js");
+        const { recordWorkflowMetric } = await import("./metrics.ts");
         assertEquals(
             (
                 await recordWorkflowMetric(

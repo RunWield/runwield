@@ -13,7 +13,7 @@ import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixtu
 import { setCustomSetting } from "../settings.js";
 import { findById } from "../worktree-registry.ts";
 import { readControllerRecord, writeControllerState } from "./controller-registry.ts";
-import { getWorkflowMetricsFilePath } from "./metrics.js";
+import { getWorkflowMetricsFilePath } from "./metrics.ts";
 import { UsageReporter } from "./usage-reporting.ts";
 import { workflowOutcomeEventId } from "./outcome-observations.ts";
 import {

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { assertEquals } from "../../testing/assertions.ts";
 import { setCustomSetting } from "../settings.js";
 import { recordDeliveryEvidence } from "./delivery-evidence.ts";
-import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "./metrics.js";
+import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "./metrics.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import {
     makeRecordedSession,

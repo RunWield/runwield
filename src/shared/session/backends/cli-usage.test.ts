@@ -13,7 +13,7 @@ import { defineGitFixture, git } from "../../git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../../testing/process-global-lock.ts";
 import { getExternalCliPriceModel, getModelRegistry } from "../../models/model-registry.ts";
 import { setCustomSetting } from "../../settings.js";
-import { getWorkflowMetricsFilePath } from "../../workflow/metrics.js";
+import { getWorkflowMetricsFilePath } from "../../workflow/metrics.ts";
 import { HostedSession } from "../hosted-session.js";
 import { createRootSessionManager } from "../root-session.ts";
 import type { RuntimeUsage, SessionRuntimeEvent } from "../session-runtime-events.js";

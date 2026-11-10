@@ -32,7 +32,7 @@ import { loadPlan } from "../../plan-store.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { HostedSession } from "./hosted-session.js";
 import { setCustomSetting } from "../settings.js";
-import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/metrics.js";
+import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/metrics.ts";
 import { installAgyCliMcpSetup } from "./backends/agy-cli/mcp-setup.ts";
 import { startMcpIntegration } from "../mcp/integration.ts";
 import { getRootSessionBranchEntries } from "./root-session.ts";

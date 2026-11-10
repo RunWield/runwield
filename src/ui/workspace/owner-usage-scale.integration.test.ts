@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { assertEquals } from "../../testing/assertions.ts";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
-import { getWorkflowMetricsFilePath } from "../../shared/workflow/metrics.js";
+import { getWorkflowMetricsFilePath } from "../../shared/workflow/metrics.ts";
 import { loadOwnerUsageReport } from "./server/owner-usage.ts";
 
 function usageRow(sessionId: string, index: number) {

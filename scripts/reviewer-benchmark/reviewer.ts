@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
-import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../../src/shared/workflow/metrics.js";
+import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../../src/shared/workflow/metrics.ts";
 import { runStandaloneReviewerRound } from "../../src/shared/workflow/standalone-reviewer.ts";
 import type {
     ReviewerConfigurationOptions,

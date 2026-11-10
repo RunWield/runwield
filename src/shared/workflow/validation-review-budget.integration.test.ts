@@ -12,7 +12,7 @@ import { git as runGit, makeRepo } from "../worktree-test-helpers.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { LOOP_GUARD_MAX_MODEL_TURNS } from "../session/runaway-loop-guard.ts";
-import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "./metrics.js";
+import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "./metrics.ts";
 import { createLedger } from "./review-ledger.ts";
 import { resolvePhaseContext } from "./validation-context.ts";
 import { createValidationSessionPort } from "./validation-session-adapter.ts";

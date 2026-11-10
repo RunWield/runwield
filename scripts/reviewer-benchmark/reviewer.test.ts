@@ -6,7 +6,7 @@ import { fauxAssistantMessage, fauxText, fauxToolCall, type FauxResponseFactory 
 import { withRuntimeCommandFixture } from "../../src/cmd/testing/runtime-command-fixture.ts";
 import { getModelRegistry } from "../../src/shared/models/model-registry.ts";
 import { setExactProjectCustomSetting } from "../../src/shared/settings.js";
-import { getWorkflowMetricsFilePath } from "../../src/shared/workflow/metrics.js";
+import { getWorkflowMetricsFilePath } from "../../src/shared/workflow/metrics.ts";
 import { parseDiffFiles } from "../../src/shared/workflow/review-diff-tool.ts";
 import { loadFixture } from "./fixtures.ts";
 import { materializeFixture } from "./materialize.ts";
