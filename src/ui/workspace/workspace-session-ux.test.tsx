@@ -17,7 +17,7 @@ import {
     SessionSurface,
     shouldApplyOperationPoll,
     shouldRefreshSessionAvailability,
-} from "./islands/SessionSurface.jsx";
+} from "./islands/SessionSurface.tsx";
 import {
     compactToolLine,
     displayAgentName,
@@ -27,7 +27,7 @@ import {
     sessionInteractionChoiceResponse,
     sessionInteractionTypedResponse,
     SessionTimeline,
-} from "./components/SessionTimeline.jsx";
+} from "./components/SessionTimeline.tsx";
 
 test("Session composer keeps provider/model identities and opens slash choices before the first message", async () => {
     const { createElement } = await import("react");
@@ -698,7 +698,7 @@ test("mobile Session context keeps covered chat out of keyboard navigation", asy
 });
 
 test("review_diff stays collapsed while review_complete is an expanded workflow step", async () => {
-    const { SessionTimeline } = await import("./components/SessionTimeline.jsx");
+    const { SessionTimeline } = await import("./components/SessionTimeline.tsx");
     const { createElement } = await import("react");
     const { renderToStaticMarkup } = await import("react-dom/server");
     const started = { type: "tool_start", toolCallId: "diff", toolName: "review_diff" };
@@ -729,7 +729,7 @@ test("review_diff stays collapsed while review_complete is an expanded workflow 
 
 test("all workflow tools remain expanded outside routine activity, with accepted reports preserved", async () => {
     const { WORKFLOW_TOOL_NAMES } = await import("../../tools/registry.ts");
-    const { workflowToolMarkdown, SessionTimeline } = await import("./components/SessionTimeline.jsx");
+    const { workflowToolMarkdown, SessionTimeline } = await import("./components/SessionTimeline.tsx");
     const { createElement } = await import("react");
     const { renderToStaticMarkup } = await import("react-dom/server");
     for (const name of WORKFLOW_TOOL_NAMES) {
@@ -860,7 +860,7 @@ test("all workflow tools remain expanded outside routine activity, with accepted
 });
 
 test("Plan deviation card and pair programming card render as Markdown with correct newlines", async () => {
-    const { workflowToolMarkdown, SessionTimeline } = await import("./components/SessionTimeline.jsx");
+    const { workflowToolMarkdown, SessionTimeline } = await import("./components/SessionTimeline.tsx");
     const { createElement } = await import("react");
     const { renderToStaticMarkup } = await import("react-dom/server");
 

@@ -61,7 +61,7 @@ Plans and current uncommitted work before creating new ones. Explicit future PRD
 2. [ ] **Needs Plan — Respect browser Pair decisions.** Stop and revision feedback must never become permission to
        continue autonomously. Check the real Workspace checkpoint experience against TUI behavior. Evidence:
        [Pair checkpoint](src/tools/pair-checkpoint.ts),
-       [browser interaction](src/ui/workspace/components/SessionTimeline.jsx).
+       [browser interaction](src/ui/workspace/components/SessionTimeline.tsx).
 
 3. [ ] **Needs Plan — Require consent before enabling package extensions.** Interrupted or failed theme-package
        installation must not leave executable extensions enabled without consent. Evidence:

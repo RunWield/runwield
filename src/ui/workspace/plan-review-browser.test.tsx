@@ -2,7 +2,7 @@ import { assertEquals } from "../../testing/assertions.ts";
 // @ts-nocheck: browser test sets happy-dom globals.
 import { test } from "node:test";
 import { Window } from "happy-dom";
-import { requestWorkspacePlanReview } from "./islands/SessionSurface.jsx";
+import { requestWorkspacePlanReview } from "./islands/SessionSurface.tsx";
 
 test("Workspace Plan review command navigates to the existing interaction without sending a turn", async () => {
     const browser = new Window({ url: "http://127.0.0.1:8787" });

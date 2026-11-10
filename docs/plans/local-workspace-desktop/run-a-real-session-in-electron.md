@@ -6,7 +6,7 @@ affectedPaths:
     - "src/acp/"
     - "src/cmd/acp/"
     - "src/ui/desktop/"
-    - "src/ui/workspace/components/SessionTimeline.jsx"
+    - "src/ui/workspace/components/SessionTimeline.tsx"
     - "src/ui/workspace/components/SessionQuestionForm.tsx"
     - "package.json"
     - "docs/adr/020-electron-workspace-acp-client.md"
@@ -55,7 +55,7 @@ The boundaries this change is expected to touch. This list is guidance, not an a
 
 - `src/ui/desktop/` — new main, preload, renderer, and shared-client connection boundary; exact shared-client location belongs to Planner.
 - `src/acp/`, `src/cmd/acp/` — negotiation and any genuine gaps needed for the proof.
-- `src/ui/workspace/components/SessionTimeline.jsx`, `SessionQuestionForm.tsx` — reusable interaction rendering without HTTP/server coupling.
+- `src/ui/workspace/components/SessionTimeline.tsx`, `SessionQuestionForm.tsx` — reusable interaction rendering without HTTP/server coupling.
 - `package.json`, build configuration, focused tests — explicit Electron/Vite development and build commands.
 - ACP/Workspace PRDs, ADR-020, and a contract inventory linked from it — proposed versus proven behavior.
 

@@ -68,7 +68,8 @@ Workspace claims interaction support
 - `WorkspaceSessionContinuationService.createInteractionAdapter` in `src/ui/workspace/server/session-continuation.ts`
   supplies the Workspace interaction adapter.
 - `src/tools/pair-checkpoint.ts:173`: checkpoint request; `:226`: selected-only decision extraction; `:295`: fallback.
-- `src/ui/workspace/components/SessionTimeline.jsx:442,487`: typed-response mapping and generic interaction card.
+- `sessionInteractionTypedResponse` and `SessionInteractionCard` in `src/ui/workspace/components/SessionTimeline.tsx`
+  map typed answers and render the generic interaction card.
 
 **Failure example:** The user types “stop” or asks for a visual revision. The answer is not treated as that decision;
 autonomous execution can continue. This is a user-control defect, not a missing visual refinement.
