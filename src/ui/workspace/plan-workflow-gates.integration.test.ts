@@ -2,7 +2,7 @@ import { mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node
 import { test } from "node:test";
 import type { RuntimeInteractionRequest } from "../../shared/session/session-runtime-interactions.ts";
 import type { OwnerPlanProgress } from "./server/owner-plan-progress.ts";
-import type { WorkspacePlanReviewStarted } from "./server/session-continuation.js";
+import type { WorkspacePlanReviewStarted } from "./server/session-continuation.ts";
 import { tmpdir } from "node:os";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
@@ -13,7 +13,7 @@ import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts
 import { createTestWorktreeAttempt } from "../../shared/worktree-test-helpers.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
-import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
+import { WorkspaceSessionContinuationService } from "./server/session-continuation.ts";
 import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.ts";
 import { ownerProjectPlanProgressApi } from "./routes/owner-api.ts";
 

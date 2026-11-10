@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.js";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { createOwnerWorkspaceApp } from "./server.js";
+import { createOwnerWorkspaceApp } from "./server.ts";
 
 async function withOpenReview(run) {
     await withRuntimeCommandFixture(

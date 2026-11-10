@@ -5,7 +5,7 @@ import {
     loadPlanActionEvidence,
     type PlanActionRequest,
 } from "../../../shared/workflow/plan-actions.ts";
-import { runWorkspaceResumeCheck } from "../server/plan-adapter.js";
+import { runWorkspaceResumeCheck } from "../server/plan-adapter.ts";
 import { runOwnerPlanAction } from "../server/owner-plan-actions.ts";
 import { requireOwnerProjectRoot } from "../server/owner-projects.ts";
 import {

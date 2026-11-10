@@ -96,7 +96,7 @@ Official provider documentation confirms that remote browser login is not the sa
   [`file-session-store.ts`](../../src/shared/session/file-session-store.ts),
   [`live-session-connection.ts`](../../src/shared/session/live-session-connection.ts).
 - Reviews currently bind a server to machine-local loopback. Remote reviews need laptop access and must return decisions
-  to the same Session. Sources: [`review server`](../../src/ui/workspace/server.js),
+  to the same Session. Sources: [`review server`](../../src/ui/workspace/server.ts),
   [`review launcher tests`](../../src/ui/review/review-launcher.test.ts).
 - RunWield has process-tree cancellation, but this does not prove cleanup after SSH loss. CLI backends, helpers, and MCP
   subprocesses do not all share the same termination path. Sources:

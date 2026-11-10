@@ -15,7 +15,7 @@ import {
     runWorkspaceResumeCheck,
     serializePlanSummary,
     workspaceMetadata as _workspaceMetadata,
-} from "./server/plan-adapter.js";
+} from "./server/plan-adapter.ts";
 
 import { blockedDropMessage, isAllowedDropTarget, parseAllowedTargetStatuses } from "./islands/PlanBoardDragDrop.tsx";
 
@@ -26,7 +26,7 @@ import {
     lifecycleActionLabel,
 } from "./islands/PlanLifecycleActions.tsx";
 
-import { createWorkspaceApp } from "./server.js";
+import { createWorkspaceApp } from "./server.ts";
 import { COLLABORATION_STATE_REMOTE_CANONICAL } from "../../shared/collaboration/lock.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { listWorkRecords } from "../../shared/work-records/store.ts";

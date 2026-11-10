@@ -29,7 +29,7 @@ export interface PlanCardData extends PlanLinkTarget {
     blockedByDependencies?: boolean;
     unverifiedDependencyCount?: number;
     missingDependencyCount?: number;
-    actions?: PlanCardActions;
+    actions?: PlanCardActions | null;
 }
 
 export interface ComplexityLabelProps {

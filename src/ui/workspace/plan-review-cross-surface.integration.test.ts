@@ -10,7 +10,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { loadPlan, savePlan } from "../../plan-store.js";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
+import { WorkspaceSessionContinuationService } from "./server/session-continuation.ts";
 
 function stopChild(child) {
     try {

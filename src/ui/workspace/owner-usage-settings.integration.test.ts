@@ -22,7 +22,7 @@ import { encodeCwdForSessionDir } from "../../shared/session/root-session.ts";
 import type { OwnerUsageReport } from "./server/owner-usage.ts";
 import { resolveCollectionEpoch, setWorkflowMetricsRecording } from "../../shared/workflow/metrics-journal.ts";
 import { queryUsageReport } from "../../shared/workflow/usage-reporting.ts";
-import { createOwnerWorkspaceApp } from "./server.js";
+import { createOwnerWorkspaceApp } from "./server.ts";
 import type { UsageSettingsRequest, UsageSettingsResponse, UsageSettingsView } from "./server/owner-usage-settings.ts";
 
 const origin = "http://127.0.0.1:8787";

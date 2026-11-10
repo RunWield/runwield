@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { Window } from "happy-dom";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
-import { createOwnerWorkspaceApp } from "./server.js";
+import { createOwnerWorkspaceApp } from "./server.ts";
 import { test } from "node:test";
 
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";

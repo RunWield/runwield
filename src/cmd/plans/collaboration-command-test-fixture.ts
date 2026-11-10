@@ -1,5 +1,5 @@
 import { serveHttp } from "../../shared/http-server.ts";
-import { createRemoteWorkspaceApp } from "../../ui/workspace/server.js";
+import { createRemoteWorkspaceApp } from "../../ui/workspace/server.ts";
 import { createRemoteWorkspaceAdapter } from "../../ui/workspace/server/remote-adapter.ts";
 
 type RemoteWorkspaceAdapter = ReturnType<typeof createRemoteWorkspaceAdapter>;

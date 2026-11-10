@@ -10,7 +10,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { ownerSessionOperationStreamApi } from "./routes/owner-session-api.ts";
 import { createOwnerConnectionRegistry, type OwnerConnectionRegistry } from "./server/owner-connections.ts";
-import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
+import { WorkspaceSessionContinuationService } from "./server/session-continuation.ts";
 
 type Workspace = {
     fixture: ManagedSessionFixture;

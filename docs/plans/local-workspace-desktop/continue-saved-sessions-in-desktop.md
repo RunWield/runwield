@@ -6,7 +6,7 @@ affectedPaths:
     - "src/acp/"
     - "src/shared/session/"
     - "src/shared/owner-coordination/"
-    - "src/ui/workspace/server/session-continuation.js"
+    - "src/ui/workspace/server/session-continuation.ts"
     - "src/ui/workspace/islands/SessionSurface.jsx"
     - "src/ui/workspace/components/SessionTimeline.jsx"
     - "src/ui/desktop/"
@@ -46,7 +46,7 @@ Move reusable orchestration from the UI server to its shared Core owner. Preserv
 The boundaries this change is expected to touch. This list is guidance, not an allowlist: verify the real footprint during implementation and change whatever the Implementation Steps need, including files not named here. Stop and report only when discovery changes approved intent — the change reaches another subsystem, public behavior or architecture shifts, migration or compatibility risk grows, or the Verification Plan no longer proves the objective.
 
 - `src/acp/`, `src/shared/session/`, `src/shared/owner-coordination/` — discovery, observations, interaction delivery, and authoritative continuation.
-- `src/ui/workspace/server/session-continuation.js`, `routes/owner-session-api.ts` — reusable orchestration moves behind ACP while old workbench compatibility remains until cutover.
+- `src/ui/workspace/server/session-continuation.ts`, `routes/owner-session-api.ts` — reusable orchestration moves behind ACP while old workbench compatibility remains until cutover.
 - `src/ui/workspace/islands/SessionSurface.jsx`, Session list/timeline/question components, and shared client — host-independent composition.
 - `src/ui/desktop/` — semantic client wiring and bounded image selection/paste/drop.
 - Core/Workspace/ACP owning capability scenarios and contract inventory — delivered Session evidence.

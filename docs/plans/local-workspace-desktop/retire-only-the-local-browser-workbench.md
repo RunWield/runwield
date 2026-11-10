@@ -5,7 +5,7 @@ complexity: "MEDIUM"
 affectedPaths:
     - "src/cmd/workspace/"
     - "src/cmd/plans/ui.ts"
-    - "src/ui/workspace/server.js"
+    - "src/ui/workspace/server.ts"
     - "src/ui/workspace/"
     - "src/ui/review/"
     - "scripts/build-workspace-runtime.ts"
@@ -34,7 +34,7 @@ planId: "cefff7c1-95dd-4509-bc0f-a85d239ef92d"
 
 ## Context
 
-Electron replaces the standalone local browser workbench; keeping both is not an Epic goal. However, `src/ui/workspace/server.js` also serves token-scoped review, document, and question hosts used independently by TUI, Connect, and external ACP clients. Browser assets and release builds are shared with those hosts and the separate Plan share server.
+Electron replaces the standalone local browser workbench; keeping both is not an Epic goal. However, `src/ui/workspace/server.ts` also serves token-scoped review, document, and question hosts used independently by TUI, Connect, and external ACP clients. Browser assets and release builds are shared with those hosts and the separate Plan share server.
 
 This child changes local access requirements under [Desktop Workspace](../../prd/runwield-workspace-prd.md#desktop-workspace) and [Workspace client access](../../prd/runwield-acp-protocol-prd.md#workspace-client-access). It does not retire Shared Plan links or require Electron for standalone viewers.
 
@@ -58,7 +58,7 @@ Deleting the Workspace directory or entire browser build would be simpler but wo
 The boundaries this change is expected to touch. This list is guidance, not an allowlist: verify the real footprint during implementation and change whatever the Implementation Steps need, including files not named here. Stop and report only when discovery changes approved intent — the change reaches another subsystem, public behavior or architecture shifts, migration or compatibility risk grows, or the Verification Plan no longer proves the objective.
 
 - `src/cmd/workspace/`, `src/cmd/plans/ui.ts`, command registration/help, owner pages/routes/server composition — workbench-only removal.
-- `src/ui/workspace/server.js`, shared components/assets, `src/ui/review/`, browser-question callers — retained host separation.
+- `src/ui/workspace/server.ts`, shared components/assets, `src/ui/review/`, browser-question callers — retained host separation.
 - `package.json`, compile/release scripts, `scripts/build-workspace-runtime.ts`, `build-plan-server-runtime.ts`, and relevant tests — remove only dedicated workbench support.
 - `docs/domain-language.md`, `PRODUCT.md`, root/Workspace/ACP PRDs, ADR references, user docs — desktop cutover definitions and browser-access guidance.
 

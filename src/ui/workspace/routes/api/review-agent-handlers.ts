@@ -109,7 +109,7 @@ type ReviewAgentStandaloneTarget = Partial<
     Pick<StandaloneReviewPayload, "headRef" | "mode" | "baseLabel" | "reviewContext">
 >;
 
-interface ReviewAgentPayload extends ReviewWidgetPayload {
+export interface ReviewAgentPayload extends ReviewWidgetPayload {
     agentTurnOwner?: string;
     rawPatch?: string;
     agentCwd?: JsonValue;

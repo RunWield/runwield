@@ -4537,7 +4537,7 @@ export async function resolveSiblingChildPlanDependencies(cwd, parentPlan, depen
 }
 
 /**
- * @param {{ attrs: PlanFrontMatter }} plan
+ * @param {{ attrs: Partial<PlanFrontMatter> }} plan
  * @returns {boolean}
  */
 export function isChildFeaturePlan(plan) {
@@ -4561,7 +4561,7 @@ export function isChildPlannedChangePlan(plan) {
  */
 
 /**
- * @template {{ name: string, attrs: PlanFrontMatter }} T
+ * @template {{ name: string, attrs: Partial<PlanFrontMatter> }} T
  * @param {T[]} plans
  * @returns {{ epics: T[], childrenByParent: Map<string, T[]>, standalone: T[], orphanChildren: T[] }}
  */

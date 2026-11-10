@@ -15,7 +15,7 @@ import {
     findTargetBranchPlansByParent,
     readTargetBranchPlanCatalogByParent,
 } from "./shared/workflow/planning-worktree.ts";
-import { loadBoard, loadPlanSummaries, loadPlanSummaryCatalog } from "./ui/workspace/server/plan-adapter.js";
+import { loadBoard, loadPlanSummaries, loadPlanSummaryCatalog } from "./ui/workspace/server/plan-adapter.ts";
 
 const broken = "---\naffectedPaths: - src/a.ts\n  status: draft\n---\n# Broken\n";
 function document(id: string, extra = "") {

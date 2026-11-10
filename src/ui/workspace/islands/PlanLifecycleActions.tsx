@@ -11,7 +11,7 @@ import {
 import type { PlanFrontMatter, PlanResource } from "../../../plan-store.js";
 import type { PlanActionRequest } from "../../../shared/workflow/plan-actions.ts";
 import type { getPlanLifecycleActionMetadata } from "../../../shared/workflow/plan-lifecycle.ts";
-import type { ACTION_META, ResumeCheck } from "../server/plan-adapter.js";
+import type { ACTION_META, ResumeCheck } from "../server/plan-adapter.ts";
 
 export interface PlanLifecycleActionIntent
     extends

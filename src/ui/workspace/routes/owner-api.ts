@@ -10,7 +10,7 @@ import {
 import { DirectoryConfirmationRequired } from "../../../shared/project-directory.ts";
 import { loadPlanActionEvidence, type PlanActionRequest } from "../../../shared/workflow/plan-actions.ts";
 import type { OwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
-import type { WorkspaceLiveInteraction, WorkspaceSessionContinuationService } from "../server/session-continuation.js";
+import type { WorkspaceLiveInteraction, WorkspaceSessionContinuationService } from "../server/session-continuation.ts";
 import type { createWorkspaceSearchService } from "../server/workspace-search.ts";
 import type { OwnerConnectionRegistry } from "../server/owner-connections.ts";
 
@@ -22,7 +22,7 @@ import {
     deviceCookieHeaders,
     getCookie,
 } from "../server/owner-auth.ts";
-import { loadBoard, loadWorkspaceDetail } from "../server/plan-adapter.js";
+import { loadBoard, loadWorkspaceDetail } from "../server/plan-adapter.ts";
 import { runOwnerPlanAction } from "../server/owner-plan-actions.ts";
 import { loadOwnerPlanProgress } from "../server/owner-plan-progress.ts";
 import { loadOwnerDashboard, loadOwnerSidebar, subscribeOwnerDashboard } from "../server/owner-dashboard.ts";

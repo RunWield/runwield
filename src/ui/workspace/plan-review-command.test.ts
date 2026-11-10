@@ -5,7 +5,7 @@ import { ok as assert } from "node:assert/strict";
 import { ensurePlanIdentity, savePlan } from "../../plan-store.js";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { createOwnerWorkspaceApp } from "./server.js";
+import { createOwnerWorkspaceApp } from "./server.ts";
 
 test("owner Plan review command opens a saved review through the authorized route without a user turn", async () => {
     await withRuntimeCommandFixture(

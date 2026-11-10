@@ -24,6 +24,6 @@ try {
             <p>{error.repair}</p>
         </section>
     ) : (
-        <PlanDetail plan={plan} url={Astro.url.href} editIntent={editIntent} client:load />
+        <PlanDetail plan={plan!} url={Astro.url.href} editIntent={editIntent} client:load />
     )}
 </ReviewLayout>

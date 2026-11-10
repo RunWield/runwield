@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
-import { createOwnerWorkspaceApp } from "./server.js";
+import { createOwnerWorkspaceApp } from "./server.ts";
 
 test("paired app leaves a restored pairing page, survives server restart, and respects revocation", async () => {
     const dir = await fsMkdtemp(join(tmpdir(), "workspace-pairing-persistence-"));

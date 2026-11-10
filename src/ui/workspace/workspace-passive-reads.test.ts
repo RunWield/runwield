@@ -14,7 +14,7 @@ import { openOwnerCoordinationStore } from "../../shared/owner-coordination/inde
 import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
 import { addEntry } from "../../shared/worktree-registry.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
-import { createOwnerWorkspaceApp } from "./server.js";
+import { createOwnerWorkspaceApp } from "./server.ts";
 
 function document(id: string, body = "Primary compass", extra = "") {
     return `---\n${id ? `planId: ${id}\n` : ""}classification: FEATURE\nstatus: in_progress\n${extra}---\n# ${body}\n`;
@@ -347,7 +347,7 @@ test("production Workspace reads target-only Plans from local Git objects withou
         owner = await workspace(root);
         const { findPlanById } = await import("../../plan-store.js");
         const { assertAuthorizedPlanPath, assertReadablePlanResource } = await import("./server/project-artifacts.ts");
-        const { loadWorkspaceDetail } = await import("./server/plan-adapter.js");
+        const { loadWorkspaceDetail } = await import("./server/plan-adapter.ts");
         const resource = await findPlanById(root, "target-id");
         await assertReadablePlanResource(root, resource);
         await rejects(() => assertAuthorizedPlanPath(root, resource.path, resource.planName));

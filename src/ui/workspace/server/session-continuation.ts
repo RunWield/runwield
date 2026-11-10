@@ -1,17 +1,36 @@
-/**
- * @typedef {Object} CodeReviewRefreshContext
- * @property {string} cwd
- * @property {string} targetBranch
- * @property {string} [targetBaseRef]
- */
+import type {
+    RuntimeInteractionAdapter,
+    RuntimeInteractionOption,
+    RuntimeInteractionRequest,
+    RuntimeInteractionResponse,
+} from "../../../shared/session/session-runtime-interactions.ts";
+import type {
+    RuntimeAttentionRequestedEvent,
+    RuntimeQueuedMessage,
+    SessionRuntimeEvent,
+} from "../../../shared/session/session-runtime-events.ts";
+import type { LiveSessionInfo } from "../../../shared/session/live-session-connection.ts";
+import type { BrowserNotificationPolicy } from "../../../shared/session/notification-content.ts";
+import type { ImageAttachment } from "../../../shared/session/image-attachments.ts";
+import type { OwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
+import type { SequenceReviewDecision, SequenceReviewDocument } from "../../../shared/workflow/sequence-review.ts";
+import type { PlanFrontMatter } from "../../../plan-store.js";
+import type { PlanWorktreeExpectation } from "../../../shared/workflow/plan-actions.ts";
+import type { SharedPlanReviewDecision } from "../../../shared/workflow/plan-review-actions.ts";
+import type { ReviewImageDecision } from "../../../shared/workflow/review-feedback-images.ts";
+import type { ThinkingLevel } from "../../../shared/session/named-invocation.ts";
+export interface CodeReviewRefreshContext {
+    cwd: string;
+    targetBranch: string;
+    targetBaseRef?: string;
+}
 import fs, { stat as fsStat } from "node:fs/promises";
-/**
- * @typedef {Object} LiveCodeReviewOptions
- * @property {string} projectId
- * @property {string} operationId
- * @property {string} interactionId
- * @property {string} runwieldSessionId
- */
+export interface LiveCodeReviewOptions {
+    projectId: string;
+    operationId: string;
+    interactionId: string;
+    runwieldSessionId: string;
+}
 import { validateSequenceReviewDecision } from "../../../shared/workflow/sequence-review.ts";
 import { resolveWorkflowPlanLocation } from "../../../shared/workflow/plan-location.ts";
 /* @module ui/workspace/server/session-continuation */
@@ -65,40 +84,45 @@ import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./owner-p
 
 /** A rejected image submission has not been accepted as an operation. */
 export class ImageSubmissionValidationError extends Error {
-    /** @param {string} message */
-    constructor(message = "Cannot attach image.") {
+    constructor(message: string = "Cannot attach image.") {
         super(message);
         this.name = "ImageSubmissionValidationError";
     }
 }
 
-/** @typedef {"off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"} WorkspaceThinkingLevel */
-/** @typedef {{ name: string, firstMessage: string }} SessionListInfo */
-/**
- * @typedef {Object} SessionListOptions
- * @property {number} [page]
- * @property {number} [pageSize]
- * @property {boolean} [includeEmpty]
- * @property {boolean} [includeTotal]
- * @property {string} [planId]
- * @property {"active" | "archived" | "all"} [archiveState]
- * @property {string[]} [excludedPlanIds]
- * @property {string[]} [excludedSessionIds]
- */
-/** @typedef {{ operationId: string, status: string, runwieldSessionId: string | null, generation: number | null }} CreateSessionResult */
-/** @typedef {{ requestHash: string, settled: Promise<void> }} PendingCreateRequest */
-/** @typedef {(value?: void | PromiseLike<void>) => void} VoidResolver */
-/** @typedef {{ size: number, mtime: number | undefined, ctime: number | undefined, info: SessionListInfo }} SessionListInfoCacheEntry */
-/** @type {Map<string, SessionListInfoCacheEntry>} */
-const sessionListInfoCache = new Map();
+export type WorkspaceThinkingLevel = ThinkingLevel;
+export type SessionListInfo = { name: string; firstMessage: string };
+export interface SessionListOptions {
+    page?: number;
+    pageSize?: number;
+    includeEmpty?: boolean;
+    includeTotal?: boolean;
+    planId?: string;
+    archiveState?: "active" | "archived" | "all";
+    excludedPlanIds?: string[];
+    excludedSessionIds?: string[];
+}
+export type CreateSessionResult = {
+    operationId: string;
+    status: string;
+    runwieldSessionId: string | null;
+    generation: number | null;
+};
+export type PendingCreateRequest = { requestHash: string; settled: Promise<void> };
+export type VoidResolver = (value?: void | PromiseLike<void>) => void;
+export type SessionListInfoCacheEntry = {
+    size: number;
+    mtime: number | undefined;
+    ctime: number | undefined;
+    info: SessionListInfo;
+};
+const sessionListInfoCache: Map<string, SessionListInfoCacheEntry> = new Map();
 
-/** @param {unknown} value */
-function stableHash(value) {
+function stableHash<Value>(value: Value) {
     return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
-/** @param {unknown} error */
-function codeFromError(error) {
+function codeFromError<ErrorValue>(error: ErrorValue) {
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes("not enabled")) return "rollout_disabled";
     if (message.includes("reconcile")) return "reconcile_required";
@@ -106,21 +130,19 @@ function codeFromError(error) {
     return "invalid_state";
 }
 
-/** @template T @param {T | null} receipt @returns {T} */
-function requireReceipt(receipt) {
+function requireReceipt<T>(receipt: T | null): T {
     if (!receipt) throw new Error("Operation receipt was not created.");
     return receipt;
 }
 
-/** @param {{ ok: boolean, events?: unknown[], segments?: unknown[] }} projection */
-function browserTimelineProjection(projection) {
+function browserTimelineProjection(projection: BrowserTimelineProjection) {
     if (!projection.ok) return projection;
     return {
         ...projection,
         events: Array.isArray(projection.events)
             ? projection.events.map((event) => {
                   if (!event || typeof event !== "object") return event;
-                  const { _meta, ...safeEvent } = /** @type {Record<string, unknown>} */ (event);
+                  const { _meta, ...safeEvent } = event;
                   return safeEvent;
               })
             : projection.events,
@@ -128,13 +150,10 @@ function browserTimelineProjection(projection) {
     };
 }
 
-/** @param {import('../../../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest} request */
-function safePlanReviewReference(request) {
+function safePlanReviewReference(request: RuntimeInteractionRequest) {
     const meta = request._meta && typeof request._meta === "object" ? request._meta : {};
     const triageMeta =
-        meta.triageMeta && typeof meta.triageMeta === "object"
-            ? /** @type {Record<string, unknown>} */ (meta.triageMeta)
-            : {};
+        meta.triageMeta && typeof meta.triageMeta === "object" ? (meta.triageMeta as Record<string, unknown>) : {};
     const planId =
         typeof meta.planId === "string" && meta.planId.trim()
             ? meta.planId.trim()
@@ -178,8 +197,7 @@ function safePlanReviewReference(request) {
     };
 }
 
-/** @param {import('../../../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest} request */
-function safeCodeReviewReference(request) {
+function safeCodeReviewReference(request: RuntimeInteractionRequest) {
     const meta = request._meta && typeof request._meta === "object" ? request._meta : {};
     const rawPatch = typeof meta.diffText === "string" ? meta.diffText : "";
     const planName =
@@ -206,8 +224,7 @@ function safeCodeReviewReference(request) {
     };
 }
 
-/** @param {import('../../../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest} request */
-function safeArtifactReviewReference(request) {
+function safeArtifactReviewReference(request: RuntimeInteractionRequest) {
     const meta = request._meta && typeof request._meta === "object" ? request._meta : {};
     const artifactId = typeof meta.artifactId === "string" ? meta.artifactId.trim() : "";
     if (!artifactId) return null;
@@ -219,14 +236,12 @@ function safeArtifactReviewReference(request) {
     };
 }
 
-/** @param {unknown} response */
-function readPlanReviewDecisionMeta(response) {
+// Browser answers reach the service as raw payloads and are checked by the review handlers.
+function readPlanReviewDecisionMeta(response: unknown) {
     if (!response || typeof response !== "object") return {};
-    const source = /** @type {Record<string, unknown>} */ (response);
+    const source = response as Record<string, unknown>;
     const decision =
-        source._meta && typeof source._meta === "object"
-            ? /** @type {Record<string, unknown>} */ (source._meta)
-            : source;
+        source._meta && typeof source._meta === "object" ? (source._meta as Record<string, unknown>) : source;
     // Feedback and review chat may omit approved, but an explicit decision must be boolean.
     if (Object.hasOwn(decision, "approved") && typeof decision.approved !== "boolean") {
         throw new Error("Plan review approved must be a boolean.");
@@ -234,10 +249,9 @@ function readPlanReviewDecisionMeta(response) {
     return decision;
 }
 
-/** @param {unknown} response @returns {import("../../../shared/session/session-runtime-interactions.ts").RuntimeInteractionResponse} */
-function acceptedInteractionResponse(response) {
+function acceptedInteractionResponse(response: unknown): RuntimeInteractionResponse {
     if (response && typeof response === "object") {
-        const source = /** @type {Record<string, unknown>} */ (response);
+        const source = response as Record<string, unknown>;
         const outcome = source.outcome;
         switch (outcome) {
             case "selected":
@@ -253,13 +267,11 @@ function acceptedInteractionResponse(response) {
     return { outcome: "unsupported", message: "Workspace interaction response is invalid." };
 }
 
-/** @param {string} value */
-function compactSessionName(value) {
+function compactSessionName(value: string) {
     return value.trim().replace(/\s+/g, " ");
 }
 
-/** @param {string} transcriptPath */
-async function readSessionListInfo(transcriptPath) {
+async function readSessionListInfo(transcriptPath: string) {
     try {
         const stat = await fsStat(transcriptPath);
         const cached = sessionListInfoCache.get(transcriptPath);
@@ -302,72 +314,220 @@ async function readSessionListInfo(transcriptPath) {
     }
 }
 
-/** @param {string} transcriptPath */
-export async function readSessionName(transcriptPath) {
+export async function readSessionName(transcriptPath: string) {
     const info = await readSessionListInfo(transcriptPath);
     return info.name || info.firstMessage;
 }
 
-/** @param {string[]} paths */
-async function readSessionDisplayName(paths) {
+async function readSessionDisplayName(paths: string[]) {
     const infos = await Promise.all(paths.map(readSessionListInfo));
     const savedName = infos.findLast((info) => info.name)?.name || "";
     const name = savedName && !/^untitled(?: session)?$/i.test(savedName) ? savedName : "";
     return name || infos.find((info) => info.firstMessage)?.firstMessage || "";
 }
 
-/**
- * @typedef {Object} WorkspaceInteractionFields
- * @property {string} [type]
- * @property {string} [prompt]
- * @property {string | null} [reviewUrl]
- * @property {NonNullable<ReturnType<typeof safePlanReviewReference>>} [planReview]
- * @property {ReturnType<typeof safeCodeReviewReference> & { planId?: string }} [codeReview]
- */
+export interface WorkspaceInteractionFields {
+    type?: string;
+    prompt?: string;
+    reviewUrl?: string | null;
+    planReview?: NonNullable<ReturnType<typeof safePlanReviewReference>>;
+    codeReview?: ReturnType<typeof safeCodeReviewReference> & { planId?: string };
+}
 
-/** @typedef {WorkspaceInteractionFields & Record<string, unknown>} WorkspaceInteractionRequest */
+export type WorkspaceInteractionRequest = WorkspaceInteractionFields & Record<string, unknown>;
 
-/**
- * @typedef {Object} WorkspaceLiveInteraction
- * @property {string} interactionId
- * @property {WorkspaceInteractionRequest} request
- */
+export interface WorkspaceLiveInteraction {
+    interactionId: string;
+    request: WorkspaceInteractionRequest;
+}
 
-/** @param {import('../../../shared/owner-coordination/index.ts').OwnerCoordinationStore} store @param {{ transcriptCwd: string }} session @param {string} projectId */
-/**
- * @typedef {Object} WorkspaceOperationRecord
- * @property {string} status
- * @property {string} projectId
- * @property {import("../../../shared/session/session-runtime-events.ts").SessionRuntimeEvent[]} events
- * @property {boolean} [remote]
- * @property {import("../../../shared/session/live-session-connection.ts").LiveSessionInfo | null} [sessionInfo]
- * @property {import("../../../shared/session/session-runtime-events.ts").RuntimeQueuedMessage[]} [queuedMessages]
- * @property {string} [error]
- * @property {number | null} [generation]
- * @property {string | null} [runwieldSessionId]
- * @property {string} [runtimeSessionId]
- * @property {string} [planId]
- * @property {number} [expectedGeneration]
- * @property {{ agentName?: string, model?: string, provider?: string }} [pendingConfiguration]
- * @property {WorkspaceLiveInteraction} [liveInteraction]
- * @property {import('../../../shared/session/notification-content.ts').BrowserNotificationPolicy} [browserNotificationPolicy]
- * @property {{ resolve: (value: import("../../../shared/session/session-runtime-interactions.ts").RuntimeInteractionResponse) => void | Promise<void>, reject: (error: Error) => void } | null} [answer]
- */
+export interface WorkspaceOperationRecord {
+    status: string;
+    projectId: string;
+    events: SessionRuntimeEvent[];
+    remote?: boolean;
+    sessionInfo?: LiveSessionInfo | null;
+    queuedMessages?: RuntimeQueuedMessage[];
+    error?: string;
+    generation?: number | null;
+    runwieldSessionId?: string | null;
+    runtimeSessionId?: string;
+    planId?: string;
+    expectedGeneration?: number;
+    pendingConfiguration?: PendingSessionConfiguration;
+    liveInteraction?: WorkspaceLiveInteraction;
+    browserNotificationPolicy?: BrowserNotificationPolicy;
+    answer?: {
+        resolve: (value: RuntimeInteractionResponse) => void | Promise<void>;
+        reject: (error: Error) => void;
+    } | null;
+}
 
-/**
- * @typedef {Object} WorkspaceAttentionNotification
- * @property {import('../../../shared/session/session-runtime-events.ts').RuntimeAttentionRequestedEvent} event
- * @property {string} url
- * @property {import('../../../shared/session/notification-content.ts').BrowserNotificationPolicy} policy
- */
+export interface WorkspaceAttentionNotification {
+    event: RuntimeAttentionRequestedEvent;
+    url: string;
+    policy: BrowserNotificationPolicy;
+}
 
-/** @typedef {{ operationId: string, reviewUrl: string }} WorkspacePlanReviewStarted */
+export type WorkspacePlanReviewStarted = { operationId: string; reviewUrl: string };
+
+export interface WorkspaceSessionArchiveRequest {
+    projectId: string;
+    runwieldSessionId: string;
+    confirmed?: boolean;
+}
+
+export interface WorkspaceSteeringRequest {
+    projectId: string;
+    operationId: string;
+    requestId: string;
+    text: string;
+    images: ImageAttachment[];
+}
+
+type OperationSnapshotListener = (snapshot: ReturnType<WorkspaceSessionContinuationService["getOperation"]>) => void;
+
+interface OperationOptions {
+    operationId: string;
+}
+
+type BrowserTimelineProjection = Awaited<ReturnType<typeof projectAggregateTranscript>>;
+
+interface WorkspaceSessionContinuationOptions {
+    store: OwnerCoordinationStore;
+}
+
+interface TimelineOptions {
+    projectId?: string;
+    cursorEventId?: string;
+    limit?: number;
+    latest?: boolean;
+    beforeEventId?: string;
+}
+
+interface WorkspaceThinkingLevels extends Array<WorkspaceThinkingLevel> {
+    includes(value: string, fromIndex?: number): boolean;
+}
+
+interface ThinkingSelectionOptions {
+    thinkingLevels: WorkspaceThinkingLevels;
+}
+
+interface PendingSessionConfiguration {
+    agentName?: string;
+    model?: string;
+    provider?: string;
+}
+
+interface ConfigureSessionOptions {
+    projectId: string;
+    runwieldSessionId: string;
+    expectedGeneration: number;
+    agentName?: string;
+    model?: string;
+    provider?: string;
+    thinkingLevel?: string;
+}
+
+interface BootstrapOptions {
+    deviceId?: string | null;
+    projectId: string;
+    runwieldSessionId: string;
+    requestId: string;
+}
+
+interface CreateSessionOptions {
+    deviceId?: string | null;
+    projectId: string;
+    requestId: string;
+    text: string;
+    images?: ImageAttachment[];
+    agentName?: string;
+    model?: string;
+    provider?: string;
+    thinkingLevel?: string;
+}
+
+interface StartPlanReviewOptions {
+    deviceId?: string | null;
+    projectId: string;
+    runwieldSessionId: string;
+    requestId: string;
+    expectedGeneration: number;
+}
+
+interface StartContinuationOptions {
+    deviceId?: string | null;
+    projectId: string;
+    runwieldSessionId: string;
+    requestId: string;
+    expectedGeneration: number;
+    text: string;
+    images?: ImageAttachment[];
+}
+
+interface AnswerInteractionOptions {
+    deviceId?: string | null;
+    projectId: string;
+    operationId: string;
+    interactionId: string;
+    runwieldSessionId?: string | null;
+    requestId: string;
+    response: unknown;
+}
+
+interface GetLivePlanReviewOptions {
+    projectId: string;
+    operationId: string;
+    interactionId: string;
+    runwieldSessionId: string;
+    planId: string;
+}
+
+interface ForceRecoverSessionControlOptions {
+    projectId: string;
+    runwieldSessionId: string;
+    expectedGeneration: number;
+    expectedCurrentSegmentId?: string | null;
+}
+
+interface StartPlanWorkflowHandoffOptions {
+    requestId: string;
+    deviceId?: string | null;
+    action?: string;
+    runwieldSessionId: string;
+    projectId: string;
+    expectedGeneration: number;
+    planName: string;
+    planContent?: string;
+    triageMeta?: Partial<PlanFrontMatter>;
+    reviewFeedback?: string;
+    reviewImages?: ImageAttachment[];
+}
 
 export class WorkspaceSessionContinuationService {
-    /**
-     * @param {{ store: import('../../../shared/owner-coordination/index.ts').OwnerCoordinationStore }} options
-     */
-    constructor(options) {
+    declare store: OwnerCoordinationStore;
+    declare ownerInstanceId: string;
+    declare runtime: ReturnType<typeof createSessionRuntime>;
+    declare operations: Map<string, WorkspaceOperationRecord>;
+    declare operationListeners: Map<string, Set<OperationSnapshotListener>>;
+    declare operationChanges: Map<string, Set<(status: string) => void>>;
+    declare notificationListeners: Set<(notification: WorkspaceAttentionNotification) => void>;
+    declare remoteNotificationStreams: Map<string, Promise<() => void>>;
+    declare createRequests: Map<string, { requestHash: string; operationId: string }>;
+    declare pendingCreateRequests: Map<string, PendingCreateRequest>;
+    declare codeReviewRefreshContexts: Map<string, CodeReviewRefreshContext>;
+    declare retainedSessions: Map<string, { sessionId: string; unsubscribe: () => void }>;
+    declare closingRetainedSessions: Map<
+        string,
+        ReturnType<WorkspaceSessionContinuationService["runtime"]["closeSessionWhenIdle"]>
+    >;
+    declare openingContinuations: Map<string, number>;
+    declare backgroundOperations: Set<Promise<void>>;
+    declare closed: boolean;
+    declare closing: Promise<void> | null;
+
+    constructor(options: WorkspaceSessionContinuationOptions) {
         this.store = options.store;
         this.ownerInstanceId = crypto.randomUUID();
         this.runtime = createSessionRuntime({
@@ -375,35 +535,23 @@ export class WorkspaceSessionContinuationService {
             ownerProcessKind: "workspace",
             ownerInstanceId: this.ownerInstanceId,
         });
-        /** @type {Map<string, WorkspaceOperationRecord>} */
         this.operations = new Map();
-        /** @type {Map<string, Set<(snapshot: Record<string, unknown>) => void>>} */
         this.operationListeners = new Map();
-        /** @type {Map<string, Set<(status: string) => void>>} */
         this.operationChanges = new Map();
-        /** @type {Set<(notification: WorkspaceAttentionNotification) => void>} */
         this.notificationListeners = new Set();
-        /** @type {Map<string, Promise<() => void>>} */
         this.remoteNotificationStreams = new Map();
-        /** @type {Map<string, { requestHash: string, operationId: string }>} */
         this.createRequests = new Map();
-        /** @type {Map<string, PendingCreateRequest>} */
         this.pendingCreateRequests = new Map();
-        /** @type {Map<string, CodeReviewRefreshContext>} */
         this.codeReviewRefreshContexts = new Map();
-        /** @type {Map<string, { sessionId: string, unsubscribe: () => void }>} */
         this.retainedSessions = new Map();
         this.closingRetainedSessions = new Map();
         this.openingContinuations = new Map();
-        /** @type {Set<Promise<void>>} */
         this.backgroundOperations = new Set();
         this.closed = false;
-        /** @type {Promise<void> | null} */
         this.closing = null;
     }
 
-    /** @param {() => Promise<void>} work */
-    runBackgroundOperation(work) {
+    runBackgroundOperation(work: () => Promise<void>) {
         const operation = Promise.resolve().then(work);
         this.backgroundOperations.add(operation);
         // Attach both handlers now so a failure cannot become an unhandled rejection
@@ -442,8 +590,7 @@ export class WorkspaceSessionContinuationService {
         return this.closing;
     }
 
-    /** @param {string} operationId */
-    notifyOperation(operationId) {
+    notifyOperation(operationId: string) {
         const status = this.operations.get(operationId)?.status || "unknown";
         for (const listener of [...(this.operationChanges.get(operationId) || [])]) listener(status);
         const listeners = this.operationListeners.get(operationId);
@@ -452,8 +599,7 @@ export class WorkspaceSessionContinuationService {
         for (const listener of [...listeners]) listener(snapshot);
     }
 
-    /** @param {string} operationId @param {WorkspaceOperationRecord} record */
-    setOperation(operationId, record) {
+    setOperation(operationId: string, record: WorkspaceOperationRecord) {
         if (this.closed) return;
         const previous = this.operations.get(operationId);
         if (previous?.status !== "running" && previous) return;
@@ -463,16 +609,13 @@ export class WorkspaceSessionContinuationService {
                 browserNotificationPolicy: this.resolveBrowserNotificationPolicy(record.projectId),
             });
         } else {
-            const stopped =
-                /** @type {import('../../../shared/session/session-runtime-events.ts').RuntimeAttentionRequestedEvent | undefined} */ (
-                    record.events.findLast(
-                        (event) =>
-                            event.type === "attention_requested" &&
-                            event.reason === "agentStopped" &&
-                            !event.eventId &&
-                            !event.notificationSurface,
-                    )
-                );
+            const stopped = record.events.findLast(
+                (event): event is RuntimeAttentionRequestedEvent =>
+                    event.type === "attention_requested" &&
+                    event.reason === "agentStopped" &&
+                    !event.eventId &&
+                    !event.notificationSurface,
+            );
             this.operations.set(operationId, {
                 status: record.status,
                 projectId: record.projectId,
@@ -499,18 +642,15 @@ export class WorkspaceSessionContinuationService {
         this.notifyOperation(operationId);
     }
 
-    /** @param {string} operationId */
-    closeRemoteNotifications(operationId) {
+    closeRemoteNotifications(operationId: string) {
         const stream = this.remoteNotificationStreams.get(operationId);
         if (!stream) return;
         this.remoteNotificationStreams.delete(operationId);
         void stream.then((close) => close()).catch(() => {});
     }
 
-    /** Release a task owner only when no task, result, or user submission still needs it.
-     * @param {string} runwieldSessionId
-     */
-    async releaseRetainedIfDrained(runwieldSessionId) {
+    /** Release a task owner only when no task, result, or user submission still needs it. */
+    async releaseRetainedIfDrained(runwieldSessionId: string) {
         const retained = this.retainedSessions.get(runwieldSessionId);
         if (!retained || this.openingContinuations.has(runwieldSessionId)) return;
         if (
@@ -536,8 +676,7 @@ export class WorkspaceSessionContinuationService {
         }
     }
 
-    /** @param {string} sessionId @param {string} operationId */
-    preserveTaskOwnerOrClose(sessionId, operationId) {
+    preserveTaskOwnerOrClose(sessionId: string, operationId: string) {
         const snapshot = this.runtime.getSessionSnapshot(sessionId);
         const runwieldSessionId = snapshot?.managed?.runwieldSessionId;
         const tasks = this.runtime.getSessionBackgroundTaskState(sessionId);
@@ -548,14 +687,12 @@ export class WorkspaceSessionContinuationService {
         }
     }
 
-    /** @param {string} runwieldSessionId @param {string} sessionId @param {string} operationId */
-    retainContinuationSession(runwieldSessionId, sessionId, operationId) {
+    retainContinuationSession(runwieldSessionId: string, sessionId: string, operationId: string) {
         const previous = this.retainedSessions.get(runwieldSessionId);
         if (previous) previous.unsubscribe();
         let currentOperationId = operationId;
         let unsubscribe = () => {};
-        /** @param {import("../../../shared/session/session-runtime-events.ts").SessionRuntimeEvent} event */
-        const receive = (event) => {
+        const receive = (event: SessionRuntimeEvent) => {
             // Transcript replay describes saved work; it must not reopen background operations.
             if (event.eventId) return;
             if (event.type === "session_replaced" && event.reason === "prompt_template") {
@@ -606,8 +743,7 @@ export class WorkspaceSessionContinuationService {
         this.retainedSessions.set(runwieldSessionId, { sessionId, unsubscribe: () => unsubscribe() });
     }
 
-    /** @param {string} operationId @param {import("../../../shared/session/session-runtime-events.ts").SessionRuntimeEvent} event */
-    appendOperationEvent(operationId, event) {
+    appendOperationEvent(operationId: string, event: SessionRuntimeEvent) {
         const record = this.operations.get(operationId);
         if (!record || record.status !== "running") return;
         appendLiveSessionEvent(record.events, event);
@@ -619,14 +755,10 @@ export class WorkspaceSessionContinuationService {
         this.notifyOperation(operationId);
     }
 
-    /** Follow a user-approved new Session while retaining the original workflow Session.
-     * @param {string} operationId
-     * @param {string} sessionId
-     */
-    subscribeOperationSession(operationId, sessionId) {
+    /** Follow a user-approved new Session while retaining the original workflow Session. */
+    subscribeOperationSession(operationId: string, sessionId: string) {
         let unsubscribe = () => {};
-        /** @param {import("../../../shared/session/session-runtime-events.ts").SessionRuntimeEvent} event */
-        const receive = (event) => {
+        const receive = (event: SessionRuntimeEvent) => {
             this.appendOperationEvent(operationId, event);
             if (event.type !== "session_replaced" || event.reason !== "prompt_template") return;
             unsubscribe();
@@ -643,8 +775,7 @@ export class WorkspaceSessionContinuationService {
         return () => unsubscribe();
     }
 
-    /** @param {WorkspaceOperationRecord} record @param {import("../../../shared/session/session-runtime-events.ts").SessionRuntimeEvent} event */
-    notifyAttention(record, event) {
+    notifyAttention(record: WorkspaceOperationRecord, event: SessionRuntimeEvent) {
         if (event.type !== "attention_requested" || event.notificationSurface !== "workspace" || event.eventId) return;
         if (!record.runwieldSessionId) return;
         const notification = {
@@ -663,14 +794,12 @@ export class WorkspaceSessionContinuationService {
         }
     }
 
-    /** @param {(notification: WorkspaceAttentionNotification) => void} listener */
-    subscribeNotifications(listener) {
+    subscribeNotifications(listener: (notification: WorkspaceAttentionNotification) => void) {
         this.notificationListeners.add(listener);
         return () => this.notificationListeners.delete(listener);
     }
 
-    /** @param {string} operationId @param {WorkspaceOperationRecord | undefined} operation */
-    async watchRemoteNotifications(operationId, operation) {
+    async watchRemoteNotifications(operationId: string, operation: WorkspaceOperationRecord | undefined) {
         if (this.closed || !operation?.remote || !operation.runwieldSessionId) return;
         let stream = this.remoteNotificationStreams.get(operationId);
         if (!stream) {
@@ -690,10 +819,8 @@ export class WorkspaceSessionContinuationService {
         }
     }
 
-    /** Observe state changes without constructing transcript snapshots until the reader asks.
-     * @param {string} operationId @param {(status: string) => void} listener
-     */
-    subscribeOperationChanges(operationId, listener) {
+    /** Observe state changes without constructing transcript snapshots until the reader asks. */
+    subscribeOperationChanges(operationId: string, listener: (status: string) => void) {
         let listeners = this.operationChanges.get(operationId);
         if (!listeners) {
             listeners = new Set();
@@ -707,15 +834,13 @@ export class WorkspaceSessionContinuationService {
         };
     }
 
-    /** @param {string} projectId */
-    resolveBrowserNotificationPolicy(projectId) {
+    resolveBrowserNotificationPolicy(projectId: string) {
         const project = typeof this.store.getProjectById === "function" ? this.store.getProjectById(projectId) : null;
         const raw = project ? getMergedCustomSetting("notifications", project.currentRoot) : undefined;
         return normalizeBrowserNotificationPolicy(raw);
     }
 
-    /** @param {string} operationId @param {(snapshot: Record<string, unknown>) => void} listener */
-    subscribeOperation(operationId, listener) {
+    subscribeOperation(operationId: string, listener: OperationSnapshotListener) {
         let listeners = this.operationListeners.get(operationId);
         if (!listeners) {
             listeners = new Set();
@@ -731,10 +856,7 @@ export class WorkspaceSessionContinuationService {
         };
     }
 
-    /**
-     * @param {string} projectId
-     */
-    async listSessionOptions(projectId) {
+    async listSessionOptions(projectId: string) {
         const projectRoot = requireOwnerProjectRoot(this.store, projectId);
         const settings = getSettingsManager(projectRoot);
         const agentOptions = await listUserAgentOptions(projectRoot);
@@ -752,6 +874,7 @@ export class WorkspaceSessionContinuationService {
         // Options load infrequently, unlike animation renders. Refresh settings
         // edited by another surface/process before publishing visibility.
         clearMascotEnabledCache();
+        const thinkingLevels: WorkspaceThinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
         return {
             mascot: isMascotEnabled(projectRoot),
             defaults: {
@@ -777,15 +900,11 @@ export class WorkspaceSessionContinuationService {
                 })),
             ],
             models,
-            thinkingLevels: ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
+            thinkingLevels,
         };
     }
 
-    /**
-     * @param {string} projectId
-     * @param {SessionListOptions} [options]
-     */
-    async listSessions(projectId, options = {}) {
+    async listSessions(projectId: string, options: SessionListOptions = {}) {
         const page =
             typeof options.page === "number" && Number.isInteger(options.page) && options.page >= 0 ? options.page : 0;
         const pageSize =
@@ -857,11 +976,7 @@ export class WorkspaceSessionContinuationService {
         };
     }
 
-    /**
-     * @param {string} runwieldSessionId
-     * @param {number} expectedGeneration
-     */
-    async adoptIdleManagedSession(runwieldSessionId, expectedGeneration) {
+    async adoptIdleManagedSession(runwieldSessionId: string, expectedGeneration: number) {
         const session = this.store.getSessionById(runwieldSessionId);
         if (!session) throw new Error("Session not found.");
         const inspected = this.store.inspectSessionActivation(runwieldSessionId);
@@ -890,18 +1005,11 @@ export class WorkspaceSessionContinuationService {
             model: committedFacts.model,
             provider: committedFacts.provider,
             thinkingLevel: committedFacts.thinkingLevel,
-            workflowContext:
-                /** @type {import('../../../shared/session/workflow-context-session.ts').WorkflowContext | null} */ (
-                    committedFacts.workflowContext || null
-                ),
+            workflowContext: committedFacts.workflowContext || null,
         });
     }
 
-    /**
-     * @param {string} runwieldSessionId
-     * @param {{ projectId?: string, cursorEventId?: string, limit?: number, latest?: boolean, beforeEventId?: string }} [options]
-     */
-    async timeline(runwieldSessionId, options = {}) {
+    async timeline(runwieldSessionId: string, options: TimelineOptions = {}) {
         const session = this.store.getSessionById(runwieldSessionId);
         if (!session || (options.projectId && !sessionBelongsToOwnerProject(this.store, session, options.projectId))) {
             throw new Error("Session not found.");
@@ -940,8 +1048,7 @@ export class WorkspaceSessionContinuationService {
             beforeEventId: options.beforeEventId,
         });
         if (projection.ok) {
-            /** @type {import('../../../shared/session/live-session-connection.ts').LiveSessionInfo | null | undefined} */
-            let liveInfo = projectLiveSessionInfo(
+            let liveInfo: LiveSessionInfo | null | undefined = projectLiveSessionInfo(
                 this.runtime
                     .listSessions()
                     .find((item) => item.managed?.runwieldSessionId === runwieldSessionId && !item.managed.dormant) ||
@@ -981,41 +1088,30 @@ export class WorkspaceSessionContinuationService {
         };
     }
 
-    /**
-     * @param {string | undefined} agentName
-     * @param {string} projectRoot
-     */
-    async validateAgentSelection(agentName, projectRoot) {
+    async validateAgentSelection(agentName: string | undefined, projectRoot: string) {
         if (typeof agentName !== "string" || !agentName) return;
         await requireUserAgentOption(agentName, projectRoot);
     }
 
-    /**
-     * @param {string | undefined} model
-     * @param {string | undefined} provider
-     */
-    async validateModelSelection(model, provider) {
+    async validateModelSelection(model: string | undefined, provider: string | undefined) {
         if (typeof model !== "string" || !model) return;
         await requireUserModelOption(model, provider || "");
     }
 
-    /**
-     * @param {string | undefined} thinkingLevel
-     * @param {{ thinkingLevels: string[] }} sessionOptions
-     */
-    validateThinkingSelection(thinkingLevel, sessionOptions) {
+    validateThinkingSelection(
+        thinkingLevel: string | undefined,
+        sessionOptions: ThinkingSelectionOptions,
+    ): asserts thinkingLevel is WorkspaceThinkingLevel | "" | undefined {
         if (typeof thinkingLevel !== "string" || !thinkingLevel) return;
         if (!sessionOptions.thinkingLevels.includes(thinkingLevel)) {
             throw new Error("Selected thinking level is not supported.");
         }
     }
 
-    /**
-     * @param {string} runwieldSessionId
-     * @param {number} expectedGeneration
-     * @returns {{ operationId: string, record: WorkspaceOperationRecord } | null}
-     */
-    findActiveWorkspaceOperation(runwieldSessionId, expectedGeneration) {
+    findActiveWorkspaceOperation(
+        runwieldSessionId: string,
+        expectedGeneration: number,
+    ): { operationId: string; record: WorkspaceOperationRecord } | null {
         for (const [operationId, record] of this.operations.entries()) {
             if (
                 record.runwieldSessionId === runwieldSessionId &&
@@ -1029,11 +1125,7 @@ export class WorkspaceSessionContinuationService {
         return null;
     }
 
-    /**
-     * @param {string} runtimeSessionId
-     * @param {{ agentName?: string, model?: string, provider?: string }} pendingConfiguration
-     */
-    async applyPendingConfiguration(runtimeSessionId, pendingConfiguration) {
+    async applyPendingConfiguration(runtimeSessionId: string, pendingConfiguration: PendingSessionConfiguration) {
         if (pendingConfiguration.agentName) {
             const result = await applyUserAgentSelection(
                 this.runtime,
@@ -1053,10 +1145,7 @@ export class WorkspaceSessionContinuationService {
         }
     }
 
-    /**
-     * @param {{ projectId: string, runwieldSessionId: string, expectedGeneration: number, agentName?: string, model?: string, provider?: string, thinkingLevel?: string }} options
-     */
-    async configureSession(options) {
+    async configureSession(options: ConfigureSessionOptions) {
         const session = this.store.getSessionById(options.runwieldSessionId);
         if (!session || !sessionBelongsToOwnerProject(this.store, session, options.projectId)) {
             throw new Error("Session not found.");
@@ -1079,7 +1168,7 @@ export class WorkspaceSessionContinuationService {
             if (options.thinkingLevel) {
                 const runtimeSessionId = activeOperation.record.runtimeSessionId;
                 if (!runtimeSessionId) throw new Error("Active Runtime Session is not available.");
-                const thinkingLevel = /** @type {WorkspaceThinkingLevel} */ (options.thinkingLevel);
+                const thinkingLevel = options.thinkingLevel;
                 const result = await this.runtime.setSessionThinkingLevel(runtimeSessionId, thinkingLevel);
                 if (!result?.ok) throw new Error(result?.error || "Selected thinking level could not be applied.");
             }
@@ -1112,7 +1201,7 @@ export class WorkspaceSessionContinuationService {
                 if (!result.ok) throw new Error(result.error || "Selected model could not be applied.");
             }
             if (typeof options.thinkingLevel === "string" && options.thinkingLevel) {
-                const thinkingLevel = /** @type {WorkspaceThinkingLevel} */ (options.thinkingLevel);
+                const thinkingLevel = options.thinkingLevel;
                 const result = await this.runtime.setSessionThinkingLevel(adopted.sessionId, thinkingLevel);
                 if (!result?.ok) throw new Error(result?.error || "Selected thinking level could not be applied.");
             }
@@ -1129,14 +1218,7 @@ export class WorkspaceSessionContinuationService {
         }
     }
 
-    /**
-     * @typedef {Object} WorkspaceSessionArchiveRequest
-     * @property {string} projectId
-     * @property {string} runwieldSessionId
-     * @property {boolean} [confirmed]
-     */
-    /** @param {WorkspaceSessionArchiveRequest} options */
-    async archiveSession(options) {
+    async archiveSession(options: WorkspaceSessionArchiveRequest) {
         requireOwnerProjectRoot(this.store, options.projectId);
         const session = this.store.getSessionById(options.runwieldSessionId);
         if (!session || !sessionBelongsToOwnerProject(this.store, session, options.projectId)) {
@@ -1181,8 +1263,7 @@ export class WorkspaceSessionContinuationService {
         return { runwieldSessionId: archived.runwieldSessionId, archivedAt: archived.archivedAt };
     }
 
-    /** @param {WorkspaceSessionArchiveRequest} options */
-    unarchiveSession(options) {
+    unarchiveSession(options: WorkspaceSessionArchiveRequest) {
         requireOwnerProjectRoot(this.store, options.projectId);
         const session = this.store.getSessionById(options.runwieldSessionId);
         if (!session || !sessionBelongsToOwnerProject(this.store, session, options.projectId)) {
@@ -1192,10 +1273,7 @@ export class WorkspaceSessionContinuationService {
         return { runwieldSessionId: restored.runwieldSessionId, archivedAt: restored.archivedAt };
     }
 
-    /**
-     * @param {{ operationId: string }} options
-     */
-    async cancelOperation(options) {
+    async cancelOperation(options: OperationOptions) {
         const operation = this.operations.get(options.operationId);
         if (operation?.remote && operation.runwieldSessionId) {
             await readLiveSessionConnection(operation.runwieldSessionId, options.operationId, { action: "cancel" });
@@ -1205,16 +1283,7 @@ export class WorkspaceSessionContinuationService {
         return this.runtime.cancelSession(operation.runtimeSessionId);
     }
 
-    /**
-     * @typedef {Object} WorkspaceSteeringRequest
-     * @property {string} projectId
-     * @property {string} operationId
-     * @property {string} requestId
-     * @property {string} text
-     * @property {import('../../../shared/session/image-attachments.ts').ImageAttachment[]} images
-     */
-    /** @param {WorkspaceSteeringRequest} options */
-    async steerOperation(options) {
+    async steerOperation(options: WorkspaceSteeringRequest) {
         const operation = this.operations.get(options.operationId);
         if (
             operation?.projectId !== options.projectId ||
@@ -1235,10 +1304,7 @@ export class WorkspaceSessionContinuationService {
         });
     }
 
-    /**
-     * @param {{ deviceId?: string | null, projectId: string, runwieldSessionId: string, requestId: string }} options
-     */
-    async bootstrap(options) {
+    async bootstrap(options: BootstrapOptions) {
         const session = this.store.getSessionById(options.runwieldSessionId);
         if (!session || !sessionBelongsToOwnerProject(this.store, session, options.projectId)) {
             throw new Error("Session not found.");
@@ -1312,12 +1378,11 @@ export class WorkspaceSessionContinuationService {
         }
     }
 
-    /**
-     * @param {string} operationId
-     * @param {import('../../../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest} request
-     * @param {NonNullable<WorkspaceOperationRecord['answer']>} answer
-     */
-    registerInteraction(operationId, request, answer) {
+    registerInteraction(
+        operationId: string,
+        request: RuntimeInteractionRequest,
+        answer: NonNullable<WorkspaceOperationRecord["answer"]>,
+    ) {
         const current = this.operations.get(operationId);
         if (!current) throw new Error("The running turn is no longer available.");
         const interactionId = String(request.id);
@@ -1364,15 +1429,11 @@ export class WorkspaceSessionContinuationService {
                     type: request.type,
                     prompt: request.prompt,
                     options: Array.isArray(request.options)
-                        ? request.options.map(
-                              /** @param {import('../../../shared/session/session-runtime-interactions.ts').RuntimeInteractionOption} option */ (
-                                  option,
-                              ) => ({
-                                  value: option.value,
-                                  label: option.label,
-                                  description: option.description,
-                              }),
-                          )
+                        ? request.options.map((option: RuntimeInteractionOption) => ({
+                              value: option.value,
+                              label: option.label,
+                              description: option.description,
+                          }))
                         : [],
                     defaultValue: request.defaultValue,
                     placeholder: request.placeholder,
@@ -1386,14 +1447,10 @@ export class WorkspaceSessionContinuationService {
         });
     }
 
-    /**
-     * @param {{ operationId: string }} options
-     */
-    createInteractionAdapter(options) {
+    createInteractionAdapter(options: OperationOptions): RuntimeInteractionAdapter {
         return {
             supportsInteraction: () => true,
-            /** @param {import('../../../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest} request @param {AbortSignal} [signal] */
-            requestInteraction: async (request, signal) => {
+            requestInteraction: async (request: RuntimeInteractionRequest, signal?: AbortSignal) => {
                 const reviewPlanId = request.type === "plan_review" ? safePlanReviewReference(request)?.planId : null;
                 if (reviewPlanId) {
                     const operation = this.operations.get(options.operationId);
@@ -1424,7 +1481,7 @@ export class WorkspaceSessionContinuationService {
                     };
                 }
                 const interactionId = String(request.id || crypto.randomUUID());
-                return new Promise((resolve, reject) => {
+                return new Promise<RuntimeInteractionResponse>((resolve, reject) => {
                     const current = this.operations.get(options.operationId);
                     if (!current || current.status !== "running") {
                         reject(new Error("Workspace operation is not running."));
@@ -1453,11 +1510,7 @@ export class WorkspaceSessionContinuationService {
         };
     }
 
-    /**
-     * @param {{ deviceId?: string | null, projectId: string, requestId: string, text: string, images?: import("../../../shared/session/image-attachments.ts").ImageAttachment[], agentName?: string, model?: string, provider?: string, thinkingLevel?: string }} options
-     * @returns {Promise<CreateSessionResult>}
-     */
-    async createSession(options) {
+    async createSession(options: CreateSessionOptions): Promise<CreateSessionResult> {
         if (!options.text?.trim() && !options.images?.length) throw new Error("A message or image is required.");
         await Promise.resolve();
         const project = this.store.getProjectById(options.projectId);
@@ -1505,11 +1558,10 @@ export class WorkspaceSessionContinuationService {
             await pending.settled;
             return await this.createSession(options);
         }
-        /** @type {VoidResolver} */
-        let releasePending = () => {};
+        let releasePending: VoidResolver = () => {};
         const reservation = {
             requestHash,
-            settled: new Promise((resolve) => {
+            settled: new Promise<void>((resolve) => {
                 releasePending = resolve;
             }),
         };
@@ -1534,7 +1586,7 @@ export class WorkspaceSessionContinuationService {
                         if (!modelResult?.ok) throw new Error("Selected model could not be applied.");
                     }
                     if (launch.thinkingLevel !== "default") {
-                        const thinkingLevel = /** @type {WorkspaceThinkingLevel} */ (launch.thinkingLevel);
+                        const thinkingLevel = launch.thinkingLevel as WorkspaceThinkingLevel;
                         const thinkingResult = await this.runtime.setSessionThinkingLevel(
                             preparedSessionId,
                             thinkingLevel,
@@ -1610,7 +1662,7 @@ export class WorkspaceSessionContinuationService {
                             }
                         }
                         if (launch.thinkingLevel !== "default") {
-                            const thinkingLevel = /** @type {WorkspaceThinkingLevel} */ (launch.thinkingLevel);
+                            const thinkingLevel = launch.thinkingLevel as WorkspaceThinkingLevel;
                             const thinkingResult = await this.runtime.setSessionThinkingLevel(sessionId, thinkingLevel);
                             if (!thinkingResult?.ok) throw new Error("Selected thinking level could not be applied.");
                         }
@@ -1654,9 +1706,8 @@ export class WorkspaceSessionContinuationService {
     /**
      * Open the saved Plan review without sending a user turn. A running review keeps its
      * existing operation and interaction; a dormant Session gets a new operation.
-     * @param {{ deviceId?: string | null, projectId: string, runwieldSessionId: string, requestId: string, expectedGeneration: number }} options
      */
-    async startPlanReview(options) {
+    async startPlanReview(options: StartPlanReviewOptions) {
         const session = this.store.getSessionById(options.runwieldSessionId);
         if (!session || !sessionBelongsToOwnerProject(this.store, session, options.projectId)) {
             throw new Error("Session not found.");
@@ -1821,17 +1872,13 @@ export class WorkspaceSessionContinuationService {
         return { kind: "starting", operationId: receipt.operationId, status: "running" };
     }
 
-    /** @param {string} runwieldSessionId @param {{ sessionId: string } | null} adopted */
-    releasePreflightSession(runwieldSessionId, adopted) {
+    releasePreflightSession(runwieldSessionId: string, adopted: { sessionId: string } | null) {
         if (adopted?.sessionId && adopted.sessionId !== this.retainedSessions.get(runwieldSessionId)?.sessionId) {
             void this.runtime.closeSession(adopted.sessionId);
         }
     }
 
-    /**
-     * @param {{ deviceId?: string | null, projectId: string, runwieldSessionId: string, requestId: string, expectedGeneration: number, text: string, images?: Array<{ base64: string, mimeType: string }> }} options
-     */
-    async startContinuation(options) {
+    async startContinuation(options: StartContinuationOptions) {
         if (!options.text?.trim() && !options.images?.length) throw new Error("A message or image is required.");
         this.openingContinuations.set(
             options.runwieldSessionId,
@@ -1907,10 +1954,7 @@ export class WorkspaceSessionContinuationService {
                                   model: committedFacts.model,
                                   provider: committedFacts.provider,
                                   thinkingLevel: committedFacts.thinkingLevel,
-                                  workflowContext:
-                                      /** @type {import('../../../shared/session/workflow-context-session.ts').WorkflowContext | null} */ (
-                                          committedFacts.workflowContext || null
-                                      ),
+                                  workflowContext: committedFacts.workflowContext || null,
                               });
                     const preflight = await this.runtime.preflightUserTurnImages(preflightAdopted.sessionId, {
                         initialRequest: options.text,
@@ -2012,10 +2056,7 @@ export class WorkspaceSessionContinuationService {
                           model: committedFacts.model,
                           provider: committedFacts.provider,
                           thinkingLevel: committedFacts.thinkingLevel,
-                          workflowContext:
-                              /** @type {import('../../../shared/session/workflow-context-session.ts').WorkflowContext | null} */ (
-                                  committedFacts.workflowContext || null
-                              ),
+                          workflowContext: committedFacts.workflowContext || null,
                       }));
             this.setOperation(receipt.operationId, {
                 ...(this.operations.get(receipt.operationId) || { projectId: options.projectId, events: [] }),
@@ -2038,8 +2079,7 @@ export class WorkspaceSessionContinuationService {
                     const effectiveSessionId = result.replacementSessionId || adopted.sessionId;
                     const effectiveSnapshot = this.runtime.getSessionSnapshot(effectiveSessionId);
                     let generation = effectiveSnapshot?.managed?.generation ?? options.expectedGeneration;
-                    /** @type {"completed" | "failed"} */
-                    let status = result.ok ? "completed" : "failed";
+                    let status: "completed" | "failed" = result.ok ? "completed" : "failed";
                     let error = result.error;
                     const pendingConfiguration = this.operations.get(receipt.operationId)?.pendingConfiguration || null;
                     if (result.ok && pendingConfiguration && Object.keys(pendingConfiguration).length) {
@@ -2092,10 +2132,7 @@ export class WorkspaceSessionContinuationService {
         }
     }
 
-    /**
-     * @param {{ deviceId?: string | null, projectId: string, operationId: string, interactionId: string, runwieldSessionId?: string | null, requestId: string, response: unknown }} options
-     */
-    async answerInteraction(options) {
+    async answerInteraction(options: AnswerInteractionOptions) {
         const operation = this.operations.get(options.operationId);
         const durable = this.store.getOperationReceipt(options.operationId);
         const operationProjectId = operation?.projectId || durable?.projectId || null;
@@ -2149,9 +2186,7 @@ export class WorkspaceSessionContinuationService {
             let runtimeResponse = acceptedInteractionResponse(options.response);
             const request = operation.liveInteraction.request;
             const planReview =
-                request?.planReview && typeof request.planReview === "object"
-                    ? /** @type {Record<string, unknown>} */ (request.planReview)
-                    : null;
+                request?.planReview && typeof request.planReview === "object" ? request.planReview : null;
             if (request?.type === "plan_review" && Array.isArray(planReview?.sequenceDocuments)) {
                 const decision = readPlanReviewDecisionMeta(options.response);
                 const location = await resolveWorkflowPlanLocation(
@@ -2160,12 +2195,8 @@ export class WorkspaceSessionContinuationService {
                 );
                 await validateSequenceReviewDecision(
                     location.documentRoot,
-                    /** @type {import('../../../shared/workflow/sequence-review.ts').SequenceReviewDocument[]} */ (
-                        planReview.sequenceDocuments
-                    ),
-                    /** @type {import('../../../shared/workflow/sequence-review.ts').SequenceReviewDecision} */ (
-                        decision
-                    ),
+                    planReview.sequenceDocuments as SequenceReviewDocument[],
+                    decision as SequenceReviewDecision,
                 );
                 runtimeResponse = {
                     outcome: "accepted",
@@ -2182,7 +2213,7 @@ export class WorkspaceSessionContinuationService {
                 const planId = String(planReview.planId || "");
                 const source =
                     planReview.reviewedSource && typeof planReview.reviewedSource === "object"
-                        ? /** @type {Record<string, unknown>} */ (planReview.reviewedSource)
+                        ? (planReview.reviewedSource as Record<string, unknown>)
                         : null;
                 if (
                     !source ||
@@ -2194,7 +2225,7 @@ export class WorkspaceSessionContinuationService {
                 ) {
                     throw new Error("Live review source is missing. Reload the Plan and review again.");
                 }
-                const attrs = /** @type {import('../../../plan-store.js').PlanFrontMatter} */ (source.attrs);
+                const attrs = source.attrs as PlanFrontMatter;
                 const decision = readPlanReviewDecisionMeta(options.response);
                 const actionResult = await applySharedPlanReviewDecision({
                     cwd: root,
@@ -2203,25 +2234,16 @@ export class WorkspaceSessionContinuationService {
                     planWithFrontMatter: source.markdown,
                     planRevision: String(source.revision || planReview.expectedRevision || ""),
                     originalAttrs: attrs,
-                    trustedClassification:
-                        /** @type {import('../../../plan-store.js').PlanFrontMatter['classification']} */ (
-                            planReview.classification
-                        ),
+                    trustedClassification: planReview.classification as PlanFrontMatter["classification"],
                     trustedWorkKind: attrs.workKind,
                     expectedSessionId: operation.runwieldSessionId,
                     reviewEvidence: {
                         planId,
                         runwieldSessionId: operation.runwieldSessionId,
                         status: String(planReview.expectedStatus || ""),
-                        worktree:
-                            /** @type {import('../../../shared/workflow/plan-actions.ts').PlanWorktreeExpectation} */ (
-                                planReview.expectedWorktree
-                            ),
+                        worktree: planReview.expectedWorktree as PlanWorktreeExpectation,
                     },
-                    decision:
-                        /** @type {import('../../../shared/workflow/plan-review-actions.ts').SharedPlanReviewDecision} */ (
-                            decision
-                        ),
+                    decision: decision as SharedPlanReviewDecision,
                 });
                 if (actionResult.recoveryRequired) {
                     const result = {
@@ -2246,12 +2268,7 @@ export class WorkspaceSessionContinuationService {
                     });
                     throw new Error(message);
                 }
-                const images = await loadReviewFeedbackImages(
-                    /** @type {import('../../../shared/workflow/review-feedback-images.ts').ReviewImageDecision} */ (
-                        decision
-                    ),
-                    root,
-                );
+                const images = await loadReviewFeedbackImages(decision as ReviewImageDecision, root);
                 runtimeResponse = {
                     outcome: "accepted",
                     _meta: {
@@ -2277,10 +2294,7 @@ export class WorkspaceSessionContinuationService {
         }
     }
 
-    /**
-     * @param {{ projectId: string, operationId: string, interactionId: string, runwieldSessionId: string, planId: string }} options
-     */
-    async getLivePlanReview(options) {
+    async getLivePlanReview(options: GetLivePlanReviewOptions) {
         if (!this.operations.has(options.operationId) || this.operations.get(options.operationId)?.remote) {
             await this.liveSession(options.projectId, options.runwieldSessionId);
         }
@@ -2292,18 +2306,12 @@ export class WorkspaceSessionContinuationService {
         }
         const request = operation.liveInteraction.request || {};
         if (request.type !== "plan_review") return null;
-        const planReview =
-            request.planReview && typeof request.planReview === "object"
-                ? /** @type {Record<string, unknown>} */ (request.planReview)
-                : null;
+        const planReview = request.planReview && typeof request.planReview === "object" ? request.planReview : null;
         if (!planReview || planReview.planId !== options.planId) return null;
         return { operationId: options.operationId, interactionId: options.interactionId, request };
     }
 
-    /**
-     * @param {LiveCodeReviewOptions} options
-     */
-    async liveCodeReviewRequest(options) {
+    async liveCodeReviewRequest(options: LiveCodeReviewOptions) {
         if (!this.operations.has(options.operationId) || this.operations.get(options.operationId)?.remote) {
             await this.liveSession(options.projectId, options.runwieldSessionId);
         }
@@ -2315,27 +2323,18 @@ export class WorkspaceSessionContinuationService {
         }
         const request = operation.liveInteraction.request || {};
         if (request.type !== "code_review") return null;
-        const codeReview =
-            request.codeReview && typeof request.codeReview === "object"
-                ? /** @type {Record<string, unknown>} */ (request.codeReview)
-                : null;
+        const codeReview = request.codeReview && typeof request.codeReview === "object" ? request.codeReview : null;
         if (!codeReview || typeof codeReview.rawPatch !== "string") return null;
         return { ...request, codeReview: { ...codeReview, rawPatch: codeReview.rawPatch } };
     }
 
-    /**
-     * @param {LiveCodeReviewOptions} options
-     */
-    async getLiveCodeReviewCheckout(options) {
+    async getLiveCodeReviewCheckout(options: LiveCodeReviewOptions) {
         if (!(await this.liveCodeReviewRequest(options))) return null;
         const refresh = this.codeReviewRefreshContexts.get(`${options.operationId}:${options.interactionId}`);
         return refresh ? { ...refresh } : null;
     }
 
-    /**
-     * @param {LiveCodeReviewOptions} options
-     */
-    async getLiveCodeReview(options) {
+    async getLiveCodeReview(options: LiveCodeReviewOptions) {
         const request = await this.liveCodeReviewRequest(options);
         if (!request) return null;
         const codeReview = request.codeReview;
@@ -2356,10 +2355,7 @@ export class WorkspaceSessionContinuationService {
         };
     }
 
-    /**
-     * @param {{ projectId: string, runwieldSessionId: string, expectedGeneration: number, expectedCurrentSegmentId?: string | null }} options
-     */
-    async forceRecoverSessionControl(options) {
+    async forceRecoverSessionControl(options: ForceRecoverSessionControlOptions) {
         const session = this.store.getSessionById(options.runwieldSessionId);
         if (!session || !sessionBelongsToOwnerProject(this.store, session, options.projectId)) {
             throw new Error("Session not found.");
@@ -2401,10 +2397,13 @@ export class WorkspaceSessionContinuationService {
     /**
      * Open a saved Plan review without requiring the user to create an empty Session first.
      * The request receipt keeps retries attached to the same Session and review.
-     * @param {Omit<Parameters<WorkspaceSessionContinuationService["startPlanWorkflowHandoff"]>[0], "runwieldSessionId" | "expectedGeneration">} options
-     * @returns {ReturnType<WorkspaceSessionContinuationService["startPlanWorkflowOperation"]>}
      */
-    async startSavedPlanReview(options) {
+    async startSavedPlanReview(
+        options: Omit<
+            Parameters<WorkspaceSessionContinuationService["startPlanWorkflowHandoff"]>[0],
+            "runwieldSessionId" | "expectedGeneration"
+        >,
+    ): ReturnType<WorkspaceSessionContinuationService["startPlanWorkflowOperation"]> {
         const requestHash = stableHash({
             kind: "saved_plan_review",
             projectId: options.projectId,
@@ -2435,7 +2434,7 @@ export class WorkspaceSessionContinuationService {
         if (!["approved", "ready_for_work"].includes(String(options.triageMeta?.status))) {
             throw new Error("Plan review requires an approved Plan waiting for execution.");
         }
-        const ready = /** @type {PromiseWithResolvers<void>} */ (Promise.withResolvers());
+        const ready = Promise.withResolvers<void>();
         this.pendingCreateRequests.set(key, { requestHash, settled: ready.promise });
         try {
             const created = await this.runtime.createInteractiveSession({
@@ -2467,10 +2466,7 @@ export class WorkspaceSessionContinuationService {
         }
     }
 
-    /**
-     * @param {{ requestId: string, deviceId?: string | null, action?: string, runwieldSessionId: string, projectId: string, expectedGeneration: number, planName: string, planContent?: string, triageMeta?: Record<string, unknown>, reviewFeedback?: string, reviewImages?: Array<{ base64: string, mimeType: string }> }} options
-     */
-    async startPlanWorkflowHandoff(options) {
+    async startPlanWorkflowHandoff(options: StartPlanWorkflowHandoffOptions) {
         const session = this.store.getSessionById(options.runwieldSessionId);
         if (!session || !sessionBelongsToOwnerProject(this.store, session, options.projectId)) {
             throw new Error("Session not found.");
@@ -2528,12 +2524,11 @@ export class WorkspaceSessionContinuationService {
         return await this.startPlanWorkflowOperation(options, review, requestHash);
     }
 
-    /**
-     * @param {Parameters<WorkspaceSessionContinuationService["startPlanWorkflowHandoff"]>[0]} options
-     * @param {boolean} review
-     * @param {string} requestHash
-     */
-    async startPlanWorkflowOperation(options, review, requestHash) {
+    async startPlanWorkflowOperation(
+        options: Parameters<WorkspaceSessionContinuationService["startPlanWorkflowHandoff"]>[0],
+        review: boolean,
+        requestHash: string,
+    ) {
         const planId = String(options.triageMeta?.planId || "");
         const live = [...this.operations.entries()].find(
             ([, operation]) =>
@@ -2542,9 +2537,7 @@ export class WorkspaceSessionContinuationService {
                 operation.status === "running",
         );
         if (live) {
-            const existingReview = /** @type {ReturnType<typeof safePlanReviewReference>} */ (
-                live[1].liveInteraction?.request.planReview
-            );
+            const existingReview = live[1].liveInteraction?.request.planReview;
             if (!review || existingReview?.planId !== planId) {
                 throw new Error("This Session is busy.");
             }
@@ -2643,11 +2636,10 @@ export class WorkspaceSessionContinuationService {
         return review ? await this.waitForPlanReview(operationId) : { operationId, status: "running" };
     }
 
-    /**
-     * @param {string} sessionId
-     * @param {Parameters<WorkspaceSessionContinuationService["startPlanWorkflowHandoff"]>[0]} options
-     */
-    async resumePlanExecution(sessionId, options) {
+    async resumePlanExecution(
+        sessionId: string,
+        options: Parameters<WorkspaceSessionContinuationService["startPlanWorkflowHandoff"]>[0],
+    ) {
         const result = await this.runtime.executePlan(sessionId, {
             planName: options.planName,
             triageMeta: options.triageMeta,
@@ -2663,10 +2655,8 @@ export class WorkspaceSessionContinuationService {
         });
     }
 
-    /** @param {string} operationId */
-    async waitForPlanReview(operationId) {
-        /** @type {PromiseWithResolvers<WorkspacePlanReviewStarted>} */
-        const ready = Promise.withResolvers();
+    async waitForPlanReview(operationId: string) {
+        const ready: PromiseWithResolvers<WorkspacePlanReviewStarted> = Promise.withResolvers();
         const unsubscribe = this.subscribeOperation(operationId, () => {
             const operation = this.operations.get(operationId);
             const reviewUrl = operation?.liveInteraction?.request.reviewUrl;
@@ -2682,8 +2672,7 @@ export class WorkspaceSessionContinuationService {
         }
     }
 
-    /** @param {string} projectId @param {string} runwieldSessionId */
-    async liveSession(projectId, runwieldSessionId) {
+    async liveSession(projectId: string, runwieldSessionId: string) {
         const session = this.store.getSessionById(runwieldSessionId);
         if (!session || !sessionBelongsToOwnerProject(this.store, session, projectId)) {
             throw new Error("Session not found.");
@@ -2742,8 +2731,7 @@ export class WorkspaceSessionContinuationService {
         return { state, generation, operation: this.getOperation(operationId) };
     }
 
-    /** @param {string} operationId */
-    async refreshOperation(operationId) {
+    async refreshOperation(operationId: string) {
         const operation = this.operations.get(operationId);
         if (operation?.remote && operation.runwieldSessionId && operation.status === "running") {
             const live = await this.liveSession(operation.projectId, operation.runwieldSessionId);
@@ -2764,8 +2752,7 @@ export class WorkspaceSessionContinuationService {
         return this.getOperation(operationId);
     }
 
-    /** @param {string} operationId */
-    getOperation(operationId) {
+    getOperation(operationId: string) {
         const live = this.operations.get(operationId);
         const durable = this.store.getOperationReceipt(operationId);
         const sessionInfo = live?.runtimeSessionId
@@ -2812,7 +2799,6 @@ export class WorkspaceSessionContinuationService {
     }
 }
 
-/** @param {{ store: import('../../../shared/owner-coordination/index.ts').OwnerCoordinationStore }} options */
-export function createWorkspaceSessionContinuationService(options) {
+export function createWorkspaceSessionContinuationService(options: WorkspaceSessionContinuationOptions) {
     return new WorkspaceSessionContinuationService(options);
 }

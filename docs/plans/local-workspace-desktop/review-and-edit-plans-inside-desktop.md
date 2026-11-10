@@ -6,7 +6,7 @@ affectedPaths:
     - "src/acp/"
     - "src/shared/workflow/"
     - "src/ui/workspace/server/owner-plan-actions.ts"
-    - "src/ui/workspace/server/session-continuation.js"
+    - "src/ui/workspace/server/session-continuation.ts"
     - "src/ui/workspace/components/"
     - "src/ui/workspace/react/PlanReviewSurface.tsx"
     - "src/ui/desktop/"
@@ -48,7 +48,7 @@ Desktop renders the review directly. Launching or embedding the standalone revie
 The boundaries this change is expected to touch. This list is guidance, not an allowlist: verify the real footprint during implementation and change whatever the Implementation Steps need, including files not named here. Stop and report only when discovery changes approved intent — the change reaches another subsystem, public behavior or architecture shifts, migration or compatibility risk grows, or the Verification Plan no longer proves the objective.
 
 - `src/acp/`, existing Plan-store and `src/shared/workflow/` owners — scoped Plan reads, revision-checked edits and review decisions.
-- `src/ui/workspace/server/owner-plan-actions.ts`, Plan adapters, and relevant `session-continuation.js` behavior — move reusable authority out of UI server code.
+- `src/ui/workspace/server/owner-plan-actions.ts`, Plan adapters, and relevant `session-continuation.ts` behavior — move reusable authority out of UI server code.
 - `src/ui/workspace/components/Board.tsx`, `PlanDetail.tsx`, Epic/Plan cards, and `react/PlanReviewSurface.tsx` — shared composition and navigation.
 - `src/ui/desktop/` and shared client — integrated Plan destinations and resources.
 - Workspace/ACP/Core applicable scenarios, contract inventory, and ADR references — same-change synchronization.

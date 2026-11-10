@@ -7,7 +7,7 @@ import {
     ImageSubmissionValidationError,
     type WorkspaceSessionContinuationService,
     type SessionListOptions,
-} from "../server/session-continuation.js";
+} from "../server/session-continuation.ts";
 import {
     ownerErrorJson,
     ownerJson,
@@ -27,7 +27,7 @@ import { getSlashCommandDefinition } from "../../../cmd/registry.ts";
 
 import type { JsonValue } from "../../../shared/jsonc.ts";
 import type { CatalogDiagnostic } from "../../../shared/session/file-session-store-types.ts";
-import type { RuntimeToolStartEvent } from "../../../shared/session/session-runtime-events.ts";
+import type { RuntimeToolStartEvent, SessionRuntimeEvent } from "../../../shared/session/session-runtime-events.ts";
 import type { recordSlashCommandMetric } from "../../../shared/workflow/command-metrics.ts";
 import type { OwnerConnectionRegistry } from "../server/owner-connections.ts";
 
@@ -35,6 +35,7 @@ type SessionService = WorkspaceSessionContinuationService;
 type SessionPage = Awaited<ReturnType<SessionService["listSessions"]>>;
 type OwnerSessionSummary = SessionPage["sessions"][number];
 type TimelineResult = Awaited<ReturnType<SessionService["timeline"]>>;
+type WorkspaceSessionEvent = NonNullable<TimelineResult["events"]>[number] | SessionRuntimeEvent;
 type OperationSnapshot = ReturnType<SessionService["getOperation"]>;
 type SessionPageOptions = SessionListOptions & Required<Pick<SessionListOptions, "page" | "pageSize">>;
 
@@ -156,7 +157,7 @@ function readSubmittedImages(value: JsonValue | undefined) {
     });
 }
 
-function safeEvent(value: NonNullable<TimelineResult["events"]>[number]) {
+function safeEvent(value: WorkspaceSessionEvent) {
     if (!value || typeof value !== "object") return value;
     const source = value;
     const safe: typeof source & EventMetadata = { ...source };

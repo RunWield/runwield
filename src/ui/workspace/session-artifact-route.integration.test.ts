@@ -3,7 +3,7 @@ import { stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
-import { createOwnerWorkspaceApp } from "./server.js";
+import { createOwnerWorkspaceApp } from "./server.ts";
 
 for (const kind of ["plan", "prd", "adr", "work-record", "epic-artifact", "report"] as const) {
     test(`registered ${kind} artifacts share the reader and reject unrelated Sessions`, async () => {
