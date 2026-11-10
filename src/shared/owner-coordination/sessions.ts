@@ -13,6 +13,7 @@ import {
     isPathInside,
     listCatalogSafeRootSessionLocators,
     readCatalogSafeRootSessionLocator,
+    type CatalogSafeRootSessionLocator,
 } from "../session/root-session.ts";
 import {
     normalizeSegmentLineageEvidence,
@@ -21,57 +22,124 @@ import {
 } from "../session/workflow-context-session.ts";
 import { getProjectById, listProjectRootEvidence } from "./projects.ts";
 
-/** @typedef {import('../session/file-session-store-types.ts').SessionLineageDiagnostic} SessionLineageDiagnostic */
-/** @typedef {import('../session/file-session-store-types.ts').SessionSegmentLineageEvidence} SessionSegmentLineageEvidence */
-/** @typedef {import('../session/file-session-store-types.ts').SessionTranscriptSegment} SessionTranscriptSegment */
+import type { SQLOutputValue } from "node:sqlite";
+import type { JsonRecord } from "../jsonc.ts";
+import type {
+    CatalogDiagnostic,
+    CatalogedSession as FileCatalogedSession,
+    DiscardOrphanOptions,
+    InspectRolloverOptions,
+    ListSessionOptions,
+    OrphanRolloverCandidate,
+    OrphanSearchOptions,
+    SegmentAppendOptions,
+    SegmentSealOptions,
+    SessionCatalogResult,
+    SessionLineageDiagnostic,
+    SessionLocator,
+    SessionSegmentLineageEvidence,
+    SessionTranscriptSegment,
+    SuccessorLocator,
+    TranscriptEvidence,
+} from "../session/file-session-store-types.ts";
+import type { OwnerCoordinationDatabase } from "./database.ts";
+import type { ProjectRootEvidence } from "./projects.ts";
 
-/**
- * @typedef {Object} CatalogedSession
- * @property {string} runwieldSessionId
- * @property {string} projectId
- * @property {string | null} displayName
- * @property {string} source
- * @property {string} piSessionId
- * @property {string} transcriptPath
- * @property {string} transcriptCwd
- * @property {number | null} headerVersion
- * @property {string | null} headerTimestamp
- * @property {string} firstCatalogedAt
- * @property {string} lastCatalogedAt
- */
+// The SQLite catalog predates the file-backed archive and Plan association fields.
+export type CatalogedSession = Omit<FileCatalogedSession, "archivedAt" | "planAssociations">;
 
-/**
- * @typedef {Object} CatalogDiagnostic
- * @property {string} sessionPath
- * @property {string} code
- * @property {string} message
- */
+type SqlRow = Record<string, SQLOutputValue>;
 
-/**
- * @typedef {Object} ProjectRootEvidence
- * @property {string} enteredRoot
- * @property {string} canonicalRoot
- * @property {string} rootState
- */
-
-/** @param {unknown} value */
-function requireDatabase(value) {
-    if (!value || typeof value !== "object" || !("handle" in value)) throw new Error("Owner database is required");
-    return /** @type {import('./database.ts').OwnerCoordinationDatabase} */ (value);
+// node:sqlite does not infer the columns and nullability of the catalog SELECTs.
+interface CatalogSessionRow extends SqlRow {
+    runwield_session_id: string;
+    project_id: string;
+    display_name: string | null;
+    source: string;
+    pi_session_id: string;
+    transcript_path: string;
+    transcript_cwd: string;
+    header_version: number | null;
+    header_timestamp: string | null;
+    first_cataloged_at: string;
+    last_cataloged_at: string;
 }
 
-/** @param {() => string} [now] */
-function isoNow(now) {
+type SessionCatalogOptions = Pick<ListSessionOptions, "fullRescan" | "idFactory" | "now">;
+type ListProjectSessionOptions = SessionCatalogOptions & Pick<ListSessionOptions, "catalog">;
+type CatalogClockOptions = Pick<ListSessionOptions, "idFactory" | "now">;
+
+interface SessionCatalogLocator extends SuccessorLocator, CatalogClockOptions {
+    headerVersion?: number | null;
+    headerTimestamp?: string | null;
+    source?: "catalog" | "created" | "imported";
+}
+
+interface IncrementalLocatorResult {
+    locators: CatalogSafeRootSessionLocator[];
+    diagnostics: CatalogDiagnostic[];
+    dirMtimeMs: number | null;
+    scanned: boolean;
+}
+
+interface LineageCatalogLocator extends CatalogSafeRootSessionLocator {
+    lineage: SessionSegmentLineageEvidence | null;
+}
+
+interface TranscriptLineageMarker {
+    type?: string;
+    customType?: string;
+    data?: SessionSegmentLineageEvidence | null;
+}
+
+interface GroupedLineageLocators {
+    groups: LineageCatalogLocator[][];
+    ungrouped: LineageCatalogLocator[];
+    diagnostics: CatalogDiagnostic[];
+}
+
+interface DiscardCatalogOrphanOptions extends DiscardOrphanOptions {
+    transcriptCwd: string;
+}
+
+export type SegmentRolloverRecoveryState =
+    | "no_op_retry"
+    | "removable_orphan"
+    | "recoverable_orphan"
+    | "transcript_ahead_database_behind"
+    | "database_ahead"
+    | "uncertain_effects";
+
+interface SegmentRolloverInspection {
+    state: SegmentRolloverRecoveryState;
+    transcriptPath: string | null;
+    segmentId: string | null;
+    reason: string;
+}
+
+interface CatalogProjectSessionsResult extends Omit<SessionCatalogResult, "cataloged"> {
+    cataloged: CatalogedSession[];
+}
+
+interface ListProjectSessionsResult {
+    sessions: CatalogedSession[];
+    diagnostics: CatalogDiagnostic[];
+}
+
+function requireDatabase(value: OwnerCoordinationDatabase): OwnerCoordinationDatabase {
+    if (!value || typeof value !== "object" || !("handle" in value)) throw new Error("Owner database is required");
+    return value;
+}
+
+function isoNow(now?: () => string) {
     return now ? now() : new Date().toISOString();
 }
 
-/** @param {() => string} [idFactory] */
-function newId(idFactory) {
+function newId(idFactory?: () => string) {
     return idFactory ? idFactory() : crypto.randomUUID();
 }
 
-/** @param {any} row */
-function sessionFromRow(row) {
+function sessionFromRow(row: CatalogSessionRow): CatalogedSession {
     return {
         runwieldSessionId: row.runwield_session_id,
         projectId: row.project_id,
@@ -87,8 +155,7 @@ function sessionFromRow(row) {
     };
 }
 
-/** @param {Record<string, string | number | bigint | Uint8Array | null>} row @returns {SessionTranscriptSegment} */
-function segmentFromRow(row) {
+function segmentFromRow(row: SqlRow): SessionTranscriptSegment {
     return {
         segmentId: String(row.id),
         runwieldSessionId: String(row.runwield_session_id),
@@ -104,38 +171,35 @@ function segmentFromRow(row) {
         firstCatalogedAt: String(row.first_cataloged_at),
         lastCatalogedAt: String(row.last_cataloged_at),
         lineageParentSegmentId: row.lineage_parent_segment_id === null ? null : String(row.lineage_parent_segment_id),
-        lineageParentPiSessionId: row.lineage_parent_pi_session_id === null
-            ? null
-            : String(row.lineage_parent_pi_session_id),
+        lineageParentPiSessionId:
+            row.lineage_parent_pi_session_id === null ? null : String(row.lineage_parent_pi_session_id),
         lineageGroupKey: row.lineage_group_key === null ? null : String(row.lineage_group_key),
         lineageRecordedAt: row.lineage_recorded_at === null ? null : String(row.lineage_recorded_at),
-        sealedByteLength: row.sealed_byte_length === null || row.sealed_byte_length === undefined
-            ? null
-            : Number(row.sealed_byte_length),
-        sealedDigestHex: row.sealed_digest_hex === null || row.sealed_digest_hex === undefined
-            ? null
-            : String(row.sealed_digest_hex),
-        sealedTerminalEntryId: row.sealed_terminal_entry_id === null || row.sealed_terminal_entry_id === undefined
-            ? null
-            : String(row.sealed_terminal_entry_id),
+        sealedByteLength:
+            row.sealed_byte_length === null || row.sealed_byte_length === undefined
+                ? null
+                : Number(row.sealed_byte_length),
+        sealedDigestHex:
+            row.sealed_digest_hex === null || row.sealed_digest_hex === undefined
+                ? null
+                : String(row.sealed_digest_hex),
+        sealedTerminalEntryId:
+            row.sealed_terminal_entry_id === null || row.sealed_terminal_entry_id === undefined
+                ? null
+                : String(row.sealed_terminal_entry_id),
     };
 }
 
-/** @param {Uint8Array} bytes */
-function sha256HexSync(bytes) {
+function sha256HexSync(bytes: Uint8Array) {
     return createHash("sha256").update(bytes).digest("hex");
 }
 
-/** @param {unknown[]} entries */
-function terminalEntryId(entries) {
+function terminalEntryId(entries: JsonRecord[]): string | null {
     const last = entries.at(-1);
-    return last && typeof last === "object" && typeof /** @type {any} */ (last).id === "string"
-        ? /** @type {any} */ (last).id
-        : null;
+    return last && typeof last === "object" && typeof last.id === "string" ? last.id : null;
 }
 
-/** @param {string} transcriptPath @param {number} byteLength */
-function captureTranscriptEvidenceSync(transcriptPath, byteLength) {
+function captureTranscriptEvidenceSync(transcriptPath: string, byteLength: number): TranscriptEvidence {
     const stat = statSync(transcriptPath);
     if (stat.size < byteLength) throw new Error("Sealed segment transcript is shorter than supplied evidence");
     const fullBytes = readFileSync(transcriptPath);
@@ -145,7 +209,10 @@ function captureTranscriptEvidenceSync(transcriptPath, byteLength) {
     if (text.length > 0 && !text.endsWith("\n")) {
         throw new Error("Sealed segment transcript evidence must end at a JSONL boundary");
     }
-    const entries = text.split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    const entries: JsonRecord[] = text
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line));
     return {
         byteLength,
         terminalEntryId: terminalEntryId(entries),
@@ -153,65 +220,63 @@ function captureTranscriptEvidenceSync(transcriptPath, byteLength) {
     };
 }
 
-/** @param {Date | null} value */
-function mtimeMs(value) {
+function mtimeMs(value: Date | null) {
     return value ? Math.trunc(value.getTime()) : null;
 }
 
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {string} projectId
- * @returns {Set<string>}
- */
-function listKnownTranscriptPaths(database, projectId) {
-    const rows = database.handle.prepare(
-        `SELECT transcript_path FROM session_transcript_locators WHERE project_id = ?
+function listKnownTranscriptPaths(database: OwnerCoordinationDatabase, projectId: string) {
+    const rows = database.handle
+        .prepare(
+            `SELECT transcript_path FROM session_transcript_locators WHERE project_id = ?
          UNION
          SELECT transcript_path FROM session_transcript_segments WHERE project_id = ?`,
-    ).all(projectId, projectId);
+        )
+        .all(projectId, projectId);
     return new Set(rows.map((row) => resolve(String(row.transcript_path))));
 }
 
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {string} projectId
- * @param {string} cwd
- * @param {string} sessionDir
- * @param {number | null} dirMtimeMs
- * @param {number} jsonlCount
- * @returns {boolean}
- */
-function shouldIncrementallyScan(database, projectId, cwd, sessionDir, dirMtimeMs, jsonlCount) {
-    const row = database.handle.prepare(
-        "SELECT last_scanned_dir_mtime_ms, last_scanned_jsonl_count FROM project_session_catalog_scans WHERE project_id = ? AND cwd = ? AND session_dir = ?",
-    ).get(projectId, cwd, sessionDir);
+function shouldIncrementallyScan(
+    database: OwnerCoordinationDatabase,
+    projectId: string,
+    cwd: string,
+    sessionDir: string,
+    dirMtimeMs: number | null,
+    jsonlCount: number,
+) {
+    const row = database.handle
+        .prepare(
+            "SELECT last_scanned_dir_mtime_ms, last_scanned_jsonl_count FROM project_session_catalog_scans WHERE project_id = ? AND cwd = ? AND session_dir = ?",
+        )
+        .get(projectId, cwd, sessionDir);
     if (!row) return true;
-    return Number(row.last_scanned_dir_mtime_ms) !== Number(dirMtimeMs) ||
-        Number(row.last_scanned_jsonl_count) !== jsonlCount;
+    return (
+        Number(row.last_scanned_dir_mtime_ms) !== Number(dirMtimeMs) ||
+        Number(row.last_scanned_jsonl_count) !== jsonlCount
+    );
 }
 
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {string} projectId
- * @param {string} cwd
- * @param {string} sessionDir
- * @param {number | null} dirMtimeMs
- * @param {number} jsonlCount
- * @param {string} now
- */
-function recordCatalogScan(database, projectId, cwd, sessionDir, dirMtimeMs, jsonlCount, now) {
-    database.handle.prepare(
-        "INSERT INTO project_session_catalog_scans(project_id, cwd, session_dir, last_scanned_dir_mtime_ms, last_scanned_jsonl_count, last_scanned_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(project_id, cwd) DO UPDATE SET session_dir = excluded.session_dir, last_scanned_dir_mtime_ms = excluded.last_scanned_dir_mtime_ms, last_scanned_jsonl_count = excluded.last_scanned_jsonl_count, last_scanned_at = excluded.last_scanned_at",
-    ).run(projectId, cwd, sessionDir, dirMtimeMs, jsonlCount, now);
+function recordCatalogScan(
+    database: OwnerCoordinationDatabase,
+    projectId: string,
+    cwd: string,
+    sessionDir: string,
+    dirMtimeMs: number | null,
+    jsonlCount: number,
+    now: string,
+) {
+    database.handle
+        .prepare(
+            "INSERT INTO project_session_catalog_scans(project_id, cwd, session_dir, last_scanned_dir_mtime_ms, last_scanned_jsonl_count, last_scanned_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(project_id, cwd) DO UPDATE SET session_dir = excluded.session_dir, last_scanned_dir_mtime_ms = excluded.last_scanned_dir_mtime_ms, last_scanned_jsonl_count = excluded.last_scanned_jsonl_count, last_scanned_at = excluded.last_scanned_at",
+        )
+        .run(projectId, cwd, sessionDir, dirMtimeMs, jsonlCount, now);
 }
 
-/** @param {string} path */
-async function inspectSessionDirectory(path) {
+async function inspectSessionDirectory(path: string) {
     try {
         const stat = await fsStat(path);
         if (!stat.isDirectory()) return null;
         let jsonlCount = 0;
-        for await (const entry of (await opendir(path))) {
+        for await (const entry of await opendir(path)) {
             if ((entry.isFile() || entry.isSymbolicLink()) && entry.name.endsWith(".jsonl")) jsonlCount++;
         }
         return { stat, jsonlCount };
@@ -221,17 +286,13 @@ async function inspectSessionDirectory(path) {
     }
 }
 
-/**
- * @param {string} cwd
- * @param {string} sessionDir
- * @param {Set<string>} knownTranscriptPaths
- * @returns {Promise<{ locators: import('../session/root-session.ts').CatalogSafeRootSessionLocator[], diagnostics: CatalogDiagnostic[], dirMtimeMs: number | null, scanned: boolean }>}
- */
-async function listIncrementalRootSessionLocators(cwd, sessionDir, knownTranscriptPaths) {
-    /** @type {import('../session/root-session.ts').CatalogSafeRootSessionLocator[]} */
-    const locators = [];
-    /** @type {CatalogDiagnostic[]} */
-    const diagnostics = [];
+async function listIncrementalRootSessionLocators(
+    cwd: string,
+    sessionDir: string,
+    knownTranscriptPaths: Set<string>,
+): Promise<IncrementalLocatorResult> {
+    const locators: CatalogSafeRootSessionLocator[] = [];
+    const diagnostics: CatalogDiagnostic[] = [];
     let stat;
     try {
         stat = await fsStat(sessionDir);
@@ -241,7 +302,7 @@ async function listIncrementalRootSessionLocators(cwd, sessionDir, knownTranscri
         }
         throw error;
     }
-    for await (const entry of (await opendir(sessionDir))) {
+    for await (const entry of await opendir(sessionDir)) {
         if (!(entry.isFile() || entry.isSymbolicLink()) || !entry.name.endsWith(".jsonl")) continue;
         const sessionPath = join(sessionDir, entry.name);
         if (knownTranscriptPaths.has(resolve(sessionPath))) continue;
@@ -259,23 +320,18 @@ async function listIncrementalRootSessionLocators(cwd, sessionDir, knownTranscri
     return { locators, diagnostics, dirMtimeMs: mtimeMs(stat.mtime), scanned: true };
 }
 
-/**
- * @typedef {import('../session/root-session.ts').CatalogSafeRootSessionLocator & { lineage: SessionSegmentLineageEvidence | null }} LineageCatalogLocator
- */
-
-/**
- * @param {string} sessionPath
- * @returns {Promise<SessionSegmentLineageEvidence | null>}
- */
-async function readSegmentLineageEvidenceFromTranscript(sessionPath) {
+async function readSegmentLineageEvidenceFromTranscript(
+    sessionPath: string,
+): Promise<SessionSegmentLineageEvidence | null> {
     const text = await fsReadFile(sessionPath, "utf8");
     const lines = text.split("\n");
     for (let index = lines.length - 1; index >= 0; index--) {
         const line = lines[index].trim();
         if (!line || !line.includes(SEGMENT_LINEAGE_CUSTOM_TYPE)) continue;
         try {
-            const entry = JSON.parse(line);
+            const entry: TranscriptLineageMarker | null = JSON.parse(line);
             if (entry?.type !== "custom" || entry.customType !== SEGMENT_LINEAGE_CUSTOM_TYPE) continue;
+            // The lineage normalizer checks the raw marker data from the transcript.
             return normalizeSegmentLineageEvidence(entry.data);
         } catch {
             continue;
@@ -284,17 +340,10 @@ async function readSegmentLineageEvidenceFromTranscript(sessionPath) {
     return null;
 }
 
-/**
- * @param {LineageCatalogLocator[]} locators
- * @returns {{ groups: LineageCatalogLocator[][], ungrouped: LineageCatalogLocator[], diagnostics: CatalogDiagnostic[] }}
- */
-function groupLineageCatalogLocators(locators) {
-    /** @type {Map<string, LineageCatalogLocator[]>} */
-    const candidates = new Map();
-    /** @type {LineageCatalogLocator[]} */
-    const ungrouped = [];
-    /** @type {CatalogDiagnostic[]} */
-    const diagnostics = [];
+function groupLineageCatalogLocators(locators: LineageCatalogLocator[]): GroupedLineageLocators {
+    const candidates = new Map<string, LineageCatalogLocator[]>();
+    const ungrouped: LineageCatalogLocator[] = [];
+    const diagnostics: CatalogDiagnostic[] = [];
     for (const locator of locators) {
         if (!locator.lineage) {
             ungrouped.push(locator);
@@ -304,8 +353,7 @@ function groupLineageCatalogLocators(locators) {
         group.push(locator);
         candidates.set(locator.lineage.runwieldSessionId, group);
     }
-    /** @type {LineageCatalogLocator[][]} */
-    const groups = [];
+    const groups: LineageCatalogLocator[][] = [];
     for (const group of candidates.values()) {
         const ordered = orderConservativeLineageGroup(group);
         if (!ordered) {
@@ -324,16 +372,11 @@ function groupLineageCatalogLocators(locators) {
     return { groups, ungrouped, diagnostics };
 }
 
-/**
- * @param {LineageCatalogLocator[]} group
- * @returns {LineageCatalogLocator[] | null}
- */
-function orderConservativeLineageGroup(group) {
+function orderConservativeLineageGroup(group: LineageCatalogLocator[]): LineageCatalogLocator[] | null {
     const bySegmentId = new Map(group.map((locator) => [locator.lineage?.segmentId || "", locator]));
     if (bySegmentId.has("") || bySegmentId.size !== group.length) return null;
-    /** @type {Map<string, string[]>} */
-    const children = new Map();
-    let root = null;
+    const children = new Map<string, string[]>();
+    let root: LineageCatalogLocator | null = null;
     for (const locator of group) {
         const lineage = locator.lineage;
         if (!lineage) return null;
@@ -350,56 +393,57 @@ function orderConservativeLineageGroup(group) {
         if (childIds.length > 1) return null;
     }
     if (!root) return null;
-    /** @type {LineageCatalogLocator[]} */
-    const ordered = [];
+    const ordered: LineageCatalogLocator[] = [];
     const seen = new Set();
-    /** @type {LineageCatalogLocator | null} */
-    let cursor = root;
+    let cursor: LineageCatalogLocator | null = root;
     while (cursor) {
-        const segmentId = String(cursor.lineage?.segmentId || "");
+        const segmentId: string = String(cursor.lineage?.segmentId || "");
         if (!segmentId || seen.has(segmentId)) return null;
         ordered.push(cursor);
         seen.add(segmentId);
-        const childIds = /** @type {string[]} */ (children.get(segmentId) || []);
+        const childIds = children.get(segmentId) || [];
         cursor = childIds.length === 1 ? bySegmentId.get(childIds[0]) || null : null;
     }
     return ordered.length === group.length ? ordered : null;
 }
 
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {string} projectId
- * @param {LineageCatalogLocator[]} group
- * @param {{ idFactory?: () => string, now?: () => string }} options
- * @returns {CatalogedSession}
- */
-function catalogLineageSegmentGroup(database, projectId, group, options) {
+function catalogLineageSegmentGroup(
+    database: OwnerCoordinationDatabase,
+    projectId: string,
+    group: LineageCatalogLocator[],
+    options: CatalogClockOptions,
+): CatalogedSession {
     if (group.length < 2) throw new Error("Lineage group requires multiple segments");
     const now = isoNow(options.now);
     const first = group[0];
-    const firstLineage = /** @type {SessionSegmentLineageEvidence} */ (first.lineage);
+    // The lineage ordering step only returns groups whose members have lineage evidence.
+    const firstLineage = first.lineage!;
     return database.transaction(() => {
         if (getSessionById(database, firstLineage.runwieldSessionId)) {
             throw new Error(`Lineage Session already exists: ${firstLineage.runwieldSessionId}`);
         }
-        database.handle.prepare(
-            "INSERT INTO runwield_sessions(id, project_id, source, created_at, updated_at) VALUES (?, ?, 'catalog', ?, ?)",
-        ).run(firstLineage.runwieldSessionId, projectId, now, now);
+        database.handle
+            .prepare(
+                "INSERT INTO runwield_sessions(id, project_id, source, created_at, updated_at) VALUES (?, ?, 'catalog', ?, ?)",
+            )
+            .run(firstLineage.runwieldSessionId, projectId, now, now);
         const locatorId = newId(options.idFactory);
-        database.handle.prepare(
-            "INSERT INTO session_transcript_locators(id, runwield_session_id, project_id, pi_session_id, transcript_path, transcript_cwd, header_version, header_timestamp, first_cataloged_at, last_cataloged_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        ).run(
-            locatorId,
-            firstLineage.runwieldSessionId,
-            projectId,
-            first.piSessionId,
-            resolve(first.sessionPath),
-            first.headerCwd,
-            first.headerVersion,
-            first.headerTimestamp,
-            now,
-            now,
-        );
+        database.handle
+            .prepare(
+                "INSERT INTO session_transcript_locators(id, runwield_session_id, project_id, pi_session_id, transcript_path, transcript_cwd, header_version, header_timestamp, first_cataloged_at, last_cataloged_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .run(
+                locatorId,
+                firstLineage.runwieldSessionId,
+                projectId,
+                first.piSessionId,
+                resolve(first.sessionPath),
+                first.headerCwd,
+                first.headerVersion,
+                first.headerTimestamp,
+                now,
+                now,
+            );
         const insertSegment = database.handle.prepare(
             `INSERT INTO session_transcript_segments(id, runwield_session_id, project_id, pi_session_id, transcript_path,
                 transcript_cwd, ordinal, kind, sealed_at, header_version, header_timestamp, first_cataloged_at,
@@ -409,7 +453,7 @@ function catalogLineageSegmentGroup(database, projectId, group, options) {
         );
         for (let index = 0; index < group.length; index++) {
             const locator = group[index];
-            const lineage = /** @type {SessionSegmentLineageEvidence} */ (locator.lineage);
+            const lineage = locator.lineage!;
             insertSegment.run(
                 lineage.segmentId,
                 lineage.runwieldSessionId,
@@ -429,16 +473,14 @@ function catalogLineageSegmentGroup(database, projectId, group, options) {
                 now,
             );
         }
-        return /** @type {CatalogedSession} */ (getSessionById(database, firstLineage.runwieldSessionId));
+        return getSessionById(database, firstLineage.runwieldSessionId)!;
     });
 }
 
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {{ projectId: string, piSessionId: string, transcriptPath: string, transcriptCwd: string }} locator
- * @returns {Promise<import('../session/root-session.ts').CatalogSafeRootSessionLocator>}
- */
-export async function validateSuccessorSegmentLocator(database, locator) {
+export async function validateSuccessorSegmentLocator(
+    database: OwnerCoordinationDatabase,
+    locator: SuccessorLocator,
+): Promise<CatalogSafeRootSessionLocator> {
     const rootEvidence = listProjectRootEvidence(database, locator.projectId);
     const matchingRoot = rootEvidence.find((root) => isLocatorForRoot(locator.transcriptCwd, root));
     if (!matchingRoot) {
@@ -468,11 +510,7 @@ export async function validateSuccessorSegmentLocator(database, locator) {
     return safeLocator;
 }
 
-/**
- * @param {CatalogedSession} existing
- * @param {import('../session/root-session.ts').CatalogSafeRootSessionLocator} safeLocator
- */
-function assertStoredHeaderEvidence(existing, safeLocator) {
+function assertStoredHeaderEvidence(existing: CatalogedSession, safeLocator: CatalogSafeRootSessionLocator) {
     if (
         existing.transcriptCwd !== safeLocator.headerCwd ||
         existing.headerVersion !== safeLocator.headerVersion ||
@@ -482,15 +520,14 @@ function assertStoredHeaderEvidence(existing, safeLocator) {
     }
 }
 
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {string} runwieldSessionId
- * @returns {CatalogedSession | null}
- */
-export function getSessionById(database, runwieldSessionId) {
+export function getSessionById(
+    database: OwnerCoordinationDatabase,
+    runwieldSessionId: string,
+): CatalogedSession | null {
     const db = requireDatabase(database).handle;
-    const row = db.prepare(
-        `SELECT runwield_sessions.id AS runwield_session_id,
+    const row = db
+        .prepare(
+            `SELECT runwield_sessions.id AS runwield_session_id,
                 runwield_sessions.project_id,
                 runwield_sessions.display_name,
                 runwield_sessions.source,
@@ -504,21 +541,21 @@ export function getSessionById(database, runwieldSessionId) {
            FROM runwield_sessions
            JOIN session_transcript_locators ON session_transcript_locators.runwield_session_id = runwield_sessions.id
           WHERE runwield_sessions.id = ?`,
-    ).get(runwieldSessionId);
-    return row ? sessionFromRow(row) : null;
+        )
+        .get(runwieldSessionId);
+    return row ? sessionFromRow(row as CatalogSessionRow) : null;
 }
 
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {{ transcriptPath?: string, projectId?: string, piSessionId?: string }} locator
- * @returns {CatalogedSession | null}
- */
-export function findSessionByLocator(database, locator) {
+export function findSessionByLocator(
+    database: OwnerCoordinationDatabase,
+    locator: SessionLocator,
+): CatalogedSession | null {
     const db = requireDatabase(database).handle;
     let row;
     if (locator.transcriptPath) {
-        row = db.prepare(
-            `SELECT runwield_sessions.id AS runwield_session_id,
+        row = db
+            .prepare(
+                `SELECT runwield_sessions.id AS runwield_session_id,
                     runwield_sessions.project_id,
                     runwield_sessions.display_name,
                     runwield_sessions.source,
@@ -532,10 +569,12 @@ export function findSessionByLocator(database, locator) {
                FROM session_transcript_locators
                JOIN runwield_sessions ON runwield_sessions.id = session_transcript_locators.runwield_session_id
               WHERE session_transcript_locators.transcript_path = ?`,
-        ).get(resolve(locator.transcriptPath));
+            )
+            .get(resolve(locator.transcriptPath));
     } else if (locator.projectId && locator.piSessionId) {
-        row = db.prepare(
-            `SELECT runwield_sessions.id AS runwield_session_id,
+        row = db
+            .prepare(
+                `SELECT runwield_sessions.id AS runwield_session_id,
                     runwield_sessions.project_id,
                     runwield_sessions.display_name,
                     runwield_sessions.source,
@@ -549,17 +588,16 @@ export function findSessionByLocator(database, locator) {
                FROM session_transcript_locators
                JOIN runwield_sessions ON runwield_sessions.id = session_transcript_locators.runwield_session_id
               WHERE session_transcript_locators.project_id = ? AND session_transcript_locators.pi_session_id = ?`,
-        ).get(locator.projectId, locator.piSessionId);
+            )
+            .get(locator.projectId, locator.piSessionId);
     }
-    return row ? sessionFromRow(row) : null;
+    return row ? sessionFromRow(row as CatalogSessionRow) : null;
 }
 
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {{ projectId: string, piSessionId: string, transcriptPath: string, transcriptCwd: string, headerVersion?: number | null, headerTimestamp?: string | null, source?: 'catalog' | 'created' | 'imported', idFactory?: () => string, now?: () => string }} locator
- * @returns {Promise<CatalogedSession>}
- */
-export async function ensureSessionCatalogRecord(database, locator) {
+export async function ensureSessionCatalogRecord(
+    database: OwnerCoordinationDatabase,
+    locator: SessionCatalogLocator,
+): Promise<CatalogedSession> {
     const ownerDb = requireDatabase(database);
     if (!locator?.projectId) throw new Error("projectId is required");
     if (!locator.piSessionId) throw new Error("piSessionId is required");
@@ -575,7 +613,8 @@ export async function ensureSessionCatalogRecord(database, locator) {
         const existingByPath = findSessionByLocator(ownerDb, { transcriptPath });
         if (existingByPath) {
             if (
-                existingByPath.projectId !== locator.projectId || existingByPath.piSessionId !== safeLocator.piSessionId
+                existingByPath.projectId !== locator.projectId ||
+                existingByPath.piSessionId !== safeLocator.piSessionId
             ) {
                 throw new Error(`Transcript locator conflict: ${transcriptPath}`);
             }
@@ -598,139 +637,132 @@ export async function ensureSessionCatalogRecord(database, locator) {
         const locatorId = newId(locator.idFactory);
         const source = locator.source || "catalog";
         if (!["catalog", "created", "imported"].includes(source)) throw new Error(`Invalid Session source: ${source}`);
-        ownerDb.handle.prepare(
-            "INSERT INTO runwield_sessions(id, project_id, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-        ).run(runwieldSessionId, locator.projectId, source, now, now);
-        ownerDb.handle.prepare(
-            "INSERT INTO session_transcript_locators(id, runwield_session_id, project_id, pi_session_id, transcript_path, transcript_cwd, header_version, header_timestamp, first_cataloged_at, last_cataloged_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        ).run(
-            locatorId,
-            runwieldSessionId,
-            locator.projectId,
-            safeLocator.piSessionId,
-            transcriptPath,
-            safeLocator.headerCwd,
-            safeLocator.headerVersion,
-            safeLocator.headerTimestamp,
-            now,
-            now,
-        );
-        ownerDb.handle.prepare(
-            "INSERT INTO session_transcript_segments(id, runwield_session_id, project_id, pi_session_id, transcript_path, transcript_cwd, ordinal, kind, sealed_at, header_version, header_timestamp, first_cataloged_at, last_cataloged_at) VALUES (?, ?, ?, ?, ?, ?, 0, 'planning', NULL, ?, ?, ?, ?)",
-        ).run(
-            `${locatorId}-segment-0`,
-            runwieldSessionId,
-            locator.projectId,
-            safeLocator.piSessionId,
-            transcriptPath,
-            safeLocator.headerCwd,
-            safeLocator.headerVersion,
-            safeLocator.headerTimestamp,
-            now,
-            now,
-        );
-        return /** @type {CatalogedSession} */ (getSessionById(ownerDb, runwieldSessionId));
+        ownerDb.handle
+            .prepare(
+                "INSERT INTO runwield_sessions(id, project_id, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            )
+            .run(runwieldSessionId, locator.projectId, source, now, now);
+        ownerDb.handle
+            .prepare(
+                "INSERT INTO session_transcript_locators(id, runwield_session_id, project_id, pi_session_id, transcript_path, transcript_cwd, header_version, header_timestamp, first_cataloged_at, last_cataloged_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .run(
+                locatorId,
+                runwieldSessionId,
+                locator.projectId,
+                safeLocator.piSessionId,
+                transcriptPath,
+                safeLocator.headerCwd,
+                safeLocator.headerVersion,
+                safeLocator.headerTimestamp,
+                now,
+                now,
+            );
+        ownerDb.handle
+            .prepare(
+                "INSERT INTO session_transcript_segments(id, runwield_session_id, project_id, pi_session_id, transcript_path, transcript_cwd, ordinal, kind, sealed_at, header_version, header_timestamp, first_cataloged_at, last_cataloged_at) VALUES (?, ?, ?, ?, ?, ?, 0, 'planning', NULL, ?, ?, ?, ?)",
+            )
+            .run(
+                `${locatorId}-segment-0`,
+                runwieldSessionId,
+                locator.projectId,
+                safeLocator.piSessionId,
+                transcriptPath,
+                safeLocator.headerCwd,
+                safeLocator.headerVersion,
+                safeLocator.headerTimestamp,
+                now,
+                now,
+            );
+        return getSessionById(ownerDb, runwieldSessionId)!;
     });
 }
 
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {string} projectId
- * @param {{ catalog?: boolean, fullRescan?: boolean, idFactory?: () => string, now?: () => string }} [options]
- * @returns {Promise<{ sessions: CatalogedSession[], diagnostics: CatalogDiagnostic[] }>}
- */
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {string} runwieldSessionId
- * @returns {SessionTranscriptSegment[]}
- */
-export function listSessionTranscriptSegments(database, runwieldSessionId) {
+export function listSessionTranscriptSegments(
+    database: OwnerCoordinationDatabase,
+    runwieldSessionId: string,
+): SessionTranscriptSegment[] {
     const db = requireDatabase(database).handle;
-    return db.prepare(
-        `SELECT * FROM session_transcript_segments
+    return db
+        .prepare(
+            `SELECT * FROM session_transcript_segments
           WHERE runwield_session_id = ?
           ORDER BY ordinal ASC`,
-    ).all(runwieldSessionId).map(segmentFromRow);
+        )
+        .all(runwieldSessionId)
+        .map(segmentFromRow);
 }
 
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {string} runwieldSessionId
- * @returns {SessionTranscriptSegment | null}
- */
-export function getCurrentSessionSegment(database, runwieldSessionId) {
+export function getCurrentSessionSegment(
+    database: OwnerCoordinationDatabase,
+    runwieldSessionId: string,
+): SessionTranscriptSegment | null {
     const db = requireDatabase(database).handle;
-    const row = db.prepare(
-        `SELECT segments.*
+    const row = db
+        .prepare(
+            `SELECT segments.*
            FROM session_transcript_segment_state state
            JOIN session_transcript_segments segments ON segments.id = state.current_segment_id
           WHERE state.runwield_session_id = ?`,
-    ).get(runwieldSessionId);
+        )
+        .get(runwieldSessionId);
     return row ? segmentFromRow(row) : null;
 }
 
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {{ runwieldSessionId: string, projectId: string, piSessionId: string, transcriptPath: string, transcriptCwd: string, kind: 'planning' | 'execution' | 'semantic_repair', lineageParentSegmentId?: string | null, lineageParentPiSessionId?: string | null, lineageGroupKey?: string | null, idFactory?: () => string, now?: () => string }} segment
- * @returns {Promise<SessionTranscriptSegment>}
- */
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {{ runwieldSessionId: string, projectId: string, piSessionId: string, transcriptPath: string, transcriptCwd: string, kind: 'planning' | 'execution' | 'semantic_repair', lineageParentSegmentId?: string | null, lineageParentPiSessionId?: string | null, lineageGroupKey?: string | null, idFactory?: () => string, now?: () => string }} segment
- * @param {import('../session/root-session.ts').CatalogSafeRootSessionLocator} safeLocator
- * @returns {SessionTranscriptSegment}
- */
-export function insertSessionTranscriptSegmentRow(database, segment, safeLocator) {
+export function insertSessionTranscriptSegmentRow(
+    database: OwnerCoordinationDatabase,
+    segment: SegmentAppendOptions,
+    safeLocator: CatalogSafeRootSessionLocator,
+): SessionTranscriptSegment {
     const ownerDb = requireDatabase(database);
-    const session = ownerDb.handle.prepare(
-        "SELECT id, project_id FROM runwield_sessions WHERE id = ? AND project_id = ?",
-    ).get(segment.runwieldSessionId, segment.projectId);
+    const session = ownerDb.handle
+        .prepare("SELECT id, project_id FROM runwield_sessions WHERE id = ? AND project_id = ?")
+        .get(segment.runwieldSessionId, segment.projectId);
     if (!session) throw new Error(`Session not found: ${segment.runwieldSessionId}`);
     const current = getCurrentSessionSegment(ownerDb, segment.runwieldSessionId);
     if (current) throw new Error(`Current segment is still unsealed: ${current.segmentId}`);
-    const previous = ownerDb.handle.prepare(
-        "SELECT COALESCE(MAX(ordinal), -1) AS max_ordinal FROM session_transcript_segments WHERE runwield_session_id = ?",
-    ).get(segment.runwieldSessionId);
+    const previous = ownerDb.handle
+        .prepare(
+            "SELECT COALESCE(MAX(ordinal), -1) AS max_ordinal FROM session_transcript_segments WHERE runwield_session_id = ?",
+        )
+        .get(segment.runwieldSessionId);
     if (!previous) throw new Error("Unable to read segment ordinal state");
     const ordinal = Number(previous.max_ordinal) + 1;
     const now = isoNow(segment.now);
     const segmentId = newId(segment.idFactory);
-    ownerDb.handle.prepare(
-        `INSERT INTO session_transcript_segments(id, runwield_session_id, project_id, pi_session_id, transcript_path,
+    ownerDb.handle
+        .prepare(
+            `INSERT INTO session_transcript_segments(id, runwield_session_id, project_id, pi_session_id, transcript_path,
             transcript_cwd, ordinal, kind, sealed_at, header_version, header_timestamp, first_cataloged_at,
             last_cataloged_at, lineage_parent_segment_id, lineage_parent_pi_session_id, lineage_group_key,
             lineage_recorded_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(
-        segmentId,
-        segment.runwieldSessionId,
-        segment.projectId,
-        safeLocator.piSessionId,
-        resolve(segment.transcriptPath),
-        safeLocator.headerCwd,
-        ordinal,
-        segment.kind,
-        safeLocator.headerVersion,
-        safeLocator.headerTimestamp,
-        now,
-        now,
-        segment.lineageParentSegmentId ?? null,
-        segment.lineageParentPiSessionId ?? null,
-        segment.lineageGroupKey ?? null,
-        segment.lineageParentSegmentId || segment.lineageParentPiSessionId || segment.lineageGroupKey ? now : null,
-    );
-    return /** @type {SessionTranscriptSegment} */ (getCurrentSessionSegment(
-        ownerDb,
-        segment.runwieldSessionId,
-    ));
+        )
+        .run(
+            segmentId,
+            segment.runwieldSessionId,
+            segment.projectId,
+            safeLocator.piSessionId,
+            resolve(segment.transcriptPath),
+            safeLocator.headerCwd,
+            ordinal,
+            segment.kind,
+            safeLocator.headerVersion,
+            safeLocator.headerTimestamp,
+            now,
+            now,
+            segment.lineageParentSegmentId ?? null,
+            segment.lineageParentPiSessionId ?? null,
+            segment.lineageGroupKey ?? null,
+            segment.lineageParentSegmentId || segment.lineageParentPiSessionId || segment.lineageGroupKey ? now : null,
+        );
+    return getCurrentSessionSegment(ownerDb, segment.runwieldSessionId)!;
 }
 
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {{ runwieldSessionId: string, projectId: string, piSessionId: string, transcriptPath: string, transcriptCwd: string, kind: 'planning' | 'execution' | 'semantic_repair', lineageParentSegmentId?: string | null, lineageParentPiSessionId?: string | null, lineageGroupKey?: string | null, idFactory?: () => string, now?: () => string }} segment
- * @returns {Promise<SessionTranscriptSegment>}
- */
-export async function appendSessionTranscriptSegment(database, segment) {
+export async function appendSessionTranscriptSegment(
+    database: OwnerCoordinationDatabase,
+    segment: SegmentAppendOptions,
+): Promise<SessionTranscriptSegment> {
     const ownerDb = requireDatabase(database);
     if (!segment?.runwieldSessionId) throw new Error("runwieldSessionId is required");
     if (!segment.projectId) throw new Error("projectId is required");
@@ -745,16 +777,14 @@ export async function appendSessionTranscriptSegment(database, segment) {
     const transcriptPath = resolve(segment.transcriptPath);
     const safeLocator = await validateSuccessorSegmentLocator(ownerDb, { ...segment, transcriptPath });
     return ownerDb.transaction(() =>
-        insertSessionTranscriptSegmentRow(ownerDb, { ...segment, transcriptPath }, safeLocator)
+        insertSessionTranscriptSegmentRow(ownerDb, { ...segment, transcriptPath }, safeLocator),
     );
 }
 
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {{ runwieldSessionId: string, segmentId: string, evidence?: { byteLength: number, digestHex: string, terminalEntryId: string | null }, now?: () => string }} options
- * @returns {SessionTranscriptSegment}
- */
-export function sealSessionTranscriptSegmentRow(database, options) {
+export function sealSessionTranscriptSegmentRow(
+    database: OwnerCoordinationDatabase,
+    options: SegmentSealOptions,
+): SessionTranscriptSegment {
     const ownerDb = requireDatabase(database);
     const supplied = options.evidence || null;
     if (!supplied || !Number.isInteger(supplied.byteLength) || typeof supplied.digestHex !== "string") {
@@ -767,37 +797,37 @@ export function sealSessionTranscriptSegmentRow(database, options) {
     }
     const actual = captureTranscriptEvidenceSync(currentInTransaction.transcriptPath, supplied.byteLength);
     if (
-        actual.byteLength !== supplied.byteLength || actual.digestHex !== supplied.digestHex ||
+        actual.byteLength !== supplied.byteLength ||
+        actual.digestHex !== supplied.digestHex ||
         actual.terminalEntryId !== supplied.terminalEntryId
     ) {
         throw new Error("Sealed segment evidence does not match transcript on disk");
     }
-    const result = ownerDb.handle.prepare(
-        `UPDATE session_transcript_segments
+    const result = ownerDb.handle
+        .prepare(
+            `UPDATE session_transcript_segments
             SET sealed_at = ?, last_cataloged_at = ?, sealed_byte_length = ?, sealed_digest_hex = ?, sealed_terminal_entry_id = ?
           WHERE id = ? AND runwield_session_id = ? AND sealed_at IS NULL`,
-    ).run(
-        now,
-        now,
-        supplied.byteLength,
-        supplied.digestHex,
-        supplied.terminalEntryId ?? null,
-        options.segmentId,
-        options.runwieldSessionId,
-    );
+        )
+        .run(
+            now,
+            now,
+            supplied.byteLength,
+            supplied.digestHex,
+            supplied.terminalEntryId ?? null,
+            options.segmentId,
+            options.runwieldSessionId,
+        );
     if (result.changes !== 1) throw new Error("Segment seal proof was rejected");
-    return /** @type {SessionTranscriptSegment} */ (listSessionTranscriptSegments(
-        ownerDb,
-        options.runwieldSessionId,
-    ).find((item) => item.segmentId === options.segmentId));
+    return listSessionTranscriptSegments(ownerDb, options.runwieldSessionId).find(
+        (item) => item.segmentId === options.segmentId,
+    )!;
 }
 
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {{ runwieldSessionId: string, segmentId: string, evidence?: { byteLength: number, digestHex: string, terminalEntryId: string | null }, now?: () => string }} options
- * @returns {SessionTranscriptSegment}
- */
-export function sealSessionTranscriptSegment(database, options) {
+export function sealSessionTranscriptSegment(
+    database: OwnerCoordinationDatabase,
+    options: SegmentSealOptions,
+): SessionTranscriptSegment {
     const ownerDb = requireDatabase(database);
     const supplied = options.evidence || null;
     if (!supplied || !Number.isInteger(supplied.byteLength) || typeof supplied.digestHex !== "string") {
@@ -806,12 +836,10 @@ export function sealSessionTranscriptSegment(database, options) {
     return ownerDb.transaction(() => sealSessionTranscriptSegmentRow(ownerDb, options));
 }
 
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {{ runwieldSessionId: string, projectId: string, transcriptCwd: string }} options
- * @returns {Promise<import('../session/segment-rollover.ts').OrphanRolloverCandidate[]>}
- */
-export async function findOrphanRolloverCandidates(database, options) {
+export async function findOrphanRolloverCandidates(
+    database: OwnerCoordinationDatabase,
+    options: OrphanSearchOptions,
+): Promise<OrphanRolloverCandidate[]> {
     const ownerDb = requireDatabase(database);
     const segments = listSessionTranscriptSegments(ownerDb, options.runwieldSessionId);
     const knownPaths = new Set(segments.map((segment) => resolve(segment.transcriptPath)));
@@ -838,16 +866,10 @@ export async function findOrphanRolloverCandidates(database, options) {
     return candidates;
 }
 
-/**
- * @typedef {'no_op_retry' | 'removable_orphan' | 'recoverable_orphan' | 'transcript_ahead_database_behind' | 'database_ahead' | 'uncertain_effects'} SegmentRolloverRecoveryState
- */
-
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {{ runwieldSessionId: string, projectId: string, transcriptCwd: string, successorTranscriptPath?: string | null, predecessorSegmentId?: string | null }} options
- * @returns {Promise<{ state: SegmentRolloverRecoveryState, transcriptPath: string | null, segmentId: string | null, reason: string }>}
- */
-export async function inspectSegmentRolloverRecovery(database, options) {
+export async function inspectSegmentRolloverRecovery(
+    database: OwnerCoordinationDatabase,
+    options: InspectRolloverOptions,
+): Promise<SegmentRolloverInspection> {
     const ownerDb = requireDatabase(database);
     const transcriptPath = options.successorTranscriptPath ? resolve(options.successorTranscriptPath) : null;
     if (!transcriptPath) {
@@ -868,16 +890,21 @@ export async function inspectSegmentRolloverRecovery(database, options) {
     const segments = listSessionTranscriptSegments(ownerDb, options.runwieldSessionId);
     const segment = segments.find((item) => resolve(item.transcriptPath) === transcriptPath) || null;
     if (segment) {
-        const activation = ownerDb.handle.prepare(
-            "SELECT current_segment_id FROM session_activation_state WHERE runwield_session_id = ? AND project_id = ?",
-        ).get(options.runwieldSessionId, options.projectId);
-        const generation = ownerDb.handle.prepare(
-            `SELECT current_segment_id FROM session_committed_generations
+        const activation = ownerDb.handle
+            .prepare(
+                "SELECT current_segment_id FROM session_activation_state WHERE runwield_session_id = ? AND project_id = ?",
+            )
+            .get(options.runwieldSessionId, options.projectId);
+        const generation = ownerDb.handle
+            .prepare(
+                `SELECT current_segment_id FROM session_committed_generations
               WHERE runwield_session_id = ? AND project_id = ?
               ORDER BY generation DESC LIMIT 1`,
-        ).get(options.runwieldSessionId, options.projectId);
+            )
+            .get(options.runwieldSessionId, options.projectId);
         if (
-            activation?.current_segment_id === segment.segmentId && generation?.current_segment_id === segment.segmentId
+            activation?.current_segment_id === segment.segmentId &&
+            generation?.current_segment_id === segment.segmentId
         ) {
             return {
                 state: "database_ahead",
@@ -916,28 +943,30 @@ export async function inspectSegmentRolloverRecovery(database, options) {
     return { state: "recoverable_orphan", transcriptPath, segmentId: null, reason: "lineage_ready_without_row" };
 }
 
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {{ runwieldSessionId: string, transcriptCwd: string, transcriptPath: string }} options
- */
-export async function discardOrphanRolloverCandidate(database, options) {
+export async function discardOrphanRolloverCandidate(
+    database: OwnerCoordinationDatabase,
+    options: DiscardCatalogOrphanOptions,
+) {
     const ownerDb = requireDatabase(database);
     const sessionDir = getRunWieldSessionDir(options.transcriptCwd);
     const transcriptPath = resolve(options.transcriptPath);
     if (!isPathInside(transcriptPath, sessionDir)) throw new Error("Orphan candidate is outside the Session directory");
-    const row = ownerDb.handle.prepare("SELECT id FROM session_transcript_segments WHERE transcript_path = ?").get(
-        transcriptPath,
-    );
+    const row = ownerDb.handle
+        .prepare("SELECT id FROM session_transcript_segments WHERE transcript_path = ?")
+        .get(transcriptPath);
     if (row) throw new Error("Orphan candidate already has a segment row");
     const text = await fsReadFile(transcriptPath, "utf8");
-    const entries = text.split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    const entries: JsonRecord[] = text
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line));
     if (entries.length < 1) throw new Error("Orphan candidate is empty");
     for (let index = 1; index < entries.length; index++) {
         const entry = entries[index];
         if (!entry || typeof entry !== "object" || entry.type !== "custom") {
             throw new Error("Orphan candidate contains non-marker entries");
         }
-        const customType = /** @type {{ customType?: string }} */ (entry).customType;
+        const customType = entry.customType;
         if (customType !== SEGMENT_LINEAGE_CUSTOM_TYPE && customType !== PENDING_SEGMENT_CONTINUATION_CUSTOM_TYPE) {
             throw new Error("Orphan candidate contains non-marker entries");
         }
@@ -945,17 +974,14 @@ export async function discardOrphanRolloverCandidate(database, options) {
     await fsRm(transcriptPath);
 }
 
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {string} runwieldSessionId
- * @returns {SessionLineageDiagnostic[]}
- */
-export function diagnoseSessionSegmentLineage(database, runwieldSessionId) {
+export function diagnoseSessionSegmentLineage(
+    database: OwnerCoordinationDatabase,
+    runwieldSessionId: string,
+): SessionLineageDiagnostic[] {
     const segments = listSessionTranscriptSegments(database, runwieldSessionId);
     const byId = new Map(segments.map((segment) => [segment.segmentId, segment]));
-    /** @type {SessionLineageDiagnostic[]} */
-    const diagnostics = [];
-    const children = new Map();
+    const diagnostics: SessionLineageDiagnostic[] = [];
+    const children = new Map<string, number>();
     for (const segment of segments) {
         if (segment.lineageParentSegmentId) {
             if (!byId.has(segment.lineageParentSegmentId)) {
@@ -1011,17 +1037,17 @@ export function diagnoseSessionSegmentLineage(database, runwieldSessionId) {
     return diagnostics;
 }
 
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {string} projectId
- * @param {{ catalog?: boolean, fullRescan?: boolean, idFactory?: () => string, now?: () => string }} [options]
- * @returns {Promise<{ sessions: CatalogedSession[], diagnostics: CatalogDiagnostic[] }>}
- */
-export async function listProjectSessions(database, projectId, options = {}) {
+export async function listProjectSessions(
+    database: OwnerCoordinationDatabase,
+    projectId: string,
+    options: ListProjectSessionOptions = {},
+): Promise<ListProjectSessionsResult> {
     const catalogResult = options.catalog !== false ? await catalogProjectSessions(database, projectId, options) : null;
     const db = requireDatabase(database).handle;
-    const sessions = db.prepare(
-        `SELECT runwield_sessions.id AS runwield_session_id,
+    const sessions = (
+        db
+            .prepare(
+                `SELECT runwield_sessions.id AS runwield_session_id,
                 runwield_sessions.project_id,
                 runwield_sessions.display_name,
                 runwield_sessions.source,
@@ -1036,31 +1062,28 @@ export async function listProjectSessions(database, projectId, options = {}) {
            JOIN session_transcript_locators ON session_transcript_locators.runwield_session_id = runwield_sessions.id
           WHERE runwield_sessions.project_id = ?
           ORDER BY session_transcript_locators.header_timestamp DESC, session_transcript_locators.transcript_path`,
-    ).all(projectId).map(sessionFromRow);
+            )
+            .all(projectId) as CatalogSessionRow[]
+    ).map(sessionFromRow);
     return { sessions, diagnostics: catalogResult?.diagnostics || [] };
 }
 
-/**
- * @param {import('./database.ts').OwnerCoordinationDatabase} database
- * @param {string} projectId
- * @param {{ fullRescan?: boolean, idFactory?: () => string, now?: () => string }} [options]
- * @returns {Promise<{ cataloged: CatalogedSession[], diagnostics: CatalogDiagnostic[] }>}
- */
-export async function catalogProjectSessions(database, projectId, options = {}) {
+export async function catalogProjectSessions(
+    database: OwnerCoordinationDatabase,
+    projectId: string,
+    options: SessionCatalogOptions = {},
+): Promise<CatalogProjectSessionsResult> {
     const ownerDb = requireDatabase(database);
     const project = getProjectById(ownerDb, projectId);
     if (!project) throw new Error(`Project not found: ${projectId}`);
     const rootEvidence = listProjectRootEvidence(ownerDb, projectId);
-    /** @type {Map<string, ProjectRootEvidence>} */
-    const roots = new Map();
+    const roots = new Map<string, ProjectRootEvidence>();
     for (const root of rootEvidence) {
         roots.set(root.enteredRoot, root);
         roots.set(root.canonicalRoot, root);
     }
-    /** @type {CatalogedSession[]} */
-    const cataloged = [];
-    /** @type {CatalogDiagnostic[]} */
-    const diagnostics = [];
+    const cataloged: CatalogedSession[] = [];
+    const diagnostics: CatalogDiagnostic[] = [];
     const seenPaths = new Set();
     const knownTranscriptPaths = listKnownTranscriptPaths(ownerDb, projectId);
     for (const [cwd, evidence] of roots) {
@@ -1077,7 +1100,8 @@ export async function catalogProjectSessions(database, projectId, options = {}) 
             if (
                 !inspection ||
                 !shouldIncrementallyScan(ownerDb, projectId, cwd, sessionDir, dirMtimeMs, inspection.jsonlCount)
-            ) continue;
+            )
+                continue;
             locatorResult = await listIncrementalRootSessionLocators(cwd, sessionDir, knownTranscriptPaths);
             scannedDirMtimeMs = locatorResult.dirMtimeMs;
             scannedJsonlCount = inspection.jsonlCount;
@@ -1085,8 +1109,7 @@ export async function catalogProjectSessions(database, projectId, options = {}) 
         }
         const rootDiagnosticStart = diagnostics.length;
         diagnostics.push(...locatorResult.diagnostics);
-        /** @type {LineageCatalogLocator[]} */
-        const lineageLocators = [];
+        const lineageLocators: LineageCatalogLocator[] = [];
         for (const locator of locatorResult.locators) {
             if (!isLocatorForRoot(locator.headerCwd, evidence)) {
                 diagnostics.push({
@@ -1162,26 +1185,26 @@ export async function catalogProjectSessions(database, projectId, options = {}) 
             );
         }
     }
-    const distinctDiagnostics = diagnostics.filter((diagnostic, index) =>
-        diagnostics.findIndex((candidate) =>
-            candidate.sessionPath === diagnostic.sessionPath && candidate.code === diagnostic.code &&
-            candidate.message === diagnostic.message
-        ) === index
+    const distinctDiagnostics = diagnostics.filter(
+        (diagnostic, index) =>
+            diagnostics.findIndex(
+                (candidate) =>
+                    candidate.sessionPath === diagnostic.sessionPath &&
+                    candidate.code === diagnostic.code &&
+                    candidate.message === diagnostic.message,
+            ) === index,
     );
     return { cataloged, diagnostics: distinctDiagnostics };
 }
 
-/**
- * @param {string} headerCwd
- * @param {ProjectRootEvidence} evidence
- */
-function isLocatorForRoot(headerCwd, evidence) {
+function isLocatorForRoot(headerCwd: string, evidence: ProjectRootEvidence) {
     const resolvedHeaderCwd = resolve(headerCwd);
     try {
         return realpathSync.native(resolvedHeaderCwd) === evidence.canonicalRoot;
     } catch {
         if (evidence.rootState !== "historical") return false;
-        return resolvedHeaderCwd === resolve(evidence.enteredRoot) ||
-            resolvedHeaderCwd === resolve(evidence.canonicalRoot);
+        return (
+            resolvedHeaderCwd === resolve(evidence.enteredRoot) || resolvedHeaderCwd === resolve(evidence.canonicalRoot)
+        );
     }
 }

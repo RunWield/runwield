@@ -281,7 +281,7 @@ export class RuntimeLifecycle {
     }
 
     adoptManagedSession(options: {
-        session: import("../../owner-coordination/sessions.js").CatalogedSession;
+        session: import("../../owner-coordination/sessions.ts").CatalogedSession;
         generation?: number | null;
         acknowledgedEventId?: string | null;
         hostedSessionId?: string | null;
