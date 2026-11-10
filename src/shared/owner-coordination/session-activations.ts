@@ -7,7 +7,7 @@ import type { SQLOutputValue } from "node:sqlite";
 import type { JsonRecord } from "../jsonc.ts";
 import type { ProcessKind } from "../session/file-session-store-types.ts";
 import type { OwnerCoordinationDatabase } from "./database.ts";
-import { insertSessionTranscriptSegmentRow, sealSessionTranscriptSegmentRow } from "./sessions.js";
+import { insertSessionTranscriptSegmentRow, sealSessionTranscriptSegmentRow } from "./sessions.ts";
 
 export type SessionActivationState = "uninitialized" | "idle" | "active" | "uncertain" | "reconcile_required";
 export type SessionActivationPhase = "bootstrap" | "preparing" | "hydrated" | "turning" | "checkpointing";
