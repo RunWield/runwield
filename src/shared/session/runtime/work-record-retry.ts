@@ -1,4 +1,4 @@
-import type { HostedSession } from "../hosted-session.js";
+import type { HostedSession } from "../hosted-session.ts";
 import { emitSystemStatus } from "../session-runtime-events.ts";
 
 /** Retry a delivered Plan's Work Record within the current managed capability. */

@@ -1,6 +1,6 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { HostedSession } from "../../shared/session/hosted-session.js";
+import { HostedSession } from "../../shared/session/hosted-session.ts";
 import { RuntimeEventTypes, type RuntimeAssistantTextDeltaEvent } from "../../shared/session/session-runtime-events.ts";
 import { createReviewCompletedTool, type ReviewCompleteParams, type ReviewCompleteResult } from "../review-complete.ts";
 import { makeToolProjectFixture, withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";

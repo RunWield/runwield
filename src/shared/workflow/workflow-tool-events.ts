@@ -6,7 +6,7 @@
  * audit data only.
  */
 
-import type { HostedSession } from "../session/hosted-session.js";
+import type { HostedSession } from "../session/hosted-session.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 export const WORKFLOW_TOOL_EVENT_CUSTOM_TYPE = "runwield.workflow_tool_event" as const;
@@ -90,7 +90,7 @@ export type WorkflowToolEventPayloadByKind = {
 export type WorkflowToolEventPayload<K extends WorkflowToolEventKind = WorkflowToolEventKind> =
     WorkflowToolEventPayloadByKind[K];
 
-type ActiveExecutionWorkflow = import("../session/hosted-session.js").ActiveExecutionWorkflow;
+type ActiveExecutionWorkflow = import("../session/hosted-session.ts").ActiveExecutionWorkflow;
 type OwningSession = ReturnType<HostedSession["getRootAgentSession"]>;
 type EventSourceSession = { sessionManager?: { getSessionId(): string } };
 type ToolEventSource = { hostedSession: HostedSession; owningSession: OwningSession };

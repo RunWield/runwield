@@ -9,7 +9,7 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { createGitPort } from "../git-port.ts";
 import { createPlanDeviationTool } from "../../tools/plan-deviation.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";

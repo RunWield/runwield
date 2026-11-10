@@ -5,7 +5,7 @@
 
 import { emitAssistantMessage } from "./session-runtime-events.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "./hosted-session.js";
+import type { HostedSession } from "./hosted-session.ts";
 
 interface TaskCompletedMessageFields {
     message?: unknown;

@@ -22,7 +22,7 @@ import { runLoadPlanCommand } from "../../cmd/load-plan/index.ts";
 import { resolvePlanWithPrimaryRecovery } from "../../cmd/load-plan/primary-plan-recovery.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../session/session-runtime.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { COLLABORATION_LOCK_BYPASS } from "../collaboration/lock.ts";
 import { listEntries } from "../worktree-registry.ts";

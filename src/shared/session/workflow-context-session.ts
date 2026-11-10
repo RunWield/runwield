@@ -18,6 +18,10 @@ export interface LineageSessionManager {
     getEntries?: () => unknown[];
 }
 
+interface WorkflowContextStore extends Pick<LineageSessionManager, "getBranch" | "getEntries"> {
+    appendCustomEntry?: (customType: string, data: WorkflowContext) => string | void;
+}
+
 export type WorkflowContext = {
     routingIntent?: string;
     complexity?: string;
@@ -207,7 +211,7 @@ export function normalizeWorkflowContext(value: unknown): WorkflowContext | null
 }
 
 export function recordWorkflowTriageContext(
-    sessionManager: SessionManager | undefined | null,
+    sessionManager: WorkflowContextStore | undefined | null,
     details: WorkflowTriageContextDetails,
 ): WorkflowContext | null {
     const routingIntent = normalizeWorkflowRoutingIntent(details.routingIntent);
@@ -221,7 +225,7 @@ export function recordWorkflowTriageContext(
 }
 
 export function recordWorkflowPlanName(
-    sessionManager: SessionManager | undefined | null,
+    sessionManager: WorkflowContextStore | undefined | null,
     planName: unknown,
 ): WorkflowContext | null {
     const normalizedPlanName = normalizeWorkflowPlanName(planName);
@@ -265,7 +269,7 @@ export function deriveWorkflowContextFromExecutionWorkflow(
 }
 
 export function recordNormalizedWorkflowContext(
-    sessionManager: SessionManager | undefined | null,
+    sessionManager: WorkflowContextStore | undefined | null,
     context: WorkflowContext | null | undefined,
 ): WorkflowContext | null {
     const normalized = normalizeWorkflowContext(context);
@@ -302,7 +306,7 @@ export function readPersistedWorkflowContext(
 }
 
 function recordWorkflowContext(
-    sessionManager: SessionManager | undefined | null,
+    sessionManager: WorkflowContextStore | undefined | null,
     context: WorkflowContext,
 ): WorkflowContext | null {
     return recordNormalizedWorkflowContext(sessionManager, context);

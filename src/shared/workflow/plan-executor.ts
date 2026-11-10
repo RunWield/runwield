@@ -33,7 +33,7 @@ import { emitLaunchingExecutionAgent } from "./execution-preparation-progress.ts
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { PlanFrontMatter } from "../../plan-store.js";
-import type { ActiveExecutionWorkflow, HostedSession } from "../session/hosted-session.js";
+import type { ActiveExecutionWorkflow, HostedSession } from "../session/hosted-session.ts";
 
 function isPlanReviewRetryAccepted(response) {
     if (!response || typeof response !== "object") return false;

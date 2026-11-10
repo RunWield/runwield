@@ -54,7 +54,7 @@ import {
     SESSION_COMPLETE_GUIDANCE,
 } from "../shared/workflow/plan-review-recovery.ts";
 import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
-import type { HostedSession } from "../shared/session/hosted-session.js";
+import type { HostedSession } from "../shared/session/hosted-session.ts";
 import type { PlanFrontMatter } from "../plan-store.js";
 
 export interface TriageMeta extends Partial<PlanFrontMatter> {
@@ -338,7 +338,7 @@ async function resolveTriageMeta(
  * @param {{
  *   triageMeta?: TriageMeta,
  *   agentName?: string,
- *   hostedSession?: import('../shared/session/hosted-session.js').HostedSession,
+ *   hostedSession?: import('../shared/session/hosted-session.ts').HostedSession,
  * }} opts
  * @returns {import('@earendil-works/pi-coding-agent').ToolDefinition}
  */

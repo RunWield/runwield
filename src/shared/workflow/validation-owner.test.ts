@@ -7,7 +7,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertExists, assertRejects } from "../../testing/assertions.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import {
     acknowledgeTaskCompletion,
     claimPendingTaskCompletion,

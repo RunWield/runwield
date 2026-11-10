@@ -2,7 +2,7 @@ import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import type { RuntimeAgentChangedEvent } from "./session-runtime-events.ts";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
-import { HostedSession } from "./hosted-session.js";
+import { HostedSession } from "./hosted-session.ts";
 import {
     createSessionRuntimeEvent,
     emitHostedSessionRuntimeEvent,

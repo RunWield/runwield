@@ -23,7 +23,7 @@ import { continueWorkflowValidation } from "./validation.ts";
 import { emitSystemStatus } from "../session/session-runtime-events.ts";
 import { buildPlanSummary } from "../plan-presentation.ts";
 import type { PlanFrontMatter } from "../../plan-store.js";
-import type { HostedSession } from "../session/hosted-session.js";
+import type { HostedSession } from "../session/hosted-session.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { WorkflowValidationResult } from "./validation.ts";
 import { createGitPort } from "../git-port.ts";

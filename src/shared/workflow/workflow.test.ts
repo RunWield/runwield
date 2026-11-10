@@ -28,7 +28,7 @@ import {
     startActiveExecutionWorkflow,
     type FinalizePlanImplementationOptions,
 } from "./workflow.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { loadPlan, savePlan, type PlanFrontMatterInput } from "../../plan-store.js";
 import { getTransitionJournalDir } from "./state-transition.ts";

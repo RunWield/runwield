@@ -4,7 +4,7 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { validateToolArguments, fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { HostedSession } from "../../shared/session/hosted-session.js";
+import { HostedSession } from "../../shared/session/hosted-session.ts";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
 import { createPairCheckpointTool } from "../pair-checkpoint.ts";
 import { readCurrentPairCheckpoint } from "../../shared/session/pair-checkpoint-session.ts";
@@ -12,7 +12,7 @@ import { createTaskCompletedTool } from "../task-completed.ts";
 import { makeToolProjectFixture, withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 
 import type { TextContent } from "@earendil-works/pi-ai";
-import type { ActiveExecutionWorkflow } from "../../shared/session/hosted-session.js";
+import type { ActiveExecutionWorkflow } from "../../shared/session/hosted-session.ts";
 import type { RequestDispatchKind } from "../../shared/session/request-dispatch.ts";
 import type {
     RuntimeAssistantTextDeltaEvent,

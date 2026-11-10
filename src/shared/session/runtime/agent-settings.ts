@@ -41,7 +41,7 @@ interface RuntimeMutationResult {
     error?: string;
     deferred?: boolean;
     enabled?: boolean;
-    thinkingLevel?: import("../hosted-session.js").ThinkingLevel;
+    thinkingLevel?: import("../hosted-session.ts").ThinkingLevel;
     agentName?: string;
     model?: string;
     provider?: string;
@@ -56,7 +56,7 @@ interface TutorialContextMutationResult {
 interface RuntimeThinkingResult {
     ok: boolean;
     error?: string;
-    thinkingLevel?: import("../hosted-session.js").ThinkingLevel;
+    thinkingLevel?: import("../hosted-session.ts").ThinkingLevel;
 }
 
 type RuntimeCompactionResult = Awaited<
@@ -305,7 +305,7 @@ export class RuntimeAgentSettings {
             toolNames?: string[];
             customTools?: import("@earendil-works/pi-coding-agent").ToolDefinition[];
             modelOverride?: string;
-            thinkingLevelOverride?: import("../hosted-session.js").ThinkingLevel;
+            thinkingLevelOverride?: import("../hosted-session.ts").ThinkingLevel;
             temperatureOverride?: number;
         },
     ): Promise<Awaited<ReturnType<typeof runIsolatedAgentSession>> | RuntimeMutationResult | ManagedOperationFailure> {
@@ -343,7 +343,7 @@ export class RuntimeAgentSettings {
 
     async setActiveExecutionWorkflow(
         sessionId: string,
-        workflow: import("../hosted-session.js").ActiveExecutionWorkflow,
+        workflow: import("../hosted-session.ts").ActiveExecutionWorkflow,
     ) {
         return await this.managedOperations.runManagedStandaloneMutation(
             sessionId,
@@ -398,10 +398,10 @@ export class RuntimeAgentSettings {
     cycleSessionThinkingLevel(
         sessionId: string,
     ): RuntimeThinkingResult | Promise<RuntimeThinkingResult | ManagedOperationFailure> {
-        /** @param {import('.././hosted-session.js').HostedSession} session */
-        const run = (session: import(".././hosted-session.js").HostedSession): RuntimeThinkingResult => {
+        /** @param {import('.././hosted-session.ts').HostedSession} session */
+        const run = (session: import(".././hosted-session.ts").HostedSession): RuntimeThinkingResult => {
             const rootAgentSession = getRuntimeRootAgentSession(session);
-            const levels: import("../hosted-session.js").ThinkingLevel[] = [
+            const levels: import("../hosted-session.ts").ThinkingLevel[] = [
                 "off",
                 "minimal",
                 "low",
@@ -518,9 +518,9 @@ export class RuntimeAgentSettings {
 
     setSessionThinkingLevel(
         sessionId: string,
-        thinkingLevel: import(".././hosted-session.js").ThinkingLevel,
+        thinkingLevel: import(".././hosted-session.ts").ThinkingLevel,
     ): RuntimeMutationResult | Promise<RuntimeMutationResult> {
-        const run = (session: import(".././hosted-session.js").HostedSession) => {
+        const run = (session: import(".././hosted-session.ts").HostedSession) => {
             const root = getRuntimeRootAgentSession(session);
             root?.setThinkingLevel?.(thinkingLevel);
             session.setThinkingLevel(thinkingLevel);
@@ -543,7 +543,7 @@ export class RuntimeAgentSettings {
     }
 
     async refreshMcpTools(
-        hostedSession: import(".././hosted-session.js").HostedSession,
+        hostedSession: import(".././hosted-session.ts").HostedSession,
         requestServers?: import("../../mcp/config.ts").McpServerDefinition[],
         forceReload = false,
     ) {
@@ -586,7 +586,7 @@ export class RuntimeAgentSettings {
     }
 
     async activateSessionAgent(
-        hostedSession: import(".././hosted-session.js").HostedSession,
+        hostedSession: import(".././hosted-session.ts").HostedSession,
         options: import(".././agent-switching.ts").AgentSwitchOptions,
     ) {
         let pendingCreation = this.managedOperations.getPendingCreationProof(hostedSession.id);
@@ -636,7 +636,7 @@ export class RuntimeAgentSettings {
         }
     }
 
-    async alignActiveExecutionWorkflowOwner(hostedSession: import(".././hosted-session.js").HostedSession) {
+    async alignActiveExecutionWorkflowOwner(hostedSession: import(".././hosted-session.ts").HostedSession) {
         // A focused semantic repair retains its Agent while the execution owner stays durable.
         if (hostedSession.getRootAgentName?.() === AGENTS.REVIEWER_FEEDBACK_ENGINEER) return;
         const workflow = hostedSession.getActiveExecutionWorkflow?.() || null;

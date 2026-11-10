@@ -71,7 +71,7 @@ interface TriageToolResultMessage {
 }
 
 export interface DispatchPostTriageArgs {
-    hostedSession: import("../session/hosted-session.js").HostedSession;
+    hostedSession: import("../session/hosted-session.ts").HostedSession;
     triage: TriageOutcomeInput;
     userRequest: string;
     images?: import("../session/image-attachments.ts").ImageAttachment[];
@@ -97,14 +97,14 @@ function buildQuickFixManualQaContext(decoratedRequest: string, messages?: Agent
  * @param {string} projectRoot
  * @param {string} manualQaName
  * @param {string} manualQaContext
- * @returns {import('../session/hosted-session.js').ActiveExecutionWorkflow}
+ * @returns {import('../session/hosted-session.ts').ActiveExecutionWorkflow}
  */
 function createQuickFixWorkflow(
     triage: TriageOutcome,
     projectRoot: string,
     manualQaName: string,
     manualQaContext: string,
-): import("../session/hosted-session.js").ActiveExecutionWorkflow {
+): import("../session/hosted-session.ts").ActiveExecutionWorkflow {
     return {
         planName: "quick-fix",
         triageMeta: { ...triage, classification: "QUICK_FIX" },
@@ -119,8 +119,8 @@ function createQuickFixWorkflow(
 }
 
 function refreshedQuickFixWorkflow(
-    workflow: import("../session/hosted-session.js").ActiveExecutionWorkflow,
-): import("../session/hosted-session.js").ActiveExecutionWorkflow {
+    workflow: import("../session/hosted-session.ts").ActiveExecutionWorkflow,
+): import("../session/hosted-session.ts").ActiveExecutionWorkflow {
     return {
         ...workflow,
         executionStarted: true,
@@ -129,7 +129,7 @@ function refreshedQuickFixWorkflow(
 }
 
 async function runRootTurnUntilTaskCompletion(args: {
-    hostedSession: import("../session/hosted-session.js").HostedSession;
+    hostedSession: import("../session/hosted-session.ts").HostedSession;
     agentName: string;
     userRequest: string;
     images?: import("../session/image-attachments.ts").ImageAttachment[];
@@ -182,12 +182,12 @@ async function runRootTurnUntilTaskCompletion(args: {
 }
 
 /**
- * @param {import('../session/hosted-session.js').HostedSession} hostedSession
+ * @param {import('../session/hosted-session.ts').HostedSession} hostedSession
  * @param {string} projectRoot
  * @returns {Promise<boolean>}
  */
 async function confirmNonGitQuickFixExecution(
-    hostedSession: import("../session/hosted-session.js").HostedSession,
+    hostedSession: import("../session/hosted-session.ts").HostedSession,
     projectRoot: string,
 ): Promise<boolean> {
     const response = await requestHostedSessionInteraction(
@@ -245,12 +245,12 @@ export function readLatestTriageOutcome(messages: AgentMessage[], fromIndex?: nu
  *
  * @param {import('@earendil-works/pi-coding-agent').SessionManager | undefined} sessionManager
  * @param {TriageOutcome} triage
- * @param {import('../session/hosted-session.js').HostedSession} hostedSession
+ * @param {import('../session/hosted-session.ts').HostedSession} hostedSession
  */
 function applyAutoSessionName(
     sessionManager: SessionManager | undefined,
     triage: TriageOutcome,
-    hostedSession: import("../session/hosted-session.js").HostedSession,
+    hostedSession: import("../session/hosted-session.ts").HostedSession,
 ): void {
     if (!sessionManager) return;
 

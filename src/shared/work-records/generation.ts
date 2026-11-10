@@ -28,7 +28,7 @@ import {
     updateArchivedPlanFrontMatter,
 } from "../../plan-store.js";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { runValidationAgentUntilEvent } from "../session/agent-workflow-step.ts";
 import { SYSTEM_SEMANTIC_REVIEW_PORT } from "../workflow/validation-session-adapter.ts";
 import { settleWorkflowToolEvent } from "../workflow/workflow-tool-events.ts";

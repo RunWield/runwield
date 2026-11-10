@@ -58,7 +58,7 @@ type ManagedProjectionSuccess = Extract<ManagedProjection, { ok: true }>;
 type TranscriptEntries = Awaited<ReturnType<typeof captureTranscriptEvidence>>["entries"];
 interface ManagedCommittedProjection {
     ok: true;
-    managed: import("../hosted-session.js").ManagedSessionMetadata;
+    managed: import("../hosted-session.ts").ManagedSessionMetadata;
     entries: TranscriptEntries;
     projection: ManagedProjectionSuccess;
 }
@@ -110,7 +110,7 @@ export class RuntimeReads {
         this.lifecycle = lifecycle;
     }
     private activeSessionInfoCache = new WeakMap<
-        import("../hosted-session.js").MinimalSessionManagerLike,
+        import("../hosted-session.ts").MinimalSessionManagerLike,
         { leafId: string | null; info: ReturnType<typeof buildProjectedSessionInfo> }
     >();
     getSessionBackgroundTaskState(sessionId: string) {
@@ -125,8 +125,8 @@ export class RuntimeReads {
     }
 
     getActiveSessionInfo(
-        session: import(".././hosted-session.js").HostedSession,
-        sessionManager: import(".././hosted-session.js").MinimalSessionManagerLike,
+        session: import(".././hosted-session.ts").HostedSession,
+        sessionManager: import(".././hosted-session.ts").MinimalSessionManagerLike,
     ) {
         const fallbackEntries = sessionManager.getLeafId ? null : sessionManager.getEntries?.() || [];
         const fallbackLeaf = fallbackEntries?.at(-1);

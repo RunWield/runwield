@@ -6,7 +6,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
 import { addEntry, getWorktreeRegistryPath } from "../worktree-registry.ts";
-import { HostedSession } from "./hosted-session.js";
+import { HostedSession } from "./hosted-session.ts";
 import { restoreExecutionWorkflow } from "./execution-workflow-recovery.ts";
 import { resolvePersistedExecutionRootConfiguration } from "./runtime/support.ts";
 import { createPlanDeviationTool } from "../../tools/plan-deviation.ts";

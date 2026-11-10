@@ -6,7 +6,7 @@
  * the lifecycle/validation code that acts on it.
  */
 
-import type { HostedSession } from "./hosted-session.js";
+import type { HostedSession } from "./hosted-session.ts";
 import {
     claimWorkflowToolEvent,
     publishWorkflowToolEvent,
@@ -16,7 +16,7 @@ import {
 
 export const TASK_COMPLETION_CUSTOM_TYPE = "runwield.task_completion";
 
-type ActiveExecutionWorkflow = import("./hosted-session.js").ActiveExecutionWorkflow;
+type ActiveExecutionWorkflow = import("./hosted-session.ts").ActiveExecutionWorkflow;
 type OwningSession = ReturnType<HostedSession["getRootAgentSession"]>;
 
 type AcceptedTaskCompletionEvent = {

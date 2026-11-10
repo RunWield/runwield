@@ -18,7 +18,7 @@ import { getCwd } from "../../constants.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { openFileSessionStore } from "../session/file-session-store.ts";
 import { SessionHost } from "../session/session-host.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { buildAgentSession, runIsolatedAgentSession } from "../session/session.js";
 import { SessionRuntime, createSessionRuntime } from "../session/session-runtime.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";

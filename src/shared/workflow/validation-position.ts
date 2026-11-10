@@ -8,7 +8,7 @@
  * skip Mechanical Validation, or override a checkpoint.
  */
 
-import type { HostedSession } from "../session/hosted-session.js";
+import type { HostedSession } from "../session/hosted-session.ts";
 
 /** The phase currently shown for a live validation run. */
 export type ValidationPhaseName = "mechanical" | "semantic" | "delivery";

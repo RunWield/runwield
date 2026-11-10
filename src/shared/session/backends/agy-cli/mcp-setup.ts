@@ -15,7 +15,7 @@ import {
 } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { CLI_BIN, getHomeDir } from "../../../../constants.ts";
-import type { HostedSession } from "../../hosted-session.js";
+import type { HostedSession } from "../../hosted-session.ts";
 import {
     isApprovalAcceptedValue,
     requestHostedSessionInteraction,

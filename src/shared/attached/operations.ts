@@ -14,7 +14,7 @@ import {
 } from "../workflow/implementation-report.ts";
 import type { CompatibilityAssessment } from "./compatibility.ts";
 import type { CodexRoleDispatch } from "./codex-role-settings.ts";
-import type { ActiveExecutionWorkflow } from "../session/hosted-session.js";
+import type { ActiveExecutionWorkflow } from "../session/hosted-session.ts";
 import { ROUTING_INTENTS, WORK_KINDS } from "../../constants.ts";
 import { TRIAGE_COMPLEXITIES, type TriageOutcome, type TriageOutcomeInput } from "../workflow/triage-outcome.ts";
 

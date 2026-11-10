@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 
 import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { TASK_COMPLETION_CUSTOM_TYPE } from "../session/task-completion-session.ts";
 import { setExactProjectCustomSetting } from "../settings.js";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";

@@ -41,7 +41,7 @@ import {
 } from "./process-output.ts";
 import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { EPIC_INTEGRATION_REPORT_FILE_NAME, getEpicArtifactPath } from "../epic-artifacts.ts";
-import type { HostedSession } from "../session/hosted-session.js";
+import type { HostedSession } from "../session/hosted-session.ts";
 import { recordPlanEvent } from "./plan-lifecycle.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";

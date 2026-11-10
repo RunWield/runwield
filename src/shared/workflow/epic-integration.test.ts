@@ -15,7 +15,7 @@ import { parseDiffFiles } from "./review-diff-tool.ts";
 import { makeRecordedSession, makeUi } from "./validation-test-helpers.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 import { buildPlanEventUpdates, recordPlanEvent } from "./plan-lifecycle.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { createPlanDeviationTool } from "../../tools/plan-deviation.ts";
 import { checkpointExecutionWorktree } from "../worktree.js";
 import { recordIntegrationNotes, syncEpicChildPlanDeviations } from "./epic-review-context.ts";

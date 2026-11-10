@@ -28,7 +28,7 @@ import {
 import { preparePublicationRevalidation, prepareReviewedCandidateRevalidation } from "./publication-revalidation.ts";
 import { candidateIdentity } from "./validation-scope.ts";
 import { getWorktreeReviewDiff } from "./git-snapshot.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { createPlanDeviationTool } from "../../tools/plan-deviation.ts";
 import { assertPreMergeCandidateUnchanged } from "../worktree.js";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";

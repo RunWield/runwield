@@ -102,7 +102,7 @@ export class RuntimeWorkflows {
     }
 
     async runWorkflowOperation<T>(
-        session: import(".././hosted-session.js").HostedSession,
+        session: import(".././hosted-session.ts").HostedSession,
         _operationName: string,
         options: RuntimeWorkflowOptions,
         operation: () => Promise<T>,
@@ -312,7 +312,7 @@ export class RuntimeWorkflows {
         return result;
     }
 
-    async restoreDormantManagedInvariant(session: import(".././hosted-session.js").HostedSession) {
+    async restoreDormantManagedInvariant(session: import(".././hosted-session.ts").HostedSession) {
         const managed = session.getManagedMetadata?.();
         if (
             !managed ||
@@ -502,7 +502,7 @@ ${outcome.feedback || ""}`,
     }
 
     async resumePendingExecutionSegmentHandoff(
-        session: import(".././hosted-session.js").HostedSession,
+        session: import(".././hosted-session.ts").HostedSession,
         options: RuntimeExecutePlanOptions,
     ): Promise<RuntimeValidationResult | null> {
         const managed = session.getManagedMetadata?.();
@@ -720,7 +720,7 @@ ${outcome.feedback || ""}`,
 
     async runSemanticRepairContinuation(
         sessionId: string,
-        session: import(".././hosted-session.js").HostedSession,
+        session: import(".././hosted-session.ts").HostedSession,
         options: RuntimeSemanticRepairOptions,
         continuation: SemanticRepairContinuation,
         alreadyManaged: boolean = false,
@@ -851,7 +851,7 @@ ${outcome.feedback || ""}`,
     }
 
     async continueEpicAfterValidation(
-        oldSession: import(".././hosted-session.js").HostedSession,
+        oldSession: import(".././hosted-session.ts").HostedSession,
         validationResult: RuntimeValidationResult | undefined | null,
     ): Promise<{ replaced: boolean; sessionId?: string }> {
         let currentContinuation = validationResult?.epicContinuation || null;

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { makeToolProjectFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { createReviewCompletedTool } from "../../tools/review-complete.ts";
 import { createReviewDiffTool, parseDiffFiles } from "./review-diff-tool.ts";

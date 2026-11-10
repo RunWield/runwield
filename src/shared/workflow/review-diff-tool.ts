@@ -3,7 +3,7 @@ import { Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { publishWorkflowToolEvent } from "./workflow-tool-events.ts";
 import { createReviewDiffReader } from "./review-diff.ts";
-import type { HostedSession } from "../session/hosted-session.js";
+import type { HostedSession } from "../session/hosted-session.ts";
 import type { ReviewInspection } from "./review-inspection.ts";
 import type { ReviewLedger } from "./review-ledger.ts";
 import type { ReviewDiffTexts } from "./review-diff.ts";

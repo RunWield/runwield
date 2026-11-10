@@ -88,7 +88,7 @@ export interface SemanticRepairHandoffResult {
 export type SemanticRepairContinuation = Omit<
     import("../../workflow/execution-segment-handoff.ts").SemanticRepairSegmentContinuation,
     "activeWorkflow"
-> & { activeWorkflow: import("../hosted-session.js").ActiveExecutionWorkflow };
+> & { activeWorkflow: import("../hosted-session.ts").ActiveExecutionWorkflow };
 export interface RuntimeSemanticRepairOptions {
     suppressEpicContinuation?: boolean;
     planName: string;
@@ -104,7 +104,7 @@ export interface RuntimeValidationResult {
     projectRoot?: string;
     reason?: string;
     executionComplete?: boolean;
-    executionContext?: import("../hosted-session.js").ActiveExecutionWorkflow;
+    executionContext?: import("../hosted-session.ts").ActiveExecutionWorkflow;
     executionSegmentHandoff?: import("../../workflow/execution-segment-handoff.ts").ExecutionSegmentContinuation;
     epicContinuation?: NonNullable<WorkflowValidationResult["epicContinuation"]>;
     semanticRepairHandoff?: WorkflowValidationResult["semanticRepairHandoff"];

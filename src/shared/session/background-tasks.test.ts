@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
-import { HostedSession } from "./hosted-session.js";
+import { HostedSession } from "./hosted-session.ts";
 import { BackgroundTasks } from "./background-tasks.ts";
 import { createRunWieldReadToolDefinition } from "../../tools/read.ts";
 
@@ -92,7 +92,7 @@ test("another host process has its own slots and cannot control this process's t
         const sleeper = await f.command("await new Promise(r => setTimeout(r, 20000));");
         const childCommand = await f.command('process.stdout.write("child");');
         const parents = Array.from({ length: 5 }, () => f.tasks.startShell({ command: sleeper, cwd: f.cwd }));
-        const hostedSessionUrl = new URL("./hosted-session.js", import.meta.url).href;
+        const hostedSessionUrl = new URL("./hosted-session.ts", import.meta.url).href;
         await fsWriteFile(
             script,
             `

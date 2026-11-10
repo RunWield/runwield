@@ -63,7 +63,7 @@ export class RuntimeQueues {
         return (this.queuedMessages.get(sessionId) || []).map(toRuntimeQueuedMessage);
     }
 
-    getActiveSteeringTarget(hostedSession: import(".././hosted-session.js").HostedSession) {
+    getActiveSteeringTarget(hostedSession: import(".././hosted-session.ts").HostedSession) {
         const candidate = hostedSession.getActiveSteeringTargetSession?.();
         return isRuntimeAgentSession(candidate) ? candidate : null;
     }
@@ -115,7 +115,7 @@ export class RuntimeQueues {
     }
 
     ensureQueueSourceSubscription(
-        hostedSession: import(".././hosted-session.js").HostedSession,
+        hostedSession: import(".././hosted-session.ts").HostedSession,
         sourceSession: RuntimeAgentSession,
     ) {
         let subscriptions = this.queueSourceSubscriptions.get(hostedSession.id);
@@ -132,7 +132,7 @@ export class RuntimeQueues {
     }
 
     reconcileQueuedMessages(
-        hostedSession: import(".././hosted-session.js").HostedSession,
+        hostedSession: import(".././hosted-session.ts").HostedSession,
         sourceSession: RuntimeAgentSession,
         steering: readonly string[] | undefined,
     ) {
@@ -161,7 +161,7 @@ export class RuntimeQueues {
         if (!sourceStillQueued) this.removeQueueSourceSubscription(hostedSession.id, sourceSession);
     }
 
-    reconcileQueuedMessageSources(hostedSession: import(".././hosted-session.js").HostedSession) {
+    reconcileQueuedMessageSources(hostedSession: import(".././hosted-session.ts").HostedSession) {
         const subscriptions = this.queueSourceSubscriptions.get(hostedSession.id);
         if (!subscriptions) return;
         for (const { sourceSession } of [...subscriptions.values()]) {
@@ -189,7 +189,7 @@ export class RuntimeQueues {
         this.queueSourceSubscriptions.delete(sessionId);
     }
 
-    ensureTransitionEventSubscription(hostedSession: import(".././hosted-session.js").HostedSession) {
+    ensureTransitionEventSubscription(hostedSession: import(".././hosted-session.ts").HostedSession) {
         if (this.transitionEventUnsubscribers.has(hostedSession.id)) return;
         const unsubscribe = hostedSession.subscribeRuntimeEvents((event) => {
             const transition = event as {
@@ -213,7 +213,7 @@ export class RuntimeQueues {
     }
 
     transitionQueuedMessage(
-        hostedSession: import(".././hosted-session.js").HostedSession,
+        hostedSession: import(".././hosted-session.ts").HostedSession,
         message: RuntimeQueuedMessageState,
         status: "consumed" | "dequeued",
         reason: string = "",
@@ -405,7 +405,7 @@ export class RuntimeQueues {
     }
 
     trackQueuedMessage(
-        hostedSession: import(".././hosted-session.js").HostedSession,
+        hostedSession: import(".././hosted-session.ts").HostedSession,
         message: RuntimeQueuedMessageState,
     ) {
         this.ensureTransitionEventSubscription(hostedSession);
@@ -426,7 +426,7 @@ export class RuntimeQueues {
 
     /** Remove only undelivered background steering; keep user input and its images in order. */
     async removeBackgroundSteering(
-        hostedSession: import(".././hosted-session.js").HostedSession,
+        hostedSession: import(".././hosted-session.ts").HostedSession,
         sourceSession: RuntimeAgentSession,
         queueIndex: number,
     ): Promise<void> {
@@ -610,7 +610,7 @@ export class RuntimeQueues {
         return this.clearQueuedMessagesInternal(hostedSession, reason);
     }
 
-    clearQueuedMessagesInternal(hostedSession: import(".././hosted-session.js").HostedSession, reason: string) {
+    clearQueuedMessagesInternal(hostedSession: import(".././hosted-session.ts").HostedSession, reason: string) {
         const messages = [...(this.queuedMessages.get(hostedSession.id) || [])];
         const sources = new Set(messages.map((message) => message.sourceSession).filter(Boolean));
         const clearedSources = new Set();

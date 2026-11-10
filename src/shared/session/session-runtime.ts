@@ -31,10 +31,10 @@ export { SessionTurnInProgressError } from "./runtime/support.ts";
 
 // Runtime ownership is not a test capability. It routes a settled root turn
 // back to the Session that owns its managed writer and interaction adapter.
-const planReviewRuntimeOwners = new WeakMap<import("./hosted-session.js").HostedSession, SessionRuntime>();
+const planReviewRuntimeOwners = new WeakMap<import("./hosted-session.ts").HostedSession, SessionRuntime>();
 
 export async function rearmPlanReviewConversation(
-    session: import("./hosted-session.js").HostedSession,
+    session: import("./hosted-session.ts").HostedSession,
     planName: string,
     planningAgentName: string,
 ): Promise<import("../workflow/workflow-tool-events.ts").PlanWrittenEventPayload> {

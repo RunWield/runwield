@@ -18,7 +18,7 @@ import { advancePublicationAttempt, createPublicationAttempt } from "./publicati
 import { createTestWorktreeAttempt, git, makeRepo } from "../worktree-test-helpers.ts";
 import { removeWorktreeGitArtifacts } from "../worktree.js";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import type { RuntimeSystemStatusEvent, SessionRuntimeEvent } from "../session/session-runtime-events.ts";
 import { createValidationSessionPort } from "./validation-session-adapter.ts";
 import { createProgressRecord } from "./validation-emit.ts";

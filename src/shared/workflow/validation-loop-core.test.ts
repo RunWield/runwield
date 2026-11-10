@@ -22,7 +22,7 @@ import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { createGitPort } from "../git-port.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { removeWorktreeGitArtifacts } from "../worktree.js";
 import { createTestWorktreeAttempt, makeRepo } from "../worktree-test-helpers.ts";
 import { createEngineValidationArgs } from "./validation.ts";

@@ -49,8 +49,8 @@ import { isValidationCheckpoint, validationCheckpointCanResume } from "../workfl
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { ImageAttachment } from "./image-attachments.ts";
 
-type ActiveExecutionWorkflow = import("./hosted-session.js").ActiveExecutionWorkflow;
-type HostedSession = import("./hosted-session.js").HostedSession;
+type ActiveExecutionWorkflow = import("./hosted-session.ts").ActiveExecutionWorkflow;
+type HostedSession = import("./hosted-session.ts").HostedSession;
 type SessionManager = import("@earendil-works/pi-coding-agent").SessionManager;
 type TriageMeta = import("../../tools/plan-written.ts").TriageMeta;
 type PlanExecutionResult = import("../workflow/workflow.ts").PlanExecutionResult;
@@ -104,7 +104,7 @@ export type AgentTurnResult = AgentTurnCompleteResult;
 export type AgentMessageHandler = (
     userRequest: string,
     images: ImageAttachment[],
-    sessionManager: SessionManagerLike,
+    sessionManager: SessionManager,
 ) => Promise<AgentTurnResult>;
 
 interface AgentHandlerCompleteResult extends AgentTurnCompleteResult {
@@ -128,7 +128,7 @@ export type AgentHandler = (
 
 /**
  * @param {string} agentName
- * @param {import('./hosted-session.js').ActiveExecutionWorkflow} workflow
+ * @param {import('./hosted-session.ts').ActiveExecutionWorkflow} workflow
  * @returns {boolean}
  */
 function canCompleteActiveExecutionWorkflow(agentName: string, workflow: ActiveExecutionWorkflow): boolean {
@@ -157,7 +157,7 @@ function refreshedQuickFixWorkflow(workflow: ActiveExecutionWorkflow): ActiveExe
  * Ask the user to restore a newly-created Plan that was stashed out of the
  * primary checkout while its execution worktree was active.
  *
- * @param {import('./hosted-session.js').HostedSession} hostedSession
+ * @param {import('./hosted-session.ts').HostedSession} hostedSession
  * @param {string} planName
  * @returns {Promise<boolean>}
  */

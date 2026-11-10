@@ -10,7 +10,7 @@ import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/me
 import { withWorkflowMetricJournalLock } from "../workflow/metrics-journal.ts";
 import { UsageReporter } from "../workflow/usage-reporting.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
-import { HostedSession } from "./hosted-session.js";
+import { HostedSession } from "./hosted-session.ts";
 import {
     drainSessionCompactionMetrics,
     ensureRootAgentSession,

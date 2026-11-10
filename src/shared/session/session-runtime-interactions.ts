@@ -7,7 +7,7 @@ import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "./session-runt
 import { RuntimeInteractionOutcomes, RuntimeInteractionTypes } from "./interaction-values.ts";
 export { isApprovalAcceptedValue, RuntimeInteractionOutcomes, RuntimeInteractionTypes } from "./interaction-values.ts";
 
-import type { HostedSession } from "./hosted-session.js";
+import type { HostedSession } from "./hosted-session.ts";
 import type { ManagedOperationCapability } from "./managed-operation.ts";
 
 export type RuntimeInteractionType = (typeof RuntimeInteractionTypes)[keyof typeof RuntimeInteractionTypes];

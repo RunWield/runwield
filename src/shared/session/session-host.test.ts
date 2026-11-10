@@ -4,7 +4,7 @@ import { SessionManager, type AgentSession } from "@earendil-works/pi-coding-age
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { McpIntegration } from "../mcp/integration.ts";
-import { HostedSession } from "./hosted-session.js";
+import { HostedSession } from "./hosted-session.ts";
 import { SessionHost } from "./session-host.ts";
 import { buildAgentSession } from "./session.js";
 

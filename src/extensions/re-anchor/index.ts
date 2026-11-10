@@ -20,7 +20,7 @@ import { projectEngineerPlanBody } from "../../shared/workflow/engineer-plan-pro
 import { getStoredPlanPath } from "../../plan-store.js";
 import { normalizeWorkflowPlanName } from "../../shared/session/workflow-context-session.ts";
 import { normalizeLedger, renderOpenItems } from "../../shared/workflow/review-ledger.ts";
-import type { HostedSession } from "../../shared/session/hosted-session.js";
+import type { HostedSession } from "../../shared/session/hosted-session.ts";
 
 export interface ReAnchorOptions {
     /** The agent this session was built for. Decides which artifact, if any, is re-anchored. */

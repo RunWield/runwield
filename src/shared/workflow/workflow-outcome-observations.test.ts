@@ -7,7 +7,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { loadPlan } from "../../plan-store.js";
 import { git } from "../git-test-fixture.ts";
 import { setCustomSetting, setExactProjectCustomSetting } from "../settings.js";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { ensureRootAgentSession } from "../session/session.js";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { ExecutionMetricsRecorder } from "./execution-metrics.ts";

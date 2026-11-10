@@ -1,3 +1,9 @@
+import type { TextContent } from "@earendil-works/pi-ai/compat";
+import type { createSetSessionNameTool } from "../../../tools/set-session-name.ts";
+import type { createBackgroundTaskTool } from "../../../tools/background-task.ts";
+import type { McpIntegration } from "../../mcp/integration.ts";
+import type { AgentSession, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { SessionRuntimeEvent } from "../session-runtime-events.ts";
 import { withRuntimeCommandFixture } from "../../../cmd/testing/runtime-command-fixture.ts";
 import { bashFixtureExecutable } from "../../../../scripts/bash-fixture.ts";
 import { delimiter } from "node:path";
@@ -28,7 +34,7 @@ import { withProcessGlobalTestLock } from "../../../testing/process-global-lock.
 import { AGENTS, SUBAGENTS } from "../../../constants.ts";
 import { __resetSettingsForTests, getSettingsManager } from "../../settings.js";
 import { loadAgentDef } from "../agents.ts";
-import { HostedSession } from "../hosted-session.js";
+import { HostedSession, type HostedRuntimeEventObservation } from "../hosted-session.ts";
 import { loadSubAgentDefinition, REVIEWER_SUBAGENT_TOOLS } from "../subagent-definitions.ts";
 import {
     buildAgentSession,
@@ -39,6 +45,32 @@ import {
 } from "../session.js";
 import { createReviewDiffTool } from "../../workflow/review-diff-tool.ts";
 import { startMcpIntegration } from "../../mcp/integration.ts";
+
+type ToolExecutionContext = Parameters<ToolDefinition["execute"]>[4];
+
+// This tool does not use the trailing SDK execution arguments.
+type SetSessionNameExecute = (
+    ...args: SetSessionNameArguments
+) => ReturnType<ReturnType<typeof createSetSessionNameTool>["execute"]>;
+
+type SetSessionNameToolArguments = Parameters<ReturnType<typeof createSetSessionNameTool>["execute"]>;
+type SetSessionNameArguments = [SetSessionNameToolArguments[0], SetSessionNameToolArguments[1]];
+type BackgroundToolResult = Awaited<ReturnType<ReturnType<typeof createBackgroundTaskTool>["execute"]>>;
+
+// The policy tests supply only the part of Pi's context used by these tools.
+type PolicyToolContext = ToolExecutionContext & { sessionManager: SessionManager };
+
+interface PolicyToolInput {
+    action?: string;
+    command?: string;
+    task_id?: string;
+}
+
+interface RealMcpFixtureTools {
+    pool: McpIntegration;
+    tools: ToolDefinition[];
+    logPath: string;
+}
 
 let helperRoot = "";
 let priorHelperPath = "";
@@ -64,21 +96,13 @@ after(() =>
 // Anchored to this file, not Deno.cwd(): test realms share one process, so a
 // concurrent test file's chdir would otherwise point these at its temp dir.
 const REPO_ROOT = fromFileUrl(new URL("../../../..", import.meta.url));
-/**
- * @param {number} ms
- * @returns {Promise<void>}
- */
-function delay(ms) {
+function delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 const MCP_FIXTURE_SERVER = fromFileUrl(new URL("../../mcp/fixture-server.ts", import.meta.url));
 
-/**
- * @param {string} cwd
- * @returns {Promise<{ pool: import('../../mcp/integration.ts').McpIntegration, tools: import('@earendil-works/pi-coding-agent').ToolDefinition[], logPath: string }>}
- */
-async function startRealMcpFixtureTools(cwd) {
+async function startRealMcpFixtureTools(cwd: string): Promise<RealMcpFixtureTools> {
     const logPath = await makeTempFile({ prefix: "runwield-real-mcp-policy-" });
     const result = await startMcpIntegration({
         cwd,
@@ -96,8 +120,7 @@ async function startRealMcpFixtureTools(cwd) {
     return { pool: result.integration, tools: result.integration.getTools(), logPath };
 }
 
-/** @param {string} path */
-async function removeTempDir(path) {
+async function removeTempDir(path: string) {
     for (let attempt = 0; attempt < 5; attempt++) {
         try {
             await fsRm(path, { recursive: true });
@@ -332,7 +355,7 @@ test("Claude CLI and Agy CLI bridge the session name tool", async () => {
     const hostedSession = new HostedSession({
         id: "cli-session-name-tool",
         cwd: tempHome,
-        sessionManager: /** @type {never} */ (sessionManager),
+        sessionManager: sessionManager,
     });
     const agentDef = await loadAgentDef(AGENTS.ENGINEER, REPO_ROOT);
 
@@ -409,10 +432,8 @@ test("root Pi Agent builds keep MCP tools when using a subagent definition", asy
     await withProcessGlobalTestLock(async () => {
         const originalHome = process.env["HOME"];
         const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-root-mcp-subagent-"));
-        /** @type {import('@earendil-works/pi-coding-agent').AgentSession | undefined} */
-        let session;
-        /** @type {Awaited<ReturnType<typeof startRealMcpFixtureTools>> | undefined} */
-        let mcpFixture;
+        let session: AgentSession | undefined;
+        let mcpFixture: Awaited<ReturnType<typeof startRealMcpFixtureTools>> | undefined;
         try {
             process.env["HOME"] = tempHome;
             __resetSettingsForTests();
@@ -447,10 +468,8 @@ test("bounded Pi and Claude subagent builds do not inherit root MCP tools", asyn
     await withProcessGlobalTestLock(async () => {
         const originalHome = process.env["HOME"];
         const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-subagent-mcp-exclusion-"));
-        /** @type {import('@earendil-works/pi-coding-agent').AgentSession | undefined} */
-        let session;
-        /** @type {Awaited<ReturnType<typeof startRealMcpFixtureTools>> | undefined} */
-        let mcpFixture;
+        let session: AgentSession | undefined;
+        let mcpFixture: Awaited<ReturnType<typeof startRealMcpFixtureTools>> | undefined;
         try {
             process.env["HOME"] = tempHome;
             __resetSettingsForTests();
@@ -510,8 +529,7 @@ test("buildAgentSession auto-wires Guide docs-only tools when requested", async 
     await withProcessGlobalTestLock(async () => {
         const originalHome = process.env["HOME"];
         const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-guide-docs-tools-"));
-        /** @type {import('@earendil-works/pi-coding-agent').AgentSession | undefined} */
-        let session;
+        let session: AgentSession | undefined;
 
         try {
             process.env["HOME"] = tempHome;
@@ -546,12 +564,10 @@ test("buildAgentSession auto-wires Guide docs-only tools when requested", async 
 
 test("buildAgentSession wires task_completed with an event-only HostedSession", async () => {
     await withProcessGlobalTestLock(async () => {
-        /** @type {any[]} */
-        const events = [];
+        const events: HostedRuntimeEventObservation[] = [];
         const debugLogPath = await makeTempFile({ prefix: "runwield-session-debug-test-", suffix: ".log" });
 
-        /** @type {import('@earendil-works/pi-coding-agent').AgentSession | undefined} */
-        let session;
+        let session: AgentSession | undefined;
         const originalHome = process.env["HOME"];
         const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-session-tools-policy-"));
 
@@ -561,7 +577,7 @@ test("buildAgentSession wires task_completed with an event-only HostedSession", 
             await writeVisionModelConfig(tempHome);
 
             const hostedSession = new HostedSession({ id: "task-completed-policy", cwd: tempHome });
-            hostedSession.setEventSink({ emit: (/** @type {any} */ event) => events.push(event) });
+            hostedSession.setEventSink({ emit: (event: HostedRuntimeEventObservation) => events.push(event) });
 
             const built = await buildAgentSession({
                 hostedSession,
@@ -573,12 +589,15 @@ test("buildAgentSession wires task_completed with an event-only HostedSession", 
             const { finalCustomTools } = built;
             const tool = finalCustomTools.find((candidate) => candidate.name === "task_completed");
             assert(tool, "expected task_completed to be wired");
-            const execute =
-                /** @type {(id: string, params: { message?: string }, signal: AbortSignal, onUpdate: () => void, context: object) => Promise<unknown>} */ (
-                    tool.execute
-                );
+            const execute = tool.execute;
 
-            await execute("tool-call-1", { message: "Done." }, new AbortController().signal, () => {}, {});
+            await execute(
+                "tool-call-1",
+                { message: "Done." },
+                new AbortController().signal,
+                () => {},
+                {} as ToolExecutionContext,
+            );
 
             assertEquals(events.length, 1);
             assertEquals(events[0].delta, "**Task completed.**\n\nDone.");
@@ -599,8 +618,7 @@ test("buildAgentSession auto-wires set_session_name for user-facing Agents", asy
     await withProcessGlobalTestLock(async () => {
         const originalHome = process.env["HOME"];
         const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-set-session-name-wiring-"));
-        /** @type {import('@earendil-works/pi-coding-agent').AgentSession | undefined} */
-        let session;
+        let session: AgentSession | undefined;
         try {
             process.env["HOME"] = tempHome;
             __resetSettingsForTests();
@@ -609,7 +627,7 @@ test("buildAgentSession auto-wires set_session_name for user-facing Agents", asy
             const hostedSession = new HostedSession({
                 id: "set-session-name-policy",
                 cwd: tempHome,
-                sessionManager: /** @type {never} */ (sessionManager),
+                sessionManager: sessionManager,
             });
 
             const built = await buildAgentSession({
@@ -623,7 +641,7 @@ test("buildAgentSession auto-wires set_session_name for user-facing Agents", asy
             assertEquals(built.tools.includes("set_session_name"), true);
             const tool = built.finalCustomTools.find((candidate) => candidate.name === "set_session_name");
             assert(tool, "expected set_session_name to be auto-wired");
-            const result = await /** @type {any} */ (tool.execute)("tool-call-1", { name: "guide session" });
+            const result = await (tool.execute as SetSessionNameExecute)("tool-call-1", { name: "guide session" });
             assertEquals(result.details, { name: "guide session" });
             assertEquals(sessionManager.getSessionName(), "guide session");
         } finally {
@@ -647,8 +665,7 @@ test("buildAgentSession wires review_complete and file tools into the Semantic R
     await withProcessGlobalTestLock(async () => {
         const originalHome = process.env["HOME"];
         const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-reviewer-tools-"));
-        /** @type {import('@earendil-works/pi-coding-agent').AgentSession | undefined} */
-        let session;
+        let session: AgentSession | undefined;
 
         try {
             process.env["HOME"] = tempHome;
@@ -688,10 +705,7 @@ test("buildAgentSession wires review_complete and file tools into the Semantic R
     });
 });
 
-/**
- * @param {string} tempHome
- */
-async function writeVisionModelConfig(tempHome) {
+async function writeVisionModelConfig(tempHome: string) {
     await fsMkdir(join(tempHome, ".wld"), { recursive: true });
     await fsWriteFile(
         join(tempHome, ".wld", "models.json"),
@@ -717,10 +731,8 @@ test("Engineer model fallback is one regular system message per Agent", async ()
     await withProcessGlobalTestLock(async () => {
         const originalHome = process.env["HOME"];
         const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-agent-model-fallback-"));
-        /** @type {import('@earendil-works/pi-coding-agent').AgentSession[]} */
-        const sessions = [];
-        /** @type {import('../session-runtime-events.ts').SessionRuntimeEvent[]} */
-        const events = [];
+        const sessions: AgentSession[] = [];
+        const events: SessionRuntimeEvent[] = [];
         try {
             process.env["HOME"] = tempHome;
             await writeVisionModelConfig(tempHome);
@@ -730,8 +742,7 @@ test("Engineer model fallback is one regular system message per Agent", async ()
             );
             __resetSettingsForTests();
             const eventSink = {
-                /** @param {import('../session-runtime-events.ts').SessionRuntimeEvent} event */
-                emit(event) {
+                emit(event: SessionRuntimeEvent) {
                     events.push(event);
                 },
             };
@@ -801,8 +812,7 @@ test("Validation Repair Engineer thinking falls back through repair, Engineer, t
     await withProcessGlobalTestLock(async () => {
         const originalHome = process.env["HOME"];
         const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-repair-thinking-fallback-"));
-        /** @type {import('@earendil-works/pi-coding-agent').AgentSession[]} */
-        const sessions = [];
+        const sessions: AgentSession[] = [];
         try {
             process.env["HOME"] = tempHome;
             await writeVisionModelConfig(tempHome);
@@ -1034,8 +1044,7 @@ test("buildAgentSession wires bundled background shell and retained delegate too
     await withProcessGlobalTestLock(async () => {
         const originalHome = process.env["HOME"];
         const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-delegate-wiring-"));
-        /** @type {import('@earendil-works/pi-coding-agent').AgentSession[]} */
-        const sessions = [];
+        const sessions: AgentSession[] = [];
         try {
             process.env["HOME"] = tempHome;
             __resetSettingsForTests();
@@ -1079,8 +1088,7 @@ test("buildAgentSession injects see_image only for text-only model with vision f
     await withProcessGlobalTestLock(async () => {
         const originalHome = process.env["HOME"];
         const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-see-image-injection-"));
-        /** @type {import('@earendil-works/pi-coding-agent').AgentSession[]} */
-        const sessions = [];
+        const sessions: AgentSession[] = [];
         try {
             process.env["HOME"] = tempHome;
             __resetSettingsForTests();
@@ -1100,7 +1108,7 @@ test("buildAgentSession injects see_image only for text-only model with vision f
             sessions.push(textBuilt.session);
             assertEquals(textBuilt.tools.includes("see_image"), true);
             assert(textBuilt.finalCustomTools.find((tool) => tool.name === "see_image"));
-            const seeImage = /** @type {any} */ (textBuilt.finalCustomTools.find((tool) => tool.name === "see_image"));
+            const seeImage = textBuilt.finalCustomTools.find((tool) => tool.name === "see_image");
             assert(seeImage, "expected see_image custom tool");
             assert(seeImage.execute, "expected see_image execute");
 
@@ -1126,8 +1134,7 @@ test("buildAgentSession omits see_image for text-only model without fallback", a
     await withProcessGlobalTestLock(async () => {
         const originalHome = process.env["HOME"];
         const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-see-image-no-fallback-"));
-        /** @type {import('@earendil-works/pi-coding-agent').AgentSession | undefined} */
-        let session;
+        let session: AgentSession | undefined;
         try {
             process.env["HOME"] = tempHome;
             __resetSettingsForTests();
@@ -1155,8 +1162,7 @@ test("buildAgentSession defers invalid optional vision fallback until image use"
     await withProcessGlobalTestLock(async () => {
         const originalHome = process.env["HOME"];
         const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-see-image-invalid-fallback-"));
-        /** @type {import('@earendil-works/pi-coding-agent').AgentSession | undefined} */
-        let session;
+        let session: AgentSession | undefined;
         try {
             process.env["HOME"] = tempHome;
             __resetSettingsForTests();
@@ -1175,12 +1181,21 @@ test("buildAgentSession defers invalid optional vision fallback until image use"
                 modelOverride: "test/text",
             });
             session = built.session;
-            const seeImage = /** @type {any} */ (built.finalCustomTools.find((tool) => tool.name === "see_image"));
+            const seeImage = built.finalCustomTools.find((tool) => tool.name === "see_image");
             assert(seeImage, "expected see_image custom tool");
-            const result = await seeImage.execute("1", { imageRef: "shot.png" }, undefined, undefined, {});
+            const result = await seeImage.execute(
+                "1",
+                { imageRef: "shot.png" },
+                undefined,
+                undefined,
+                {} as ToolExecutionContext,
+            );
 
             assertEquals(result.isError, true);
-            assertEquals(result.content[0].text, "Invalid visionFallback.model: not-valid. Use provider/id.");
+            assertEquals(
+                (result.content[0] as TextContent).text,
+                "Invalid visionFallback.model: not-valid. Use provider/id.",
+            );
         } finally {
             session?.dispose();
             __resetSettingsForTests();
@@ -1224,8 +1239,7 @@ test("buildAgentSession auto-wires Work Record tools with role access modes", as
     await withProcessGlobalTestLock(async () => {
         const originalHome = process.env["HOME"];
         const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-work-record-tool-wiring-"));
-        /** @type {import('@earendil-works/pi-coding-agent').AgentSession[]} */
-        const sessions = [];
+        const sessions: AgentSession[] = [];
         try {
             process.env["HOME"] = tempHome;
             __resetSettingsForTests();
@@ -1244,8 +1258,7 @@ test("buildAgentSession auto-wires Work Record tools with role access modes", as
                 ].join("\n"),
             );
 
-            /** @param {string} agentName */
-            const build = async (agentName) => {
+            const build = async (agentName: string) => {
                 const built = await buildAgentSession({
                     cwd: tempHome,
                     agentName,
@@ -1263,25 +1276,22 @@ test("buildAgentSession auto-wires Work Record tools with role access modes", as
                 assert(built.finalCustomTools.find((tool) => tool.name === "work_record_read"));
             }
 
-            const guideSearch = /** @type {any} */ (
-                guideBuilt.finalCustomTools.find((tool) => tool.name === "work_record_search")
-            );
-            const plannerSearch = /** @type {any} */ (
-                plannerBuilt.finalCustomTools.find((tool) => tool.name === "work_record_search")
-            );
-            const customRead = /** @type {any} */ (
-                customBuilt.finalCustomTools.find((tool) => tool.name === "work_record_read")
-            );
+            const guideSearch = guideBuilt.finalCustomTools.find((tool) => tool.name === "work_record_search")!;
+            const plannerSearch = plannerBuilt.finalCustomTools.find((tool) => tool.name === "work_record_search")!;
+            const customRead = customBuilt.finalCustomTools.find((tool) => tool.name === "work_record_read")!;
             assertEquals(
-                (await guideSearch.execute("1", { query: "" }, undefined, undefined, {})).details.accessMode,
+                (await guideSearch.execute("1", { query: "" }, undefined, undefined, {} as ToolExecutionContext))
+                    .details.accessMode,
                 "all",
             );
             assertEquals(
-                (await plannerSearch.execute("1", { query: "" }, undefined, undefined, {})).details.accessMode,
+                (await plannerSearch.execute("1", { query: "" }, undefined, undefined, {} as ToolExecutionContext))
+                    .details.accessMode,
                 "current",
             );
             assertEquals(
-                (await customRead.execute("1", { recordId: "" }, undefined, undefined, {})).details.accessMode,
+                (await customRead.execute("1", { recordId: "" }, undefined, undefined, {} as ToolExecutionContext))
+                    .details.accessMode,
                 "current",
             );
         } finally {
@@ -1304,17 +1314,13 @@ test("Guide bash policy reaches Pi and background tools and refreshes after root
         const overrideDir = join(cwd, ".wld", "agents");
         const overridePath = join(overrideDir, "guide.md");
         const hostedSession = new HostedSession({ id: "guide-bash-policy", cwd });
-        /** @param {string} value */
-        const setPolicy = async (value) => {
+        const setPolicy = async (value: string) => {
             await fsMkdir(overrideDir, { recursive: true });
             await fsWriteFile(overridePath, `---\nbashAllowedCommands: ${value}\n---\n`);
         };
-        /** @param {string} name */
-        const findTool = (name) => {
-            const metadata = __getRootSessionMetadataForTests(/** @type {any} */ (hostedSession.getRootAgentSession()));
-            return /** @type {import("@earendil-works/pi-coding-agent").ToolDefinition[]} */ (
-                metadata?.finalCustomTools || []
-            ).find((tool) => tool.name === name);
+        const findTool = (name: string) => {
+            const metadata = __getRootSessionMetadataForTests(hostedSession.getRootAgentSession() as AgentSession);
+            return ((metadata?.finalCustomTools || []) as ToolDefinition[]).find((tool) => tool.name === name);
         };
         try {
             process.env["HOME"] = cwd;
@@ -1327,17 +1333,11 @@ test("Guide bash policy reaches Pi and background tools and refreshes after root
             getSettingsManager(cwd).setShellPath(bashFixtureExecutable());
             getSettingsManager(cwd).setShellCommandPrefix("printf 'configured shell' > shell-prefix.txt; ");
             await ensureRootAgentSession({ hostedSession, agentName: AGENTS.GUIDE, modelOverride: "test/text" });
-            /** @param {import("@earendil-works/pi-coding-agent").ToolDefinition | undefined} tool
-             * @param {{ action?: string, command?: string, task_id?: string }} params */
-            const execute = (tool, params) => {
+            const execute = (tool: ToolDefinition | undefined, params: PolicyToolInput) => {
                 assert(tool);
-                return tool.execute(
-                    "call",
-                    params,
-                    new AbortController().signal,
-                    () => {},
-                    /** @type {any} */ ({ sessionManager: SessionManager.inMemory(cwd) }),
-                );
+                return tool.execute("call", params, new AbortController().signal, () => {}, {
+                    sessionManager: SessionManager.inMemory(cwd),
+                } as PolicyToolContext);
             };
             assertEquals(
                 (await execute(findTool("bash"), { command: "git version" })).content.some(
@@ -1365,7 +1365,7 @@ test("Guide bash policy reaches Pi and background tools and refreshes after root
             assert(findTool("bash")?.description.includes("git version"));
             assert(
                 __getRootSessionMetadataForTests(
-                    /** @type {any} */ (hostedSession.getRootAgentSession()),
+                    hostedSession.getRootAgentSession() as AgentSession,
                 )?.promptState.text.includes("git version"),
             );
             await setPolicy("[git status]");
@@ -1380,12 +1380,15 @@ test("Guide bash policy reaches Pi and background tools and refreshes after root
                 action: "start",
                 command: "git status --short",
             });
-            const taskId = started.details?.task_id;
+            const taskId = (started as BackgroundToolResult).details?.task_id;
             assert(taskId);
             await hostedSession.backgroundTasks.wait(taskId);
             assert(
                 (
-                    await execute(findTool("background_task"), { action: "status", task_id: taskId })
+                    (await execute(findTool("background_task"), {
+                        action: "status",
+                        task_id: taskId,
+                    })) as BackgroundToolResult
                 ).details?.output.includes("dirty.txt"),
             );
             assert(
@@ -1424,17 +1427,17 @@ test("read and write delegated Pi sessions inherit only the parent's available b
     await withProcessGlobalTestLock(async () => {
         const originalHome = process.env["HOME"];
         const cwd = await fsMkdtemp(join(tmpdir(), "runwield-delegate-bash-policy-"));
-        /** @type {import('@earendil-works/pi-coding-agent').AgentSession[]} */
-        const sessions = [];
+        const sessions: AgentSession[] = [];
         try {
             process.env["HOME"] = cwd;
             __resetSettingsForTests();
             await writeVisionModelConfig(cwd);
             const hostedSession = new HostedSession({ id: "read-delegate-bash-policy", cwd });
-            /** @param {string} id
-             * @param {string[]} toolNames
-             * @param {readonly string[] | undefined} inheritedBashAllowedCommands */
-            const build = async (id, toolNames, inheritedBashAllowedCommands) => {
+            const build = async (
+                id: string,
+                toolNames: string[],
+                inheritedBashAllowedCommands: readonly string[] | undefined,
+            ) => {
                 const built = await buildAgentSession({
                     hostedSession,
                     agentName: AGENTS.DELEGATED,
@@ -1451,13 +1454,9 @@ test("read and write delegated Pi sessions inherit only the parent's available b
             assert(readBash);
             await assertRejects(
                 () =>
-                    readBash.execute(
-                        "call",
-                        { command: "git log" },
-                        new AbortController().signal,
-                        () => {},
-                        /** @type {any} */ ({ sessionManager: SessionManager.inMemory(cwd) }),
-                    ),
+                    readBash.execute("call", { command: "git log" }, new AbortController().signal, () => {}, {
+                        sessionManager: SessionManager.inMemory(cwd),
+                    } as PolicyToolContext),
                 Error,
                 "git status",
             );
@@ -1467,13 +1466,9 @@ test("read and write delegated Pi sessions inherit only the parent's available b
             assert(writeBash);
             await assertRejects(
                 () =>
-                    writeBash.execute(
-                        "call",
-                        { command: "git status" },
-                        new AbortController().signal,
-                        () => {},
-                        /** @type {any} */ ({ sessionManager: SessionManager.inMemory(cwd) }),
-                    ),
+                    writeBash.execute("call", { command: "git status" }, new AbortController().signal, () => {}, {
+                        sessionManager: SessionManager.inMemory(cwd),
+                    } as PolicyToolContext),
                 Error,
                 "pwd",
             );
@@ -1491,7 +1486,7 @@ test("read and write delegated Pi sessions inherit only the parent's available b
                 { command: "touch write-delegate-file" },
                 new AbortController().signal,
                 () => {},
-                /** @type {any} */ ({ sessionManager: SessionManager.inMemory(cwd) }),
+                { sessionManager: SessionManager.inMemory(cwd) } as PolicyToolContext,
             );
             assertEquals((await fsStat(join(cwd, "write-delegate-file"))).isFile(), true);
             const defaultRead = await build(SUBAGENTS.DELEGATED_READ, ["bash", "read"], undefined);
@@ -1520,7 +1515,7 @@ test("read and write delegated Pi sessions inherit only the parent's available b
                         { command: "touch forbidden" },
                         new AbortController().signal,
                         () => {},
-                        /** @type {any} */ ({ sessionManager: SessionManager.inMemory(cwd) }),
+                        { sessionManager: SessionManager.inMemory(cwd) } as PolicyToolContext,
                     ),
                 Error,
                 "report a blocker",
@@ -1693,7 +1688,7 @@ test("external CLI bridge filters RunWield background starts but not native host
             { action: "start", command: "touch bridge-sentinel" },
             new AbortController().signal,
             () => {},
-            /** @type {any} */ ({}),
+            {} as ToolExecutionContext,
         );
         assert(result.content.some((item) => item.type === "text" && item.text.includes("report a blocker")));
         assertEquals(

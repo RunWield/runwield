@@ -1,7 +1,7 @@
 import type { AgentSession, SessionManager, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { McpServerDefinition } from "../../mcp/config.ts";
 import type { FileSessionStore } from "../file-session-store-types.ts";
-import type { MinimalSessionManagerLike } from "../hosted-session.js";
+import type { MinimalSessionManagerLike } from "../hosted-session.ts";
 import type { ImageAttachment } from "../image-attachments.ts";
 import type { RuntimeQueuedMessage, SessionRuntimeEvent } from "../session-runtime-events.ts";
 import type { NamedInvocationPayload } from "../named-invocation.ts";
@@ -199,7 +199,7 @@ export interface ManagedOperationFailure {
     exitCode?: number;
     reason?: string;
     deferred?: boolean;
-    thinkingLevel?: import("../hosted-session.js").ThinkingLevel;
+    thinkingLevel?: import("../hosted-session.ts").ThinkingLevel;
 }
 
 export interface ManagedOperationRunFailure extends ManagedOperationFailure {

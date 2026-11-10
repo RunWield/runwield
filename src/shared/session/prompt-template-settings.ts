@@ -10,7 +10,7 @@ import {
 import { getModelRegistry } from "../models/model-registry.ts";
 import { formatProviderModelReference } from "../models/model-validation.ts";
 import { resolveActiveWorkflowRuntimeAgent } from "../workflow/execution-agent.ts";
-import type { HostedSession } from "./hosted-session.js";
+import type { HostedSession } from "./hosted-session.ts";
 import type { PromptTemplateInvocation, ThinkingLevel } from "./named-invocation.ts";
 import type { SessionEntry, SessionManager } from "@earendil-works/pi-coding-agent";
 

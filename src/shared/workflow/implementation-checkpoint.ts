@@ -11,12 +11,12 @@ import { runImplementationCheckpointTransition, withOrderedTransitionResources }
 interface FinalizePlanImplementationOptions {
     projectRoot: string;
     planName: string;
-    triageMeta?: import("../session/hosted-session.js").ActiveExecutionWorkflow["triageMeta"];
-    executionContext: import("../session/hosted-session.js").ActiveExecutionWorkflow | null | undefined;
+    triageMeta?: import("../session/hosted-session.ts").ActiveExecutionWorkflow["triageMeta"];
+    executionContext: import("../session/hosted-session.ts").ActiveExecutionWorkflow | null | undefined;
     executionReport?: string;
     expectedPlanRevision?: string;
     expectedPlanBodyRevision?: string;
-    hostedSession?: import("../session/hosted-session.js").HostedSession;
+    hostedSession?: import("../session/hosted-session.ts").HostedSession;
 }
 
 /**

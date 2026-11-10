@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { injectFrontMatter, loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.js";
 import { createGitPort } from "../git-port.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { addEntry, findById } from "../worktree-registry.ts";
 import { resolveValidationExecutionContext } from "./execution-context.ts";
 import { continueWorkflowValidation } from "./validation.ts";

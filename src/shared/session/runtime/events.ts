@@ -172,7 +172,7 @@ export class RuntimeEvents {
         }
     }
 
-    async emitCommandCatalogChanged(sessionId: string, hostedSession: import(".././hosted-session.js").HostedSession) {
+    async emitCommandCatalogChanged(sessionId: string, hostedSession: import(".././hosted-session.ts").HostedSession) {
         const [promptTemplates, skills] = await Promise.all([
             listPromptTemplates({ cwd: hostedSession.cwd }),
             listSkills({ cwd: hostedSession.cwd }),
@@ -184,7 +184,7 @@ export class RuntimeEvents {
         });
     }
 
-    attachRuntimeEventSink(hostedSession: import(".././hosted-session.js").HostedSession) {
+    attachRuntimeEventSink(hostedSession: import(".././hosted-session.ts").HostedSession) {
         if (!hostedSession) throw new Error("SessionRuntime.attachRuntimeEventSink: session not found");
         hostedSession.setEventSink({
             emit: (

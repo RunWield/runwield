@@ -8,7 +8,7 @@
 import { Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "../shared/session/hosted-session.js";
+import type { HostedSession } from "../shared/session/hosted-session.ts";
 import { AGENTS } from "../constants.ts";
 import { recordAcceptedTaskCompletion } from "../shared/session/task-completion-session.ts";
 import { readRequestAttemptEntries } from "../shared/session/request-dispatch.ts";
@@ -34,7 +34,7 @@ const FRONTEND_ENGINEER_MESSAGE_DESCRIPTION =
     " Include final URL/route, headed-browser checks, relevant viewports/states, diagnostics, and visible evidence; Pair checkpoint acceptance is not verification evidence.";
 
 export type BrowserPreflightOutcome = "succeeded" | "failed" | "externally_blocked";
-type ActiveExecutionWorkflow = import("../shared/session/hosted-session.js").ActiveExecutionWorkflow;
+type ActiveExecutionWorkflow = import("../shared/session/hosted-session.ts").ActiveExecutionWorkflow;
 export type TaskCompletedDetails =
     | {
           outcome: "rejected";

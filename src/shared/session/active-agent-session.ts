@@ -13,7 +13,7 @@ export const ACTIVE_AGENT_CUSTOM_TYPE = "runwield.active_agent";
 export const MANUAL_MODEL_CUSTOM_TYPE = "runwield.manual_model";
 
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
-import type { MinimalSessionManagerLike } from "./hosted-session.js";
+import type { MinimalSessionManagerLike } from "./hosted-session.ts";
 
 export type SessionEntryReader = Pick<MinimalSessionManagerLike, "getBranch" | "getEntries">;
 

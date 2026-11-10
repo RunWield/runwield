@@ -4,7 +4,7 @@ import { ok as assert } from "node:assert/strict";
 import { fauxAssistantMessage, fauxText, fauxToolCall, type FauxResponseFactory } from "@earendil-works/pi-ai";
 import { SessionManager, type AgentSession } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { HostedSession } from "./hosted-session.js";
+import { HostedSession } from "./hosted-session.ts";
 import { ensureRootAgentSession, runRootTurn } from "./session.js";
 
 function makeWarmingEligible(session: AgentSession) {

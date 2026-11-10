@@ -16,13 +16,13 @@ import {
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { runActiveAgentTurn, switchActiveAgent } from "./agent-switching.ts";
 import { __getRootSessionMetadataForTests } from "./session.js";
-import { HostedSession } from "./hosted-session.js";
+import { HostedSession } from "./hosted-session.ts";
 import { buildPostTriageRequest } from "../workflow/workflow-prompts.ts";
 import { RuntimeEventTypes } from "./session-runtime-events.ts";
 import { createReplayEvents } from "./session-transcript-projection.ts";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { TranscriptContext } from "@earendil-works/pi-ai";
-import type { ActiveExecutionWorkflow } from "./hosted-session.js";
+import type { ActiveExecutionWorkflow } from "./hosted-session.ts";
 import type { SessionRuntimeEvent } from "./session-runtime-events.ts";
 
 interface TranscriptContentBlock {
@@ -579,7 +579,8 @@ test("switchActiveAgent replaces a stale handler without rebuilding the matching
         const { hostedSession, sessionManager } = makeSession(projectRoot);
         await switchActiveAgent(hostedSession, { agentName: "guide", sessionManager });
         const previousRoot = hostedSession.getRootAgentSession();
-        const staleHandler = () => Promise.resolve({ kind: "complete" });
+        const staleHandler: NonNullable<ReturnType<HostedSession["getActiveOnMessage"]>> = () =>
+            Promise.resolve({ kind: "complete" });
         hostedSession.setActiveOnMessage(staleHandler);
 
         const result = await switchActiveAgent(hostedSession, { agentName: "guide" });
