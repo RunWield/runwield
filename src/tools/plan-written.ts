@@ -41,7 +41,7 @@ import {
     emitHostedSessionRuntimeEvent,
     emitSystemStatus,
     RuntimeEventTypes,
-} from "../shared/session/session-runtime-events.js";
+} from "../shared/session/session-runtime-events.ts";
 import {
     requestHostedSessionInteraction,
     RuntimeInteractionOutcomes,

@@ -7,8 +7,8 @@ import {
     resolveResumeAgentName,
 } from ".././active-agent-session.ts";
 import { isPathInside, openPersistedRootSession } from ".././root-session.ts";
-import { RuntimeEventTypes } from ".././session-runtime-events.js";
-import { captureTranscriptEvidence, syncTranscriptFileAndParent } from ".././session-transcript-projection.js";
+import { RuntimeEventTypes } from ".././session-runtime-events.ts";
+import { captureTranscriptEvidence, syncTranscriptFileAndParent } from ".././session-transcript-projection.ts";
 import { openLiveSessionConnection } from ".././live-session-connection.ts";
 import { recordSegmentLineageEvidence } from ".././workflow-context-session.ts";
 import { parseProviderModel } from "../../models/model-validation.ts";
@@ -116,7 +116,7 @@ export class RuntimeManagedOperations {
         sessionId: string,
         text: string,
         images: import("../image-attachments.ts").ImageAttachment[],
-        inputSurface?: import("../session-runtime-events.js").NotificationSurface,
+        inputSurface?: import("../session-runtime-events.ts").NotificationSurface,
     ) {
         return this.queues.steerSession(sessionId, text, images, inputSurface);
     }

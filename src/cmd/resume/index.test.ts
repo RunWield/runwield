@@ -7,7 +7,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { AGENTS } from "../../constants.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
+import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
 import { getRunWieldSessionDir } from "../../shared/session/root-session.ts";
 import { __resetSettingsForTests } from "../../shared/settings.js";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";

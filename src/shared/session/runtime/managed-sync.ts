@@ -1,5 +1,5 @@
-import { RuntimeEventTypes } from ".././session-runtime-events.js";
-import { captureTranscriptEvidence, toProjectionFailure } from ".././session-transcript-projection.js";
+import { RuntimeEventTypes } from ".././session-runtime-events.ts";
+import { captureTranscriptEvidence, toProjectionFailure } from ".././session-transcript-projection.ts";
 import { projectAggregateTranscript } from ".././session-transcript-manifest.ts";
 import { dirname } from "node:path";
 import { normalizeTutorialContext } from "../tutorial-context-session.ts";

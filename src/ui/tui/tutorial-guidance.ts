@@ -2,7 +2,7 @@ import { opendir as fsOpendir } from "node:fs/promises";
 import { readFile as fsReadFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AGENTS } from "../../constants.ts";
-import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
+import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
 import { listWorkRecords } from "../../shared/work-records/store.ts";
 import { findPlanEvidenceById } from "../../plan-store.js";
 import { readControllerRecord } from "../../shared/workflow/controller-registry.ts";
@@ -10,7 +10,7 @@ import { getCustomSetting } from "../../shared/settings.js";
 import { INIT_VERIFICATION_COMMAND_PLACEHOLDER } from "../../tools/init-verification-command.ts";
 import type { UiAPI } from "./api.ts";
 
-type SessionRuntimeEvent = import("../../shared/session/session-runtime-events.js").SessionRuntimeEvent;
+type SessionRuntimeEvent = import("../../shared/session/session-runtime-events.ts").SessionRuntimeEvent;
 type SessionRuntime = ReturnType<typeof import("../../shared/session/session-runtime.ts").createSessionRuntime>;
 type SessionSnapshot = NonNullable<ReturnType<SessionRuntime["getSessionSnapshot"]>>;
 type LoadedPlan = Awaited<ReturnType<typeof findPlanEvidenceById>>;

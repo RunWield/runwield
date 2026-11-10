@@ -20,7 +20,7 @@ import {
     recordWorkflowTriageContext,
     workflowContextsEqual,
 } from "./workflow-context-session.ts";
-import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "./session-runtime-events.js";
+import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "./session-runtime-events.ts";
 import { clearPairCheckpoint } from "./pair-checkpoint-session.ts";
 import { recordExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
 import { BackgroundTasks } from "./background-tasks.ts";
@@ -65,7 +65,7 @@ import { PlanReviewConversationOwner } from "./plan-review-conversation.ts";
  * @typedef {Object} AgentTransitionSteering
  * @property {string} text
  * @property {import('./image-attachments.ts').ImageAttachment[]} images
- * @property {import('./session-runtime-events.js').RuntimeQueuedMessage} [message]
+ * @property {import('./session-runtime-events.ts').RuntimeQueuedMessage} [message]
  * @property {number} [submissionOrder]
  */
 
@@ -105,7 +105,7 @@ import { PlanReviewConversationOwner } from "./plan-review-conversation.ts";
  * @typedef {Object} ActiveInteractionRecord
  * @property {import('./session-runtime-interactions.ts').RuntimeInteractionRequest} [request]
  * @property {AbortController} [abortController]
- * @property {(response: import('./session-runtime-interactions.ts').RuntimeInteractionResponse, source?: import('./session-runtime-events.js').NotificationSurface) => void} [answer]
+ * @property {(response: import('./session-runtime-interactions.ts').RuntimeInteractionResponse, source?: import('./session-runtime-events.ts').NotificationSurface) => void} [answer]
  */
 
 /**
@@ -131,7 +131,7 @@ import { PlanReviewConversationOwner } from "./plan-review-conversation.ts";
  * @property {number | null} [acknowledgedEventOrdinal]
  * @property {import("../remote/session-protocol.ts").RemoteSessionRecords} [remoteRecords]
  * @property {Object} [committedSummary]
- * @property {{ type: "managed_sync_state_changed", status: import('./session-runtime-events.js').RuntimeManagedSyncStatus, localGeneration: number | null, latestGeneration: number | null, owningSurfaceKind?: "workspace" | "tui" | "acp" | "unknown", message?: string } | null} [syncState]
+ * @property {{ type: "managed_sync_state_changed", status: import('./session-runtime-events.ts').RuntimeManagedSyncStatus, localGeneration: number | null, latestGeneration: number | null, owningSurfaceKind?: "workspace" | "tui" | "acp" | "unknown", message?: string } | null} [syncState]
  * @property {string | null} name
  * @property {string | null} activeAgent
  * @property {string | null} [model]
@@ -283,9 +283,9 @@ export class HostedSession {
         /** @type {PendingTaskCompletion | null} */
         this.pendingTaskCompletion = null;
         this.suppressAgentStoppedAttention = false;
-        /** @type {import('./session-runtime-events.js').NotificationSurface | null} */
+        /** @type {import('./session-runtime-events.ts').NotificationSurface | null} */
         this.notificationSurface = null;
-        /** @type {import('./session-runtime-events.js').NotificationSurface | null} */
+        /** @type {import('./session-runtime-events.ts').NotificationSurface | null} */
         this.localInputSurface = null;
         /** @type {string | null} */
         this.agentStoppedAttentionTurnId = null;
@@ -799,7 +799,7 @@ export class HostedSession {
     /**
      * @param {string} text
      * @param {import('./image-attachments.ts').ImageAttachment[]} images
-     * @param {import('./session-runtime-events.js').RuntimeQueuedMessage} [message]
+     * @param {import('./session-runtime-events.ts').RuntimeQueuedMessage} [message]
      * @param {number} [submissionOrder]
      * @returns {boolean}
      */

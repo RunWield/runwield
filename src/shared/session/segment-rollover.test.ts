@@ -10,7 +10,7 @@ import { type SessionManagerExtensions, HostedSession } from "./hosted-session.j
 import { createRootSessionManager, openPersistedRootSession, resolveCreatedRootSessionPath } from "./root-session.ts";
 import { rollSessionTranscriptSegment } from "./segment-rollover.ts";
 import { projectAggregateTranscript } from "./session-transcript-manifest.ts";
-import { captureTranscriptEvidence, syncTranscriptFileAndParent } from "./session-transcript-projection.js";
+import { captureTranscriptEvidence, syncTranscriptFileAndParent } from "./session-transcript-projection.ts";
 import {
     readPersistedPendingSegmentContinuation,
     recordPendingSegmentContinuation,

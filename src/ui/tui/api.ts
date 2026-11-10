@@ -16,7 +16,7 @@ import { imageTheme } from "../theme/theme.ts";
 import type {
     RuntimeManagedSyncStateEvent,
     RuntimeValidationProgress,
-} from "../../shared/session/session-runtime-events.js";
+} from "../../shared/session/session-runtime-events.ts";
 import type { DocumentLinkHost } from "../review/document-link-host.ts";
 import type { SessionHelpPayload } from "../../shared/session/session-help.ts";
 import {

@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { HostedSession } from "./hosted-session.js";
 import { attachSessionEventSubscribers } from "./session.js";
-import { createSessionRuntimeEvent } from "./session-runtime-events.js";
+import { createSessionRuntimeEvent } from "./session-runtime-events.ts";
 import { getCwd } from "../../constants.ts";
 
 import type {
@@ -21,7 +21,7 @@ import type {
     RuntimeToolIdentity,
     RuntimeToolResult,
     SessionRuntimeEvent,
-} from "./session-runtime-events.js";
+} from "./session-runtime-events.ts";
 
 interface SubscriberMessageFixture extends Omit<Partial<AssistantMessage>, "usage"> {
     id?: string;

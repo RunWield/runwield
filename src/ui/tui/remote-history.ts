@@ -1,7 +1,7 @@
 import { Container, isViewportTUI, Key, matchesKey, ScrollView, Text, type TUI, VStack } from "@earendil-works/pi-tui";
 import type { SavedRemoteSession } from "../../shared/remote/laptop-session-control.ts";
 import { parseRemoteSessionTranscript } from "../../shared/remote/session-protocol.ts";
-import { createReplayEvents } from "../../shared/session/session-transcript-projection.js";
+import { createReplayEvents } from "../../shared/session/session-transcript-projection.ts";
 import { createUiApi } from "./api.ts";
 import { SpinnerBlock } from "./blocks.ts";
 import { createTuiDisplayConsumer } from "./runtime-display.ts";

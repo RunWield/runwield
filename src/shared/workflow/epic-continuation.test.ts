@@ -13,7 +13,7 @@ import { presentEpicChildPlan, resolveEpicContinuation } from "./epic-continuati
 import { recordPlanEvent } from "./plan-lifecycle.ts";
 
 import type { HostedSession } from "../session/hosted-session.js";
-import type { RuntimeSystemStatusEvent } from "../session/session-runtime-events.js";
+import type { RuntimeSystemStatusEvent } from "../session/session-runtime-events.ts";
 
 type CapturedStatusEvent = Pick<RuntimeSystemStatusEvent, "type" | "message" | "header" | "level">;
 type CapturedStatusSession = Pick<HostedSession, "cwd" | "getEventSink">;

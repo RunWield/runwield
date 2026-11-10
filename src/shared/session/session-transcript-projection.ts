@@ -11,7 +11,7 @@ import { ACTIVE_AGENT_CUSTOM_TYPE, readActiveAgentFromEntry } from "./active-age
 import { readPersistedWorkflowContext } from "./workflow-context-session.ts";
 import { readPersistedTutorialContext } from "./tutorial-context-session.ts";
 import { readPlanAssociations } from "./plan-association.ts";
-import { normalizeRuntimeToolResult, normalizeRuntimeUsage, RuntimeEventTypes } from "./session-runtime-events.js";
+import { normalizeRuntimeToolResult, normalizeRuntimeUsage, RuntimeEventTypes } from "./session-runtime-events.ts";
 import { describeRuntimeTool } from "./tool-event-title.ts";
 import { formatProviderError } from "./provider-errors.ts";
 import { formatTaskCompletedMarkdown, readManualQaChecklistMessage } from "./workflow-messages.ts";
@@ -25,17 +25,230 @@ import { getAgentDisplayName, normalizeAgentInternalName } from "./agents.ts";
 import { RuntimeUsageTotals } from "./runtime-usage-totals.ts";
 import { WORKFLOW_TOOL_EVENT_CUSTOM_TYPE } from "../workflow/workflow-tool-events.ts";
 
-/** @typedef {{ state?: string, kind?: string, toolCallId?: string }} CompletionEventData */
-/** @typedef {{ type?: string, customType?: string, data?: CompletionEventData }} CompletionEventEntry */
-/** @typedef {Parameters<typeof namedInvocationDisplayText>[0]} NamedInvocationEntry */
+import type { SessionEntry, SessionHeader } from "@earendil-works/pi-coding-agent";
+import type { JsonRecord } from "../jsonc.ts";
+import type { TranscriptEvidence } from "./file-session-store-types.ts";
+import type { ImageReference } from "./named-invocation.ts";
+import type {
+    RuntimeAssistantTextDeltaEvent,
+    RuntimeAssistantThinkingDeltaEvent,
+    RuntimeAssistantThinkingEndEvent,
+    RuntimeEventBase,
+    RuntimeSystemStatusEvent,
+    RuntimeTerminalErrorEvent,
+    RuntimeToolEndEvent,
+    RuntimeToolStartEvent,
+    RuntimeUsageEvent,
+    RuntimeUserMessageEvent,
+    SessionRuntimeEvent,
+} from "./session-runtime-events.ts";
+import type { ContextProjectionCategory, SessionContextProjection } from "./session-context-report.ts";
+import type { TutorialContextCandidate } from "./tutorial-context-session.ts";
+import type { WorkflowContext } from "./workflow-context-session.ts";
+import type { PlanAssociation } from "./plan-association.ts";
 
-/** @param {unknown} value @returns {string} */
-function toReplayText(value) {
+export type TranscriptEntry = SessionEntry | SessionHeader;
+type NamedInvocationEntry = Parameters<typeof namedInvocationDisplayText>[0];
+
+interface ReplayContentBlock {
+    type?: string;
+    text?: unknown;
+    thinking?: unknown;
+    content?: unknown;
+    data?: string;
+    base64?: string;
+    mimeType?: string;
+    name?: string;
+    id?: string;
+    arguments?: unknown;
+    input?: unknown;
+    tool_use_id?: string;
+    toolUseId?: string;
+    is_error?: boolean;
+    isError?: boolean;
+}
+
+interface ReplayTranscriptMessage {
+    role?: string;
+    content?: string | ReplayContentBlock[] | null;
+    toolCallId?: string;
+    tool_call_id?: string;
+    toolName?: string;
+    tool_name?: string;
+    isError?: boolean;
+    is_error?: boolean;
+    stopReason?: string;
+    errorMessage?: string;
+    usage?: unknown;
+}
+
+interface BackendStatus {
+    kind?: string;
+    backend?: string;
+    afterAcceptedTerminal?: boolean;
+}
+
+interface ReplayTranscriptData extends BackendStatus, Omit<Partial<BackendFact>, "backend"> {
+    state?: string;
+    toolCallId?: string;
+    phase?: string;
+    dispatchKind?: string;
+    taskId?: string;
+    text?: string;
+    payload?: JsonRecord;
+    agentName?: string;
+    message?: string;
+    reason?: string;
+}
+
+// Historical JSONL can contain records from several providers and older formats.
+interface ReplayTranscriptEntry {
+    id?: string;
+    type?: string;
+    timestamp?: unknown;
+    message?: ReplayTranscriptMessage;
+    customType?: string;
+    data?: ReplayTranscriptData;
+    summary?: string;
+    provider?: string;
+    modelId?: string;
+    thinkingLevel?: string;
+    name?: string;
+    usage?: unknown;
+}
+
+interface AgentProjectionState {
+    agentName: string | null;
+    displayName: string | null;
+    hasBaseline: boolean;
+}
+
+interface ReplayOptions {
+    segmentId?: string | null;
+    projectRoot?: string;
+    agentProjectionState?: AgentProjectionState;
+}
+
+interface ReplayMetadata {
+    replay: boolean;
+    entryId?: string;
+    entryType?: string;
+    role?: string;
+    timestamp?: string;
+}
+
+interface ProjectedEventEnvelope {
+    eventId: string;
+    timestamp?: string;
+    _meta?: ReplayMetadata;
+    messageId?: string;
+    segmentOrdinal?: number;
+    segmentKind?: string;
+}
+
+type ProjectedEventFields<Event extends SessionRuntimeEvent> = Omit<Event, Exclude<keyof RuntimeEventBase, "type">> &
+    ProjectedEventEnvelope;
+
+type ProjectedUserMessage = Omit<ProjectedEventFields<RuntimeUserMessageEvent>, "images"> & ProjectedUserImages;
+
+interface ProjectedUserImages {
+    images: ImageReference[];
+}
+
+type ProjectedEventVariant =
+    | ProjectedUserMessage
+    | ProjectedEventFields<RuntimeAssistantTextDeltaEvent>
+    | ProjectedEventFields<RuntimeAssistantThinkingDeltaEvent>
+    | ProjectedEventFields<RuntimeAssistantThinkingEndEvent>
+    | ProjectedEventFields<RuntimeToolStartEvent>
+    | ProjectedEventFields<RuntimeToolEndEvent>
+    | ProjectedEventFields<RuntimeSystemStatusEvent>
+    | ProjectedEventFields<RuntimeTerminalErrorEvent>
+    | ProjectedEventFields<RuntimeUsageEvent>;
+
+// Readers can inspect a field across a mixed page, where an absent field is undefined.
+type VariantKeys<Variant> = Variant extends ProjectedEventEnvelope ? keyof Variant : never;
+type ProjectedEventWithAbsentFields<
+    Variant,
+    Keys extends PropertyKey = VariantKeys<Variant>,
+> = Variant extends ProjectedEventEnvelope ? Variant & Partial<Record<Exclude<Keys, keyof Variant>, never>> : never;
+
+export type ProjectedRuntimeEvent = ProjectedEventWithAbsentFields<ProjectedEventVariant>;
+
+interface TranscriptCaptureOptions {
+    transcriptPath: string;
+    transcriptCwd: string;
+    byteLength?: number;
+}
+
+type CommittedEvidence = Pick<TranscriptEvidence, "byteLength" | "terminalEntryId" | "digestHex"> &
+    Required<Pick<TranscriptEvidence, "generation">>;
+
+interface ExpiredControlOptions extends Omit<TranscriptCaptureOptions, "byteLength"> {
+    committedGeneration: CommittedEvidence;
+}
+
+export interface ResumableTranscriptSummary {
+    messageCount: number;
+    firstMessage?: string;
+}
+
+interface CursorOptions {
+    cursorEventId?: string | null;
+    cursorEventOrdinal?: number | null;
+    limit?: number;
+}
+
+interface ProjectedCursorEvent {
+    eventId: string;
+}
+
+interface CursorSelectionOptions<Event extends ProjectedCursorEvent> extends CursorOptions {
+    events: Event[];
+}
+
+interface CommittedTranscriptOptions extends CursorOptions, CommittedEvidence {
+    cwd: string;
+    sessionDir: string;
+    sessionPath: string;
+    runtimeSessionId?: string;
+}
+
+interface TranscriptAuthoritySnapshot {
+    activeAgent?: string | null;
+    workflowContext?: WorkflowContext | null;
+    tutorialContext?: TutorialContextCandidate | null;
+    model?: string | null;
+    provider?: string | null;
+    thinkingLevel?: string | null;
+    planAssociations?: PlanAssociation[];
+}
+
+interface TranscriptAuthorityProjection {
+    snapshot?: TranscriptAuthoritySnapshot | null;
+}
+
+interface BackendFact {
+    backend: string;
+    provider: string | null;
+    model: string | null;
+    thinkingLevel: string | null;
+    effort: string | null;
+    backendModel: string | null;
+}
+
+interface ProjectedSessionInfoOptions {
+    sessionId: string;
+    cwd: string;
+    transcriptPath?: string;
+}
+
+function toReplayText(value: unknown): string {
     if (typeof value === "string") return value;
     if (Array.isArray(value)) return value.map(toReplayText).filter(Boolean).join("\n");
     if (value === undefined || value === null) return "";
     if (typeof value !== "object") return String(value);
-    const typed = /** @type {any} */ (value);
+    const typed = value as ReplayContentBlock;
     if (typed.type === "tool_result") return "[tool result replayed]";
     if (typed.type === "tool_use" || typed.type === "toolCall") return `[tool:${typed.name || "unknown"}]`;
     if (typed.type === "text") return toReplayText(typed.text);
@@ -46,16 +259,14 @@ function toReplayText(value) {
     return "";
 }
 
-/** @param {unknown} timestamp */
-function normalizeReplayTimestamp(timestamp) {
+function normalizeReplayTimestamp(timestamp: unknown) {
     if (typeof timestamp === "string" && timestamp) return timestamp;
     if (typeof timestamp === "number" && Number.isFinite(timestamp)) return new Date(timestamp).toISOString();
     if (timestamp instanceof Date && !Number.isNaN(timestamp.getTime())) return timestamp.toISOString();
     return undefined;
 }
 
-/** @param {string} agentName @param {string | undefined} projectRoot */
-function replayAgentDisplayName(agentName, projectRoot) {
+function replayAgentDisplayName(agentName: string, projectRoot: string | undefined) {
     if (!projectRoot) return agentName;
     try {
         return getAgentDisplayName(agentName, projectRoot);
@@ -64,11 +275,8 @@ function replayAgentDisplayName(agentName, projectRoot) {
     }
 }
 
-/** @param {unknown} entry @param {string | null} [segmentId] */
-function replayMeta(entry, segmentId = null) {
-    const value = /** @type {{ id?: string, type?: string, timestamp?: unknown, message?: { role?: string } }} */ (
-        entry || {}
-    );
+function replayMeta(entry: ReplayTranscriptEntry, segmentId: string | null = null): ReplayMetadata {
+    const value = entry || {};
     const timestamp = normalizeReplayTimestamp(value.timestamp);
     return {
         replay: true,
@@ -79,44 +287,34 @@ function replayMeta(entry, segmentId = null) {
     };
 }
 
-/** @param {unknown} entry @param {string} fallback @param {string | null} [segmentId] */
-function entryMessageId(entry, fallback, segmentId = null) {
-    const value = /** @type {{ id?: string }} */ (entry || {});
+function entryMessageId(entry: ReplayTranscriptEntry, fallback: string, segmentId: string | null = null) {
+    const value = entry || {};
     const id = value.id || fallback;
     return segmentId ? `${segmentId}:${id}` : id;
 }
 
-/** @param {unknown} entry @param {string} eventKind @param {number} blockIndex @param {string | null} [segmentId] */
-function makeEventId(entry, eventKind, blockIndex, segmentId = null) {
+function makeEventId(
+    entry: ReplayTranscriptEntry,
+    eventKind: string,
+    blockIndex: number,
+    segmentId: string | null = null,
+) {
     const entryId = entryMessageId(entry, "entry", segmentId);
     return `${entryId}:${eventKind}:${blockIndex}`;
 }
 
-/**
- * @param {{ kind?: string, backend?: string, afterAcceptedTerminal?: boolean }} status
- * @returns {"warning" | "error"}
- */
-function backendStatusLevel(status) {
+function backendStatusLevel(status: BackendStatus): "warning" | "error" {
     if (status.afterAcceptedTerminal) return "warning";
     const kind = status.kind || "non_zero_exit";
     if (kind === "canceled" || kind === "bridge_disconnected" || kind === "cleanup_failed") return "warning";
     return "error";
 }
 
-/**
- * @typedef {Object} AgentProjectionState
- * @property {string | null} agentName
- * @property {string | null} displayName
- * @property {boolean} hasBaseline
- */
-
-/**
- * @param {string} sessionId
- * @param {unknown[]} entries
- * @param {{ segmentId?: string | null, projectRoot?: string, agentProjectionState?: AgentProjectionState }} [options]
- * @returns {Array<Record<string, any> & { type: string, eventId: string }>}
- */
-export function createReplayEvents(sessionId, entries, options = {}) {
+export function createReplayEvents(
+    sessionId: string,
+    entries: readonly unknown[],
+    options: ReplayOptions = {},
+): ProjectedRuntimeEvent[] {
     const segmentId = options.segmentId || null;
     const projectRoot = typeof options.projectRoot === "string" ? options.projectRoot : undefined;
     const agentProjectionState = options.agentProjectionState || {
@@ -124,11 +322,11 @@ export function createReplayEvents(sessionId, entries, options = {}) {
         displayName: null,
         hasBaseline: false,
     };
-    /** @type {Array<Record<string, any> & { type: string, eventId: string }>} */
-    const events = [];
+
+    const events: ProjectedRuntimeEvent[] = [];
     const acceptedCompletions = new Set(
         entries.flatMap((entry) => {
-            const value = /** @type {CompletionEventEntry} */ (entry);
+            const value = entry as ReplayTranscriptEntry | null | undefined;
             return value?.type === "custom" &&
                 value.customType === WORKFLOW_TOOL_EVENT_CUSTOM_TYPE &&
                 value.data?.state === "accepted" &&
@@ -138,19 +336,19 @@ export function createReplayEvents(sessionId, entries, options = {}) {
                 : [];
         }),
     );
-    /** @type {string | null} */
-    let replayModel = null;
-    /** @type {string | null} */
-    let replayThinkingLevel = null;
+
+    let replayModel: string | null = null;
+
+    let replayThinkingLevel: string | null = null;
     let replayAgentName = agentProjectionState.displayName || "Assistant";
-    /** @type {Map<string, ReturnType<typeof describeRuntimeTool>>} */
-    const replayTools = new Map();
-    /** @type {Map<string, number>} */
-    const replayToolStartedAt = new Map();
+
+    const replayTools = new Map<string, ReturnType<typeof describeRuntimeTool>>();
+
+    const replayToolStartedAt = new Map<string, number>();
     let skipNextCompactNamedInvocation = "";
     let pendingGeneratedTaskId = "";
-    const steeredTasks = new Map();
-    const finishReplayTool = (/** @type {string} */ toolCallId, /** @type {string | undefined} */ timestamp) => {
+    const steeredTasks = new Map<string, string>();
+    const finishReplayTool = (toolCallId: string, timestamp: string | undefined) => {
         const startedAt = replayToolStartedAt.get(toolCallId);
         replayToolStartedAt.delete(toolCallId);
         const finishedAt = typeof timestamp === "string" ? Date.parse(timestamp) : Number.NaN;
@@ -158,7 +356,7 @@ export function createReplayEvents(sessionId, entries, options = {}) {
     };
     for (const entry of entries) {
         if (!entry || typeof entry !== "object") continue;
-        const value = /** @type {any} */ (entry);
+        const value = entry as ReplayTranscriptEntry;
         if (
             value.type === "custom" &&
             value.customType === "runwield.request_attempt" &&
@@ -176,9 +374,9 @@ export function createReplayEvents(sessionId, entries, options = {}) {
             }
             continue;
         }
-        const namedInvocationText = namedInvocationDisplayText(value);
+        const namedInvocationText = namedInvocationDisplayText(value as NamedInvocationEntry);
         if (namedInvocationText) {
-            const namedInvocationImages = namedInvocationImageReferences(value);
+            const namedInvocationImages = namedInvocationImageReferences(value as NamedInvocationEntry);
             const meta = replayMeta(value, segmentId);
             events.push({
                 timestamp: normalizeReplayTimestamp(value.timestamp),
@@ -189,7 +387,7 @@ export function createReplayEvents(sessionId, entries, options = {}) {
                 text: namedInvocationText,
                 images: namedInvocationImages,
             });
-            skipNextCompactNamedInvocation = namedInvocationCompactText(value);
+            skipNextCompactNamedInvocation = namedInvocationCompactText(value as NamedInvocationEntry);
             continue;
         }
         const meta = replayMeta(value, segmentId);
@@ -202,14 +400,14 @@ export function createReplayEvents(sessionId, entries, options = {}) {
             value.data.toolCallId
         ) {
             const completion = value.data;
-            const toolCallId = completion.toolCallId;
+            const toolCallId = completion.toolCallId!;
             const message = typeof completion.payload?.message === "string" ? completion.payload.message : "";
             events.push({
                 ...common,
                 type: RuntimeEventTypes.TOOL_END,
                 eventId: makeEventId(value, RuntimeEventTypes.TOOL_END, 0, segmentId),
                 toolCallId,
-                ...(replayTools.get(toolCallId) || describeRuntimeTool(completion.kind, undefined)),
+                ...(replayTools.get(toolCallId) || describeRuntimeTool(completion.kind!, undefined)),
                 ...normalizeRuntimeToolResult({
                     content: [{ type: "text", text: message }],
                     details: completion.payload,
@@ -275,7 +473,9 @@ export function createReplayEvents(sessionId, entries, options = {}) {
                 }
                 continue;
             }
-            const blocks = Array.isArray(content) ? content : [{ type: "text", text: toReplayText(content) }];
+            const blocks: ReplayContentBlock[] = Array.isArray(content)
+                ? content
+                : [{ type: "text", text: toReplayText(content) }];
             if (role === "user") {
                 const text = blocks
                     .filter((block) => block?.type === "text")
@@ -306,7 +506,7 @@ export function createReplayEvents(sessionId, entries, options = {}) {
             }
             let blockIndex = 0;
             for (const block of blocks) {
-                const typed = /** @type {any} */ (block || {});
+                const typed = block || {};
                 const messageId = `${entryMessageId(value, `${sessionId}:replay`, segmentId)}:${blockIndex}`;
                 const eventBlockIndex = blockIndex++;
                 // Older providers placed tool results inside user messages.
@@ -346,11 +546,14 @@ export function createReplayEvents(sessionId, entries, options = {}) {
                 if (typed.type === "tool_use" || typed.type === "toolCall") {
                     // A failed response never dispatches its proposed tools. Do not
                     // replay an unfinished call as a tool that is still running.
-                    if (role === "assistant" && ["error", "aborted"].includes(value.message?.stopReason)) continue;
+                    if (role === "assistant" && ["error", "aborted"].includes(value.message?.stopReason!)) continue;
                     const toolName = typed.name || "tool";
                     const args = typed.arguments || typed.input;
                     const toolCallId = typed.id || messageId;
-                    const runtimeTool = describeRuntimeTool(toolName, args);
+                    const runtimeTool = describeRuntimeTool(
+                        toolName,
+                        args as Parameters<typeof describeRuntimeTool>[1],
+                    );
                     replayTools.set(toolCallId, runtimeTool);
                     const startedAt = typeof common.timestamp === "string" ? Date.parse(common.timestamp) : Number.NaN;
                     if (Number.isFinite(startedAt)) replayToolStartedAt.set(toolCallId, startedAt);
@@ -406,15 +609,15 @@ export function createReplayEvents(sessionId, entries, options = {}) {
             if (
                 role === "assistant" &&
                 value.message?.stopReason === "error" &&
-                !/^(?:the signal has been aborted|aborted)$/i.test(value.message.errorMessage || "")
+                !/^(?:the signal has been aborted|aborted)$/i.test(value.message!.errorMessage || "")
             ) {
                 events.push({
                     ...common,
                     type: RuntimeEventTypes.TERMINAL_ERROR,
                     eventId: makeEventId(value, RuntimeEventTypes.TERMINAL_ERROR, 0, segmentId),
                     messageId: `${entryMessageId(value, `${sessionId}:replay`, segmentId)}:error`,
-                    message: formatProviderError(value.message.errorMessage),
-                    error: value.message.errorMessage,
+                    message: formatProviderError(value.message!.errorMessage),
+                    error: value.message!.errorMessage,
                 });
             }
             if (role === "assistant" || value.message?.usage) {
@@ -423,7 +626,7 @@ export function createReplayEvents(sessionId, entries, options = {}) {
                     type: RuntimeEventTypes.USAGE,
                     eventId: makeEventId(value, RuntimeEventTypes.USAGE, 0, segmentId),
                     messageId: `${entryMessageId(value, `${sessionId}:replay`, segmentId)}:usage`,
-                    usage: normalizeRuntimeUsage(value.message.usage),
+                    usage: normalizeRuntimeUsage(value.message!.usage),
                 });
             }
             continue;
@@ -548,19 +751,14 @@ export function createReplayEvents(sessionId, entries, options = {}) {
     return events;
 }
 
-/** @param {Uint8Array} bytes */
-export async function sha256Hex(bytes) {
+export async function sha256Hex(bytes: Uint8Array) {
     const digest = await crypto.subtle.digest("SHA-256", new Uint8Array(bytes));
     return Array.from(new Uint8Array(digest))
         .map((byte) => byte.toString(16).padStart(2, "0"))
         .join("");
 }
 
-/**
- * @param {string} path
- * @param {number} byteLength
- */
-async function readPrefixBytes(path, byteLength) {
+async function readPrefixBytes(path: string, byteLength: number) {
     const file = await fsOpen(path, "r");
     try {
         const stat = await file.stat();
@@ -579,8 +777,7 @@ async function readPrefixBytes(path, byteLength) {
     }
 }
 
-/** @param {Uint8Array} bytes */
-function parseJsonlPrefix(bytes) {
+function parseJsonlPrefix(bytes: Uint8Array): TranscriptEntry[] {
     const text = new TextDecoder().decode(bytes);
     if (text.length > 0 && !text.endsWith("\n")) {
         throw new Error("Committed transcript prefix must end at a JSONL boundary");
@@ -591,18 +788,14 @@ function parseJsonlPrefix(bytes) {
         .map((line) => JSON.parse(line));
 }
 
-/** @param {unknown[]} entries */
-function terminalEntryId(entries) {
+function terminalEntryId(entries: TranscriptEntry[]) {
     const last = entries.at(-1);
-    return last && typeof last === "object" && typeof (/** @type {any} */ (last).id) === "string"
-        ? /** @type {any} */ (last).id
+    return last && typeof last === "object" && typeof (last as ReplayTranscriptEntry).id === "string"
+        ? (last as ReplayTranscriptEntry).id!
         : null;
 }
 
-/**
- * @param {{ transcriptPath: string, transcriptCwd: string, byteLength?: number }} options
- */
-export async function captureTranscriptEvidence(options) {
+export async function captureTranscriptEvidence(options: TranscriptCaptureOptions) {
     const path = resolve(options.transcriptPath);
     const stat = await fsStat(path);
     const byteLength = options.byteLength ?? stat.size;
@@ -617,48 +810,20 @@ export async function captureTranscriptEvidence(options) {
 }
 
 /**
- * @typedef {Object} ResumableTranscriptContentBlock
- * @property {string} [type]
- * @property {string} [text]
- * @property {string} [mimeType]
- */
-
-/**
- * @typedef {Object} ResumableTranscriptMessage
- * @property {string} [role]
- * @property {string | ResumableTranscriptContentBlock[]} [content]
- */
-
-/**
- * @typedef {Object} ResumableTranscriptEntry
- * @property {string} [type]
- * @property {ResumableTranscriptMessage} [message]
- */
-
-/**
- * @typedef {Object} ResumableTranscriptSummary
- * @property {number} messageCount
- * @property {string} [firstMessage]
- */
-
-/**
  * Extract the small amount of conversation metadata needed by the resume
  * picker from an already parsed transcript.
- *
- * @param {unknown[]} entries
- * @returns {ResumableTranscriptSummary}
  */
-export function summarizeResumableTranscript(entries) {
-    const typedEntries = entries.map((entry) => /** @type {ResumableTranscriptEntry} */ (entry));
+export function summarizeResumableTranscript(entries: readonly unknown[]): ResumableTranscriptSummary {
+    const typedEntries = entries.map((entry) => entry as ReplayTranscriptEntry);
     const messages = typedEntries.filter((entry) => entry?.type === "message");
     let firstMessage;
     for (const entry of entries) {
-        const invocation = namedInvocationDisplayText(/** @type {NamedInvocationEntry} */ (entry));
+        const invocation = namedInvocationDisplayText(entry as NamedInvocationEntry);
         if (invocation) {
             firstMessage = invocation;
             break;
         }
-        const value = /** @type {ResumableTranscriptEntry} */ (entry);
+        const value = entry as ReplayTranscriptEntry;
         if (value?.type !== "message" || value.message?.role !== "user") continue;
         const content = value.message.content;
         const text = (
@@ -683,10 +848,7 @@ export function summarizeResumableTranscript(entries) {
     return { messageCount: messages.length, firstMessage };
 }
 
-/**
- * @param {{ transcriptPath: string, transcriptCwd: string, committedGeneration: { generation: number, byteLength: number, terminalEntryId: string | null, digestHex: string } }} options
- */
-export async function validateExpiredControlTranscriptEvidence(options) {
+export async function validateExpiredControlTranscriptEvidence(options: ExpiredControlOptions) {
     const committed = options.committedGeneration;
     const committedEvidence = await captureTranscriptEvidence({
         transcriptPath: options.transcriptPath,
@@ -712,13 +874,9 @@ export async function validateExpiredControlTranscriptEvidence(options) {
     };
 }
 
-/**
- * @param {{ sessionPath: string, sessionDir: string, cwd: string, generation: number, byteLength: number, digestHex: string, terminalEntryId: string | null, runtimeSessionId?: string, cursorEventId?: string, cursorEventOrdinal?: number | null, limit?: number }} options
- */
-/**
- * @param {{ events: Array<Record<string, any> & { eventId: string }>, cursorEventId?: string | null, cursorEventOrdinal?: number | null, limit?: number }} options
- */
-export function selectProjectedEventsAfterCursor(options) {
+export function selectProjectedEventsAfterCursor<Event extends ProjectedCursorEvent>(
+    options: CursorSelectionOptions<Event>,
+) {
     const events = Array.isArray(options.events) ? options.events : [];
     let startIndex = 0;
     if (options.cursorEventId) {
@@ -756,8 +914,14 @@ export function selectProjectedEventsAfterCursor(options) {
     };
 }
 
-/** @param {unknown} error */
-export function toProjectionFailure(error) {
+export interface ProjectionFailure {
+    ok: false;
+    state: "degraded";
+    code: string;
+    message: string;
+}
+
+export function toProjectionFailure(error: unknown): ProjectionFailure {
     const message = error instanceof Error ? error.message : String(error);
     const code =
         error instanceof Error && error.name === "ProjectionContinuityError"
@@ -782,10 +946,7 @@ export function toProjectionFailure(error) {
     };
 }
 
-/**
- * @param {{ cwd: string, sessionDir: string, sessionPath: string, runtimeSessionId?: string, generation: number, byteLength: number, terminalEntryId: string | null, digestHex: string, cursorEventId?: string | null, cursorEventOrdinal?: number | null, limit?: number }} options
- */
-export async function projectCommittedTranscript(options) {
+export async function projectCommittedTranscript(options: CommittedTranscriptOptions) {
     const sessionPath = resolve(options.sessionPath);
     if (!isPathInside(sessionPath, options.sessionDir)) {
         throw new Error("Committed transcript path is outside session directory");
@@ -825,11 +986,8 @@ export async function projectCommittedTranscript(options) {
  * Extract facts whose authority comes from the already-verified committed
  * transcript prefix. Callers may use these only in phases where committed JSONL
  * is the active source of truth, such as idle continuation gates or hydration.
- *
- * @param {{ snapshot?: Record<string, any> | null } | null | undefined} projection
- * @returns {{ activeAgent: string | null, workflowContext: unknown | null, tutorialContext: import('./tutorial-context-session.ts').TutorialContext | null, model: string | null, provider: string | null, thinkingLevel: string | null, planAssociations: import("./plan-association.ts").PlanAssociation[] }}
  */
-export function getCommittedTranscriptAuthorityFacts(projection) {
+export function getCommittedTranscriptAuthorityFacts(projection: TranscriptAuthorityProjection | null | undefined) {
     const snapshot = projection?.snapshot || {};
     return {
         activeAgent: typeof snapshot.activeAgent === "string" && snapshot.activeAgent ? snapshot.activeAgent : null,
@@ -845,10 +1003,7 @@ export function getCommittedTranscriptAuthorityFacts(projection) {
     };
 }
 
-/**
- * @param {string} transcriptPath
- */
-export async function syncTranscriptFileAndParent(transcriptPath) {
+export async function syncTranscriptFileAndParent(transcriptPath: string) {
     const file = await fsOpen(transcriptPath, constants.O_WRONLY);
     try {
         await file.sync();
@@ -871,27 +1026,16 @@ const AGY_CLI_BACKEND_FACT_MODELS = new Set(["gemini-3.8-flash", "gemini-3.1-pro
 const AGY_CLI_BACKEND_FACT_THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 const AGY_CLI_BACKEND_FACT_EFFORTS = new Set(["low", "medium", "high"]);
 
-/** @param {Record<string, unknown>} data @param {string} key */
-function readNonEmptyString(data, key) {
+function readNonEmptyString(data: ReplayTranscriptData, key: keyof BackendFact) {
     const value = data[key];
     return typeof value === "string" && value ? value : null;
 }
 
-/**
- * @param {string} model
- * @param {string} effort
- * @param {string} backendModel
- */
-function isVerifiedAgyBackendModel(model, effort, backendModel) {
+function isVerifiedAgyBackendModel(model: string, effort: string, backendModel: string) {
     return backendModel === `${model}-${effort}`;
 }
 
-/**
- * @param {string} model
- * @param {string} thinkingLevel
- * @returns {"low" | "medium" | "high" | null}
- */
-function expectedAgyBackendEffort(model, thinkingLevel) {
+function expectedAgyBackendEffort(model: string, thinkingLevel: string): "low" | "medium" | "high" | null {
     switch (thinkingLevel) {
         case "off":
         case "minimal":
@@ -908,11 +1052,7 @@ function expectedAgyBackendEffort(model, thinkingLevel) {
     }
 }
 
-/**
- * @param {Record<string, unknown>} data
- * @returns {{ backend: "agy-cli", provider: string, model: string, thinkingLevel: string, effort: string, backendModel: string } | null}
- */
-function readAgyExecutionBackendFact(data) {
+function readAgyExecutionBackendFact(data: ReplayTranscriptData): BackendFact | null {
     const provider = readNonEmptyString(data, "provider");
     const model = readNonEmptyString(data, "model");
     const thinkingLevel = readNonEmptyString(data, "thinkingLevel");
@@ -927,12 +1067,8 @@ function readAgyExecutionBackendFact(data) {
     return { backend: "agy-cli", provider, model, thinkingLevel, effort, backendModel };
 }
 
-/**
- * @param {unknown} entry
- * @returns {{ backend: string, provider: string | null, model: string | null, thinkingLevel: string | null, effort: string | null, backendModel: string | null } | null}
- */
-function readExecutionBackendFact(entry) {
-    const value = /** @type {{ type?: string, customType?: string, data?: Record<string, unknown> }} */ (entry || {});
+function readExecutionBackendFact(entry: ReplayTranscriptEntry): BackendFact | null {
+    const value = entry || {};
     if (value.type !== "custom" || value.customType !== "runwield.execution_backend") return null;
     const data = value.data && typeof value.data === "object" ? value.data : null;
     if (!data) return null;
@@ -949,8 +1085,7 @@ function readExecutionBackendFact(entry) {
     };
 }
 
-/** @param {unknown[]} entries */
-export function summarizeProjectedEntries(entries) {
+export function summarizeProjectedEntries(entries: unknown[]) {
     let activeAgent = null;
     let name = null;
     let workflowContext = null;
@@ -961,7 +1096,7 @@ export function summarizeProjectedEntries(entries) {
     const planAssociations = readPlanAssociations(entries);
     const tutorialContext = readPersistedTutorialContext({ getEntries: () => entries });
     for (const entry of entries) {
-        const value = /** @type {any} */ (entry || {});
+        const value = (entry || {}) as ReplayTranscriptEntry;
         if ((value.type === "session" || value.type === "session_info") && typeof value.name === "string") {
             name = value.name;
         }
@@ -977,7 +1112,7 @@ export function summarizeProjectedEntries(entries) {
         }
         const backendFact = readExecutionBackendFact(value);
         if (backendFact) executionBackend = backendFact;
-        const maybeWorkflow = readPersistedWorkflowContext(/** @type {any} */ ({ getEntries: () => [value] }));
+        const maybeWorkflow = readPersistedWorkflowContext({ getEntries: () => [value] });
         if (maybeWorkflow) workflowContext = maybeWorkflow;
     }
     return {
@@ -993,16 +1128,15 @@ export function summarizeProjectedEntries(entries) {
     };
 }
 
-/** @param {unknown} value @returns {string} */
-function projectedDisplayText(value) {
+function projectedDisplayText(value: unknown): string {
     const namedInvocationText =
-        typeof value === "object" && value !== null ? namedInvocationDisplayText(/** @type {any} */ (value)) : "";
+        typeof value === "object" && value !== null ? namedInvocationDisplayText(value as NamedInvocationEntry) : "";
     if (namedInvocationText) return namedInvocationText;
     if (typeof value === "string") return value;
     if (Array.isArray(value)) return value.map(projectedDisplayText).filter(Boolean).join("\n");
     if (value === null || value === undefined) return "";
     if (typeof value !== "object") return String(value);
-    const typed = /** @type {any} */ (value);
+    const typed = value as ReplayContentBlock;
     if (typed.type === "text") return projectedDisplayText(typed.text);
     if (typed.type === "tool_use") return `[tool_use:${typed.name || "unknown"}] ${JSON.stringify(typed.input || {})}`;
     if (typed.type === "tool_result") return `[tool_result] ${projectedDisplayText(typed.content || "")}`;
@@ -1010,13 +1144,12 @@ function projectedDisplayText(value) {
     return "";
 }
 
-/** @param {unknown[]} entries */
-export function inspectProjectedTranscript(entries) {
+export function inspectProjectedTranscript(entries: unknown[]) {
     const summary = summarizeProjectedEntries(entries);
     let messageCount = 0;
     let estimatedTokens = 0;
     for (const entry of entries) {
-        const value = /** @type {any} */ (entry || {});
+        const value = (entry || {}) as ReplayTranscriptEntry;
         if (value.type !== "message" || !value.message) continue;
         messageCount++;
         estimatedTokens += projectedDisplayText(value.message.content).split(/\s+/).filter(Boolean).length;
@@ -1031,13 +1164,11 @@ export function inspectProjectedTranscript(entries) {
     };
 }
 
-/** @param {string} text @returns {number} */
-function estimateProjectedTextTokens(text) {
+function estimateProjectedTextTokens(text: string) {
     return text ? Math.ceil(text.length / 4) : 0;
 }
 
-/** @param {unknown[]} entries @param {{ sessionId: string, cwd: string, transcriptPath?: string }} options */
-export function buildProjectedSessionInfo(entries, options) {
+export function buildProjectedSessionInfo(entries: unknown[], options: ProjectedSessionInfoOptions) {
     const summary = summarizeProjectedEntries(entries);
     const assistantUsage = new RuntimeUsageTotals();
     const compactionUsage = new RuntimeUsageTotals();
@@ -1055,7 +1186,7 @@ export function buildProjectedSessionInfo(entries, options) {
         contextUsage: null,
     };
     for (const entry of entries) {
-        const value = /** @type {any} */ (entry || {});
+        const value = (entry || {}) as ReplayTranscriptEntry;
         if (value.type === "compaction") {
             info.compactionCount++;
             compactionUsage.add(normalizeRuntimeUsage(value.usage));
@@ -1065,17 +1196,14 @@ export function buildProjectedSessionInfo(entries, options) {
         if (message.role === "user") {
             info.userMessages++;
             info.toolResults += Array.isArray(message.content)
-                ? message.content.filter(
-                      (/** @type {any} */ block) => block?.type === "tool_result" || block?.type === "toolResult",
-                  ).length
+                ? message.content.filter((block) => block?.type === "tool_result" || block?.type === "toolResult")
+                      .length
                 : 0;
         }
         if (message.role === "assistant") {
             info.assistantMessages++;
             info.toolCalls += Array.isArray(message.content)
-                ? message.content.filter(
-                      (/** @type {any} */ block) => block?.type === "tool_use" || block?.type === "toolCall",
-                  ).length
+                ? message.content.filter((block) => block?.type === "tool_use" || block?.type === "toolCall").length
                 : 0;
             assistantUsage.add(normalizeRuntimeUsage(message.usage));
         }
@@ -1091,24 +1219,18 @@ export function buildProjectedSessionInfo(entries, options) {
     };
 }
 
-/**
- * @param {unknown[]} entries
- * @returns {import('./session-context-report.ts').SessionContextProjection}
- */
-export function buildProjectedSessionContextProjection(entries) {
+export function buildProjectedSessionContextProjection(entries: unknown[]): SessionContextProjection {
     let tokens = 0;
     for (const entry of entries) {
-        const value = /** @type {{ type?: string, message?: { content?: unknown } }} */ (entry || {});
+        const value = (entry || {}) as ReplayTranscriptEntry;
         if (value.type !== "message" || !value.message) continue;
         tokens += estimateProjectedTextTokens(projectedDisplayText(value.message.content));
     }
-    const categories =
+    const categories: ContextProjectionCategory[] =
         tokens > 0
             ? [
                   {
-                      id: /** @type {import('./session-context-report.ts').ContextCategoryId} */ (
-                          "conversation_overhead"
-                      ),
+                      id: "conversation_overhead",
                       label: "Committed conversation",
                       tokens,
                       items: [],
@@ -1123,10 +1245,9 @@ export function buildProjectedSessionContextProjection(entries) {
     };
 }
 
-/** @param {unknown[]} entries */
-export function getProjectedLastAssistantText(entries) {
+export function getProjectedLastAssistantText(entries: unknown[]) {
     for (let index = entries.length - 1; index >= 0; index--) {
-        const value = /** @type {any} */ (entries[index] || {});
+        const value = (entries[index] || {}) as ReplayTranscriptEntry;
         if (value.type !== "message" || value.message?.role !== "assistant") continue;
         const text = projectedDisplayText(value.message.content).trim();
         if (text) return text;

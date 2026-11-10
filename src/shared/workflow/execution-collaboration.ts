@@ -1,7 +1,7 @@
 // @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
 import { AGENTS } from "../../constants.ts";
 import { resolvePlanExecutionPolicy } from "../../plan-store.js";
-import { emitSystemStatus } from "../session/session-runtime-events.js";
+import { emitSystemStatus } from "../session/session-runtime-events.ts";
 
 export function resolveExecutionOwner(meta) {
     const policy = resolvePlanExecutionPolicy(meta);

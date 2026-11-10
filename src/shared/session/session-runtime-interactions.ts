@@ -3,7 +3,7 @@
  * Adapter-neutral interaction broker for HostedSession-bound prompts.
  */
 
-import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "./session-runtime-events.js";
+import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "./session-runtime-events.ts";
 import { RuntimeInteractionOutcomes, RuntimeInteractionTypes } from "./interaction-values.ts";
 export { isApprovalAcceptedValue, RuntimeInteractionOutcomes, RuntimeInteractionTypes } from "./interaction-values.ts";
 

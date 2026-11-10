@@ -4,11 +4,11 @@
  */
 
 import { getCommandDefinition, getSlashCommandDefinitions } from "../cmd/registry.ts";
-import { RuntimeEventTypes } from "../shared/session/session-runtime-events.js";
+import { RuntimeEventTypes } from "../shared/session/session-runtime-events.ts";
 
 import type { SessionNotification, SessionUpdate, ToolCallContent, UsageUpdate } from "@agentclientprotocol/sdk";
 import type { ContextUsage } from "@earendil-works/pi-coding-agent";
-import type { RuntimeToolContentBlock, SessionRuntimeEvent } from "../shared/session/session-runtime-events.js";
+import type { RuntimeToolContentBlock, SessionRuntimeEvent } from "../shared/session/session-runtime-events.ts";
 
 export type { SessionNotification, SessionUpdate } from "@agentclientprotocol/sdk";
 export type AcpContextUsage = Pick<ContextUsage, "tokens" | "contextWindow">;

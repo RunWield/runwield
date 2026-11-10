@@ -8,7 +8,7 @@ import { defineGitFixture } from "../git-test-fixture.ts";
 import { SessionHost } from "../session/session-host.ts";
 import { SessionRuntime } from "../session/session-runtime.ts";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
-import type { RuntimeValidationProgress } from "../session/session-runtime-events.js";
+import type { RuntimeValidationProgress } from "../session/session-runtime-events.ts";
 import { createTuiInteractionAdapter } from "../../ui/tui/runtime-interaction-adapter.ts";
 import { readDeliveryEvidence } from "./delivery-evidence.ts";
 import {

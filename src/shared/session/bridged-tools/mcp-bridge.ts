@@ -35,7 +35,7 @@ import {
     emitHostedSessionRuntimeEvent,
     normalizeRuntimeToolResult,
     RuntimeEventTypes,
-} from "../session-runtime-events.js";
+} from "../session-runtime-events.ts";
 import type { HostedSession } from "../hosted-session.js";
 import { describeRuntimeTool } from "../tool-event-title.ts";
 

@@ -1,5 +1,5 @@
 import { steerAgentSessionWithPreparedInput, steerAgentSessionWithTarget } from ".././session.js";
-import { getRuntimeErrorMessage, RuntimeEventTypes } from ".././session-runtime-events.js";
+import { getRuntimeErrorMessage, RuntimeEventTypes } from ".././session-runtime-events.ts";
 
 import { getRuntimeRootAgentSession, isRuntimeAgentSession, toRuntimeQueuedMessage } from "./support.ts";
 import type { RuntimeAgentSession } from "./support.ts";
@@ -246,7 +246,7 @@ export class RuntimeQueues {
         sessionId: string,
         text: string,
         images: import(".././image-attachments.ts").ImageAttachment[] = [],
-        inputSurface: import("../session-runtime-events.js").NotificationSurface = this.services.ownerProcessKind,
+        inputSurface: import("../session-runtime-events.ts").NotificationSurface = this.services.ownerProcessKind,
     ): Promise<import("./types.ts").SteerSessionResult> {
         const hostedSession = this.services.sessionHost.getSession(sessionId);
         if (!hostedSession) return { ok: false, queued: false, error: "not_found" };
@@ -374,7 +374,7 @@ export class RuntimeQueues {
         images: import(".././image-attachments.ts").ImageAttachment[] = [],
         options: {
             deliverWhenAvailable?: boolean;
-            inputSurface?: import("../session-runtime-events.js").NotificationSurface;
+            inputSurface?: import("../session-runtime-events.ts").NotificationSurface;
         } = {},
     ): import("./types.ts").SteerSessionResult {
         const hostedSession = this.services.sessionHost.getSession(sessionId);

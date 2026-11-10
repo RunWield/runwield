@@ -60,7 +60,7 @@ import {
     summarizeProjectedEntries,
     summarizeResumableTranscript,
     validateExpiredControlTranscriptEvidence,
-} from "../../../shared/session/session-transcript-projection.js";
+} from "../../../shared/session/session-transcript-projection.ts";
 import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./owner-projects.ts";
 
 /** A rejected image submission has not been accepted as an operation. */
@@ -338,10 +338,10 @@ async function readSessionDisplayName(paths) {
  * @typedef {Object} WorkspaceOperationRecord
  * @property {string} status
  * @property {string} projectId
- * @property {import("../../../shared/session/session-runtime-events.js").SessionRuntimeEvent[]} events
+ * @property {import("../../../shared/session/session-runtime-events.ts").SessionRuntimeEvent[]} events
  * @property {boolean} [remote]
  * @property {import("../../../shared/session/live-session-connection.ts").LiveSessionInfo | null} [sessionInfo]
- * @property {import("../../../shared/session/session-runtime-events.js").RuntimeQueuedMessage[]} [queuedMessages]
+ * @property {import("../../../shared/session/session-runtime-events.ts").RuntimeQueuedMessage[]} [queuedMessages]
  * @property {string} [error]
  * @property {number | null} [generation]
  * @property {string | null} [runwieldSessionId]
@@ -356,7 +356,7 @@ async function readSessionDisplayName(paths) {
 
 /**
  * @typedef {Object} WorkspaceAttentionNotification
- * @property {import('../../../shared/session/session-runtime-events.js').RuntimeAttentionRequestedEvent} event
+ * @property {import('../../../shared/session/session-runtime-events.ts').RuntimeAttentionRequestedEvent} event
  * @property {string} url
  * @property {import('../../../shared/session/notification-content.ts').BrowserNotificationPolicy} policy
  */
@@ -464,7 +464,7 @@ export class WorkspaceSessionContinuationService {
             });
         } else {
             const stopped =
-                /** @type {import('../../../shared/session/session-runtime-events.js').RuntimeAttentionRequestedEvent | undefined} */ (
+                /** @type {import('../../../shared/session/session-runtime-events.ts').RuntimeAttentionRequestedEvent | undefined} */ (
                     record.events.findLast(
                         (event) =>
                             event.type === "attention_requested" &&
@@ -554,7 +554,7 @@ export class WorkspaceSessionContinuationService {
         if (previous) previous.unsubscribe();
         let currentOperationId = operationId;
         let unsubscribe = () => {};
-        /** @param {import("../../../shared/session/session-runtime-events.js").SessionRuntimeEvent} event */
+        /** @param {import("../../../shared/session/session-runtime-events.ts").SessionRuntimeEvent} event */
         const receive = (event) => {
             // Transcript replay describes saved work; it must not reopen background operations.
             if (event.eventId) return;
@@ -606,7 +606,7 @@ export class WorkspaceSessionContinuationService {
         this.retainedSessions.set(runwieldSessionId, { sessionId, unsubscribe: () => unsubscribe() });
     }
 
-    /** @param {string} operationId @param {import("../../../shared/session/session-runtime-events.js").SessionRuntimeEvent} event */
+    /** @param {string} operationId @param {import("../../../shared/session/session-runtime-events.ts").SessionRuntimeEvent} event */
     appendOperationEvent(operationId, event) {
         const record = this.operations.get(operationId);
         if (!record || record.status !== "running") return;
@@ -625,7 +625,7 @@ export class WorkspaceSessionContinuationService {
      */
     subscribeOperationSession(operationId, sessionId) {
         let unsubscribe = () => {};
-        /** @param {import("../../../shared/session/session-runtime-events.js").SessionRuntimeEvent} event */
+        /** @param {import("../../../shared/session/session-runtime-events.ts").SessionRuntimeEvent} event */
         const receive = (event) => {
             this.appendOperationEvent(operationId, event);
             if (event.type !== "session_replaced" || event.reason !== "prompt_template") return;
@@ -643,7 +643,7 @@ export class WorkspaceSessionContinuationService {
         return () => unsubscribe();
     }
 
-    /** @param {WorkspaceOperationRecord} record @param {import("../../../shared/session/session-runtime-events.js").SessionRuntimeEvent} event */
+    /** @param {WorkspaceOperationRecord} record @param {import("../../../shared/session/session-runtime-events.ts").SessionRuntimeEvent} event */
     notifyAttention(record, event) {
         if (event.type !== "attention_requested" || event.notificationSurface !== "workspace" || event.eventId) return;
         if (!record.runwieldSessionId) return;

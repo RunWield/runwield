@@ -719,7 +719,7 @@ test("Engineer model fallback is one regular system message per Agent", async ()
         const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-agent-model-fallback-"));
         /** @type {import('@earendil-works/pi-coding-agent').AgentSession[]} */
         const sessions = [];
-        /** @type {import('../session-runtime-events.js').SessionRuntimeEvent[]} */
+        /** @type {import('../session-runtime-events.ts').SessionRuntimeEvent[]} */
         const events = [];
         try {
             process.env["HOME"] = tempHome;
@@ -730,7 +730,7 @@ test("Engineer model fallback is one regular system message per Agent", async ()
             );
             __resetSettingsForTests();
             const eventSink = {
-                /** @param {import('../session-runtime-events.js').SessionRuntimeEvent} event */
+                /** @param {import('../session-runtime-events.ts').SessionRuntimeEvent} event */
                 emit(event) {
                     events.push(event);
                 },

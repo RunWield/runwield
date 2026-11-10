@@ -5,7 +5,7 @@
 
 import { HostedSession } from "./hosted-session.js";
 import type { ManagedSessionMetadata, MinimalSessionManagerLike } from "./hosted-session.js";
-import type { SessionRuntimeEvent } from "./session-runtime-events.js";
+import type { SessionRuntimeEvent } from "./session-runtime-events.ts";
 
 export interface SessionRuntimeEventSink {
     emit: (event: Partial<SessionRuntimeEvent> & { type: string }) => void;

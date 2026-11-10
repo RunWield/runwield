@@ -31,7 +31,7 @@ import {
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import type { HostedSession } from "../session/hosted-session.js";
 import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.ts";
-import { emitSystemStatus } from "../session/session-runtime-events.js";
+import { emitSystemStatus } from "../session/session-runtime-events.ts";
 import { captureWorktreeTree } from "./git-snapshot.ts";
 import {
     captureProcessStreamTail,

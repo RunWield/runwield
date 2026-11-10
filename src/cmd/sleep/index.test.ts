@@ -7,7 +7,7 @@ import { basename, join } from "node:path";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
+import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
 import {
     exportMnemotecaCollection,
     type InteractiveSessionPort,

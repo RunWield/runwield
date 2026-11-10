@@ -8,7 +8,7 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "../shared/session/hosted-session.js";
 import { ROUTING_INTENTS, WORK_KINDS } from "../constants.ts";
-import { emitSystemStatus } from "../shared/session/session-runtime-events.js";
+import { emitSystemStatus } from "../shared/session/session-runtime-events.ts";
 import { recordWorkflowMetric } from "../shared/workflow/metrics.ts";
 import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
 import { normalizeTriageOutcome, TRIAGE_COMPLEXITIES, type TriageOutcome } from "../shared/workflow/triage-outcome.ts";

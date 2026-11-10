@@ -7,8 +7,8 @@ import {
     listPersistedRootSessions,
     resolveCreatedRootSessionPath,
 } from ".././root-session.ts";
-import { RuntimeEventTypes } from ".././session-runtime-events.js";
-import { captureTranscriptEvidence, syncTranscriptFileAndParent } from ".././session-transcript-projection.js";
+import { RuntimeEventTypes } from ".././session-runtime-events.ts";
+import { captureTranscriptEvidence, syncTranscriptFileAndParent } from ".././session-transcript-projection.ts";
 import { recordSegmentLineageEvidence } from ".././workflow-context-session.ts";
 import { isAbsolute } from "node:path";
 import type { PromptReadySessionOptions } from "./types.ts";

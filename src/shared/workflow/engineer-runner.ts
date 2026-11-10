@@ -1,7 +1,7 @@
 // @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
 import { AGENTS } from "../../constants.ts";
 import { getAgentDisplayName } from "../session/agents.ts";
-import { emitSystemStatus } from "../session/session-runtime-events.js";
+import { emitSystemStatus } from "../session/session-runtime-events.ts";
 import { AgyCliBackendError } from "../session/backends/agy-cli/failure.ts";
 import { runActiveAgentTurn } from "../session/agent-switching.ts";
 import { createPairCheckpointTool } from "../../tools/pair-checkpoint.ts";

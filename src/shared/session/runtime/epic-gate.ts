@@ -6,7 +6,7 @@
  * the system ports and the Session messages around it.
  */
 
-import { emitSystemStatus } from "../session-runtime-events.js";
+import { emitSystemStatus } from "../session-runtime-events.ts";
 import type { HostedSession } from "../hosted-session.js";
 import type { EpicIntegrationGateResult } from "../../workflow/epic-integration.ts";
 

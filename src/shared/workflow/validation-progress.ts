@@ -6,13 +6,13 @@
  * the UI never has to correlate two streams to know which cycle a line belongs to.
  */
 
-import { emitSystemStatus } from "../session/session-runtime-events.js";
+import { emitSystemStatus } from "../session/session-runtime-events.ts";
 import type { HostedSession } from "../session/hosted-session.js";
 import type {
     RuntimeValidationCheckResult,
     RuntimeValidationCheckResults,
     RuntimeValidationProgress,
-} from "../session/session-runtime-events.js";
+} from "../session/session-runtime-events.ts";
 import type { TransitionResult } from "./state-transition.ts";
 
 /** Fields accepted when building a progress record from scratch. */

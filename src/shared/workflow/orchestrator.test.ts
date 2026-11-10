@@ -16,7 +16,7 @@ import { git } from "../git-test-fixture.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { listPendingTaskCompletions } from "../session/task-completion-session.ts";
 import { setCustomSetting } from "../settings.js";
-import type { SessionRuntimeEvent } from "../session/session-runtime-events.js";
+import type { SessionRuntimeEvent } from "../session/session-runtime-events.ts";
 import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.ts";
 import { dispatchPostTriage, type DispatchPostTriageArgs, readLatestTriageOutcome } from "./orchestrator.ts";
 import { getWorkflowMetricsFilePath } from "./metrics.ts";

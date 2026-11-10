@@ -1,6 +1,8 @@
 /** Shared conversation renderer. It consumes live or replay events, never a Runtime. */
 import type { AgentMessageAppender, UiAPI } from "./api.ts";
-import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
+import { RuntimeEventTypes, type RuntimeToolResult, type SessionRuntimeEvent } from "../../shared/session/session-runtime-events.ts";
+
+import type { ProjectedRuntimeEvent } from "../../shared/session/session-transcript-projection.ts";
 
 const HIDDEN_TOOL_BLOCK_NAMES = new Set(["task_completed", "review_complete", "triage_report", "user_interview"]);
 
@@ -9,9 +11,7 @@ interface RuntimeDisplayImage {
     mimeType: string;
 }
 
-type RuntimeDisplayEvent = Partial<
-    ReturnType<typeof import("../../shared/session/session-transcript-projection.js").createReplayEvents>[number]
->;
+type RuntimeDisplayEvent = SessionRuntimeEvent | ProjectedRuntimeEvent;
 
 interface RuntimeDisplayImageCandidate {
     base64?: string;
@@ -24,7 +24,7 @@ function collectDetailDisplayImage(image: RuntimeDisplayImageCandidate): Runtime
         : [];
 }
 
-function collectRuntimeDisplayImages(event: RuntimeDisplayEvent): RuntimeDisplayImage[] {
+function collectRuntimeDisplayImages(event: RuntimeToolResult): RuntimeDisplayImage[] {
     const contentImages = Array.isArray(event.content)
         ? event.content.flatMap((block) =>
               block?.type === "image" && typeof block.data === "string" && typeof block.mimeType === "string"
@@ -52,11 +52,12 @@ export function createTuiDisplayConsumer(uiAPI: UiAPI) {
     return {
         consume(event: RuntimeDisplayEvent) {
             const value = event;
-            switch (event.type) {
+            switch (value.type) {
                 case RuntimeEventTypes.USER_MESSAGE:
                     if (!(typeof value.text === "string" && value.text.startsWith("!") && value.images.length === 0)) {
                         uiAPI.appendUserMessage?.(value.text);
-                        for (const image of value.images) uiAPI.appendImage?.(image.base64, image.mimeType);
+                        // Older named invocations can retain image references without embedded data.
+                        for (const image of value.images) uiAPI.appendImage?.(image.base64!, image.mimeType!);
                     }
                     break;
                 case RuntimeEventTypes.ASSISTANT_TEXT_DELTA: {

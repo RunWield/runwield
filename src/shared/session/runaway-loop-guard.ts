@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { AgentSession, AgentSessionEvent, CustomEntry, SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "./hosted-session.js";
-import { emitSystemStatus } from "./session-runtime-events.js";
+import { emitSystemStatus } from "./session-runtime-events.ts";
 
 export const LOOP_GUARD_MAX_MODEL_TURNS = 100;
 export const LOOP_GUARD_REPEAT_CYCLES = 3;

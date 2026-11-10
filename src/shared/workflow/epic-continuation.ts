@@ -20,7 +20,7 @@ import { decidePostExecution, decidePostPlanning } from "./decisions.ts";
 import { buildTriageReport } from "./workflow-prompts.ts";
 import { SYSTEM_SEMANTIC_REVIEW_PORT } from "./validation.ts";
 import { continueWorkflowValidation } from "./validation.ts";
-import { emitSystemStatus } from "../session/session-runtime-events.js";
+import { emitSystemStatus } from "../session/session-runtime-events.ts";
 import { buildPlanSummary } from "../plan-presentation.ts";
 import type { PlanFrontMatter } from "../../plan-store.js";
 import type { HostedSession } from "../session/hosted-session.js";

@@ -1,4 +1,4 @@
-import { emitSystemStatus } from "./session-runtime-events.js";
+import { emitSystemStatus } from "./session-runtime-events.ts";
 import { clearAgentSessionQueueForTransition, runRootTurn } from "./session.js";
 import {
     claimWorkflowToolEvent,

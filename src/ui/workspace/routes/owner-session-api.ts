@@ -27,7 +27,7 @@ import { getSlashCommandDefinition } from "../../../cmd/registry.ts";
 
 import type { JsonValue } from "../../../shared/jsonc.ts";
 import type { CatalogDiagnostic } from "../../../shared/session/file-session-store-types.ts";
-import type { RuntimeToolStartEvent } from "../../../shared/session/session-runtime-events.js";
+import type { RuntimeToolStartEvent } from "../../../shared/session/session-runtime-events.ts";
 import type { recordSlashCommandMetric } from "../../../shared/workflow/command-metrics.ts";
 import type { OwnerConnectionRegistry } from "../server/owner-connections.ts";
 

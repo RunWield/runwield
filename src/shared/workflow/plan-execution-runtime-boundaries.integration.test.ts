@@ -28,7 +28,7 @@ import { git } from "../git-test-fixture.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { SessionHost } from "../session/session-host.ts";
 import { SessionRuntime } from "../session/session-runtime.ts";
-import { RuntimeEventTypes } from "../session/session-runtime-events.js";
+import { RuntimeEventTypes } from "../session/session-runtime-events.ts";
 import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
 import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.ts";
 import { loadPlanActionEvidence } from "./plan-actions.ts";

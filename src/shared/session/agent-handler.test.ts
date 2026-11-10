@@ -11,7 +11,7 @@ import { createTaskCompletedTool } from "../../tools/task-completed.ts";
 import { type AgentHandler, createAgentHandler } from "./agent-handler.ts";
 import { HostedSession } from "./hosted-session.js";
 import { ensureRootAgentSession } from "./session.js";
-import { RuntimeEventTypes } from "./session-runtime-events.js";
+import { RuntimeEventTypes } from "./session-runtime-events.ts";
 import { setCustomSetting } from "../settings.js";
 import { listPendingWorkflowToolEvents, publishWorkflowToolEvent } from "../workflow/workflow-tool-events.ts";
 import { listPendingTaskCompletions } from "./task-completion-session.ts";

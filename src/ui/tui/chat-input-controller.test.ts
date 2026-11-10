@@ -14,7 +14,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { getRunWieldSessionDir } from "../../shared/session/root-session.ts";
-import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
+import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
 import { savePlan } from "../../plan-store.js";
 import { getSettingsManager } from "../../shared/settings.js";
 import { createInteractiveTuiComposition, type InteractiveTuiComposition } from "./interactive-tui-composition.ts";

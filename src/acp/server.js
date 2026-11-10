@@ -13,7 +13,7 @@ import {
 } from "../shared/session/live-session-connection.ts";
 import { getSelectedDefaultModelAvailability } from "../shared/session/model-readiness.ts";
 import { createSessionRuntime, SessionTurnInProgressError } from "../shared/session/session-runtime.ts";
-import { RuntimeEventTypes } from "../shared/session/session-runtime-events.js";
+import { RuntimeEventTypes } from "../shared/session/session-runtime-events.ts";
 import { AcpSessionMap, normalizeAcpSessionIdForLoad } from "./session-map.ts";
 import { mapRuntimeContextToAcpUpdate, mapRuntimeEventToAcpSessionNotification } from "./event-mapper.ts";
 import { createAcpInteractionAdapter } from "./interaction-mapper.ts";
@@ -817,7 +817,7 @@ async function closeAllMappedSessions(runtime, sessionMap) {
  *
  * @param {AcpSessionMap} sessionMap
  * @param {string} acpSessionId
- * @param {import('../shared/session/session-runtime-events.js').SessionRuntimeEvent} event
+ * @param {import('../shared/session/session-runtime-events.ts').SessionRuntimeEvent} event
  * @param {{ tokens: number | null, contextWindow: number } | null} [contextUsage]
  */
 export function mapEventWithSessionCost(sessionMap, acpSessionId, event, contextUsage = null) {

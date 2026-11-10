@@ -9,7 +9,7 @@ import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { TuiAltScreen } from "@earendil-works/pi-tui";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
-import { emitSystemStatus } from "../../shared/session/session-runtime-events.js";
+import { emitSystemStatus } from "../../shared/session/session-runtime-events.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 import {
     createValidationProgress,

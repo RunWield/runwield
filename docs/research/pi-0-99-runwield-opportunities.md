@@ -113,7 +113,7 @@ definitions, and return only the evidence needed for planning.
 - Keep direct-tool behavior for other Execution Backends. The CLI bridge currently rejects nested `executeTool` calls.
 - Do not assume script failure undoes prior actions or that a nested workflow-ending call ends the outer Agent turn.
 
-Sources: [runtime result normalization](../../src/shared/session/session-runtime-events.js),
+Sources: [runtime result normalization](../../src/shared/session/session-runtime-events.ts),
 [CLI bridge](../../src/shared/session/bridged-tools/mcp-bridge.ts), installed Pi `extensions/types.d.ts` and
 `extensions/codemode/`.
 

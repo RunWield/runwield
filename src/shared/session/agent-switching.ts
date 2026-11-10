@@ -15,7 +15,7 @@ import {
     runRootTurn,
     shouldReuseExistingRootSession,
 } from "./session.js";
-import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "./session-runtime-events.js";
+import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "./session-runtime-events.ts";
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { SessionManager, ToolDefinition } from "@earendil-works/pi-coding-agent";

@@ -16,7 +16,7 @@ import { setCustomSetting } from "../../settings.js";
 import { getWorkflowMetricsFilePath } from "../../workflow/metrics.ts";
 import { HostedSession } from "../hosted-session.js";
 import { createRootSessionManager } from "../root-session.ts";
-import type { RuntimeUsage, SessionRuntimeEvent } from "../session-runtime-events.js";
+import type { RuntimeUsage, SessionRuntimeEvent } from "../session-runtime-events.ts";
 import { ClaudeCliExecutionSession } from "./claude-cli/execution-session.ts";
 import { AgyCliExecutionSession } from "./agy-cli/execution-session.ts";
 

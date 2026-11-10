@@ -3,7 +3,7 @@ import { abortActiveSession as abortActiveSessionFn, steerRootSessionWithTarget 
 import { formatBackgroundTaskCompletion } from "../background-tasks.ts";
 import type { BackgroundTaskStatus } from "../background-tasks.ts";
 import { resolveNamedInvocation, withNamedInvocationDisplayMessage } from ".././named-invocation.ts";
-import { getRuntimeErrorMessage, RuntimeEventTypes } from ".././session-runtime-events.js";
+import { getRuntimeErrorMessage, RuntimeEventTypes } from ".././session-runtime-events.ts";
 import { rollSessionTranscriptSegment } from ".././segment-rollover.ts";
 import { promptTemplateWorkflowConflict, resolvePromptTemplateSettings } from "../prompt-template-settings.ts";
 import { recordManualModelSelection } from "../active-agent-session.ts";

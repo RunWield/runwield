@@ -11,7 +11,7 @@ import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
 import { SessionHost } from "./session-host.ts";
 import { SessionRuntime, createSessionRuntime } from "./session-runtime.ts";
 import { createRootSessionManager, openPersistedRootSession, resolveCreatedRootSessionPath } from "./root-session.ts";
-import { captureTranscriptEvidence } from "./session-transcript-projection.js";
+import { captureTranscriptEvidence } from "./session-transcript-projection.ts";
 import type { TranscriptEntry } from "./session-transcript-manifest.ts";
 
 async function withExportHome(run: (home: string, cwd: string) => Promise<void>): Promise<void> {

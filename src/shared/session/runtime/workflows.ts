@@ -3,7 +3,7 @@ import { buildPlanConversationRequest } from "../../workflow/plan-review-convers
 import { AGENTS, SUBAGENTS } from "../../../constants.ts";
 import { resolvePlanExecutionRuntimeAgent } from "../../workflow/execution-agent.ts";
 import { runActiveAgentTurn } from ".././agent-switching.ts";
-import { emitSystemStatus, RuntimeEventTypes } from ".././session-runtime-events.js";
+import { emitSystemStatus, RuntimeEventTypes } from ".././session-runtime-events.ts";
 import { readPersistedPendingSegmentContinuationEntry } from ".././workflow-context-session.ts";
 import { prepareSessionPlanningWorktree } from "../../workflow/session-planning-worktree.ts";
 import { executePlanAction } from "../../workflow/plan-actions.ts";

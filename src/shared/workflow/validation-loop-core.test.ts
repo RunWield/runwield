@@ -1,5 +1,5 @@
 import type { TriageMeta } from "../../tools/plan-written.ts";
-import type { SessionRuntimeEvent } from "../session/session-runtime-events.js";
+import type { SessionRuntimeEvent } from "../session/session-runtime-events.ts";
 import { hostname } from "node:os";
 import { test } from "node:test";
 import {

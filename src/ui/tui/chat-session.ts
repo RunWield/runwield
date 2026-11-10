@@ -53,7 +53,7 @@ import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { setActiveSessionModel } from "../../shared/session/model-selection.ts";
 import { remotePersonalResourcesActive } from "../../shared/remote/personal-resources.ts";
 import { startMetricsExportScheduler } from "../../shared/workflow/metrics-export-scheduler.ts";
-import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
+import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
 import { renderBootBanner } from "./boot-banner.ts";
 import { getSelectedDefaultModelAvailability, maybeShowModelWelcome } from "./model-welcome.ts";
 import { createChatFooterController } from "./chat-footer.ts";
