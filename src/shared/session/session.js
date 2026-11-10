@@ -119,7 +119,7 @@ import {
     getResolvedVisionFallbackModelSetting,
     getSettingsDir,
     getSettingsManager,
-} from "../settings.js";
+} from "../settings.ts";
 import { modelSupportsImageInput, prepareImagesForModel, resolveVisionFallbackModel } from "./image-attachments.ts";
 import { readPersistedActiveAgentName, readPersistedModelState, recordActiveAgent } from "./active-agent-session.ts";
 import {

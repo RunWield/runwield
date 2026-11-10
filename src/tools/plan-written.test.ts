@@ -107,7 +107,7 @@ test("plan_written rejects the reserved Epic Artifact name before review", async
 
 test("direct Plan retains explicit verification through skipped Init, reload, and deliberate changes", async () => {
     await withRuntimeCommandFixture("plan-command-", async ({ projectRoot }) => {
-        const { getExactProjectCustomSetting, setExactProjectCustomSetting } = await import("../shared/settings.js");
+        const { getExactProjectCustomSetting, setExactProjectCustomSetting } = await import("../shared/settings.ts");
         const { runLocalCI } = await import("../shared/workflow/validation-local-ci.ts");
         const session = new HostedSession({ id: "plan-command", cwd: projectRoot });
         try {

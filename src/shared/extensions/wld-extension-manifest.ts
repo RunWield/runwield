@@ -7,7 +7,7 @@ import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
 
 import { dirname, join, parse } from "node:path";
 import { DefaultPackageManager, type SettingsManager } from "@earendil-works/pi-coding-agent";
-import { getSettingsDir, getSettingsManager } from "../settings.js";
+import { getSettingsDir, getSettingsManager } from "../settings.ts";
 import { isEnabledPackageResource, type ResolvedResource } from "../package-resources.ts";
 
 interface ManifestRecord {

@@ -32,7 +32,7 @@ import type { PlanFrontMatter } from "../../plan-store.ts";
 import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
 import { isGitRepository } from "../git.ts";
-import { getCodeReviewMode, getCustomSetting, getExactProjectCustomSetting } from "../settings.js";
+import { getCodeReviewMode, getCustomSetting, getExactProjectCustomSetting } from "../settings.ts";
 import { spawnForegroundShell } from "../foreground-process.ts";
 import {
     captureProcessStreamTail,

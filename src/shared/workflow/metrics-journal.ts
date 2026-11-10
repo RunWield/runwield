@@ -148,7 +148,7 @@ async function acquireRecordingLock(exclusive: boolean, deadline: number): Promi
 export async function setWorkflowMetricsRecording(enabled: boolean): Promise<void> {
     const guard = await acquireRecordingLock(true, Date.now() + 1000);
     try {
-        const { getCustomSetting, setCustomSetting } = await import("../settings.js");
+        const { getCustomSetting, setCustomSetting } = await import("../settings.ts");
         const saved = getCustomSetting("workflowMetrics", "global");
         const previous = readRecordingState();
         const boundary = { generation: crypto.randomUUID(), ts: new Date().toISOString(), enabled };
@@ -659,7 +659,7 @@ export async function appendWorkflowMetric<T>(
     let lock: JournalLock | undefined;
     let recordingLock: NativeFileLock | undefined;
     try {
-        const { getCustomSetting, getMergedCustomSetting } = await import("../settings.js");
+        const { getCustomSetting, getMergedCustomSetting } = await import("../settings.ts");
         // Do not create a journal for an opt-out installation.
         if (!invocation.enabled && (invocation.epoch === "initial" || !existsSync(filePath))) {
             return { ...failedRecord, persisted: false, reason: "disabled" };

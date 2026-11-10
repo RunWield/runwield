@@ -5,7 +5,7 @@ import { effectiveDeliveryBranch } from "./plan-branch.ts";
  * @module shared/workflow/validation-merge-verification
  *
  * Post-merge publication proof. The paired precondition,
- * `assertPreMergeCandidateUnchanged`, runs in worktree.js before the target ref
+ * `assertPreMergeCandidateUnchanged`, runs in worktree.ts before the target ref
  * moves; this runs after it moved and answers whether everything that had to
  * reach the target branch actually did.
  */
@@ -182,7 +182,7 @@ interface VerifyPostMergeCandidatePublishedOptions {
 /**
  * Post-merge proof: everything that had to reach the target branch did.
  *
- * The paired precondition is `assertPreMergeCandidateUnchanged` in worktree.js, which
+ * The paired precondition is `assertPreMergeCandidateUnchanged` in worktree.ts, which
  * runs before the ref moves. This runs after, and answers three questions that used to
  * be asked separately at each call site:
  *

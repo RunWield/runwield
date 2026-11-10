@@ -1,6 +1,6 @@
 import { assertEquals } from "../testing/assertions.ts";
 import { test } from "node:test";
-import { setCustomSetting, shouldAutoMergePlansIntoTargetBranch } from "./settings.js";
+import { setCustomSetting, shouldAutoMergePlansIntoTargetBranch } from "./settings.ts";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
 
 test("Plan auto-merge defaults off and accepts only a literal true", async () => {

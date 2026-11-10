@@ -33,7 +33,7 @@ import {
     SHARED_PLAN_LOCK_REPAIR,
     SharedPlanLockError,
 } from "../../../shared/collaboration/lock.ts";
-import { getWorktreeStatus, inspectExecutionWorktreeMergeRisk } from "../../../shared/worktree.js";
+import { getWorktreeStatus, inspectExecutionWorktreeMergeRisk } from "../../../shared/worktree.ts";
 import {
     autoGenerateWorkRecordForCompletedPlan,
     formatWorkRecordAutoGenerationResult,

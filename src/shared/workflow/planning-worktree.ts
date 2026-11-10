@@ -29,7 +29,7 @@ import {
     createWorktreeGitArtifacts,
     prepareTargetBranchRef,
     removeWorktreeGitArtifacts,
-} from "../worktree.js";
+} from "../worktree.ts";
 import { runExecutionPreparationTransition } from "./state-transition.ts";
 import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { ensureExecutionPlanFile } from "./execution-plan-file.ts";

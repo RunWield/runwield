@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
 import { getBundledModelPresets, type ModelPresetsMap } from "./model-presets.ts";
 import { RunWieldCredentialStore, RunWieldModelRegistry } from "./models/model-registry.ts";
-import { getCustomSetting, getMergedCustomSetting, setCustomSetting } from "./settings.js";
+import { getCustomSetting, getMergedCustomSetting, setCustomSetting } from "./settings.ts";
 import { getConfiguredAgentModel, getConfiguredAgentThinkingLevel } from "./session/session.js";
 
 test("bundled presets refresh disposable files and preserve personal settings", async () => {

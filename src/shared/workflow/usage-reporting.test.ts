@@ -22,7 +22,7 @@ import { encodeCwdForSessionDir } from "../session/root-session.ts";
 import { ExecutionMetricsRecorder } from "./execution-metrics.ts";
 import { UsageReporter, usageProjectIdentityForRoot } from "./usage-reporting.ts";
 import { openNativeFileLock } from "../native-file-lock.ts";
-import { setCustomSetting } from "../settings.js";
+import { setCustomSetting } from "../settings.ts";
 import { setWorkflowMetricsRecording } from "./metrics-journal.ts";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
 

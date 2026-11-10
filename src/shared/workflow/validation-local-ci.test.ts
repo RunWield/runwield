@@ -14,7 +14,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { join } from "node:path";
 
 import { HostedSession } from "../session/hosted-session.ts";
-import { getExactProjectCustomSetting, setCustomSetting, setExactProjectCustomSetting } from "../settings.js";
+import { getExactProjectCustomSetting, setCustomSetting, setExactProjectCustomSetting } from "../settings.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { runLocalCI } from "./validation-local-ci.ts";
 

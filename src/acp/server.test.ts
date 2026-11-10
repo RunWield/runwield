@@ -44,7 +44,7 @@ import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixtur
 import { savePlan } from "../plan-store.ts";
 import { captureTranscriptEvidence } from "../shared/session/session-transcript-projection.ts";
 import { openFileSessionStore } from "../shared/session/file-session-store.ts";
-import { __resetSettingsForTests, setCustomSetting } from "../shared/settings.js";
+import { __resetSettingsForTests, setCustomSetting } from "../shared/settings.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../shared/workflow/metrics.ts";
 import { createRootSessionManager, resolveCreatedRootSessionPath } from "../shared/session/root-session.ts";
 import { VERSION } from "../shared/version.js";

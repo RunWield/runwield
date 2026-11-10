@@ -8,7 +8,7 @@ affectedPaths:
     - "src/shared/workflow/validation-publication.ts"
     - "src/shared/workflow/publication-receipt.ts"
     - "src/shared/work-records/published-source.ts"
-    - "src/shared/settings.js"
+    - "src/shared/settings.ts"
     - "docs/prd/runwield-core-prd.md"
     - "docs/adr/015-proof-bearing-publication-state-machine.md"
 executionAgent: "engineer"
@@ -58,7 +58,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/shared/workflow/validation-publication.ts` — candidate and store settlement integration
 - `src/shared/workflow/publication-receipt.ts` — permanent proof after attempt cleanup
 - `src/shared/work-records/published-source.ts` — retained source instead of new-format git-show reconstruction
-- `src/shared/settings.js` — separate copy policy definitions
+- `src/shared/settings.ts` — separate copy policy definitions
 - `docs/prd/runwield-core-prd.md` — publication and execution recovery requirements
 - `docs/adr/015-proof-bearing-publication-state-machine.md` — reconcile Git artifacts versus canonical Plan truth
 

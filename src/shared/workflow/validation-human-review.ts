@@ -5,7 +5,7 @@ import { readDeliveryEvidence, recordDeliveryEvidence } from "./delivery-evidenc
  * approval/feedback/closed-window, and persisting the review metadata.
  */
 
-import { getCodeReviewMode, getGuidedReviewMode } from "../settings.js";
+import { getCodeReviewMode, getGuidedReviewMode } from "../settings.ts";
 import { AGENTS } from "../../constants.ts";
 import { runPlanFrontMatterTransition } from "./state-transition.ts";
 import { type ValidationInteractionResponse, ValidationInteractionTypes } from "./validation-ports.ts";

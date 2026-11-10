@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 import { type AgentToolResult, defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { setCustomSetting } from "../shared/settings.js";
+import { setCustomSetting } from "../shared/settings.ts";
 
 export const INIT_VERIFICATION_COMMAND_TOOL_NAME = "init_save_verification_command";
 export const INIT_VERIFICATION_COMMAND_PLACEHOLDER = 'echo "verification not implemented yet"';

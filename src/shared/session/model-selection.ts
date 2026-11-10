@@ -1,5 +1,5 @@
 import { isUnsupportedModelExecutionBackendError } from "../models/model-execution.ts";
-import { getSettingsManager, setRemoteDefaultModelSelection } from "../settings.js";
+import { getSettingsManager, setRemoteDefaultModelSelection } from "../settings.ts";
 import { remotePersonalResourcesActive } from "../remote/personal-resources.ts";
 import type { SessionRuntime } from "./session-runtime.ts";
 

@@ -25,7 +25,7 @@ import type { PlanFrontMatter } from "../../plan-store.ts";
 import { isPlannedChangeClassification } from "../../constants.ts";
 import { projectPlanType } from "../project-plan.ts";
 import { isGitRepository } from "../git.ts";
-import { prepareTargetBranchRef, resolveTargetBranchName } from "../worktree.js";
+import { prepareTargetBranchRef, resolveTargetBranchName } from "../worktree.ts";
 import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { listControllerDocumentWorktrees } from "./controller-registry.ts";

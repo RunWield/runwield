@@ -15,7 +15,7 @@ import {
     setCompactionKeepRecentTokens,
     setCompactionReserveTokens,
     setCustomSetting,
-} from "../../shared/settings.js";
+} from "../../shared/settings.ts";
 import { theme } from "../../ui/theme/theme.ts";
 import { printCommandHelp } from "../help/index.ts";
 import { editPolicySetting, getPolicySettings } from "./policies.ts";

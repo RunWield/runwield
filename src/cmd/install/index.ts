@@ -10,7 +10,7 @@ import { getCwd } from "../../constants.ts";
 import { approveMetricsExporter, listInstalledMetricsExporters } from "../../shared/extensions/metrics-exporter.ts";
 import { filterWldCompatibleExtensionResources } from "../../shared/extensions/wld-extension-manifest.ts";
 import { countPackageResourcesForSource, resolveConfiguredUserPackageSource } from "../../shared/package-resources.ts";
-import { getSettingsDir, getSettingsManager } from "../../shared/settings.js";
+import { getSettingsDir, getSettingsManager } from "../../shared/settings.ts";
 import { discoverAndRegisterThemes } from "../../ui/theme/theme.ts";
 
 type CommandLog = (message?: string) => void;

@@ -13,7 +13,7 @@ import {
 } from "./session.js";
 
 import { getAgentDisplayName, listAvailableAgents } from "./agents.ts";
-import { getCustomSetting } from "../settings.js";
+import { getCustomSetting } from "../settings.ts";
 import { loadPlan } from "../../plan-store.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 

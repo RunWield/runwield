@@ -100,7 +100,7 @@ Plans and current uncommitted work before creating new ones. Explicit future PRD
 
 10. [ ] **Needs Plan — Keep optional vision settings local to the correct Project.** Broken fallback setup must not
         block text-only conversation. Workspace must use the Session Project's settings, not the server's working
-        directory. Evidence: [vision settings](src/shared/settings.js), [Agent setup](src/shared/session/session.js).
+        directory. Evidence: [vision settings](src/shared/settings.ts), [Agent setup](src/shared/session/session.js).
 
 11. [ ] **Needs Plan — Isolate malformed Work Records.** Listing, reading, search, backfill, and index rebuild must
         remain useful when an unrelated record is malformed. Report the affected record without treating it as approved

@@ -22,7 +22,7 @@ import {
     validateCompletedExecution,
 } from "./plan-execution.ts";
 import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
-import { discardWorktreeGitArtifacts, validateWorktreeDiscard } from "../../shared/worktree.js";
+import { discardWorktreeGitArtifacts, validateWorktreeDiscard } from "../../shared/worktree.ts";
 import {
     findById as findWorktreeRegistryEntry,
     restoreEntryFromPlanEvidence,

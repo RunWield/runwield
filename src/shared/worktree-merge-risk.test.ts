@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { inspectExecutionWorktreeMergeRisk, removeWorktreeGitArtifacts } from "./worktree.js";
+import { inspectExecutionWorktreeMergeRisk, removeWorktreeGitArtifacts } from "./worktree.ts";
 
 import { createTestWorktreeAttempt, git, makeRepo } from "./worktree-test-helpers.ts";
 import type { WorktreeRegistryEntry } from "./worktree-registry.ts";

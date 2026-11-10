@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { TuiAltScreen, TuiMainScreen } from "@earendil-works/pi-tui";
 import { getHomeDir } from "../../constants.ts";
 import { configureRemotePersonalResources, PersonalResourcePathError } from "../../shared/remote/personal-resources.ts";
-import { getSettingsManager, isMascotEnabled } from "../../shared/settings.js";
+import { getSettingsManager, isMascotEnabled } from "../../shared/settings.ts";
 import { createChatView } from "./chat-view.ts";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
 import { VirtualTerminal } from "./testing/virtual-terminal.js";

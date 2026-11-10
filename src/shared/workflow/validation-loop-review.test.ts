@@ -17,7 +17,7 @@ import { ensurePlanIdentity, loadPlan } from "../../plan-store.ts";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { getHomeDir } from "../../constants.ts";
 import { join } from "node:path";
-import { setCustomSetting } from "../settings.js";
+import { setCustomSetting } from "../settings.ts";
 import { executeWorkflowTestTools, type WorkflowTestToolCall } from "../../testing/workflow-agent-tools.ts";
 import { captureWorktreeTree, getWorktreeReviewDiff } from "./git-snapshot.ts";
 import {

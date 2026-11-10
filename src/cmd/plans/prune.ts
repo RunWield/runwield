@@ -7,7 +7,7 @@ import {
     collectWorkRecordPlanIds,
     selectArchivedPlansForPrune,
 } from "../../shared/plan-archive-retention.ts";
-import { getPlanArchiveRetentionPolicy } from "../../shared/settings.js";
+import { getPlanArchiveRetentionPolicy } from "../../shared/settings.ts";
 
 function printPruneHelp(): void {
     console.log(`Usage:

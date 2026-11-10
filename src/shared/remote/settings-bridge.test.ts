@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { getCustomSetting, setCustomSetting } from "../settings.js";
+import { getCustomSetting, setCustomSetting } from "../settings.ts";
 import { startRemoteControlService } from "./control.ts";
 
 const identity = { buildId: "b".repeat(64), protocol: 1 };

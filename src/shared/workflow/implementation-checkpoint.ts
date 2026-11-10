@@ -1,6 +1,6 @@
 // @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
 import { getPlanRevisionForText, loadPlan } from "../../plan-store.ts";
-import { checkpointExecutionWorktree } from "../worktree.js";
+import { checkpointExecutionWorktree } from "../worktree.ts";
 import { acknowledgeTaskCompletion, claimPendingTaskCompletion } from "../session/task-completion-session.ts";
 import { updateEntry as updateWorktreeRegistryEntry } from "../worktree-registry.ts";
 import { isInValidation, recordPlanEvent } from "./plan-lifecycle.ts";

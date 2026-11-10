@@ -5,7 +5,7 @@ import process from "node:process";
  * Best-effort terminal bell and native terminal OSC notifications for TUI attention events.
  */
 
-import { getMergedCustomSetting } from "../../shared/settings.js";
+import { getMergedCustomSetting } from "../../shared/settings.ts";
 import {
     buildSharedNotificationTitle,
     type CommonNotificationPolicy,

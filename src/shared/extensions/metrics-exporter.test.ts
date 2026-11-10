@@ -23,10 +23,11 @@ import {
     getSettingsDir,
     getSettingsManager,
     setCustomSetting,
-} from "../settings.js";
+} from "../settings.ts";
 import {
     approveMetricsExporter,
     listInstalledMetricsExporters,
+    type MetricsExporterApproval,
     readMetricsExporterDeclaration,
     removeMetricsExporterApprovals,
     resolveApprovedMetricsExporters,
@@ -231,7 +232,7 @@ test("missing version binds approval to an empty version and local file edits ke
         await approveMetricsExporter(exporter);
         await fsWriteFile(join(packageRoot, "exporter.js"), "throw new Error('changed local code');\n");
         assertEquals((await resolveApprovedMetricsExporters()).length, 1);
-        const saved = getCustomSetting("metricsExporterApprovals", "global");
+        const saved = getCustomSetting("metricsExporterApprovals", "global") as MetricsExporterApproval[];
         assert(typeof saved[0].approvedAt === "string");
     });
 });

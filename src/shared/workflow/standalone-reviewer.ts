@@ -8,7 +8,7 @@ import {
     resolveExecutionThinkingLevel,
     resolveModel,
 } from "../session/session.js";
-import { setExactProjectCustomSetting } from "../settings.js";
+import { setExactProjectCustomSetting } from "../settings.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
 import { createLedger } from "./review-ledger.ts";
 import { systemLocalCIPort } from "./validation-local-ci.ts";

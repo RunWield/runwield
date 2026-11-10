@@ -1,7 +1,7 @@
 import { isPlannedChangeClassification } from "../../constants.ts";
 import type { PlanFrontMatter } from "../../plan-store.ts";
-import { shouldAutoMergePlansIntoTargetBranch } from "../settings.js";
-import { ensureTargetBranchRef, slugify } from "../worktree.js";
+import { shouldAutoMergePlansIntoTargetBranch } from "../settings.ts";
+import { ensureTargetBranchRef, slugify } from "../worktree.ts";
 
 export const PLAN_BRANCH_PREFIX = "plan/";
 

@@ -14,7 +14,7 @@ import {
 } from "../../shared/attached/attached-test-fixture.ts";
 import type { AttachedCarrierResult } from "../../shared/attached/coordinator.ts";
 import type { AttachedWorkflowRecord } from "../../shared/attached/record-store.ts";
-import { setCustomSetting } from "../../shared/settings.js";
+import { setCustomSetting } from "../../shared/settings.ts";
 
 function processEnvironment(): Record<string, string> {
     return Object.fromEntries(

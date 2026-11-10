@@ -9,7 +9,7 @@ import {
     isMascotEnabled,
     setCustomSetting,
     setExactProjectCustomSetting,
-} from "./settings.js";
+} from "./settings.ts";
 
 test("mascot defaults on and only literal false disables it", async () => {
     await withRuntimeCommandFixture("settings-mascot-default-", async ({ projectRoot }) => {

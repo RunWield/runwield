@@ -7,7 +7,7 @@ affectedPaths:
     - "src/cmd/plans/prune.ts"
     - "src/shared/work-records/"
     - "src/cmd/"
-    - "src/shared/settings.js"
+    - "src/shared/settings.ts"
     - "src/shared/remote/"
     - "docs/domain-language.md"
     - "docs/prd/runwield-core-prd.md"
@@ -61,7 +61,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/cmd/plans/prune.ts` — dry-run and confirmed package pruning
 - `src/shared/work-records/` — record retention, dependency pins and prune operations
 - `src/cmd/` — Work Record prune command and reminders
-- `src/shared/settings.js` — independent retention settings and defaults
+- `src/shared/settings.ts` — independent retention settings and defaults
 - `src/shared/remote/` — owner-side pruning plus execution-host copy cleanup
 - `docs/domain-language.md` — home-owned Plan Archive Retention and record retention relationships
 - `docs/prd/runwield-core-prd.md` — lasting retention and completed proposal requirements

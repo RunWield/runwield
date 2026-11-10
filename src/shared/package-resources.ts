@@ -10,7 +10,7 @@ export type { PathMetadata, ResolvedPaths, ResolvedResource } from "@earendil-wo
 
 import { isAbsolute, join, relative } from "node:path";
 import { getCwd } from "../constants.ts";
-import { getSettingsDir, getSettingsManager } from "./settings.js";
+import { getSettingsDir, getSettingsManager } from "./settings.ts";
 import {
     assertPersonalResourcePath,
     personalPackageRoots,

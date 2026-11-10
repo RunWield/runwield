@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../src/testing/process-global-lock.ts";
 import { defineGitFixture, git } from "../../src/shared/git-test-fixture.ts";
 import { getModelRegistry } from "../../src/shared/models/model-registry.ts";
-import { setCustomSetting } from "../../src/shared/settings.js";
+import { setCustomSetting } from "../../src/shared/settings.ts";
 import { getWorkflowMetricsFilePath } from "../../src/shared/workflow/metrics.ts";
 import {
     buildMetricsExportObservation,

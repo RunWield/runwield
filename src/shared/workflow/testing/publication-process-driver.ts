@@ -3,7 +3,7 @@ import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWr
 import process from "node:process";
 import { publishExecutionWorktreeIsolated } from "../../isolated-publication.ts";
 import { withPlanLock } from "../../../plan-store.ts";
-import { checkpointExecutionWorktree } from "../../worktree.js";
+import { checkpointExecutionWorktree } from "../../worktree.ts";
 import { findById } from "../../worktree-registry.ts";
 import {
     advanceStoredPublication,

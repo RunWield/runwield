@@ -3,7 +3,7 @@ classification: "PLANNED_CHANGE"
 workKind: "FEATURE"
 complexity: "MEDIUM"
 affectedPaths:
-    - "src/shared/settings.js"
+    - "src/shared/settings.ts"
     - "src/shared/session/session.js"
     - "src/tools/registry.ts"
     - "src/ui/review/review-launcher.ts"
@@ -191,7 +191,7 @@ only when discovery changes approved intent — the change reaches another subsy
 shifts, migration or compatibility risk grows, or the Verification Plan no longer proves the objective.
 
 - New `src/shared/speech/` modules — typed settings, Markdown preparation, asset cache, and endpoint synthesis.
-- `src/shared/settings.js` and `docs/user-documentation/settings.md` — integrate personal settings without bypassing
+- `src/shared/settings.ts` and `docs/user-documentation/settings.md` — integrate personal settings without bypassing
   existing locking or losing other custom keys; document enablement, voices, first-use storage, and endpoint setup.
 - New `src/tools/read-aloud.ts`, `src/tools/registry.ts`, `src/shared/session/session.js`, and shared Agent guidance —
   expose the capability in native and bridged root turns, with correct lifetime and result reporting.

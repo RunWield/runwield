@@ -32,7 +32,7 @@ import { registerFauxProvider } from "@earendil-works/pi-ai/compat";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { __resetSettingsForTests, setCustomSetting } from "../settings.js";
+import { __resetSettingsForTests, setCustomSetting } from "../settings.ts";
 import { SessionHost } from "./session-host.ts";
 import { captureTranscriptEvidence } from "./session-transcript-projection.ts";
 import { switchActiveAgent } from "./agent-switching.ts";

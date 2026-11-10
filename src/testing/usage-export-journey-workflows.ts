@@ -7,7 +7,7 @@ import { assertEquals } from "./assertions.ts";
 import { loadPlan, savePlan, updatePlanFrontMatter } from "../plan-store.ts";
 import { createGitPort } from "../shared/git-port.ts";
 import { git } from "../shared/git-test-fixture.ts";
-import { setExactProjectCustomSetting } from "../shared/settings.js";
+import { setExactProjectCustomSetting } from "../shared/settings.ts";
 import { HostedSession } from "../shared/session/hosted-session.ts";
 import { ensureRootAgentSession } from "../shared/session/session.js";
 import type { SessionRuntime } from "../shared/session/session-runtime.ts";

@@ -15,7 +15,7 @@ import {
     type SessionRuntimeEvent,
 } from "../../shared/session/session-runtime-events.ts";
 import { presentTutorialEvent, restoreVerifiedTutorialRecap } from "./tutorial-guidance.ts";
-import { setCustomSetting } from "../../shared/settings.js";
+import { setCustomSetting } from "../../shared/settings.ts";
 import { INIT_VERIFICATION_COMMAND_PLACEHOLDER } from "../../tools/init-verification-command.ts";
 
 function tutorialView(messages: string[]) {

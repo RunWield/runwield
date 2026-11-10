@@ -6,7 +6,7 @@ import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan } from "../../plan-store.ts";
 import { git } from "../git-test-fixture.ts";
-import { setCustomSetting, setExactProjectCustomSetting } from "../settings.js";
+import { setCustomSetting, setExactProjectCustomSetting } from "../settings.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import { ensureRootAgentSession } from "../session/session.js";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";

@@ -6,7 +6,7 @@ import { fileURLToPath as fromFileUrl } from "node:url";
 import { DefaultResourceLoader } from "@earendil-works/pi-coding-agent";
 import { fauxAssistantMessage, fauxText, getCurrentSystemPrompt, type TranscriptContext } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { setCustomSetting } from "../settings.js";
+import { setCustomSetting } from "../settings.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
 import { buildAgentSession, expandSkillCommand, listSkills } from "./session.js";
 import { listVisibleSkillCatalog } from "./skill-catalog.ts";

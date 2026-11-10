@@ -24,7 +24,7 @@ import { SessionRuntime, createSessionRuntime } from "../session/session-runtime
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { startMcpIntegration } from "./integration.ts";
 import { getModelRegistry } from "../models/model-registry.ts";
-import { getSettingsDir, getSettingsManager } from "../settings.js";
+import { getSettingsDir, getSettingsManager } from "../settings.ts";
 
 interface McpResultDetails {
     server: string;

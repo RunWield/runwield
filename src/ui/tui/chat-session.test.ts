@@ -16,7 +16,7 @@ import {
     getSettingsManager,
     ONBOARDING_TUTORIAL_OFFER_HANDLED_SETTING_KEY,
     setCustomSetting,
-} from "../../shared/settings.js";
+} from "../../shared/settings.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 

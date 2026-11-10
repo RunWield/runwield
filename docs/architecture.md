@@ -104,8 +104,8 @@ structured agent outcomes, calls Plan and execution services, and decides which 
 | Pi integration              | Build configured `AgentSession` objects, assemble prompts, wire tools, translate Pi events, run prompts, reuse roots | `src/shared/session/session.js`                                                                                                                          |
 | Workflow application logic  | Interpret tool outcomes, route requests, choose post-planning and post-execution actions                             | `src/shared/session/agent-handler.ts`, `src/shared/workflow/orchestrator.js`, `src/shared/workflow/decisions.ts`                                         |
 | Plan domain                 | Canonical Markdown persistence, identities, hierarchy, lifecycle state machine, collaboration write lock             | `src/plan-store.ts`, `src/shared/workflow/plan-lifecycle.ts`                                                                                             |
-| Execution domain            | Worktree preparation, Engineer completion gate, local validation, repair, merge-back, recovery metadata              | `src/shared/workflow/workflow.ts`, `src/shared/workflow/validation.ts`, `src/shared/worktree.js`                                                         |
-| Configuration and policy    | Layered agent definitions, settings, model resolution, protected tools, skills/prompts/extensions                    | `src/shared/session/agents.ts`, `src/shared/settings.js`, `src/shared/models/`, `src/tools/registry.ts`                                                  |
+| Execution domain            | Worktree preparation, Engineer completion gate, local validation, repair, merge-back, recovery metadata              | `src/shared/workflow/workflow.ts`, `src/shared/workflow/validation.ts`, `src/shared/worktree.ts`                                                         |
+| Configuration and policy    | Layered agent definitions, settings, model resolution, protected tools, skills/prompts/extensions                    | `src/shared/session/agents.ts`, `src/shared/settings.ts`, `src/shared/models/`, `src/tools/registry.ts`                                                  |
 | Local platform services     | Git probing, worktree registry, metrics, collaboration crypto/protocol/secrets, binary preflight                     | `src/shared/git.ts`, `src/shared/worktree-registry.ts`, `src/shared/workflow/metrics.ts`, `src/shared/collaboration/`, `src/shared/runtime-preflight.js` |
 
 Presentation details, terminal widgets, ACP wire types, HTTP routes, Astro/React components, and browser review
@@ -823,7 +823,7 @@ flowchart TD
 stores the live workflow on the hosted session, updates `.wld/internal/worktrees.json`, and records `execution_started`
 in the Plan.
 
-`worktree.js` owns branch resolution, worktree creation, dirty-path risk checks, committing execution changes, and
+`worktree.ts` owns branch resolution, worktree creation, dirty-path risk checks, committing execution changes, and
 cleanup. `isolated-publication.ts` assembles and publishes the target in a separate clone. `publication-machine.ts` owns
 the monotonic publication record and reconciles it with Git after restart. The worktree registry lock and
 compare-and-swap revision serialize its writes. Plan Front Matter does not own publication progress or merge-repair
@@ -1101,8 +1101,8 @@ The highest-value cross-boundary paths for later confidence analysis are visible
 | Validation and repair                     | `src/shared/workflow/validation.ts`                                           |
 | Plan lifecycle                            | `src/shared/workflow/plan-lifecycle.ts`                                       |
 | Plan persistence                          | `src/plan-store.ts`, `src/plan-front-matter.ts`                               |
-| Worktree operations and registry          | `src/shared/worktree.js`, `src/shared/worktree-registry.ts`                   |
-| Settings and models                       | `src/shared/settings.js`, `src/shared/models/`                                |
+| Worktree operations and registry          | `src/shared/worktree.ts`, `src/shared/worktree-registry.ts`                   |
+| Settings and models                       | `src/shared/settings.ts`, `src/shared/models/`                                |
 | Tool policy                               | `src/tools/registry.ts`, agent front matter in `src/agent-definitions/`       |
 | TUI adapter                               | `src/ui/tui/chat-session.js`, `src/ui/tui/runtime-adapter.ts`                 |
 | ACP adapter                               | `src/acp/server.ts`, `src/acp/session-map.ts`, mapper modules in `src/acp/`   |

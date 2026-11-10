@@ -19,7 +19,7 @@ import {
 import { LaptopSessionControl, type LaptopSessionTarget } from "./laptop-session-control.ts";
 import { type RemoteSessionControlRequest, validateSessionControlRequest } from "./session-protocol.ts";
 
-import { applyLaptopGlobalSettingsUpdate, readLaptopGlobalSettingsSnapshot } from "../settings.js";
+import { applyLaptopGlobalSettingsUpdate, readLaptopGlobalSettingsSnapshot } from "../settings.ts";
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 interface UpdateRequest {

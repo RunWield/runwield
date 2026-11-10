@@ -16,7 +16,7 @@ import type {
 } from "@earendil-works/pi-ai";
 import { dirname, join } from "node:path";
 import { parse as parseJsonc } from "../jsonc.ts";
-import { getSettingsDir } from "../settings.js";
+import { getSettingsDir } from "../settings.ts";
 import { getHomeDir } from "../../constants.ts";
 import { personalGlobalRoot, remotePersonalResourcesActive } from "../remote/personal-resources.ts";
 import { openNativeFileLock } from "../native-file-lock.ts";

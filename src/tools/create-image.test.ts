@@ -32,7 +32,7 @@ import { Client } from "@modelcontextprotocol/sdk/client";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp";
 import { getCwd, getHomeDir, SUBAGENTS } from "../constants.ts";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
-import { __resetSettingsForTests } from "../shared/settings.js";
+import { __resetSettingsForTests } from "../shared/settings.ts";
 import { createImage } from "../shared/image-generation.ts";
 import { persistImageAttachment } from "../shared/session/image-attachments.ts";
 import { buildAgentSession, composeClaudeCliBridgedTools } from "../shared/session/session.js";

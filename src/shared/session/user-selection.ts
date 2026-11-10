@@ -2,7 +2,7 @@
 import { AGENTS } from "../../constants.ts";
 import { getModelRegistry } from "../models/model-registry.ts";
 import { parseProviderModel } from "../models/model-validation.ts";
-import { getSettingsManager } from "../settings.js";
+import { getSettingsManager } from "../settings.ts";
 import { buildWorkflowOnlyAgentMessage, isWorkflowOnlyAgent, listAvailableAgents } from "./agents.ts";
 import { getConfiguredAgentModel, getConfiguredAgentThinkingLevel } from "./session-runtime.ts";
 import { setActiveSessionModel } from "./model-selection.ts";

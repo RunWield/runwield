@@ -3,7 +3,7 @@ import { assertEquals, assertInstanceOf, assertStringIncludes } from "../../test
 import { Container, Editor, Image, Spacer, Text, type TUI, TuiMainScreen } from "@earendil-works/pi-tui";
 import { RunWieldModelSelectorComponent } from "./model-selector.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { getSettingsManager } from "../../shared/settings.js";
+import { getSettingsManager } from "../../shared/settings.ts";
 import { AgyCliMcpSetupApprovalError } from "../../shared/session/backends/agy-cli/mcp-setup.ts";
 import { getEditorTheme, initRunWieldTheme } from "../theme/theme.ts";
 import { createUiApi } from "./api.ts";

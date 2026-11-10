@@ -25,7 +25,7 @@ import {
     getCustomSetting,
     getSettingsDir,
     getSettingsManager,
-} from "../../shared/settings.js";
+} from "../../shared/settings.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { discoverAndRegisterThemes, getAvailableThemes, initRunWieldTheme, setTheme } from "../../ui/theme/theme.ts";
 import { runRemoveCommand } from "./index.ts";
@@ -199,7 +199,7 @@ test("runRemoveCommand deletes only the removed source's exporter approvals", as
         await installFixturePackage(projectRoot, other);
         await getSettingsManager().flush();
         for (const exporter of await listInstalledMetricsExporters()) await approveMetricsExporter(exporter);
-        const before: MetricsExporterApproval[] = getCustomSetting("metricsExporterApprovals", "global");
+        const before = getCustomSetting("metricsExporterApprovals", "global") as MetricsExporterApproval[];
         assertEquals(before.length, 2);
         const output = await captureConsole(() => runRemoveCommand([source]));
         assertEquals(output.errors, []);

@@ -20,7 +20,7 @@ import {
 } from "../worktree-registry.ts";
 import { prepareExecutionPlanFile } from "./execution-plan-file.ts";
 import { enterProjectRuntime, withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
-import { resolveTargetBranchName } from "../worktree.js";
+import { resolveTargetBranchName } from "../worktree.ts";
 import { getWorkflowDiff } from "./git-snapshot.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { recordWorkflowMetric } from "./metrics.ts";

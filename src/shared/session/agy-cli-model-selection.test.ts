@@ -19,7 +19,7 @@ import { runModelsCommand } from "../../cmd/models/index.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { assertModelExecutionBackendSupported } from "../models/model-execution.ts";
 import { getModelRegistry } from "../models/model-registry.ts";
-import { getSettingsManager } from "../settings.js";
+import { getSettingsManager } from "../settings.ts";
 import {
     inspectAgyCliMcpSetup,
     installAgyCliMcpSetup,

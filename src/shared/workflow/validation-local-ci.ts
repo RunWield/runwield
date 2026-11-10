@@ -14,7 +14,7 @@ import {
     getExactProjectCustomSetting,
     setCustomSetting,
     setExactProjectCustomSetting,
-} from "../settings.js";
+} from "../settings.ts";
 import { spawnForegroundShell } from "../foreground-process.ts";
 import { captureValidationSettingsWrite, recordValidationSettingsWrite } from "../worktree-project-context.ts";
 import {

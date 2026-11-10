@@ -16,7 +16,7 @@ import {
 
 import { basename, dirname, join } from "node:path";
 import lockfile from "proper-lockfile";
-import { assertPreMergeCandidateUnchanged, mergeExecutionWorktree } from "./worktree.js";
+import { assertPreMergeCandidateUnchanged, mergeExecutionWorktree } from "./worktree.ts";
 import { prepareProjectContextPublication, settleProjectContextPublication } from "./project-context-publication.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "./project-runtime-layout.ts";
 import {

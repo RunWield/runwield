@@ -25,7 +25,7 @@ import {
     prepareTargetBranchRef,
     removeWorktreeGitArtifacts,
     resolveWorktreeParent,
-} from "./worktree.js";
+} from "./worktree.ts";
 
 import { createTestWorktreeAttempt, git, makeRepo } from "./worktree-test-helpers.ts";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";

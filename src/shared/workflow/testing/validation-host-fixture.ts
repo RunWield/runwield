@@ -20,7 +20,7 @@ import { defineGitFixture, git } from "../../git-test-fixture.ts";
 import { loadPlan, savePlan, updatePlanFrontMatter } from "../../../plan-store.ts";
 import { controllerRecordPath } from "../controller-registry.ts";
 import { addEntry } from "../../worktree-registry.ts";
-import { setCustomSetting, setExactProjectCustomSetting } from "../../settings.js";
+import { setCustomSetting, setExactProjectCustomSetting } from "../../settings.ts";
 import { parseDiffFiles } from "../review-diff.ts";
 import {
     type HostTurnValidationResult,

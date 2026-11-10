@@ -32,7 +32,7 @@ import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withProcessGlobalTestLock } from "../../../testing/process-global-lock.ts";
 import { AGENTS, SUBAGENTS } from "../../../constants.ts";
-import { __resetSettingsForTests, getSettingsManager } from "../../settings.js";
+import { __resetSettingsForTests, getSettingsManager } from "../../settings.ts";
 import { loadAgentDef } from "../agents.ts";
 import { HostedSession, type HostedRuntimeEventObservation } from "../hosted-session.ts";
 import { loadSubAgentDefinition, REVIEWER_SUBAGENT_TOOLS } from "../subagent-definitions.ts";

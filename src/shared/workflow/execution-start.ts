@@ -44,7 +44,7 @@ import {
     resolveRepositoryDefaultBranch,
     resolveTargetBranchName,
     settleWorktreeAttempt,
-} from "../worktree.js";
+} from "../worktree.ts";
 import {
     findById as findWorktreeRegistryEntryById,
     listEntries as listWorktreeRegistryEntries,

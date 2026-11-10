@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { withRuntimeCommandFixture } from "../../src/cmd/testing/runtime-command-fixture.ts";
-import { setExactProjectCustomSetting } from "../../src/shared/settings.js";
+import { setExactProjectCustomSetting } from "../../src/shared/settings.ts";
 import { ExecutionMetricsRecorder } from "../../src/shared/workflow/execution-metrics.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../../src/shared/workflow/metrics.ts";
 import { readReviewMeasurements } from "./measurements.ts";

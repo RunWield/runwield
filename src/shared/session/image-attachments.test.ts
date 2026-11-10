@@ -24,7 +24,7 @@ import {
     resolveVisionFallbackModel,
     saveImageAttachment,
 } from "./image-attachments.ts";
-import { __resetSettingsForTests } from "../settings.js";
+import { __resetSettingsForTests } from "../settings.ts";
 
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { ImageContent } from "@earendil-works/pi-ai";

@@ -24,7 +24,7 @@ import {
     hasExecutionChangesSince,
     removeWorktreeGitArtifacts,
     settleWorktreeAttempt,
-} from "../worktree.js";
+} from "../worktree.ts";
 import { updateEntry as updateWorktreeRegistryEntry } from "../worktree-registry.ts";
 import { executePlan, startActiveExecutionWorkflow } from "./workflow.ts";
 import { createExecutionStartPorts } from "./execution-start.ts";

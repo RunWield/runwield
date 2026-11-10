@@ -1,4 +1,4 @@
-import { getCustomSetting, getMergedCustomSetting } from "./settings.js";
+import { getCustomSetting, getMergedCustomSetting } from "./settings.ts";
 
 export interface ImageGenerationSettings {
     model: string;

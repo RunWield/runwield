@@ -19,7 +19,7 @@ import process from "node:process";
 import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { createWorktreeGitArtifacts, settleWorktreeAttempt } from "../worktree.js";
+import { createWorktreeGitArtifacts, settleWorktreeAttempt } from "../worktree.ts";
 import {
     extractAssistantOutput,
     finalizePlanImplementation,
@@ -36,7 +36,7 @@ import { createExecutionStartPorts } from "./execution-start.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import type { SessionRuntimeEventSink } from "../session/session-host.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { setCustomSetting } from "../settings.js";
+import { setCustomSetting } from "../settings.ts";
 import { getCwd } from "../../constants.ts";
 import {
     findById as findWorktreeRegistryEntryById,

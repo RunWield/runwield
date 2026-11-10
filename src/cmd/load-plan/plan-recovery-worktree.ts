@@ -20,7 +20,7 @@ import {
 } from "../../shared/workflow/validation-user-messages.ts";
 import { runPlanFrontMatterTransition, runReviewReopenTransition } from "../../shared/workflow/state-transition.ts";
 import { getWorkflowDiff } from "../../shared/workflow/git-snapshot.ts";
-import { getWorktreeStatus, slugify } from "../../shared/worktree.js";
+import { getWorktreeStatus, slugify } from "../../shared/worktree.ts";
 import { WORKTREE_BRANCH_PREFIX } from "../../constants.ts";
 import {
     findActiveByPlanName as findWorktreeByPlanName,

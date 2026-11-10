@@ -4,7 +4,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { withMetricsExportFixture } from "../../testing/metrics-export-fixture.ts";
-import { getCustomSetting, setCustomSetting } from "../settings.js";
+import { getCustomSetting, setCustomSetting } from "../settings.ts";
 import {
     approveMetricsExporter,
     listInstalledMetricsExporters,

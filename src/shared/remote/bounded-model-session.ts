@@ -19,7 +19,7 @@ import { loadAgentDef } from "../session/agents.ts";
 import { assertModelExecutionBackendSupported } from "../models/model-execution.ts";
 import { parseProviderModel } from "../models/model-validation.ts";
 import { modelSupportsImageInput, resolveVisionFallbackModel } from "../session/image-attachments.ts";
-import { getResolvedVisionFallbackModelSetting, getSettingsManager } from "../settings.js";
+import { getResolvedVisionFallbackModelSetting, getSettingsManager } from "../settings.ts";
 import { createSeeImageTool } from "../../tools/see-image.ts";
 import { ExecutionMetricsRecorder } from "../workflow/execution-metrics.ts";
 import {

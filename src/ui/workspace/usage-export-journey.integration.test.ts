@@ -9,7 +9,7 @@ import { assertEquals } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { runInstallCommand } from "../../cmd/install/index.ts";
 import { resolveApprovedMetricsExporters } from "../../shared/extensions/metrics-exporter.ts";
-import { setCustomSetting } from "../../shared/settings.js";
+import { setCustomSetting } from "../../shared/settings.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import {
     readMetricsExportHostIdentity,

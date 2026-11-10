@@ -17,7 +17,7 @@ import {
     getExactProjectCustomSetting,
     setCustomSetting,
     setExactProjectCustomSetting,
-} from "../settings.js";
+} from "../settings.ts";
 import {
     captureValidationSettingsWrite,
     recordValidationSettingsWrite,

@@ -21,7 +21,7 @@ import { startActiveExecutionWorkflow } from "./workflow.ts";
 import { createExecutionStartPorts } from "./execution-start.ts";
 import { recordPlanEvent } from "./plan-lifecycle.ts";
 import { listEntries, updateEntry } from "../worktree-registry.ts";
-import { findReusableWorktree } from "../worktree.js";
+import { findReusableWorktree } from "../worktree.ts";
 
 interface PlanReviewFixture {
     dir: string;

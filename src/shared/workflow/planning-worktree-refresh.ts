@@ -11,7 +11,7 @@ import {
     checkpointExecutionPreparation,
     hasExecutionChangesSince,
     PLANNING_CHECKPOINT_GIT_OPTIONS,
-} from "../worktree.js";
+} from "../worktree.ts";
 import { findById, refreshPlanningWorktreeBase, type WorktreeRegistryEntry } from "../worktree-registry.ts";
 import { runExecutionPreparationTransition } from "./state-transition.ts";
 import { healSettledTransitionRecords } from "./transition-recovery.ts";

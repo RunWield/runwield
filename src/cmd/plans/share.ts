@@ -28,7 +28,7 @@ import {
     putSecretRecord,
 } from "../../shared/collaboration/secrets.ts";
 import { buildCollaborationUrl, redactCollaborationUrl } from "../../shared/collaboration/urls.ts";
-import { getDefaultPlanServerUrl } from "../../shared/settings.js";
+import { getDefaultPlanServerUrl } from "../../shared/settings.ts";
 import { normalizePlanServerUrl } from "../../shared/collaboration/urls.ts";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
 

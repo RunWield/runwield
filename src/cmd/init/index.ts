@@ -18,7 +18,7 @@ import { extractBundledAgentDefs, extractBundledSkills } from "../../shared/sess
 import { extractBundledModelPresets } from "../../shared/model-presets.ts";
 import { createSessionRuntime, SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { getModelRegistry } from "../../shared/models/model-registry.ts";
-import { getCustomSetting, getSettingsManager } from "../../shared/settings.js";
+import { getCustomSetting, getSettingsManager } from "../../shared/settings.ts";
 import { printCommandHelp } from "../help/index.ts";
 import { recordInitDone, recordInitOffered } from "./init-state.ts";
 import { isProjectInitComplete, requireProjectInitArtifact } from "./init-completion.ts";

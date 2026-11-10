@@ -22,7 +22,7 @@ import {
     getWorktreeStatus,
     inspectExecutionWorktreeMergeRisk,
     validateWorktreeDiscard,
-} from "../../shared/worktree.js";
+} from "../../shared/worktree.ts";
 import { formatCommitHeadsUp } from "./plan-presentation.ts";
 import { buildPlanSummary } from "../../shared/plan-presentation.ts";
 import { formatEpicProgressSummary } from "./plan-epic-children.ts";

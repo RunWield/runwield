@@ -9,7 +9,7 @@ import { openOwnerCoordinationStore } from "../../shared/owner-coordination/inde
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
 import { getRunWieldSessionDir } from "../../shared/session/root-session.ts";
-import { __resetSettingsForTests } from "../../shared/settings.js";
+import { __resetSettingsForTests } from "../../shared/settings.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { getResumeModelSelection, runResumeCommand } from "./index.ts";
 

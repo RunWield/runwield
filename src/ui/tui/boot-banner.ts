@@ -4,7 +4,7 @@ import { getCwd, getHomeDir } from "../../constants.ts";
 import { recordSnipMissingWarningShown, shouldShowSnipMissingWarning } from "../../cmd/init/init-state.ts";
 import { hasSnipBinary } from "../../shared/runtime-preflight.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
-import { getSettingsManager } from "../../shared/settings.js";
+import { getSettingsManager } from "../../shared/settings.ts";
 
 interface PromptTemplate {
     name: string;

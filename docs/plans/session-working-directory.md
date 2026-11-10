@@ -115,7 +115,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   handoff, tool rebuilding, continuation, and behavioral tests.
 - `src/shared/git.ts`, `project-checkout.ts`, and worktree/controller registry readers — reuse read-only Git and ownership
   evidence; normalize package paths before checkout-scoped operations.
-- `src/shared/settings.js`, `src/extensions/mnemoteca/tools.ts`, and cwd-bound resource/tool composition — distinguish
+- `src/shared/settings.ts`, `src/extensions/mnemoteca/tools.ts`, and cwd-bound resource/tool composition — distinguish
   working folder from Project or checkout ownership where the current code conflates them.
 - `src/agent-definitions/planner.md`, Router guidance, and shared tool descriptions — explain inspection and movement
   without promising that cwd changes fix Plan storage.

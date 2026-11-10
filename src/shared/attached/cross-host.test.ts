@@ -22,7 +22,7 @@ import {
 } from "./record-store.ts";
 import { compactStatus } from "./presentation.ts";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
-import { setCustomSetting } from "../settings.js";
+import { setCustomSetting } from "../settings.ts";
 
 test("inspection identifies reviewed work without starting validation or changing durable state", async () => {
     const fixture = await attachedValidationFixture({ attrs: { status: "reviewed" } });

@@ -50,7 +50,7 @@ import {
     getMergedCustomSetting,
     getSettingsManager,
     isMascotEnabled,
-} from "../../../shared/settings.js";
+} from "../../../shared/settings.ts";
 import {
     applyUserAgentSelection,
     applyUserModelSelection,
@@ -60,7 +60,7 @@ import {
     requireUserAgentOption,
     requireUserModelOption,
 } from "../../../shared/session/user-selection.ts";
-import { normalizeBrowserNotificationPolicy } from "../../../shared/session/notification-content.ts";
+import { normalizeBrowserNotificationPolicy, type NotificationSettingsRecord } from "../../../shared/session/notification-content.ts";
 import { applySharedPlanReviewDecision } from "../../../shared/workflow/plan-review-actions.ts";
 import { loadPlanActionEvidence } from "../../../shared/workflow/plan-actions.ts";
 import { loadReviewFeedbackImages } from "../../../shared/workflow/review-feedback-images.ts";
@@ -837,7 +837,7 @@ export class WorkspaceSessionContinuationService {
     resolveBrowserNotificationPolicy(projectId: string) {
         const project = typeof this.store.getProjectById === "function" ? this.store.getProjectById(projectId) : null;
         const raw = project ? getMergedCustomSetting("notifications", project.currentRoot) : undefined;
-        return normalizeBrowserNotificationPolicy(raw);
+        return normalizeBrowserNotificationPolicy(raw as NotificationSettingsRecord | undefined);
     }
 
     subscribeOperation(operationId: string, listener: OperationSnapshotListener) {

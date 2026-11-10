@@ -42,7 +42,7 @@ import {
     initSettings,
     ONBOARDING_TUTORIAL_OFFER_HANDLED_SETTING_KEY,
     setCustomSetting,
-} from "../../shared/settings.js";
+} from "../../shared/settings.ts";
 import {
     isInitDone as isInitDoneFn,
     isInitOffered as isInitOfferedFn,

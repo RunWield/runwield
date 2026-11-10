@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import schema from "../../../config.schema.json" with { type: "json" };
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { __resetSettingsForTests, getCustomSetting, getSettingsManager, setCustomSetting } from "../settings.js";
+import { __resetSettingsForTests, getCustomSetting, getSettingsManager, setCustomSetting } from "../settings.ts";
 import { git } from "../git-test-fixture.ts";
 import { resolveCodexRoleSettings } from "./codex-role-settings.ts";
 import { ATTACHED_HOST_ROLES, type AttachedJsonObject, type AttachedJsonValue } from "./operations.ts";

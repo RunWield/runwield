@@ -5,7 +5,7 @@ complexity: "HIGH"
 summary: "Add an owner-triggered publication workflow that takes a verified Epic branch to the primary branch through a temporary worktree, an integration merge, re-run integrated validation, a compare-and-swap update, and durable Delivery Evidence."
 affectedPaths:
     - "docs/plans/"
-    - "src/shared/worktree.js"
+    - "src/shared/worktree.ts"
     - "src/shared/worktree-registry.js"
     - "src/shared/workflow/"
     - "src/shared/epic-artifacts.ts"
@@ -80,7 +80,7 @@ choosing it.
 
 ## Vertical Slice Findings
 
-Today publication is a child-level concept. `src/shared/worktree.js` owns worktree creation, merge synthesis, and the
+Today publication is a child-level concept. `src/shared/worktree.ts` owns worktree creation, merge synthesis, and the
 target reference update; `src/shared/workflow/validation-merge-repair.ts` owns conflict continuation; and
 `src/shared/workflow/validation-delivery-hierarchy.ts` owns Delivery Evidence. All of it is reached from the validation
 loop of an executing Plan, and an Epic never executes.
@@ -129,7 +129,7 @@ Three existing invariants constrain the design and are not open for renegotiatio
 
 ## Files to Modify
 
-- `src/shared/worktree.js` and `src/shared/worktree-registry.js` — generalize publication worktree synthesis,
+- `src/shared/worktree.ts` and `src/shared/worktree-registry.js` — generalize publication worktree synthesis,
   compare-and-swap target update, retry-on-moved-head, and registry lifecycle so an Epic can use them outside the
   validation loop.
 - `src/shared/workflow/` — add the publication workflow, its resumable stages, bounded conflict repair dispatch,

@@ -21,7 +21,7 @@ import {
     getSettingsDir,
     getSettingsManager,
     setCustomSetting,
-} from "../settings.js";
+} from "../settings.ts";
 import {
     expandPromptTemplate,
     getGlobalAgentMdPaths,

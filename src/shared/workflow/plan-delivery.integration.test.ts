@@ -11,7 +11,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { archivePlan, loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { HostedSession } from "../session/hosted-session.ts";
-import { setCustomSetting } from "../settings.js";
+import { setCustomSetting } from "../settings.ts";
 import { createGitPort } from "../git-port.ts";
 import { listEntries } from "../worktree-registry.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
