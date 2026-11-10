@@ -122,21 +122,6 @@ export async function settlePreparedPackageRecord(
         throw new Error("Retained recording preparation does not match delivery.");
     if (!preparation.settled) {
         await withWorkRecordMutation(async () => {
-            const current = await findWorkRecordById(cwd, frozen.attrs.recordId);
-            if (!current) throw new Error("Prepared canonical Work Record is missing.");
-            // Replay never restores a later archive/supersession or replaces editor prose.
-            if (
-                current.attrs.status === "pending_verification" &&
-                !current.attrs.archivedAt &&
-                !current.attrs.supersededBy &&
-                current.markdown === copy.text
-            )
-                record = await replaceWorkRecord(
-                    cwd,
-                    current,
-                    formatWorkRecordMarkdown(approveWorkRecord(current.attrs), current.body),
-                );
-            else record = current;
             const owner = workRecordOwnerLayout()!;
             if (
                 manifest.copies.some(
@@ -153,12 +138,15 @@ export async function settlePreparedPackageRecord(
         });
         const indexWarning = await withWorkRecordMutation(async () => {
             const current = await findWorkRecordById(cwd, frozen.attrs.recordId);
+            if (!current) throw new Error("Prepared canonical Work Record is missing.");
+            record = current;
+            // Replay never restores a later archive/supersession or replaces editor prose.
             if (
-                !current ||
-                current.attrs.status !== "approved" ||
+                (current.attrs.status !== "approved" && current.attrs.status !== "pending_verification") ||
                 current.attrs.archivedAt ||
                 current.attrs.supersededBy ||
-                current.body !== frozen.body
+                current.body !== frozen.body ||
+                (current.attrs.status === "pending_verification" && current.markdown !== copy.text)
             )
                 return undefined;
             const declared = frozen.attrs.supersedes;
@@ -172,13 +160,26 @@ export async function settlePreparedPackageRecord(
                 )
                     predecessors.push(id);
             }
-            if (!predecessors.length) return undefined;
-            const result = await applyWorkRecordSupersession(cwd, {
-                successorRecordId: frozen.attrs.recordId,
-                predecessorRecordIds: predecessors,
-                mnemotecaPort,
-            });
-            return result.indexWarning;
+            if (predecessors.length) {
+                const result = await applyWorkRecordSupersession(cwd, {
+                    successorRecordId: frozen.attrs.recordId,
+                    predecessorRecordIds: predecessors,
+                    mnemotecaPort,
+                });
+                if (result.indexWarning) return result.indexWarning;
+            }
+            const settled = await findWorkRecordById(cwd, frozen.attrs.recordId);
+            if (!settled) throw new Error("Prepared canonical Work Record is missing.");
+            // Approval makes the record current, so locations and all declared relationships must precede it.
+            record =
+                settled.attrs.status === "pending_verification" && settled.markdown === copy.text
+                    ? await replaceWorkRecord(
+                          cwd,
+                          settled,
+                          formatWorkRecordMarkdown(approveWorkRecord(settled.attrs), settled.body),
+                      )
+                    : settled;
+            return undefined;
         });
         if (indexWarning) return indexWarning;
         preparation.settled = true;

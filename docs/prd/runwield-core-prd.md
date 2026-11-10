@@ -2106,8 +2106,10 @@ explicit backfill stay available.
 publication manifest supplies exact delivered documents, metadata, relevant children and Tickets. A delivered child
 keeps its own identity while its eligible terminal Epic remains the recording owner. Recorder retry reads that source
 after checkout, branch and publication-clone removal; edits, rename or missing repository copies do not replace it.
-Retained bytes alone never promote an unconfirmed attempt to verified. External recording/index failure preserves
-confirmed delivery and its source reference. Explicit internal admission selects canonical Markdown under the personal
+Missing retained source or matching delivery proof makes retry/backfill fail recoverably without generating from live
+package content, including for imported verified Plans. Retained bytes alone never promote an unconfirmed attempt to
+verified. External recording/index failure preserves confirmed delivery and its source reference. Explicit internal
+admission selects canonical Markdown under the personal
 Project's `work-records/` directory. Identity discovery alone does not select that store. Missing admitted storage never
 falls back to repository copies; legacy attempts retain their existing owner.
 
@@ -2115,7 +2117,8 @@ falls back to repository copies; legacy attempts retain their existing owner.
 copy policy and destinations before Recorder acceptance. Accepted sections, record identity and pending canonical bytes
 survive interruption. Internal `plans.deliveryCopies` defaults off and `workRecords.deliveryCopies` defaults on,
 independently of automatic generation. The existing publisher combines enabled Markdown into one artifacts-only commit.
-Confirmed proof approves the canonical record without changing its body; the Git copy keeps its preparation-time pending
+After confirmed proof, backlinks, copy locations and declared supersession settle before approval exposes the canonical
+record to ordinary retrieval. Approval preserves its body; the Git copy keeps its preparation-time pending
 confidence. Importing that copy cannot approve it. No eligible source, disabled generation or Recorder failure produces
 no fabricated record. A late recording retry never republishes code or adds a copies commit. Older sealed manifests
 retain their original policy.
@@ -2134,6 +2137,8 @@ transport and pruning remain target.
   canonical record after matching proof. With both copies off, the canonical record remains retrievable.
 - Given process loss after accepted sections or canonical persistence, a fresh process reuses the record identity and
   accepted output. Later editor/archive/supersession decisions and reopened Plan state survive settlement replay.
+- Given interruption while copy locations or multiple declared predecessors settle, list/search and index rebuild
+  exclude the pending successor until those relationships finish; recovery approves the same record without republishing.
 - Given exact imports with draft, pending or archived status, repetition preserves their bytes and creates no duplicate.
   Same-ID changed content and symbolic-link destinations refuse without overwriting existing records.
 - Given a Project move, accepted linked clone or lost index, rebuild uses canonical Markdown with unchanged identity;
@@ -2141,6 +2146,8 @@ transport and pruning remain target.
 
 **Package source acceptance scenarios:**
 
+- Given an imported verified Plan without retained publication input, targeted retry and backfill report missing
+  evidence and leave canonical records and backlinks unchanged.
 - Given a delivered child or Epic and removed code checkouts, a fresh Recorder read returns exact retained text,
   provenance and child Tickets, preserves live editor bytes, and creates no repository Plan.
 - Given a renamed delivered child whose terminal parent takes its sealed name, publication retains the recording

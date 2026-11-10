@@ -315,6 +315,8 @@ export async function discoverWorkRecordSources(cwd) {
         if (!loaded) continue;
         sources.push(buildActiveWorkRecordSource(entry.name, loaded));
     }
+    // Repository archives retain their legacy owner; admitted retries use package sources only.
+    if (currentPackageSelection()) return sources;
     for (const entry of await listArchivedPlans(cwd)) {
         const loaded = await loadArchivedPlan(cwd, entry.name);
         if (!loaded) continue;

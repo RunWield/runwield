@@ -2,13 +2,118 @@ import { test } from "node:test";
 import { equal, ok, rejects } from "node:assert/strict";
 import fs from "node:fs/promises";
 import { basename, join } from "node:path";
-import { packageFixture } from "../testing/plan-package-fixture.ts";
+import { packageFixture, create, read } from "../testing/plan-package-fixture.ts";
+import { withPackageWorkflow } from "../workflow/package-workflow.ts";
+import { runWorkRecordBackfill } from "./generation.js";
+import { loadArchivedPlan } from "../../plan-store.js";
 import { withWorkRecordOwner, workRecordOwnerLayout, withWorkRecordMutation } from "./owner.ts";
 import { writeWorkRecord, listWorkRecords, readWorkRecord, replaceWorkRecord, deleteWorkRecord } from "./store.ts";
 import { recordAttrs, recordBody } from "./test-fixtures/package-records.ts";
 import { formatWorkRecordMarkdown } from "./markdown.js";
 import { applyWorkRecordSupersession } from "./supersession.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
+import { importPlanPackages } from "../plan-package-store.ts";
+import { retryWorkRecordForPlan } from "./auto-generation.ts";
+
+for (const operation of ["retry", "backfill"] as const) {
+    test(`admitted ${operation} refuses a verified import without retained publication evidence`, async () => {
+        const f = await packageFixture();
+        try {
+            const path = join(f.root, "docs/plans/imported.md");
+            await fs.mkdir(join(f.root, "docs/plans"), { recursive: true });
+            await fs.writeFile(
+                path,
+                `---
+planId: imported-plan
+classification: PLANNED_CHANGE
+status: verified
+---
+# Imported outcome
+
+Mutable live prose.
+`,
+            );
+            equal((await importPlanPackages(f.identity, path)).kind, "committed");
+            const plan = await read(f.identity, "imported-plan");
+            equal(plan.metadata.definition.status, "verified");
+            const port = createWorkRecordMnemotecaFixture();
+            await withPackageWorkflow(
+                f.root,
+                { identity: f.identity, planId: plan.metadata.planId, expectedRevision: plan.metadata.revision },
+                async () => {
+                    const options = {
+                        mnemotecaPort: port,
+                        runRecorderStep: () => Promise.resolve({ title: "Unproved outcome", summary: "Live content." }),
+                    };
+                    const result =
+                        operation === "retry"
+                            ? await retryWorkRecordForPlan({ cwd: f.root, planName: "imported", ...options })
+                            : (await runWorkRecordBackfill(f.root, options)).outcomes[0];
+                    equal(result?.status, "failed", JSON.stringify(result));
+                    ok(result.error?.includes("retained publication source"), JSON.stringify(result));
+                    equal((await listWorkRecords(f.root, { createDir: false })).length, 0);
+                    equal(port.snapshot().length, 0);
+                },
+            );
+            equal((await read(f.identity, "imported-plan")).metadata.workflow?.workRecord, undefined);
+        } finally {
+            await f.cleanup();
+        }
+    });
+}
+
+test("admitted backfill excludes repository archives while legacy backfill retains their ownership", async () => {
+    const f = await packageFixture();
+    try {
+        const plan = await create(f.identity, {
+            definition: { classification: "PLANNED_CHANGE", status: "draft" },
+        });
+        const archivePath = join(f.root, "docs/plans/archived/legacy.md");
+        const archive = `---
+planId: plan-one
+classification: PLANNED_CHANGE
+status: verified
+archivedAt: "2026-11-01T00:00:00.000Z"
+---
+# Edited repository archive
+
+Untrusted archive prose.
+`;
+        await fs.mkdir(join(f.root, "docs/plans/archived"), { recursive: true });
+        await fs.writeFile(archivePath, archive);
+        const port = createWorkRecordMnemotecaFixture();
+        const options = {
+            mnemotecaPort: port,
+            runRecorderStep: () => Promise.resolve({ title: "Legacy outcome", summary: "Legacy archive outcome." }),
+        };
+        await withPackageWorkflow(
+            f.root,
+            { identity: f.identity, planId: plan.metadata.planId, expectedRevision: plan.metadata.revision },
+            async () => {
+                const result = await runWorkRecordBackfill(f.root, options);
+                equal((await listWorkRecords(f.root, { createDir: false })).length, 0);
+                equal(port.snapshot().length, 0);
+                equal(result.outcomes.length, 0, JSON.stringify(result.outcomes));
+                equal(
+                    result.sources.some((source) => source.sourceKind === "archived"),
+                    false,
+                );
+            },
+        );
+        equal(await fs.readFile(archivePath, "utf8"), archive);
+        const legacy = await runWorkRecordBackfill(f.root, options);
+        equal(legacy.outcomes.length, 1);
+        equal(legacy.outcomes[0].status, "generated", JSON.stringify(legacy.outcomes));
+        const record = (await listWorkRecords(f.root))[0];
+        ok(record.path.startsWith(join(f.root, "docs/work-records/")));
+        equal((await loadArchivedPlan(f.root, "legacy"))?.attrs.workRecord?.recordId, record.attrs.recordId);
+        await withWorkRecordOwner(f.root, f.identity, async () => {
+            equal((await listWorkRecords(f.root, { createDir: false })).length, 0);
+        });
+    } finally {
+        await f.cleanup();
+    }
+});
 
 test("admitted canonical mutations ignore repository copies and ordinary calls remain legacy", async () => {
     const f = await packageFixture();

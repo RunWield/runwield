@@ -203,6 +203,10 @@ async function generateTargetedWorkRecord(
         const publishedReference = !automatic
             ? selected?.metadata.workflow?.recordingSource || selected?.metadata.workflow?.delivery?.source
             : undefined;
+        if (selection && !automatic && !publishedReference)
+            throw new Error(
+                "The admitted Plan has no retained publication source; recording can retry when its evidence is available.",
+            );
         if (publishedReference) {
             // Loading the retained source first verifies its matching receipt before any canonical mutation.
             await verifyPackageRecordingDelivery(cwd, publishedReference);

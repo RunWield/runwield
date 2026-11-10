@@ -9,6 +9,74 @@ import { listWorkRecords } from "../work-records/store.ts";
 import { withWorkRecordOwner } from "../work-records/owner.ts";
 import { git } from "../git-test-fixture.ts";
 import { setExactProjectCustomSetting } from "../settings.js";
+import { filterWorkRecordsForList } from "../work-records/list.ts";
+import { searchWorkRecords } from "../work-records/search.ts";
+import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
+import { writeWorkRecord, findWorkRecordById } from "../work-records/store.ts";
+import { recordAttrs, recordBody } from "../work-records/test-fixtures/package-records.ts";
+import { readWorkRecordLocations } from "../work-records/import.ts";
+
+for (const boundary of ["locations", "supersession", "before_approval", "approval"]) {
+    test(`interrupted ${boundary} never exposes a successor before all declared relationships settle`, async () => {
+        const predecessors: string[] = [crypto.randomUUID(), crypto.randomUUID()];
+        const f = await recordingFixture(undefined, undefined, false, predecessors);
+        try {
+            await f.scope(async () => {
+                for (const recordId of predecessors)
+                    await writeWorkRecord(f.root, recordAttrs({ recordId }), recordBody);
+            });
+            const stopped = await f.validate({ boundary });
+            equal(stopped.code, 86, stopped.text);
+            const target = await git(f.remote, ["rev-parse", "main"]);
+            const [successorId] = await f.recorderIds();
+            await f.scope(async () => {
+                const records = await listWorkRecords(f.root);
+                const predecessorRecords = records.filter((record) => predecessors.includes(record.attrs.recordId));
+                const relationshipsSettled = predecessorRecords.every(
+                    (record) => record.attrs.status === "superseded" && record.attrs.supersededBy === successorId,
+                );
+                const current = filterWorkRecordsForList(records);
+                const found = await searchWorkRecords(f.root, "outcome", {
+                    mnemotecaPort: createWorkRecordMnemotecaFixture(),
+                });
+                equal(found.bootstrapped, true);
+                if (!relationshipsSettled) {
+                    equal(
+                        current.some((record) => record.attrs.recordId === successorId),
+                        false,
+                    );
+                    equal(
+                        found.records.some((record) => record.recordId === successorId),
+                        false,
+                    );
+                }
+                if (current.some((record) => record.attrs.recordId === successorId)) {
+                    ok(relationshipsSettled);
+                    equal((await readWorkRecordLocations(successorId))?.locations.length, 1);
+                }
+            });
+            const resumed = await f.validate();
+            equal(resumed.code, 0, resumed.text);
+            equal(resumed.outcome?.kind, "verified", resumed.text);
+            await f.scope(async () => {
+                const records = filterWorkRecordsForList(await listWorkRecords(f.root));
+                equal(records.length, 1);
+                equal(records[0].attrs.recordId, successorId);
+                for (const id of predecessors)
+                    equal((await findWorkRecordById(f.root, id))?.attrs.supersededBy, successorId);
+                const found = await searchWorkRecords(f.root, "outcome", {
+                    mnemotecaPort: createWorkRecordMnemotecaFixture(),
+                });
+                equal(found.records.length, 1);
+                equal(found.records[0].recordId, successorId);
+            });
+            equal(await f.turns(), 1);
+            equal(await git(f.remote, ["rev-parse", "main"]), target);
+        } finally {
+            await f.cleanup();
+        }
+    });
+}
 
 for (const boundary of [
     "source",
@@ -76,9 +144,9 @@ test("a failed Recorder leaves no copy and backfill after cleanup uses retained 
                 await import("../work-records/test-fixtures/mnemoteca-port.ts");
             const backfill = await runWorkRecordBackfill(f.root, {
                 mnemotecaPort: createWorkRecordMnemotecaFixture(),
-                runRecorderStep: async (prompt) => {
+                runRecorderStep: (prompt) => {
                     ok(prompt.includes("Prose — 世界"));
-                    return { title: "Late outcome", summary: "Retained delivery." };
+                    return Promise.resolve({ title: "Late outcome", summary: "Retained delivery." });
                 },
             });
             equal(backfill.outcomes.length, 1);
@@ -142,9 +210,7 @@ test("pending records require proof and no-copy recovery survives execution clea
                 cwd: f.root,
                 planName: "one",
                 mnemotecaPort: createWorkRecordMnemotecaFixture(),
-                runRecorderStep: async () => {
-                    throw new Error("Accepted Recorder output must be reused");
-                },
+                runRecorderStep: () => Promise.reject(new Error("Accepted Recorder output must be reused")),
             });
             equal(result.status, "linked", JSON.stringify(result));
             const record = (await listWorkRecords(f.root))[0];
@@ -174,9 +240,7 @@ test("pending retry refuses lost target proof and damaged retained input, then r
                 cwd: f.root,
                 planName: "one",
                 mnemotecaPort: createWorkRecordMnemotecaFixture(),
-                runRecorderStep: async () => {
-                    throw new Error("Accepted output must be reused");
-                },
+                runRecorderStep: () => Promise.reject(new Error("Accepted output must be reused")),
             };
             equal((await listWorkRecords(f.root))[0].attrs.status, "pending_verification");
             await git(f.remote, ["update-ref", "refs/heads/main", original]);
@@ -239,9 +303,7 @@ test("interrupted declared supersession preserves a later explicit relationship 
                 cwd: f.root,
                 planName: "one",
                 mnemotecaPort: createWorkRecordMnemotecaFixture(),
-                runRecorderStep: async () => {
-                    throw new Error("Settlement must reuse accepted output");
-                },
+                runRecorderStep: () => Promise.reject(new Error("Settlement must reuse accepted output")),
             });
             equal(result.status, "linked", JSON.stringify(result));
             const preserved = await findWorkRecordById(f.root, predecessorId);

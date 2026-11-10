@@ -28,7 +28,7 @@ dependencies:
     - "external-plan-store/publish-from-retained-plan-inputs"
 targetBranch: "epic/external-plan-store"
 userVerifiedAt: null
-status: "implemented"
+status: "reviewed"
 ---
 
 # Move Work Records with Delivery Copies
