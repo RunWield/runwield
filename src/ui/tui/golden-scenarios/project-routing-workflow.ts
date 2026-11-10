@@ -4,7 +4,7 @@
  */
 
 import { ok as assert } from "node:assert/strict";
-import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.js";
+import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.ts";
 
 type GoldenScenarioResult = Parameters<typeof assertEventIncludes>[0];
 type RoutedGoldenResult = GoldenScenarioResult & {

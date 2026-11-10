@@ -6,7 +6,7 @@
 import { ok as assert } from "node:assert/strict";
 import { VALIDATION_WORKFLOW_BRANCHES } from "./validation-workflow-coverage.ts";
 
-import type { GoldenScenario } from "./scenario-runner.js";
+import type { GoldenScenario } from "./scenario-runner.ts";
 
 export interface GoldenAssertionSource {
     goldenAssertionSource?: string;

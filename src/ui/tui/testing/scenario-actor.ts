@@ -60,7 +60,9 @@ function turnMatches(turn: GoldenScriptTurn, request: GoldenTurnRequest) {
     return true;
 }
 
-export function createFauxMessageForTurn(turn: GoldenScriptTurn): AssistantMessage {
+export type GoldenMessageContent = Partial<GoldenScriptTurn>;
+
+export function createFauxMessageForTurn(turn: GoldenMessageContent): AssistantMessage {
     if (turn.response && typeof turn.response === "object") return turn.response as AssistantMessage;
     const blocks: AssistantMessage["content"] = [];
     if (turn.thinking) blocks.push(fauxThinking(turn.thinking));

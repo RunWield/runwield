@@ -1,4 +1,4 @@
-import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.js";
+import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.ts";
 
 type GoldenResult = Parameters<typeof assertEventIncludes>[0];
 
