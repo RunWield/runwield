@@ -1,5 +1,6 @@
 /** Owner Workspace backend Plan action service. */
 
+import type { JsonRecord } from "../../../shared/jsonc.ts";
 import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./owner-projects.ts";
 import {
     executePlanAction,
@@ -42,11 +43,11 @@ function receiptRecoveryRequired(message: string): PlanActionResult {
     return { kind: "recovery_required", message, entryIds: [] };
 }
 
-function completedResultFromReceipt(
-    receipt: { resultHttpStatus?: number | null; resultBody?: { result?: PlanActionResult } | null },
-): OwnerPlanActionHttpResult | null {
+type StoredPlanActionReceipt = { resultHttpStatus?: number | null; resultBody?: JsonRecord | null };
+
+function completedResultFromReceipt(receipt: StoredPlanActionReceipt): OwnerPlanActionHttpResult | null {
     if (!receipt.resultHttpStatus || !receipt.resultBody?.result) return null;
-    return { status: receipt.resultHttpStatus, body: { result: receipt.resultBody.result } };
+    return { status: receipt.resultHttpStatus, body: { result: receipt.resultBody.result as PlanActionResult } };
 }
 
 export async function runOwnerPlanAction(
