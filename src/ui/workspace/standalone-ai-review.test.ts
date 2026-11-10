@@ -12,7 +12,7 @@ import {
     createReviewAgentState,
     reviewAgentApi,
     runWldJobCommand,
-} from "./routes/api/review-agent-handlers.js";
+} from "./routes/api/review-agent-handlers.ts";
 
 import type { StandaloneReviewPayload } from "../review/review-launcher.ts";
 import type { AiReviewValue } from "../../shared/standalone-review/ai-review.ts";

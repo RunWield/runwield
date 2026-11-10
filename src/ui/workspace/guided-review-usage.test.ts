@@ -14,7 +14,7 @@ import {
     createReviewAgentState,
     reviewAgentApi,
     runWldJobCommand,
-} from "./routes/api/review-agent-handlers.js";
+} from "./routes/api/review-agent-handlers.ts";
 
 const absent = {
     inputTokens: null,

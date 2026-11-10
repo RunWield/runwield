@@ -1,5 +1,5 @@
 import type { GuidedReviewUsage } from "../../cmd/guided-review/protocol.ts";
-import type { GuideCostTotals } from "./routes/api/review-agent-handlers.js";
+import type { GuideCostTotals } from "./routes/api/review-agent-handlers.ts";
 import type { ReviewServerOutput } from "./server.js";
 
 import {
@@ -29,7 +29,7 @@ import {
     cleanupReviewAgentState,
     reviewAgentApi,
     runWldJobCommand,
-} from "./routes/api/review-agent-handlers.js";
+} from "./routes/api/review-agent-handlers.ts";
 
 import { registerReviewDecisionPromise, unregisterReviewDecision } from "./routes/api/review-handlers.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
