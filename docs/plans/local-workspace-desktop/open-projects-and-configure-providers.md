@@ -67,7 +67,7 @@ The boundaries this change is expected to touch. This list is guidance, not an a
 
 ## Verification Plan
 
-- Use Bun 1.4.3 and `bun run install:locked`; run `bun scripts/run-tests.ts src/acp/server.test.js src/ui/workspace/owner-session-http.test.ts` and focused Project/setup tests selected by Planner.
+- Use Bun 1.4.3 and `bun run install:locked`; run `bun scripts/run-tests.ts src/acp/server.test.ts src/ui/workspace/owner-session-http.test.ts` and focused Project/setup tests selected by Planner.
 - New real-process cases must fail if the bridge bypasses admission or setup uses a global CLI. Exercise missing paths, unregistered roots, wrong Project references, relink, disable/enable, and removal without deleting repository data.
 - Headed verification uses the desktop first-run, Project management, and provider setup flows. Discover the normal desktop dev command and URL/origin from child 1 and record them before testing.
 - Start with existing credentials, then a disposable empty home. Prove actual setup/default-model selection, canceled setup, provider outage, and saved-history browsing without Workspace connectivity. Use a separately configured provider for the successful real model turn.

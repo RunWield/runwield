@@ -5,7 +5,7 @@ import { ok as assert } from "node:assert/strict";
 import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
 import { makeManagedSessionFixture, readTranscriptEvidence } from "../testing/managed-session-fixture.ts";
-import { startRunWieldAcpServer } from "./server.js";
+import { startRunWieldAcpServer } from "./server.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();

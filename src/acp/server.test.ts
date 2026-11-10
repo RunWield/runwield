@@ -1,3 +1,15 @@
+import type { FileSessionManifest } from "../shared/session/file-session-store-types.ts";
+import type { JsonRecord, JsonValue } from "../shared/jsonc.ts";
+import type { InterviewResultDetails } from "../tools/user-interview.ts";
+import type {
+    AgentConnection,
+    AvailableCommand,
+    InitializeResponse,
+    PromptResponse,
+    SessionConfigOption,
+} from "@agentclientprotocol/sdk";
+import type { Message, ProviderStreams, TranscriptContext } from "@earendil-works/pi-ai";
+import type { RuntimeValidationProgress } from "../shared/session/session-runtime-events.ts";
 import { collectProcessOutput } from "../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../testing/runtime-source-args.ts";
 import { spawnNativeProcess } from "../shared/foreground-process.ts";
@@ -37,83 +49,64 @@ import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../shared/work
 import { createRootSessionManager, resolveCreatedRootSessionPath } from "../shared/session/root-session.ts";
 import { VERSION } from "../shared/version.js";
 import { mapRuntimeEventToAcpUpdate } from "./event-mapper.ts";
-/** @typedef {import("@agentclientprotocol/sdk").ContentChunk} AcpContentChunk */
 import { assertAcpFrameSchema, assertAcpSchema } from "./schema-conformance.ts";
-import { startRunWieldAcpServer } from "./server.js";
+import { startRunWieldAcpServer } from "./server.ts";
 
-/**
- * @typedef {Object} TestServerHandle
- * @property {WritableStreamDefaultWriter<Uint8Array>} inputWriter
- * @property {ReadableStreamDefaultReader<Uint8Array>} outputReader
- * @property {import('@agentclientprotocol/sdk').AgentConnection} connection
- * @property {string[]} diagnostics
- * @property {string[]} frames raw NDJSON lines the server wrote, in order
- * @property {Promise<void>} [heldResponseStarted]
- * @property {() => void} [releaseHeldResponse]
- */
+interface TestServerHandle {
+    inputWriter: WritableStreamDefaultWriter<Uint8Array>;
+    outputReader: ReadableStreamDefaultReader<Uint8Array>;
+    connection: AgentConnection;
+    diagnostics: string[];
+    frames: string[];
+    heldResponseStarted?: Promise<void>;
+    releaseHeldResponse?: () => void;
+}
 
-/**
- * @typedef {Object} StartTestServerOptions
- * @property {string | number} [holdResponseId]
- * @property {string} [holdOutputText]
- */
+interface StartTestServerOptions {
+    holdResponseId?: string | number;
+    holdOutputText?: string;
+}
 
-/**
- * @typedef {Object} RuntimeFixtureModelConfig
- * @property {string} id
- * @property {string[]} input
- */
+interface RuntimeFixtureModelConfig {
+    id: string;
+    input: string[];
+}
 
-/**
- * @typedef {Object} RuntimeFixtureProviderConfig
- * @property {RuntimeFixtureModelConfig[]} models
- */
+interface RuntimeFixtureProviderConfig {
+    models: RuntimeFixtureModelConfig[];
+}
 
-/**
- * @typedef {Object} RuntimeFixtureModelConfiguration
- * @property {Record<string, RuntimeFixtureProviderConfig>} providers
- */
+interface RuntimeFixtureModelConfiguration {
+    providers: Record<string, RuntimeFixtureProviderConfig>;
+}
 
-/** @typedef {Extract<import('@agentclientprotocol/sdk').SessionConfigOption, { type: "select" }>} AcpSelectConfigOption */
+type AcpSelectConfigOption = Extract<SessionConfigOption, { type: "select" }>;
 
-/** @param {import('@agentclientprotocol/sdk').SessionConfigOption[]} options */
-function configOptionIds(options) {
+function configOptionIds(options: SessionConfigOption[]) {
     return options.map((option) => option.id);
 }
 
-/** @param {import('@agentclientprotocol/sdk').SessionConfigOption[]} options */
-function configOptionCurrentValues(options) {
+function configOptionCurrentValues(options: SessionConfigOption[]) {
     return options.map((option) => option.currentValue);
 }
 
-/**
- * @param {import('@agentclientprotocol/sdk').SessionConfigOption[]} options
- * @param {string} id
- * @returns {AcpSelectConfigOption}
- */
-function requireSelectConfigOption(options, id) {
+function requireSelectConfigOption(options: SessionConfigOption[], id: string): AcpSelectConfigOption {
     const option = options.find((candidate) => candidate.id === id);
     assert(option?.type === "select", `Expected select config option: ${id}`);
     return option;
 }
 
-/** @param {AcpSelectConfigOption} option */
-function configSelectValues(option) {
+function configSelectValues(option: AcpSelectConfigOption) {
     return option.options
         .flatMap((entry) => ("options" in entry ? entry.options : [entry]))
         .map((entry) => entry.value);
 }
 
-/**
- * @param {string} text
- * @returns {RuntimeFixtureModelConfiguration}
- */
-function parseRuntimeFixtureModelConfiguration(text) {
+function parseRuntimeFixtureModelConfiguration(text: string): RuntimeFixtureModelConfiguration {
     return JSON.parse(text);
 }
 
-/** @param {import('@earendil-works/pi-ai').Message['content']} content */
-function fauxContentToText(content) {
+function fauxContentToText(content: Message["content"]) {
     if (typeof content === "string") return content;
     return content
         .map((block) => {
@@ -125,8 +118,7 @@ function fauxContentToText(content) {
         .join("\n");
 }
 
-/** @param {import('@earendil-works/pi-ai').Message} message */
-function fauxMessageToText(message) {
+function fauxMessageToText(message: Message) {
     if (message.role === "system") {
         return [
             getSystemMessageText(message),
@@ -142,14 +134,159 @@ function fauxMessageToText(message) {
     return fauxContentToText(message.content);
 }
 
-/** @param {import('@earendil-works/pi-ai').TranscriptContext} context */
-function estimateFauxPromptTokens(context) {
+function estimateFauxPromptTokens(context: TranscriptContext) {
     const parts = context.messages.map((message) => `${message.role}:${fauxMessageToText(message)}`);
     return Math.ceil(parts.join("\n\n").length / 4);
 }
 
 const REPO_ROOT = resolve(dirname(fromFileUrl(import.meta.url)), "../..");
 const MCP_FIXTURE_SERVER = join(dirname(fromFileUrl(import.meta.url)), "../shared/mcp/fixture-server.ts");
+type AcpRequestId = string | number;
+
+type AcpTestWireValue = string | number | boolean | null | undefined | AcpTestWireValue[] | AcpTestWireRecord;
+interface AcpTestWireRecord {
+    [key: string]: AcpTestWireValue;
+}
+
+interface AcpTestRequest {
+    jsonrpc: string;
+    id?: AcpRequestId | null;
+    method?: string;
+    params?: AcpTestWireValue;
+    result?: JsonValue;
+    error?: JsonValue;
+}
+
+// The same stream carries requests, notifications, results, and errors. Tests
+// keep their existing property accesses for the frame they expect.
+interface AcpTestFrame {
+    id?: AcpRequestId | null;
+    method?: string;
+    result?: AcpTestResult & JsonRecord;
+    error?: AcpTestError;
+    params?: AcpTestParams;
+}
+
+interface AcpTestError {
+    code: number;
+    message: string;
+    data?: AcpTestErrorData;
+}
+
+interface AcpTestErrorData {
+    phase?: string;
+}
+
+interface AcpTestResult
+    extends
+        Partial<Pick<InitializeResponse, "agentInfo" | "protocolVersion">>,
+        Partial<Pick<PromptResponse, "stopReason">> {
+    sessionId?: string;
+    authMethods?: AcpTestAuthMethod[];
+    configOptions?: AcpSelectConfigOption[];
+    agentCapabilities?: AcpTestCapabilities;
+    _meta?: AcpTestMetadata;
+}
+
+type AcpTestAuthMethod = NonNullable<InitializeResponse["authMethods"]>[number] & JsonRecord;
+
+interface AcpTestCapabilities {
+    loadSession?: boolean;
+    promptCapabilities?: AcpTestPromptCapabilities;
+    sessionCapabilities?: AcpTestSessionCapabilities;
+}
+
+interface AcpTestPromptCapabilities {
+    image?: boolean;
+    _meta?: AcpTestMetadata;
+}
+
+interface AcpTestSessionCapabilities {
+    close?: JsonValue;
+    delete?: JsonValue;
+    _meta?: AcpTestMetadata;
+}
+
+interface AcpTestMetadata {
+    runwield?: AcpTestRunWieldMetadata;
+    steering?: AcpTestSteeringMetadata;
+}
+
+interface AcpTestSteeringMetadata {
+    supported?: boolean;
+}
+
+interface AcpTestRunWieldMetadata {
+    persistedSessionId?: string;
+    closed?: boolean;
+    contentTypes?: string[];
+    implementedMethods?: string[];
+    toolName?: string;
+    durationMs?: number;
+    type?: string;
+    interactionType?: string;
+    command?: string;
+    reviewUrl?: string;
+    validationProgress?: RuntimeValidationProgress;
+}
+
+interface AcpTestParams {
+    sessionId?: string;
+    update?: AcpTestUpdate;
+    message?: string;
+    requestedSchema?: AcpTestRequestedSchema;
+    _meta?: AcpTestMetadata;
+}
+
+interface AcpTestRequestedSchema {
+    properties: AcpTestElicitationProperties;
+    required?: string[];
+}
+
+interface AcpTestElicitationProperties {
+    answer: AcpTestChoiceSchema;
+    otherAnswer: AcpTestTextSchema;
+}
+
+interface AcpTestChoiceSchema {
+    oneOf?: AcpTestChoice[];
+}
+
+interface AcpTestTextSchema {
+    type?: string;
+}
+
+interface AcpTestChoice {
+    const: string;
+    title: string;
+}
+
+interface AcpTestUpdate {
+    sessionUpdate?: string;
+    content?: AcpTestUpdateContent;
+    configOptions?: AcpSelectConfigOption[];
+    availableCommands?: AvailableCommand[];
+    rawInput?: JsonRecord;
+    rawOutput?: AcpTestToolOutput;
+    messageId?: string;
+    cost?: JsonValue;
+    size?: number;
+    used?: number;
+    _meta?: AcpTestMetadata;
+}
+
+interface AcpTestUpdateContent {
+    text?: string;
+}
+
+interface AcpTestToolOutput {
+    details?: InterviewResultDetails;
+}
+
+interface DisposableFixtureManager {
+    dispose?: () => void | Promise<void>;
+}
+
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const TERMINAL_AUTH_METHOD = {
@@ -170,31 +307,21 @@ const ACP_REGISTRY_INITIALIZE_REQUEST = {
     },
 };
 
-/**
- * @param {Uint8Array} chunk
- * @param {string | number} responseId
- */
-function chunkIncludesResponseId(chunk, responseId) {
+function chunkIncludesResponseId(chunk: Uint8Array, responseId: string | number) {
     return decoder
         .decode(chunk)
         .split("\n")
         .some((line) => {
             const trimmed = line.trim();
             if (!trimmed) return false;
-            return JSON.parse(trimmed).id === responseId;
+            return (JSON.parse(trimmed) as AcpTestFrame).id === responseId;
         });
 }
 
-/**
- * @param {(chunk: Uint8Array) => boolean} shouldHold
- */
-function createHeldOutput(shouldHold) {
-    /** @type {PromiseWithResolvers<void>} */
-    const heldResponseStarted = Promise.withResolvers();
-    /** @type {PromiseWithResolvers<void>} */
-    const releaseHeldResponse = Promise.withResolvers();
-    /** @type {ReadableStreamDefaultController<Uint8Array> | null} */
-    let outputController = null;
+function createHeldOutput(shouldHold: (chunk: Uint8Array) => boolean) {
+    const heldResponseStarted: PromiseWithResolvers<void> = Promise.withResolvers();
+    const releaseHeldResponse: PromiseWithResolvers<void> = Promise.withResolvers();
+    let outputController: ReadableStreamDefaultController<Uint8Array> | null = null;
     let held = false;
     const readable = new ReadableStream({
         start(controller) {
@@ -225,20 +352,12 @@ function createHeldOutput(shouldHold) {
     };
 }
 
-/**
- * @param {StartTestServerOptions} [options]
- * @returns {TestServerHandle}
- */
-function startTestServer(options = {}) {
+function startTestServer(options: StartTestServerOptions = {}): TestServerHandle {
     const input = new TransformStream();
-    /** @type {ReadableStream<Uint8Array>} */
-    let outputReadable;
-    /** @type {WritableStream<Uint8Array>} */
-    let outputWritable;
-    /** @type {Promise<void> | undefined} */
-    let heldResponseStarted;
-    /** @type {(() => void) | undefined} */
-    let releaseHeldResponse;
+    let outputReadable: ReadableStream<Uint8Array>;
+    let outputWritable: WritableStream<Uint8Array>;
+    let heldResponseStarted: Promise<void> | undefined;
+    let releaseHeldResponse: (() => void) | undefined;
     if (options.holdResponseId !== undefined || options.holdOutputText !== undefined) {
         const output = createHeldOutput((chunk) =>
             options.holdResponseId !== undefined
@@ -254,8 +373,7 @@ function startTestServer(options = {}) {
         outputReadable = output.readable;
         outputWritable = output.writable;
     }
-    /** @type {string[]} */
-    const diagnostics = [];
+    const diagnostics: string[] = [];
     const connection = startRunWieldAcpServer(input.readable, outputWritable, {
         diagnostic: (message) => {
             diagnostics.push(message);
@@ -272,21 +390,16 @@ function startTestServer(options = {}) {
     };
 }
 
-/**
- * @param {TestServerHandle} handle
- * @param {Record<string, unknown>} message
- */
-async function sendMessage(handle, message) {
+async function sendMessage(handle: TestServerHandle, message: AcpTestRequest) {
     await handle.inputWriter.write(encoder.encode(`${JSON.stringify(message)}\n`));
 }
 
-/** @param {TestServerHandle} handle */
-async function readMessage(handle) {
+async function readMessage(handle: TestServerHandle) {
     const chunk = await handle.outputReader.read();
     assert(!chunk.done, "server should write a message");
     const firstLine = decoder.decode(chunk.value).trim().split("\n")[0];
     handle.frames.push(firstLine);
-    return /** @type {Record<string, any>} */ (JSON.parse(firstLine));
+    return JSON.parse(firstLine) as AcpTestFrame;
 }
 
 /**
@@ -294,42 +407,25 @@ async function readMessage(handle) {
  *
  * Selection parses, but callers validate the original serialized text so the
  * assertion covers what a strict Client actually reads off the wire.
- *
- * @param {TestServerHandle} handle
- * @param {(message: Record<string, any>) => boolean} predicate
  */
-function framesMatching(handle, predicate) {
+function framesMatching(handle: TestServerHandle, predicate: (message: AcpTestFrame) => boolean) {
     return handle.frames.filter((frame) => predicate(JSON.parse(frame)));
 }
 
-/**
- * @param {TestServerHandle} handle
- * @param {string} sessionUpdate
- */
-function sessionUpdateFrames(handle, sessionUpdate) {
+function sessionUpdateFrames(handle: TestServerHandle, sessionUpdate: string) {
     return framesMatching(
         handle,
         (message) => message.method === "session/update" && message.params?.update?.sessionUpdate === sessionUpdate,
     );
 }
 
-/**
- * @param {TestServerHandle} handle
- * @param {Record<string, unknown>} message
- */
-async function request(handle, message) {
+async function request(handle: TestServerHandle, message: AcpTestRequest) {
     await sendMessage(handle, message);
     return await readMessage(handle);
 }
 
-/**
- * @param {TestServerHandle} handle
- * @param {string | number} requestId
- * @param {number} [limit]
- */
-async function readThroughResponse(handle, requestId, limit = 80) {
-    /** @type {Record<string, any>[]} */
-    const messages = [];
+async function readThroughResponse(handle: TestServerHandle, requestId: string | number, limit: number = 80) {
+    const messages: AcpTestFrame[] = [];
     for (let index = 0; index < limit; index++) {
         const message = await readMessage(handle);
         messages.push(message);
@@ -338,16 +434,14 @@ async function readThroughResponse(handle, requestId, limit = 80) {
     throw new Error(`ACP response ${requestId} was not received after ${limit} messages`);
 }
 
-/** @param {Record<string, any>[]} messages */
-function joinedAgentText(messages) {
+function joinedAgentText(messages: AcpTestFrame[]) {
     return messages
         .filter((message) => message.params?.update?.sessionUpdate === "agent_message_chunk")
         .map((message) => String(message.params?.update?.content?.text || ""))
         .join("");
 }
 
-/** @param {TestServerHandle} handle */
-async function closeTestServer(handle) {
+async function closeTestServer(handle: TestServerHandle) {
     await handle.inputWriter.close();
     handle.connection.close();
     await handle.connection.closed;
@@ -355,11 +449,7 @@ async function closeTestServer(handle) {
     await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-/**
- * @param {TestServerHandle} handle
- * @param {string} cwd
- */
-async function createSession(handle, cwd) {
+async function createSession(handle: TestServerHandle, cwd: string) {
     const response = await request(handle, {
         jsonrpc: "2.0",
         id: "new",
@@ -371,17 +461,12 @@ async function createSession(handle, cwd) {
     assert(frame, "session/new response frame should be captured");
     assertAcpFrameSchema("NewSessionResponse", frame, (message) => message.result);
     return {
-        sessionId: /** @type {string} */ (response.result.sessionId),
-        persistedSessionId: /** @type {string} */ (response.result._meta.runwield.persistedSessionId),
+        sessionId: response.result.sessionId!,
+        persistedSessionId: response.result._meta!.runwield!.persistedSessionId!,
     };
 }
 
-/**
- * @param {string} directory
- * @param {string} runwieldSessionId
- * @returns {Promise<string | null>}
- */
-async function findManifestPath(directory, runwieldSessionId) {
+async function findManifestPath(directory: string, runwieldSessionId: string): Promise<string | null> {
     for await (const entry of await fsReaddir(directory, { withFileTypes: true })) {
         const path = join(directory, entry.name);
         if (entry.isDirectory()) {
@@ -390,26 +475,24 @@ async function findManifestPath(directory, runwieldSessionId) {
             continue;
         }
         if (entry.name !== "manifest.json") continue;
-        const manifest = JSON.parse(await fsReadFile(path, "utf8"));
+        const manifest: FileSessionManifest = JSON.parse(await fsReadFile(path, "utf8"));
         if (manifest.runwieldSessionId === runwieldSessionId) return path;
     }
     return null;
 }
 
-/**
- * @param {ReturnType<typeof openFileSessionStore>} store
- * @param {string} runwieldSessionId
- */
-async function forceActivationToRequireHydration(store, runwieldSessionId) {
+async function forceActivationToRequireHydration(
+    store: ReturnType<typeof openFileSessionStore>,
+    runwieldSessionId: string,
+) {
     const path = await findManifestPath(store.path, runwieldSessionId);
     assert(path, `manifest not found for ${runwieldSessionId}`);
-    const manifest = JSON.parse(await fsReadFile(path, "utf8"));
-    manifest.activation.state = "idle";
+    const manifest: FileSessionManifest = JSON.parse(await fsReadFile(path, "utf8"));
+    manifest.activation!.state = "idle";
     await fsWriteFile(path, `${JSON.stringify(manifest, null, 4)}\n`);
 }
 
-/** @param {string} cwd */
-async function createIdleUngeneratedPersistedSession(cwd) {
+async function createIdleUngeneratedPersistedSession(cwd: string) {
     const store = openFileSessionStore();
     const manager = await createRootSessionManager("new", cwd);
     try {
@@ -441,7 +524,7 @@ async function createIdleUngeneratedPersistedSession(cwd) {
         await forceActivationToRequireHydration(store, acquired.session.runwieldSessionId);
         return { piSessionId, transcriptPath };
     } finally {
-        await Promise.resolve(/** @type {{ dispose?: () => void | Promise<void> }} */ (manager).dispose?.());
+        await Promise.resolve((manager as DisposableFixtureManager).dispose?.());
         store.close();
     }
 }
@@ -452,14 +535,18 @@ test("ACP server handles the registry initialize request with one Terminal Auth 
         assertEquals(handle.diagnostics, ["RunWield ACP stdio server started"]);
         const response = await request(handle, ACP_REGISTRY_INITIALIZE_REQUEST);
         assertEquals(response.id, "registry-initialize");
-        assertEquals(response.result.agentInfo.name, "RunWield");
-        assertEquals(response.result.authMethods, [TERMINAL_AUTH_METHOD]);
-        const capabilities = response.result.agentCapabilities;
-        assertEquals(capabilities.promptCapabilities.image, true);
-        assertEquals(capabilities.loadSession, true);
-        assertEquals(capabilities.sessionCapabilities.close, {});
-        assertEquals(capabilities.sessionCapabilities.delete, {});
-        assertEquals(capabilities.promptCapabilities._meta.runwield.contentTypes, ["text", "image", "resource_link"]);
+        assertEquals(response.result!.agentInfo!.name, "RunWield");
+        assertEquals(response.result!.authMethods, [TERMINAL_AUTH_METHOD]);
+        const capabilities = response.result!.agentCapabilities;
+        assertEquals(capabilities!.promptCapabilities!.image, true);
+        assertEquals(capabilities!.loadSession, true);
+        assertEquals(capabilities!.sessionCapabilities!.close, {});
+        assertEquals(capabilities!.sessionCapabilities!.delete, {});
+        assertEquals(capabilities!.promptCapabilities!._meta!.runwield!.contentTypes, [
+            "text",
+            "image",
+            "resource_link",
+        ]);
     } finally {
         await closeTestServer(handle);
     }
@@ -481,7 +568,7 @@ test("ACP initialize negotiates Terminal Auth with supported client capabilities
                 method: "initialize",
                 params: { protocolVersion: 1, clientCapabilities },
             });
-            assertEquals(response.result.authMethods, supported ? [TERMINAL_AUTH_METHOD] : []);
+            assertEquals(response.result!.authMethods, supported ? [TERMINAL_AUTH_METHOD] : []);
         }
     } finally {
         await closeTestServer(handle);
@@ -498,7 +585,7 @@ test("ACP initialize answers with the version RunWield speaks, not the one reque
                 method: "initialize",
                 params: { protocolVersion: requested, clientCapabilities: {} },
             });
-            assertEquals(response.result.protocolVersion, 1, `requested ${requested}`);
+            assertEquals(response.result!.protocolVersion, 1, `requested ${requested}`);
         }
     } finally {
         await closeTestServer(handle);
@@ -506,7 +593,7 @@ test("ACP initialize answers with the version RunWield speaks, not the one reque
 });
 
 test("ACP agentInfo reports the same build version as wld --version", async () => {
-    const runCli = async (/** @type {string[]} */ args, /** @type {string} */ stdin) => {
+    const runCli = async (args: string[], stdin: string) => {
         const child = spawnNativeProcess(process.execPath, {
             args: runtimeSourceArgs(["run", "-A", "src/cli.ts", ...args]),
             cwd: REPO_ROOT,
@@ -525,7 +612,7 @@ test("ACP agentInfo reports the same build version as wld --version", async () =
     const acpOutput = await runCli(["--mode", "acp"], `${JSON.stringify(ACP_REGISTRY_INITIALIZE_REQUEST)}\n`);
 
     const cliVersion = versionOutput.match(/^runwield (\S+) \(/)?.[1];
-    const acpVersion = JSON.parse(acpOutput).result.agentInfo.version;
+    const acpVersion = (JSON.parse(acpOutput) as AcpTestFrame).result!.agentInfo!.version;
 
     assertEquals(cliVersion, VERSION, `--version printed ${versionOutput}`);
     assertEquals(acpVersion, VERSION);
@@ -543,13 +630,13 @@ test("ACP initialize and prompt responses satisfy the published ACP schema", asy
         const authFrame = JSON.stringify({
             jsonrpc: "2.0",
             id: "auth-method",
-            result: JSON.parse(initializeFrame).result.authMethods[0],
+            result: (JSON.parse(initializeFrame) as AcpTestFrame).result!.authMethods![0],
         });
         assertAcpFrameSchema("AuthMethod", authFrame, (message) => message.result);
-        assertAcpSchema("AuthMethod", response.result.authMethods[0]);
-        assertEquals(response.result._meta.steering.supported, true);
+        assertAcpSchema("AuthMethod", response.result!.authMethods![0]);
+        assertEquals(response.result!._meta!.steering!.supported, true);
         assert(
-            response.result.agentCapabilities.sessionCapabilities._meta.runwield.implementedMethods.includes(
+            response.result!.agentCapabilities!.sessionCapabilities!._meta!.runwield!.implementedMethods!.includes(
                 "_session/steering",
             ),
         );
@@ -580,9 +667,9 @@ test("ACP server returns structured errors for unimplemented session methods", a
             method: "session/list",
             params: {},
         });
-        assertEquals(response.error.code, -32004);
-        assertStringIncludes(response.error.message, "not implemented yet");
-        assertEquals(response.error.data.phase, "session-runtime-acp-mvp");
+        assertEquals(response.error!.code, -32004);
+        assertStringIncludes(response.error!.message, "not implemented yet");
+        assertEquals(response.error!.data!.phase, "session-runtime-acp-mvp");
     } finally {
         await closeTestServer(handle);
     }
@@ -602,10 +689,10 @@ test("CLI --mode acp routes to ACP stdio without stdout diagnostics", async () =
 
     const { code, stdout, stderr } = await collectProcessOutput(child);
     const stdoutText = decoder.decode(stdout).trim();
-    const response = JSON.parse(stdoutText);
+    const response: AcpTestFrame = JSON.parse(stdoutText);
     assertEquals(code, 0);
-    assertEquals(response.result.agentInfo.name, "RunWield");
-    assertEquals(response.result.authMethods, [TERMINAL_AUTH_METHOD]);
+    assertEquals(response.result!.agentInfo!.name, "RunWield");
+    assertEquals(response.result!.authMethods, [TERMINAL_AUTH_METHOD]);
     assert(!stdoutText.includes("RunWield ACP"), "stdout should contain protocol JSON only");
     assertStringIncludes(decoder.decode(stderr), "RunWield ACP");
 });
@@ -622,8 +709,8 @@ test("ACP session/new requires login and a usable default model", async () => {
                     method: "session/new",
                     params: { cwd: fixture.projectRoot, mcpServers: [] },
                 });
-                assertEquals(response.error.code, -32000);
-                assertStringIncludes(response.error.message, "login and default model setup");
+                assertEquals(response.error!.code, -32000);
+                assertStringIncludes(response.error!.message, "login and default model setup");
             } finally {
                 await closeTestServer(handle);
             }
@@ -786,8 +873,7 @@ test("ACP model config switches the next turn and survives session/load", async 
     await withRuntimeCommandFixture(
         "runwield-acp-model-config-",
         async (fixture) => {
-            /** @type {string[]} */
-            const models = [];
+            const models: string[] = [];
             fixture.setModelResponseFactory((_context, _options, _state, model) => {
                 models.push(model.id);
                 return fauxAssistantMessage(fauxText("Model selected."));
@@ -795,9 +881,10 @@ test("ACP model config switches the next turn and survives session/load", async 
             let handle = startTestServer();
             try {
                 const created = await createSession(handle, fixture.projectRoot);
-                const newResponse = JSON.parse(framesMatching(handle, (message) => message.id === "new")[0]);
-                /** @type {import('@agentclientprotocol/sdk').SessionConfigOption[]} */
-                const configOptions = newResponse.result.configOptions || [];
+                const newResponse: AcpTestFrame = JSON.parse(
+                    framesMatching(handle, (message) => message.id === "new")[0],
+                );
+                const configOptions: SessionConfigOption[] = newResponse.result!.configOptions || [];
                 const option = configOptions.find((option) => option.category === "model");
                 assert(option, "session/new must expose model options for OpenAB /models");
                 assert(option.type === "select");
@@ -822,7 +909,7 @@ test("ACP model config switches the next turn and survives session/load", async 
                 assert(switched.response.result, JSON.stringify(switched.response));
                 assertAcpSchema("SetSessionConfigOptionResponse", switched.response.result);
                 assertEquals(
-                    switched.response.result.configOptions[0].currentValue,
+                    switched.response.result.configOptions![0].currentValue,
                     "runtime-command-fixture/alternate-model",
                 );
                 assertEquals(models, [], "switching models must not invoke a model");
@@ -894,7 +981,7 @@ test("ACP model config switches the next turn and survives session/load", async 
                 assert(loaded.response.result, JSON.stringify(loaded.response));
                 assertAcpSchema("LoadSessionResponse", loaded.response.result);
                 assertEquals(
-                    loaded.response.result.configOptions[0].currentValue,
+                    loaded.response.result.configOptions![0].currentValue,
                     "runtime-command-fixture/alternate-model",
                 );
                 await sendMessage(handle, {
@@ -912,7 +999,7 @@ test("ACP model config switches the next turn and survives session/load", async 
                     slash.messages.some(
                         (message) =>
                             message.params?.update?.sessionUpdate === "config_option_update" &&
-                            message.params.update.configOptions[0].currentValue ===
+                            message.params.update.configOptions![0].currentValue ===
                                 "runtime-command-fixture/fixture-model",
                     ),
                 );
@@ -929,8 +1016,7 @@ test("ACP reasoning config controls the next turn, rejects unsupported values, a
     await withRuntimeCommandFixture(
         "runwield-acp-reasoning-config-",
         async (fixture) => {
-            /** @type {string[]} */
-            const reasoningLevels = [];
+            const reasoningLevels: string[] = [];
             fixture.setModelResponseFactory((_context, options) => {
                 reasoningLevels.push(String(options?.reasoning || ""));
                 return fauxAssistantMessage(fauxText("Reasoning selected."));
@@ -938,8 +1024,10 @@ test("ACP reasoning config controls the next turn, rejects unsupported values, a
             let handle = startTestServer();
             try {
                 const created = await createSession(handle, fixture.projectRoot);
-                const newResponse = JSON.parse(framesMatching(handle, (message) => message.id === "new")[0]);
-                const configOptions = newResponse.result.configOptions || [];
+                const newResponse: AcpTestFrame = JSON.parse(
+                    framesMatching(handle, (message) => message.id === "new")[0],
+                );
+                const configOptions = newResponse.result!.configOptions || [];
                 assertEquals(configOptionIds(configOptions), ["model", "thought_level"]);
                 const reasoning = requireSelectConfigOption(configOptions, "thought_level");
                 assertEquals(reasoning.category, "thought_level");
@@ -970,7 +1058,7 @@ test("ACP reasoning config controls the next turn, rejects unsupported values, a
                     selected.messages.some(
                         (message) =>
                             message.params?.update?.sessionUpdate === "config_option_update" &&
-                            message.params.update.configOptions[1]?.currentValue === "high",
+                            message.params.update.configOptions![1]?.currentValue === "high",
                     ),
                 );
 
@@ -1026,7 +1114,7 @@ test("ACP reasoning config controls the next turn, rejects unsupported values, a
                     },
                 });
                 const restored = await readThroughResponse(handle, "restore-reasoning-model");
-                assertEquals(restored.response.result?.configOptions[1]?.currentValue, "high");
+                assertEquals(restored.response.result?.configOptions![1]?.currentValue, "high");
 
                 await closeTestServer(handle);
                 handle = startTestServer();
@@ -1114,8 +1202,7 @@ test("ACP model config can recover after a failed turn and rejects invalid selec
                     await sendMessage(handle, { jsonrpc: "2.0", id, method: "session/set_config_option", params });
                     assertEquals((await readThroughResponse(handle, id)).response.error?.code, code);
                 }
-                /** @type {string[]} */
-                const models = [];
+                const models: string[] = [];
                 fixture.setModelResponseFactory((_context, _options, _state, model) => {
                     models.push(model.id);
                     return fauxAssistantMessage(fauxText("Recovered in the same conversation."));
@@ -1132,7 +1219,7 @@ test("ACP model config can recover after a failed turn and rejects invalid selec
                 });
                 const recovered = await readThroughResponse(handle, "recover-model");
                 assertEquals(
-                    recovered.response.result?.configOptions[0].currentValue,
+                    recovered.response.result?.configOptions![0].currentValue,
                     "runtime-command-fixture/alternate-model",
                 );
                 await sendMessage(handle, {
@@ -1194,8 +1281,8 @@ test("ACP session/new and session/prompt can invoke a real MCP fixture tool", as
             const toolUpdates = messages
                 .map((message) => message.params?.update)
                 .filter((update) => update?._meta?.runwield?.toolName === "mcp__fixture__fixture_echo");
-            assert(toolUpdates.some((update) => update.rawInput?.marker === "acp-root"));
-            assert(toolUpdates.some((update) => typeof update._meta?.runwield?.durationMs === "number"));
+            assert(toolUpdates.some((update) => update!.rawInput?.marker === "acp-root"));
+            assert(toolUpdates.some((update) => typeof update!._meta?.runwield?.durationMs === "number"));
             assertStringIncludes(await fsReadFile(logPath, "utf8"), '"marker":"acp-root"');
         } finally {
             await closeTestServer(handle);
@@ -1235,15 +1322,15 @@ test("ACP /agent opens selection without a model turn and affects the next reque
                     }
                 }
                 assert(elicitation, "ACP /agent should ask the client to choose an Agent");
-                assertEquals(elicitation.params.sessionId, sessionId);
-                assertEquals(elicitation.params._meta.runwield.interactionType, "select");
+                assertEquals(elicitation.params!.sessionId, sessionId);
+                assertEquals(elicitation.params!._meta!.runwield!.interactionType, "select");
                 await sendMessage(handle, {
                     jsonrpc: "2.0",
                     id: elicitation.id,
                     result: { action: "accept", content: { answer: "guide" } },
                 });
                 const result = await readThroughResponse(handle, "agent-command");
-                assertEquals(result.response.result.stopReason, "end_turn");
+                assertEquals(result.response.result!.stopReason, "end_turn");
                 assertStringIncludes(JSON.stringify(result.messages), "Active agent: guide");
 
                 assertEquals(
@@ -1256,7 +1343,7 @@ test("ACP /agent opens selection without a model turn and affects the next reque
                     result.messages.some(
                         (message) =>
                             message.params?.update?.sessionUpdate === "config_option_update" &&
-                            configOptionIds(message.params.update.configOptions).join(",") === "model,thought_level",
+                            configOptionIds(message.params.update.configOptions!).join(",") === "model,thought_level",
                     ),
                 );
                 for (const command of ["/version", "/session", "/agent guide"]) {
@@ -1267,7 +1354,7 @@ test("ACP /agent opens selection without a model turn and affects the next reque
                         params: { sessionId, prompt: [{ type: "text", text: command }] },
                     });
                     const commandResult = await readThroughResponse(handle, "same-agent-command");
-                    assertEquals(commandResult.response.result.stopReason, "end_turn");
+                    assertEquals(commandResult.response.result!.stopReason, "end_turn");
                     assert(!joinedAgentText(commandResult.messages).includes("Active agent:"), command);
                 }
 
@@ -1325,7 +1412,7 @@ for (const ending of ["cancel", "decline", "expired", "other", "choice", "empty-
                     params: { sessionId, prompt: [{ type: "text", text: "/agent ideator" }] },
                 });
                 const selected = await readThroughResponse(handle, "select-ideator");
-                assertEquals(selected.response.result.stopReason, "end_turn");
+                assertEquals(selected.response.result!.stopReason, "end_turn");
                 await sendMessage(handle, {
                     jsonrpc: "2.0",
                     id: "question",
@@ -1341,13 +1428,13 @@ for (const ending of ["cancel", "decline", "expired", "other", "choice", "empty-
                     }
                 }
                 assert(elicitation, "Expected an ACP form");
-                assertEquals(elicitation.params.requestedSchema.properties.answer.oneOf, [
+                assertEquals(elicitation.params!.requestedSchema!.properties.answer.oneOf, [
                     { const: "blue", title: "Blue" },
                     { const: "green", title: "Green" },
                     { const: "other", title: "Other" },
                 ]);
-                assertEquals(elicitation.params.requestedSchema.properties.otherAnswer.type, "string");
-                assertEquals(elicitation.params.requestedSchema.required, ["answer"]);
+                assertEquals(elicitation.params!.requestedSchema!.properties.otherAnswer.type, "string");
+                assertEquals(elicitation.params!.requestedSchema!.required, ["answer"]);
                 await sendMessage(handle, {
                     jsonrpc: "2.0",
                     id: elicitation.id,
@@ -1366,13 +1453,13 @@ for (const ending of ["cancel", "decline", "expired", "other", "choice", "empty-
                           : { result: { action: ending } }),
                 });
                 const settled = await readThroughResponse(handle, "question");
-                assertEquals(settled.response.result.stopReason, "end_turn");
+                assertEquals(settled.response.result!.stopReason, "end_turn");
                 assert(!settled.messages.some((message) => message.method === "elicitation/create"));
                 const interview = settled.messages.find(
                     (message) =>
                         message.params?.update?._meta?.runwield?.toolName === "user_interview" &&
                         message.params?.update?.rawOutput?.details,
-                )?.params.update.rawOutput.details;
+                )?.params!.update!.rawOutput!.details;
                 assert(interview, "The Agent must receive the interview result");
                 if (ending === "other") {
                     assertEquals(interview.status, "completed");
@@ -1383,7 +1470,7 @@ for (const ending of ["cancel", "decline", "expired", "other", "choice", "empty-
                 } else if (ending === "empty-other") {
                     assertEquals(interview.status, "validation_error");
                     assertEquals(interview.answeredCount, 0);
-                    assertEquals(interview.errors[0].code, "EMPTY_ANSWER");
+                    assertEquals(interview.errors![0].code, "EMPTY_ANSWER");
                 }
 
                 fixture.setModelResponse("The conversation is available again.");
@@ -1394,7 +1481,7 @@ for (const ending of ["cancel", "decline", "expired", "other", "choice", "empty-
                     params: { sessionId, prompt: [{ type: "text", text: "Continue normally" }] },
                 });
                 const followUp = await readThroughResponse(handle, "follow-up");
-                assertEquals(followUp.response.result.stopReason, "end_turn");
+                assertEquals(followUp.response.result!.stopReason, "end_turn");
                 assertStringIncludes(joinedAgentText(followUp.messages), "The conversation is available again.");
             } finally {
                 await closeTestServer(handle);
@@ -1417,12 +1504,12 @@ test("ACP /plan-review reports when this Session has no saved review", async () 
             });
             const result = await readThroughResponse(handle, "plan-review-command");
             assertStringIncludes(joinedAgentText(result.messages), "no previous Plan review");
-            assertEquals(result.response.result.stopReason, "end_turn");
+            assertEquals(result.response.result!.stopReason, "end_turn");
             await drainWorkflowMetrics();
             const rows = (await fsReadFile(getWorkflowMetricsFilePath(fixture.projectRoot), "utf8"))
                 .trim()
                 .split("\n")
-                .map((line) => JSON.parse(line))
+                .map((line): JsonRecord => JSON.parse(line))
                 .filter((row) => row.category === "command" && row.command === "plan-review");
             assertEquals(
                 rows.map((row) => [row.event, row.phase, row.outcome]),
@@ -1455,8 +1542,7 @@ test("ACP /plan-review returns the live Plan Review URL while the original promp
             return fauxAssistantMessage(fauxToolCall("plan_written", { planName: "acp-review" }));
         });
         const handle = startTestServer();
-        /** @type {string | undefined} */
-        let reviewUrl;
+        let reviewUrl: string | undefined;
         try {
             const { sessionId } = await createSession(handle, fixture.projectRoot);
             await sendMessage(handle, {
@@ -1465,7 +1551,7 @@ test("ACP /plan-review returns the live Plan Review URL while the original promp
                 method: "session/prompt",
                 params: { sessionId, prompt: [{ type: "text", text: "/agent planner" }] },
             });
-            assertEquals((await readThroughResponse(handle, "select-planner")).response.result.stopReason, "end_turn");
+            assertEquals((await readThroughResponse(handle, "select-planner")).response.result!.stopReason, "end_turn");
 
             await sendMessage(handle, {
                 jsonrpc: "2.0",
@@ -1493,14 +1579,14 @@ test("ACP /plan-review returns the live Plan Review URL while the original promp
                 params: { sessionId, prompt: [{ type: "text", text: "/plan-review" }] },
             });
             const result = await readThroughResponse(handle, "live-review-command");
-            assertEquals(result.response.result.stopReason, "end_turn");
+            assertEquals(result.response.result!.stopReason, "end_turn");
             assert(
                 !result.messages.some((message) => message.id === "original-review-turn"),
                 "Original prompt must still wait for review after /plan-review",
             );
             const link = result.messages.find(
                 (message) => message.params?.update?._meta?.runwield?.command === "plan-review",
-            )?.params.update;
+            )?.params!.update;
             assertEquals(link?._meta?.runwield?.reviewUrl, reviewUrl);
             assertStringIncludes(link?.content?.text || "", reviewUrl);
             assertEquals(
@@ -1523,13 +1609,13 @@ test("ACP /plan-review returns the live Plan Review URL while the original promp
             );
             assertEquals(decision.status, 200, await decision.text());
             const original = await readThroughResponse(handle, "original-review-turn");
-            assertEquals(original.response.result.stopReason, "end_turn");
+            assertEquals(original.response.result!.stopReason, "end_turn");
             assertEquals(modelTurns, 1);
             await drainWorkflowMetrics();
             const commandRows = (await fsReadFile(getWorkflowMetricsFilePath(fixture.projectRoot), "utf8"))
                 .trim()
                 .split("\n")
-                .map((line) => JSON.parse(line))
+                .map((line): JsonRecord => JSON.parse(line))
                 .filter((row) => row.category === "command" && row.command === "plan-review");
             assertEquals(
                 commandRows.map((row) => [row.event, row.outcome]),
@@ -1580,7 +1666,7 @@ test("ACP /plan-review does not replace a prompt whose response is still pending
             handle.releaseHeldResponse?.();
             const result = await readThroughResponse(handle, "review-while-busy");
             assertStringIncludes(joinedAgentText(result.messages), "busy with other work");
-            assertEquals(result.response.result.stopReason, "end_turn");
+            assertEquals(result.response.result!.stopReason, "end_turn");
             assert(
                 result.messages.some((message) => message.id === "original-turn"),
                 "Original prompt must finish.",
@@ -1589,7 +1675,7 @@ test("ACP /plan-review does not replace a prompt whose response is still pending
             const commandRows = (await fsReadFile(getWorkflowMetricsFilePath(fixture.projectRoot), "utf8"))
                 .trim()
                 .split("\n")
-                .map((line) => JSON.parse(line))
+                .map((line): JsonRecord => JSON.parse(line))
                 .filter((row) => row.category === "command" && row.command === "plan-review");
             assertEquals(
                 commandRows.map((row) => [row.event, row.phase, row.outcome]),
@@ -1629,12 +1715,12 @@ test("ACP /reload refreshes Runtime resources and advertised commands", async ()
                 (message) => message.params?.update?.sessionUpdate === "available_commands_update",
             );
             assert(catalogUpdate, JSON.stringify(result.messages));
-            const availableCommands = /** @type {{ name: string }[]} */ (catalogUpdate.params.update.availableCommands);
+            const availableCommands = catalogUpdate.params!.update!.availableCommands;
             assert(
-                availableCommands.some((command) => command.name === "after-reload"),
+                availableCommands!.some((command) => command.name === "after-reload"),
                 JSON.stringify(availableCommands),
             );
-            assertEquals(result.response.result.stopReason, "end_turn");
+            assertEquals(result.response.result!.stopReason, "end_turn");
         } finally {
             await closeTestServer(handle);
         }
@@ -1682,7 +1768,7 @@ test("ACP /agent remains a command when a Plan attachment is present", async () 
                 result: { action: "accept", content: { answer: "guide" } },
             });
             const result = await readThroughResponse(handle, "agent-attachment-command");
-            assertEquals(result.response.result.stopReason, "end_turn");
+            assertEquals(result.response.result!.stopReason, "end_turn");
             assertStringIncludes(JSON.stringify(result.messages), "Active agent: guide");
         } finally {
             await closeTestServer(handle);
@@ -1748,8 +1834,7 @@ test("ACP session/prompt resolves Prompt Template invocations through Core", asy
             join(promptDir, "acp-template.md"),
             ["---", "agent: operator", "---", "ACP expanded request for {{input}}"].join("\n"),
         );
-        /** @type {string[]} */
-        const modelRequests = [];
+        const modelRequests: string[] = [];
         fixture.setModelResponseFactory((context) => {
             modelRequests.push(JSON.stringify(context.messages));
             return fauxAssistantMessage(fauxText("named ACP response"));
@@ -1839,7 +1924,7 @@ test("ACP session/load replays a real persisted Session and accepts another prom
                         message.params?.update?.sessionUpdate === "agent_message_chunk",
                 ),
             );
-            const stablePersistedSessionId = loaded.response.result._meta.runwield.persistedSessionId;
+            const stablePersistedSessionId = loaded.response.result!._meta!.runwield!.persistedSessionId;
             assert(typeof stablePersistedSessionId === "string" && stablePersistedSessionId.length > 0);
             assert(stablePersistedSessionId !== created.persistedSessionId);
 
@@ -1850,7 +1935,7 @@ test("ACP session/load replays a real persisted Session and accepts another prom
                 params: { sessionId: created.sessionId, prompt: [{ type: "text", text: "continue with MCP" }] },
             });
             const continued = await readThroughResponse(secondHandle, "prompt-loaded");
-            assertEquals(continued.response.result.stopReason, "end_turn");
+            assertEquals(continued.response.result!.stopReason, "end_turn");
             assertEquals(sawLoadedMcpResultInTurn, true);
             assertStringIncludes(joinedAgentText(continued.messages), "continued fixture response");
             assertStringIncludes(await fsReadFile(logPath, "utf8"), '"marker":"acp-loaded"');
@@ -1901,20 +1986,21 @@ test("ACP steering reaches the running Agent once before the original prompt set
             assert(!admitted.messages.some((message) => message.id === "work"));
             held.resolve();
             const completed = await readThroughResponse(handle, "work");
-            assertEquals(completed.response.result.stopReason, "end_turn");
+            assertEquals(completed.response.result!.stopReason, "end_turn");
             assertStringIncludes(continuationInput, direction);
             const updates = [...admitted.messages, ...completed.messages].map((message) => message.params?.update);
             assertEquals(
                 updates.filter(
-                    (update) => update?.sessionUpdate === "user_message_chunk" && update.content.text === direction,
+                    (update) => update?.sessionUpdate === "user_message_chunk" && update.content!.text === direction,
                 ).length,
                 1,
             );
             const firstReply = updates.find(
-                (update) => update?.sessionUpdate === "agent_message_chunk" && update.content.text.includes("Starting"),
+                (update) =>
+                    update?.sessionUpdate === "agent_message_chunk" && update.content!.text!.includes("Starting"),
             );
             const secondReply = updates.find(
-                (update) => update?.sessionUpdate === "agent_message_chunk" && update.content.text.includes("Using"),
+                (update) => update?.sessionUpdate === "agent_message_chunk" && update.content!.text!.includes("Using"),
             );
             assert(firstReply?.messageId);
             assert(secondReply?.messageId);
@@ -1971,11 +2057,13 @@ test("ACP reports steering delivery failure without injecting rejected images", 
             assert(failed.error, JSON.stringify(failed));
             assertEquals(failed.result, undefined);
             held.resolve();
-            assertEquals((await readThroughResponse(handle, "work")).response.result.stopReason, "end_turn");
+            assertEquals((await readThroughResponse(handle, "work")).response.result!.stopReason, "end_turn");
             assertEquals(modelRequests, 1);
             assertEquals(
                 sessionUpdateFrames(handle, "user_message_chunk").filter(
-                    (frame) => JSON.parse(frame).params.update.content.text === "Rejected image direction.",
+                    (frame) =>
+                        (JSON.parse(frame) as AcpTestFrame).params!.update!.content!.text ===
+                        "Rejected image direction.",
                 ).length,
                 0,
             );
@@ -2022,11 +2110,11 @@ test("ACP idle steering requires a prompt without delivering or duplicating inpu
                 params: { sessionId, prompt },
             });
             const completed = await readThroughResponse(handle, "idle-prompt");
-            assertEquals(completed.response.result.stopReason, "end_turn");
+            assertEquals(completed.response.result!.stopReason, "end_turn");
             assertEquals(modelRequests, 1);
             assertEquals(
                 sessionUpdateFrames(handle, "user_message_chunk").filter(
-                    (frame) => JSON.parse(frame).params.update.content.text === prompt[0].text,
+                    (frame) => (JSON.parse(frame) as AcpTestFrame).params!.update!.content!.text === prompt[0].text,
                 ).length,
                 1,
             );
@@ -2116,7 +2204,7 @@ test("ACP rejects overlapping prompts and cancels the real in-flight Runtime tur
                 params: { sessionId: created.sessionId, prompt: [{ type: "text", text: "overlap" }] },
             });
             const overlap = await readThroughResponse(handle, "prompt-2");
-            assertEquals(overlap.response.error.code, -32002);
+            assertEquals(overlap.response.error!.code, -32002);
 
             await sendMessage(handle, {
                 jsonrpc: "2.0",
@@ -2142,14 +2230,14 @@ test("ACP rejects overlapping prompts and cancels the real in-flight Runtime tur
                 params: { sessionId: created.sessionId, prompt: [{ type: "text", text: "while cancel settles" }] },
             });
             const settlingOverlap = await readThroughResponse(handle, "prompt-3");
-            assertEquals(settlingOverlap.response.error.code, -32002);
+            assertEquals(settlingOverlap.response.error!.code, -32002);
             assertEquals(
                 settlingOverlap.messages.some((message) => message.id === "prompt-1"),
                 false,
             );
 
             const cancelled = await readThroughResponse(handle, "prompt-1", 10_000);
-            assertEquals(cancelled.response.result.stopReason, "cancelled");
+            assertEquals(cancelled.response.result!.stopReason, "cancelled");
             const cancelledFrame = framesMatching(handle, (message) => message.id === "prompt-1")[0];
             assert(cancelledFrame, "cancelled prompt response frame should be captured");
             assertAcpFrameSchema("PromptResponse", cancelledFrame, (message) => message.result);
@@ -2182,7 +2270,7 @@ test("ACP rejects overlapping prompts and cancels the real in-flight Runtime tur
                 params: { sessionId: created.sessionId, prompt: [{ type: "text", text: "after cancel" }] },
             });
             const resumed = await readThroughResponse(handle, "prompt-4", 1_000);
-            assertEquals(resumed.response.result.stopReason, "end_turn");
+            assertEquals(resumed.response.result!.stopReason, "end_turn");
             assertStringIncludes(joinedAgentText(resumed.messages), "turn after cancellation");
         } finally {
             await closeTestServer(handle);
@@ -2234,7 +2322,7 @@ test("ACP rejects a prompt sent before the Client receives the cancelled respons
             const overlap = await readThroughResponse(handle, "prompt-2", 10_000);
             const cancelled = overlap.messages.find((message) => message.id === 0);
             assertEquals(cancelled?.result?.stopReason, "cancelled");
-            assertEquals(overlap.response.error.code, -32002);
+            assertEquals(overlap.response.error!.code, -32002);
         } finally {
             await closeTestServer(handle);
         }
@@ -2269,10 +2357,10 @@ test("ACP streams exact current context usage from a real Runtime turn", async (
             assert(frames.length > 0, "a real turn should report usage");
             for (const frame of frames) {
                 assertAcpFrameSchema("SessionNotification", frame, (message) => message.params);
-                const update = JSON.parse(frame).params.update;
+                const update = (JSON.parse(frame) as AcpTestFrame).params!.update!;
                 assertEquals(Object.hasOwn(update, "cost"), false);
             }
-            const update = JSON.parse(frames[frames.length - 1]).params.update;
+            const update = (JSON.parse(frames[frames.length - 1]) as AcpTestFrame).params!.update!;
             assertEquals(update.used, 52_000);
             assertEquals(update.size, 128_000);
             assert(update.used !== latestInputTokens, "current context must not use the latest message input count");
@@ -2392,7 +2480,7 @@ test("ACP session/close disposes a real Runtime session and rejects later prompt
                 method: "session/close",
                 params: { sessionId: created.sessionId },
             });
-            assertEquals(closed.result._meta.runwield.closed, true);
+            assertEquals(closed.result!._meta!.runwield!.closed, true);
 
             const afterClose = await request(handle, {
                 jsonrpc: "2.0",
@@ -2400,7 +2488,7 @@ test("ACP session/close disposes a real Runtime session and rejects later prompt
                 method: "session/prompt",
                 params: { sessionId: created.sessionId, prompt: [{ type: "text", text: "nope" }] },
             });
-            assertEquals(afterClose.error.code, -32001);
+            assertEquals(afterClose.error!.code, -32001);
         } finally {
             await closeTestServer(handle);
         }
@@ -2437,7 +2525,7 @@ test("ACP validates new/load inputs and maps missing persisted Sessions", async 
                 method: "session/load",
                 params: { sessionId: "persisted-1", cwd: "relative", mcpServers: [] },
             });
-            assertEquals(badCwd.error.code, -32602);
+            assertEquals(badCwd.error!.code, -32602);
 
             const missing = await request(handle, {
                 jsonrpc: "2.0",
@@ -2445,7 +2533,7 @@ test("ACP validates new/load inputs and maps missing persisted Sessions", async 
                 method: "session/load",
                 params: { sessionId: "acp-missing", cwd: fixture.projectRoot, mcpServers: [] },
             });
-            assertEquals(missing.error.code, -32001);
+            assertEquals(missing.error!.code, -32001);
         } finally {
             await closeTestServer(handle);
         }
@@ -2470,8 +2558,8 @@ test("ACP session/load maps a persisted Session with no configured model to auth
                         _meta: { runwield: { sessionPath: persisted.transcriptPath } },
                     },
                 });
-                assertEquals(response.error.code, -32000);
-                assertStringIncludes(response.error.message, "login and default model setup");
+                assertEquals(response.error!.code, -32000);
+                assertStringIncludes(response.error!.message, "login and default model setup");
             } finally {
                 await closeTestServer(handle);
             }
@@ -2481,7 +2569,7 @@ test("ACP session/load maps a persisted Session with no configured model to auth
 });
 
 test("ACP event mapper forwards structured validation progress", () => {
-    const progress = /** @type {import('../shared/session/session-runtime-events.ts').RuntimeValidationProgress} */ ({
+    const progress = {
         kind: "workflow",
         outcome: "paused",
         stage: "engineer_repair",
@@ -2492,7 +2580,7 @@ test("ACP event mapper forwards structured validation progress", () => {
         maxRepairAttempts: 3,
         checks: { ci: "failed", semanticReview: "pending", humanReview: "pending", merge: "pending" },
         message: "Awaiting Engineer continuation.",
-    });
+    } as RuntimeValidationProgress;
     const update = mapRuntimeEventToAcpUpdate({
         type: "system_status",
         sessionId: "session-1",
@@ -2502,7 +2590,7 @@ test("ACP event mapper forwards structured validation progress", () => {
         level: "warning",
         validationProgress: progress,
     });
-    assertEquals(/** @type {any} */ (update)._meta?.runwield?.validationProgress, progress);
+    assertEquals((update as AcpTestUpdate)._meta?.runwield?.validationProgress, progress);
 });
 
 for (const [reply, expectedValue, expectedOther] of [
@@ -2560,7 +2648,7 @@ for (const [reply, expectedValue, expectedOther] of [
                     },
                 });
                 const question = await readThroughResponse(handle, 0);
-                assertEquals(question.response.result.stopReason, "end_turn");
+                assertEquals(question.response.result!.stopReason, "end_turn");
                 assertStringIncludes(joinedAgentText(question.messages), "Pick a color");
                 assertStringIncludes(joinedAgentText(question.messages), "1. Blue");
                 assert(!JSON.stringify(question.messages).includes("questionUrl"));
@@ -2575,15 +2663,15 @@ for (const [reply, expectedValue, expectedOther] of [
                     },
                 });
                 const completion = await readThroughResponse(handle, "answer");
-                assertEquals(completion.response.result.stopReason, "end_turn");
+                assertEquals(completion.response.result!.stopReason, "end_turn");
                 const result = completion.messages.find(
                     (message) =>
                         message.params?.update?._meta?.runwield?.toolName === "user_interview" &&
                         message.params?.update?.rawOutput?.details,
-                )?.params.update.rawOutput.details;
+                )?.params!.update!.rawOutput!.details;
                 assertEquals(result?.status, "completed");
-                assertEquals(result.answers[0].value, expectedValue);
-                assertEquals(result.answers[0].otherText, expectedOther);
+                assertEquals(result!.answers[0].value, expectedValue);
+                assertEquals(result!.answers[0].otherText, expectedOther);
                 assertStringIncludes(joinedAgentText(completion.messages), "Interview complete.");
             } finally {
                 await closeTestServer(handle);
@@ -2636,8 +2724,7 @@ test("ACP chat interview keeps one tool open across three answer requests and an
                 },
             });
             await readThroughResponse(handle, "agent");
-            /** @param {string} id @param {string} text */
-            const turn = async (id, text) => {
+            const turn = async (id: string, text: string) => {
                 await sendMessage(handle, {
                     jsonrpc: "2.0",
                     id,
@@ -2671,7 +2758,7 @@ test("ACP chat interview keeps one tool open across three answer requests and an
                 params: { sessionId, configId: "model", value: "runtime-command-fixture/fixture-model" },
             });
             const model = await readThroughResponse(handle, "model-during-interview");
-            assertEquals(model.response.error.code, -32002);
+            assertEquals(model.response.error!.code, -32002);
             const second = await turn("yes", "1");
             assertStringIncludes(joinedAgentText(second.messages), "Choose scope");
             const followUp = await turn("other", "Other");
@@ -2683,13 +2770,13 @@ test("ACP chat interview keeps one tool open across three answer requests and an
                 (message) =>
                     message.params?.update?._meta?.runwield?.toolName === "user_interview" &&
                     message.params?.update?.rawOutput?.details,
-            )?.params.update.rawOutput.details;
+            )?.params!.update!.rawOutput!.details;
             assertEquals(details?.status, "completed");
             assertEquals(
-                details.answers.map((/** @type {{ value: string | boolean }} */ answer) => answer.value),
+                details!.answers.map((answer) => answer.value),
                 [true, "other", "Keep the order.\nAnd preserve punctuation!"],
             );
-            assertEquals(details.answers[1].otherText, "Only APIs\nwith compatibility tests.");
+            assertEquals(details!.answers[1].otherText, "Only APIs\nwith compatibility tests.");
             assertStringIncludes(joinedAgentText(final.messages), "Finished three questions.");
         } finally {
             await closeTestServer(handle);
@@ -2753,7 +2840,7 @@ test("ACP interview reply cannot overtake a held question response", async () =>
             const response = await readThroughResponse(handle, 0);
             assertStringIncludes(joinedAgentText(response.messages), "Proceed?");
             const rejected = await readThroughResponse(handle, "too-early");
-            assertEquals(rejected.response.error.code, -32002);
+            assertEquals(rejected.response.error!.code, -32002);
             await sendMessage(handle, {
                 jsonrpc: "2.0",
                 id: "answer",
@@ -2858,7 +2945,7 @@ test("ACP duplicate load rejects an already mapped Session before it opens anoth
                     mcpServers: [],
                 },
             });
-            assertEquals(duplicate.error.code, -32002);
+            assertEquals(duplicate.error!.code, -32002);
             await sendMessage(handle, {
                 jsonrpc: "2.0",
                 id: "original",
@@ -2946,9 +3033,9 @@ test("ACP chat interview returns two ordered answers to one waiting model turn",
                 (message) =>
                     message.params?.update?._meta?.runwield?.toolName === "user_interview" &&
                     message.params?.update?.rawOutput?.details,
-            )?.params.update.rawOutput.details;
+            )?.params!.update!.rawOutput!.details;
             assertEquals(
-                details?.answers.map((/** @type {{ value: string | boolean }} */ answer) => answer.value),
+                details?.answers.map((answer) => answer.value),
                 [false, "Needs more time."],
             );
             assertStringIncludes(joinedAgentText(final.messages), "Both received.");
@@ -2989,7 +3076,7 @@ test("ACP interview cancellation during a blocked question write precedes its re
             await new Promise((resolve) => setTimeout(resolve, 50));
             handle.releaseHeldResponse?.();
             const { messages, response } = await readThroughResponse(handle, "ask", 1000);
-            assertEquals(response.result.stopReason, "cancelled");
+            assertEquals(response.result!.stopReason, "cancelled");
             assert(
                 messages.some((message) =>
                     String(message.params?.update?.content?.text || "").includes("Operation canceled."),
@@ -3039,7 +3126,7 @@ test("ACP session/delete archives a mapped Session and succeeds for repeated and
                 method: "session/prompt",
                 params: { sessionId: created.sessionId, prompt: [{ type: "text", text: "no" }] },
             });
-            assertEquals(after.error.code, -32001);
+            assertEquals(after.error!.code, -32001);
             const frame = framesMatching(handle, (message) => message.id === "delete-0")[0];
             assertAcpFrameSchema("DeleteSessionResponse", frame, (message) => message.result);
         } finally {
@@ -3146,7 +3233,7 @@ test("ACP session/delete cancels busy work and archives only after writer settle
             const result = await readThroughResponse(handle, "busy-delete", 10_000);
             assertEquals(result.response.result, {});
             const prompt = result.messages.find((message) => message.id === "busy-delete-prompt");
-            assertEquals(prompt?.result.stopReason, "cancelled");
+            assertEquals(prompt?.result!.stopReason, "cancelled");
             assertEquals(store.inspectSessionActivation(session.runwieldSessionId).activation?.state, "idle");
             assert(store.getSessionById(session.runwieldSessionId)?.archivedAt);
         } finally {
@@ -3166,8 +3253,7 @@ for (const mapped of [false, true]) {
             await withRuntimeCommandFixture("runwield-acp-delete-remote-", async (fixture) => {
                 const handle = startTestServer();
                 const store = openFileSessionStore();
-                /** @type {ReturnType<typeof createServer> | undefined} */
-                let socket;
+                let socket: ReturnType<typeof createServer> | undefined;
                 let proof;
                 let socketPath = "";
                 let stopped = () => {};
@@ -3199,7 +3285,7 @@ for (const mapped of [false, true]) {
                     socket = createServer(async (incoming, response) => {
                         let body = "";
                         for await (const chunk of incoming) body += chunk.toString();
-                        assertEquals(JSON.parse(body).action, "cancel");
+                        assertEquals((JSON.parse(body) as JsonRecord).action, "cancel");
                         response.setHeader("content-type", "application/json");
                         response.end(
                             JSON.stringify(
@@ -3261,8 +3347,7 @@ for (const mapped of [false, true]) {
     }
 }
 
-/** @param {TestServerHandle} handle @param {string} sessionId @param {string} text */
-async function chatPrompt(handle, sessionId, text) {
+async function chatPrompt(handle: TestServerHandle, sessionId: string, text: string) {
     const id = crypto.randomUUID();
     await sendMessage(handle, {
         jsonrpc: "2.0",
@@ -3275,8 +3360,7 @@ async function chatPrompt(handle, sessionId, text) {
     return result;
 }
 
-/** @param {string} projectRoot */
-async function saveChatMenuPlans(projectRoot) {
+async function saveChatMenuPlans(projectRoot: string) {
     for (const name of ["alpha", "beta"]) {
         await savePlan(projectRoot, name, `# ${name}\n\n## Objective\n\nTest ${name}.\n`, {
             classification: "PLANNED_CHANGE",
@@ -3453,7 +3537,7 @@ for (const cancellation of ["cancel", "session/cancel", "Cancel option"]) {
                 const rows = (await fsReadFile(metricsPath, "utf8"))
                     .trim()
                     .split("\n")
-                    .map((line) => JSON.parse(line))
+                    .map((line): JsonRecord => JSON.parse(line))
                     .filter((row) => row.command === "load-plan" && row.event === "command_finished");
                 assertEquals(
                     rows.map((row) => row.outcome),
@@ -3526,7 +3610,7 @@ test("ACP forms take priority over chat for load-plan", async () => {
                 }
             }
             assert(form);
-            assertEquals(form.params.message, "Load plan:");
+            assertEquals(form.params!.message, "Load plan:");
             await sendMessage(handle, { jsonrpc: "2.0", id: form.id, result: { action: "cancel" } });
             assertEquals((await readThroughResponse(handle, "load")).response.result?.stopReason, "end_turn");
         } finally {
@@ -3621,7 +3705,7 @@ test("ACP no-form model selection records opened and dispatched and changes the 
                     selected.messages.some(
                         (message) =>
                             message.params?.update?.sessionUpdate === "config_option_update" &&
-                            message.params.update.configOptions[0].currentValue ===
+                            message.params.update.configOptions![0].currentValue ===
                                 "runtime-command-fixture/alternate-model",
                     ),
                 );
@@ -3637,7 +3721,7 @@ test("ACP no-form model selection records opened and dispatched and changes the 
                 const rows = (await fsReadFile(getWorkflowMetricsFilePath(fixture.projectRoot), "utf8"))
                     .trim()
                     .split("\n")
-                    .map((line) => JSON.parse(line))
+                    .map((line): JsonRecord => JSON.parse(line))
                     .filter((row) => row.command === "model");
                 assertEquals(
                     rows.map((row) => [row.event, row.phase, row.outcome]),
@@ -3708,7 +3792,7 @@ test("ACP steering preserves the waiting chat question for the next prompt", asy
                 },
             });
             const question = await readThroughResponse(handle, 0);
-            assertEquals(question.response.result.stopReason, "end_turn");
+            assertEquals(question.response.result!.stopReason, "end_turn");
             assertStringIncludes(joinedAgentText(question.messages), "Pick a color");
             assertStringIncludes(joinedAgentText(question.messages), "1. Blue");
             assert(!JSON.stringify(question.messages).includes("questionUrl"));
@@ -3747,15 +3831,15 @@ test("ACP steering preserves the waiting chat question for the next prompt", asy
                 },
             });
             const completion = await readThroughResponse(handle, "answer");
-            assertEquals(completion.response.result.stopReason, "end_turn");
+            assertEquals(completion.response.result!.stopReason, "end_turn");
             const result = completion.messages.find(
                 (message) =>
                     message.params?.update?._meta?.runwield?.toolName === "user_interview" &&
                     message.params?.update?.rawOutput?.details,
-            )?.params.update.rawOutput.details;
+            )?.params!.update!.rawOutput!.details;
             assertEquals(result?.status, "completed");
-            assertEquals(result.answers[0].value, expectedValue);
-            assertEquals(result.answers[0].otherText, expectedOther);
+            assertEquals(result!.answers[0].value, expectedValue);
+            assertEquals(result!.answers[0].otherText, expectedOther);
             assertStringIncludes(joinedAgentText(completion.messages), "Interview complete.");
         } finally {
             await closeTestServer(handle);
@@ -3765,8 +3849,7 @@ test("ACP steering preserves the waiting chat question for the next prompt", asy
 
 test("ACP accumulates priced turns across transcript replay and a continued conversation", async () => {
     await withRuntimeCommandFixture("acp-cost-replay-", async (fixture) => {
-        /** @type {import('@earendil-works/pi-ai').ProviderStreams['streamSimple']} */
-        const stream = (model) => {
+        const stream: ProviderStreams["streamSimple"] = (model) => {
             const output = createAssistantMessageEventStream();
             const message = {
                 ...fauxAssistantMessage(fauxText("A priced answer.")),
@@ -3800,7 +3883,7 @@ test("ACP accumulates priced turns across transcript replay and a continued conv
                 const usage = result.messages
                     .filter((message) => message.params?.update?.sessionUpdate === "usage_update")
                     .at(-1);
-                assertEquals(usage?.params.update.cost, { amount: total, currency: "USD" });
+                assertEquals(usage?.params!.update!.cost, { amount: total, currency: "USD" });
             }
             await closeTestServer(handle);
             handle = startTestServer();
@@ -3816,7 +3899,7 @@ test("ACP accumulates priced turns across transcript replay and a continued conv
             const usage = next.messages
                 .filter((message) => message.params?.update?.sessionUpdate === "usage_update")
                 .at(-1);
-            assertEquals(usage?.params.update.cost, { amount: 0.75, currency: "USD" });
+            assertEquals(usage?.params!.update!.cost, { amount: 0.75, currency: "USD" });
             for (const frame of sessionUpdateFrames(handle, "usage_update")) {
                 assertAcpFrameSchema("SessionNotification", frame, (message) => message.params);
             }

@@ -18,7 +18,7 @@ import { createUiApi } from "./tui/api.ts";
 import { SpinnerBlock } from "./tui/blocks.ts";
 import { initRunWieldTheme } from "./theme/theme.ts";
 import { runScopedSubmitHandoffLoop } from "./tui/chat-session.ts";
-import { startRunWieldAcpServer } from "../acp/server.js";
+import { startRunWieldAcpServer } from "../acp/server.ts";
 
 interface NamedInvocationProfile {
     agentName?: string;
