@@ -57,10 +57,21 @@ const config = JSON.parse(await fsReadFile(configPath, "utf8")) as DriverConfig;
 const run = async () => {
     if (config.operation === "validate") {
         const { continueHostTurnValidation } = await import("../validation-host-turn.ts");
-        const result = await continueHostTurnValidation({
+        let result = await continueHostTurnValidation({
             projectRoot: config.projectRoot,
             planName: config.planName,
         });
+        if (result.kind === "host_request" && result.request.kind === "recorder") {
+            result = await continueHostTurnValidation({
+                projectRoot: config.projectRoot,
+                planName: config.planName,
+                resume: {
+                    kind: "recorder",
+                    identity: result.request.identity,
+                    sections: JSON.stringify({ title: "Delivered Epic", summary: "Retained terminal Epic input." }),
+                },
+            });
+        }
         if (result.kind !== "verified") throw new Error(JSON.stringify(result));
         return;
     }

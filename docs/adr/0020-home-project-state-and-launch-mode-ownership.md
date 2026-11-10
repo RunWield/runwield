@@ -72,9 +72,17 @@ metadata/family/Tickets and frozen optional delivery copies. Packages complete r
 settle matching personal receipts and release ownership before cleanup; no target metadata-only commit or repository
 Plan is required. Retained Recorder inputs survive code cleanup. Reusing the publication state machine avoids a second
 phase authority, and exact immutable inputs avoid treating a delivery copy as live state. ADR-016 qualifies its legacy
-Git-metadata rule for this internal case. Public selection/copy settings, canonical Work Record storage, managed-remote
+Git-metadata rule for this internal case. Public selection/copy settings, managed-remote
 transport and retention remain outside this contract. ADR-004 and ADR-017 qualify the accepted lifecycle/runtime
 decisions; the broader proposal below remains proposed.
+
+The internal Work Record contract now shares personal Project ownership with admitted packages. Explicit record
+admission also supports import/read/index without a Plan. Canonical Markdown and native mutation locks are independent
+of repository binding; private location evidence retains each binding's copies. A stable Project/personal-owner index
+can be rebuilt from canonical records after a move or clone link. General Memory namespaces do not move. Retained
+Recorder preparation supplies the existing single-commit publisher and keeps pending copy confidence distinct from
+proof-approved canonical confidence. These bounded choices are qualified in ADR-016; they do not activate the broader
+public or managed-remote proposal.
 
 ## Decision and Rationale
 

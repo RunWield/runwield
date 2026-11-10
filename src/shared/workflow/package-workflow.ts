@@ -1,3 +1,4 @@
+import { withWorkRecordOwner } from "../work-records/owner.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { validationCheckpointCanResume } from "./validation-checkpoint.ts";
 import { journalPackageMetadataWrite } from "./state-transition.ts";
@@ -157,7 +158,7 @@ export async function withPackageWorkflow<T>(
             throw new LegacyPackageContinuation(selection.identity.checkoutRoot, attempt.planName, attempt.id);
         }
     }
-    return await sources.run({ selection }, run);
+    return await withWorkRecordOwner(cwd, selection.identity, () => sources.run({ selection }, run));
 }
 
 interface PackagePlanIdentity {

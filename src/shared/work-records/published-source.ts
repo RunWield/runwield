@@ -6,6 +6,7 @@ import {
     readPlanPackagePublication,
     samePackagePublicationReference,
     type PackagePublicationReference,
+    type PackageDeliveryReceipt,
 } from "../plan-package-store.ts";
 import {
     currentPackageSelection,
@@ -13,6 +14,7 @@ import {
     selectedPackage,
     updatePackageWorkflowMetadata,
 } from "../workflow/package-workflow.ts";
+import { isCommitPublishedToTarget } from "../isolated-publication.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { effectiveDeliveryBranch } from "../workflow/plan-branch.ts";
 /** Immutable recording input retained after delivery removes the execution worktree. */
@@ -66,6 +68,15 @@ export async function retainPublishedWorkRecordSource(
         if (!selection) throw new Error("Recording source retention requires admitted package ownership.");
         const owner = await readPlanPackage(selection.identity, { planId: workRecordOwner.planId });
         if (owner.kind !== "loaded") throw new Error(owner.message);
+        const newerAttempt = owner.metadata.workflow?.attempt;
+        const newerSource = owner.metadata.workflow?.recordingSource;
+        if (
+            (newerAttempt && newerAttempt.attemptId !== attempt.packageInput.attemptId) ||
+            (newerSource &&
+                newerSource.attemptId !== attempt.packageInput.attemptId &&
+                !samePackagePublicationReference(owner.metadata.workflow?.delivery?.source, attempt.packageInput))
+        )
+            return;
         if (!samePackagePublicationReference(owner.metadata.workflow?.recordingSource, attempt.packageInput))
             await updatePackageWorkflowMetadata({ planId: workRecordOwner.planId }, {}, undefined, {
                 recordingSource: attempt.packageInput,
@@ -219,7 +230,9 @@ export async function readPublishedRecordMarkdown(
         if (inspected.kind !== "existing") throw new Error("Recording owner is unavailable.");
         await packageDeliverySources(root, attempt.packageInput, true);
         const manifest = await readPlanPackagePublication(inspected.identity, attempt.packageInput);
-        return manifest.copies.find((copy) => copy.kind === "work-record" && copy.path === path)?.text || null;
+        return manifest.preparedRecord?.path === path
+            ? manifest.preparedRecord.text
+            : manifest.copies.find((copy) => copy.kind === "work-record" && copy.path === path)?.text || null;
     }
     try {
         return await git(root, ["show", `${attempt.publishedCommit}:${path}`]);
@@ -228,12 +241,11 @@ export async function readPublishedRecordMarkdown(
     }
 }
 
-/** Retained source is addressable without execution/Git copies and never materializes a Plan. */
-async function packageDeliverySources(
+/** Match retained receipts, including a prior delivery preserved by a newer attempt. */
+async function packageRecordingReceipt(
     root: string,
     reference: PackagePublicationReference,
-    confirmed: boolean,
-): Promise<PublishedDeliverySources> {
+): Promise<PackageDeliveryReceipt | undefined> {
     const inspected = inspectProjectIdentity(root);
     if (inspected.kind !== "existing") throw new Error("Recording owner is unavailable.");
     const manifest = await readPlanPackagePublication(inspected.identity, reference);
@@ -256,6 +268,37 @@ async function packageDeliverySources(
         receipt &&
         receipt.validatedCommit === manifest.validatedCommit &&
         receipt.targetBranch === manifest.targetBranch;
+    return proved ? receipt : undefined;
+}
+
+/** Deliberate retry rechecks the publication authority before changing canonical confidence. */
+export async function verifyPackageRecordingDelivery(
+    root: string,
+    reference: PackagePublicationReference,
+): Promise<void> {
+    const receipt = await packageRecordingReceipt(root, reference);
+    if (!receipt) throw new Error("Retained source has no matching delivery receipt.");
+    if (
+        receipt.mode !== "non_git_in_place" &&
+        !(await isCommitPublishedToTarget({
+            projectRoot: root,
+            targetBranch: receipt.targetBranch,
+            commit: receipt.publishedCommit,
+        }))
+    )
+        throw new Error("The retained recording delivery is not confirmed by the publication target.");
+}
+
+/** Retained source is addressable without execution/Git copies and never materializes a Plan. */
+async function packageDeliverySources(
+    root: string,
+    reference: PackagePublicationReference,
+    confirmed: boolean,
+): Promise<PublishedDeliverySources> {
+    const inspected = inspectProjectIdentity(root);
+    if (inspected.kind !== "existing") throw new Error("Recording owner is unavailable.");
+    const manifest = await readPlanPackagePublication(inspected.identity, reference);
+    const proved = await packageRecordingReceipt(root, reference);
     if (confirmed && !proved) throw new Error("Retained source has no matching delivery receipt.");
     const sources: WorkRecordSource[] = [];
     const name = (id: string) => manifest.members.find((member) => member.metadata.planId === id)?.metadata.name || id;
@@ -285,8 +328,24 @@ async function packageDeliverySources(
                 status: (delivered || completedParent) && proved ? "verified" : metadata.definition.status,
             } as import("../../plan-store.js").PlanFrontMatter,
         });
-        source.pendingPublication = delivered && !proved;
-        source.relativePath = `package:${metadata.planId}`;
+        const recordingOwnerId =
+            manifest.members.find((item) => item.metadata.planId === manifest.planId)?.metadata.parentPlanId ||
+            manifest.planId;
+        if (manifest.recordingOutcome && metadata.planId === recordingOwnerId)
+            source.attrs.workRecord = manifest.recordingOutcome;
+        if (manifest.preparedRecord) {
+            const { parseWorkRecordMarkdown } = await import("./markdown.js");
+            const record = parseWorkRecordMarkdown(manifest.preparedRecord.text);
+            if (record.attrs.provenance?.sourcePlans?.includes(metadata.planId))
+                source.attrs.workRecord = {
+                    status: "generated",
+                    recordId: record.attrs.recordId,
+                    path: manifest.preparedRecord.path,
+                };
+        }
+        source.pendingPublication = (delivered || completedParent) && !proved;
+        source.relativePath = source.path;
+        source.recordingAttemptId = reference.attemptId;
         sources.push(source);
     }
     const family = attachEpicChildren(sources);
@@ -297,6 +356,11 @@ async function packageDeliverySources(
     return {
         delivered,
         workRecordOwner:
-            owner && (!isChildFeaturePlan(delivered) || isTerminalWorkRecordParent(owner.attrs)) ? owner : undefined,
+            owner &&
+            (!isChildFeaturePlan(delivered) ||
+                isTerminalWorkRecordParent(owner.attrs) ||
+                (!confirmed && owner.pendingPublication && owner.attrs.epicCompletionMode === "done_enough"))
+                ? owner
+                : undefined,
     };
 }

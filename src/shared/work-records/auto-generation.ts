@@ -1,3 +1,8 @@
+import { generatePreparedPackageRecord, settlePreparedPackageRecord } from "./package-recording.ts";
+import { findWorkRecordById } from "./store.ts";
+import { readPublishedDeliverySources, verifyPackageRecordingDelivery } from "./published-source.ts";
+import { selectedPackage } from "../workflow/package-workflow.ts";
+import { readPlanPackagePublication } from "../plan-package-store.ts";
 import { readPlanPackage } from "../plan-package-store.ts";
 import { currentPackageSelection, withPackageWorkflow } from "../workflow/package-workflow.ts";
 /**
@@ -182,16 +187,61 @@ async function generateTargetedWorkRecord(
     { cwd, planName, mnemotecaPort, signal, pendingPublication, runRecorderStep }: AutoGenerateWorkRecordArgs,
     automatic: boolean,
 ): Promise<WorkRecordAutoGenerationResult> {
-    if (automatic && !shouldAutoGenerateWorkRecordsOnPlanCompletion(cwd)) {
+    const selection = currentPackageSelection();
+    const selected = selection ? await selectedPackage(planName) : null;
+    const preparation = automatic && pendingPublication ? selected?.metadata.workflow?.recordingPreparation : undefined;
+    const retained = preparation ? await readPlanPackagePublication(selection!.identity, preparation) : null;
+    if (
+        automatic &&
+        !(retained ? retained.autoGenerateRecords !== false : shouldAutoGenerateWorkRecordsOnPlanCompletion(cwd))
+    ) {
         return withMessage({ status: "disabled", planName, message: "" });
     }
 
     try {
         const { loadPublishedWorkRecordSource } = await import("./published-source.ts");
+        const publishedReference = !automatic
+            ? selected?.metadata.workflow?.recordingSource || selected?.metadata.workflow?.delivery?.source
+            : undefined;
+        if (publishedReference) {
+            // Loading the retained source first verifies its matching receipt before any canonical mutation.
+            await verifyPackageRecordingDelivery(cwd, publishedReference);
+            await loadPublishedWorkRecordSource(cwd, planName);
+            const manifest = await readPlanPackagePublication(selection!.identity, publishedReference);
+            if (manifest.preparedRecord) {
+                const indexWarning = await settlePreparedPackageRecord(cwd, manifest, mnemotecaPort);
+                const record = await import("./markdown.js").then((module) =>
+                    module.parseWorkRecordMarkdown(manifest.preparedRecord!.text),
+                );
+                return withMessage({
+                    status: "linked",
+                    planName,
+                    recordId: record.attrs.recordId,
+                    path: (await findWorkRecordById(cwd, record.attrs.recordId))!.path,
+                    indexWarning,
+                    message: "",
+                });
+            }
+        }
+
         const published = automatic ? null : await loadPublishedWorkRecordSource(cwd, planName);
-        const resolved = published
-            ? { source: published, targetPlanName: published.name }
-            : await resolveTargetedWorkRecordSource(cwd, planName, automatic && pendingPublication);
+        const frozen = preparation
+            ? await readPublishedDeliverySources(cwd, {
+                  packageInput: preparation,
+                  planName,
+                  planId: preparation.planId,
+                  phase: "candidate_sealed",
+              })
+            : null;
+        const resolved = frozen
+            ? {
+                  source: frozen.workRecordOwner,
+                  targetPlanName: frozen.workRecordOwner?.name,
+                  skipReason: "parent_not_terminal",
+              }
+            : published
+              ? { source: published, targetPlanName: published.name }
+              : await resolveTargetedWorkRecordSource(cwd, planName, automatic && pendingPublication);
         if (!resolved.source) {
             return withMessage({
                 status: "skipped",
@@ -208,7 +258,10 @@ async function generateTargetedWorkRecord(
         // Eligibility alone does not need existing records; generation reconciles them.
         const evaluated = evaluateWorkRecordSource({
             ...resolved.source,
-            pendingPublication: Boolean(automatic && pendingPublication && resolved.source.attrs.status === "reviewed"),
+            ...(preparation ? { attrs: { ...resolved.source.attrs, workRecord: undefined } } : {}),
+            pendingPublication: Boolean(
+                automatic && pendingPublication && (preparation || resolved.source.attrs.status === "reviewed"),
+            ),
         });
         if (evaluated.skipReason) {
             return withMessage({
@@ -221,12 +274,13 @@ async function generateTargetedWorkRecord(
         }
 
         const generate = () =>
-            generateWorkRecordForSource(sourceRoot, evaluated, {
-                mnemotecaPort,
-                signal,
-                runRecorderStep,
-            });
-        const selection = currentPackageSelection();
+            preparation || publishedReference
+                ? generatePreparedPackageRecord(sourceRoot, evaluated, (preparation || publishedReference)!.attemptId, {
+                      mnemotecaPort,
+                      signal,
+                      runRecorderStep,
+                  })
+                : generateWorkRecordForSource(sourceRoot, evaluated, { mnemotecaPort, signal, runRecorderStep });
         let outcome;
         if (selection) {
             const owner = await readPlanPackage(selection.identity, { planId: evaluated.planId });

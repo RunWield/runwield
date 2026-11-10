@@ -1,5 +1,5 @@
 import { currentPackageSelection } from "./package-workflow.ts";
-import { preparePackageCopies, settlePackageInPlace } from "./package-publication.ts";
+import { preparePackageCopies, settlePackageInPlace, sealPackagePublication } from "./package-publication.ts";
 import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { ProjectRuntimeReadPendingError } from "../project-runtime-layout.ts";
 import { stat as fsStat } from "node:fs/promises";
@@ -352,7 +352,12 @@ async function runLockedPublicationPhase(
             ...humanReviewMetadata,
         });
         if (currentPackageSelection()) {
-            await settlePackageInPlace(args.planName);
+            const selected = await import("./package-workflow.ts").then((module) =>
+                module.selectedPackage(args.planName),
+            );
+            await sealPackagePublication(args.planName, selected.metadata.workflow!.attempt!.attemptId, "", "", true);
+            await runPostVerificationHandoffs(args, context.executionCwd || context.projectRoot, true);
+            await settlePackageInPlace(args.planName, args.workRecordMnemotecaPort);
             return { recorded: true, result: await buildVerifiedResult(args, context.projectRoot) };
         }
         if (args.hostTurn) {
@@ -724,6 +729,10 @@ async function runLockedPublicationPhase(
                         },
                     },
                 });
+            if (currentPackageSelection()) {
+                await sealPackagePublication(args.planName, worktreeId, candidate.executionCommit, targetBranch, true);
+                await runPostVerificationHandoffs(args, context.executionCwd, true);
+            }
             publicationAttempt = await startPublicationAttempt({
                 projectRoot: context.projectRoot,
                 attemptId: worktreeId,
@@ -950,7 +959,7 @@ export async function runPostVerificationHandoffs(
     projectRoot: string,
     pendingPublication = false,
 ): Promise<void> {
-    if (!isPlannedChangeClassification(args.triageMeta?.classification)) return;
+    if (!isPlannedChangeClassification(args.triageMeta?.classification) && !currentPackageSelection()) return;
     if (args.hostTurn) return await runHostRecorder(args, projectRoot, pendingPublication);
     await args.session.runPostVerificationHandoffs({
         planName: args.planName,

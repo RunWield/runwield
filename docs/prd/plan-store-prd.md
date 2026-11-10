@@ -327,10 +327,10 @@ accident.
 
 ### Repository footprint and delivery copies
 
-**Scope and maturity:** The explicit internal package contract currently freezes optional Plan copies (default off)
-and accepts prepared Work Record payloads in one artifacts-only commit. Proven unchanged prior copies can be replaced;
-unchanged payloads need no empty commit. Public independent settings, automatic package
-Work Record generation/defaults and copy cleanup remain target. Changes
+**Scope and maturity:** Explicit internal package validation prepares canonical Work Records and freezes independent
+Plan-off/record-on copy settings. Enabled Markdown shares one artifacts-only commit; empty payloads need none.
+The canonical record is approved only after proof; its repository copy preserves pending preparation confidence.
+Public settings/admission and copy cleanup remain target. Changes
 [Keep Project Runtime State out of repository changes](runwield-core-prd.md#work-protection).
 
 **Requirement: Plan and Work Record copies have separate project settings.** Each project has one setting for Plan
@@ -373,9 +373,11 @@ is used only to tidy up when the item is pruned.
 
 ### Work Record store
 
-**Scope and maturity:** Canonical persistence remains target. The current internal package publication contract retains
-exact Recorder documents, metadata and family/Ticket inputs independently of code cleanup. Changes [Work records](runwield-core-prd.md#work-records), which today calls them
-repository-owned.
+**Scope and maturity:** Explicit internal admission now selects personal Project Work Record persistence, import and
+stable derived retrieval alongside default delivery copies. Import preserves original bytes/status and durable location
+provenance; same-ID conflicting content refuses. Ordinary public commands remain repository-owned until activation.
+Managed-remote transport and retention remain target. The owning confidence and recovery contract is
+[Work records](runwield-core-prd.md#work-records).
 
 **Requirement: Work Records live in the store.** RunWield writes, lists, searches, and retrieves Work Records from the
 project's store, alongside its Plans. Their identity, links, completion labels, and retrieval rules are unchanged. The

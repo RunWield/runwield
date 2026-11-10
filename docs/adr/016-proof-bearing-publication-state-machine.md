@@ -42,7 +42,20 @@ publication skips the legacy target lifecycle-metadata commit. Fresh Git proof c
 copy bytes, then an atomic package write settles receipt/status and releases the attempt guard before registry pruning.
 The manifest remains Recorder authority after code cleanup, including after live edits or rename. Missing or foreign
 inputs are recoverable refusals, never permission to substitute repository documents. This bounded contract does not
-activate public package selection/copy settings, canonical Work Record storage, remote transport or pruning.
+activate public package selection/copy settings, remote transport or pruning.
+
+For admitted packages, Recorder preparation is a separately retained input to that same publisher. Source and copy
+policy are frozen before the turn; accepted sections and record identity become durable before the final manifest.
+This separation lets ordinary and Attached recording resume without another turn or newer live Plan input. Canonical
+records, native mutation locks, location provenance and the derived index share explicit personal Project ownership;
+Project-level import does not need a dummy Plan. Basename namespaces and repository fallback would create a second
+authority, so neither participates in admitted retrieval.
+
+Default Work Record copies carry pending preparation confidence. Matching fresh publication proof settles the canonical
+record and its relationships, preserving body bytes and later edits, without another repository commit. Imports retain
+that confidence and do not stand in for proof. Recorder failure leaves the retained source for a post-delivery retry;
+a successful late retry creates canonical memory only. Version-1 manifests without recording policy retain their original
+payload and do not acquire default copies retroactively.
 
 Runtime checkpoints, receipts, and index retry state remain outside Plan Markdown. Legacy target verified status is
 portable in Git; a package's verified state lives in its personal metadata. The controller receipt supports recovery. Reopening for review or starting a new
