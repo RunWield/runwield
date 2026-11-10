@@ -29,6 +29,7 @@ dependencies:
 targetBranch: "epic/external-plan-store"
 userVerifiedAt: null
 status: "reviewed"
+validatedCommit: "fc51064e129d41152488150c6723ceb6e79c3fce"
 ---
 
 # Move Work Records with Delivery Copies
