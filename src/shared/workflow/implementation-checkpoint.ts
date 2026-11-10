@@ -2,7 +2,7 @@
 import { getPlanRevisionForText, loadPlan } from "../../plan-store.js";
 import { checkpointExecutionWorktree } from "../worktree.js";
 import { acknowledgeTaskCompletion, claimPendingTaskCompletion } from "../session/task-completion-session.ts";
-import { updateEntry as updateWorktreeRegistryEntry } from "../worktree-registry.js";
+import { updateEntry as updateWorktreeRegistryEntry } from "../worktree-registry.ts";
 import { isInValidation, recordPlanEvent } from "./plan-lifecycle.ts";
 import { restoreExecutionPlanFromBaseline } from "./execution-plan-file.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";

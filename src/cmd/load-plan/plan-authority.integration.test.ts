@@ -7,7 +7,7 @@ import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { runLoadPlanCommand } from "./index.ts";
 import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
-import { addEntry, findById } from "../../shared/worktree-registry.js";
+import { addEntry, findById } from "../../shared/worktree-registry.ts";
 import { git } from "../../shared/git-test-fixture.ts";
 import { resolveValidationExecutionContext } from "../../shared/workflow/execution-context.ts";
 import type { UiAPI } from "../../ui/tui/api.ts";

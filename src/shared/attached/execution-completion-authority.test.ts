@@ -4,7 +4,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { loadPlan, withPlanLock } from "../../plan-store.js";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
-import { findById } from "../worktree-registry.js";
+import { findById } from "../worktree-registry.ts";
 import { runOperation, withProject } from "./attached-test-fixture.ts";
 import { completionInput, implementing } from "./execution-test-fixture.ts";
 

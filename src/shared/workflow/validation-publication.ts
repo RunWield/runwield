@@ -36,7 +36,7 @@ import { resolveTargetedWorkRecordSource } from "../work-records/auto-generation
 import { findEpicManualQaSection } from "../epic-artifacts.ts";
 import { checkpointExecutionWorktree, resolveTargetBranchName } from "../worktree.js";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
-import { findById as findWorktreeRegistryEntryById } from "../worktree-registry.js";
+import { findById as findWorktreeRegistryEntryById } from "../worktree-registry.ts";
 import { ensureRunWieldOwnedGitignoreBlock } from "../runwield-owned-paths.ts";
 import { stageValidationPassedInExecutionWorktree } from "./plan-lifecycle.ts";
 import { shouldContinueParentEpicAfterValidation } from "./validation-scope.ts";

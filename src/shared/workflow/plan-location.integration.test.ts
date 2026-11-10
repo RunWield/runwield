@@ -29,8 +29,8 @@ import {
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { readControllerRecord, writeControllerState } from "./controller-registry.ts";
-import { findById, getWorktreeRegistryPath, pruneEntry } from "../worktree-registry.js";
-import { addEntry } from "../worktree-registry.js";
+import { findById, getWorktreeRegistryPath, pruneEntry } from "../worktree-registry.ts";
+import { addEntry } from "../worktree-registry.ts";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 import { recordPlanEvent } from "./plan-lifecycle.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";

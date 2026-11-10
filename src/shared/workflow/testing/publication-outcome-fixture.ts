@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { mergeFrontMatterText, savePlan } from "../../../plan-store.js";
 import { publishExecutionWorktreeIsolated } from "../../isolated-publication.ts";
 import { defineGitFixture, git } from "../../git-test-fixture.ts";
-import { addEntry } from "../../worktree-registry.js";
+import { addEntry } from "../../worktree-registry.ts";
 import { advanceStoredPublication, startPublicationAttempt } from "../publication-machine.ts";
 
 const repository = defineGitFixture(async (root) => {

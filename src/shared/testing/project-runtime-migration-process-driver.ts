@@ -11,7 +11,7 @@ import {
     migrateLegacyProjectRuntimeState,
     resolveProjectRuntimeLayout,
 } from "../project-runtime-layout.ts";
-import { withWorktreeRegistryLockAtPath } from "../worktree-registry.js";
+import { withWorktreeRegistryLockAtPath } from "../worktree-registry.ts";
 
 interface LegacyPlanLockRecord {
     token: string;

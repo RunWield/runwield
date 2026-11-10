@@ -46,7 +46,7 @@ import {
     prepareWorktreeRegistry,
     pruneEntry,
     reconcileEntryIdentity,
-} from "../../shared/worktree-registry.js";
+} from "../../shared/worktree-registry.ts";
 import { isEpicArtifactPlanName } from "../../shared/epic-artifacts.ts";
 import {
     inspectTargetBranchPlansByParent,

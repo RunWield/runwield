@@ -311,7 +311,7 @@ for (const conflict of ["live-attempt", "candidate", "target", "delivery-candida
     test(`historical receipt does not complete a Plan with a different ${conflict}`, async () => {
         const root = await fixture.checkout();
         try {
-            const { addEntry } = await import("./shared/worktree-registry.js");
+            const { addEntry } = await import("./shared/worktree-registry.ts");
             const receipt = { validatedCommit: "a".repeat(40), publishedCommit: "b".repeat(40), targetBranch: "main" };
             const extra =
                 conflict === "candidate"
@@ -372,7 +372,7 @@ for (const invalid of ["directory", "foreign-repository", "symlink", "document-s
         const root = await fixture.checkout();
         const foreign = await fixture.checkout();
         try {
-            const { addEntry } = await import("./shared/worktree-registry.js");
+            const { addEntry } = await import("./shared/worktree-registry.ts");
             const { resolveWorkflowPlanLocation } = await import("./shared/workflow/plan-location.ts");
             const { preparePlanController } = await import("./shared/workflow/plan-preparation.ts");
             const { assertAuthorizedPlanPath } = await import("./ui/workspace/server/project-artifacts.ts");
@@ -477,7 +477,7 @@ for (const proof of ["matching", "candidate", "published", "target"] as const) {
     test(`confirmed publication proof matches the durable receipt: ${proof}`, async () => {
         const root = await fixture.checkout();
         try {
-            const { addEntry } = await import("./shared/worktree-registry.js");
+            const { addEntry } = await import("./shared/worktree-registry.ts");
             const { createPublicationAttempt } = await import("./shared/workflow/publication-attempt.ts");
             const path = join(root, "execution");
             await git(root, ["worktree", "add", "-b", "execution", path]);

@@ -16,7 +16,7 @@ import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "../../shared/s
 import { SESSION_COMPLETE_GUIDANCE } from "../../shared/workflow/plan-review-recovery.ts";
 import { createPlanWrittenTool, type PlanWrittenToolResult, type TriageMeta } from "../plan-written.ts";
 import { getStoredPlanPath, loadPlan } from "../../plan-store.js";
-import { addEntry as addRegistryEntry } from "../../shared/worktree-registry.js";
+import { addEntry as addRegistryEntry } from "../../shared/worktree-registry.ts";
 import { join } from "node:path";
 import type {
     RuntimeInteractionRequest,

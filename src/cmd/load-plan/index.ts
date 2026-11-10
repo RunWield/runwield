@@ -1,4 +1,4 @@
-import { prepareWorktreeRegistry } from "../../shared/worktree-registry.js";
+import { prepareWorktreeRegistry } from "../../shared/worktree-registry.ts";
 import process from "node:process";
 import {
     confirmMissingManagedProjectDirectory,

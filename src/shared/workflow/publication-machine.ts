@@ -18,7 +18,7 @@ import { canonicalizeStoredPlanName, isChildFeaturePlan, parsePlanFrontMatter } 
 import { isTerminalWorkRecordParent } from "../work-records/auto-generation.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { resolveProjectRoot } from "../project-checkout.ts";
-import { findById, pruneEntry, updatePublication } from "../worktree-registry.js";
+import { findById, pruneEntry, updatePublication } from "../worktree-registry.ts";
 import { existingPublicationSavedFiles, preserveUnregisteredPublicationFiles } from "./publication-leftover-files.ts";
 import {
     deleteMergedWorktreeBranch,

@@ -14,7 +14,7 @@ import {
     getTransitionJournalPath,
     listTransitionRecoveryRecords,
 } from "../workflow/state-transition.ts";
-import { findById, listEntries, updateEntry } from "../worktree-registry.js";
+import { findById, listEntries, updateEntry } from "../worktree-registry.ts";
 import {
     EVIDENCE,
     reachPlanning,

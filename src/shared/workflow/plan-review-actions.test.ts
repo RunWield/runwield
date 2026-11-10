@@ -12,7 +12,7 @@ import {
     parsePlanFrontMatter,
     savePlan,
 } from "../../plan-store.js";
-import { addEntry as addRegistryEntry, findById as findRegistryEntryById } from "../worktree-registry.js";
+import { addEntry as addRegistryEntry, findById as findRegistryEntryById } from "../worktree-registry.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { applySharedPlanReviewDecision } from "./plan-review-actions.ts";
 import type { PlanFrontMatter } from "../../plan-store.js";
@@ -20,7 +20,7 @@ import { HostedSession } from "../session/hosted-session.js";
 import { startActiveExecutionWorkflow } from "./workflow.ts";
 import { createExecutionStartPorts } from "./execution-start.ts";
 import { recordPlanEvent } from "./plan-lifecycle.ts";
-import { listEntries, updateEntry } from "../worktree-registry.js";
+import { listEntries, updateEntry } from "../worktree-registry.ts";
 import { findReusableWorktree } from "../worktree.js";
 
 interface PlanReviewFixture {

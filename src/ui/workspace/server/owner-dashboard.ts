@@ -2,7 +2,7 @@ import type { PlanReadAvailability } from "../../../plan-store.js";
 /** @module ui/workspace/server/owner-dashboard */
 
 import { compareChildPlansByOrder, isSequencePlan } from "../../../plan-store.js";
-import { findByPlanId, findByPlanIds, type WorktreeRegistryEntry } from "../../../shared/worktree-registry.js";
+import { findByPlanId, findByPlanIds, type WorktreeRegistryEntry } from "../../../shared/worktree-registry.ts";
 import { loadPlanActionEvidence } from "../../../shared/workflow/plan-actions.ts";
 import { loadPlanSummaries, loadPlanSummaryCatalog } from "./plan-adapter.js";
 import type { OwnerProjectHealth, OwnerProjectRecord, OwnerProjectView } from "./owner-projects.ts";

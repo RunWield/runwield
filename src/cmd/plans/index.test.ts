@@ -10,7 +10,7 @@ import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { loadArchivedPlan, loadPlan, savePlan } from "../../plan-store.js";
 import { runPlansCommand } from "./index.ts";
-import { addEntry } from "../../shared/worktree-registry.js";
+import { addEntry } from "../../shared/worktree-registry.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { join } from "node:path";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";

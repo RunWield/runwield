@@ -19,7 +19,7 @@ import {
 import { captureForegroundProcess } from "../captured-process.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
-import { findById } from "../worktree-registry.js";
+import { findById } from "../worktree-registry.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
 import process from "node:process";
 import type { AttachedNextAction, AttachedOperationResult } from "./operations.ts";

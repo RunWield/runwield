@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { getHomeDir } from "../../constants.ts";
 import { dirname } from "node:path";
-import { getWorktreeRegistryPath, withWorktreeRegistryLock } from "../../shared/worktree-registry.js";
+import { getWorktreeRegistryPath, withWorktreeRegistryLock } from "../../shared/worktree-registry.ts";
 import { makeManagedSessionFixture, readTranscriptEvidence } from "../../testing/managed-session-fixture.ts";
 import { savePlan } from "../../plan-store.js";
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";

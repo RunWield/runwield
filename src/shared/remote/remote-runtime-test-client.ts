@@ -31,7 +31,7 @@ import { appendExecutionWorkflowSnapshot } from "../session/execution-workflow-s
 import { runResumeCommand } from "../../cmd/resume/index.ts";
 import { requestLocalReviewInteraction } from "../session/local-review-interactions.ts";
 import { resolveWorkflowPlanLocation } from "../workflow/plan-location.ts";
-import { listEntries } from "../worktree-registry.js";
+import { listEntries } from "../worktree-registry.ts";
 import { reconcileStoredPublication } from "../workflow/publication-machine.ts";
 import { loadPlan } from "../../plan-store.js";
 import { continueWorkflowValidation } from "../workflow/validation.ts";

@@ -11,7 +11,7 @@ import { stat as fsStat } from "node:fs/promises";
  */
 
 import { inspectPlanStrict, loadPlanStrict } from "../../plan-store.js";
-import { inspectWorktreeRegistry } from "../worktree-registry.js";
+import { inspectWorktreeRegistry } from "../worktree-registry.ts";
 import {
     type EffectProver,
     listTransitionRecoveryRecords,

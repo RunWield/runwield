@@ -53,7 +53,7 @@ import {
     PROJECT_INTERNAL_RUNTIME_DIR_NAME,
     WORKTREE_REGISTRY_FILE,
 } from "../../../constants.ts";
-import { getWorktreeRegistryPath } from "../../../shared/worktree-registry.js";
+import { getWorktreeRegistryPath } from "../../../shared/worktree-registry.ts";
 import { enterProjectRuntime } from "../../../shared/project-runtime-layout.ts";
 import { isCurrentProjectRuntimePath } from "../../../shared/runwield-owned-paths.ts";
 import { PLAN_STATUSES } from "../../../shared/workflow/plan-lifecycle.ts";
@@ -1644,7 +1644,7 @@ async function runComposedTuiScenario(scenario, options) {
                     } catch (error) {
                         if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
                     }
-                    const { inspectWorktreeRegistry } = await import("../../../shared/worktree-registry.js");
+                    const { inspectWorktreeRegistry } = await import("../../../shared/worktree-registry.ts");
                     const projectWorktreeRegistry = await inspectWorktreeRegistry(getCwd());
                     const plan = await loadPlan(getCwd(), "plan");
                     if (!plan) throw new Error("Expected the primary Plan locator for publication proof.");
@@ -1875,7 +1875,7 @@ async function runComposedTuiScenario(scenario, options) {
                     };
                     const registryPath = getWorktreeRegistryPath(getCwd());
                     const registryText = await fsReadFile(registryPath, "utf8").catch(() => "");
-                    /** @type {import('../../../shared/worktree-registry.js').WorktreeRegistryEntry[]} */
+                    /** @type {import('../../../shared/worktree-registry.ts').WorktreeRegistryEntry[]} */
                     const registryEntries = registryText ? JSON.parse(registryText).entries || [] : [];
                     state.projectDurability = {
                         branch,
@@ -2157,7 +2157,7 @@ async function runComposedTuiScenario(scenario, options) {
                     const loaded = await loadPlan(getCwd(), planName);
                     if (!loaded) throw new Error(`Cannot seed worktree for missing Plan ${planName}`);
                     const { createTestWorktreeAttempt } = await import("../../../shared/worktree-test-helpers.ts");
-                    const { updateEntry } = await import("../../../shared/worktree-registry.js");
+                    const { updateEntry } = await import("../../../shared/worktree-registry.ts");
                     const { updatePlanFrontMatter } = await import("../../../plan-store.js");
                     const entry = await createTestWorktreeAttempt({
                         projectRoot: getCwd(),
@@ -2313,7 +2313,7 @@ async function runComposedTuiScenario(scenario, options) {
                         { expectedRevision: loaded.revision },
                     );
                     if (clearWorktreeEvidence && loaded.attrs.worktreeId) {
-                        const { pruneEntry } = await import("../../../shared/worktree-registry.js");
+                        const { pruneEntry } = await import("../../../shared/worktree-registry.ts");
                         await pruneEntry(getCwd(), loaded.attrs.worktreeId);
                     }
                     events.push(`project:primary-plan-status:${planName}:${status}`);
@@ -2336,7 +2336,7 @@ async function runComposedTuiScenario(scenario, options) {
                     const primaryPlanNames = new Set(
                         Array.isArray(typed.primaryPlanNames) ? typed.primaryPlanNames.map(String) : [],
                     );
-                    const { inspectWorktreeRegistry } = await import("../../../shared/worktree-registry.js");
+                    const { inspectWorktreeRegistry } = await import("../../../shared/worktree-registry.ts");
                     const registry = await inspectWorktreeRegistry(getCwd());
                     const branch = await runGoldenGit(["branch", "--show-current"], getCwd()).catch(() => "");
                     const remote = branch
@@ -2648,7 +2648,7 @@ async function runComposedTuiScenario(scenario, options) {
                 } else if (typed.type === "captureExecutionPlanState") {
                     const planName = String(typed.planName || "");
                     const registry = await (
-                        await import("../../../shared/worktree-registry.js")
+                        await import("../../../shared/worktree-registry.ts")
                     ).inspectWorktreeRegistry(getCwd());
                     const entry = registry.entries.find((candidate) => candidate.planName === planName);
                     const executionPlan = entry?.path ? await loadPlan(entry.path, planName).catch(() => null) : null;
@@ -2709,7 +2709,7 @@ async function runComposedTuiScenario(scenario, options) {
                 } else if (typed.type === "capturePendingPublicationState") {
                     const planName = String(typed.planName || "");
                     const registry = await (
-                        await import("../../../shared/worktree-registry.js")
+                        await import("../../../shared/worktree-registry.ts")
                     ).inspectWorktreeRegistry(getCwd());
                     const entry = registry.entries.find((candidate) => candidate.planName === planName);
                     if (!entry) throw new Error(`Expected pending publication entry for ${planName}`);
@@ -2794,7 +2794,7 @@ async function runComposedTuiScenario(scenario, options) {
                         getCwd(),
                     );
                     const registry = await (
-                        await import("../../../shared/worktree-registry.js")
+                        await import("../../../shared/worktree-registry.ts")
                     ).inspectWorktreeRegistry(getCwd());
                     const baselineFiles = state.publicationBaseline?.files || {};
                     /** @type {Record<string, string | null>} */
@@ -2885,7 +2885,7 @@ async function runComposedTuiScenario(scenario, options) {
                     const deliveredPath = String(typed.deliveredPath || "");
                     const plan = await loadPlan(getCwd(), planName);
                     const registry = await (
-                        await import("../../../shared/worktree-registry.js")
+                        await import("../../../shared/worktree-registry.ts")
                     ).inspectWorktreeRegistry(getCwd());
                     const baselineFiles = state.publicationBaseline?.files || {};
                     /** @type {Record<string, string | null>} */

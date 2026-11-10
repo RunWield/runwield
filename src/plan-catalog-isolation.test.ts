@@ -3,7 +3,7 @@ import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { assertEquals, assertRejects } from "./testing/assertions.ts";
 import { ensurePlanIdentity, listPlans, savePlan } from "./plan-store.js";
-import { addEntry, listEntries } from "./shared/worktree-registry.js";
+import { addEntry, listEntries } from "./shared/worktree-registry.ts";
 import { defineCommittedGitFixture, git } from "./shared/git-test-fixture.ts";
 import { resolveWorkflowPlanLocation } from "./shared/workflow/plan-location.ts";
 

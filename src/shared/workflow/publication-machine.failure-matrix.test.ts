@@ -23,7 +23,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { getRunWieldRuntimeDir, PLAN_STAGING_DIR_NAME } from "../../constants.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
-import { addEntry, findById, updatePublication } from "../worktree-registry.js";
+import { addEntry, findById, updatePublication } from "../worktree-registry.ts";
 import { createTestWorktreeAttempt, git, makeRepo } from "../worktree-test-helpers.ts";
 import { createPublicationAttempt } from "./publication-attempt.ts";
 import { loadPublicationAttempt, publicationRootForAttempt } from "./publication-machine.ts";

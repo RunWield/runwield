@@ -27,7 +27,7 @@ import {
     withProjectRuntimeReadScope,
 } from "./project-runtime-layout.ts";
 import { writeControllerState } from "./workflow/controller-registry.ts";
-import { listEntries } from "./worktree-registry.js";
+import { listEntries } from "./worktree-registry.ts";
 
 const fixture = defineCommittedGitFixture({ "README.md": "# Runtime read scope\n" });
 

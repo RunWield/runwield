@@ -8,7 +8,7 @@ import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-r
 import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-assertions.ts";
 
 import type { GoldenScenario, GoldenScenarioResult } from "../testing/mod.ts";
-import type { WorktreeRegistryEntry } from "../../../shared/worktree-registry.js";
+import type { WorktreeRegistryEntry } from "../../../shared/worktree-registry.ts";
 
 interface WorkRecordStatus {
     status?: string;

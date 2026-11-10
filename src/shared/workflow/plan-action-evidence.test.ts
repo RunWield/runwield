@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { join } from "node:path";
 import { dirname } from "node:path";
 import { loadPlan, savePlan } from "../../plan-store.js";
-import { getWorktreeRegistryPath } from "../worktree-registry.js";
+import { getWorktreeRegistryPath } from "../worktree-registry.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { executePlanAction, loadPlanActionEvidence } from "./plan-actions.ts";
 

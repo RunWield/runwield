@@ -4,7 +4,7 @@ import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
 import { git } from "../git-test-fixture.ts";
-import { addEntry } from "../worktree-registry.js";
+import { addEntry } from "../worktree-registry.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { setCustomSetting } from "../settings.js";
 import { listWorkRecords, writeWorkRecord } from "./store.ts";

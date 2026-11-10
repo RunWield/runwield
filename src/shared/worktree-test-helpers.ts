@@ -2,7 +2,7 @@ import { captureForegroundProcess } from "./captured-process.ts";
 import { writeFile as fsWriteFile } from "node:fs/promises";
 import { createWorktreeGitArtifacts, settleWorktreeAttempt } from "./worktree.js";
 import { defineGitFixture } from "./git-test-fixture.ts";
-import type { WorktreeRegistryEntry } from "./worktree-registry.js";
+import type { WorktreeRegistryEntry } from "./worktree-registry.ts";
 import type { PlanEventDetails } from "./workflow/plan-lifecycle.ts";
 
 export interface TestWorktreeAttemptOptions {

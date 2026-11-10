@@ -1,5 +1,5 @@
 import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
-import { prepareWorktreeRegistry } from "../../shared/worktree-registry.js";
+import { prepareWorktreeRegistry } from "../../shared/worktree-registry.ts";
 /**
  * @module cmd/plans/unshare
  * Destructively delete a remote Shared Space and intentionally clear local collaboration state.

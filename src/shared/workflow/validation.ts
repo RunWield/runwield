@@ -13,7 +13,7 @@
 import * as engine from "./validation-engine.ts";
 import { runValidationAttempt, type ValidationTrigger } from "./validation-supervisor.ts";
 import { loadPlan } from "../../plan-store.js";
-import { findActiveByPlanName as findWorktreeByPlanName } from "../worktree-registry.js";
+import { findActiveByPlanName as findWorktreeByPlanName } from "../worktree-registry.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { emitProgress, emitStatus } from "./validation-emit.ts";

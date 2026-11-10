@@ -1,5 +1,5 @@
 import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
-import { prepareWorktreeRegistry } from "../../shared/worktree-registry.js";
+import { prepareWorktreeRegistry } from "../../shared/worktree-registry.ts";
 /**
  * @module cmd/plans/push
  * Push the current local shared Plan body as a new encrypted remote Revision.

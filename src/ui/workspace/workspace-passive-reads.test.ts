@@ -12,7 +12,7 @@ import {
 } from "../../shared/project-runtime-layout.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
-import { addEntry } from "../../shared/worktree-registry.js";
+import { addEntry } from "../../shared/worktree-registry.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { createOwnerWorkspaceApp } from "./server.js";
 

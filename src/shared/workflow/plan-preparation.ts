@@ -6,7 +6,7 @@ import {
     loadPlan,
     parsePlanFrontMatter,
 } from "../../plan-store.js";
-import { findActiveByPlanName, prepareWorktreeRegistry } from "../worktree-registry.js";
+import { findActiveByPlanName, prepareWorktreeRegistry } from "../worktree-registry.ts";
 import {
     assertControllerDocumentAvailable,
     listControllerDocumentWorktrees,

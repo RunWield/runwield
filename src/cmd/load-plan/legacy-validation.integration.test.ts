@@ -19,7 +19,7 @@ import { createGitPort } from "../../shared/git-port.ts";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { findById } from "../../shared/worktree-registry.js";
+import { findById } from "../../shared/worktree-registry.ts";
 import { type ControllerRecord, readControllerRecord } from "../../shared/workflow/controller-registry.ts";
 import { finalizePlanImplementation } from "../../shared/workflow/implementation-checkpoint.ts";
 import { makeValidationCheckpoint } from "../../shared/workflow/validation-checkpoint.ts";

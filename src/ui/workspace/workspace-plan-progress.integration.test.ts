@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { parsePlanFrontMatter, savePlan } from "../../plan-store.js";
-import { addEntry, getWorktreeRegistryPath } from "../../shared/worktree-registry.js";
+import { addEntry, getWorktreeRegistryPath } from "../../shared/worktree-registry.ts";
 import { createPublicationAttempt, recordPublicationFailure } from "../../shared/workflow/publication-attempt.ts";
 import { makeValidationCheckpoint } from "../../shared/workflow/validation-checkpoint.ts";
 import { loadOwnerPlanProgress } from "./server/owner-plan-progress.ts";

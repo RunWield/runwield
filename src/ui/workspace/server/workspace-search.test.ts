@@ -24,7 +24,7 @@ import { DatabaseSync } from "../../../shared/sqlite.ts";
 import { savePlan, writePlanMarkdownWithRevision } from "../../../plan-store.js";
 import { openOwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
 import { defineCommittedGitFixture, git } from "../../../shared/git-test-fixture.ts";
-import { addEntry, withWorktreeRegistryLock } from "../../../shared/worktree-registry.js";
+import { addEntry, withWorktreeRegistryLock } from "../../../shared/worktree-registry.ts";
 import { formatWorkRecordMarkdown } from "../../../shared/work-records/markdown.ts";
 import { replaceWorkRecord, writeWorkRecord } from "../../../shared/work-records/store.ts";
 import { requestWorkspaceSearchRefresh } from "../../../shared/workspace-search-refresh.ts";

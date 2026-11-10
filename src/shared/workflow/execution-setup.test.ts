@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { loadPlan, savePlan } from "../../plan-store.js";
-import { listEntries } from "../worktree-registry.js";
+import { listEntries } from "../worktree-registry.ts";
 import { removeWorktreeGitArtifacts } from "../worktree.js";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";

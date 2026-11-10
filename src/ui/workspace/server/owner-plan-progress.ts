@@ -1,7 +1,7 @@
 import { hasApplicablePublicationReceipt } from "../../../shared/workflow/publication-receipt.ts";
 import type { PlanReadAvailability } from "../../../plan-store.js";
 import { findPlanById } from "../../../plan-store.js";
-import { findByPlanId, type WorktreeRegistryEntry } from "../../../shared/worktree-registry.js";
+import { findByPlanId, type WorktreeRegistryEntry } from "../../../shared/worktree-registry.ts";
 import {
     isValidationCheckpoint,
     type ValidationCheckpoint,

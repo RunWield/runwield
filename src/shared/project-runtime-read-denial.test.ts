@@ -15,7 +15,7 @@ const fixture = defineCommittedGitFixture({
     "docs/plans/example.md": "---\nplanId: example-id\nstatus: draft\n---\n# Example\n",
 });
 const storeUrl = new URL("../plan-store.js", import.meta.url).href;
-const registryUrl = new URL("./worktree-registry.js", import.meta.url).href;
+const registryUrl = new URL("./worktree-registry.ts", import.meta.url).href;
 const doctorUrl = new URL("../cmd/plans/doctor.ts", import.meta.url).href;
 
 async function tree(root: string): Promise<Record<string, string>> {

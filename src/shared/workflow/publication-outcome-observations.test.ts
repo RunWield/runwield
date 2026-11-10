@@ -11,7 +11,7 @@ import { assertEquals } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { setCustomSetting } from "../settings.js";
-import { findById } from "../worktree-registry.js";
+import { findById } from "../worktree-registry.ts";
 import { readControllerRecord, writeControllerState } from "./controller-registry.ts";
 import { getWorkflowMetricsFilePath } from "./metrics.js";
 import { UsageReporter } from "./usage-reporting.ts";

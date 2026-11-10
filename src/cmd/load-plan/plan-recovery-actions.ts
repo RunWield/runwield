@@ -27,7 +27,7 @@ import {
     findById as findWorktreeRegistryEntry,
     restoreEntryFromPlanEvidence,
     updateEntry as updateWorktreeRegistryEntry,
-} from "../../shared/worktree-registry.js";
+} from "../../shared/worktree-registry.ts";
 import { markPlanUserVerified, putPlanOnHold } from "./plan-hold.ts";
 import { settleDiscardedRecoveryAttempt } from "./plan-recovery-discard.ts";
 import { transitionFailureError } from "./transition-failure.ts";

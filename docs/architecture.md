@@ -106,7 +106,7 @@ structured agent outcomes, calls Plan and execution services, and decides which 
 | Plan domain                 | Canonical Markdown persistence, identities, hierarchy, lifecycle state machine, collaboration write lock             | `src/plan-store.js`, `src/shared/workflow/plan-lifecycle.ts`                                                                                             |
 | Execution domain            | Worktree preparation, Engineer completion gate, local validation, repair, merge-back, recovery metadata              | `src/shared/workflow/workflow.ts`, `src/shared/workflow/validation.ts`, `src/shared/worktree.js`                                                         |
 | Configuration and policy    | Layered agent definitions, settings, model resolution, protected tools, skills/prompts/extensions                    | `src/shared/session/agents.ts`, `src/shared/settings.js`, `src/shared/models/`, `src/tools/registry.ts`                                                  |
-| Local platform services     | Git probing, worktree registry, metrics, collaboration crypto/protocol/secrets, binary preflight                     | `src/shared/git.ts`, `src/shared/worktree-registry.js`, `src/shared/workflow/metrics.js`, `src/shared/collaboration/`, `src/shared/runtime-preflight.js` |
+| Local platform services     | Git probing, worktree registry, metrics, collaboration crypto/protocol/secrets, binary preflight                     | `src/shared/git.ts`, `src/shared/worktree-registry.ts`, `src/shared/workflow/metrics.js`, `src/shared/collaboration/`, `src/shared/runtime-preflight.js` |
 
 Presentation details, terminal widgets, ACP wire types, HTTP routes, Astro/React components, and browser review
 rendering are outside this boundary. They may call core services, subscribe to core events, or implement interaction
@@ -1101,7 +1101,7 @@ The highest-value cross-boundary paths for later confidence analysis are visible
 | Validation and repair                     | `src/shared/workflow/validation.ts`                                           |
 | Plan lifecycle                            | `src/shared/workflow/plan-lifecycle.ts`                                       |
 | Plan persistence                          | `src/plan-store.js`, `src/plan-front-matter.ts`                               |
-| Worktree operations and registry          | `src/shared/worktree.js`, `src/shared/worktree-registry.js`                   |
+| Worktree operations and registry          | `src/shared/worktree.js`, `src/shared/worktree-registry.ts`                   |
 | Settings and models                       | `src/shared/settings.js`, `src/shared/models/`                                |
 | Tool policy                               | `src/tools/registry.ts`, agent front matter in `src/agent-definitions/`       |
 | TUI adapter                               | `src/ui/tui/chat-session.js`, `src/ui/tui/runtime-adapter.ts`                 |

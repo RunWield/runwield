@@ -25,7 +25,7 @@ import { createSessionRuntime } from "../session/session-runtime.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { COLLABORATION_LOCK_BYPASS } from "../collaboration/lock.ts";
-import { listEntries } from "../worktree-registry.js";
+import { listEntries } from "../worktree-registry.ts";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 import { resolveEpicContinuation, runEpicChildContinuation } from "./epic-continuation.ts";
 import { recordPlanEvent } from "./plan-lifecycle.ts";

@@ -23,7 +23,7 @@ import {
     updatePlanFrontMatter,
 } from "../../plan-store.js";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { addEntry, findById, updateEntry } from "../worktree-registry.js";
+import { addEntry, findById, updateEntry } from "../worktree-registry.ts";
 import { resolvePlanWithPrimaryRecovery } from "../../cmd/load-plan/primary-plan-recovery.ts";
 import { recordPlanEvent } from "./plan-lifecycle.ts";
 import { HostedSession } from "../session/hosted-session.js";

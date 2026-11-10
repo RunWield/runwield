@@ -15,7 +15,7 @@ import { listWorkRecords } from "../work-records/store.js";
 import { gitStatusPaths } from "../git-runtime-safety.ts";
 import { recoverSealedPlanFormatting } from "../publication-plan-formatting.ts";
 import { isRunWieldOwnedRuntimePath } from "../runwield-owned-paths.ts";
-import { findActiveByPlanName, retirePublicationForRevalidation, updatePublication } from "../worktree-registry.js";
+import { findActiveByPlanName, retirePublicationForRevalidation, updatePublication } from "../worktree-registry.ts";
 import type { PublicationAttempt } from "./publication-attempt.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import { candidateIdentity } from "./validation-scope.ts";
