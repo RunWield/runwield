@@ -915,7 +915,7 @@ export async function recordWorkflowMetric(metric: MetricFields, cwd: string): P
         const projectRoot = project.root;
         // Git and Plan storage can load without booting the agent package.
         // Actual metric writes still read the real settings and honor opt-out.
-        const { getCustomSetting, getMergedCustomSetting } = await import("../settings.js");
+        const { getCustomSetting, getMergedCustomSetting } = await import("../settings.ts");
         const resolvedSetting = getMergedCustomSetting("workflowMetrics", projectRoot);
         const filePath = project.journalPath;
         const epochState = resolveCollectionEpoch(

@@ -9,7 +9,7 @@ import {
     PersonalResourcePathError,
 } from "../remote/personal-resources.ts";
 import { directoryExists, fileExists } from "../helpers.ts";
-import { getCustomSetting } from "../settings.js";
+import { getCustomSetting } from "../settings.ts";
 import { extractBundledSkills } from "./agent-assets.ts";
 
 export type SkillSource = "local" | "home" | "bundled" | "external";

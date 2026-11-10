@@ -8,7 +8,7 @@ import type { SelectListLayoutOptions } from "@earendil-works/pi-tui";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { getModelRegistry } from "../../shared/models/model-registry.ts";
 import { buildConversationRestoredMessage } from "../../shared/session/session-user-messages.ts";
-import { getMergedCustomSetting, getSettingsManager } from "../../shared/settings.js";
+import { getMergedCustomSetting, getSettingsManager } from "../../shared/settings.ts";
 import { setTerminalTitleForName } from "../../ui/tui/terminal-title.ts";
 
 const DEFAULT_COMPACT_ON_RESUME_PCT = 50;

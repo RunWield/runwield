@@ -11,10 +11,10 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
 import { join } from "node:path";
 import { createTestWorktreeAttempt, git, makeRepo } from "./worktree-test-helpers.ts";
-import { checkpointExecutionWorktree, removeWorktreeGitArtifacts } from "./worktree.js";
+import { checkpointExecutionWorktree, removeWorktreeGitArtifacts } from "./worktree.ts";
 import { HostedSession } from "./session/hosted-session.ts";
 import { runLocalCI } from "./workflow/validation-local-ci.ts";
-import { setExactProjectCustomSetting } from "./settings.js";
+import { setExactProjectCustomSetting } from "./settings.ts";
 import { publishExecutionWorktreeIsolated } from "./isolated-publication.ts";
 import { ensureRunWieldOwnedGitignoreBlock } from "./runwield-owned-paths.ts";
 

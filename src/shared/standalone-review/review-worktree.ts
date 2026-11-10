@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { removeWorktreeGitArtifacts, resolveWorktreeParent } from "../worktree.js";
+import { removeWorktreeGitArtifacts, resolveWorktreeParent } from "../worktree.ts";
 import type { ReviewTarget } from "./review-target.ts";
 import { git } from "./git.ts";
 export interface ReviewWorktree {

@@ -1,7 +1,7 @@
 import process from "node:process";
 import { readStreamInto } from "../socket-listener.ts";
 import { startRemoteControlService } from "./control.ts";
-import { setCustomSetting } from "../settings.js";
+import { setCustomSetting } from "../settings.ts";
 
 if (process.argv[2] === "write") {
     await setCustomSetting("theme", "light", "global");

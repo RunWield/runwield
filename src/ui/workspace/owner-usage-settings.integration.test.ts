@@ -12,7 +12,7 @@ import {
     listInstalledMetricsExporters,
     removeMetricsExporterApprovals,
 } from "../../shared/extensions/metrics-exporter.ts";
-import { getCustomSetting, setCustomSetting } from "../../shared/settings.js";
+import { getCustomSetting, setCustomSetting } from "../../shared/settings.ts";
 import { readMetricsExportGrants } from "../../shared/workflow/metrics-export-grants.ts";
 import { readMetricsExportStatus, runMetricsExportCycle } from "../../shared/workflow/metrics-export-scheduler.ts";
 import { getWorkflowMetricsFilePath, recordWorkflowMetric } from "../../shared/workflow/metrics.ts";

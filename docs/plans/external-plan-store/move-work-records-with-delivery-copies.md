@@ -9,7 +9,7 @@ affectedPaths:
     - "src/shared/work-records/supersession.ts"
     - "src/shared/workflow/validation-publication.ts"
     - "src/cmd/"
-    - "src/shared/settings.js"
+    - "src/shared/settings.ts"
     - "docs/domain-language.md"
     - "docs/prd/runwield-core-prd.md"
 executionAgent: "engineer"
@@ -60,7 +60,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/shared/work-records/supersession.ts` — home record relationships and native locks
 - `src/shared/workflow/validation-publication.ts` — default Work Record copy payload and finalization
 - `src/cmd/` — Work Record import/retrieval command integration
-- `src/shared/settings.js` — independent Plan and Work Record copy settings
+- `src/shared/settings.ts` — independent Plan and Work Record copy settings
 - `docs/domain-language.md` — Work Record and Delivery Copy definitions and relationships
 - `docs/prd/runwield-core-prd.md` — Work Record requirements
 

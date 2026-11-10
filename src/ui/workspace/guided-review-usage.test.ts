@@ -4,7 +4,7 @@ import type { GuidedReviewUsage } from "../../cmd/guided-review/protocol.ts";
 import process from "node:process";
 import { test } from "node:test";
 import { writeFile as fsWriteFile } from "node:fs/promises";
-import { setCustomSetting } from "../../shared/settings.js";
+import { setCustomSetting } from "../../shared/settings.ts";
 import { recordWorkflowMetric } from "../../shared/workflow/metrics.ts";
 import { clearUsageHistory, UsageReporter } from "../../shared/workflow/usage-reporting.ts";
 import { assertEquals } from "../../testing/assertions.ts";

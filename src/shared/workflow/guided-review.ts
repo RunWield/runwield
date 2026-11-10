@@ -7,7 +7,7 @@ import { isPlannedChangeClassification } from "../../constants.ts";
 import { parseDiffFiles, summarizeDiffForReview } from "./review-diff-tool.ts";
 
 import type { DiffReviewStats } from "./review-diff-tool.ts";
-import type { getGuidedReviewMode } from "../settings.js";
+import type { getGuidedReviewMode } from "../settings.ts";
 
 export type GuidedReviewMode = ReturnType<typeof getGuidedReviewMode>;
 

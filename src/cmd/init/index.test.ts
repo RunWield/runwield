@@ -6,7 +6,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
-import { __resetSettingsForTests } from "../../shared/settings.js";
+import { __resetSettingsForTests } from "../../shared/settings.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
 import { getCwdInitState } from "./init-state.ts";

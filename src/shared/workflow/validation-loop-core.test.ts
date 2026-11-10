@@ -16,14 +16,14 @@ import { tmpdir } from "node:os";
 import process from "node:process";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
-import { setCustomSetting } from "../settings.js";
+import { setCustomSetting } from "../settings.ts";
 import { ensurePlanIdentity, loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { createGitPort } from "../git-port.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 import { HostedSession } from "../session/hosted-session.ts";
-import { removeWorktreeGitArtifacts } from "../worktree.js";
+import { removeWorktreeGitArtifacts } from "../worktree.ts";
 import { createTestWorktreeAttempt, makeRepo } from "../worktree-test-helpers.ts";
 import { createEngineValidationArgs } from "./validation.ts";
 import { resolvePhaseContext } from "./validation-context.ts";

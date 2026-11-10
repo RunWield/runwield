@@ -12,7 +12,7 @@ import {
     withRuntimeCommandFixture,
 } from "../../cmd/testing/runtime-command-fixture.ts";
 import { getModelRegistry } from "../../shared/models/model-registry.ts";
-import { getSettingsManager } from "../../shared/settings.js";
+import { getSettingsManager } from "../../shared/settings.ts";
 import { startRunWieldAcpServer } from "../../acp/server.ts";
 import { initTUIWithPair, stopTUI } from "./tui.ts";
 import { runTerminalAuthSetup } from "./terminal-auth-setup.ts";

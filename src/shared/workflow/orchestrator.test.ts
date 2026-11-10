@@ -15,7 +15,7 @@ import { loadPlan, savePlan } from "../../plan-store.ts";
 import { git } from "../git-test-fixture.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import { listPendingTaskCompletions } from "../session/task-completion-session.ts";
-import { setCustomSetting } from "../settings.js";
+import { setCustomSetting } from "../settings.ts";
 import type { SessionRuntimeEvent } from "../session/session-runtime-events.ts";
 import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.ts";
 import { dispatchPostTriage, type DispatchPostTriageArgs, readLatestTriageOutcome } from "./orchestrator.ts";

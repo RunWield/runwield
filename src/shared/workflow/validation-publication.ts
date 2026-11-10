@@ -13,7 +13,7 @@ import {
 } from "./delivery-evidence.ts";
 import { relative } from "node:path";
 import { buildDeliveryReport } from "./delivery-report.ts";
-import { getCodeReviewMode, getGuidedReviewMode } from "../settings.js";
+import { getCodeReviewMode, getGuidedReviewMode } from "../settings.ts";
 import {
     readPublishedDeliverySources,
     readPublishedRecordMarkdown,
@@ -34,7 +34,7 @@ import { logValidationFailure } from "./validation-state-errors.ts";
 import { loadPlan, withPlanLock } from "../../plan-store.ts";
 import { resolveTargetedWorkRecordSource } from "../work-records/auto-generation.ts";
 import { findEpicManualQaSection } from "../epic-artifacts.ts";
-import { checkpointExecutionWorktree, resolveTargetBranchName } from "../worktree.js";
+import { checkpointExecutionWorktree, resolveTargetBranchName } from "../worktree.ts";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
 import { findById as findWorktreeRegistryEntryById } from "../worktree-registry.ts";
 import { ensureRunWieldOwnedGitignoreBlock } from "../runwield-owned-paths.ts";

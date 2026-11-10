@@ -12,7 +12,7 @@ import { openNativeFileLock } from "../native-file-lock.ts";
 import { parseClaudeCliStream } from "../session/backends/claude-cli/stream-parser.ts";
 import { join } from "node:path";
 import { setWorkflowMetricsRecording } from "./metrics-journal.ts";
-import { setCustomSetting } from "../settings.js";
+import { setCustomSetting } from "../settings.ts";
 import { SlashCommandMetricsTracker } from "./command-metrics.ts";
 import { ExecutionMetricsRecorder, SessionContextMetricsRecorder } from "./execution-metrics.ts";
 

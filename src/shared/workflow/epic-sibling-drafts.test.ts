@@ -4,7 +4,7 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { dirname, join } from "node:path";
 import { loadPlan, updatePlanFrontMatter } from "../../plan-store.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
-import { createWorktreeGitArtifacts, removeWorktreeGitArtifacts, settleWorktreeAttempt } from "../worktree.js";
+import { createWorktreeGitArtifacts, removeWorktreeGitArtifacts, settleWorktreeAttempt } from "../worktree.ts";
 import { updateEntry } from "../worktree-registry.ts";
 import { prepareEditedSiblingPlans } from "./epic-sibling-drafts.ts";
 

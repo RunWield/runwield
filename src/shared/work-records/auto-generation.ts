@@ -14,7 +14,7 @@ import {
     loadArchivedPlan,
 } from "../../plan-store.ts";
 import { resolveWorkflowPlanLocation } from "../workflow/plan-location.ts";
-import { shouldAutoGenerateWorkRecordsOnPlanCompletion } from "../settings.js";
+import { shouldAutoGenerateWorkRecordsOnPlanCompletion } from "../settings.ts";
 import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
 import {
     attachEpicChildren,

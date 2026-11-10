@@ -1,23 +1,24 @@
 import { readFile as fsReadFile, realpath as fsRealpath, stat as fsStat } from "node:fs/promises";
 import { realpathSync, readFileSync } from "node:fs";
 /** Host-approved metrics exporter inventory. This module never imports package code. */
-import { DefaultPackageManager, SettingsManager } from "@earendil-works/pi-coding-agent";
+import { DefaultPackageManager, SettingsManager, type PackageSource } from "@earendil-works/pi-coding-agent";
 import { isAbsolute, join, relative } from "node:path";
 import { withExportConfigurationLock } from "../workflow/metrics-export-storage.ts";
 import { getCwd } from "../../constants.ts";
+import type { JsonValue } from "../jsonc.ts";
 import type { PackagePromptResourceOptions } from "../package-resources.ts";
-import { getCustomSetting, getSettingsDir, getSettingsManager, setCustomSetting } from "../settings.js";
+import { getCustomSetting, getSettingsDir, getSettingsManager, setCustomSetting } from "../settings.ts";
 import {
     assertPersonalResourcePath,
     personalPackageRoots,
     remotePersonalResourcesActive,
 } from "../remote/personal-resources.ts";
 
-export interface MetricsExporterCredentialField {
+export type MetricsExporterCredentialField = {
     key: string;
     label: string;
     secret: boolean;
-}
+};
 
 export interface MetricsExporterDeclaration {
     contract: 1;
@@ -26,13 +27,13 @@ export interface MetricsExporterDeclaration {
     credentials?: MetricsExporterCredentialField[];
 }
 
-export interface MetricsExporterApproval {
+export type MetricsExporterApproval = {
     id: string;
     source: string;
     installedPath: string;
     version: string;
     approvedAt: string;
-}
+};
 
 export interface InstalledMetricsExporter {
     id: string;
@@ -114,11 +115,14 @@ export async function readMetricsExporterDeclaration(packageRoot: string): Promi
 }
 
 function approvals(): MetricsExporterApproval[] {
-    const records: MetricsExporterApproval[] = getCustomSetting(APPROVAL_KEY, "global");
-    if (!Array.isArray(records)) return [];
+    const raw = getCustomSetting(APPROVAL_KEY, "global");
+    if (!Array.isArray(raw)) return [];
+    const records: JsonValue[] = raw;
     return records.filter(
-        (record) =>
-            record &&
+        (record): record is MetricsExporterApproval =>
+            record !== null &&
+            typeof record === "object" &&
+            !Array.isArray(record) &&
             typeof record.id === "string" &&
             typeof record.source === "string" &&
             typeof record.installedPath === "string" &&
@@ -202,7 +206,7 @@ export async function resolveApprovedMetricsExporters(
 /** Short final identity check. The export configuration lock serializes approval edits. */
 export function metricsExporterStillApproved(exporter: InstalledMetricsExporter): boolean {
     if (!approvals().some((saved) => sameIdentity(saved, exporter))) return false;
-    const packages: Array<string | { source: string }> = getCustomSetting("packages", "global") ?? [];
+    const packages = (getCustomSetting("packages", "global") ?? []) as PackageSource[];
     if (!packages.some((pkg) => (typeof pkg === "string" ? pkg : pkg.source) === exporter.source)) return false;
     try {
         if (isAbsolute(exporter.source) && realpathSync(exporter.source) !== exporter.installedPath) return false;

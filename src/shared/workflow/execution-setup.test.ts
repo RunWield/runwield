@@ -6,14 +6,14 @@ import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import { loadPlan, savePlan } from "../../plan-store.ts";
 import { listEntries } from "../worktree-registry.ts";
-import { removeWorktreeGitArtifacts } from "../worktree.js";
+import { removeWorktreeGitArtifacts } from "../worktree.ts";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { buildEffectProver } from "./transition-recovery.ts";
 import { prepareExecutionSetup, readExecutionSetup } from "./execution-setup.ts";
 
 import { createTestWorktreeAttempt } from "../worktree-test-helpers.ts";
-import { getExactProjectCustomSetting, setExactProjectCustomSetting } from "../settings.js";
+import { getExactProjectCustomSetting, setExactProjectCustomSetting } from "../settings.ts";
 import {
     captureValidationSettingsWrite,
     recordValidationSettingsWrite,

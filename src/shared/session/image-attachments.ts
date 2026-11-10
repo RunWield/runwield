@@ -9,7 +9,7 @@ import { basename, extname, isAbsolute, join, normalize, relative, resolve } fro
 import { discoverProviderModel } from "../models/model-registry.ts";
 import { assertModelExecutionBackendSupported } from "../models/model-execution.ts";
 import { parseProviderModel } from "../models/model-validation.ts";
-import { getResolvedVisionFallbackModelSetting } from "../settings.js";
+import { getResolvedVisionFallbackModelSetting } from "../settings.ts";
 import { getRemoteSessionSaveBridge, getRunWieldSessionDir } from "./root-session.ts";
 import { MAX_SESSION_BYTES } from "../remote/session-protocol.ts";
 import { Buffer } from "node:buffer";

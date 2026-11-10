@@ -13,7 +13,7 @@ import { DefaultPackageManager } from "@earendil-works/pi-coding-agent";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { __resetSettingsForTests, getSettingsDir, getSettingsManager } from "../../shared/settings.js";
+import { __resetSettingsForTests, getSettingsDir, getSettingsManager } from "../../shared/settings.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { DEFAULT_THEME_NAME, getAvailableThemes, initRunWieldTheme, theme } from "../../ui/theme/theme.ts";
 import { runThemeCommand } from "./index.ts";

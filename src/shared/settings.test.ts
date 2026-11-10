@@ -35,7 +35,7 @@ import {
     setExactProjectCustomSetting,
     shouldAutoGenerateWorkRecordsOnPlanCompletion,
     shouldCleanupMergedWorktrees,
-} from "./settings.js";
+} from "./settings.ts";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineGitFixture, git } from "./git-test-fixture.ts";
 

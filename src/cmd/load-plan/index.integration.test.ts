@@ -35,9 +35,9 @@ import {
 import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
 import { createPlanSessionSurface } from "./plan-session-surface.ts";
-import { discardWorktreeGitArtifacts } from "../../shared/worktree.js";
+import { discardWorktreeGitArtifacts } from "../../shared/worktree.ts";
 import { addEntry, findById, removeEntry, updateEntry } from "../../shared/worktree-registry.ts";
-import { setCustomSetting } from "../../shared/settings.js";
+import { setCustomSetting } from "../../shared/settings.ts";
 import { executePlanAction, loadPlanActionEvidence } from "../../shared/workflow/plan-actions.ts";
 import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
 import { writeControllerState } from "../../shared/workflow/controller-registry.ts";

@@ -33,7 +33,7 @@ import {
     prepareTargetBranchRef,
     removeWorktreeGitArtifacts,
     validateWorktreeDiscard,
-} from "./worktree.js";
+} from "./worktree.ts";
 
 import { createTestWorktreeAttempt, git, makeRepo } from "./worktree-test-helpers.ts";
 

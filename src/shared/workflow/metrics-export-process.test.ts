@@ -15,7 +15,7 @@ import { fileURLToPath as fromFileUrl } from "node:url";
 import { dirname, join } from "node:path";
 import { type MetricsExportFixture, withMetricsExportFixture } from "../../testing/metrics-export-fixture.ts";
 import { withCollidingMetricProjects } from "../../testing/workflow-metrics-fixture.ts";
-import { setCustomSetting } from "../settings.js";
+import { setCustomSetting } from "../settings.ts";
 import { getWorkflowMetricsFilePath, hashMetricCwd } from "./metrics.ts";
 import { encodeCwdForSessionDir } from "../session/root-session.ts";
 import { metricsExportReference } from "./metrics-export-record.ts";

@@ -176,7 +176,7 @@ during implementation and change whatever the Implementation Steps need, includi
 only when discovery changes approved intent — the change reaches another subsystem, public behavior or architecture
 shifts, migration or compatibility risk grows, or the Verification Plan no longer proves the objective.
 
-- `src/shared/workflow/planning-worktree.ts`, `src/shared/worktree.js`, `src/shared/worktree-registry.js` — unnamed
+- `src/shared/workflow/planning-worktree.ts`, `src/shared/worktree.ts`, `src/shared/worktree-registry.js` — unnamed
   Session ownership, binding, retained container/child worktrees, and safe target refresh.
 - `src/shared/session/agent-switching.ts`, `session.js`, `session-runtime.js`, `hosted-session.ts`, Session persistence
   helpers — restore working-directory evidence before constructing tools while preserving transcript continuity.

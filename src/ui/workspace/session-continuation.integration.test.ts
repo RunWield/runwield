@@ -31,7 +31,7 @@ import { createOwnerConnectionRegistry } from "./server/owner-connections.ts";
 import { AGENTS, getHomeDir } from "../../constants.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { setCustomSetting } from "../../shared/settings.js";
+import { setCustomSetting } from "../../shared/settings.ts";
 import { lockPath, manifestPath } from "../../shared/session/file-session-storage.ts";
 import {
     appendTranscriptEntry,

@@ -14,7 +14,7 @@ import { test } from "node:test";
 import { setSystemTime } from "bun:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { HostedSession } from "../../hosted-session.ts";
-import { setCustomSetting } from "../../../settings.js";
+import { setCustomSetting } from "../../../settings.ts";
 import { getWorkflowMetricsFilePath } from "../../../workflow/metrics.ts";
 import { UsageReporter } from "../../../workflow/usage-reporting.ts";
 import { tmpdir } from "node:os";

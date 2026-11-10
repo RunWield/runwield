@@ -10,7 +10,7 @@ import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.t
 import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { createGenerationGuard } from "./generation-guard.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../../shared/workflow/metrics.ts";
-import { setCustomSetting } from "../../shared/settings.js";
+import { setCustomSetting } from "../../shared/settings.ts";
 import { handleSlashCommand, type SkillMeta, type SlashContext } from "./slash-dispatch.ts";
 
 interface SlashFixture {

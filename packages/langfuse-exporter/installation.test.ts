@@ -28,7 +28,7 @@ import {
     getSettingsDir,
     getSettingsManager,
     setCustomSetting,
-} from "../../src/shared/settings.js";
+} from "../../src/shared/settings.ts";
 import {
     grantMetricsExportDestination,
     setMetricsExportCredentials,

@@ -26,7 +26,7 @@ import {
     publishExecutionWorktreeIsolated,
 } from "./isolated-publication.ts";
 import { createTestWorktreeAttempt, git, makeRepo } from "./worktree-test-helpers.ts";
-import { removeWorktreeGitArtifacts } from "./worktree.js";
+import { removeWorktreeGitArtifacts } from "./worktree.ts";
 import { RUNWIELD_GITIGNORE_BLOCK } from "./runwield-owned-paths.ts";
 
 for (const change of ["formatting", "definition", "body", "staged", "committed"]) {

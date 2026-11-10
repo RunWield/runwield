@@ -4,7 +4,7 @@ import { assertEquals, assertExists, assertStringIncludes } from "../../testing/
 import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { join } from "node:path";
 import { updatePlanFrontMatter } from "../../plan-store.ts";
-import { getExactProjectCustomSetting } from "../settings.js";
+import { getExactProjectCustomSetting } from "../settings.ts";
 import { captureWorktreeTree } from "./git-snapshot.ts";
 import { getWorktreeReviewDiff } from "./git-snapshot.ts";
 import { candidateIdentity } from "./validation-scope.ts";

@@ -6,7 +6,7 @@ import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.t
 import { listWorkRecords } from "../../shared/work-records/store.ts";
 import { findPlanEvidenceById } from "../../plan-store.ts";
 import { readControllerRecord } from "../../shared/workflow/controller-registry.ts";
-import { getCustomSetting } from "../../shared/settings.js";
+import { getCustomSetting } from "../../shared/settings.ts";
 import { INIT_VERIFICATION_COMMAND_PLACEHOLDER } from "../../tools/init-verification-command.ts";
 import type { UiAPI } from "./api.ts";
 

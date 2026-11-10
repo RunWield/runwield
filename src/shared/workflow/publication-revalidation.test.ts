@@ -30,7 +30,7 @@ import { candidateIdentity } from "./validation-scope.ts";
 import { getWorktreeReviewDiff } from "./git-snapshot.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import { createPlanDeviationTool } from "../../tools/plan-deviation.ts";
-import { assertPreMergeCandidateUnchanged } from "../worktree.js";
+import { assertPreMergeCandidateUnchanged } from "../worktree.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import { makeRecordedSession, makeUi, NO_ISOLATED_AGENT_PORT, runValidationPhase } from "./validation-test-helpers.ts";
 

@@ -6,7 +6,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { loadPlan, savePlan } from "../../plan-store.ts";
 import { createTestWorktreeAttempt, git, makeRepo } from "../worktree-test-helpers.ts";
 import { createGitPort } from "../git-port.ts";
-import { removeWorktreeGitArtifacts } from "../worktree.js";
+import { removeWorktreeGitArtifacts } from "../worktree.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";

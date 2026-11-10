@@ -12,7 +12,7 @@ import { openOwnerCoordinationStore } from "../../shared/owner-coordination/inde
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { createOwnerWorkspaceApp } from "./server.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../../shared/workflow/metrics.ts";
-import { setCustomSetting } from "../../shared/settings.js";
+import { setCustomSetting } from "../../shared/settings.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { encodeCwdForSessionDir } from "../../shared/project-directory-key.ts";
 import { basename, join } from "node:path";

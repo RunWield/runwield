@@ -1,12 +1,13 @@
 import { getCwd } from "../constants.ts";
-import { getCustomSetting, setCustomSetting } from "./settings.js";
+import type { JsonRecord } from "./jsonc.ts";
+import { getCustomSetting, setCustomSetting } from "./settings.ts";
 
 // Consent uses settings; ordinary Git operations must not load the agent runtime
 // that SettingsManager depends on just to inspect or publish a repository.
 const NON_GIT_EXECUTION_CONSENT_KEY = "nonGitExecutionConsent";
 type NonGitConsentKind = "featurePlan" | "quickFix";
 
-function readConsent(projectRoot: string): Record<string, boolean> {
+function readConsent(projectRoot: string): JsonRecord {
     const value = getCustomSetting(NON_GIT_EXECUTION_CONSENT_KEY, "project", projectRoot);
     return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }

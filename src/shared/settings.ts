@@ -1,44 +1,55 @@
 import { copyFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { dirname, join } from "node:path";
-import { parse as parseJsonc } from "./jsonc.ts";
+import { parse as parseJsonc, type JsonRecord, type JsonValue } from "./jsonc.ts";
 import lockfile from "proper-lockfile";
 import { normalizePlanServerUrl } from "./collaboration/urls.ts";
 import { resolvePrimaryCheckoutRoot } from "./project-checkout.ts";
 import { getCwd, getHomeDir } from "../constants.ts";
-import { getBundledModelPresets } from "./model-presets.ts";
-import { remoteSettingsSnapshot, updateRemoteGlobalSetting } from "./remote/settings-bridge.ts";
+import { getBundledModelPresets, type ModelPresetsMap, type ModelPresetVisionFallback } from "./model-presets.ts";
+import { remoteSettingsSnapshot, updateRemoteGlobalSetting, type SettingsUpdate } from "./remote/settings-bridge.ts";
 import {
     assertPersonalResourcePathSync,
     personalGlobalRoot,
     remotePersonalResourcesActive,
 } from "./remote/personal-resources.ts";
 
+interface MigratePiSettingsOnceOptions {
+    homeDir?: string;
+    runwieldPath?: string;
+    piPath?: string;
+}
+
+interface MigratePiSettingsOnceResult {
+    copied: boolean;
+    skipped: boolean;
+    error?: string;
+}
+
+export interface ArchiveRetentionPolicy {
+    retentionDays: number;
+    keepLast: number;
+}
+
 export const PLAN_SERVER_URL_SETTING_KEY = "planServerUrl";
 export const ONBOARDING_TUTORIAL_OFFER_HANDLED_SETTING_KEY = "onboardingTutorialOfferHandled";
 
-/**
- * @typedef {Object} CustomSettingReadOptions
- * @property {boolean} [strict] Report unreadable or malformed settings instead of treating them as absent.
- */
+export interface CustomSettingReadOptions {
+    /** Report unreadable or malformed settings instead of treating them as absent. */
+    strict?: boolean;
+}
 
-/** @type {Map<string, string>} */
-const projectSettingsRootMemo = new Map();
+const projectSettingsRootMemo: Map<string, string> = new Map();
 
-/** @type {Map<string, boolean>} */
-const mascotEnabledCache = new Map();
+const mascotEnabledCache: Map<string, boolean> = new Map();
 
 /** Clear cached visibility after settings reloads or writes. */
 export function clearMascotEnabledCache() {
     mascotEnabledCache.clear();
 }
 
-/**
- * Only a literal false disables the mascot. Reads are cached for animation renders.
- * @param {string} projectRoot
- * @returns {boolean}
- */
-export function isMascotEnabled(projectRoot) {
+/** Only a literal false disables the mascot. Reads are cached for animation renders. */
+export function isMascotEnabled(projectRoot: string): boolean {
     const cached = mascotEnabledCache.get(projectRoot);
     if (cached !== undefined) return cached;
     const enabled = getMergedCustomSetting("mascot", projectRoot) !== false;
@@ -73,15 +84,8 @@ const RUNWIELD_CUSTOM_SETTING_KEYS = [
     PLAN_SERVER_URL_SETTING_KEY,
 ];
 
-/**
- * Get the settings directory path for a given scope.
- *
- * @param {string} scope
- * @param {string} [projectRoot]
- *
- * @returns {string}
- */
-export function getSettingsDir(scope, projectRoot = getCwd()) {
+/** Get the settings directory path for a given scope. */
+export function getSettingsDir(scope: string, projectRoot: string = getCwd()): string {
     if (scope === "global") return personalGlobalRoot();
     let resolvedRoot = projectSettingsRootMemo.get(projectRoot);
     if (!resolvedRoot) {
@@ -94,39 +98,16 @@ export function getSettingsDir(scope, projectRoot = getCwd()) {
 /**
  * Get the project settings directory exactly under the supplied root.
  * This bypasses primary-checkout resolution for validation worktrees.
- *
- * @param {string} projectRoot
- * @returns {string}
  */
-function getExactProjectSettingsDir(projectRoot) {
+function getExactProjectSettingsDir(projectRoot: string): string {
     return join(projectRoot, ".wld");
 }
 
-/**
- * @param {string} projectRoot
- * @returns {string}
- */
-function getExactProjectSettingsPath(projectRoot) {
+function getExactProjectSettingsPath(projectRoot: string): string {
     return join(getExactProjectSettingsDir(projectRoot), "settings.json");
 }
 
-/**
- * RunWield custom storage for SettingsManager.
- *
- * Implementation Details:
- * - Global Scope:
- *     - Read: uses ~/.wld/settings.json only.
- *     - Migration: if ~/.wld/settings.json is missing, copies once from ~/.pi/agent/settings.json.
- *     - Write: always writes to ~/.wld/settings.json.
- * - Project Scope:
- *     - Read/Write: use <primary checkout>/.wld/settings.json when the project root is a linked worktree.
- *       Other roots use <projectRoot>/.wld/settings.json unchanged.
- */
-/**
- * @param {string} path
- * @returns {boolean}
- */
-function fileExists(path) {
+function fileExists(path: string): boolean {
     try {
         return statSync(path).isFile();
     } catch {
@@ -137,11 +118,8 @@ function fileExists(path) {
 /**
  * Acquire a sync lock with retry on ELOCKED, mirroring upstream
  * FileSettingsStorage behavior.
- *
- * @param {string} path
- * @returns {() => void}
  */
-function acquireSettingsLockSyncWithRetry(path) {
+function acquireSettingsLockSyncWithRetry(path: string): () => void {
     const maxAttempts = 10;
     const delayMs = 20;
     let lastError;
@@ -165,12 +143,8 @@ function acquireSettingsLockSyncWithRetry(path) {
     throw lastError ?? new Error("Failed to acquire settings lock");
 }
 
-/**
- * Ensure a settings file exists before acquiring a proper-lockfile lock.
- *
- * @param {string} path
- */
-function ensureSettingsFileForLock(path) {
+/** Ensure a settings file exists before acquiring a proper-lockfile lock. */
+function ensureSettingsFileForLock(path: string) {
     try {
         statSync(path);
     } catch (_e) {
@@ -184,12 +158,7 @@ function ensureSettingsFileForLock(path) {
     }
 }
 
-/**
- * @param {string} path
- * @param {boolean} [strict]
- * @returns {string | undefined}
- */
-function readSettingsContent(path, strict = false) {
+function readSettingsContent(path: string, strict: boolean = false): string | undefined {
     try {
         const raw = readFileSync(path, "utf8");
         return stripJsoncComments(raw);
@@ -199,11 +168,7 @@ function readSettingsContent(path, strict = false) {
     }
 }
 
-/**
- * @param {string} path
- * @param {string} content
- */
-function writeSettingsContent(path, content) {
+function writeSettingsContent(path: string, content: string) {
     const parentDir = dirname(path);
     try {
         mkdirSync(parentDir, { recursive: true });
@@ -217,11 +182,8 @@ function writeSettingsContent(path, content) {
 /**
  * One-time import of legacy Pi settings into RunWield-owned settings.
  * Existing RunWield settings always win; Pi is never used as a runtime fallback.
- *
- * @param {{ homeDir?: string, runwieldPath?: string, piPath?: string }} [options]
- * @returns {{ copied: boolean, skipped: boolean, error?: string }}
  */
-export function migratePiSettingsOnce(options = {}) {
+export function migratePiSettingsOnce(options: MigratePiSettingsOnceOptions = {}): MigratePiSettingsOnceResult {
     const homeDir = options.homeDir ?? getHomeDir();
     const runwieldPath = options.runwieldPath ?? join(homeDir, ".wld", "settings.json");
     const piPath = options.piPath ?? join(homeDir, ".pi", "agent", "settings.json");
@@ -239,7 +201,11 @@ export function migratePiSettingsOnce(options = {}) {
     }
 }
 
-/** @typedef {Record<string, unknown>} GlobalSettingsValues */
+type SettingsScope = "global" | "project";
+
+interface CustomSettingsValues {
+    [key: string]: JsonValue | undefined;
+}
 
 /** Return the laptop settings without using a mounted remote path. */
 export function readLaptopGlobalSettingsSnapshot() {
@@ -256,10 +222,9 @@ export function readLaptopGlobalSettingsSnapshot() {
 
 /**
  * Apply one structured change under the laptop's own settings lock.
- * @param {import('./remote/settings-bridge.ts').SettingsUpdate} update
- * @returns {string} The committed snapshot.
+ * The committed snapshot.
  */
-export function applyLaptopGlobalSettingsUpdate(update) {
+export function applyLaptopGlobalSettingsUpdate(update: SettingsUpdate): string {
     if (remotePersonalResourcesActive()) throw new Error("Laptop settings writer cannot use a remote mount");
     const path = join(getHomeDir(), ".wld", "settings.json");
     migratePiSettingsOnce({ runwieldPath: path });
@@ -267,9 +232,8 @@ export function applyLaptopGlobalSettingsUpdate(update) {
     const release = acquireSettingsLockSyncWithRetry(path);
     try {
         const content = readSettingsContent(path);
-        /** @type {GlobalSettingsValues} */
-        let parsed = {};
-        if (content) parsed = /** @type {GlobalSettingsValues} */ (parseJsonc(content));
+        let parsed: JsonValue = {};
+        if (content) parsed = parseJsonc(content);
         if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Invalid laptop settings");
         if (update.kind === "set") parsed[update.key] = update.value;
         else if (update.kind === "model") {
@@ -290,29 +254,37 @@ export function applyLaptopGlobalSettingsUpdate(update) {
     }
 }
 
+type SettingsContentUpdate = (content: string | undefined) => string | undefined;
+
+/**
+ * RunWield custom storage for SettingsManager.
+ *
+ * Implementation Details:
+ * - Global Scope:
+ *     - Read: uses ~/.wld/settings.json only.
+ *     - Migration: if ~/.wld/settings.json is missing, copies once from ~/.pi/agent/settings.json.
+ *     - Write: always writes to ~/.wld/settings.json.
+ * - Project Scope:
+ *     - Read/Write: use <primary checkout>/.wld/settings.json when the project root is a linked worktree.
+ *       Other roots use <projectRoot>/.wld/settings.json unchanged.
+ */
 class RunWieldSettingsStorage {
-    /** @param {string} [projectRoot] */
-    constructor(projectRoot = getCwd()) {
+    declare projectRoot: string;
+
+    constructor(projectRoot: string = getCwd()) {
         this.projectRoot = projectRoot;
     }
 
-    /**
-     * Resolves the path for a given scope.
-     * @param {"global" | "project"} scope
-     * @returns {string}
-     */
-    #resolvePath(scope) {
+    /** Resolves the path for a given scope. */
+    #resolvePath(scope: SettingsScope): string {
         return getSettingsDir(scope, this.projectRoot) + "/settings.json";
     }
 
     /**
      * Read settings file content, stripping JSONC comments/trailing commas
      * so callers (Pi's SettingsManager, custom setters) receive valid JSON.
-     * @param {"global" | "project"} scope
-     * @param {boolean} [strict]
-     * @returns {string | undefined}
      */
-    #readSettings(scope, strict = false) {
+    #readSettings(scope: SettingsScope, strict: boolean = false): string | undefined {
         const path = this.#resolvePath(scope);
         if (scope === "global" && !remotePersonalResourcesActive()) {
             migratePiSettingsOnce({ runwieldPath: path });
@@ -330,12 +302,8 @@ class RunWieldSettingsStorage {
         return content;
     }
 
-    /**
-     * Logic for writing settings.
-     * @param {"global" | "project"} scope
-     * @param {string} content
-     */
-    #writeSettings(scope, content) {
+    /** Logic for writing settings. */
+    #writeSettings(scope: SettingsScope, content: string) {
         const path = this.#resolvePath(scope);
 
         writeSettingsContent(path, content);
@@ -344,11 +312,8 @@ class RunWieldSettingsStorage {
     /**
      * Implement the lock interface expected by SettingsManager. Must be
      * synchronous: SettingsManager calls this without awaiting.
-     * @param {"global" | "project"} scope
-     * @param {(content: string | undefined) => string | undefined} callback
-     * @param {CustomSettingReadOptions} [options]
      */
-    withLock(scope, callback, options = {}) {
+    withLock(scope: SettingsScope, callback: SettingsContentUpdate, options: CustomSettingReadOptions = {}) {
         const path = this.#resolvePath(scope);
 
         const content = this.#readSettings(scope, options.strict);
@@ -379,28 +344,22 @@ class RunWieldSettingsStorage {
     }
 }
 
-/** @type {RunWieldSettingsStorage | null} */
-let storageInstance = null;
+let storageInstance: RunWieldSettingsStorage | null = null;
 
-/** @type {Map<string, RunWieldSettingsStorage>} */
-const projectStorageInstances = new Map();
+const projectStorageInstances: Map<string, RunWieldSettingsStorage> = new Map();
 
-/** @type {Map<string, SettingsManager>} */
-const projectSettingsManagers = new Map();
+const projectSettingsManagers: Map<string, SettingsManager> = new Map();
 
-/** @type {Map<string, SettingsManager>} */
-const remoteManagerHandles = new Map();
+const remoteManagerHandles: Map<string, SettingsManager> = new Map();
 
-/** @type {Map<string, string | undefined>} */
-const remoteManagerSnapshots = new Map();
+const remoteManagerSnapshots: Map<string, string | undefined> = new Map();
 
 /**
  * Pi's reload() awaits its write queue, but its getters are synchronous. Keep
  * the caller's manager reference stable while replacing the loaded manager
  * when the laptop's mounted snapshot or acknowledged receipt changes.
- * @param {string} projectRoot
  */
-function refreshRemoteSettingsManager(projectRoot) {
+function refreshRemoteSettingsManager(projectRoot: string) {
     if (!remotePersonalResourcesActive()) return;
     const snapshot = readRemoteSettingsSnapshot();
     if (remoteManagerSnapshots.get(projectRoot) === snapshot) return;
@@ -410,12 +369,8 @@ function refreshRemoteSettingsManager(projectRoot) {
     remoteManagerSnapshots.set(projectRoot, snapshot);
 }
 
-/**
- * Initializes a settings manager for the requested project root.
- *
- * @param {string} [projectRoot]
- */
-export function initSettings(projectRoot = getCwd()) {
+/** Initializes a settings manager for the requested project root. */
+export function initSettings(projectRoot: string = getCwd()) {
     if (!projectSettingsManagers.has(projectRoot)) {
         const storage = new RunWieldSettingsStorage(projectRoot);
         const manager = SettingsManager.fromStorage(storage);
@@ -434,50 +389,44 @@ export function initSettings(projectRoot = getCwd()) {
                 projectRoot,
                 new Proxy(manager, {
                     get(_target, property) {
-                        const current = /** @type {SettingsManager} */ (projectSettingsManagers.get(projectRoot));
+                        const current = projectSettingsManagers.get(projectRoot)!;
                         // Inspect the loaded shape without reading the mount. A held
                         // method must refresh at invocation, not at capture as well.
                         if (typeof Reflect.get(current, property, current) === "function") {
-                            /** @param {unknown[]} args */
-                            return (...args) => {
+                            return <Argument>(...args: Argument[]) => {
                                 refreshRemoteSettingsManager(projectRoot);
-                                const live = /** @type {SettingsManager} */ (projectSettingsManagers.get(projectRoot));
+                                const live = projectSettingsManagers.get(projectRoot)!;
                                 return Reflect.apply(Reflect.get(live, property, live), live, args);
                             };
                         }
                         refreshRemoteSettingsManager(projectRoot);
-                        const live = /** @type {SettingsManager} */ (projectSettingsManagers.get(projectRoot));
+                        const live = projectSettingsManagers.get(projectRoot)!;
                         return Reflect.get(live, property, live);
                     },
                     set(_target, property, value) {
                         refreshRemoteSettingsManager(projectRoot);
-                        const current = /** @type {SettingsManager} */ (projectSettingsManagers.get(projectRoot));
+                        const current = projectSettingsManagers.get(projectRoot)!;
                         return Reflect.set(current, property, value, current);
                     },
                 }),
             );
         }
     }
-    storageInstance = /** @type {RunWieldSettingsStorage} */ (projectStorageInstances.get(projectRoot));
+    storageInstance = projectStorageInstances.get(projectRoot)!;
 }
 
-/**
- * Provides the SettingsManager singleton.
- * @param {string} [projectRoot]
- * @returns {SettingsManager}
- */
-export function getSettingsManager(projectRoot = getCwd()) {
+/** Provides the SettingsManager singleton. */
+export function getSettingsManager(projectRoot: string = getCwd()): SettingsManager {
     if (!projectSettingsManagers.has(projectRoot)) initSettings(projectRoot);
     // The proxy refreshes each value read, write, or method invocation itself.
     if (remoteManagerHandles.has(projectRoot)) {
-        return /** @type {SettingsManager} */ (remoteManagerHandles.get(projectRoot));
+        return remoteManagerHandles.get(projectRoot)!;
     }
     refreshRemoteSettingsManager(projectRoot);
-    return /** @type {SettingsManager} */ (projectSettingsManagers.get(projectRoot));
+    return projectSettingsManagers.get(projectRoot)!;
 }
 
-/** @returns {string | undefined} */
-function readRemoteSettingsSnapshot() {
+function readRemoteSettingsSnapshot(): string | undefined {
     const path = join(personalGlobalRoot(), "settings.json");
     // A missing file is optional only while the activated root is still mounted.
     assertPersonalResourcePathSync(path, "global settings");
@@ -494,13 +443,9 @@ function readRemoteSettingsSnapshot() {
     return remoteSettingsSnapshot(stripJsoncComments(content));
 }
 
-/**
- * @param {string} projectRoot
- * @returns {RunWieldSettingsStorage}
- */
-function getSettingsStorage(projectRoot) {
+function getSettingsStorage(projectRoot: string): RunWieldSettingsStorage {
     if (!projectStorageInstances.has(projectRoot)) initSettings(projectRoot);
-    return /** @type {RunWieldSettingsStorage} */ (projectStorageInstances.get(projectRoot));
+    return projectStorageInstances.get(projectRoot)!;
 }
 
 /**
@@ -520,11 +465,8 @@ export function __resetSettingsForTests() {
 /**
  * Strip JSONC comments/trailing commas from a raw string, producing valid JSON.
  * Uses the shared JSONC parser then re-serializes for callers that expect clean JSON.
- *
- * @param {string} raw
- * @returns {string}
  */
-function stripJsoncComments(raw) {
+function stripJsoncComments(raw: string): string {
     try {
         const parsed = parseJsonc(raw);
         return JSON.stringify(parsed);
@@ -539,17 +481,16 @@ function stripJsoncComments(raw) {
  * Preserve RunWield custom settings when Pi's SettingsManager writes its known
  * schema back to disk. Without this, operations like changing theme/model can
  * silently drop RunWield-only keys such as `modelPresets`.
- *
- * @param {string | undefined} previousContent
- * @param {string} nextContent
- * @returns {string}
  */
-export function preserveRunWieldCustomSettingsForWrite(previousContent, nextContent) {
+export function preserveRunWieldCustomSettingsForWrite(
+    previousContent: string | undefined,
+    nextContent: string,
+): string {
     if (!previousContent) return nextContent;
 
     try {
-        const previous = /** @type {Record<string, any>} */ (parseJsonc(previousContent));
-        const next = /** @type {Record<string, any>} */ (parseJsonc(nextContent));
+        const previous = parseJsonc(previousContent);
+        const next = parseJsonc(nextContent);
         if (
             !previous ||
             typeof previous !== "object" ||
@@ -581,22 +522,22 @@ export function preserveRunWieldCustomSettingsForWrite(previousContent, nextCont
 /**
  * Safely reads a custom key from the underlying JSON file, bypassing SettingsManager types.
  * Content is parsed as JSONC (comments/trailing commas tolerated).
- * @param {string} key
- * @param {"global" | "project"} scope
- * @param {string} [projectRoot]
- * @param {CustomSettingReadOptions} [options]
- * @returns {any}
  */
-export function getCustomSetting(key, scope = "project", projectRoot = getCwd(), options = {}) {
+export function getCustomSetting(
+    key: string,
+    scope: SettingsScope = "project",
+    projectRoot: string = getCwd(),
+    options: CustomSettingReadOptions = {},
+): JsonValue | undefined {
     const storage = getSettingsStorage(projectRoot);
-    let result = undefined;
+    let result: JsonValue | undefined = undefined;
 
     storage.withLock(
         scope,
         (content) => {
             if (content !== undefined) {
                 try {
-                    const parsed = /** @type {Record<string, any>} */ (parseJsonc(content));
+                    const parsed = parseJsonc(content) as JsonRecord;
                     if (options.strict && (!parsed || typeof parsed !== "object" || Array.isArray(parsed))) {
                         throw new SyntaxError("Settings must be a JSONC object.");
                     }
@@ -619,16 +560,17 @@ export function getCustomSetting(key, scope = "project", projectRoot = getCwd(),
  * and forces the SettingsManager to sync its in-memory state.
  *
  * Output is always normalized JSON (no comments).
- *
- * @param {string} key
- * @param {any} value
- * @param {"global" | "project"} scope
- * @param {string} [projectRoot]
  */
-export async function setCustomSetting(key, value, scope = "project", projectRoot = getCwd()) {
+export async function setCustomSetting(
+    key: string,
+    value: JsonValue | undefined,
+    scope: SettingsScope = "project",
+    projectRoot: string = getCwd(),
+) {
     clearMascotEnabledCache();
     if (scope === "global" && remotePersonalResourcesActive()) {
-        await updateRemoteGlobalSetting({ kind: "set", key, value });
+        // The remote protocol requires a value. Keep its existing rejection of an omitted value.
+        await updateRemoteGlobalSetting({ kind: "set", key, value: value! });
         await getSettingsManager(projectRoot).reload();
         clearMascotEnabledCache();
         return;
@@ -636,10 +578,10 @@ export async function setCustomSetting(key, value, scope = "project", projectRoo
     const storage = getSettingsStorage(projectRoot);
 
     storage.withLock(scope, (content) => {
-        let parsed = /** @type {Record<string, any>} */ ({});
+        let parsed: CustomSettingsValues = {};
         if (content) {
             try {
-                parsed = /** @type {Record<string, any>} */ (parseJsonc(content));
+                parsed = parseJsonc(content) as JsonRecord;
             } catch (_e) {
                 /* ignore */
             }
@@ -658,17 +600,13 @@ export async function setCustomSetting(key, value, scope = "project", projectRoo
 /**
  * Safely reads a custom key from exactly `<projectRoot>/.wld/settings.json`.
  * This bypasses primary-checkout resolution and parses the on-disk file each time.
- *
- * @param {string} key
- * @param {string} projectRoot
- * @returns {unknown}
  */
-export function getExactProjectCustomSetting(key, projectRoot) {
+export function getExactProjectCustomSetting(key: string, projectRoot: string): JsonValue | undefined {
     const content = readSettingsContent(getExactProjectSettingsPath(projectRoot));
     if (!content) return undefined;
 
     try {
-        const parsed = /** @type {Record<string, unknown>} */ (parseJsonc(content));
+        const parsed = parseJsonc(content) as JsonRecord;
         return parsed[key];
     } catch (_e) {
         return undefined;
@@ -678,12 +616,8 @@ export function getExactProjectCustomSetting(key, projectRoot) {
 /**
  * Safely writes a custom key to exactly `<projectRoot>/.wld/settings.json`.
  * Output is always normalized JSON (no comments), matching ordinary custom writes.
- *
- * @param {string} key
- * @param {unknown} value
- * @param {string} projectRoot
  */
-export function setExactProjectCustomSetting(key, value, projectRoot) {
+export function setExactProjectCustomSetting(key: string, value: JsonValue | undefined, projectRoot: string) {
     clearMascotEnabledCache();
     const path = getExactProjectSettingsPath(projectRoot);
     ensureSettingsFileForLock(path);
@@ -691,10 +625,10 @@ export function setExactProjectCustomSetting(key, value, projectRoot) {
     const release = acquireSettingsLockSyncWithRetry(path);
     try {
         const content = readSettingsContent(path);
-        let parsed = /** @type {Record<string, unknown>} */ ({});
+        let parsed: CustomSettingsValues = {};
         if (content) {
             try {
-                parsed = /** @type {Record<string, unknown>} */ (parseJsonc(content));
+                parsed = parseJsonc(content) as JsonRecord;
             } catch (_e) {
                 /* ignore */
             }
@@ -707,37 +641,25 @@ export function setExactProjectCustomSetting(key, value, projectRoot) {
     }
 }
 
-/**
- * @param {unknown} value
- * @param {string} label
- * @returns {number}
- */
-function validatePositiveIntegerSetting(value, label) {
+function validatePositiveIntegerSetting(value: string | number, label: string): number {
     const numberValue = typeof value === "string" && value.trim() !== "" ? Number(value) : value;
-    if (!Number.isInteger(numberValue) || /** @type {number} */ (numberValue) < 1) {
+    if (typeof numberValue !== "number" || !Number.isInteger(numberValue) || numberValue < 1) {
         throw new Error(`${label} must be a positive integer.`);
     }
-    return /** @type {number} */ (numberValue);
+    return numberValue;
 }
 
-/**
- * Persist the two parts of a remote model default in one laptop transaction.
- * @param {string} projectRoot
- * @param {string} model
- * @param {string} provider
- */
-export async function setRemoteDefaultModelSelection(projectRoot, model, provider) {
+/** Persist the two parts of a remote model default in one laptop transaction. */
+export async function setRemoteDefaultModelSelection(projectRoot: string, model: string, provider: string) {
     if (!remotePersonalResourcesActive()) throw new Error("Remote model settings require a remote connection");
     await updateRemoteGlobalSetting({ kind: "model", model, provider });
     await getSettingsManager(projectRoot).reload();
 }
 
-/**
- * Safely updates one numeric global compaction setting while preserving siblings.
- * @param {"enabled" | "reserveTokens" | "keepRecentTokens"} key
- * @param {boolean | number} value
- */
-export async function setGlobalCompactionSetting(key, value) {
+type CompactionSettingKey = Extract<SettingsUpdate, { kind: "compaction" }>["key"];
+
+/** Safely updates one numeric global compaction setting while preserving siblings. */
+export async function setGlobalCompactionSetting(key: CompactionSettingKey, value: boolean | number) {
     if (remotePersonalResourcesActive()) {
         await updateRemoteGlobalSetting({ kind: "compaction", key, value });
         await getSettingsManager().reload();
@@ -745,12 +667,11 @@ export async function setGlobalCompactionSetting(key, value) {
     }
     if (!storageInstance) initSettings();
 
-    // @ts-ignore storageInstance is definitely assigned here
-    storageInstance.withLock("global", (content) => {
-        let parsed = /** @type {Record<string, any>} */ ({});
+    storageInstance!.withLock("global", (content) => {
+        let parsed: CustomSettingsValues = {};
         if (content) {
             try {
-                parsed = /** @type {Record<string, any>} */ (parseJsonc(content));
+                parsed = parseJsonc(content) as JsonRecord;
             } catch (_e) {
                 /* ignore */
             }
@@ -766,19 +687,13 @@ export async function setGlobalCompactionSetting(key, value) {
     await getSettingsManager().reload();
 }
 
-/**
- * Set the global compaction reserve token budget.
- * @param {unknown} value
- */
-export async function setCompactionReserveTokens(value) {
+/** Set the global compaction reserve token budget. */
+export async function setCompactionReserveTokens(value: string | number) {
     await setGlobalCompactionSetting("reserveTokens", validatePositiveIntegerSetting(value, "Reserve tokens"));
 }
 
-/**
- * Set the global compaction keep-recent token window.
- * @param {unknown} value
- */
-export async function setCompactionKeepRecentTokens(value) {
+/** Set the global compaction keep-recent token window. */
+export async function setCompactionKeepRecentTokens(value: string | number) {
     await setGlobalCompactionSetting("keepRecentTokens", validatePositiveIntegerSetting(value, "Keep recent tokens"));
 }
 
@@ -790,17 +705,18 @@ export async function setCompactionKeepRecentTokens(value) {
  * override global values at the top level. Model presets also include bundled
  * defaults, with a same-name user preset replacing the bundled definition.
  * For scalar keys, project value wins if present.
- *
- * @param {string} key
- * @param {string} [projectRoot]
- * @returns {any} Merged value from global + project scopes, or undefined if neither has it.
+ * Merged value from global + project scopes, or undefined if neither has it.
  */
-export function getMergedCustomSetting(key, projectRoot = getCwd()) {
+export function getMergedCustomSetting(key: string, projectRoot: string = getCwd()): JsonValue | undefined {
     const globalVal = getCustomSetting(key, "global", projectRoot);
     const projectVal = getCustomSetting(key, "project", projectRoot);
 
     if (key === "modelPresets") {
-        return { ...getBundledModelPresets(), ...globalVal, ...projectVal };
+        return {
+            ...getBundledModelPresets(),
+            ...(globalVal as JsonRecord),
+            ...(projectVal as JsonRecord),
+        } as JsonRecord;
     }
 
     if (globalVal === undefined && projectVal === undefined) return undefined;
@@ -822,30 +738,16 @@ export function getMergedCustomSetting(key, projectRoot = getCwd()) {
     return projectVal;
 }
 
-/**
- * @returns {string | undefined}
- */
-export function getDefaultPlanServerUrl() {
+export function getDefaultPlanServerUrl(): string | undefined {
     const value = getMergedCustomSetting(PLAN_SERVER_URL_SETTING_KEY);
     if (value === undefined) return undefined;
     return normalizePlanServerUrl(value);
 }
 
-/**
- * @param {unknown} value
- * @param {"global" | "project"} [scope]
- */
-export async function setDefaultPlanServerUrl(value, scope = "project") {
+export async function setDefaultPlanServerUrl(value: string, scope: SettingsScope = "project") {
     await setCustomSetting(PLAN_SERVER_URL_SETTING_KEY, normalizePlanServerUrl(value), scope);
 }
 
-/**
- * Whether merged execution worktrees should be removed after successful merge-back.
- * Defaults to true; set `cleanupMergedWorktrees: false` in global or project
- * settings to keep merged worktree checkouts for inspection.
- *
- * @returns {boolean}
- */
 /**
  * Resolve the configured vision fallback model string.
  *
@@ -853,25 +755,17 @@ export async function setDefaultPlanServerUrl(value, scope = "project") {
  * 1. Active preset `modelPresets.<activeModelPreset>.visionFallback.model`
  * 2. Top-level `visionFallback.model`
  * 3. Disabled when unset or not a string
- *
- * @param {string} projectRoot
- * @returns {string | undefined}
  */
-export function getResolvedVisionFallbackModelSetting(projectRoot) {
-    const activeModelPreset = /** @type {string | undefined} */ (
-        getMergedCustomSetting("activeModelPreset", projectRoot)
-    );
+export function getResolvedVisionFallbackModelSetting(projectRoot: string): string | undefined {
+    const activeModelPreset = getMergedCustomSetting("activeModelPreset", projectRoot) as string | undefined;
     if (activeModelPreset) {
-        const modelPresets = /** @type {Record<string, { visionFallback?: { model?: unknown } }> | undefined} */ (
-            getMergedCustomSetting("modelPresets", projectRoot)
-        );
+        const modelPresets = getMergedCustomSetting("modelPresets", projectRoot) as ModelPresetsMap | undefined;
         const presetModel = modelPresets?.[activeModelPreset]?.visionFallback?.model;
         if (typeof presetModel === "string" && presetModel.trim()) return presetModel.trim();
     }
 
-    const visionFallback = /** @type {{ model?: unknown } | undefined} */ (
-        getMergedCustomSetting("visionFallback", projectRoot)
-    );
+    const visionFallback = getMergedCustomSetting("visionFallback", projectRoot) as
+        ModelPresetVisionFallback | undefined;
     const model = visionFallback?.model;
     return typeof model === "string" && model.trim() ? model.trim() : undefined;
 }
@@ -880,11 +774,8 @@ export function getResolvedVisionFallbackModelSetting(projectRoot) {
  * Whether merged execution worktrees should be removed after successful merge-back.
  * Defaults to true; set `cleanupMergedWorktrees: false` in global or project
  * settings to keep merged worktree checkouts for inspection.
- *
- * @param {string} projectRoot
- * @returns {boolean}
  */
-export function shouldCleanupMergedWorktrees(projectRoot) {
+export function shouldCleanupMergedWorktrees(projectRoot: string): boolean {
     if (!projectRoot) throw new Error("shouldCleanupMergedWorktrees: projectRoot is required");
     return getMergedCustomSetting("cleanupMergedWorktrees", projectRoot) !== false;
 }
@@ -892,11 +783,8 @@ export function shouldCleanupMergedWorktrees(projectRoot) {
 /**
  * Whether completed top-level Plans should automatically generate or reconcile Work Records.
  * Defaults to true; only a literal nested `workRecords.autoGenerateOnPlanCompletion: false` disables it.
- *
- * @param {string} projectRoot
- * @returns {boolean}
  */
-export function shouldAutoGenerateWorkRecordsOnPlanCompletion(projectRoot) {
+export function shouldAutoGenerateWorkRecordsOnPlanCompletion(projectRoot: string): boolean {
     if (!projectRoot) throw new Error("shouldAutoGenerateWorkRecordsOnPlanCompletion: projectRoot is required");
     const workRecords = getMergedCustomSetting("workRecords", projectRoot);
     if (!workRecords || typeof workRecords !== "object" || Array.isArray(workRecords)) return true;
@@ -906,11 +794,8 @@ export function shouldAutoGenerateWorkRecordsOnPlanCompletion(projectRoot) {
 /**
  * Whether standalone Planned Changes merge into their authored target branch.
  * Defaults to false: deliver to a Plan Branch instead.
- *
- * @param {string} projectRoot
- * @returns {boolean}
  */
-export function shouldAutoMergePlansIntoTargetBranch(projectRoot) {
+export function shouldAutoMergePlansIntoTargetBranch(projectRoot: string): boolean {
     if (!projectRoot) throw new Error("shouldAutoMergePlansIntoTargetBranch: projectRoot is required");
     const plans = getMergedCustomSetting("plans", projectRoot);
     return Boolean(
@@ -918,26 +803,16 @@ export function shouldAutoMergePlansIntoTargetBranch(projectRoot) {
     );
 }
 
-/**
- * @param {unknown} value
- * @param {string} key
- * @returns {number}
- */
-function validateNonNegativeIntegerSetting(value, key) {
+function validateNonNegativeIntegerSetting(value: JsonValue | undefined, key: string): number {
     const numberValue = typeof value === "string" && value.trim() !== "" ? Number(value) : value;
-    if (!Number.isInteger(numberValue) || /** @type {number} */ (numberValue) < 0) {
+    if (typeof numberValue !== "number" || !Number.isInteger(numberValue) || numberValue < 0) {
         throw new Error(`${key} must be an integer of zero or more.`);
     }
-    return /** @type {number} */ (numberValue);
+    return numberValue;
 }
 
-/**
- * Resolve archived Plan retention policy from project settings only.
- *
- * @param {string} projectRoot
- * @returns {{ retentionDays: number, keepLast: number }}
- */
-export function getPlanArchiveRetentionPolicy(projectRoot) {
+/** Resolve archived Plan retention policy from project settings only. */
+export function getPlanArchiveRetentionPolicy(projectRoot: string): ArchiveRetentionPolicy {
     if (!projectRoot) throw new Error("getPlanArchiveRetentionPolicy: projectRoot is required");
     const plans = getCustomSetting("plans", "project", projectRoot);
     if (!plans || typeof plans !== "object" || Array.isArray(plans)) {
@@ -952,13 +827,8 @@ export function getPlanArchiveRetentionPolicy(projectRoot) {
     return { retentionDays, keepLast };
 }
 
-/**
- * Resolve the optional human code review gate mode.
- *
- * @param {string} projectRoot
- * @returns {"none" | "ask" | "always"}
- */
-export function getCodeReviewMode(projectRoot) {
+/** Resolve the optional human code review gate mode. */
+export function getCodeReviewMode(projectRoot: string): "none" | "ask" | "always" {
     if (!projectRoot) throw new Error("getCodeReviewMode: projectRoot is required");
     const mode = getMergedCustomSetting("codereview", projectRoot);
     if (mode === undefined) return "ask";
@@ -969,13 +839,8 @@ export function getCodeReviewMode(projectRoot) {
     return "none";
 }
 
-/**
- * Resolve the optional Guided Review generation mode.
- *
- * @param {string} projectRoot
- * @returns {"none" | "ask" | "auto" | "always"}
- */
-export function getGuidedReviewMode(projectRoot) {
+/** Resolve the optional Guided Review generation mode. */
+export function getGuidedReviewMode(projectRoot: string): "none" | "ask" | "auto" | "always" {
     if (!projectRoot) throw new Error("getGuidedReviewMode: projectRoot is required");
     const mode = getMergedCustomSetting("guidedReview", projectRoot);
     if (mode === undefined) return "auto";

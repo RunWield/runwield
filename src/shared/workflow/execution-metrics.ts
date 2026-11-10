@@ -19,7 +19,7 @@ import {
     recordWorkflowMetric,
 } from "./metrics.ts";
 
-import { getCustomSetting, getMergedCustomSetting } from "../settings.js";
+import { getCustomSetting, getMergedCustomSetting } from "../settings.ts";
 import {
     hasWorkflowMetricsEnablementOverride,
     isWorkflowMetricsEnabled,

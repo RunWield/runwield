@@ -1,7 +1,7 @@
 import { RunWieldTui } from "./tui.ts";
 import { getCwd } from "../../constants.ts";
 import { remotePersonalResourcesActive } from "../../shared/remote/personal-resources.ts";
-import { getSettingsManager, isMascotEnabled } from "../../shared/settings.js";
+import { getSettingsManager, isMascotEnabled } from "../../shared/settings.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import {
     CombinedAutocompleteProvider,

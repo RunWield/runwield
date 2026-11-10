@@ -10,7 +10,7 @@ import {
     type SelectItem,
     type SelectListLayoutOptions,
 } from "@earendil-works/pi-tui";
-import { getSettingsManager } from "../../shared/settings.js";
+import { getSettingsManager } from "../../shared/settings.ts";
 import { WORKFLOW_TOOL_NAMES } from "../../tools/registry.ts";
 import { imageTheme } from "../theme/theme.ts";
 import type {

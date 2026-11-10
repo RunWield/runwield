@@ -16,7 +16,7 @@ import { autoGenerateWorkRecordForCompletedPlan } from "../work-records/auto-gen
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
 import { advancePublicationAttempt, createPublicationAttempt } from "./publication-attempt.ts";
 import { createTestWorktreeAttempt, git, makeRepo } from "../worktree-test-helpers.ts";
-import { removeWorktreeGitArtifacts } from "../worktree.js";
+import { removeWorktreeGitArtifacts } from "../worktree.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import type { RuntimeSystemStatusEvent, SessionRuntimeEvent } from "../session/session-runtime-events.ts";

@@ -10,7 +10,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
-import { setCustomSetting } from "../settings.js";
+import { setCustomSetting } from "../settings.ts";
 import { findById } from "../worktree-registry.ts";
 import { readControllerRecord, writeControllerState } from "./controller-registry.ts";
 import { getWorkflowMetricsFilePath } from "./metrics.ts";

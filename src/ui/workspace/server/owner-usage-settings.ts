@@ -6,7 +6,7 @@ import type {
 } from "../../../shared/extensions/metrics-exporter.ts";
 import { MeasurementProjectUnavailableError, resolveMeasurementProject } from "../../../shared/workflow/metrics.ts";
 import { remotePersonalResourcesActive } from "../../../shared/remote/personal-resources.ts";
-import { getCustomSetting, getMergedCustomSetting } from "../../../shared/settings.js";
+import { getCustomSetting, getMergedCustomSetting } from "../../../shared/settings.ts";
 import {
     hasWorkflowMetricsEnablementOverride,
     isWorkflowMetricsEnabled,

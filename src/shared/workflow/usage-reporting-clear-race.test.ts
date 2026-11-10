@@ -10,7 +10,7 @@ import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixtu
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { ExecutionMetricsRecorder } from "./execution-metrics.ts";
 import { getWorkflowMetricsFilePath } from "./metrics.ts";
-import { setCustomSetting } from "../settings.js";
+import { setCustomSetting } from "../settings.ts";
 
 // Bun snapshots built-in named imports. Load the reporter after controlling this
 // filesystem boundary, in its own isolated test file. All journal writes stay real.

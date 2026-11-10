@@ -10,7 +10,7 @@ import { createProvider } from "@earendil-works/pi-ai";
 import type { AuthInteraction, OAuthCredential } from "@earendil-works/pi-ai";
 import { registerFauxProvider } from "@earendil-works/pi-ai/compat";
 import { join } from "node:path";
-import { __resetSettingsForTests, ONBOARDING_TUTORIAL_OFFER_HANDLED_SETTING_KEY } from "../../shared/settings.js";
+import { __resetSettingsForTests, ONBOARDING_TUTORIAL_OFFER_HANDLED_SETTING_KEY } from "../../shared/settings.ts";
 import { getModelRegistry } from "../../shared/models/model-registry.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { writeUpdateCheckCache } from "../../shared/update-check.ts";

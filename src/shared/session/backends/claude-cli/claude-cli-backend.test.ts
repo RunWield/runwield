@@ -21,7 +21,7 @@ import { withProcessGlobalTestLock } from "../../../../testing/process-global-lo
 import { getModelRegistry } from "../../../models/model-registry.ts";
 import { createTaskCompletedTool } from "../../../../tools/task-completed.ts";
 import { HostedSession } from "../../hosted-session.ts";
-import { setCustomSetting } from "../../../settings.js";
+import { setCustomSetting } from "../../../settings.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../../../workflow/metrics.ts";
 import { readLatestTaskCompletedOutcome } from "../../../workflow/workflow-results.ts";
 import { prepareClaudeCliCommand, removeClaudeCliPromptFile } from "./command.ts";

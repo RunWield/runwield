@@ -3,19 +3,19 @@ import { statSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { type InstalledMetricsExporter, resolveApprovedMetricsExporters } from "../extensions/metrics-exporter.ts";
 import { remotePersonalResourcesActive } from "../remote/personal-resources.ts";
-import { getCustomSetting, setCustomSetting } from "../settings.js";
+import { getCustomSetting, setCustomSetting } from "../settings.ts";
 import { resolveMeasurementProject } from "./metrics.ts";
 import { readWorkflowMetricLegacyAdoption, withWorkflowMetricJournalLock } from "./metrics-journal.ts";
 import { metricsDeliveryInFlight } from "./metrics-export-ledger.ts";
 import { metricsExportDirectory, replaceExportFile, withExportConfigurationLock } from "./metrics-export-storage.ts";
 
-export interface MetricsExportProjectStart {
+export type MetricsExportProjectStart = {
     projectRoot: string;
     historyEpoch: string;
     offset: number;
     legacyAdoptionEpoch?: string;
-}
-export interface MetricsExportDestinationGrant {
+};
+export type MetricsExportDestinationGrant = {
     destinationId: string;
     grantId: string;
     exporterId: string;
@@ -27,7 +27,7 @@ export interface MetricsExportDestinationGrant {
     externalProject: string;
     projects: MetricsExportProjectStart[];
     grantedAt: string;
-}
+};
 export interface MetricsExportGrantInput {
     destinationId?: string;
     exporterId: string;
@@ -56,7 +56,7 @@ interface ExportSettings {
 }
 
 export function readMetricsExportGrants(): MetricsExportDestinationGrant[] {
-    const settings: ExportSettings | undefined = getCustomSetting("metricsExport", "global");
+    const settings = getCustomSetting("metricsExport", "global") as ExportSettings | undefined;
     return (Array.isArray(settings?.destinations) ? settings.destinations : []).map((grant) => ({
         ...grant,
         projects: grant.projects.map((start) => {

@@ -4,7 +4,7 @@ import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts"
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
-import { setCustomSetting } from "../settings.js";
+import { setCustomSetting } from "../settings.ts";
 import { findPlansByParent, loadPlan, updatePlanFrontMatter } from "../../plan-store.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { executeWorkflowTestTools, type WorkflowTestToolCall } from "../../testing/workflow-agent-tools.ts";
@@ -17,7 +17,7 @@ import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/
 import { buildPlanEventUpdates, recordPlanEvent } from "./plan-lifecycle.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import { createPlanDeviationTool } from "../../tools/plan-deviation.ts";
-import { checkpointExecutionWorktree } from "../worktree.js";
+import { checkpointExecutionWorktree } from "../worktree.ts";
 import { recordIntegrationNotes, syncEpicChildPlanDeviations } from "./epic-review-context.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";

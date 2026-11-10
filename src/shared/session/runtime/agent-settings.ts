@@ -14,7 +14,7 @@ import { emitSystemStatus, RuntimeEventTypes } from ".././session-runtime-events
 import { assertModelExecutionBackendSupported } from "../../models/model-execution.ts";
 import { getModelRegistry } from "../../models/model-registry.ts";
 import { parseProviderModel } from "../../models/model-validation.ts";
-import { clearMascotEnabledCache, getSettingsManager, setGlobalCompactionSetting } from "../../settings.js";
+import { clearMascotEnabledCache, getSettingsManager, setGlobalCompactionSetting } from "../../settings.ts";
 import { getSessionKeyboardHelp } from ".././session-help.ts";
 import { resolveMcpConfig } from "../../mcp/config.ts";
 import { startMcpIntegration } from "../../mcp/integration.ts";

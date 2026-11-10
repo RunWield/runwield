@@ -5,7 +5,7 @@ import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { theme } from "../theme/theme.ts";
 import { AGENTS, getCwd, getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.ts";
-import { getSettingsManager } from "../../shared/settings.js";
+import { getSettingsManager } from "../../shared/settings.ts";
 import { getAgentDisplayName } from "../../shared/session/agents.ts";
 import { createSessionSnapshotWindow } from "./session-snapshot-window.ts";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";

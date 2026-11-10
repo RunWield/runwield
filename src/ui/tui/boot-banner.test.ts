@@ -7,7 +7,7 @@ import { Container, type TUI, TuiMainScreen } from "@earendil-works/pi-tui";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { getCwdInitState } from "../../cmd/init/init-state.ts";
 import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
-import { getSettingsManager } from "../../shared/settings.js";
+import { getSettingsManager } from "../../shared/settings.ts";
 import { createUiApi } from "./api.ts";
 import { SpinnerBlock } from "./blocks.ts";
 import { renderBootBanner } from "./boot-banner.ts";

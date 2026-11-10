@@ -24,7 +24,7 @@ import {
     deleteMergedWorktreeBranch,
     deleteRemotelyPublishedWorktreeBranch,
     removeWorktreeGitArtifacts,
-} from "../worktree.js";
+} from "../worktree.ts";
 import { getWorkflowMetricsFilePath } from "./metrics.ts";
 import { type JournalResult, resolveCollectionEpoch } from "./metrics-journal.ts";
 import { recordWorkflowOutcome, workflowOutcomeEventId } from "./outcome-observations.ts";

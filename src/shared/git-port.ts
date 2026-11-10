@@ -20,7 +20,7 @@
  */
 
 import { captureWorktreeTree, diffTrees, getWorkflowDiff } from "./workflow/git-snapshot.ts";
-import { getBranchHead, isCommitAncestorOfBranch } from "./worktree.js";
+import { getBranchHead, isCommitAncestorOfBranch } from "./worktree.ts";
 
 /**
  * Git operations, expressed behaviourally.
