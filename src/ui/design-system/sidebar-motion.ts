@@ -1,18 +1,17 @@
-/** @typedef {{ finished: Promise<void>, ready: Promise<void>, skipTransition: () => void }} SidebarTransition */
+export type SidebarTransition = Pick<ViewTransition, "finished" | "ready" | "skipTransition">;
 
-/** @type {SidebarTransition | null} */
-let activeTransition = null;
-/** @type {Array<() => void> | null} */
-let pendingUpdates = null;
+let activeTransition: SidebarTransition | null = null;
+type SidebarUpdate = () => void;
+let pendingUpdates: SidebarUpdate[] | null = null;
 
 /**
  * Animate a sidebar layout change without retaining hidden interactive content.
  * Call only for user actions; initial state and responsive layout changes stay instant.
- * @param {() => void} update
  */
-export function animateSidebarChange(update) {
+export function animateSidebarChange(update: SidebarUpdate) {
     if (
-        typeof document === "undefined" || !document.startViewTransition ||
+        typeof document === "undefined" ||
+        !document.startViewTransition ||
         globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches
     ) {
         update();

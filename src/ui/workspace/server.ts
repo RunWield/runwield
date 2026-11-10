@@ -122,7 +122,13 @@ import { ownerProjectPlanSessionsApi } from "./server/owner-plan-sessions.ts";
 import { createOwnerConnectionRegistry } from "./server/owner-connections.ts";
 import { setAstroOwnerWorkspaceSessionContinuation, setAstroOwnerWorkspaceStore } from "./server/astro-owner-data.ts";
 import { workspacePwaResponse } from "./server/workspace-pwa.ts";
-import { isPublicWorkspaceAsset, WORKSPACE_PWA_PATHS } from "./server/public-workspace-assets.ts";
+import {
+    isPublicWorkspaceAsset,
+    SIDEBAR_MOTION_SOURCE,
+    SIDEBAR_MOTION_URL,
+    transpileSidebarMotionScript,
+    WORKSPACE_PWA_PATHS,
+} from "./server/public-workspace-assets.ts";
 import { reviewHost } from "./server/review-host.ts";
 import { createWorkspaceSearchService } from "./server/workspace-search.ts";
 
@@ -141,6 +147,7 @@ const STYLES_PATH = join(WORKSPACE_DIR, "static", "styles.css");
 const TOKENS_CSS_PATH = join(DESIGN_SYSTEM_DIR, "tokens.css");
 const COMPONENTS_CSS_PATH = join(DESIGN_SYSTEM_DIR, "components.css");
 const WORKSPACE_CSS_PATH = join(WORKSPACE_DIR, "static", "workspace.css");
+const SIDEBAR_MOTION_PATH = join(ROOT_DIR, SIDEBAR_MOTION_SOURCE);
 const WORKSPACE_SHELL_JS_PATH = join(WORKSPACE_DIR, "static", "workspace-shell.ts");
 const LOGO_PATH = join(ROOT_DIR, "brand", "logo.svg");
 const ASTRO_SOURCE_DIST_DIR = join(ROOT_DIR, "dist", versions.bun ? "workspace-bun" : "workspace");
@@ -1371,10 +1378,7 @@ function registerStaticRoutes<State>(app: ReturnType<typeof createWorkspaceRoute
     app.get("/workspace.css", async () => await handleStaticRoute("/workspace.css"));
     app.get("/workspace-shell.js", async () => await handleStaticRoute("/workspace-shell.js"));
     app.get("/design-system/panel-icon.ts", async () => await handleStaticRoute("/design-system/panel-icon.ts"));
-    app.get(
-        "/design-system/sidebar-motion.js",
-        async () => await handleStaticRoute("/design-system/sidebar-motion.js"),
-    );
+    app.get(SIDEBAR_MOTION_URL, async () => await handleStaticRoute(SIDEBAR_MOTION_URL));
     app.get("/theme.css", async () => await handleStaticRoute("/theme.css"));
     app.get("/brand/logo.svg", async () => await handleStaticRoute("/brand/logo.svg"));
     app.get("/_astro/:asset", async (ctx) => await handleStaticRoute(ctx.url.pathname));
@@ -1384,8 +1388,8 @@ async function handleStaticRoute(pathname: string) {
     if (pathname === "/design-system/panel-icon.ts") {
         return await textFileResponse(join(DESIGN_SYSTEM_DIR, "panel-icon.ts"), "text/javascript; charset=utf-8");
     }
-    if (pathname === "/design-system/sidebar-motion.js") {
-        return await textFileResponse(join(DESIGN_SYSTEM_DIR, "sidebar-motion.js"), "text/javascript; charset=utf-8");
+    if (pathname === SIDEBAR_MOTION_URL) {
+        return await textFileResponse(SIDEBAR_MOTION_PATH, "text/javascript; charset=utf-8");
     }
     if (pathname === "/styles.css") return await textFileResponse(STYLES_PATH, "text/css; charset=utf-8");
     if (pathname === "/tokens.css") return await textFileResponse(TOKENS_CSS_PATH, "text/css; charset=utf-8");
@@ -1461,7 +1465,12 @@ function contentTypeForAsset(path: string) {
 
 async function textFileResponse(path: string, contentType: string) {
     try {
-        const body = path === WORKSPACE_CSS_PATH ? await readWorkspaceStyles(path) : await readFile(path, "utf8");
+        const body =
+            path === SIDEBAR_MOTION_PATH
+                ? transpileSidebarMotionScript(await readFile(path, "utf8"))
+                : path === WORKSPACE_CSS_PATH
+                  ? await readWorkspaceStyles(path)
+                  : await readFile(path, "utf8");
         return new Response(body, { headers: { "content-type": contentType } });
     } catch {
         return new Response("Not found", { status: 404 });

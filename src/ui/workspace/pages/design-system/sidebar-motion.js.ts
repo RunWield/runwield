@@ -1,9 +1,9 @@
-import { readFile } from "node:fs/promises";
+import source from "../../../design-system/sidebar-motion.ts?raw";
+import { transpileSidebarMotionScript } from "../../server/public-workspace-assets.ts";
 
 export const prerender = false;
-const MOTION_URL = new URL("../../../design-system/sidebar-motion.js", import.meta.url);
 
-export const GET = async () =>
-    new Response(await readFile(MOTION_URL, "utf8"), {
+export const GET = () =>
+    new Response(transpileSidebarMotionScript(source), {
         headers: { "content-type": "text/javascript; charset=utf-8" },
     });

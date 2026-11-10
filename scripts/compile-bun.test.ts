@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { assertEquals, assertThrows } from "../src/testing/assertions.ts";
 import { bunArtifactTarget, PASSIVE_PATHS } from "./compile-bun.ts";
 import bunAdapter from "../src/ui/workspace/integrations/bun-adapter.ts";
+import { SIDEBAR_MOTION_SOURCE, SIDEBAR_MOTION_URL } from "../src/ui/workspace/server/public-workspace-assets.ts";
 
 test("compiled Workspace includes the unbundled shell's browser imports", async () => {
     const root = fileURLToPath(new URL("../", import.meta.url));
@@ -14,7 +15,9 @@ test("compiled Workspace includes the unbundled shell's browser imports", async 
     assert(imports.length > 0);
     for (const [, specifier] of imports) {
         const browserPath = new URL(specifier, "https://workspace.test/workspace-shell.js").pathname;
-        const path = resolve(root, `src/ui${browserPath}`);
+        const sourcePath =
+            browserPath === SIDEBAR_MOTION_URL ? SIDEBAR_MOTION_SOURCE : `src/ui${browserPath}`;
+        const path = resolve(root, sourcePath);
         assert((await stat(path)).isFile());
         const packaged = relative(root, path).replaceAll("\\", "/");
         assert(

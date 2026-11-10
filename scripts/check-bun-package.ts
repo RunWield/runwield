@@ -12,6 +12,7 @@ import { installPackageHelperFixtures } from "./package-helper-fixtures.ts";
 import { verifyBuildArtifact } from "./build-metadata.ts";
 import { captureScriptProcess } from "./script-process.ts";
 import { removeExecutableFixtureDirectory } from "../src/testing/runtime-executable-fixture.ts";
+import { SIDEBAR_MOTION_SOURCE, SIDEBAR_MOTION_URL, transpileSidebarMotionScript } from "../src/ui/workspace/server/public-workspace-assets.ts";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -208,11 +209,13 @@ export async function checkBunPackage(
                 const response = await fetch(assetUrl);
                 equal(response.status, 200, assetUrl.pathname);
                 match(response.headers.get("content-type") || "", /(?:text|application)\/javascript/i);
-                deepEqual(
-                    new Uint8Array(await response.arrayBuffer()),
-                    new Uint8Array(await readFile(join(ROOT, "src/ui", assetUrl.pathname))),
-                    assetUrl.pathname,
-                );
+                const sidebarMotion = assetUrl.pathname === SIDEBAR_MOTION_URL;
+                const sourcePath = sidebarMotion ? SIDEBAR_MOTION_SOURCE : `src/ui${assetUrl.pathname}`;
+                const source = await readFile(join(ROOT, sourcePath));
+                const expected = sidebarMotion
+                    ? new TextEncoder().encode(transpileSidebarMotionScript(source.toString("utf8")))
+                    : new Uint8Array(source);
+                deepEqual(new Uint8Array(await response.arrayBuffer()), expected, assetUrl.pathname);
             }
             equal(page.headers.get("x-frame-options"), "DENY");
             const assets = [...html.matchAll(/(?:src|href)="(\/_astro\/[^"?]+\.(?:js|css))"/g)].map((item) => item[1]);

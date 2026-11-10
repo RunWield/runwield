@@ -9,6 +9,8 @@ import { requirePinnedBun } from "./check-bun-runtime.ts";
 import { BUILD_METADATA_SCHEMA, computeBuildIdentity, REMOTE_PROTOCOL_VERSION, sha256File } from "./build-metadata.ts";
 import { resolveBuildVersion, writeBuildIdentityFile, writeVersionFile } from "./write-version.ts";
 
+import { SIDEBAR_MOTION_SOURCE } from "../src/ui/workspace/server/public-workspace-assets.ts";
+
 interface LoadedSource {
     contents: string;
     loader: "js";
@@ -54,7 +56,7 @@ export const PASSIVE_PATHS = [
     "src/ui/workspace/static",
     "src/ui/design-system/tokens.css",
     "src/ui/design-system/components.css",
-    "src/ui/design-system/sidebar-motion.js",
+    SIDEBAR_MOTION_SOURCE,
     "src/ui/design-system/panel-icon.ts",
     "brand/logo.svg",
     "src/agent-definitions",

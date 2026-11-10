@@ -57,7 +57,9 @@ test("Workspace wrapper protects page routes and serves public assets without to
         const sidebarMotion = await app(new Request("http://localhost/design-system/sidebar-motion.js"));
         assertEquals(sidebarMotion.status, 200);
         assertEquals(sidebarMotion.headers.get("content-type"), "text/javascript; charset=utf-8");
-        assertStringIncludes(await sidebarMotion.text(), "export function animateSidebarChange");
+        const sidebarScript = await sidebarMotion.text();
+        assertStringIncludes(sidebarScript, "export function animateSidebarChange");
+        assertEquals(new Bun.Transpiler({ loader: "js" }).scan(sidebarScript).exports, ["animateSidebarChange"]);
         const panelIcon = await app(new Request("http://localhost/design-system/panel-icon.ts"));
         assertEquals(panelIcon.status, 200);
         assertEquals(panelIcon.headers.get("content-type"), "text/javascript; charset=utf-8");
