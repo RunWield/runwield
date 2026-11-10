@@ -163,6 +163,7 @@ The public marketplace is **RunWield** (`runwield` in install commands), and bot
 Users install `wld@runwield` from `RunWield/plugins`. Codex exposes `$wld:run`, discoverable by typing `$wld`;
 Claude Code exposes `/wld:request` and the `/wld:` continuation commands. Host-native syntax remains authoritative;
 Claude does not use Codex's `$` prefix. Distribution must preserve Core's MCP identity and adapter compatibility metadata.
+The Codex plugin details link to `https://runwield.dev/downloads`, where users can install Core and either host plugin.
 
 **Acceptance scenario: Install and invoke the short name.**
 

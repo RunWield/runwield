@@ -291,6 +291,7 @@ test("the Codex repository marketplace resolves the native package without insta
     assert.equal(entry.policy.installation, "AVAILABLE");
     assert.equal(manifest.skills, "./skills/");
     assert.equal(manifest.mcpServers, "./.mcp.json");
+    assert.equal(manifest.interface.websiteURL, "https://runwield.dev/downloads");
     assert.equal(adapter.adapterContract, 1);
 });
 
