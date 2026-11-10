@@ -25,7 +25,7 @@ import { WORKTREE_BRANCH_PREFIX } from "../../constants.ts";
 import {
     findActiveByPlanName as findWorktreeByPlanName,
     findById as findWorktreeById,
-} from "../../shared/worktree-registry.js";
+} from "../../shared/worktree-registry.ts";
 import { buildPlanSummary } from "../../shared/plan-presentation.ts";
 import { transitionFailureError } from "./transition-failure.ts";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";

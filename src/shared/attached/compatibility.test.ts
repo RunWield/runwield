@@ -3,7 +3,7 @@ import { ok as assert } from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { getWorktreeRegistryPath } from "../worktree-registry.js";
+import { getWorktreeRegistryPath } from "../worktree-registry.ts";
 import {
     ATTACHED_OPERATIONS,
     type AttachedJsonObject,

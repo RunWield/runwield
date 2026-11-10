@@ -27,7 +27,7 @@ import {
 import { assertGitRepository, GitRepositoryRequiredError } from "./git.ts";
 import { resolvePublicationUpstream } from "./publication-target.ts";
 import { getWorkflowDiff, REVIEW_DIFF_FORMAT_ARGS } from "./workflow/git-snapshot.ts";
-import { addEntry, listEntries, pruneStaleEntries, removeEntry } from "./worktree-registry.js";
+import { addEntry, listEntries, pruneStaleEntries, removeEntry } from "./worktree-registry.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "./project-runtime-layout.ts";
 import {
     isRunWieldOwnedGitignoreChange,
@@ -944,7 +944,7 @@ export async function validateWorktreeRecreation({ projectRoot, planName, planId
  * transition that records Plan lifecycle metadata.
  *
  * @param {{ projectRoot: string, planName: string, planId: string, baseRef?: string, baseBranch?: string, worktreeRoot?: string, attemptId?: string }} opts
- * @returns {Promise<import('./worktree-registry.js').WorktreeRegistryEntry>}
+ * @returns {Promise<import('./worktree-registry.ts').WorktreeRegistryEntry>}
  */
 export async function createWorktreeGitArtifacts({
     projectRoot,
@@ -1004,7 +1004,7 @@ export async function createWorktreeGitArtifacts({
 /**
  * Settle a previously-created Git execution worktree into the durable registry.
  * @param {string} projectRoot
- * @param {import('./worktree-registry.js').WorktreeRegistryEntry} entry
+ * @param {import('./worktree-registry.ts').WorktreeRegistryEntry} entry
  */
 export async function settleWorktreeAttempt(projectRoot, entry) {
     try {

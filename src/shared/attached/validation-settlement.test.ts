@@ -15,7 +15,7 @@ import {
 } from "./record-store.ts";
 import { parseDiffFiles } from "../workflow/review-diff.ts";
 import { getLockHostname } from "../process-liveness.ts";
-import { pruneEntry } from "../worktree-registry.js";
+import { pruneEntry } from "../worktree-registry.ts";
 import { type AttachedJsonObject, type AttachedWorkflowView, type AttachedOperationResult } from "./operations.ts";
 import process from "node:process";
 

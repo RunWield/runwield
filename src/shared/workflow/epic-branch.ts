@@ -29,7 +29,7 @@ import { prepareTargetBranchRef, resolveTargetBranchName } from "../worktree.js"
 import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { listControllerDocumentWorktrees } from "./controller-registry.ts";
-import { listEntries as listWorktreeRegistryEntries } from "../worktree-registry.js";
+import { listEntries as listWorktreeRegistryEntries } from "../worktree-registry.ts";
 
 /** Prefix for the branch RunWield names for an Epic when the author did not choose one. */
 export const EPIC_BRANCH_PREFIX = "epic/";

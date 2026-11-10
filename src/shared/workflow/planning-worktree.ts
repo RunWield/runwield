@@ -23,7 +23,7 @@ import {
     renamePlanningWorktreePlan,
     updateEntry as updateWorktreeRegistryEntry,
     type WorktreeRegistryEntry,
-} from "../worktree-registry.js";
+} from "../worktree-registry.ts";
 import {
     checkpointExecutionPreparation,
     createWorktreeGitArtifacts,

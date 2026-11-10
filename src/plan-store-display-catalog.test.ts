@@ -10,7 +10,7 @@ import { listPlanResources, listPlans, readPlanResourceCatalog, ensurePlanIdenti
 import { defineGitFixture, git } from "./shared/git-test-fixture.ts";
 import { enterProjectRuntime } from "./shared/project-runtime-layout.ts";
 import { getRunWieldRuntimeDir } from "./constants.ts";
-import { addEntry } from "./shared/worktree-registry.js";
+import { addEntry } from "./shared/worktree-registry.ts";
 import {
     findTargetBranchPlansByParent,
     readTargetBranchPlanCatalogByParent,

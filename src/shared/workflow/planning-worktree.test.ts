@@ -14,7 +14,7 @@ import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from 
 import { dirname, join } from "node:path";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { archivePlan, getPlanDocumentRoot, listPlans } from "../../plan-store.js";
-import { listEntries, refreshPlanningWorktreeBase, updateEntry } from "../worktree-registry.js";
+import { listEntries, refreshPlanningWorktreeBase, updateEntry } from "../worktree-registry.ts";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { inspectControllerView, writeControllerState } from "./controller-registry.ts";
 import { resolvePlanWithPrimaryRecovery } from "../../cmd/load-plan/primary-plan-recovery.ts";

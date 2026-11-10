@@ -13,7 +13,7 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../testing/as
 
 import { loadPlan, savePlan } from "../plan-store.js";
 import type { PlanFrontMatterInput } from "../plan-store.js";
-import type { WorktreeRegistryEntry } from "./worktree-registry.js";
+import type { WorktreeRegistryEntry } from "./worktree-registry.ts";
 
 async function savePlanForTest(cwd: string, planName: string, content: string, attrs: PlanFrontMatterInput) {
     const existing = await loadPlan(cwd, planName).catch(() => null);

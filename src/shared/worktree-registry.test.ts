@@ -1,4 +1,4 @@
-import type { WorktreeRegistryEntry } from "./worktree-registry.js";
+import type { WorktreeRegistryEntry } from "./worktree-registry.ts";
 import { open as fsOpen } from "node:fs/promises";
 import {
     lstat as fsLstat,
@@ -36,7 +36,7 @@ import {
     withWorktreeRegistryLock,
     withWorktreeRegistryLockAtPath,
     WorktreeRegistryAmbiguityError,
-} from "./worktree-registry.js";
+} from "./worktree-registry.ts";
 
 type MigrationIssue = Pick<WorktreeRegistryEntry, "id"> &
     Pick<NonNullable<WorktreeRegistryEntry["migrationIssue"]>, "reason">;

@@ -7,7 +7,7 @@ import {
     prepareWorktreeRegistry,
     readPlanActionWorktreeEvidence,
     WorktreeRegistryAmbiguityError,
-} from "../worktree-registry.js";
+} from "../worktree-registry.ts";
 import { RegisteredPlanDocumentUnavailableError } from "./controller-registry.ts";
 import { getPlanLifecycleActionMetadata, recordPlanEvent } from "./plan-lifecycle.ts";
 import type { PlanEvent, PlanStatus } from "./plan-lifecycle.ts";

@@ -19,7 +19,7 @@ import { basename, dirname, join } from "node:path";
 import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { createTestWorktreeAttempt } from "../worktree-test-helpers.ts";
-import { findById, retirePublicationForRevalidation, updatePublication } from "../worktree-registry.js";
+import { findById, retirePublicationForRevalidation, updatePublication } from "../worktree-registry.ts";
 import {
     advanceStoredPublication,
     reconcileStoredPublication,

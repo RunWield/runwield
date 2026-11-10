@@ -1,7 +1,7 @@
 import { getStoredPlanPath, loadPlan, withPlanLock, writePlanMarkdownWithRevision } from "../../plan-store.js";
 import { resolvePrimaryCheckoutRoot } from "../../shared/project-checkout.ts";
 import { discardWorktreeGitArtifacts, validateWorktreeDiscard } from "../../shared/worktree.js";
-import { findById, listEntries, pruneEntry, updateEntry } from "../../shared/worktree-registry.js";
+import { findById, listEntries, pruneEntry, updateEntry } from "../../shared/worktree-registry.ts";
 import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
 import { runRecoveryTransition } from "../../shared/workflow/state-transition.ts";

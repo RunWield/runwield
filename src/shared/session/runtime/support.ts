@@ -10,7 +10,7 @@ import { readPersistedWorkflowContext } from ".././workflow-context-session.ts";
 import { createPairCheckpointTool } from "../../../tools/pair-checkpoint.ts";
 import { formatPairCheckpointContext, restorePairExecutionState } from ".././pair-checkpoint-session.ts";
 import { loadPlan } from "../../../plan-store.js";
-import { listEntries, prepareWorktreeRegistry } from "../../worktree-registry.js";
+import { listEntries, prepareWorktreeRegistry } from "../../worktree-registry.ts";
 
 /** A delivered execution keeps its transcript origin, but resumes in the registered project. */
 export async function restorePublishedSessionProjectRoot(

@@ -19,7 +19,7 @@ import { pid, platform } from "node:process";
 
 import { dirname } from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "./lock-file-snapshot.ts";
+import { readLockFileSnapshot, removeLockFileIfSnapshotMatches, type LockFileSnapshot } from "./lock-file-snapshot.ts";
 import { getLockHostname, isPidAlive } from "./process-liveness.ts";
 import { CLI_BIN } from "../constants.ts";
 import { resolvePrimaryCheckoutRoot } from "./project-checkout.ts";
@@ -28,38 +28,106 @@ import {
     checkedProjectRuntimeLayout,
     resolveProjectRuntimeLayout,
     withProjectRuntimeReadScope,
+    type ProjectRuntimeLayout,
 } from "./project-runtime-layout.ts";
 import { inspectPlanIdentityDocuments } from "./workflow/plan-diagnostic-evidence.ts";
-import { assertPublicationAttempt } from "./workflow/publication-attempt.ts";
+import { assertPublicationAttempt, type PublicationAttempt } from "./workflow/publication-attempt.ts";
 
-/** @typedef {import("./lock-file-snapshot.ts").LockFileSnapshot} LockFileSnapshot */
-
-/** @type {AsyncLocalStorage<import("./project-runtime-layout.ts").ProjectRuntimeLayout>} */
-const registryMutation = new AsyncLocalStorage();
+const registryMutation = new AsyncLocalStorage<ProjectRuntimeLayout>();
 
 const LOCK_TIMEOUT_MS = 30_000;
 const LOCK_RETRY_MS = 50;
 
-/**
- * @typedef {Object} WorktreeRegistryEntry
- * @property {string} id
- * @property {string} planName
- * @property {string} [planId]
- * @property {string} baseBranch
- * @property {string} baseRef
- * @property {string} baseCommit
- * @property {string} [baseTree]
- * @property {string} [executionBaselineTree]
- * @property {string} branch
- * @property {string} path
- * @property {"planning"|"active"|"completed"|"execution_failed"|"validation_failed"|"validated"|"abandoned"} status
- * @property {string} createdAt
- * @property {string} updatedAt
- * @property {{ reason: string, recordedAt: string, candidates?: string[] }} [migrationIssue]
- * @property {import('./workflow/publication-attempt.ts').PublicationAttempt} [publication]
- */
+export interface WorktreeRegistryEntry {
+    id: string;
+    planName: string;
+    planId?: string;
+    baseBranch: string;
+    baseRef: string;
+    baseCommit: string;
+    baseTree?: string;
+    executionBaselineTree?: string;
+    branch: string;
+    path: string;
+    status: "planning" | "active" | "completed" | "execution_failed" | "validation_failed" | "validated" | "abandoned";
+    createdAt: string;
+    updatedAt: string;
+    migrationIssue?: RegistryMigrationIssue;
+    publication?: PublicationAttempt;
+}
 
-/** @typedef {{ label: string, description: string, command?: string }} RegistryRecoveryAction */
+export interface RegistryRecoveryAction {
+    label: string;
+    description: string;
+    command?: string;
+}
+
+interface RegistryMigrationIssue {
+    reason: string;
+    recordedAt: string;
+    candidates?: string[];
+}
+
+interface RegistryAmbiguityDetails {
+    kind: string;
+    entryIds: string[];
+    planName?: string;
+    recoveryActions: RegistryRecoveryAction[];
+}
+
+interface RegistryIntegrityIssue {
+    kind: string;
+    message: string;
+    ids: string[];
+}
+
+export interface WorktreeRegistryInspection {
+    version: number;
+    entries: WorktreeRegistryEntry[];
+    integrityIssues: RegistryIntegrityIssue[];
+    readError?: Error;
+}
+
+interface RegistryFile {
+    version?: number;
+    entries?: WorktreeRegistryEntry[];
+}
+
+interface RegistryLockPayload {
+    createdAtMs?: number;
+    hostname?: string;
+    pid?: number;
+}
+
+type RegistryPlanResources = Awaited<ReturnType<typeof inspectPlanIdentityDocuments>>;
+
+interface WorktreeLocation {
+    path: string;
+    branch: string;
+}
+
+type WorktreeIdentityUpdate = Pick<WorktreeRegistryEntry, "planId"> & Partial<Pick<WorktreeRegistryEntry, "planName">>;
+type CanonicalWorktreeIdentity = Required<WorktreeIdentityUpdate>;
+
+interface WorktreeRestoreResult {
+    restored: boolean;
+    reason?: string;
+    entry?: WorktreeRegistryEntry;
+}
+
+interface WorktreeEvidenceAvailable {
+    kind: "ok";
+    live: WorktreeRegistryEntry | null;
+    entries: WorktreeRegistryEntry[];
+}
+
+interface WorktreeEvidenceUnavailable {
+    kind: "ambiguous" | "unreadable";
+    message: string;
+    entryIds: string[];
+}
+
+type PlanActionWorktreeEvidence = WorktreeEvidenceAvailable | WorktreeEvidenceUnavailable;
 
 /**
  * A registry read could not answer the question that was asked.
@@ -70,11 +138,12 @@ const LOCK_RETRY_MS = 50;
  * resolve them so every surface can say what to do next.
  */
 export class WorktreeRegistryAmbiguityError extends Error {
-    /**
-     * @param {string} message
-     * @param {{ kind: string, entryIds: string[], planName?: string, recoveryActions: RegistryRecoveryAction[] }} details
-     */
-    constructor(message, details) {
+    declare kind: RegistryAmbiguityDetails["kind"];
+    declare entryIds: RegistryAmbiguityDetails["entryIds"];
+    declare planName: RegistryAmbiguityDetails["planName"];
+    declare recoveryActions: RegistryAmbiguityDetails["recoveryActions"];
+
+    constructor(message: string, details: RegistryAmbiguityDetails) {
         super(message);
         this.name = "WorktreeRegistryAmbiguityError";
         this.kind = details.kind;
@@ -84,11 +153,7 @@ export class WorktreeRegistryAmbiguityError extends Error {
     }
 }
 
-/**
- * @param {string} [planName]
- * @returns {RegistryRecoveryAction[]}
- */
-function registryRecoveryActions(planName) {
+function registryRecoveryActions(planName?: string): RegistryRecoveryAction[] {
     return [
         {
             label: "See every attempt RunWield knows about",
@@ -115,11 +180,7 @@ function registryRecoveryActions(planName) {
     ];
 }
 
-/**
- * @param {string} planName
- * @param {WorktreeRegistryEntry[]} entries
- */
-function duplicateLiveAttemptError(planName, entries) {
+function duplicateLiveAttemptError(planName: string, entries: WorktreeRegistryEntry[]) {
     const described = entries.map((entry) => `${entry.id} (${entry.status})`).join(", ");
     return new WorktreeRegistryAmbiguityError(
         `${planName} has more than one unfinished worktree attempt — ${described} — so RunWield cannot tell which one ` +
@@ -140,11 +201,9 @@ function duplicateLiveAttemptError(planName, entries) {
  * Surfaces that can only carry a string — blocked lifecycle results, CLI stderr —
  * still have to give the user something to run, so the actions travel inline rather
  * than being dropped on the way out.
- *
- * @param {unknown} error
- * @returns {string | null} null when this is not a registry ambiguity
+ * @returns null when this is not a registry ambiguity
  */
-export function describeRegistryAmbiguity(error) {
+export function describeRegistryAmbiguity(error: unknown): string | null {
     if (!(error instanceof WorktreeRegistryAmbiguityError)) return null;
     const lines = [error.message, "", "What you can do:"];
     for (const action of error.recoveryActions) {
@@ -154,17 +213,11 @@ export function describeRegistryAmbiguity(error) {
     return lines.join("\n");
 }
 
-/** @param {number} ms */
-function delay(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+function delay(ms: number) {
+    return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
-/**
- * @param {string} cwd
- * @param {string[]} args
- * @returns {Promise<{ code: number, stdout: string, stderr: string }>}
- */
-async function runGitResult(cwd, args) {
+async function runGitResult(cwd: string, args: string[]) {
     const { code, stdout, stderr } = await captureForegroundProcess("git", {
         args,
         cwd,
@@ -174,12 +227,7 @@ async function runGitResult(cwd, args) {
     return { code, stdout: decoder.decode(stdout), stderr: decoder.decode(stderr) };
 }
 
-/**
- * @param {string} cwd
- * @param {string[]} args
- * @returns {Promise<string>}
- */
-async function runGit(cwd, args) {
+async function runGit(cwd: string, args: string[]): Promise<string> {
     const result = await runGitResult(cwd, args);
     if (result.code !== 0) throw new Error(`git ${args.join(" ")} failed: ${result.stderr || result.stdout}`.trim());
     return result.stdout;
@@ -188,33 +236,26 @@ async function runGit(cwd, args) {
 /**
  * Keep registry callers on the named registry path instead of rebuilding the
  * broader project runtime layout at each call site.
- *
- * @param {string} projectRoot
  */
-export function getWorktreeRegistryPath(projectRoot) {
+export function getWorktreeRegistryPath(projectRoot: string) {
     return resolveProjectRuntimeLayout(projectRoot).primary.worktreeRegistryPath;
 }
 
 /**
  * Keep lock callers on the named registry lock path instead of rebuilding the
  * broader project runtime layout at each call site.
- *
- * @param {string} projectRoot
  */
-export function getWorktreeRegistryLockPath(projectRoot) {
+export function getWorktreeRegistryLockPath(projectRoot: string) {
     return resolveProjectRuntimeLayout(projectRoot).primary.worktreeRegistryLockPath;
 }
 
-/**
- * @param {string} projectRoot
- * @param {WorktreeRegistryEntry[]} entries
- * @param {Array<{ name: string, attrs: { planId?: string, worktreeId?: string|null } }>} resources
- * @returns {Promise<boolean>}
- */
-async function migrateLegacyRegistryEntries(projectRoot, entries, resources) {
+async function migrateLegacyRegistryEntries(
+    projectRoot: string,
+    entries: WorktreeRegistryEntry[],
+    resources: RegistryPlanResources,
+): Promise<boolean> {
     let changed = false;
-    /** @type {Map<string, typeof resources>} */
-    const byExactAttempt = new Map();
+    const byExactAttempt = new Map<string, RegistryPlanResources>();
     for (const plan of resources) {
         if (typeof plan.attrs.planId !== "string" || typeof plan.attrs.worktreeId !== "string") continue;
         const key = `${plan.name}\0${plan.attrs.worktreeId}`;
@@ -222,8 +263,7 @@ async function migrateLegacyRegistryEntries(projectRoot, entries, resources) {
         matches.push(plan);
         byExactAttempt.set(key, matches);
     }
-    /** @type {Map<string, Array<{ name: string, attrs: { planId?: string } }>>} */
-    const byName = new Map();
+    const byName = new Map<string, RegistryPlanResources>();
     for (const plan of resources) {
         if (typeof plan.attrs.planId !== "string") continue;
         const matches = byName.get(plan.name) || [];
@@ -291,19 +331,11 @@ async function migrateLegacyRegistryEntries(projectRoot, entries, resources) {
     return changed;
 }
 
-/**
- * @param {WorktreeRegistryEntry[]} entries
- * @returns {boolean}
- */
-function hasUnresolvedLegacyNonterminalEntries(entries) {
+function hasUnresolvedLegacyNonterminalEntries(entries: WorktreeRegistryEntry[]): boolean {
     return entries.some((entry) => !entry.planId && NONTERMINAL_STATUSES.has(entry.status));
 }
 
-/**
- * @param {string} projectRoot
- * @returns {Promise<WorktreeRegistryEntry[]>}
- */
-async function readRegistry(projectRoot) {
+async function readRegistry(projectRoot: string): Promise<WorktreeRegistryEntry[]> {
     const layout = registryMutation.getStore() || (await checkedProjectRuntimeLayout(projectRoot));
     try {
         const inspected = await inspectWorktreeRegistryAtPath(layout.primary.worktreeRegistryPath);
@@ -352,16 +384,11 @@ const NONTERMINAL_STATUSES = new Set([
     "validated",
 ]);
 
-/** @param {WorktreeRegistryEntry} entry */
-function registryPlanKey(entry) {
+function registryPlanKey(entry: WorktreeRegistryEntry) {
     return entry.planId || entry.planName;
 }
 
-/**
- * @param {WorktreeRegistryEntry[]} entries
- * @param {WorktreeRegistryEntry} candidate
- */
-function assertNoDuplicateNonterminalAttempt(entries, candidate) {
+function assertNoDuplicateNonterminalAttempt(entries: WorktreeRegistryEntry[], candidate: WorktreeRegistryEntry) {
     if (!NONTERMINAL_STATUSES.has(candidate.status)) return;
     if (!candidate.planId) return;
     const key = registryPlanKey(candidate);
@@ -375,10 +402,7 @@ function assertNoDuplicateNonterminalAttempt(entries, candidate) {
     if (duplicate) throw duplicateLiveAttemptError(candidate.planName, [duplicate, candidate]);
 }
 
-/**
- * @param {WorktreeRegistryEntry[]} entries
- */
-async function writeRegistry(entries) {
+async function writeRegistry(entries: WorktreeRegistryEntry[]) {
     const layout = registryMutation.getStore();
     if (!layout) throw new Error("Registry writes require mutation admission and the registry lock.");
     const path = layout.primary.worktreeRegistryPath;
@@ -413,10 +437,9 @@ async function writeRegistry(entries) {
     }
 }
 
-/** @param {LockFileSnapshot} snapshot */
-async function isStaleLock(snapshot) {
+async function isStaleLock(snapshot: LockFileSnapshot) {
     try {
-        const parsed = JSON.parse(snapshot.text);
+        const parsed: RegistryLockPayload = JSON.parse(snapshot.text);
         const age = Date.now() - Number(parsed.createdAtMs || 0);
         if (parsed.hostname && parsed.hostname === getLockHostname()) {
             return !(await isPidAlive(Number(parsed.pid)));
@@ -429,12 +452,11 @@ async function isStaleLock(snapshot) {
 
 /**
  * Run a registry mutation/read under a best-effort file lock at an exact path.
- * @template T
- * @param {string} lockPath
- * @param {() => Promise<T>} fn
- * @returns {Promise<T>}
  */
-export async function withWorktreeRegistryLockAtPath(lockPath, fn) {
+export async function withWorktreeRegistryLockAtPath<Result>(
+    lockPath: string,
+    fn: () => Promise<Result>,
+): Promise<Result> {
     await fsMkdir(dirname(lockPath), { recursive: true });
     const deadline = Date.now() + LOCK_TIMEOUT_MS;
     const token = crypto.randomUUID();
@@ -477,12 +499,11 @@ export async function withWorktreeRegistryLockAtPath(lockPath, fn) {
 
 /**
  * Run a registry mutation/read under a best-effort file lock.
- * @template T
- * @param {string} projectRoot
- * @param {() => Promise<T>} fn
- * @returns {Promise<T>}
  */
-export async function withWorktreeRegistryLock(projectRoot, fn) {
+export async function withWorktreeRegistryLock<Result>(
+    projectRoot: string,
+    fn: () => Promise<Result>,
+): Promise<Result> {
     return await withProjectRuntimeReadScope(async () => {
         const layout = await enterProjectRuntime(projectRoot);
         return await withWorktreeRegistryLockAtPath(layout.primary.worktreeRegistryLockPath, () =>
@@ -496,13 +517,9 @@ export async function withWorktreeRegistryLock(projectRoot, fn) {
  *
  * Never mutates or migrates. Diagnosis and layout migration must not change what
  * they are diagnosing.
- *
- * @param {string} registryPath
- * @returns {Promise<{ version: number, entries: WorktreeRegistryEntry[], integrityIssues: Array<{ kind: string, message: string, ids: string[] }>, readError?: Error }>}
  */
-export async function inspectWorktreeRegistryAtPath(registryPath) {
-    /** @type {Array<{ kind: string, message: string, ids: string[] }>} */
-    const integrityIssues = [];
+export async function inspectWorktreeRegistryAtPath(registryPath: string): Promise<WorktreeRegistryInspection> {
+    const integrityIssues: RegistryIntegrityIssue[] = [];
     let text;
     try {
         text = await fsReadFile(registryPath, "utf8");
@@ -517,7 +534,7 @@ export async function inspectWorktreeRegistryAtPath(registryPath) {
             readError: error instanceof Error ? error : new Error(String(error)),
         };
     }
-    let parsed;
+    let parsed: RegistryFile;
     try {
         parsed = JSON.parse(text);
     } catch (error) {
@@ -552,9 +569,8 @@ export async function inspectWorktreeRegistryAtPath(registryPath) {
         });
         return { version, entries: [], integrityIssues };
     }
-    const entries = /** @type {WorktreeRegistryEntry[]} */ (parsed.entries);
-    /** @type {Map<string, string[]>} */
-    const byId = new Map();
+    const entries: WorktreeRegistryEntry[] = parsed.entries;
+    const byId = new Map<string, string[]>();
     for (const entry of entries) {
         if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
             integrityIssues.push({
@@ -582,9 +598,7 @@ export async function inspectWorktreeRegistryAtPath(registryPath) {
         }
         if ("publication" in entry) {
             try {
-                assertPublicationAttempt(
-                    /** @type {import('./workflow/publication-attempt.ts').PublicationAttempt} */ (entry.publication),
-                );
+                assertPublicationAttempt(entry.publication!);
             } catch (error) {
                 integrityIssues.push({
                     kind: "malformed_registry_entry",
@@ -608,10 +622,8 @@ export async function inspectWorktreeRegistryAtPath(registryPath) {
             });
         }
     }
-    /** @type {Map<string, WorktreeRegistryEntry[]>} */
-    const liveByPlan = new Map();
-    /** @type {Map<string, WorktreeRegistryEntry[]>} */
-    const legacyLiveByPlanName = new Map();
+    const liveByPlan = new Map<string, WorktreeRegistryEntry[]>();
+    const legacyLiveByPlanName = new Map<string, WorktreeRegistryEntry[]>();
     for (const entry of entries) {
         if (!NONTERMINAL_STATUSES.has(entry.status)) continue;
         if (entry.planId) {
@@ -660,24 +672,20 @@ export async function inspectWorktreeRegistryAtPath(registryPath) {
  * entries as they are, plus what is wrong with them.
  *
  * Never mutates or migrates. Diagnosis must not change what it is diagnosing.
- *
- * @param {string} projectRoot
- * @returns {Promise<{ version: number, entries: WorktreeRegistryEntry[], integrityIssues: Array<{ kind: string, message: string, ids: string[] }>, readError?: Error }>}
  */
-export async function inspectWorktreeRegistry(projectRoot) {
+export async function inspectWorktreeRegistry(projectRoot: string): Promise<WorktreeRegistryInspection> {
     const layout = registryMutation.getStore() || (await checkedProjectRuntimeLayout(projectRoot));
     return await inspectWorktreeRegistryAtPath(layout.primary.worktreeRegistryPath);
 }
 
-/** @param {string} projectRoot */
-export async function listEntries(projectRoot) {
+export async function listEntries(projectRoot: string) {
     return await withProjectRuntimeReadScope(() => readRegistry(projectRoot));
 }
 
-/** Upgrade registry schema and bind legacy identities only for a deliberate action.
- * @param {string} projectRoot
+/**
+ * Upgrade registry schema and bind legacy identities only for a deliberate action.
  */
-export async function prepareWorktreeRegistry(projectRoot) {
+export async function prepareWorktreeRegistry(projectRoot: string) {
     return await withWorktreeRegistryLock(projectRoot, async () => {
         const layout = registryMutation.getStore();
         if (!layout) throw new Error("Registry preparation requires its mutation lock.");
@@ -694,11 +702,7 @@ export async function prepareWorktreeRegistry(projectRoot) {
     });
 }
 
-/**
- * @param {string} projectRoot
- * @param {WorktreeRegistryEntry} entry
- */
-export async function addEntry(projectRoot, entry) {
+export async function addEntry(projectRoot: string, entry: WorktreeRegistryEntry) {
     return await withWorktreeRegistryLock(projectRoot, async () => {
         const entries = await readRegistry(projectRoot);
         if (typeof entry.planId !== "string" || !entry.planId) {
@@ -714,18 +718,16 @@ export async function addEntry(projectRoot, entry) {
     });
 }
 
-/**
- * @param {string} projectRoot
- * @param {string} id
- * @param {Partial<WorktreeRegistryEntry>} updates
- * @returns {Promise<WorktreeRegistryEntry|null>}
- */
-export async function updateEntry(projectRoot, id, updates) {
+export async function updateEntry(
+    projectRoot: string,
+    id: string,
+    updates: Partial<WorktreeRegistryEntry>,
+): Promise<WorktreeRegistryEntry | null> {
     return await withWorktreeRegistryLock(projectRoot, async () => {
         const entries = await readRegistry(projectRoot);
         const index = entries.findIndex((entry) => entry.id === id);
         if (index === -1) throw new Error(`Worktree registry entry not found: ${id}`);
-        const immutableKeys = [
+        const immutableKeys: (keyof WorktreeRegistryEntry)[] = [
             "id",
             "planName",
             "planId",
@@ -737,11 +739,7 @@ export async function updateEntry(projectRoot, id, updates) {
             "path",
         ];
         for (const key of immutableKeys) {
-            if (
-                Object.hasOwn(updates, key) &&
-                /** @type {Record<string, unknown>} */
-                (updates)[key] !== /** @type {Record<string, unknown>} */ (entries[index])[key]
-            ) {
+            if (Object.hasOwn(updates, key) && updates[key] !== entries[index][key]) {
                 throw new Error(`Worktree registry identity field cannot be updated: ${key}`);
             }
         }
@@ -755,23 +753,22 @@ export async function updateEntry(projectRoot, id, updates) {
     });
 }
 
-/**
- * @typedef {Object} PlanningWorktreeBase
- * @property {string} baseRef
- * @property {string} baseCommit
- * @property {string} baseTree
- */
+export interface PlanningWorktreeBase {
+    baseRef: string;
+    baseCommit: string;
+    baseTree: string;
+}
 
 /**
  * Advance a planning checkout's baseline after importing published child work.
  * Once execution starts its original baseline is immutable.
- * @param {string} projectRoot
- * @param {string} id
- * @param {string} expectedBaseCommit
- * @param {PlanningWorktreeBase} base
- * @returns {Promise<WorktreeRegistryEntry>}
  */
-export async function refreshPlanningWorktreeBase(projectRoot, id, expectedBaseCommit, base) {
+export async function refreshPlanningWorktreeBase(
+    projectRoot: string,
+    id: string,
+    expectedBaseCommit: string,
+    base: PlanningWorktreeBase,
+): Promise<WorktreeRegistryEntry> {
     return await withWorktreeRegistryLock(projectRoot, async () => {
         const entries = await readRegistry(projectRoot);
         const entry = entries.find((entry) => entry.id === id);
@@ -788,12 +785,13 @@ export async function refreshPlanningWorktreeBase(projectRoot, id, expectedBaseC
 
 /**
  * Follow a published rename after refreshing an unstarted planning checkout.
- * @param {string} projectRoot
- * @param {string} id
- * @param {string} expectedName
- * @param {string} nextName
  */
-export async function renamePlanningWorktreePlan(projectRoot, id, expectedName, nextName) {
+export async function renamePlanningWorktreePlan(
+    projectRoot: string,
+    id: string,
+    expectedName: string,
+    nextName: string,
+) {
     return await withWorktreeRegistryLock(projectRoot, async () => {
         const entries = await readRegistry(projectRoot);
         const entry = entries.find((candidate) => candidate.id === id);
@@ -824,12 +822,8 @@ export async function renamePlanningWorktreePlan(projectRoot, id, expectedName, 
  * Ordinary registry updates cannot rename an attempt. Only the archive transaction,
  * holding the document/catalog locks, may move this address. Publication receipts
  * bind the original path and must never be renamed underneath a pending publication.
- * @param {string} projectRoot
- * @param {string} id
- * @param {string} expectedName
- * @param {string} nextName
  */
-export async function renameRestoredPlanEntry(projectRoot, id, expectedName, nextName) {
+export async function renameRestoredPlanEntry(projectRoot: string, id: string, expectedName: string, nextName: string) {
     return await withWorktreeRegistryLock(projectRoot, async () => {
         const entries = await readRegistry(projectRoot);
         const entry = entries.find((candidate) => candidate.id === id);
@@ -865,13 +859,14 @@ export async function renameRestoredPlanEntry(projectRoot, id, expectedName, nex
 /**
  * Compare-and-swap the durable publication authority for one execution attempt.
  * A stale process cannot overwrite a phase another process has already proven.
- *
- * @param {string} projectRoot
- * @param {string} id
- * @param {number | null} expectedRevision null creates the first record
- * @param {import('./workflow/publication-attempt.ts').PublicationAttempt} publication
+ * @param expectedRevision null creates the first record
  */
-export async function updatePublication(projectRoot, id, expectedRevision, publication) {
+export async function updatePublication(
+    projectRoot: string,
+    id: string,
+    expectedRevision: number | null,
+    publication: PublicationAttempt,
+) {
     return await withWorktreeRegistryLock(projectRoot, async () => {
         const entries = await readRegistry(projectRoot);
         const index = entries.findIndex((entry) => entry.id === id);
@@ -902,11 +897,8 @@ export async function updatePublication(projectRoot, id, expectedRevision, publi
 /**
  * Retire only the snapshot whose durable revalidation request has been fulfilled.
  * The caller holds the Plan locks and has preserved the old record and checkout.
- * @param {string} projectRoot
- * @param {string} id
- * @param {number} expectedRevision
  */
-export async function retirePublicationForRevalidation(projectRoot, id, expectedRevision) {
+export async function retirePublicationForRevalidation(projectRoot: string, id: string, expectedRevision: number) {
     return await withWorktreeRegistryLock(projectRoot, async () => {
         const entries = await readRegistry(projectRoot);
         const entry = entries.find((candidate) => candidate.id === id);
@@ -922,26 +914,21 @@ export async function retirePublicationForRevalidation(projectRoot, id, expected
     });
 }
 
-/**
- * @typedef {Object} WorktreeRestoreEvidence
- * @property {string} id
- * @property {string} planName
- * @property {string} planId
- * @property {string} baseBranch
- * @property {string} [baseRef]
- * @property {string} [baseCommit]
- * @property {string} [baseTree]
- * @property {string} [executionBaselineTree]
- * @property {string} branch
- * @property {string} path
- * @property {WorktreeRegistryEntry["status"]} [status]
- */
+export interface WorktreeRestoreEvidence {
+    id: string;
+    planName: string;
+    planId: string;
+    baseBranch: string;
+    baseRef?: string;
+    baseCommit?: string;
+    baseTree?: string;
+    executionBaselineTree?: string;
+    branch: string;
+    path: string;
+    status?: WorktreeRegistryEntry["status"];
+}
 
-/**
- * @param {string} porcelainText
- * @returns {Array<{ path: string, branch: string }>}
- */
-function parseGitWorktreeRecords(porcelainText) {
+function parseGitWorktreeRecords(porcelainText: string): WorktreeLocation[] {
     return porcelainText
         .trim()
         .split("\n\n")
@@ -963,12 +950,10 @@ function parseGitWorktreeRecords(porcelainText) {
         });
 }
 
-/**
- * @param {string} projectRoot
- * @param {WorktreeRestoreEvidence} evidence
- * @returns {Promise<{ restored: boolean, reason?: string, entry?: WorktreeRegistryEntry }>}
- */
-export async function restoreEntryFromPlanEvidence(projectRoot, evidence) {
+export async function restoreEntryFromPlanEvidence(
+    projectRoot: string,
+    evidence: WorktreeRestoreEvidence,
+): Promise<WorktreeRestoreResult> {
     return await withWorktreeRegistryLock(projectRoot, async () => {
         const entries = await readRegistry(projectRoot);
         const existing = entries.find((entry) => entry.id === evidence.id);
@@ -1016,7 +1001,7 @@ export async function restoreEntryFromPlanEvidence(projectRoot, evidence) {
         }
 
         const now = new Date().toISOString();
-        const entry = {
+        const entry: WorktreeRegistryEntry = {
             id: evidence.id,
             planName: evidence.planName,
             planId: evidence.planId,
@@ -1045,28 +1030,9 @@ export async function restoreEntryFromPlanEvidence(projectRoot, evidence) {
 }
 
 /**
- * Repair an entry's identity fields from proven Plan facts.
- *
- * `updateEntry` treats identity as immutable so ordinary callers cannot quietly
- * rebind an attempt to a different Plan. Reconciliation still has to correct
- * drift, so it gets this narrow door instead: a missing `planId` may be filled
- * in, and `planName` may be corrected, but an existing `planId` is never
- * reassigned and no path, branch, base, or status field is touched. Callers must
- * have proven the pairing (Plan `worktreeId` naming this exact attempt, or the
- * `planId` owner naming the Plan) before calling.
- *
- * @param {string} projectRoot
- * @param {string} id
- * @param {{ planName?: string, planId?: string }} identity
- */
-/**
  * Update a registry location only after a caller has proved it from Git.
- *
- * @param {string} projectRoot
- * @param {string} id
- * @param {{ path: string, branch: string }} location
  */
-export async function reconcileEntryGitLocation(projectRoot, id, location) {
+export async function reconcileEntryGitLocation(projectRoot: string, id: string, location: WorktreeLocation) {
     return await withWorktreeRegistryLock(projectRoot, async () => {
         const entries = await readRegistry(projectRoot);
         const index = entries.findIndex((entry) => entry.id === id);
@@ -1087,12 +1053,17 @@ export async function reconcileEntryGitLocation(projectRoot, id, location) {
 }
 
 /**
- * Repair an entry's Plan identity after the caller proves the pairing.
- * @param {string} projectRoot
- * @param {string} id
- * @param {{ planName?: string, planId?: string }} identity
+ * Repair an entry's identity fields from proven Plan facts.
+ *
+ * `updateEntry` treats identity as immutable so ordinary callers cannot quietly
+ * rebind an attempt to a different Plan. Reconciliation still has to correct
+ * drift, so it gets this narrow door instead: a missing `planId` may be filled
+ * in, and `planName` may be corrected, but an existing `planId` is never
+ * reassigned and no path, branch, base, or status field is touched. Callers must
+ * have proven the pairing (Plan `worktreeId` naming this exact attempt, or the
+ * `planId` owner naming the Plan) before calling.
  */
-export async function reconcileEntryIdentity(projectRoot, id, identity) {
+export async function reconcileEntryIdentity(projectRoot: string, id: string, identity: WorktreeIdentityUpdate) {
     return await withWorktreeRegistryLock(projectRoot, async () => {
         const entries = await readRegistry(projectRoot);
         const index = entries.findIndex((entry) => entry.id === id);
@@ -1114,12 +1085,13 @@ export async function reconcileEntryIdentity(projectRoot, id, identity) {
     });
 }
 
-/**
- * @typedef {Object} PlanIdAdoption
- * @property {boolean} rebound
- * @property {string} [from] - The superseded planId, when there was one.
- * @property {string} [reason] - Why the rebind was declined.
- */
+export interface PlanIdAdoption {
+    rebound: boolean;
+    /** The superseded planId, when there was one. */
+    from?: string;
+    /** Why the rebind was declined. */
+    reason?: string;
+}
 
 /**
  * Rebind an entry's `planId` to the canonical Plan's id.
@@ -1132,13 +1104,12 @@ export async function reconcileEntryIdentity(projectRoot, id, identity) {
  * The rebind is only allowed with the pairing proven by `planName`, which is the
  * Plan store key. A caller must also have proven that this entry is the attempt the
  * canonical Plan names, exactly as for `reconcileEntryIdentity`.
- *
- * @param {string} projectRoot
- * @param {string} id
- * @param {{ planName: string, planId: string }} identity
- * @returns {Promise<PlanIdAdoption>}
  */
-export async function adoptCanonicalPlanId(projectRoot, id, identity) {
+export async function adoptCanonicalPlanId(
+    projectRoot: string,
+    id: string,
+    identity: CanonicalWorktreeIdentity,
+): Promise<PlanIdAdoption> {
     return await withWorktreeRegistryLock(projectRoot, async () => {
         const entries = await readRegistry(projectRoot);
         const index = entries.findIndex((entry) => entry.id === id);
@@ -1163,11 +1134,7 @@ export async function adoptCanonicalPlanId(projectRoot, id, identity) {
     });
 }
 
-/**
- * @param {string} projectRoot
- * @param {string} id
- */
-export async function removeEntry(projectRoot, id) {
+export async function removeEntry(projectRoot: string, id: string) {
     return await withWorktreeRegistryLock(projectRoot, async () => {
         const entries = await readRegistry(projectRoot);
         const index = entries.findIndex((entry) => entry.id === id);
@@ -1185,11 +1152,8 @@ export async function removeEntry(projectRoot, id) {
 /**
  * Permanently prune a registry entry after an owning repair flow proves it is a stale settled artifact.
  * Normal attempt removal should use removeEntry() so history is retained.
- *
- * @param {string} projectRoot
- * @param {string} id
  */
-export async function pruneEntry(projectRoot, id) {
+export async function pruneEntry(projectRoot: string, id: string) {
     return await withWorktreeRegistryLock(projectRoot, async () => {
         const entries = await readRegistry(projectRoot);
         const next = entries.filter((entry) => entry.id !== id);
@@ -1197,11 +1161,7 @@ export async function pruneEntry(projectRoot, id) {
     });
 }
 
-/**
- * @param {string} projectRoot
- * @param {string} planName
- */
-export async function findByPlanName(projectRoot, planName) {
+export async function findByPlanName(projectRoot: string, planName: string) {
     const entries = await listEntries(projectRoot);
     const legacyMatches = entries.filter(
         (entry) => !entry.planId && entry.planName === planName && NONTERMINAL_STATUSES.has(entry.status),
@@ -1213,11 +1173,8 @@ export async function findByPlanName(projectRoot, planName) {
 /**
  * Resolve the one live attempt for a Plan name regardless of whether it already
  * has a stable Plan ID. This is the recovery path when caller-held IDs are stale.
- *
- * @param {string} projectRoot
- * @param {string} planName
  */
-export async function findActiveByPlanName(projectRoot, planName) {
+export async function findActiveByPlanName(projectRoot: string, planName: string) {
     const entries = await listEntries(projectRoot);
     const matches = entries.filter(
         (entry) => entry.planName === planName && entry.status !== "planning" && NONTERMINAL_STATUSES.has(entry.status),
@@ -1226,21 +1183,16 @@ export async function findActiveByPlanName(projectRoot, planName) {
     return matches[0] || null;
 }
 
-/**
- * @param {string} projectRoot
- * @param {string} planId
- */
-export async function findByPlanId(projectRoot, planId) {
+export async function findByPlanId(projectRoot: string, planId: string) {
     return (await findByPlanIds(projectRoot, [planId])).get(planId) || null;
 }
 
-/** Read one authoritative registry snapshot for a group of dashboard Plans.
- * @param {string} projectRoot
- * @param {string[]} planIds
+/**
+ * Read one authoritative registry snapshot for a group of dashboard Plans.
  */
-export async function findByPlanIds(projectRoot, planIds) {
+export async function findByPlanIds(projectRoot: string, planIds: string[]) {
     const entries = await listEntries(projectRoot);
-    const matches = new Map();
+    const matches = new Map<string, WorktreeRegistryEntry | null>();
     for (const planId of planIds) {
         const live = entries.filter(
             (entry) => entry.planId === planId && entry.status !== "planning" && NONTERMINAL_STATUSES.has(entry.status),
@@ -1254,12 +1206,11 @@ export async function findByPlanIds(projectRoot, planIds) {
 
 /**
  * Read-only evidence snapshot for Plan action preconditions.
- *
- * @param {string} projectRoot
- * @param {string} planId
- * @returns {Promise<{ kind: "ok", live: WorktreeRegistryEntry | null, entries: WorktreeRegistryEntry[] } | { kind: "ambiguous" | "unreadable", message: string, entryIds: string[] }>}
  */
-export async function readPlanActionWorktreeEvidence(projectRoot, planId) {
+export async function readPlanActionWorktreeEvidence(
+    projectRoot: string,
+    planId: string,
+): Promise<PlanActionWorktreeEvidence> {
     const inspected = await inspectWorktreeRegistry(projectRoot);
     if (inspected.readError) {
         return { kind: "unreadable", message: inspected.readError.message, entryIds: [] };
@@ -1282,20 +1233,13 @@ export async function readPlanActionWorktreeEvidence(projectRoot, planId) {
 
 /**
  * Look up one registry entry by attempt id.
- *
- * @param {string} projectRoot
- * @param {string} id
  */
-export async function findById(projectRoot, id) {
+export async function findById(projectRoot: string, id: string) {
     const entries = await listEntries(projectRoot);
     return entries.find((entry) => entry.id === id) || null;
 }
 
-/**
- * @param {Set<string>} paths
- * @param {string} path
- */
-async function addWorktreePathVariants(paths, path) {
+async function addWorktreePathVariants(paths: Set<string>, path: string) {
     paths.add(path);
     try {
         paths.add(await fsRealpath(path));
@@ -1304,15 +1248,14 @@ async function addWorktreePathVariants(paths, path) {
     }
 }
 
-/** @param {string} projectRoot */
-async function listGitWorktreePaths(projectRoot) {
+async function listGitWorktreePaths(projectRoot: string) {
     const { code, stdout } = await captureForegroundProcess("git", {
         args: ["worktree", "list", "--porcelain"],
         cwd: projectRoot,
     });
     if (code !== 0) return null;
     const text = new TextDecoder().decode(stdout);
-    const paths = new Set();
+    const paths = new Set<string>();
     for (const line of text.split("\n")) {
         if (!line.startsWith("worktree ")) continue;
         const path = line.slice("worktree ".length).trim();
@@ -1322,8 +1265,7 @@ async function listGitWorktreePaths(projectRoot) {
     return paths;
 }
 
-/** @param {string} projectRoot */
-export async function pruneStaleEntries(projectRoot) {
+export async function pruneStaleEntries(projectRoot: string) {
     return await withWorktreeRegistryLock(projectRoot, async () => {
         const entries = await readRegistry(projectRoot);
         const gitWorktreePaths = await listGitWorktreePaths(projectRoot);

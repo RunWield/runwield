@@ -29,7 +29,7 @@ import {
 import { finalizePlanImplementation } from "../workflow/implementation-checkpoint.ts";
 import { probeGitRepository } from "../git.ts";
 import { hasNonGitExecutionConsent, rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
-import { findActiveByPlanName, findById, listEntries } from "../worktree-registry.js";
+import { findActiveByPlanName, findById, listEntries } from "../worktree-registry.ts";
 import { createHash } from "node:crypto";
 import { isAbsolute, join, relative } from "node:path";
 import {

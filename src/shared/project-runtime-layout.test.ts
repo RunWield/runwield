@@ -42,7 +42,7 @@ import {
     type ProjectRuntimeMigrationResult,
     resolveProjectRuntimeLayout,
 } from "./project-runtime-layout.ts";
-import { inspectWorktreeRegistry, prepareWorktreeRegistry, withWorktreeRegistryLock } from "./worktree-registry.js";
+import { inspectWorktreeRegistry, prepareWorktreeRegistry, withWorktreeRegistryLock } from "./worktree-registry.ts";
 import {
     advancePublicationAttempt,
     createPublicationAttempt,

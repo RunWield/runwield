@@ -15,7 +15,7 @@ import process from "node:process";
 import { ok as assert } from "node:assert/strict";
 import { dirname, join } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
-import { addEntry, findById } from "../worktree-registry.js";
+import { addEntry, findById } from "../worktree-registry.ts";
 import { createTestWorktreeAttempt, git, makeRepo } from "../worktree-test-helpers.ts";
 import { publicationRootForAttempt } from "./publication-machine.ts";
 

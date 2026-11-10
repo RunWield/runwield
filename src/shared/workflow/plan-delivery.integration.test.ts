@@ -13,7 +13,7 @@ import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { setCustomSetting } from "../settings.js";
 import { createGitPort } from "../git-port.ts";
-import { listEntries } from "../worktree-registry.js";
+import { listEntries } from "../worktree-registry.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 import { loadPublishedWorkRecordSource } from "../work-records/published-source.ts";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";

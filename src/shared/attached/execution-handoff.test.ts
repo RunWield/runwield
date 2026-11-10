@@ -7,7 +7,7 @@ import { ok as assert, notDeepStrictEqual as assertNotEquals } from "node:assert
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { loadPlan, parsePlanFrontMatter, updatePlanFrontMatter } from "../../plan-store.js";
-import { addEntry, findById, listEntries } from "../worktree-registry.js";
+import { addEntry, findById, listEntries } from "../worktree-registry.ts";
 import { EVIDENCE, runOperation, spawnAttachedCli, withProject } from "./attached-test-fixture.ts";
 import { locateAttachedWorkflows, type AttachedWorkflowRecord } from "./record-store.ts";
 import { completionInput, executionInput, implementing, readyPlan } from "./execution-test-fixture.ts";

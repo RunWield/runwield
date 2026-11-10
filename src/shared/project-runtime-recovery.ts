@@ -8,7 +8,7 @@ import { lstat as fsLstat, mkdir as fsMkdir, readdir as fsReaddir, readFile as f
 /** Recover writes made through the old layout after ownership moved to internal/. */
 import { dirname, join } from "node:path";
 import type { ControllerRecord } from "./workflow/controller-registry.ts";
-import { inspectWorktreeRegistryAtPath, type WorktreeRegistryEntry } from "./worktree-registry.js";
+import { inspectWorktreeRegistryAtPath, type WorktreeRegistryEntry } from "./worktree-registry.ts";
 
 export interface RuntimeRecoveryPaths {
     source: string;

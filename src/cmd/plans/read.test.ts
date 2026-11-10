@@ -181,7 +181,7 @@ readTest(
         const { defineGitFixture, git } = await import("../../shared/git-test-fixture.ts");
         const { cp, mkdir, writeFile } = await import("node:fs/promises");
         const { join } = await import("node:path");
-        const { addEntry } = await import("../../shared/worktree-registry.js");
+        const { addEntry } = await import("../../shared/worktree-registry.ts");
         // Copy a real fixture into the command fixture so cwd stays under its process lock.
         const fixture = defineGitFixture(async (root) => {
             await mkdir(join(root, "docs/plans"), { recursive: true });
@@ -228,7 +228,7 @@ readTest(
 readTest("explicit archived read preserves an unsafe registered-authority diagnostic", async ({ projectRoot }) => {
     const { mkdir } = await import("node:fs/promises");
     const { join } = await import("node:path");
-    const { addEntry } = await import("../../shared/worktree-registry.js");
+    const { addEntry } = await import("../../shared/worktree-registry.ts");
     const { RegisteredPlanDocumentUnavailableError } = await import("../../shared/workflow/controller-registry.ts");
     const path = join(projectRoot, "unowned-directory");
     await mkdir(path);

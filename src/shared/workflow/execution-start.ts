@@ -1,5 +1,5 @@
 // @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
-import { prepareWorktreeRegistry } from "../worktree-registry.js";
+import { prepareWorktreeRegistry } from "../worktree-registry.ts";
 import { preparePlanWorkflow } from "./plan-preparation.ts";
 import {
     prepareExecutionSetup,
@@ -50,7 +50,7 @@ import {
     listEntries as listWorktreeRegistryEntries,
     pruneEntry as pruneWorktreeRegistryEntry,
     updateEntry as updateWorktreeRegistryEntry,
-} from "../worktree-registry.js";
+} from "../worktree-registry.ts";
 import { captureWorktreeTree } from "./git-snapshot.ts";
 import { ensureExecutionPlanFile, loadCanonicalExecutionPlanSource } from "./execution-plan-file.ts";
 import {

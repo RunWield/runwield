@@ -12,7 +12,7 @@ import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-
 import type { PlanFrontMatter } from "../../../plan-store.js";
 import type { TutorialContext } from "../../../shared/session/tutorial-context-session.ts";
 import type { WorkflowControllerState } from "../../../shared/workflow/controller-state.ts";
-import type { WorktreeRegistryEntry } from "../../../shared/worktree-registry.js";
+import type { WorktreeRegistryEntry } from "../../../shared/worktree-registry.ts";
 import type {
     ConsumedScriptedInteraction,
     GoldenScenario,

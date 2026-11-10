@@ -17,8 +17,8 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../testing/as
 import { basename, dirname, join } from "node:path";
 
 import { resolveProjectRuntimeLayout } from "./project-runtime-layout.ts";
-import { addEntry, findByPlanId } from "./worktree-registry.js";
-import type { WorktreeRegistryEntry } from "./worktree-registry.js";
+import { addEntry, findByPlanId } from "./worktree-registry.ts";
+import type { WorktreeRegistryEntry } from "./worktree-registry.ts";
 import {
     findReusableWorktree,
     getWorktreeStatus,

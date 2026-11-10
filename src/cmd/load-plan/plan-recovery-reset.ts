@@ -23,7 +23,7 @@ import {
     pathExists,
 } from "./plan-recovery-worktree.ts";
 import { executeReadyPlanWithRepair } from "./plan-execution.ts";
-import { updateEntry as updateWorktreeRegistryEntry } from "../../shared/worktree-registry.js";
+import { updateEntry as updateWorktreeRegistryEntry } from "../../shared/worktree-registry.ts";
 import { settleDiscardedRecoveryAttempt } from "./plan-recovery-discard.ts";
 import { transitionFailureError } from "./transition-failure.ts";
 

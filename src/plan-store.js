@@ -49,7 +49,7 @@ import {
     TargetBranchSnapshotUnavailableError,
 } from "./shared/workflow/planning-worktree.ts";
 import { probeGitRepository } from "./shared/git.ts";
-import { prepareWorktreeRegistry, renameRestoredPlanEntry } from "./shared/worktree-registry.js";
+import { prepareWorktreeRegistry, renameRestoredPlanEntry } from "./shared/worktree-registry.ts";
 import { resolvePrimaryCheckoutRoot } from "./shared/project-checkout.ts";
 import { writePlanDocumentAndController } from "./shared/workflow/state-transition.ts";
 import { escapeYamlDoubleQuoted } from "./shared/yaml-scalar.ts";
@@ -88,7 +88,7 @@ import {
 
 /** @typedef {import("./shared/epic-artifacts.ts").MoveEpicArtifactResult} MoveEpicArtifactResult */
 /** @typedef {import("./shared/plan-deviations.ts").PlanDeviation} PlanDeviation */
-/** @typedef {import("./shared/worktree-registry.js").WorktreeRegistryEntry} WorktreeRegistryEntry */
+/** @typedef {import("./shared/worktree-registry.ts").WorktreeRegistryEntry} WorktreeRegistryEntry */
 
 export { PLAN_FRONT_MATTER_KEY_ORDER, PLAN_FRONT_MATTER_KEYS } from "./plan-front-matter.ts";
 

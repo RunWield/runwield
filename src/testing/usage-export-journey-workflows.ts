@@ -11,7 +11,7 @@ import { setExactProjectCustomSetting } from "../shared/settings.js";
 import { HostedSession } from "../shared/session/hosted-session.js";
 import { ensureRootAgentSession } from "../shared/session/session.js";
 import type { SessionRuntime } from "../shared/session/session-runtime.ts";
-import { findById } from "../shared/worktree-registry.js";
+import { findById } from "../shared/worktree-registry.ts";
 import { createTestWorktreeAttempt } from "../shared/worktree-test-helpers.ts";
 import { cleanupStoredPublication } from "../shared/workflow/publication-machine.ts";
 import { buildPlanEventUpdates, type PlanEvent, type PlanEventDetails } from "../shared/workflow/plan-lifecycle.ts";

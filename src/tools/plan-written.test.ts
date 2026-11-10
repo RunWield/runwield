@@ -18,7 +18,7 @@ import { loadPlan, savePlan } from "../plan-store.js";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../shared/project-runtime-layout.ts";
 import { defineCommittedGitFixture, git } from "../shared/git-test-fixture.ts";
 import { makeManagedSessionFixture } from "../testing/managed-session-fixture.ts";
-import { inspectWorktreeRegistry } from "../shared/worktree-registry.js";
+import { inspectWorktreeRegistry } from "../shared/worktree-registry.ts";
 import { existsSync } from "node:fs";
 import { WORKTREE_REGISTRY_FILE } from "../constants.ts";
 

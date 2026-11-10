@@ -24,7 +24,7 @@ import {
 } from "../../plan-store.js";
 import { COLLABORATION_LOCK_BYPASS } from "../collaboration/lock.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { addEntry } from "../worktree-registry.js";
+import { addEntry } from "../worktree-registry.ts";
 import { getCwd } from "../../constants.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { runPlansArchiveCommand } from "../../cmd/plans/archive.ts";

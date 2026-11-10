@@ -32,7 +32,7 @@ import {
     addEntry as addWorktreeRegistryEntry,
     findById as findWorktreeRegistryEntryById,
     getWorktreeRegistryPath,
-} from "../../shared/worktree-registry.js";
+} from "../../shared/worktree-registry.ts";
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 
 import type { PlanFrontMatter } from "../../plan-store.js";

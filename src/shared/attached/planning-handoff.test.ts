@@ -4,7 +4,7 @@ import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { readAttachedAction } from "./coordinator.ts";
-import { listEntries } from "../worktree-registry.js";
+import { listEntries } from "../worktree-registry.ts";
 import { resolveWorkflowPlanLocation } from "../workflow/plan-location.ts";
 import { loadPlan } from "../../plan-store.js";
 import {

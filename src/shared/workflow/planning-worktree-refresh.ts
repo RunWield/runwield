@@ -12,7 +12,7 @@ import {
     hasExecutionChangesSince,
     PLANNING_CHECKPOINT_GIT_OPTIONS,
 } from "../worktree.js";
-import { findById, refreshPlanningWorktreeBase, type WorktreeRegistryEntry } from "../worktree-registry.js";
+import { findById, refreshPlanningWorktreeBase, type WorktreeRegistryEntry } from "../worktree-registry.ts";
 import { runExecutionPreparationTransition } from "./state-transition.ts";
 import { healSettledTransitionRecords } from "./transition-recovery.ts";
 import { isTransferredProjectContext, recordedProjectContextPaths } from "../worktree-project-context.ts";

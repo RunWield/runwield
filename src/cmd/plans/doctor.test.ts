@@ -17,7 +17,7 @@ import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import { injectFrontMatter, listPlans, loadPlan, savePlan } from "../../plan-store.js";
 import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "../../constants.ts";
-import { addEntry, findById, getWorktreeRegistryPath, listEntries } from "../../shared/worktree-registry.js";
+import { addEntry, findById, getWorktreeRegistryPath, listEntries } from "../../shared/worktree-registry.ts";
 import {
     listTransitionRecoveryRecords,
     runExecutionPreparationTransition,
@@ -32,7 +32,7 @@ import { getLockHostname } from "../../shared/process-liveness.ts";
 import { inspectTargetBranchPlansByParent } from "../../shared/workflow/planning-worktree.ts";
 import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
 
-type WorktreeRegistryEntry = import("../../shared/worktree-registry.js").WorktreeRegistryEntry;
+type WorktreeRegistryEntry = import("../../shared/worktree-registry.ts").WorktreeRegistryEntry;
 type WorktreeDeliveryEvidence = import("../../plan-store.js").WorktreeDeliveryEvidence;
 
 interface DoctorCommandFixture {

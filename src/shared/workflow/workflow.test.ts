@@ -41,7 +41,7 @@ import { getCwd } from "../../constants.ts";
 import {
     findById as findWorktreeRegistryEntryById,
     listEntries as listWorktreeRegistryEntries,
-} from "../worktree-registry.js";
+} from "../worktree-registry.ts";
 
 function makeHostedSession(id = "workflow-test", cwd = getCwd()) {
     return new HostedSession({ id, cwd, sessionManager: null });

@@ -19,7 +19,7 @@ import { fileURLToPath as fromFileUrl } from "node:url";
 import { defineGitFixture, git } from "../../git-test-fixture.ts";
 import { loadPlan, savePlan, updatePlanFrontMatter } from "../../../plan-store.js";
 import { controllerRecordPath } from "../controller-registry.ts";
-import { addEntry } from "../../worktree-registry.js";
+import { addEntry } from "../../worktree-registry.ts";
 import { setCustomSetting, setExactProjectCustomSetting } from "../../settings.js";
 import { parseDiffFiles } from "../review-diff.ts";
 import {

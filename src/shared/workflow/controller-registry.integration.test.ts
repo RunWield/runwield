@@ -29,7 +29,7 @@ import {
     updatePlanFrontMatter,
 } from "../../plan-store.js";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { addEntry, getWorktreeRegistryPath, pruneEntry, updateEntry } from "../worktree-registry.js";
+import { addEntry, getWorktreeRegistryPath, pruneEntry, updateEntry } from "../worktree-registry.ts";
 import { loadPlanActionEvidence } from "./plan-actions.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import { PLAN_RUNTIME_FIELDS } from "./controller-state.ts";
