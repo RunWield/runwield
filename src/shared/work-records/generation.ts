@@ -3,7 +3,7 @@
  * Generate canonical internal Work Records from completed Plans.
  */
 
-import type { PlanFrontMatter, PlanTextLoaded } from "../../plan-store.js";
+import type { PlanFrontMatter, PlanTextLoaded } from "../../plan-store.ts";
 import type { PlanDeviation } from "../plan-deviations.ts";
 import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
 import type {
@@ -26,7 +26,7 @@ import {
     loadArchivedPlan,
     loadPlan,
     updateArchivedPlanFrontMatter,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { HostedSession } from "../session/hosted-session.ts";
 import { runValidationAgentUntilEvent } from "../session/agent-workflow-step.ts";

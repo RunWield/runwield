@@ -10,7 +10,7 @@ import {
     resolvePendingSegmentHandoff,
 } from "../workflow/execution-segment-handoff.ts";
 import type { ActiveExecutionWorkflow } from "../session/execution-workflow-session.ts";
-import { savePlan } from "../../plan-store.js";
+import { savePlan } from "../../plan-store.ts";
 import { getRemoteSessionOwner } from "../session/file-session-store.ts";
 import {
     readPersistedPendingSegmentContinuationEntry,

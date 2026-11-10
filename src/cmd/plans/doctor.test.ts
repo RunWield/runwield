@@ -15,7 +15,7 @@ import { getCwd } from "../../constants.ts";
 import process from "node:process";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
-import { injectFrontMatter, listPlans, loadPlan, savePlan } from "../../plan-store.js";
+import { injectFrontMatter, listPlans, loadPlan, savePlan } from "../../plan-store.ts";
 import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "../../constants.ts";
 import { addEntry, findById, getWorktreeRegistryPath, listEntries } from "../../shared/worktree-registry.ts";
 import {
@@ -33,7 +33,7 @@ import { inspectTargetBranchPlansByParent } from "../../shared/workflow/planning
 import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
 
 type WorktreeRegistryEntry = import("../../shared/worktree-registry.ts").WorktreeRegistryEntry;
-type WorktreeDeliveryEvidence = import("../../plan-store.js").WorktreeDeliveryEvidence;
+type WorktreeDeliveryEvidence = import("../../plan-store.ts").WorktreeDeliveryEvidence;
 
 interface DoctorCommandFixture {
     projectRoot: string;

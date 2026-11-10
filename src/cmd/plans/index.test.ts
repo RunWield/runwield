@@ -8,7 +8,7 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { loadArchivedPlan, loadPlan, savePlan } from "../../plan-store.js";
+import { loadArchivedPlan, loadPlan, savePlan } from "../../plan-store.ts";
 import { runPlansCommand } from "./index.ts";
 import { addEntry } from "../../shared/worktree-registry.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";

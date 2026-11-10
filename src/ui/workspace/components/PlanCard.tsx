@@ -1,4 +1,4 @@
-import type { PlanReadAvailability } from "../../../plan-store.js";
+import type { PlanReadAvailability } from "../../../plan-store.ts";
 import { PLAN_SEARCH_QUERY_PARAM, PLAN_UI_TOKEN_QUERY } from "../constants.ts";
 import { RunWieldCard } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 

@@ -32,7 +32,7 @@ import {
     type GeneratedWorkRecordSections,
     type WorkRecordFrontMatter,
 } from "./index.ts";
-import { archivePlan, loadArchivedPlan, loadPlan, savePlan } from "../../plan-store.js";
+import { archivePlan, loadArchivedPlan, loadPlan, savePlan } from "../../plan-store.ts";
 import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
 

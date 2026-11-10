@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { archivePlan, loadArchivedPlan, savePlan } from "../../plan-store.js";
+import { archivePlan, loadArchivedPlan, savePlan } from "../../plan-store.ts";
 import { setCustomSetting } from "../../shared/settings.js";
 import { writeWorkRecord } from "../../shared/work-records/store.ts";
 import type { WorkRecordFrontMatter } from "../../shared/work-records/schema.ts";

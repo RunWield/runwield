@@ -21,7 +21,7 @@ import {
     updatePlanCollaborationMetadata,
     updatePlanFrontMatter,
     withPlanLock,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { COLLABORATION_LOCK_BYPASS } from "../collaboration/lock.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { addEntry } from "../worktree-registry.ts";

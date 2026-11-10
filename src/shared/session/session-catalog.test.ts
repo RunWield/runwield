@@ -14,7 +14,7 @@ import {
 
 import { getAgentDisplayName, listAvailableAgents } from "./agents.ts";
 import { getCustomSetting } from "../settings.js";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 
 type PromptAgentDefinition = Parameters<typeof assembleFinalSystemPrompt>[0];

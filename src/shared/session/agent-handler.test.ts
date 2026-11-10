@@ -1,4 +1,4 @@
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { createPlanWrittenTool } from "../../tools/plan-written.ts";
 import { applySharedPlanReviewDecision } from "../workflow/plan-review-actions.ts";
 import { test } from "node:test";

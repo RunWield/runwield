@@ -8,7 +8,7 @@
  */
 
 import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
-import { loadPlan, resolvePlanExecutionPolicy } from "../../plan-store.js";
+import { loadPlan, resolvePlanExecutionPolicy } from "../../plan-store.ts";
 import { isGitRepositoryRequiredError } from "../../shared/git.ts";
 import { isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
 import { decidePostExecution } from "../../shared/workflow/decisions.ts";
@@ -25,7 +25,7 @@ import {
     buildValidationRecoveryNotice,
     buildValidationUserMessage,
 } from "../../shared/workflow/validation-user-messages.ts";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 import type { UiAPI } from "../../ui/tui/api.ts";
 import type { PlanSessionSurface, RecoveryWorktreeContext, ReviewImage } from "./plan-session-types.ts";
 import type { WorkflowDecision } from "../../shared/workflow/decisions.ts";
@@ -103,7 +103,7 @@ export interface ExecuteReadyPlanOptions {
  * @param {Object} opts
  * @param {string} opts.projectRoot
  * @param {string} opts.planName
- * @param {Partial<import('../../plan-store.js').PlanFrontMatter>} opts.triageMeta
+ * @param {Partial<import('../../plan-store.ts').PlanFrontMatter>} opts.triageMeta
  * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @returns {Promise<boolean>}
  */
@@ -168,7 +168,7 @@ export async function confirmAffectedPathChangesBeforeExecution({
  * @param {unknown} executionResult
  * @param {string} planName
  * @param {string} fallbackPlanContent
- * @param {import('../../plan-store.js').PlanFrontMatter} triageMeta
+ * @param {import('../../plan-store.ts').PlanFrontMatter} triageMeta
  * @param {PlanSessionSurface["runValidation"]} continueWorkflowValidation
  * @param {RecoveryWorktreeContext | null} worktreeContext
  * @param {PlanSessionSurface} session
@@ -399,7 +399,7 @@ export async function executePostPlanningDecision({
     if (decision.kind === "start_slicer") {
         await runSlicerAgent({
             planName: /** @type {string} */ (decision.payload.planName),
-            triageMeta: /** @type {import('../../plan-store.js').PlanFrontMatter} */ (
+            triageMeta: /** @type {import('../../plan-store.ts').PlanFrontMatter} */ (
                 decision.payload.triageMeta
             ),
             reviewFeedback: /** @type {string | undefined} */ (decision.payload.reviewFeedback),
@@ -455,7 +455,7 @@ export function shouldKeepPlanningAgentActive(decision: WorkflowDecision): boole
 }
 
 /**
- * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter }} plan
+ * @param {{ planName: string, attrs: import('../../plan-store.ts').PlanFrontMatter }} plan
  * @param {import('../../ui/tui/api.ts').UiAPI} uiAPI
  * @returns {boolean}
  */
@@ -472,7 +472,7 @@ export function validatePlanExecutionPolicyForReadiness(plan: { attrs: PlanFront
  * Run the Readiness Gate for an approved Plan.
  *
  * @param {string} projectRoot
- * @param {{ planName: string, path: string, attrs: import('../../plan-store.js').PlanFrontMatter }} plan
+ * @param {{ planName: string, path: string, attrs: import('../../plan-store.ts').PlanFrontMatter }} plan
  * @param {import('../../ui/tui/api.ts').UiAPI} uiAPI
  * @returns {Promise<boolean>}
  */
@@ -515,7 +515,7 @@ export async function prepareApprovedPlanForWork(
  *
  * @param {Object} opts
  * @param {string} opts.projectRoot
- * @param {{ planName: string, markdown?: string, body: string, attrs: import('../../plan-store.js').PlanFrontMatter }} opts.plan
+ * @param {{ planName: string, markdown?: string, body: string, attrs: import('../../plan-store.ts').PlanFrontMatter }} opts.plan
  * @param {string} opts.agentName
  * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @param {PlanSessionSurface["executePlan"]} opts.executePlan

@@ -3,7 +3,7 @@ import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWrit
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { archivePlan, savePlan } from "../plan-store.js";
+import { archivePlan, savePlan } from "../plan-store.ts";
 import {
     type ArchivedPlanUnit,
     collectArchivedPlanUnits,

@@ -1,7 +1,7 @@
 /** @module ui/workspace/server/owner-plan-sessions */
 
 import type { OwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
-import { findPlanEvidenceById } from "../../../plan-store.js";
+import { findPlanEvidenceById } from "../../../plan-store.ts";
 import { findPlanAssociatedSessions } from "../../../shared/session/plan-session-lookup.ts";
 import { ownerErrorJson, ownerJson } from "../routes/owner-api.ts";
 import { requireOwnerProjectRoot } from "./owner-projects.ts";

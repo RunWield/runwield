@@ -5,7 +5,7 @@ import {
     isProjectPlan,
     loadPlan,
     parsePlanFrontMatter,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { findActiveByPlanName, prepareWorktreeRegistry } from "../worktree-registry.ts";
 import {
     assertControllerDocumentAvailable,

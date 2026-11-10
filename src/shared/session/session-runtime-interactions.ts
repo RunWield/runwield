@@ -130,7 +130,7 @@ export async function requestHostedSessionInteraction(
     ) {
         // Keep file-backed review authority out of browser bundles that import
         // the shared interaction outcome helpers from this module.
-        const { loadPlanFileStrict } = await import("../../plan-store.js");
+        const { loadPlanFileStrict } = await import("../../plan-store.ts");
         const { loadPlanActionEvidence } = await import("../workflow/plan-actions.ts");
         const source = await loadPlanFileStrict(request._meta.planPath);
         if (source.kind !== "loaded") {
@@ -195,7 +195,7 @@ export async function requestHostedSessionInteraction(
             planningAgentName.trim()
         ) {
             reviewContainerPlanId = planId;
-            const { parsePlanFrontMatter } = await import("../../plan-store.js");
+            const { parsePlanFrontMatter } = await import("../../plan-store.ts");
             if (Array.isArray(meta.sequenceDocuments)) {
                 for (const doc of meta.sequenceDocuments) {
                     hostedSession.planReviewConversations.rememberReviewBase(doc.planId, {

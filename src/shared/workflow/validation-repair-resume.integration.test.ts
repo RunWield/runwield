@@ -7,7 +7,7 @@ import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts"
 import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 
-import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
+import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import { TASK_COMPLETION_CUSTOM_TYPE } from "../session/task-completion-session.ts";
 import { setExactProjectCustomSetting } from "../settings.js";

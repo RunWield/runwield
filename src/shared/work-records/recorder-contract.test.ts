@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { validateToolArguments } from "@earendil-works/pi-ai";
 import { getCwd } from "../../constants.ts";
-import { savePlan } from "../../plan-store.js";
+import { savePlan } from "../../plan-store.ts";
 import { assertEquals, assertExists, assertThrows } from "../../testing/assertions.ts";
 import { createWorkRecordCompletedTool } from "../../tools/work-record-completed.ts";
 import { HostedSession } from "../session/hosted-session.ts";

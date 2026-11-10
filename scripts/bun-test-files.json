@@ -215,7 +215,7 @@
     "src/plan-store-display-catalog.test.ts",
     "src/plan-store-locks.test.ts",
     "src/plan-store-passive-reads.test.ts",
-    "src/plan-store.test.js",
+    "src/plan-store.test.ts",
     "src/shared/agent-browser-session.test.ts",
     "src/shared/attached/action-content.test.ts",
     "src/shared/attached/code-review-chat.test.ts",

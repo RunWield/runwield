@@ -1,4 +1,4 @@
-import { parsePlanFrontMatter } from "../../plan-store.js";
+import { parsePlanFrontMatter } from "../../plan-store.ts";
 import { renderApprovedPlanDeviations } from "../plan-deviations.ts";
 
 /** Return the only Plan definition content that an execution Agent can receive. */

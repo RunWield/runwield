@@ -31,7 +31,7 @@ import {
     resolveSiblingChildPlanDependencies,
     savePlan,
     updatePlanFrontMatter,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
 import { createPlanSessionSurface } from "./plan-session-surface.ts";
@@ -48,7 +48,7 @@ import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts
 import { runLoadPlanCommand } from "./index.ts";
 import { getLoadPlanCompletions } from "./getArgumentCompletions.ts";
 import { getRunWieldRuntimeDir } from "../../constants.ts";
-import type { PlanFrontMatterInput } from "../../plan-store.js";
+import type { PlanFrontMatterInput } from "../../plan-store.ts";
 import type { EditorAPI, SelectOption, UiAPI } from "../../ui/tui/api.ts";
 
 interface LoadPlanUiFixture {

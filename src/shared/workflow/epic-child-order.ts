@@ -1,4 +1,4 @@
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 
 interface OrderedChild {
     name: string;

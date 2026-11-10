@@ -9,7 +9,7 @@ import {
     loadPlan,
     parsePlanFrontMatter,
     savePlan,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import {
     findRecordingControllerByName,
     inspectControllerView,

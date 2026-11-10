@@ -13,7 +13,7 @@ import { getHomeDir } from "../../constants.ts";
 import { dirname } from "node:path";
 import { getWorktreeRegistryPath, withWorktreeRegistryLock } from "../../shared/worktree-registry.ts";
 import { makeManagedSessionFixture, readTranscriptEvidence } from "../../testing/managed-session-fixture.ts";
-import { savePlan } from "../../plan-store.js";
+import { savePlan } from "../../plan-store.ts";
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";

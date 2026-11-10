@@ -17,7 +17,7 @@ import {
     loadArchivedPlan,
     loadPlan,
     restoreArchivedPlan,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { formatArchiveRetentionNudge } from "../../shared/plan-archive-retention.ts";
 import { runArchiveTransition, type TransitionResult } from "../../shared/workflow/state-transition.ts";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";

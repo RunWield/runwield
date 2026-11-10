@@ -11,7 +11,7 @@ import {
     withPlanCatalogLock,
     withPlanLock,
     writePlanMarkdownWithRevisionLocked,
-} from "../plan-store.js";
+} from "../plan-store.ts";
 
 /** Result shape the wrapper returns for both its own guards and the wrapped tool. */
 interface PlanSafeToolResult {

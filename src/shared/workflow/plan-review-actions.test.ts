@@ -11,11 +11,11 @@ import {
     loadPlan,
     parsePlanFrontMatter,
     savePlan,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { addEntry as addRegistryEntry, findById as findRegistryEntryById } from "../worktree-registry.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { applySharedPlanReviewDecision } from "./plan-review-actions.ts";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import { startActiveExecutionWorkflow } from "./workflow.ts";
 import { createExecutionStartPorts } from "./execution-start.ts";

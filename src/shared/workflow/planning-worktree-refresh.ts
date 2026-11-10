@@ -4,7 +4,7 @@ import { captureForegroundProcess, type CapturedProcessOptions } from "../captur
 import { rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 /** Import published code before resuming an unstarted child's planning checkout. */
 import { join } from "node:path";
-import { injectFrontMatter, parsePlanFrontMatter, planDocumentMarkdown } from "../../plan-store.js";
+import { injectFrontMatter, parsePlanFrontMatter, planDocumentMarkdown } from "../../plan-store.ts";
 import { gitStatusPaths } from "../git-runtime-safety.ts";
 import { isRunWieldOwnedRuntimePath } from "../runwield-owned-paths.ts";
 import {

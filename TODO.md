@@ -76,7 +76,7 @@ Plans and current uncommitted work before creating new ones. Explicit future PRD
 
 5. [ ] **Needs Plan — Recover malformed Plan metadata without blocking other Plans.** Preserve the latest user body and
        existing decisions. One damaged Plan must not disable the entire listing or require users to edit internal
-       fields. Evidence: [Plan store](src/plan-store.js), [Plan loading](src/cmd/load-plan/index.ts).
+       fields. Evidence: [Plan store](src/plan-store.ts), [Plan loading](src/cmd/load-plan/index.ts).
 
 6. [ ] **Quick win — Preserve annotation locations.** Matching free-text feedback must not remove an annotation's file
        and line reference. Keep this separate from the larger review work below. Evidence:

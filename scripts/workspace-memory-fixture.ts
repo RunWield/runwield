@@ -27,7 +27,7 @@ function guard(): void {
 }
 
 export async function createRendererFixture(root: string, origin: string): Promise<Fixture> {
-    const { savePlan } = await import("../src/plan-store.js");
+    const { savePlan } = await import("../src/plan-store.ts");
     const { openOwnerCoordinationStore } = await import("../src/shared/owner-coordination/index.ts");
     const { createOwnerWorkspaceApp, createWorkspaceApp, createReviewWorkspaceApp, createSessionQuestionWorkspaceApp } =
         await import("../src/ui/workspace/server.ts");

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { assertEquals } from "../../testing/assertions.ts";
-import { archivePlan, loadArchivedPlan, loadPlan, savePlan, withPlanCatalogLock } from "../../plan-store.js";
+import { archivePlan, loadArchivedPlan, loadPlan, savePlan, withPlanCatalogLock } from "../../plan-store.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runLoadPlanCommand } from "./index.ts";

@@ -6,7 +6,7 @@ affectedPaths:
     - "src/shared/remote/"
     - "src/shared/remote/control.ts"
     - "src/shared/remote/personal-resources.ts"
-    - "src/plan-store.js"
+    - "src/plan-store.ts"
     - "src/shared/work-records/"
     - "src/shared/private-json-file.ts"
     - "docs/prd/runwield-core-prd.md"
@@ -55,7 +55,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/shared/remote/` — personal-store service/client contract and connection authentication
 - `src/shared/remote/control.ts` — connection-scoped operation admission
 - `src/shared/remote/personal-resources.ts` — distinguish mount access from mutation authority
-- `src/plan-store.js` — coarse owner-executed Plan operations
+- `src/plan-store.ts` — coarse owner-executed Plan operations
 - `src/shared/work-records/` — owner-executed record and index operations
 - `src/shared/private-json-file.ts` — durable receipt and metadata replacement
 - `docs/prd/runwield-core-prd.md` — remote store service behavior kept target until activation

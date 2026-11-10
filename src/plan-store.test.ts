@@ -1,3 +1,4 @@
+import type { PlanFrontMatter } from "./plan-store.ts";
 import { defineCommittedGitFixture, git } from "./shared/git-test-fixture.ts";
 import { makeTempDirectory } from "./testing/temp-file.ts";
 import { hostname } from "node:os";
@@ -61,23 +62,20 @@ import {
     updatePlanStatus,
     withPlanCatalogLock,
     withPlanLock,
-} from "./plan-store.js";
+} from "./plan-store.ts";
 import {
     COLLABORATION_LOCK_BYPASS,
     COLLABORATION_STATE_REMOTE_CANONICAL,
     SharedPlanLockError,
 } from "./shared/collaboration/lock.ts";
 
-/**
- * @param {string} name
- * @param {() => Promise<void>} fn
- */
-function testWithFs(name, fn) {
+type PlanOrderingFixture = [string, PlanFrontMatter["classification"], PlanFrontMatter["status"]];
+
+function testWithFs(name: string, fn: () => Promise<void>) {
     testWithFsPermissions(name, fn);
 }
 
-/** @param {string} path */
-async function assertMissing(path) {
+async function assertMissing(path: string) {
     await assertRejects(() => fsStat(path), Error, "ENOENT");
 }
 
@@ -102,8 +100,7 @@ test("controller-only updates preserve a formatted validated Plan byte for byte"
     }
 });
 
-/** @param {string} cwd @param {string} planName */
-async function recordActiveAttempt(cwd, planName) {
+async function recordActiveAttempt(cwd: string, planName: string) {
     const path = join(cwd, "execution");
     const baseCommit = await git(cwd, ["rev-parse", "HEAD"]);
     await git(cwd, ["worktree", "add", "-b", "worktree/test", path]);
@@ -136,14 +133,13 @@ async function recordActiveAttempt(cwd, planName) {
     );
 }
 
-/**
- * @param {string} cwd
- * @param {string} planName
- * @param {Partial<import('./plan-store.js').PlanFrontMatter>} updates
- * @param {Partial<import('./plan-store.js').PlanFrontMatter>} [recoveryAttrs]
- * @param {import('./plan-store.js').PlanWriteOptions} [options]
- */
-async function updatePlanFrontMatterForTest(cwd, planName, updates, recoveryAttrs = {}, options = {}) {
+async function updatePlanFrontMatterForTest(
+    cwd: string,
+    planName: string,
+    updates: Partial<import("./plan-store.ts").PlanFrontMatter>,
+    recoveryAttrs: Partial<import("./plan-store.ts").PlanFrontMatter> = {},
+    options: import("./plan-store.ts").PlanWriteOptions = {},
+) {
     const plan = await loadPlan(cwd, planName);
     return await updatePlanFrontMatter(cwd, planName, updates, recoveryAttrs, {
         ...options,
@@ -151,14 +147,13 @@ async function updatePlanFrontMatterForTest(cwd, planName, updates, recoveryAttr
     });
 }
 
-/**
- * @param {string} cwd
- * @param {string} planName
- * @param {import('./plan-store.js').PlanFrontMatter['status']} status
- * @param {Partial<import('./plan-store.js').PlanFrontMatter>} [recoveryAttrs]
- * @param {import('./plan-store.js').PlanWriteOptions} [options]
- */
-async function updatePlanStatusForTest(cwd, planName, status, recoveryAttrs = {}, options = {}) {
+async function updatePlanStatusForTest(
+    cwd: string,
+    planName: string,
+    status: import("./plan-store.ts").PlanFrontMatter["status"],
+    recoveryAttrs: Partial<import("./plan-store.ts").PlanFrontMatter> = {},
+    options: import("./plan-store.ts").PlanWriteOptions = {},
+) {
     const plan = await loadPlan(cwd, planName);
     return await updatePlanStatus(cwd, planName, status, recoveryAttrs, {
         ...options,
@@ -166,13 +161,7 @@ async function updatePlanStatusForTest(cwd, planName, status, recoveryAttrs = {}
     });
 }
 
-/**
- * @param {string} cwd
- * @param {string} planId
- * @param {string} body
- * @param {string} expectedBodyHash
- */
-async function savePlanBodyByIdForTest(cwd, planId, body, expectedBodyHash) {
+async function savePlanBodyByIdForTest(cwd: string, planId: string, body: string, expectedBodyHash: string) {
     const resource = await findPlanById(cwd, planId);
     const plan = await loadPlan(cwd, resource.planName || resource.name);
     return await savePlanBodyById(cwd, planId, body, expectedBodyHash, { expectedRevision: plan?.revision });
@@ -491,7 +480,8 @@ test("documentation Work Kind front matter round trips and unknown values normal
     assertEquals(parsePlanFrontMatter(withDocumentation).attrs.workKind, "DOCUMENTATION");
     assertStringIncludes(withDocumentation, 'workKind: "DOCUMENTATION"');
 
-    const unknown = injectFrontMatter("## Plan", { workKind: /** @type {any} */ ("DOCS") });
+    // @ts-expect-error Older or hand-authored Plans can contain unrecognized work kinds.
+    const unknown = injectFrontMatter("## Plan", { workKind: "DOCS" });
     assertEquals(parsePlanFrontMatter(unknown).attrs.workKind, undefined);
     assertEquals(unknown.includes("workKind:"), false);
 });
@@ -792,7 +782,7 @@ testWithFs("listPlans fails closed with typed parse errors for malformed active 
 testWithFs("listPlans sorts by status, classification, then name", async () => {
     const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
-        const plans = [
+        const plans: PlanOrderingFixture[] = [
             ["z-failed-feature", "FEATURE", "failed"],
             ["z-failed-project", "PROJECT", "failed"],
             ["a-failed-project", "PROJECT", "failed"],
@@ -810,8 +800,8 @@ testWithFs("listPlans sorts by status, classification, then name", async () => {
         ];
         for (const [name, classification, status] of plans) {
             await savePlan(cwd, name, `# ${name}`, {
-                classification: /** @type {any} */ (classification),
-                status: /** @type {any} */ (status),
+                classification: classification,
+                status: status,
                 order: 100 - plans.findIndex((plan) => plan[0] === name),
             });
         }
@@ -1109,11 +1099,8 @@ testWithFs("archivePlansByStatus keeps archiving safe matches when other matches
 testWithFs("archivePlansByStatus validates requested lifecycle status", async () => {
     const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
-        await assertRejects(
-            () => archivePlansByStatus(cwd, /** @type {any} */ ("verfied")),
-            Error,
-            "Unknown Plan status",
-        );
+        // @ts-expect-error CLI input can contain a misspelled status.
+        await assertRejects(() => archivePlansByStatus(cwd, "verfied"), Error, "Unknown Plan status");
     } finally {
         await fsRm(cwd, { recursive: true });
     }
@@ -1489,12 +1476,8 @@ testWithFs("saveChildFeaturePlans rejects invalid child and parent names", async
             "Duplicate child plan name: epic-a/same-child",
         );
         await assertRejects(
-            () =>
-                saveChildFeaturePlans(
-                    cwd,
-                    "epic-a",
-                    /** @type {any} */ ([{ ...validChild, dependencies: "feature-1" }]),
-                ),
+            // @ts-expect-error Slicer JSON can supply a non-array value.
+            () => saveChildFeaturePlans(cwd, "epic-a", [{ ...validChild, dependencies: "feature-1" }]),
             Error,
             "Child plan dependencies must be an array",
         );
@@ -1506,17 +1489,14 @@ testWithFs("saveChildFeaturePlans rejects invalid child and parent names", async
 testWithFs("plan-store updates preserve parent-child metadata and unknown front matter", async () => {
     const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
-        const markdown = injectFrontMatter(
-            "# Child",
-            /** @type {any} */ ({
-                classification: "FEATURE",
-                parentPlan: "project-breakdown-epic",
-                dependencies: ["feature0"],
-                customFlag: true,
-                customOrder: 7,
-                customTags: ["alpha", "beta"],
-            }),
-        );
+        const markdown = injectFrontMatter("# Child", {
+            classification: "FEATURE",
+            parentPlan: "project-breakdown-epic",
+            dependencies: ["feature0"],
+            customFlag: true,
+            customOrder: 7,
+            customTags: ["alpha", "beta"],
+        });
         await fsMkdir(join(cwd, `docs/plans/project-breakdown-epic`), { recursive: true });
         await fsWriteFile(join(cwd, `docs/plans/project-breakdown-epic/feature2.md`), markdown);
 
@@ -1525,9 +1505,10 @@ testWithFs("plan-store updates preserve parent-child metadata and unknown front 
         assertEquals(afterStatus?.attrs.status, "approved");
         assertEquals(afterStatus?.attrs.parentPlan, "project-breakdown-epic");
         assertEquals(afterStatus?.attrs.dependencies, ["feature0"]);
-        assertEquals(/** @type {any} */ (afterStatus?.attrs).customFlag, true);
-        assertEquals(/** @type {any} */ (afterStatus?.attrs).customOrder, 7);
-        assertEquals(/** @type {any} */ (afterStatus?.attrs).customTags, ["alpha", "beta"]);
+        assert(afterStatus);
+        assertEquals(afterStatus.attrs.customFlag, true);
+        assertEquals(afterStatus.attrs.customOrder, 7);
+        assertEquals(afterStatus.attrs.customTags, ["alpha", "beta"]);
 
         const attrs = await updatePlanFrontMatterForTest(cwd, "project-breakdown-epic/feature2", {
             status: "ready_for_work",
@@ -1536,7 +1517,7 @@ testWithFs("plan-store updates preserve parent-child metadata and unknown front 
         assertEquals(attrs.status, "ready_for_work");
         assertEquals(attrs.parentPlan, "project-breakdown-epic");
         assertEquals(attrs.dependencies, ["feature0"]);
-        assertEquals(/** @type {any} */ (attrs).customFlag, true);
+        assertEquals(attrs.customFlag, true);
     } finally {
         await fsRm(cwd, { recursive: true });
     }
@@ -1576,8 +1557,7 @@ testWithFs("plan-store resolves external plans and injects defaults when front m
 });
 
 test("delivery evidence front matter validates compact shapes and rejects malformed values", () => {
-    /** @type {import("./plan-store.js").DeliveryEvidence} */
-    const worktreeEvidence = {
+    const worktreeEvidence: import("./plan-store.ts").DeliveryEvidence = {
         version: 1,
         mode: "worktree_merge",
         executionCommit: "a".repeat(40),
@@ -1595,33 +1575,35 @@ test("delivery evidence front matter validates compact shapes and rejects malfor
     const nonGit = parsePlanFrontMatter(
         injectFrontMatter("## Body", {
             executionMode: "non_git_in_place",
-            deliveryEvidence: /** @type {any} */ ({
+            deliveryEvidence: {
                 version: 1,
                 mode: "non_git_in_place",
+                // @ts-expect-error Legacy evidence can include private fields that must be filtered.
                 projectRoot: "/tmp/must-not-survive",
                 validationCwd: "/tmp/must-not-survive",
                 validatedAt: "2026-07-24T00:00:00.000Z",
-            }),
+            },
         }),
     );
     assertEquals(nonGit.attrs.deliveryEvidence, { version: 1, mode: "non_git_in_place" });
 
     const malformed = parsePlanFrontMatter(
         injectFrontMatter("## Body", {
-            deliveryEvidence: /** @type {any} */ ({ version: 1, mode: "worktree_merge", executionCommit: "not-a-sha" }),
+            // @ts-expect-error Malformed stored evidence can omit required fields.
+            deliveryEvidence: { version: 1, mode: "worktree_merge", executionCommit: "not-a-sha" },
         }),
     );
     assertEquals(malformed.attrs.deliveryEvidence, undefined);
 
     const partialSha = parsePlanFrontMatter(
         injectFrontMatter("## Body", {
-            deliveryEvidence: /** @type {any} */ ({
+            deliveryEvidence: {
                 version: 1,
                 mode: "worktree_merge",
                 executionCommit: "a".repeat(39),
                 targetBranch: "main",
                 targetHeadBeforeMerge: "b".repeat(40),
-            }),
+            },
         }),
     );
     assertEquals(partialSha.attrs.deliveryEvidence, undefined);
@@ -1670,10 +1652,7 @@ testWithFs("updatePlanFrontMatter preserves exact body bytes", async () => {
         await updatePlanFrontMatterForTest(cwd, "byte-preserve", { status: "approved" });
         const updated = await fsReadFile(path, "utf8");
         assertEquals(updated.slice(updated.indexOf("---\n", 4) + "---\n".length), body);
-        assertEquals(
-            /** @type {Record<string, unknown>} */ (parsePlanFrontMatter(updated).attrs).customField,
-            "keep-me",
-        );
+        assertEquals(parsePlanFrontMatter(updated).attrs.customField, "keep-me");
     } finally {
         await fsRm(cwd, { recursive: true });
     }
@@ -1681,8 +1660,7 @@ testWithFs("updatePlanFrontMatter preserves exact body bytes", async () => {
 
 testWithFs("updatePlanFrontMatter preserves and clears Delivery Evidence on partial updates", async () => {
     const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
-    /** @type {import("./plan-store.js").DeliveryEvidence} */
-    const deliveryEvidence = {
+    const deliveryEvidence: import("./plan-store.ts").DeliveryEvidence = {
         version: 1,
         mode: "worktree_merge",
         executionCommit: "a".repeat(40),
@@ -2052,7 +2030,8 @@ testWithFs("locked shared plan writes require exact collaboration bypass", async
     const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     await savePlan(cwd, "locked", "## Plan\n\nOriginal", lockedPlanFrontMatter());
     await assertRejects(
-        () => savePlan(cwd, "locked", "## Plan\n\nChanged", {}, { collaborationLockBypass: /** @type {any} */ (true) }),
+        // @ts-expect-error A boolean is an invalid bypass token.
+        () => savePlan(cwd, "locked", "## Plan\n\nChanged", {}, { collaborationLockBypass: true }),
         SharedPlanLockError,
     );
     const before = await loadPlan(cwd, "locked");
@@ -2262,27 +2241,22 @@ testWithFs("updatePlanCollaborationMetadata preserves body hash without controll
 
 testWithFs("updatePlanCollaborationMetadata filters non-front-matter collaboration secrets", async () => {
     const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
-    await savePlan(
-        cwd,
-        "locked",
-        "## Plan\n\nOriginal",
-        /** @type {any} */ ({
-            ...lockedPlanFrontMatter(),
-            bearerCapability: "bearer-secret",
-            contentKey: "content-key-secret",
-            reviewerUrl: "https://plans.example.test/p/space-1#contentKey=secret",
-        }),
-    );
+    await savePlan(cwd, "locked", "## Plan\n\nOriginal", {
+        ...lockedPlanFrontMatter(),
+        bearerCapability: "bearer-secret",
+        contentKey: "content-key-secret",
+        reviewerUrl: "https://plans.example.test/p/space-1#contentKey=secret",
+    });
     const attrs = await updatePlanCollaborationMetadata(
         cwd,
         "locked",
-        /** @type {any} */ ({
+        {
             bearerCapability: "new-bearer-secret",
             collaborationRevision: 8,
             collaborationServerUrl: "https://plans.example.test/base#contentKey=secret",
             contentKey: "new-content-key-secret",
             reviewerUrl: "https://plans.example.test/p/space-1#contentKey=new-secret",
-        }),
+        },
         COLLABORATION_LOCK_BYPASS.pull,
     );
     const loaded = await loadPlan(cwd, "locked");
@@ -2406,7 +2380,8 @@ testWithFs("Plan front matter normalizes and preserves Ticket References", async
             tickets: [
                 { url: " https://example.com/tickets/ABC-123 ", label: "ABC", count: 1 },
                 { url: "" },
-                /** @type {any} */ ("https://example.com/not-an-object"),
+                // @ts-expect-error Hand-authored Ticket References can contain non-object entries.
+                "https://example.com/not-an-object",
             ],
         });
         const loaded = await loadPlan(cwd, "ticketed");
@@ -2499,10 +2474,8 @@ testWithFs("listPlans fails closed for symlink markdown Plan paths", async () =>
 testWithFs("withPlanLock serializes concurrent same-process tasks while allowing nested reentry", async () => {
     const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
-        /** @type {string[]} */
-        const events = [];
-        /** @type {() => void} */
-        let releaseFirst = () => {};
+        const events: string[] = [];
+        let releaseFirst: () => void = (): void => {};
         const firstMayFinish = new Promise((resolve) => {
             releaseFirst = () => resolve(null);
         });
@@ -2989,7 +2962,7 @@ testWithFs("ambiguous legacy children and duplicate slugs fail before any writes
     }
 });
 
-for (const status of /** @type {const} */ (["in_progress", "validated"])) {
+for (const status of ["in_progress", "validated"] as const) {
     testWithFs(`child regeneration cannot overwrite a ${status} legacy child`, async () => {
         const cwd = await makeTempDirectory({ prefix: "started-legacy-child-" });
         try {

@@ -1,9 +1,9 @@
 import type { PlanCardActions, PlanCardDragActions } from "./PlanCard.tsx";
-import type { PlanReadAvailability } from "../../../plan-store.js";
+import type { PlanReadAvailability } from "../../../plan-store.ts";
 import { detailHref } from "./PlanCard.tsx";
 import { RunWieldCard } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 
-import type { countChildPlanProgress, PlanFrontMatter } from "../../../plan-store.js";
+import type { countChildPlanProgress, PlanFrontMatter } from "../../../plan-store.ts";
 
 export interface ProjectCardChild {
     planId: string;

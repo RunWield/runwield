@@ -6,7 +6,7 @@ import {
     resolvePlanExecutionPolicy,
     StalePlanWriteError,
     updatePlanFrontMatter,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { StaleControllerWriteError } from "./controller-registry.ts";
 import { runPlansDoctor } from "../../cmd/plans/doctor.ts";
 import { isRecordedProcessAlive, readProcessIdentity } from "../process-identity.ts";
@@ -84,7 +84,7 @@ type ClaimResult =
     | { kind: "settled_completion"; projectRoot: string };
 
 function checkpointRecord(
-    value: import("../../plan-store.js").PlanFrontMatter["validationCheckpoint"],
+    value: import("../../plan-store.ts").PlanFrontMatter["validationCheckpoint"],
 ): ValidationCheckpoint | undefined {
     if (!value || !isValidationCheckpoint(value)) return undefined;
     return value;

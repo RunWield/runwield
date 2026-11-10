@@ -139,7 +139,7 @@ test("resettable retry counters cannot masquerade as run totals", () => {
 });
 
 test("untrusted Plan receipt metadata cannot confirm publication", async () => {
-    const { parsePlanFrontMatter } = await import("../../plan-store.js");
+    const { parsePlanFrontMatter } = await import("../../plan-store.ts");
     const { attrs } = parsePlanFrontMatter(
         "---\nstatus: verified\npublicationReceipt:\n  validatedCommit: forged\n  publishedCommit: forged\n  targetBranch: main\n---\n# Plan",
     );

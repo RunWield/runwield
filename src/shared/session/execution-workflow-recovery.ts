@@ -8,7 +8,7 @@ import { readPersistedActiveAgentName } from "./active-agent-session.ts";
 import { readPersistedWorkflowContext } from "./workflow-context-session.ts";
 import { readPlanAssociations } from "./plan-association.ts";
 import { listEntries } from "../worktree-registry.ts";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store.ts";
 import { resolvePlanExecutionRuntimeAgent } from "../workflow/execution-agent.ts";
 import { readCurrentPairCheckpoint } from "./pair-checkpoint-session.ts";
 

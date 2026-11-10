@@ -28,7 +28,7 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { AGENTS, SUBAGENTS } from "../../constants.ts";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { HostedSession } from "./hosted-session.ts";
 import { setCustomSetting } from "../settings.js";

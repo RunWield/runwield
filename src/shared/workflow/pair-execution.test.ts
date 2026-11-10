@@ -1,7 +1,7 @@
 import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { parsePlanFrontMatter, resolvePlanExecutionPolicy, type PlanExecutionPolicy } from "../../plan-store.js";
+import { parsePlanFrontMatter, resolvePlanExecutionPolicy, type PlanExecutionPolicy } from "../../plan-store.ts";
 import { HostedSession, type ActiveExecutionWorkflow } from "../session/hosted-session.ts";
 import { decidePostExecution, type PostExecutionOptions } from "./decisions.ts";
 import { resolveExecutionOwner, supportsPairExecution } from "./workflow.ts";

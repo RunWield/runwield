@@ -9,7 +9,7 @@ import { preparePlanController } from "../../workflow/plan-preparation.ts";
 import { readPersistedWorkflowContext } from ".././workflow-context-session.ts";
 import { createPairCheckpointTool } from "../../../tools/pair-checkpoint.ts";
 import { formatPairCheckpointContext, restorePairExecutionState } from ".././pair-checkpoint-session.ts";
-import { loadPlan } from "../../../plan-store.js";
+import { loadPlan } from "../../../plan-store.ts";
 import { listEntries, prepareWorktreeRegistry } from "../../worktree-registry.ts";
 
 /** A delivered execution keeps its transcript origin, but resumes in the registered project. */
@@ -382,7 +382,7 @@ export function buildSemanticRepairCiState(
  * @returns {Array<import('../../workflow/workflow-presentation.ts').WorkflowProgressFact>}
  */
 export function workflowProgressFactsFromActiveMeta(
-    activeWorkflowMeta: Partial<import("../../../plan-store.js").PlanFrontMatter> & SemanticWorkflowMeta,
+    activeWorkflowMeta: Partial<import("../../../plan-store.ts").PlanFrontMatter> & SemanticWorkflowMeta,
 ): import("../../workflow/workflow-presentation.ts").WorkflowProgressFact[] {
     const facts: import("../../workflow/workflow-presentation.ts").WorkflowProgressFact[] = [];
     const checkpoint = activeWorkflowMeta.validationCheckpoint;

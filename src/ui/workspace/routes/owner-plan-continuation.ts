@@ -1,5 +1,5 @@
 /** Plan-scoped continuation entry points, including Plans without a working Session. */
-import { findPlanEvidenceById } from "../../../plan-store.js";
+import { findPlanEvidenceById } from "../../../plan-store.ts";
 import {
     executePlanAction,
     loadPlanActionEvidence,

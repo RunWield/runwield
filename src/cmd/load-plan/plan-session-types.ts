@@ -6,7 +6,7 @@
  * not have to choose one owner for a type several parts need.
  */
 
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 import type { ActiveExecutionWorkflow } from "../../shared/session/execution-workflow-session.ts";
 import type { PlanApprovalAction } from "../../shared/workflow/plan-approval.ts";
 import type { PlanActionRequest, PlanActionResult } from "../../shared/workflow/plan-actions.ts";

@@ -194,17 +194,17 @@ recovery fixes wait for a rewrite of the entire workflow engine.
 **Required outcome:** Users own Plan prose. RunWield repairs its own metadata, preserves the latest body and decisions,
 and leaves unrelated Plans usable. Ordinary listing must not mutate an external Markdown draft.
 
-**Evidence:** `src/plan-store.js:1705` returns a malformed-file result without repair. At `:2733`, any unresolved active
-Plan parse issue makes the whole listing throw. `src/cmd/load-plan/index.ts:300` rejects unknown status values.
+**Evidence:** `parsePlanTextStrict` in `src/plan-store.ts` returns a malformed-file result without repair. An unresolved
+active Plan parse issue makes `readPlansWithTargetChildren` throw during strict listing. `src/cmd/load-plan/index.ts:300` rejects unknown status values.
 
 **Failure example:** One Plan contains `status: [unterminated`. Listing other valid Plans fails. Loading does not
 recover RunWield's lifecycle metadata. A separate body edit must not be lost while recovering this state.
 
-**Existing tests:** `src/plan-store.test.js:968` expects listing to reject; `:1988` expects malformed metadata updates
-to reject while preserving bytes. Byte preservation is valuable, but these tests do not prove automatic recovery.
+**Existing tests:** `src/plan-store.test.ts` expects strict listing to reject malformed Plans and metadata updates to
+reject while preserving bytes. Byte preservation is valuable, but these tests do not prove automatic recovery.
 
 **Existing strengths:** Read-only metadata-free drafts, deliberate adoption, original age, stable identity, and body
-preservation have coverage at `plan-store.test.js:2848–2909`; adoption is implemented around `plan-store.js:3512`.
+preservation have coverage in `src/plan-store.test.ts`. `onboardExternalPlan` implements adoption.
 
 **Boundaries:** Do not relax review or infer that malformed metadata grants approval. Do not add a Plan-body parser. A
 repair must preserve lifecycle evidence and recent edits, not merely make the file parse. The dirty Plan-store and

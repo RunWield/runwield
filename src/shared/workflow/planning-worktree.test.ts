@@ -13,7 +13,7 @@ import { execPath } from "node:process";
 import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
-import { archivePlan, getPlanDocumentRoot, listPlans } from "../../plan-store.js";
+import { archivePlan, getPlanDocumentRoot, listPlans } from "../../plan-store.ts";
 import { listEntries, refreshPlanningWorktreeBase, updateEntry } from "../worktree-registry.ts";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { inspectControllerView, writeControllerState } from "./controller-registry.ts";

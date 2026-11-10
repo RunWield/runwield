@@ -10,7 +10,7 @@ import type { ReAnchorOptions } from "./index.ts";
 import { HostedSession } from "../../shared/session/hosted-session.ts";
 import type { ReviewLedger } from "../../shared/workflow/review-ledger.ts";
 import { dirname } from "node:path";
-import { getStoredPlanPath } from "../../plan-store.js";
+import { getStoredPlanPath } from "../../plan-store.ts";
 
 type Handler = (event: Record<string, unknown>, ctx: unknown) => unknown;
 

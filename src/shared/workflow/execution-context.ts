@@ -8,7 +8,7 @@ import { effectiveDeliveryBranch } from "./plan-branch.ts";
  */
 
 import { isPlannedChangeClassification } from "../../constants.ts";
-import { ensurePlanIdentity, loadPlan, normalizeExecutionMode, updatePlanFrontMatter } from "../../plan-store.js";
+import { ensurePlanIdentity, loadPlan, normalizeExecutionMode, updatePlanFrontMatter } from "../../plan-store.ts";
 import {
     describeRegistryAmbiguity,
     findActiveByPlanName as findWorktreeRegistryEntryByPlanName,
@@ -30,7 +30,7 @@ import type { ValidationRecoveryNotice } from "./validation-user-messages.ts";
 
 const VALIDATION_ELIGIBLE_WORKTREE_STATUSES = new Set(["active", "completed", "validation_failed", "validated"]);
 
-type PlanFrontMatter = import("../../plan-store.js").PlanFrontMatter;
+type PlanFrontMatter = import("../../plan-store.ts").PlanFrontMatter;
 type ResolutionSource = "explicit" | "active_session" | "durable_recovery";
 type ScalarValue = string | number | boolean | null | undefined;
 export interface ExecutionContextCandidate {

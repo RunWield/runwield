@@ -1,7 +1,7 @@
 // @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
 import { isEpicPlan } from "../project-plan.ts";
 import { AGENTS, CLI_BIN, PLANS_DIR_NAME } from "../../constants.ts";
-import { resolvePlanExecutionPolicy } from "../../plan-store.js";
+import { resolvePlanExecutionPolicy } from "../../plan-store.ts";
 import { join } from "node:path";
 import { emitSystemStatus } from "../session/session-runtime-events.ts";
 import { getAgentDisplayName } from "../session/agents.ts";
@@ -32,7 +32,7 @@ import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execu
 import { emitLaunchingExecutionAgent } from "./execution-preparation-progress.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 import type { ActiveExecutionWorkflow, HostedSession } from "../session/hosted-session.ts";
 
 function isPlanReviewRetryAccepted(response) {
@@ -262,7 +262,7 @@ export async function executePlan({
                 effectiveReviewImages = reviewMeta.images;
             }
             const approvedMeta =
-                /** @type {Partial<import('../../plan-store.js').PlanFrontMatter>} */ reviewMeta.planAttrs ||
+                /** @type {Partial<import('../../plan-store.ts').PlanFrontMatter>} */ reviewMeta.planAttrs ||
                 _triageMeta ||
                 {};
             const approvalAction = normalizePlanApprovalAction({

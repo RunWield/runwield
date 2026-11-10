@@ -1,7 +1,7 @@
 import { captureForegroundProcess } from "../captured-process.ts";
 import { lstat as fsLstat } from "node:fs/promises";
 /** Recover a deleted execution checkout from Git evidence left by a manual rescue. */
-import { loadPlan, parsePlanFrontMatter } from "../../plan-store.js";
+import { loadPlan, parsePlanFrontMatter } from "../../plan-store.ts";
 import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { listControllerDocumentWorktrees } from "./controller-registry.ts";
 import { loadTargetPlan, TargetBranchSnapshotUnavailableError } from "./planning-worktree.ts";

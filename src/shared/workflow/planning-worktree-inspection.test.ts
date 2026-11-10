@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import process from "node:process";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { parsePlanFrontMatter } from "../../plan-store.js";
+import { parsePlanFrontMatter } from "../../plan-store.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { inspectTargetBranchPlansByParent, TargetBranchSnapshotUnavailableError } from "./planning-worktree.ts";
 
@@ -209,7 +209,7 @@ test("partial-clone passive object reads never fetch missing promised Plan blobs
                 args: ["cat-file", "-e", `${commit}:docs/plans/${childName(0)}.md`],
             });
             assertEquals(missing.success, false, "fixture must lack the promised Plan blob");
-            const { listPlans } = await import("../../plan-store.js");
+            const { listPlans } = await import("../../plan-store.ts");
             await mkdir(join(partial, "docs/plans"), { recursive: true });
             await writeFile(
                 join(partial, "docs/plans/epic.md"),

@@ -21,7 +21,7 @@ import {
     type ProjectParams,
 } from "./owner-api.ts";
 import { ownerSecurityHeaders } from "../server/owner-origin.ts";
-import { findPlanEvidenceById } from "../../../plan-store.js";
+import { findPlanEvidenceById } from "../../../plan-store.ts";
 import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "../server/owner-projects.ts";
 import { getSlashCommandDefinition } from "../../../cmd/registry.ts";
 

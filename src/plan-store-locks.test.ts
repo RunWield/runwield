@@ -13,7 +13,7 @@ import {
     savePlan,
     withPlanCatalogLock,
     withPlanLock,
-} from "./plan-store.js";
+} from "./plan-store.ts";
 import { resolveProjectRuntimeLayout } from "./shared/project-runtime-layout.ts";
 
 async function promptly<T>(operation: Promise<T>): Promise<T> {

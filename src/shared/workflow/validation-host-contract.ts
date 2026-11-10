@@ -60,7 +60,7 @@ export type HostTurnValidationResult =
           kind: "verified";
           planName: string;
           completionMode?: HostDeliveryMode;
-          workRecord?: import("../../plan-store.js").PlanFrontMatter["workRecord"];
+          workRecord?: import("../../plan-store.ts").PlanFrontMatter["workRecord"];
       }
     | { kind: "paused" | "failed"; reason: string; recovery?: ValidationRecoveryResult };
 export type ValidationHostTurn = { resume?: ValidationHostResume; consumed?: boolean; signal?: AbortSignal };

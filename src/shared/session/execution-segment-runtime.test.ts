@@ -4,7 +4,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { git } from "../git-test-fixture.ts";
 import { openPersistedRootSession } from "./root-session.ts";

@@ -7,7 +7,7 @@ import { type Static, Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { ActiveExecutionWorkflow, HostedSession } from "../shared/session/hosted-session.ts";
-import { loadPlan, savePlan, StalePlanWriteError } from "../plan-store.js";
+import { loadPlan, savePlan, StalePlanWriteError } from "../plan-store.ts";
 import { syncEpicChildPlanDeviations } from "../shared/workflow/epic-review-context.ts";
 import { appendPlanDeviation, formatPlanDeviationForPrompt, type PlanDeviation } from "../shared/plan-deviations.ts";
 import {

@@ -10,7 +10,7 @@ import {
     loadArchivedPlan,
     PlanNotFoundError,
     type PlanReadAvailability,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { NO_OPEN_BROWSER_PORT, SYSTEM_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
 import { startArtifactReadSurface } from "../../ui/review/review-launcher.ts";

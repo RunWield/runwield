@@ -1,7 +1,7 @@
 import { opendir as fsOpendir } from "node:fs/promises";
 import { stat as fsStat } from "node:fs/promises";
 import { join } from "node:path";
-import { listArchivedPlans } from "../plan-store.js";
+import { listArchivedPlans } from "../plan-store.ts";
 import { EPIC_ARTIFACT_FILE_NAMES, getArchivedEpicArtifactPath } from "./epic-artifacts.ts";
 import { getPlanArchiveRetentionPolicy } from "./settings.js";
 import { listWorkRecords } from "./work-records/store.ts";

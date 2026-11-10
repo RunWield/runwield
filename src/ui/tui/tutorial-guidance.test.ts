@@ -7,7 +7,7 @@ import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { savePlan, type PlanFrontMatter } from "../../plan-store.js";
+import { savePlan, type PlanFrontMatter } from "../../plan-store.ts";
 import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
 import {
     RuntimeEventTypes,

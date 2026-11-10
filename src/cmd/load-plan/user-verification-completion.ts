@@ -1,4 +1,4 @@
-import { getStoredPlanPath, loadPlan, withPlanLock, writePlanMarkdownWithRevision } from "../../plan-store.js";
+import { getStoredPlanPath, loadPlan, withPlanLock, writePlanMarkdownWithRevision } from "../../plan-store.ts";
 import { resolvePrimaryCheckoutRoot } from "../../shared/project-checkout.ts";
 import { discardWorktreeGitArtifacts, validateWorktreeDiscard } from "../../shared/worktree.js";
 import { findById, listEntries, pruneEntry, updateEntry } from "../../shared/worktree-registry.ts";

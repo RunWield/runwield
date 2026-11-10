@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { dirname } from "node:path";
-import { ensurePlanIdentity, loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.js";
+import { ensurePlanIdentity, loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.ts";
 import { addEntry, findById, getWorktreeRegistryPath } from "../worktree-registry.ts";
 import { resolveValidationExecutionContext } from "./execution-context.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";

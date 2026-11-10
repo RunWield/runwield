@@ -1,4 +1,4 @@
-import { canonicalizeStoredPlanName, isHiddenPlanName } from "../../plan-store.js";
+import { canonicalizeStoredPlanName, isHiddenPlanName } from "../../plan-store.ts";
 import { assertNotReservedEpicArtifactPlanName } from "../epic-artifacts.ts";
 import { effectiveDeliveryBranch } from "../workflow/plan-branch.ts";
 import { resolveWorkflowPlanLocation } from "../workflow/plan-location.ts";

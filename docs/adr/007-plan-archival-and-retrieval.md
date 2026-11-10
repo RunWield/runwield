@@ -69,5 +69,5 @@ summary.
 Normal active workflows stay focused because `wld plans` and active Plan
 resource APIs hide `docs/plans/archived/`. Historical context remains available
 in plaintext and can be listed, read, restored, or targeted by explicit paths.
-Future Plan UI controls should call the centralized `src/plan-store.js` archive
+Future Plan UI controls should call the centralized `src/plan-store.ts` archive
 helpers instead of moving files directly.

@@ -10,7 +10,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
-import { ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.js";
+import { ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";

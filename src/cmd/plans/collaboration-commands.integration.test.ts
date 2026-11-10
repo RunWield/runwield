@@ -22,7 +22,7 @@ import {
     loadPlan,
     savePlan,
     updatePlanCollaborationMetadata,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { PlanningNotStartedError } from "../../shared/workflow/plan-location.ts";
 import { listEntries } from "../../shared/worktree-registry.ts";

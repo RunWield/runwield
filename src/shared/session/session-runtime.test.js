@@ -45,7 +45,7 @@ import { openFileSessionStore } from "./file-session-store.ts";
 import { sessionDirForRoot } from "./file-session-storage.ts";
 import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { getPlanRevisionForText, savePlan } from "../../plan-store.js";
+import { getPlanRevisionForText, savePlan } from "../../plan-store.ts";
 import { rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
 import { McpIntegration } from "../mcp/integration.ts";
 import { loadPlanActionEvidence } from "../workflow/plan-actions.ts";

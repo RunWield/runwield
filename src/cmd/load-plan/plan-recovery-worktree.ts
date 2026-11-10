@@ -10,7 +10,7 @@ import { stat as fsStat } from "node:fs/promises";
  * missing field would make a destructive action unsafe.
  */
 
-import { loadPlan, resolvePlanExecutionPolicy, updatePlanFrontMatter } from "../../plan-store.js";
+import { loadPlan, resolvePlanExecutionPolicy, updatePlanFrontMatter } from "../../plan-store.ts";
 import { buildPlanEventUpdates } from "../../shared/workflow/plan-lifecycle.ts";
 import { resolveValidationExecutionContext } from "../../shared/workflow/execution-context.ts";
 import {
@@ -32,7 +32,7 @@ import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 
 import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 import type { PlanStatus } from "../../shared/workflow/plan-lifecycle.ts";
 import type { UiAPI } from "../../ui/tui/api.ts";
 import type { PlanSessionSurface, RecoveryWorktreeContext } from "./plan-session-types.ts";
@@ -173,7 +173,7 @@ export interface ReopenPlanForReviewOptions {
 
 /**
  * @param {string} projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter }} plan
+ * @param {{ planName: string, attrs: import('../../plan-store.ts').PlanFrontMatter }} plan
  * @returns {Promise<RecoveryWorktreeContext | null>}
  */
 export async function resolveRecoveryWorktree(
@@ -212,9 +212,9 @@ export async function resolveRecoveryWorktree(
 
 /**
  * @param {string} projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter, revision?: string }} plan
+ * @param {{ planName: string, attrs: import('../../plan-store.ts').PlanFrontMatter, revision?: string }} plan
  * @param {RecoveryWorktreeContext | null} context
- * @returns {Promise<import('../../plan-store.js').PlanFrontMatter>}
+ * @returns {Promise<import('../../plan-store.ts').PlanFrontMatter>}
  */
 export async function persistRecoveredWorktreeMetadata(
     projectRoot: string,
@@ -271,7 +271,7 @@ export function assertRecoveryWorktreeIsManaged(
  *
  * @param {Object} opts
  * @param {string} opts.projectRoot
- * @param {{ planName: string, path: string, body: string, attrs: import('../../plan-store.js').PlanFrontMatter, revision?: string }} opts.plan
+ * @param {{ planName: string, path: string, body: string, attrs: import('../../plan-store.ts').PlanFrontMatter, revision?: string }} opts.plan
  * @param {import('../../shared/workflow/plan-lifecycle.ts').PlanStatus} opts.currentStatus
  * @param {RecoveryWorktreeContext | null | undefined} [opts.worktreeContext]
  * @param {PlanSessionSurface} opts.session
@@ -379,7 +379,7 @@ export function reportInvalidRecoveryPolicy(
 
 /**
  * @param {string} projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter }} plan
+ * @param {{ planName: string, attrs: import('../../plan-store.ts').PlanFrontMatter }} plan
  * @param {RecoveryWorktreeContext | null} context
  * @param {PlanSessionSurface} session
  * @param {import('../../ui/tui/api.ts').UiAPI} [uiAPI]
@@ -468,7 +468,7 @@ export async function rehydrateActiveRecoveryWorkflow(
  * Append recovery context for a partially executed Plan.
  *
  * @param {string} projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter, body: string, markdown: string }} plan
+ * @param {{ planName: string, attrs: import('../../plan-store.ts').PlanFrontMatter, body: string, markdown: string }} plan
  * @param {import('../../ui/tui/api.ts').UiAPI} uiAPI
  * @param {RecoveryWorktreeContext | null} worktreeContext
  * @returns {Promise<void>}

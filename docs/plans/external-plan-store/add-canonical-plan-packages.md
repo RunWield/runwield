@@ -3,7 +3,7 @@ classification: "PLANNED_CHANGE"
 workKind: "REFACTOR"
 complexity: "HIGH"
 affectedPaths:
-    - "src/plan-store.js"
+    - "src/plan-store.ts"
     - "src/plan-front-matter.ts"
     - "src/shared/epic-artifacts.ts"
     - "src/shared/workflow/controller-state.ts"
@@ -52,7 +52,7 @@ during implementation and change whatever the Implementation Steps need, includi
 only when discovery changes approved intent — the change reaches another subsystem, public behavior or architecture
 shifts, migration or compatibility risk grows, or the Verification Plan no longer proves the objective.
 
-- `src/plan-store.js` — typed package operations and revision contracts
+- `src/plan-store.ts` — typed package operations and revision contracts
 - `src/plan-front-matter.ts` — legacy parsing boundary
 - `src/shared/epic-artifacts.ts` — package-owned Epic context and validation artifacts
 - `src/shared/workflow/controller-state.ts` — metadata field ownership
@@ -79,7 +79,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 Use Bun 1.4.3 and run `bun run install:locked` before checks. Existing focused regression command:
 
 ```sh
-bun scripts/run-tests.ts src/plan-store.test.js src/plan-store-locks.test.ts src/plan-store-passive-reads.test.ts
+bun scripts/run-tests.ts src/plan-store.test.ts src/plan-store-locks.test.ts src/plan-store-passive-reads.test.ts
 ```
 
 New coverage below is proposed, not an existing passing test inventory. Planner must select concrete test files and

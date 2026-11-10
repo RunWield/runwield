@@ -5,7 +5,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import { setCustomSetting } from "../settings.js";
-import { findPlansByParent, loadPlan, updatePlanFrontMatter } from "../../plan-store.js";
+import { findPlansByParent, loadPlan, updatePlanFrontMatter } from "../../plan-store.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { executeWorkflowTestTools, type WorkflowTestToolCall } from "../../testing/workflow-agent-tools.ts";
 import type { IsolatedAgentSessionOptions, SemanticReviewPort } from "./validation-session-adapter.ts";

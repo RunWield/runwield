@@ -25,7 +25,7 @@ import {
     updatePlanFrontMatter,
     withPlanCatalogLock,
     withPlanLock,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import { readControllerRecord, writeControllerState } from "./controller-registry.ts";

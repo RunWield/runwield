@@ -12,7 +12,7 @@ import { applySequenceReviewDecision, prepareSequenceReview } from "../../shared
  */
 
 import { AGENTS, CLI_BIN } from "../../constants.ts";
-import { loadPlan, type PlanFrontMatter, resolvePlanExecutionPolicy } from "../../plan-store.js";
+import { loadPlan, type PlanFrontMatter, resolvePlanExecutionPolicy } from "../../plan-store.ts";
 import { decidePostExecution, decidePostPlanning } from "../../shared/workflow/decisions.ts";
 import { isPlanReviewableWithoutReopen, isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";

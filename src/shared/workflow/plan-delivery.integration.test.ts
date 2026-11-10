@@ -8,7 +8,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { archivePlan, loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
+import { archivePlan, loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import { setCustomSetting } from "../settings.js";

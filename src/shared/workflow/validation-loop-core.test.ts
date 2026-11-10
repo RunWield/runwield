@@ -17,7 +17,7 @@ import process from "node:process";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { setCustomSetting } from "../settings.js";
-import { ensurePlanIdentity, loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.js";
+import { ensurePlanIdentity, loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { createGitPort } from "../git-port.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";

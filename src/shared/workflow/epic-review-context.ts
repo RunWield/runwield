@@ -15,8 +15,8 @@ import {
     findPlansByParent,
     loadPlan,
     writePlanMarkdownWithRevisionLocked,
-} from "../../plan-store.js";
-import type { PlanFrontMatter } from "../../plan-store.js";
+} from "../../plan-store.ts";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 import { isPlannedChangeClassification } from "../../constants.ts";
 import { isGitRepository } from "../git.ts";
 import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";

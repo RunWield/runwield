@@ -8,7 +8,7 @@ import { assertEquals, assertExists, assertStringIncludes } from "../../testing/
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { createTestWorktreeAttempt } from "../../shared/worktree-test-helpers.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";

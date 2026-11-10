@@ -12,7 +12,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { loadPlanBodyById, savePlan } from "../../plan-store.js";
+import { loadPlanBodyById, savePlan } from "../../plan-store.ts";
 import { PLAN_UI_TOKEN_HEADER } from "../../constants.ts";
 import { loadBoard, loadWorkspaceDetail, workspaceMetadata as _workspaceMetadata } from "./server/plan-adapter.ts";
 import { PlanBoard } from "./components/Board.tsx";

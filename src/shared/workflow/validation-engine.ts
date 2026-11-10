@@ -17,7 +17,7 @@ import {
     getDeclaredPlanStatus,
     loadPlan,
     PlanFrontMatterParseError,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { VALIDATION_PLAN_STATUSES } from "./plan-lifecycle.ts";
 import { getProjectRoot, resolvePhaseContext } from "./validation-context.ts";
 import { emitStatus } from "./validation-emit.ts";
@@ -41,7 +41,7 @@ import { preparePlanController } from "./plan-preparation.ts";
 import { validateHostReviewerResume } from "./validation-host-state.ts";
 
 type PlanStatus = "implemented" | "validated_ci" | "reviewed" | "validated";
-type PlanFrontMatter = import("../../plan-store.js").PlanFrontMatter;
+type PlanFrontMatter = import("../../plan-store.ts").PlanFrontMatter;
 
 /**
  * One phase for the Plan's current status. Reads canonical state; holds none.

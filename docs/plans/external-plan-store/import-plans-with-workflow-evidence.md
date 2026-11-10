@@ -3,7 +3,7 @@ classification: "PLANNED_CHANGE"
 workKind: "FEATURE"
 complexity: "HIGH"
 affectedPaths:
-    - "src/plan-store.js"
+    - "src/plan-store.ts"
     - "src/plan-front-matter.ts"
     - "src/shared/workflow/plan-location.ts"
     - "src/shared/workflow/controller-registry.ts"
@@ -53,7 +53,7 @@ during implementation and change whatever the Implementation Steps need, includi
 only when discovery changes approved intent — the change reaches another subsystem, public behavior or architecture
 shifts, migration or compatibility risk grows, or the Verification Plan no longer proves the objective.
 
-- `src/plan-store.js` — import transaction and identity/relationship mapping
+- `src/plan-store.ts` — import transaction and identity/relationship mapping
 - `src/plan-front-matter.ts` — separate legacy front matter from body
 - `src/shared/workflow/plan-location.ts` — bounded pre-cutover authority discovery
 - `src/shared/workflow/controller-registry.ts` — adopt retained controller evidence once
@@ -81,7 +81,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 Use Bun 1.4.3 and run `bun run install:locked` before checks. Existing focused regression command:
 
 ```sh
-bun scripts/run-tests.ts src/plan-store.test.js src/shared/workflow/plan-location.integration.test.ts src/shared/workflow/controller-registry.integration.test.ts
+bun scripts/run-tests.ts src/plan-store.test.ts src/shared/workflow/plan-location.integration.test.ts src/shared/workflow/controller-registry.integration.test.ts
 ```
 
 New coverage below is proposed, not an existing passing test inventory. Planner must select concrete test files and

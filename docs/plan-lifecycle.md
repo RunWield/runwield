@@ -27,7 +27,7 @@ RunWield data.
 
 A plain Markdown file in `docs/plans/` is a valid external Plan. Passive reads and listings use defaults without
 modifying bytes, assigning identity, or reporting absent metadata as corruption or drift. Deliberate `/load-plan`
-adoption calls `onboardExternalPlan()` in [plan-store.js](../src/plan-store.js), persists identity and defaults, and
+adoption calls `onboardExternalPlan()` in [plan-store.ts](../src/plan-store.ts), persists identity and defaults, and
 preserves the body exactly.
 
 Adoption defaults are a generated `planId`, `classification: PLANNED_CHANGE`, `complexity: MEDIUM`, `summary: ""`,

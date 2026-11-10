@@ -41,7 +41,7 @@ import { registerApiProvider, unregisterApiProviders } from "@earendil-works/pi-
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
-import { savePlan } from "../plan-store.js";
+import { savePlan } from "../plan-store.ts";
 import { captureTranscriptEvidence } from "../shared/session/session-transcript-projection.ts";
 import { openFileSessionStore } from "../shared/session/file-session-store.ts";
 import { __resetSettingsForTests, setCustomSetting } from "../shared/settings.js";

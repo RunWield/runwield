@@ -3,7 +3,7 @@ import { mkdtemp as fsMkdtemp } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { savePlan } from "../../plan-store.js";
+import { savePlan } from "../../plan-store.ts";
 import { buildExecutionSegmentContinuation, resolvePendingSegmentHandoff } from "./execution-segment-handoff.ts";
 
 test("rejects changed canonical Plan and worktree evidence before handoff", async () => {

@@ -15,8 +15,8 @@ import {
     resolveSiblingChildPlanDependencyStates,
     updatePlanFrontMatter,
     writePlanMarkdownWithRevision,
-} from "../../plan-store.js";
-import type { PlanFrontMatter } from "../../plan-store.js";
+} from "../../plan-store.ts";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 import { assertSharedPlanWriteAllowed } from "../collaboration/lock.ts";
 import { stripRuntimeFields } from "./controller-state.ts";
 import { isSequencePlan } from "../project-plan.ts";

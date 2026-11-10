@@ -1,5 +1,5 @@
 import { isEpicArtifactPlanName } from "../epic-artifacts.ts";
-import type { PlanDocumentDiagnostic } from "../../plan-store.js";
+import type { PlanDocumentDiagnostic } from "../../plan-store.ts";
 import { resolvePublicationUpstream } from "../publication-target.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
@@ -15,7 +15,7 @@ import {
     mergeFrontMatterText,
     parsePlanFrontMatter,
     withPlanCatalogLock,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import {
     addEntry as addWorktreeRegistryEntry,
     listEntries as listWorktreeRegistryEntries,

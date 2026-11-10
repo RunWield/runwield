@@ -27,7 +27,7 @@ import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/
 import { buildVerifiedResult } from "./validation-publication.ts";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { loadPlan, PlanLockTimeoutError, savePlan } from "../../plan-store.js";
+import { loadPlan, PlanLockTimeoutError, savePlan } from "../../plan-store.ts";
 
 import { classifyValidationOperationalError, type GitPublicationErrorKind } from "./validation-operational-errors.ts";
 import { decideValidationRecovery, DEFAULT_VALIDATION_RETRY_POLICY } from "./validation-recovery.ts";

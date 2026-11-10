@@ -7,7 +7,7 @@ import { prepareWorktreeRegistry } from "../../shared/worktree-registry.ts";
 
 import { parseArgs } from "../../shared/cli-args.ts";
 import { CLI_BIN, getCwd } from "../../constants.ts";
-import { ensurePlanIdentity, hashPlanBody, listPlans, updatePlanCollaborationMetadata } from "../../plan-store.js";
+import { ensurePlanIdentity, hashPlanBody, listPlans, updatePlanCollaborationMetadata } from "../../plan-store.ts";
 import {
     generateBearerCapability,
     hashCapability,

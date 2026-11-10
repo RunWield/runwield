@@ -11,7 +11,7 @@ import {
     saveDeliveredWorkRecordEvidence,
 } from "../workflow/delivery-evidence.ts";
 import { runPlanFrontMatterTransition } from "../workflow/state-transition.ts";
-import { savePlan } from "../../plan-store.js";
+import { savePlan } from "../../plan-store.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { buildDeliveryReport } from "../workflow/delivery-report.ts";
 

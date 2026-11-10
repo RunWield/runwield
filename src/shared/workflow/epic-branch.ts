@@ -20,8 +20,8 @@ import {
     loadPlan,
     parsePlanFrontMatter,
     updatePlanFrontMatter,
-} from "../../plan-store.js";
-import type { PlanFrontMatter } from "../../plan-store.js";
+} from "../../plan-store.ts";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 import { isPlannedChangeClassification } from "../../constants.ts";
 import { projectPlanType } from "../project-plan.ts";
 import { isGitRepository } from "../git.ts";

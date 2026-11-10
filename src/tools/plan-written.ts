@@ -30,7 +30,7 @@ import {
     planDocumentMarkdown,
     resolvePlanExecutionPolicy,
     updatePlanFrontMatter,
-} from "../plan-store.js";
+} from "../plan-store.ts";
 import { assertNotReservedEpicArtifactPlanName } from "../shared/epic-artifacts.ts";
 import { recordPlanEvent } from "../shared/workflow/plan-lifecycle.ts";
 import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";
@@ -55,7 +55,7 @@ import {
 } from "../shared/workflow/plan-review-recovery.ts";
 import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
 import type { HostedSession } from "../shared/session/hosted-session.ts";
-import type { PlanFrontMatter } from "../plan-store.js";
+import type { PlanFrontMatter } from "../plan-store.ts";
 
 export interface TriageMeta extends Partial<PlanFrontMatter> {
     classification?: "QUICK_FIX" | "PLANNED_CHANGE" | "FEATURE" | "PROJECT";

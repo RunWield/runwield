@@ -29,7 +29,7 @@ import {
     type WorktreeRegistryEntry,
 } from "../worktree-registry.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
-import { parsePlanFrontMatter } from "../../plan-store.js";
+import { parsePlanFrontMatter } from "../../plan-store.ts";
 import { isPublicationCleanupPending } from "./publication-attempt.ts";
 import {
     CONTROLLER_STATE_FIELDS,

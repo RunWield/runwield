@@ -7,7 +7,7 @@ import {
     mergeFrontMatterText,
     planDocumentMarkdown,
     type PlanFrontMatter,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { stripRuntimeFields } from "./controller-state.ts";
 import { platform } from "node:process";
 import { captureForegroundProcess } from "../captured-process.ts";

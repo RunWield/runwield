@@ -27,8 +27,8 @@ import {
     writePlanMarkdownWithRevisionLocked,
     updatePlanFrontMatter,
     withPlanCatalogLock,
-} from "../../plan-store.js";
-import type { PlanFrontMatter } from "../../plan-store.js";
+} from "../../plan-store.ts";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
 import { isGitRepository } from "../git.ts";

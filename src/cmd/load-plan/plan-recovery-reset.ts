@@ -1,5 +1,5 @@
 import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
-import { loadPlan, updatePlanFrontMatter } from "../../plan-store.js";
+import { loadPlan, updatePlanFrontMatter } from "../../plan-store.ts";
 import { dirname, join } from "node:path";
 import { buildPlanEventUpdates, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
 import { runRecoveryTransition } from "../../shared/workflow/state-transition.ts";
@@ -27,7 +27,7 @@ import { updateEntry as updateWorktreeRegistryEntry } from "../../shared/worktre
 import { settleDiscardedRecoveryAttempt } from "./plan-recovery-discard.ts";
 import { transitionFailureError } from "./transition-failure.ts";
 
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 import type { RecoveryWorktreeContext } from "./plan-session-types.ts";
 import type { RecoveryActionContext, RecoveryActionOutcome } from "./plan-recovery-actions.ts";
 

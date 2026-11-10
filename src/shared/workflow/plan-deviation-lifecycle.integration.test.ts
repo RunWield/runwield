@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { HostedSession } from "../session/hosted-session.ts";
 import { createGitPort } from "../git-port.ts";
 import { createPlanDeviationTool } from "../../tools/plan-deviation.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
 import { runValidationPhase } from "./validation.ts";

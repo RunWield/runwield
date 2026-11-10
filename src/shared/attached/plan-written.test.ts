@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { RUNWIELD_GITIGNORE_BLOCK } from "../runwield-owned-paths.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";

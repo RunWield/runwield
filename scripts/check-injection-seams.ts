@@ -333,7 +333,7 @@ const CAPABILITY_NAMED = /(?:PORT|Port|CLI|Cli|CLIENT|Client|REGISTRY|Registry|A
  * a bare identifier or a factory call, never a field read. `DEFAULT_FRONT_MATTER.summary`
  * reaches into a constant for a value, which is data with a default; `SYSTEM_BROWSER_PORT`
  * is a capability with a fallback. Without that distinction the front-matter defaults all
- * over plan-store.js would land in the baseline as imaginary seams.
+ * over plan-store.ts would land in the baseline as imaginary seams.
  *
  * @param text Comment-free source.
  */

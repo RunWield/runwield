@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { savePlan } from "../../plan-store.js";
+import { savePlan } from "../../plan-store.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { withExistingRuntimeInteraction } from "./testing/live-interaction-fixture.ts";
 
@@ -83,7 +83,7 @@ test("owner Plan review refuses approval after real status evidence changes", as
                 _meta: { planId: "stale-plan", planName: "stale", planningAgentName: "planner" },
             },
             async ({ service, reference, response, root }) => {
-                const { loadPlan, injectFrontMatter } = await import("../../plan-store.js");
+                const { loadPlan, injectFrontMatter } = await import("../../plan-store.ts");
                 const { writeFile } = await import("node:fs/promises");
                 const { assertRejects } = await import("../../testing/assertions.ts");
                 const plan = await loadPlan(root, "stale");
@@ -120,7 +120,7 @@ test("owner Sequence review refuses changed siblings and returns the complete cu
         const { prepareSequenceReview } = await import("../../shared/workflow/sequence-review.ts");
         const { writeFile } = await import("node:fs/promises");
         const { assertRejects } = await import("../../testing/assertions.ts");
-        const { loadPlan } = await import("../../plan-store.js");
+        const { loadPlan } = await import("../../plan-store.ts");
         await savePlan(root, "sequence", "# Sequence\n", {
             classification: "PROJECT",
             type: "sequence",

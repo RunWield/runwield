@@ -9,7 +9,7 @@ import { ok as assert, strictEqual as assertStrictEquals } from "node:assert/str
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
-import { loadPlan, savePlan, updatePlanFrontMatter, type PlanFrontMatterInput } from "../../plan-store.js";
+import { loadPlan, savePlan, updatePlanFrontMatter, type PlanFrontMatterInput } from "../../plan-store.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import type {
     RuntimeInteractionAdapter,

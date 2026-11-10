@@ -8,7 +8,7 @@ import {
     loadPlan,
     restoreArchivedPlan,
     updateArchivedPlanFrontMatter,
-} from "./plan-store.js";
+} from "./plan-store.ts";
 import { defineCommittedGitFixture } from "./shared/git-test-fixture.ts";
 import { readControllerRecord } from "./shared/workflow/controller-registry.ts";
 

@@ -5,7 +5,7 @@
 
 import { parseArgs } from "../../shared/cli-args.ts";
 import { getCwd } from "../../constants.ts";
-import { countChildPlanProgress, groupPlanHierarchy, listPlans } from "../../plan-store.js";
+import { countChildPlanProgress, groupPlanHierarchy, listPlans } from "../../plan-store.ts";
 import { printCommandHelp } from "../help/index.ts";
 import { runPlansArchiveCommand } from "./archive.ts";
 import { runPlansDoctorCommand } from "./doctor.ts";

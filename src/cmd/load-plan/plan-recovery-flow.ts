@@ -6,7 +6,7 @@ import { realpath as fsRealpath, stat as fsStat } from "node:fs/promises";
  * The Plan Recovery menu coordinator for in-progress, failed, and implemented Plans.
  */
 
-import { resolvePlanExecutionPolicy } from "../../plan-store.js";
+import { resolvePlanExecutionPolicy } from "../../plan-store.ts";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
 import {
     executionWorktreePathExists,
@@ -47,7 +47,7 @@ import {
 import { resetRecoveryPlan } from "./plan-recovery-reset.ts";
 
 import type { PlanSessionSurface, RecoveryWorktreeContext } from "./plan-session-types.ts";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 import type { UiAPI } from "../../ui/tui/api.ts";
 import type {
     RecoveryActionContext,

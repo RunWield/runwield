@@ -3,7 +3,7 @@ classification: "PLANNED_CHANGE"
 workKind: "FEATURE"
 complexity: "HIGH"
 affectedPaths:
-    - "src/plan-store.js"
+    - "src/plan-store.ts"
     - "src/shared/workflow/"
     - "src/cmd/plans/"
     - "src/shared/remote/"
@@ -53,7 +53,7 @@ during implementation and change whatever the Implementation Steps need, includi
 only when discovery changes approved intent — the change reaches another subsystem, public behavior or architecture
 shifts, migration or compatibility risk grows, or the Verification Plan no longer proves the objective.
 
-- `src/plan-store.js` — milestone capture, listing and revision-safe content restore
+- `src/plan-store.ts` — milestone capture, listing and revision-safe content restore
 - `src/shared/workflow/` — milestone lifecycle hooks without metadata rollback
 - `src/cmd/plans/` — history and restore entry points
 - `src/shared/remote/` — owner-executed history operations
@@ -81,7 +81,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 Use Bun 1.4.3 and run `bun run install:locked` before checks. Existing focused regression command:
 
 ```sh
-bun scripts/run-tests.ts src/plan-store.test.js src/cmd/plans/archive.test.ts src/shared/workflow/state-transition.test.ts
+bun scripts/run-tests.ts src/plan-store.test.ts src/cmd/plans/archive.test.ts src/shared/workflow/state-transition.test.ts
 ```
 
 New coverage below is proposed, not an existing passing test inventory. Planner must select concrete test files and

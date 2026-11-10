@@ -5,7 +5,7 @@ import { captureForegroundProcess } from "../captured-process.ts";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { archivePlan, loadPlan, updatePlanFrontMatter } from "../../plan-store.js";
+import { archivePlan, loadPlan, updatePlanFrontMatter } from "../../plan-store.ts";
 import { recordPlanEvent } from "../workflow/plan-lifecycle.ts";
 import { createWorktreeGitArtifacts, settleWorktreeAttempt } from "../worktree.js";
 import { finalizePlanImplementation } from "../workflow/implementation-checkpoint.ts";
