@@ -25,7 +25,7 @@ const INPUTS = [
     "tsconfig.json",
     "tsconfig.bun.json",
     "config.schema.json",
-    "image-resize-worker.js",
+    "image-resize-worker.ts",
     "node_modules/@earendil-works/pi-coding-agent/dist/utils",
 ];
 const EXCLUDED = new Set([BUILD_IDENTITY_PATH, "src/shared/version.js"]);

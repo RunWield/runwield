@@ -1,4 +1,3 @@
 [
-    "src/shared/session/session.js",
-    "src/ui/design-system/sidebar-motion.js"
+    "src/shared/session/session.js"
 ]

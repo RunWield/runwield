@@ -1,12 +1,6 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { animateSidebarChange } from "./sidebar-motion.js";
-
-type TestTransition = {
-    ready: Promise<void>;
-    finished: Promise<void>;
-    skipTransition: () => void;
-};
+import { animateSidebarChange, type SidebarTransition } from "./sidebar-motion.ts";
 
 type TestDocument = {
     documentElement: {
@@ -16,7 +10,7 @@ type TestDocument = {
             contains: (name: string) => boolean;
         };
     };
-    startViewTransition?: (update: () => void) => TestTransition;
+    startViewTransition?: (update: () => void) => SidebarTransition;
 };
 
 function installBrowser(reducedMotion = false) {
