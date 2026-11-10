@@ -74,7 +74,7 @@ import {
     PlanningNotStartedError,
     resolveWorkflowPlanLocation,
 } from "../../shared/workflow/plan-location.ts";
-import type { CommandContext } from "../registry.js";
+import type { CommandContext } from "../registry.ts";
 import type { UiAPI } from "../../ui/tui/api.ts";
 import {
     buildPlanRecoveryUserMessage,
@@ -105,7 +105,7 @@ async function finishSavedPublicationCleanup(projectRoot: string, uiAPI: UiAPI, 
  * Handle `load-plan` command.
  *
  * @param {string[]} argv
- * @param {import('../registry.js').CommandContext} [options]
+ * @param {import('../registry.ts').CommandContext} [options]
  */
 export async function runLoadPlanCommand(argv: string[], options: CommandContext = {}): Promise<void> {
     let sessionRuntime = options.sessionRuntime;

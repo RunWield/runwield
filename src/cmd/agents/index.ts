@@ -11,7 +11,7 @@ import {
 import { applyUserAgentSelection, listUserAgentOptions } from "../../shared/session/user-selection.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { AGENTS, getCwd } from "../../constants.js";
-import { COMMAND_NAMES } from "../registry.js";
+import { COMMAND_NAMES } from "../registry.ts";
 import { setTerminalTitleForName } from "../../ui/tui/terminal-title.ts";
 import type { InteractiveSessionPort } from "../../ui/tui/interactive-session-port.ts";
 

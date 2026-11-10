@@ -6,7 +6,7 @@ import process from "node:process";
 
 import { parseArgs } from "../../shared/cli-args.ts";
 import { CLI_BIN } from "../../constants.js";
-import { getCliCommandDefinitions, getCommandDefinition, getSlashCommandDefinitions } from "../registry.js";
+import { getCliCommandDefinitions, getCommandDefinition, getSlashCommandDefinitions } from "../registry.ts";
 
 interface HelpCommandUi {
     appendSystemMessage(message: string, isError?: boolean): void;

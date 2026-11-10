@@ -1,6 +1,6 @@
 import process from "node:process";
 import { parseArgs } from "../../shared/cli-args.ts";
-import { COMMAND_NAMES } from "../registry.js";
+import { COMMAND_NAMES } from "../registry.ts";
 import { printCommandHelp } from "../help/index.ts";
 import type { UiAPI } from "../../ui/tui/api.ts";
 import type { InteractiveSessionPort } from "../../ui/tui/interactive-session-port.ts";

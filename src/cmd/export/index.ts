@@ -6,7 +6,7 @@
 import { dirname, isAbsolute, join } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { renderSessionExportHtml } from "../../ui/session-export/session-export-html.ts";
-import type { CommandContext } from "../registry.js";
+import type { CommandContext } from "../registry.ts";
 
 type ExportCommandOptions = Pick<CommandContext, "sessionRuntime" | "sessionId" | "sessionStartedAt"> & {
     uiAPI?: Pick<NonNullable<CommandContext["uiAPI"]>, "appendSystemMessage">;

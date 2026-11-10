@@ -5,7 +5,7 @@
 
 import { theme } from "../../ui/theme/theme.ts";
 import { getHomeDir } from "../../constants.js";
-import type { CommandContext } from "../registry.js";
+import type { CommandContext } from "../registry.ts";
 import type { ContextProjectionItem, SessionContextReport } from "../../shared/session/session-context-report.ts";
 
 const SOURCE_ORDER = ["local", "home", "bundled", "external", "mnemoteca", "runtime", "agent"];

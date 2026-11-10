@@ -80,7 +80,7 @@ export interface SlashContext {
     generationGuard: GenerationGuard;
 }
 
-type CommandRegistry = typeof import("../../cmd/registry.js").commandRegistry;
+type CommandRegistry = typeof import("../../cmd/registry.ts").commandRegistry;
 
 function isNotificationEventName(eventName: string): eventName is NotificationEventName {
     return eventName === "agentStopped" || eventName === "planWritten" || eventName === "userInterview" ||
@@ -105,7 +105,7 @@ export async function handleSlashCommand(ctx: SlashContext): Promise<boolean> {
     const [rawCommand, ...args] = userRequest.slice(1).split(" ");
     const command = rawCommand.trim();
     const thisGen = ctx.generationGuard.bump();
-    const registryModule = await import("../../cmd/registry.js");
+    const registryModule = await import("../../cmd/registry.ts");
     const builtinCommand = registryModule.getSlashCommandDefinition(command);
 
     if (builtinCommand?.name === "init" && !ctx.initCommandAvailable) {

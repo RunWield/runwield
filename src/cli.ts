@@ -161,7 +161,7 @@ async function main(): Promise<void> {
     }
 
     const { COMMAND_NAMES, commandRegistry, getCommandDefinition, hasCommandSurface, requiresProjectDirectoryConsent } =
-        await import("./cmd/registry.js");
+        await import("./cmd/registry.ts");
     const { printCommandHelp, printGlobalHelp } = await import("./cmd/help/index.ts");
 
     const helpRequest = resolveHelpRequest(args, COMMAND_NAMES);

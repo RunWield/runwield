@@ -13,7 +13,7 @@ import { remotePersonalResourcesActive } from "../../shared/remote/personal-reso
 import { resolveMemoryCollection } from "../../shared/memory-collection.ts";
 import { ensureMnemotecaBinary } from "../../shared/runtime-preflight.ts";
 import { printCommandHelp } from "../help/index.ts";
-import { COMMAND_NAMES } from "../registry.js";
+import { COMMAND_NAMES } from "../registry.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 
 interface MnemotecaCommandResult {
