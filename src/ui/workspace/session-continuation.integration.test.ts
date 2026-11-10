@@ -42,7 +42,7 @@ import {
     disposeOperationBrowserNotifications,
     observeOperationBrowserNotifications,
     syncOperationBrowserNotificationLifecycle,
-} from "./islands/SessionSurface.jsx";
+} from "./islands/SessionSurface.tsx";
 import { readSessionName, WorkspaceSessionContinuationService } from "./server/session-continuation.ts";
 
 class BrowserNotification {

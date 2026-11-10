@@ -1,3 +1,17 @@
+import type { ComponentProps, ToggleEvent } from "react";
+import type { ImageReference } from "../../../shared/session/named-invocation.ts";
+import type { DeliveryReport, DeliveryReportArtifact } from "../../../shared/workflow/delivery-report.ts";
+import type { PlanDeviation } from "../../../shared/plan-deviations.ts";
+import type { CurrentPairCheckpoint, PairCheckpointReport } from "../../../shared/session/pair-checkpoint-session.ts";
+import type {
+    RuntimeInteractionOption,
+    RuntimeInteractionRequest,
+} from "../../../shared/session/session-runtime-interactions.ts";
+import type {
+    RuntimeToolResult,
+    RuntimeUsage,
+    RuntimeValidationProgress,
+} from "../../../shared/session/session-runtime-events.ts";
 import { DeliveryReportCard } from "./DeliveryReportCard.tsx";
 import { useEffect, useRef, useState } from "react";
 import { WORKFLOW_TOOL_NAMES } from "../../../tools/registry.ts";
@@ -9,6 +23,193 @@ import {
 import { MarkdownView } from "./MarkdownView.tsx";
 import { SessionQuestionForm } from "./SessionQuestionForm.tsx";
 import { RunWieldLink, RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.tsx";
+
+type TimelineSource = "committed" | "transient";
+type TimelineKind =
+    | "workflow"
+    | "message"
+    | "thinking"
+    | "busy"
+    | "tool"
+    | "status"
+    | "usage"
+    | "activity"
+    | "interaction"
+    | "plan-review"
+    | "code-review"
+    | "interruption"
+    | "system-event"
+    | "delivery-report";
+
+interface TimelinePlanReview {
+    planId?: string;
+    planName?: string;
+    classification?: string;
+    expectedStatus?: string | null;
+    expectedRevision?: string | null;
+}
+
+interface TimelineCodeReview {
+    planName?: string;
+}
+
+interface TimelineArtifactReview {
+    kind?: string;
+}
+
+type TimelineChoice = Partial<RuntimeInteractionOption> | string;
+export type TimelineAnswer = Parameters<NonNullable<ComponentProps<typeof SessionQuestionForm>["onResponse"]>>[0];
+
+export interface TimelineInteractionRequest extends Partial<Omit<RuntimeInteractionRequest, "type" | "options">> {
+    type?: string;
+    options?: TimelineChoice[];
+    planReview?: TimelinePlanReview | null;
+    codeReview?: TimelineCodeReview | null;
+    artifactReview?: TimelineArtifactReview | null;
+}
+
+type TimelineUsage = Partial<Pick<RuntimeUsage, "inputTokens" | "outputTokens">>;
+
+type TimelineValidationProgress = Pick<RuntimeValidationProgress, "deliveryReport">;
+
+export interface TimelineEvent {
+    type?: string;
+    busy?: boolean;
+    busyLines?: readonly string[];
+    messageId?: string;
+    toolCallId?: string;
+    eventId?: string;
+    timestamp?: string;
+    segmentOrdinal?: number;
+    segmentKind?: string;
+    agentName?: string;
+    text?: string;
+    images?: ImageReference[];
+    workflowMessage?: string;
+    delta?: string;
+    toolName?: string;
+    title?: string;
+    details?: RuntimeToolResult["details"];
+    output?: string;
+    isError?: boolean;
+    interactionType?: string;
+    interactionId?: string;
+    prompt?: string;
+    review?: TimelinePlanReview;
+    message?: string;
+    outcome?: string;
+    validationProgress?: TimelineValidationProgress;
+    header?: string;
+    messageAlreadyReported?: boolean;
+    level?: string;
+    usage?: TimelineUsage;
+}
+
+interface WorkflowFinding {
+    title?: string;
+    requirement?: string;
+    evidence?: string;
+}
+
+interface WorkflowAdvisory {
+    title?: string;
+    detail?: string;
+}
+
+interface PlanDeviationDetails extends Partial<PlanDeviation> {
+    entry?: Partial<PlanDeviation>;
+}
+
+type PairCheckpointDetails = Partial<PairCheckpointReport & Pick<CurrentPairCheckpoint["report"], "checkpointNumber">>;
+
+interface WorkflowToolDetails extends PlanDeviationDetails, PairCheckpointDetails {
+    artifact?: Pick<DeliveryReportArtifact, "artifactId" | "title">;
+    routingIntent?: string;
+    classification?: string;
+    workKind?: string;
+    complexity?: string;
+    title?: string;
+    deviationsFromPlan?: string;
+    deferredWork?: string;
+    outOfScope?: string;
+    futurePlanningNotes?: string;
+    checklistMarkdown?: string;
+    planName?: string;
+    outcome?: string;
+    message?: string;
+    feedback?: string;
+    artifactPath?: string;
+    findings?: WorkflowFinding[];
+    advisories?: WorkflowAdvisory[];
+}
+
+export interface TimelineItem {
+    kind: TimelineKind;
+    key?: string;
+    source?: TimelineSource;
+    role?: string;
+    timestamp?: string;
+    orderTimestamp?: string;
+    agentName?: string;
+    text?: string;
+    title?: string;
+    markdown?: string;
+    workflowMessage?: string;
+    toolCallId?: string;
+    semanticMessage?: boolean;
+    status?: string;
+    images?: ImageReference[];
+    done?: boolean;
+    output?: string;
+    toolName?: string;
+    orderCompleted?: boolean;
+    details?: WorkflowToolDetails;
+    interactionId?: string;
+    operationId?: string;
+    request?: TimelineInteractionRequest;
+    reviewUrl?: string | null;
+    onAnswer?: (response: TimelineAnswer) => Promise<void> | void;
+    report?: DeliveryReport;
+    header?: string;
+    level?: string;
+    segmentKind?: string;
+    lines?: string[];
+    footerText?: string;
+    completedTimestamp?: string;
+    busyLines?: readonly string[];
+    count?: number;
+    items?: TimelineItem[];
+}
+
+interface TimelineSystemItem extends TimelineItem {
+    text: string;
+}
+
+interface TimelineReducerOptions {
+    source?: TimelineSource;
+    startIndex?: number;
+}
+
+interface TimelineItemProps {
+    item: TimelineItem;
+}
+
+interface SessionActivityRowProps extends TimelineItemProps {
+    groupOpen: boolean;
+}
+
+interface SessionImageProps {
+    image: ImageReference;
+    label: string;
+}
+
+export interface SessionTimelineProps {
+    items?: TimelineItem[];
+    events?: TimelineEvent[];
+    emptyMessage?: string;
+    sessionPath?: string;
+    onRetryWorkRecord?: ComponentProps<typeof DeliveryReportCard>["onRetryWorkRecord"];
+}
 
 const MESSAGE_TYPES = new Set([
     "workflow",
@@ -27,26 +228,25 @@ const MESSAGE_TYPES = new Set([
     "delivery-report",
 ]);
 
-/** @param {unknown} value */
-function asRecord(value) {
-    return value && typeof value === "object" ? /** @type {Record<string, any>} */ (value) : {};
+// Tool and event payloads can come from earlier Workspace clients and saved Sessions.
+function asRecord<Fields>(value: unknown): Partial<Fields> {
+    return value && typeof value === "object" ? (value as Partial<Fields>) : {};
 }
 
-/** @param {unknown} value */
-function text(value) {
+function text<Value>(value: Value) {
     return typeof value === "string" ? value : value === undefined || value === null ? "" : String(value);
 }
 
-/** @param {string} agentName */
-export function displayAgentName(agentName) {
+export function displayAgentName(agentName: string) {
     const trimmed = agentName.trim();
     if (!trimmed) return "Ideator";
-    const pinned = {
+    const agentLabels: Record<string, string> = {
         "frontend-engineer": "Frontend Engineer",
         "plan-engineer": "Plan Engineer",
         "reviewer-feedback-engineer": "Validation Repair Engineer",
         "record-plan-deviation": "Plan Deviation",
-    }[trimmed];
+    };
+    const pinned = agentLabels[trimmed];
     if (pinned) return pinned;
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(trimmed)) return trimmed;
     return trimmed
@@ -55,22 +255,16 @@ export function displayAgentName(agentName) {
         .join(" ");
 }
 
-/** @param {unknown} timestamp */
-export function formatSessionTimelineTime(timestamp) {
+export function formatSessionTimelineTime(timestamp: string | undefined) {
     const date = new Date(text(timestamp));
     if (Number.isNaN(date.getTime())) return "";
     return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase().replace(" ", "");
 }
 
-/** @typedef {ReturnType<typeof reduceSessionEvents>[number]} TimelineItem */
-
-/** @param {TimelineItem[]} rawItems */
-function compactCompletedActivity(rawItems) {
-    /** @type {Array<Record<string, any>>} */
-    const compacted = [];
-    /** @type {Array<Record<string, any>>} */
-    let activity = [];
-    const isCompletedActivity = (/** @type {Record<string, any>} */ item) =>
+function compactCompletedActivity(rawItems: TimelineItem[]) {
+    const compacted: TimelineItem[] = [];
+    let activity: TimelineItem[] = [];
+    const isCompletedActivity = (item: TimelineItem) =>
         (item.kind === "tool" && ["completed", "failed"].includes(text(item.status))) ||
         (item.kind === "thinking" && item.done === true);
     const flushActivity = () => {
@@ -102,25 +296,16 @@ function compactCompletedActivity(rawItems) {
     return compacted;
 }
 
-/**
- * @param {Array<Record<string, any>>} events
- * @param {{ source?: "committed" | "transient", startIndex?: number }} [options]
- * @returns {Array<Record<string, any>>}
- */
-export function reduceSessionEvents(events, options = {}) {
-    /** @type {Array<Record<string, any>>} */
-    const items = [];
-    /** @type {Map<string, Record<string, any>>} */
-    const byKey = new Map();
+export function reduceSessionEvents(events: TimelineEvent[], options: TimelineReducerOptions = {}): TimelineItem[] {
+    const items: TimelineItem[] = [];
+    const byKey: Map<string, TimelineItem> = new Map();
     const source = options.source || "committed";
     const startIndex = options.startIndex || 0;
     let busy = false;
-    let lastSegmentKey = null;
-    /** @type {readonly string[] | undefined} */
-    let currentBusyLines = undefined;
-    /** @type {Record<string, any> | null} */
-    let lastAssistantMessage = null;
-    const ensure = (/** @type {string} */ key, /** @type {Record<string, any>} */ item) => {
+    let lastSegmentKey: string | null = null;
+    let currentBusyLines: readonly string[] | undefined = undefined;
+    let lastAssistantMessage: TimelineItem | null = null;
+    const ensure = (key: string, item: TimelineItem) => {
         const existing = byKey.get(key);
         if (existing) return existing;
         byKey.set(key, item);
@@ -128,7 +313,7 @@ export function reduceSessionEvents(events, options = {}) {
         items.push(item);
         return item;
     };
-    const appendSystemEvent = (/** @type {Record<string, any>} */ item) => {
+    const appendSystemEvent = (item: TimelineSystemItem) => {
         const previous = items.at(-1);
         if (
             previous?.kind === "system-event" &&
@@ -136,7 +321,7 @@ export function reduceSessionEvents(events, options = {}) {
             previous.level === item.level &&
             previous.source === item.source
         ) {
-            previous.lines = [...(Array.isArray(previous.lines) ? previous.lines : [previous.text]), item.text];
+            previous.lines = [...(Array.isArray(previous.lines) ? previous.lines : [previous.text!]), item.text];
             previous.text = previous.lines.join("\n");
             if (item.timestamp) previous.timestamp = item.timestamp;
             return previous;
@@ -148,7 +333,7 @@ export function reduceSessionEvents(events, options = {}) {
     };
 
     events.forEach((raw, index) => {
-        const event = asRecord(raw);
+        const event = asRecord<TimelineEvent>(raw);
         const type = text(event.type);
         if (type === "busy_changed") {
             busy = event.busy === true;
@@ -241,7 +426,7 @@ export function reduceSessionEvents(events, options = {}) {
                 timestamp,
                 source,
             });
-            item.text += text(event.delta);
+            item.text! += text(event.delta);
             if (timestamp) item.timestamp = timestamp;
             lastAssistantMessage = item;
             return;
@@ -256,7 +441,7 @@ export function reduceSessionEvents(events, options = {}) {
                 timestamp,
                 source,
             });
-            if (type === "assistant_thinking_delta") item.text += text(event.delta);
+            if (type === "assistant_thinking_delta") item.text! += text(event.delta);
             if (type === "assistant_thinking_end") item.done = true;
             if (timestamp) item.timestamp = timestamp;
             return;
@@ -267,7 +452,7 @@ export function reduceSessionEvents(events, options = {}) {
             if (workflow && !byKey.has(`tool:${toolId}`)) {
                 const previous = items.at(-1);
                 const message =
-                    previous?.workflowMessage === event.toolName && previous.semanticMessage && !previous.toolCallId
+                    previous?.workflowMessage === event.toolName && previous!.semanticMessage && !previous!.toolCallId
                         ? previous
                         : null;
                 if (message) byKey.set(`tool:${toolId}`, message);
@@ -285,7 +470,11 @@ export function reduceSessionEvents(events, options = {}) {
             });
             item.toolCallId = toolId;
             item.title = text(event.title || item.title);
-            if (event.details) item.details = { ...asRecord(item.details), ...asRecord(event.details) };
+            if (event.details)
+                item.details = {
+                    ...asRecord<WorkflowToolDetails>(item.details),
+                    ...asRecord<WorkflowToolDetails>(event.details),
+                };
             if (type !== "tool_start") item.output = text(event.output || item.output);
             if (type === "tool_end") item.status = event.isError ? "failed" : "completed";
             if (timestamp && !item.semanticMessage) item.timestamp = timestamp;
@@ -297,7 +486,7 @@ export function reduceSessionEvents(events, options = {}) {
         }
         if (type === "interaction_requested") {
             const requestType = text(event.interactionType || "text");
-            const review = asRecord(event.review);
+            const review = asRecord<TimelinePlanReview>(event.review);
             ensure(`interaction:${text(event.interactionId || id)}`, {
                 kind:
                     requestType === "plan_review"
@@ -388,7 +577,7 @@ export function reduceSessionEvents(events, options = {}) {
             return;
         }
         if (type === "usage") {
-            const usage = asRecord(event.usage);
+            const usage = asRecord<TimelineUsage>(event.usage);
             const inputTokens = typeof usage.inputTokens === "number" ? usage.inputTokens : null;
             const outputTokens = typeof usage.outputTokens === "number" ? usage.outputTokens : null;
             if (lastAssistantMessage && inputTokens !== null && outputTokens !== null) {
@@ -416,26 +605,24 @@ export function reduceSessionEvents(events, options = {}) {
 /**
  * Reconcile saved history with the running operation before grouping Activity.
  * Saved tool results win over their live copies; live-only review/status events remain visible.
- * @param {TimelineItem[]} committed
- * @param {TimelineItem[]} transient
  */
-export function mergeSessionTimelineItems(committed, transient) {
-    const flatten = (/** @type {TimelineItem[]} */ items) =>
-        items.flatMap((item) => (item.kind === "activity" ? item.items : [item]));
+export function mergeSessionTimelineItems(committed: TimelineItem[], transient: TimelineItem[]) {
+    const flatten = (items: TimelineItem[]) =>
+        items.flatMap((item) => (item.kind === "activity" ? item.items! : [item]));
     const saved = flatten(committed);
     const live = flatten(transient);
     const savedCalls = new Map(saved.flatMap((item, index) => (item.toolCallId ? [[item.toolCallId, index]] : [])));
-    const savedEnd = Math.max(0, ...saved.map((item) => Date.parse(item.timestamp) || 0));
-    const matched = new Set();
+    const savedEnd = Math.max(0, ...saved.map((item) => Date.parse(item.timestamp!) || 0));
+    const matched = new Set<number>();
     const remaining = live.filter((item) => {
         if (item.kind === "delivery-report" && saved.some((candidate) => candidate.key === item.key)) return false;
         if (item.toolCallId && savedCalls.has(item.toolCallId)) {
-            const index = savedCalls.get(item.toolCallId);
+            const index = savedCalls.get(item.toolCallId)!;
             const previous = saved[index];
             if (previous.status === "running") saved[index] = { ...previous, ...item, key: previous.key };
             return false;
         }
-        if (!["message", "thinking"].includes(item.kind) || !item.text || !(Date.parse(item.timestamp) <= savedEnd))
+        if (!["message", "thinking"].includes(item.kind) || !item.text || !(Date.parse(item.timestamp!) <= savedEnd))
             return true;
         const index = saved.findIndex(
             (candidate, index) =>
@@ -443,15 +630,15 @@ export function mergeSessionTimelineItems(committed, transient) {
                 candidate.kind === item.kind &&
                 candidate.role === item.role &&
                 candidate.text === item.text &&
-                Date.parse(candidate.timestamp) >= Date.parse(item.timestamp),
+                Date.parse(candidate.timestamp!) >= Date.parse(item.timestamp!),
         );
         if (index < 0) return true;
         matched.add(index);
         return false;
     });
     const ordered = [...saved, ...remaining].sort((a, b) => {
-        const left = Date.parse(a.orderTimestamp || a.timestamp);
-        const right = Date.parse(b.orderTimestamp || b.timestamp);
+        const left = Date.parse((a.orderTimestamp || a.timestamp)!);
+        const right = Date.parse((b.orderTimestamp || b.timestamp)!);
         if (!Number.isFinite(left)) return Number.isFinite(right) ? 1 : 0;
         if (!Number.isFinite(right)) return -1;
         return left - right;
@@ -459,9 +646,8 @@ export function mergeSessionTimelineItems(committed, transient) {
     return compactCompletedActivity(ordered);
 }
 
-/** @param {string} content @param {Record<string, any>} [details] */
-export function formatPlanDeviationMarkdown(content, details = {}) {
-    const entry = asRecord(details.entry);
+export function formatPlanDeviationMarkdown(content: string, details: PlanDeviationDetails = {}) {
+    const entry = asRecord<PlanDeviation>(details.entry);
     const superseded = text(entry.supersededRequirement || details.supersededRequirement);
     const replacement = text(entry.replacementRequirement || details.replacementRequirement);
     const reason = text(entry.reason || details.reason);
@@ -489,8 +675,7 @@ export function formatPlanDeviationMarkdown(content, details = {}) {
     return body;
 }
 
-/** @param {string} content @param {Record<string, any>} [details] */
-export function formatPairCheckpointMarkdown(content, details = {}) {
+export function formatPairCheckpointMarkdown(content: string, details: PairCheckpointDetails = {}) {
     if (details.summary) {
         return [
             `**Pair checkpoint ${details.checkpointNumber || 1}${details.final ? " — final" : ""}.**`,
@@ -528,8 +713,7 @@ export function formatPairCheckpointMarkdown(content, details = {}) {
     return body;
 }
 
-/** @param {string} requestType @param {string} promptText */
-export function formatInteractionPromptMarkdown(requestType, promptText) {
+export function formatInteractionPromptMarkdown(requestType: string, promptText: string | undefined) {
     let prompt = text(promptText);
     if (!prompt) return "The agent is waiting for your answer.";
     if (
@@ -552,8 +736,10 @@ export function formatInteractionPromptMarkdown(requestType, promptText) {
 }
 
 /** Full workflow output is never truncated or folded into routine tool activity. */
-export function workflowToolMarkdown(item) {
-    const details = asRecord(item.details);
+export function workflowToolMarkdown(
+    item: Pick<TimelineItem, "workflowMessage" | "toolName" | "details" | "markdown" | "output">,
+) {
+    const details = asRecord<WorkflowToolDetails>(item.details);
     const toolName = text(item.workflowMessage || item.toolName);
     let body = text(item.markdown || item.output);
     if (toolName === "triage_report" && details.summary) {
@@ -613,9 +799,8 @@ export function workflowToolMarkdown(item) {
     return [body, advisories ? `### Review notes\n\n${advisories}` : ""].filter(Boolean).join("\n\n");
 }
 
-/** @param {{ image: { base64: string, mimeType: string }, label: string }} props */
-function SessionImage({ image, label }) {
-    const dialog = useRef(null);
+function SessionImage({ image, label }: SessionImageProps) {
+    const dialog = useRef<HTMLDialogElement>(null);
     const src = `data:${image.mimeType};base64,${image.base64}`;
     return (
         <>
@@ -634,21 +819,16 @@ function SessionImage({ image, label }) {
     );
 }
 
-/**
- * @param {string} requestType
- * @param {Record<string, any>} request
- * @param {Record<string, any>|string} choice
- */
-export function sessionInteractionChoiceResponse(requestType, request, choice) {
+export function sessionInteractionChoiceResponse(
+    requestType: string,
+    request: Partial<RuntimeInteractionRequest>,
+    choice: TimelineChoice,
+) {
     const choiceRecord = typeof choice === "string" ? { value: choice, label: choice } : choice;
     const choiceLabel = text(choiceRecord.label || choiceRecord.value);
     const choiceValue = text(choiceRecord.value || choiceLabel);
     if (requestType === RuntimeInteractionTypes.APPROVAL) {
-        const accepted = isApprovalAcceptedValue(
-            /** @type {import("../../../shared/session/session-runtime-interactions.ts").RuntimeInteractionRequest} */
-            (request),
-            choiceValue,
-        );
+        const accepted = isApprovalAcceptedValue(request, choiceValue);
         return {
             outcome: accepted ? RuntimeInteractionOutcomes.ACCEPTED : RuntimeInteractionOutcomes.CANCELED,
             value: choiceValue,
@@ -662,12 +842,7 @@ export function sessionInteractionChoiceResponse(requestType, request, choice) {
     };
 }
 
-/**
- * @param {string} requestType
- * @param {string} value
- * @param {boolean} hasChoices
- */
-export function sessionInteractionTypedResponse(requestType, value, hasChoices) {
+export function sessionInteractionTypedResponse(requestType: string, value: string, hasChoices: boolean) {
     if (hasChoices && requestType === RuntimeInteractionTypes.SELECT) {
         return { outcome: RuntimeInteractionOutcomes.SELECTED, value, valueLabel: "Other" };
     }
@@ -689,37 +864,37 @@ function ActivityChevronIcon() {
     );
 }
 
-function activityRowLabel(activityItem) {
+function activityRowLabel(activityItem: TimelineItem) {
     if (activityItem.kind === "tool") return activityItem.toolName || activityItem.title || "tool";
     if (activityItem.kind === "thinking") return "Thinking";
     return "Usage";
 }
 
-export function compactToolLine(activityItem) {
+export function compactToolLine(activityItem: Pick<TimelineItem, "title" | "toolName" | "status">) {
     const title = text(activityItem.title || activityItem.toolName || "Tool activity").trim();
     const status = text(activityItem.status || "running");
     return status === "running" ? `${title} running` : title;
 }
 
-function activityRowSummary(activityItem) {
+function activityRowSummary(activityItem: TimelineItem) {
     if (activityItem.kind === "tool") return compactToolLine(activityItem);
     return activityRowLabel(activityItem);
 }
 
-function activityRowDetail(activityItem) {
+function activityRowDetail(activityItem: TimelineItem) {
     if (activityItem.kind === "tool") return activityItem.output || activityItem.status || "No output.";
     if (activityItem.kind === "thinking") return activityItem.text || "Thinking complete.";
     return activityItem.text || "Usage recorded";
 }
 
-function SessionInteractionCard({ item }) {
+function SessionInteractionCard({ item }: TimelineItemProps) {
     const value = text(item.request?.defaultValue);
     const [error, setError] = useState("");
     const [submitting, setSubmitting] = useState(false);
     const requestType = text(item.request?.type || RuntimeInteractionTypes.TEXT);
     const choices = Array.isArray(item.request?.options) ? item.request.options : [];
     const answer = item.onAnswer;
-    const sendAnswer = async (/** @type {Record<string, any>} */ response) => {
+    const sendAnswer = async (response: TimelineAnswer) => {
         if (!answer || submitting) return;
         setSubmitting(true);
         setError("");
@@ -780,8 +955,7 @@ function SessionInteractionCard({ item }) {
     );
 }
 
-/** @param {{ items?: Array<Record<string, any>>, events?: Array<Record<string, any>>, emptyMessage?: string }} props */
-function SessionActivityRow({ item, groupOpen }) {
+function SessionActivityRow({ item, groupOpen }: SessionActivityRowProps) {
     const [thinkingOpen, setThinkingOpen] = useState(groupOpen);
     useEffect(() => {
         if (item.kind === "thinking") setThinkingOpen(groupOpen);
@@ -792,7 +966,7 @@ function SessionActivityRow({ item, groupOpen }) {
             {...(item.kind === "thinking"
                 ? {
                       open: thinkingOpen,
-                      onToggle: (event) => {
+                      onToggle: (event: ToggleEvent<HTMLDetailsElement>) => {
                           if (event.target === event.currentTarget) setThinkingOpen(event.currentTarget.open);
                       },
                   }
@@ -807,7 +981,7 @@ function SessionActivityRow({ item, groupOpen }) {
     );
 }
 
-function SessionActivityGroup({ item }) {
+function SessionActivityGroup({ item }: TimelineItemProps) {
     const [open, setOpen] = useState(false);
     return (
         <details
@@ -835,7 +1009,13 @@ function SessionActivityGroup({ item }) {
     );
 }
 
-export function SessionTimeline({ items, events, emptyMessage = "", sessionPath = "", onRetryWorkRecord }) {
+export function SessionTimeline({
+    items,
+    events,
+    emptyMessage = "",
+    sessionPath = "",
+    onRetryWorkRecord,
+}: SessionTimelineProps) {
     const timelineItems = items || reduceSessionEvents(events || []);
     if (!timelineItems.length) {
         return emptyMessage ? (
@@ -905,7 +1085,7 @@ export function SessionTimeline({ items, events, emptyMessage = "", sessionPath 
                             {Array.isArray(item.images) && item.images.length ? (
                                 <div className="rw-image-previews" aria-label="Message images">
                                     {item.images.map((image, imageIndex) =>
-                                        image.base64 && /^image\/(png|jpeg|jpg|gif|webp)$/.test(image.mimeType) ? (
+                                        image.base64 && /^image\/(png|jpeg|jpg|gif|webp)$/.test(image.mimeType!) ? (
                                             <SessionImage
                                                 key={image.ref || imageIndex}
                                                 image={image}
@@ -987,7 +1167,7 @@ export function SessionTimeline({ items, events, emptyMessage = "", sessionPath 
                         </article>
                     ) : item.kind === "delivery-report" ? (
                         <DeliveryReportCard
-                            report={item.report}
+                            report={item.report!}
                             sessionPath={sessionPath}
                             onRetryWorkRecord={onRetryWorkRecord}
                         />

@@ -7,8 +7,8 @@ affectedPaths:
     - "src/shared/session/"
     - "src/shared/owner-coordination/"
     - "src/ui/workspace/server/session-continuation.ts"
-    - "src/ui/workspace/islands/SessionSurface.jsx"
-    - "src/ui/workspace/components/SessionTimeline.jsx"
+    - "src/ui/workspace/islands/SessionSurface.tsx"
+    - "src/ui/workspace/components/SessionTimeline.tsx"
     - "src/ui/desktop/"
 executionAgent: "frontend-engineer"
 collaborationRecommendation: "pair"
@@ -47,7 +47,7 @@ The boundaries this change is expected to touch. This list is guidance, not an a
 
 - `src/acp/`, `src/shared/session/`, `src/shared/owner-coordination/` — discovery, observations, interaction delivery, and authoritative continuation.
 - `src/ui/workspace/server/session-continuation.ts`, `routes/owner-session-api.ts` — reusable orchestration moves behind ACP while old workbench compatibility remains until cutover.
-- `src/ui/workspace/islands/SessionSurface.jsx`, Session list/timeline/question components, and shared client — host-independent composition.
+- `src/ui/workspace/islands/SessionSurface.tsx`, Session list/timeline/question components, and shared client — host-independent composition.
 - `src/ui/desktop/` — semantic client wiring and bounded image selection/paste/drop.
 - Core/Workspace/ACP owning capability scenarios and contract inventory — delivered Session evidence.
 

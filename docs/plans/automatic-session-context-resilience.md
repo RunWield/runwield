@@ -33,7 +33,7 @@ affectedPaths:
     - "src/ui/tui/runtime-adapter.test.ts"
     - "src/acp/event-mapper.ts"
     - "src/acp/server.test.ts"
-    - "src/ui/workspace/components/SessionTimeline.jsx"
+    - "src/ui/workspace/components/SessionTimeline.tsx"
     - "src/shared/session/session-transcript-projection.ts"
     - "docs/sessions.md"
     - "docs/prd/runwield-core-prd.md"
@@ -344,7 +344,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/ui/tui/runtime-adapter.test.ts` — verify each user-visible context outcome renders once.
 - `src/acp/event-mapper.ts` — map the same semantic event to ACP text plus structured `_meta` status/reason fields.
 - `src/acp/server.test.ts` — verify ACP receives equivalent outcomes without Session content or TUI-specific semantics.
-- `src/ui/workspace/components/SessionTimeline.jsx` and Session history/event projection tests — render the new event
+- `src/ui/workspace/components/SessionTimeline.tsx` and Session history/event projection tests — render the new event
   once with the existing system-event row, in both live and saved history. Reuse `docs/design-system.md` patterns and
   `--rw-*` tokens; no redesign is in scope.
 - `src/shared/session/session-transcript-projection.ts` and the existing live-event persistence path — preserve semantic

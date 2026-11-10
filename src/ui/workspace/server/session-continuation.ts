@@ -888,15 +888,15 @@ export class WorkspaceSessionContinuationService {
                 ...builtins.map((command) => ({
                     name: command.name,
                     description: command.description,
-                    kind: "action",
+                    kind: "action" as const,
                 })),
                 ...templates
                     .filter((template) => !commandRegistry.getCommandDefinition(template.name))
-                    .map((template) => ({ name: template.name, description: template.description, kind: "prompt" })),
+                    .map((template) => ({ name: template.name, description: template.description, kind: "prompt" as const })),
                 ...skills.map((skill) => ({
                     name: `skill:${skill.name}`,
                     description: skill.description,
-                    kind: "prompt",
+                    kind: "prompt" as const,
                 })),
             ],
             models,

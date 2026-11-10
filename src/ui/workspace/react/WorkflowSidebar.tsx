@@ -1,8 +1,33 @@
-// @ts-nocheck: shared browser renderer accepts server payloads from JS and Astro.
-
 import { Fragment, useRef, useState } from "react";
 
-export function workflowActionHref(payload, action) {
+import type {
+    WorkflowPresentation,
+    WorkflowPresentationAction,
+} from "../../../shared/workflow/workflow-presentation.ts";
+
+interface WorkflowSidebarLinks {
+    sessionHref?: string;
+    interactionHref?: string;
+    reviewHref?: string;
+    planHref?: string;
+}
+
+interface WorkflowSidebarProps {
+    presentation: WorkflowPresentation;
+    payload?: WorkflowSidebarLinks;
+    title?: string;
+    embedded?: boolean;
+    onAction?: ((action: WorkflowPresentationAction) => string | undefined | Promise<string | undefined>) | null;
+    onOpenSession?: (() => void) | null;
+    onAnswerAgent?: (() => void) | null;
+}
+
+interface WorkflowSidebarFeedback {
+    message: string;
+    error: boolean;
+}
+
+export function workflowActionHref(payload: WorkflowSidebarLinks, action: WorkflowPresentationAction | null) {
     if (!action) return "";
     if (
         (action.kind === "open_session" || action.kind === "resume" || action.kind === "recover" ||
@@ -27,18 +52,18 @@ export function WorkflowSidebar(
         onAction = null,
         onOpenSession = null,
         onAnswerAgent = null,
-    },
+    }: WorkflowSidebarProps,
 ) {
     const actionInFlight = useRef(false);
     const [pending, setPending] = useState(false);
-    const [feedback, setFeedback] = useState(null);
-    async function runAction(action) {
+    const [feedback, setFeedback] = useState<WorkflowSidebarFeedback | null>(null);
+    async function runAction(action: WorkflowPresentationAction) {
         if (actionInFlight.current) return;
         actionInFlight.current = true;
         setPending(true);
         setFeedback({ message: `${action.label} in progress…`, error: false });
         try {
-            const message = await onAction(action);
+            const message = await onAction!(action);
             setFeedback({ message: message || "Workflow updated.", error: false });
         } catch (error) {
             setFeedback({ message: error instanceof Error ? error.message : String(error), error: true });
@@ -137,7 +162,7 @@ export function WorkflowSidebar(
                                     type="button"
                                     disabled={pending}
                                     aria-busy={pending}
-                                    onClick={() => runAction(presentation.action)}
+                                    onClick={() => runAction(presentation.action!)}
                                 >
                                     {presentation.action.label}
                                 </button>
