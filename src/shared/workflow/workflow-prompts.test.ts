@@ -121,7 +121,7 @@ test("buildTriageReport preserves the Router's structured context", () => {
         sessionName: "documentation work kind",
         complexity: "MEDIUM",
         summary: "Add a documentation Work Kind.",
-        affectedPaths: ["src/constants.js", "docs/prd/runwield-core-prd.md"],
+        affectedPaths: ["src/constants.ts", "docs/prd/runwield-core-prd.md"],
     });
 
     assertStringIncludes(report, "- Routing Intent: PLANNED_CHANGE");
@@ -130,7 +130,7 @@ test("buildTriageReport preserves the Router's structured context", () => {
     assertStringIncludes(report, "- Session Name: documentation work kind");
     assertStringIncludes(report, "- Complexity: MEDIUM");
     assertStringIncludes(report, "- Summary: Add a documentation Work Kind.");
-    assertStringIncludes(report, "- Affected paths: src/constants.js, docs/prd/runwield-core-prd.md");
+    assertStringIncludes(report, "- Affected paths: src/constants.ts, docs/prd/runwield-core-prd.md");
 });
 
 test("buildEngineerRequest orders Router handoff, pair runtime value, projected Plan, and annotations", () => {

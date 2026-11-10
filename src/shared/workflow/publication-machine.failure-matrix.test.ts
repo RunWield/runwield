@@ -1,6 +1,6 @@
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { makeTempFile } from "../../testing/temp-file.ts";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
@@ -21,7 +21,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertExists } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
-import { getRunWieldRuntimeDir, PLAN_STAGING_DIR_NAME } from "../../constants.js";
+import { getRunWieldRuntimeDir, PLAN_STAGING_DIR_NAME } from "../../constants.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { addEntry, findById, updatePublication } from "../worktree-registry.js";
 import { createTestWorktreeAttempt, git, makeRepo } from "../worktree-test-helpers.ts";

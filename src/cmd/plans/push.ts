@@ -6,7 +6,7 @@ import { prepareWorktreeRegistry } from "../../shared/worktree-registry.js";
  */
 
 import { parseArgs } from "../../shared/cli-args.ts";
-import { CLI_BIN, getCwd } from "../../constants.js";
+import { CLI_BIN, getCwd } from "../../constants.ts";
 import { hashPlanBody, listPlans, listPlanResources, updatePlanCollaborationMetadata } from "../../plan-store.js";
 import { redactSecrets, REVIEWER_SCOPE } from "../../shared/collaboration/capabilities.ts";
 import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../../shared/collaboration/client.ts";

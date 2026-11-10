@@ -23,7 +23,7 @@
  * iterates without rebuilding LLM context.
  */
 
-import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
+import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { ensurePlansDir, loadPlan } from "../../plan-store.js";

@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { captureScriptProcess } from "./script-process.ts";
 import { runtimeSourceArgs } from "../src/testing/runtime-source-args.ts";
-import { getCwd } from "../src/constants.js";
+import { getCwd } from "../src/constants.ts";
 import { test } from "node:test";
 import {
     mkdir as fsMkdir,

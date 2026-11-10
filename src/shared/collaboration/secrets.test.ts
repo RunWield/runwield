@@ -15,7 +15,7 @@ import process from "node:process";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { PROJECT_SECRET_STORE_RELATIVE_PATH } from "../../constants.js";
+import { PROJECT_SECRET_STORE_RELATIVE_PATH } from "../../constants.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";

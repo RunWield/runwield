@@ -2,7 +2,7 @@ import { chmod, mkdtemp, writeFile } from "node:fs/promises";
 import { renderSessionExportHtml } from "../../ui/session-export/session-export-html.ts";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
 import { rm as fsRm } from "node:fs/promises";
 /**

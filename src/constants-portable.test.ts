@@ -6,7 +6,7 @@ import { join, sep } from "node:path";
 import { chdir, cwd, env, execPath } from "node:process";
 import { test } from "node:test";
 
-import { getCwd, getHomeDir, getRunWieldRuntimeDir } from "./constants.js";
+import { getCwd, getHomeDir, getRunWieldRuntimeDir } from "./constants.ts";
 import { withProcessGlobalTestLock } from "./testing/process-global-lock.ts";
 
 test("portable HOME and cwd accessors observe changes after import", async () => {
@@ -49,7 +49,7 @@ for (const entrypoint of [
             await writeFile(
                 path,
                 `await import(${JSON.stringify(
-                    new URL("./constants.js", import.meta.url).href,
+                    new URL("./constants.ts", import.meta.url).href,
                 )}); console.log("BODY_RAN");`,
             );
             const child = spawn(execPath, [path], {
@@ -84,7 +84,7 @@ test("home resolution refuses losing sandbox authorization after module import",
         await writeFile(
             path,
             `
-            const { getHomeDir } = await import(${JSON.stringify(new URL("./constants.js", import.meta.url).href)});
+            const { getHomeDir } = await import(${JSON.stringify(new URL("./constants.ts", import.meta.url).href)});
             delete process.env.WLD_TEST_SANDBOX_HOME;
             process.env.HOME = ${JSON.stringify(fixture)};
             if (getHomeDir() !== process.env.HOME) throw new Error("Temporary HOME must remain usable");

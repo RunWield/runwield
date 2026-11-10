@@ -13,7 +13,7 @@ import type { ValidationCheckResult, ValidationCheckResults, ValidationProgressR
 import type { ValidationLoopArgs } from "./validation-types.ts";
 import { SEMANTIC_REVIEW_CYCLES } from "./validation-types.ts";
 import { readCiAttempts, readSemanticRound } from "./validation-context.ts";
-import { AGENTS } from "../../constants.js";
+import { AGENTS } from "../../constants.ts";
 import { buildValidationUserMessage } from "./validation-user-messages.ts";
 
 /**

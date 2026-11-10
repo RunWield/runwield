@@ -152,7 +152,7 @@ export async function createSandboxEnv(sandboxRoot: string, name: string): Promi
     if (process.platform === "win32") {
         await fsWriteFile(join(home, ".gitconfig"), "[core]\n\tlongpaths = true\n");
     }
-    // WLD_TEST_SANDBOX_HOME is the marker src/constants.js refuses to run without.
+    // WLD_TEST_SANDBOX_HOME is the marker src/constants.ts refuses to run without.
     return {
         HOME: home,
         USERPROFILE: home,

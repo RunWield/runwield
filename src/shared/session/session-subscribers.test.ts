@@ -5,7 +5,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { HostedSession } from "./hosted-session.js";
 import { attachSessionEventSubscribers } from "./session.js";
 import { createSessionRuntimeEvent } from "./session-runtime-events.js";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 
 import type {
     AgentSession,

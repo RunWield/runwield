@@ -4,7 +4,7 @@
  */
 
 import { extractYaml, test as hasFrontMatter } from "../front-matter.ts";
-import { normalizeWorkKind } from "../../constants.js";
+import { normalizeWorkKind } from "../../constants.ts";
 import { normalizeTicketReferences } from "../ticket-references.ts";
 import {
     isWorkRecordCompletionMode,

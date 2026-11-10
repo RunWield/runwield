@@ -11,7 +11,7 @@ import { applySequenceReviewDecision, prepareSequenceReview } from "../../shared
  * lifecycle, planning, execution, and Slicer handoffs.
  */
 
-import { AGENTS, CLI_BIN } from "../../constants.js";
+import { AGENTS, CLI_BIN } from "../../constants.ts";
 import { loadPlan, type PlanFrontMatter, resolvePlanExecutionPolicy } from "../../plan-store.js";
 import { decidePostExecution, decidePostPlanning } from "../../shared/workflow/decisions.ts";
 import { isPlanReviewableWithoutReopen, isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";

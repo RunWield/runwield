@@ -1,5 +1,5 @@
 import type { APIContext, APIRoute } from "astro";
-import { getCwd } from "../../../../../constants.js";
+import { getCwd } from "../../../../../constants.ts";
 import {
     applyCanonicalDevLifecycleAction,
     loadCanonicalWorkspaceDetail,

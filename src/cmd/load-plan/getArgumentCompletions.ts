@@ -1,5 +1,5 @@
 import { compareChildPlansByOrder, listPlanDocuments } from "../../plan-store.js";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import type { CommandCompletionItem } from "../registry.ts";
 
 export async function getLoadPlanCompletions(argumentPrefix: string): Promise<CommandCompletionItem[]> {

@@ -6,7 +6,7 @@ import process from "node:process";
 
 import { DefaultPackageManager, type PackageSource, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { relative } from "node:path";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { approveMetricsExporter, listInstalledMetricsExporters } from "../../shared/extensions/metrics-exporter.ts";
 import { filterWldCompatibleExtensionResources } from "../../shared/extensions/wld-extension-manifest.ts";
 import { countPackageResourcesForSource, resolveConfiguredUserPackageSource } from "../../shared/package-resources.ts";

@@ -5,7 +5,7 @@ import process from "node:process";
  */
 
 import { parseArgs } from "../../shared/cli-args.ts";
-import { CLI_BIN } from "../../constants.js";
+import { CLI_BIN } from "../../constants.ts";
 import { getCliCommandDefinitions, getCommandDefinition, getSlashCommandDefinitions } from "../registry.ts";
 
 interface HelpCommandUi {

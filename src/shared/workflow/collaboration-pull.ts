@@ -1,7 +1,7 @@
 import { isEpicPlan } from "../project-plan.ts";
 /** @module shared/workflow/collaboration-pull */
 
-import { AGENTS, CLI_BIN, normalizePlanClassification } from "../../constants.js";
+import { AGENTS, CLI_BIN, normalizePlanClassification } from "../../constants.ts";
 import { redactSecrets } from "../collaboration/capabilities.ts";
 
 import type { PlanFrontMatter } from "../../plan-store.js";

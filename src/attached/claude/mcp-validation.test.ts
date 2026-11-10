@@ -5,7 +5,7 @@ import { mkdir as fsMkdir, writeFile as fsWriteFile, readFile as fsReadFile, rm 
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import { Client } from "@modelcontextprotocol/sdk/client";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio";
 import { attachedValidationFixture } from "../../shared/attached/validation-test-fixture.ts";

@@ -1,4 +1,4 @@
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
 /**
  * @module shared/extensions/wld-extension-manifest

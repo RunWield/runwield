@@ -134,7 +134,7 @@ export { isEpicPlan, isProjectPlan, isSequencePlan } from "../project-plan.ts";
  * See docs/plan-lifecycle.md for the human-readable workflow.
  */
 
-import { isPlannedChangeClassification } from "../../constants.js";
+import { isPlannedChangeClassification } from "../../constants.ts";
 import {
     getDeclaredPlanStatus,
     getPlanDocumentRoot,

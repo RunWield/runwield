@@ -5,7 +5,7 @@
 
 import process, { platform } from "node:process";
 import { parseArgs } from "../../shared/cli-args.ts";
-import { CLI_BIN } from "../../constants.js";
+import { CLI_BIN } from "../../constants.ts";
 import { getOwnerCoordinationDatabasePath, openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { startMetricsExportScheduler } from "../../shared/workflow/metrics-export-scheduler.ts";
 import { isLoopbackHost, parsePort } from "../plans/ui.ts";

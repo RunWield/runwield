@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { test } from "node:test";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { tmpdir } from "node:os";
 import {
     chmod as fsChmod,
@@ -27,7 +27,7 @@ import type { SessionRuntimeEvent } from "./session-runtime-events.js";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { AGENTS, SUBAGENTS } from "../../constants.js";
+import { AGENTS, SUBAGENTS } from "../../constants.ts";
 import { loadPlan } from "../../plan-store.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { HostedSession } from "./hosted-session.js";

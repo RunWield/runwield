@@ -29,7 +29,7 @@ import {
  * so the durable Epic Manual QA artifact is sealed into child delivery.
  */
 
-import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
+import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
 import { logValidationFailure } from "./validation-state-errors.ts";
 import { loadPlan, withPlanLock } from "../../plan-store.js";
 import { resolveTargetedWorkRecordSource } from "../work-records/auto-generation.ts";

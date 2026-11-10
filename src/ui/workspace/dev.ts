@@ -1,4 +1,4 @@
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 /**
  * Dev server entry for Astro/Vite mode with HMR.
  * Exports the Workspace server wrapper for local development.

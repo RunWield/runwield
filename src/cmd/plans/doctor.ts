@@ -13,7 +13,7 @@ import { confirmMissingManagedProjectDirectory, confirmProjectDirectory } from "
 
 import { parseArgs } from "../../shared/cli-args.ts";
 import { join } from "node:path";
-import { CLI_BIN, getCwd, isPlannedChangeClassification, WORKTREE_BRANCH_PREFIX } from "../../constants.js";
+import { CLI_BIN, getCwd, isPlannedChangeClassification, WORKTREE_BRANCH_PREFIX } from "../../constants.ts";
 import {
     ensurePlanIdentity,
     getPlanDocumentRoot,

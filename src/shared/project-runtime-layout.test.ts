@@ -7,7 +7,7 @@ import fsPromises from "node:fs/promises";
 import { type NativeProcess } from "./foreground-process.ts";
 import { runtimeSourceArgs } from "../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "./captured-process.ts";
-import { getCwd } from "../constants.js";
+import { getCwd } from "../constants.ts";
 import { spawnNativeProcess } from "./foreground-process.ts";
 import { makeTempFile } from "../testing/temp-file.ts";
 import { test } from "node:test";
@@ -31,7 +31,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertExists, assertRejects } from "../testing/assertions.ts";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
-import { getRunWieldRuntimeDir } from "../constants.js";
+import { getRunWieldRuntimeDir } from "../constants.ts";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
 import {

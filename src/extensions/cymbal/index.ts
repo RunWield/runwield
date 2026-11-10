@@ -1,4 +1,4 @@
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 /**
  * @module extensions/cymbal
  * Cymbal code search extension for RunWield agent invocations.

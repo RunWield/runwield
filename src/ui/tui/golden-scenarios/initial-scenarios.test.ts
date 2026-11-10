@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { getCwd } from "../../../constants.js";
+import { getCwd } from "../../../constants.ts";
 import { test } from "node:test";
 import {
     mkdtemp as fsMkdtemp,

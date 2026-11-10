@@ -1,7 +1,7 @@
 import { readdir as fsReaddir, readFile as fsReadFile } from "node:fs/promises";
 import { extractYaml, test as hasFrontMatter } from "../front-matter.ts";
 import { dirname, join, resolve } from "node:path";
-import { SKILLS_DIR } from "../../constants.js";
+import { SKILLS_DIR } from "../../constants.ts";
 import {
     assertPersonalResourcePath,
     personalAgentsRoot,

@@ -6,7 +6,7 @@
  * Pi-free on purpose: the Attached runtime uses this rule without loading a Session.
  */
 
-import { normalizeRoutingIntent, normalizeWorkKind } from "../../constants.js";
+import { normalizeRoutingIntent, normalizeWorkKind } from "../../constants.ts";
 import { sanitizeSessionName } from "../session-name.ts";
 
 export const TRIAGE_COMPLEXITIES = ["LOW", "MEDIUM", "HIGH"] as const;

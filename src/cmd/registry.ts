@@ -3,7 +3,7 @@
  * Central command handler registry.
  */
 
-import { CLI_BIN, DEV_CLI_RUN } from "../constants.js";
+import { CLI_BIN, DEV_CLI_RUN } from "../constants.ts";
 import type { SessionRuntime } from "../shared/session/session-runtime.ts";
 import type { EditorAPI, SelectOption, TuiAPI, UiAPI } from "../ui/tui/api.ts";
 import type { NotificationResult, RunWieldEventNotifier } from "../ui/tui/system-notifications.ts";

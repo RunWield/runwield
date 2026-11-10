@@ -1,4 +1,4 @@
-import { getCwd } from "../../../constants.js";
+import { getCwd } from "../../../constants.ts";
 
 export function currentWorkspaceCwd(): string {
     return getCwd();

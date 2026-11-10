@@ -4,7 +4,7 @@ import { readFile as fsReadFile, realpath as fsRealpath, rm as fsRm, stat as fsS
 import { Buffer } from "node:buffer";
 import { isAbsolute, join, relative } from "node:path";
 import type { ImageContent } from "@earendil-works/pi-ai";
-import { getHomeDir } from "../../../../constants.js";
+import { getHomeDir } from "../../../../constants.ts";
 import { getModelRegistry } from "../../../models/model-registry.ts";
 import type { ImageGenerationSettings } from "../../../image-generation-settings.ts";
 import { mimeTypeForImagePath } from "../../image-attachments.ts";

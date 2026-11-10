@@ -1,6 +1,6 @@
 import { spawnNativeProcess } from "../../../../foreground-process.ts";
-import { getHomeDir } from "../../../../../constants.js";
-import { getCwd } from "../../../../../constants.js";
+import { getHomeDir } from "../../../../../constants.ts";
+import { getCwd } from "../../../../../constants.ts";
 import { realpathSync as fsRealpathSync } from "node:fs";
 import {
     lstat as fsLstat,

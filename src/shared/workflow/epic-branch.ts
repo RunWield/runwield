@@ -22,7 +22,7 @@ import {
     updatePlanFrontMatter,
 } from "../../plan-store.js";
 import type { PlanFrontMatter } from "../../plan-store.js";
-import { isPlannedChangeClassification } from "../../constants.js";
+import { isPlannedChangeClassification } from "../../constants.ts";
 import { projectPlanType } from "../project-plan.ts";
 import { isGitRepository } from "../git.ts";
 import { prepareTargetBranchRef, resolveTargetBranchName } from "../worktree.js";

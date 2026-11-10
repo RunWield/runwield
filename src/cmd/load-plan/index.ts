@@ -14,7 +14,7 @@ import { isEpicPlan, projectPlanType } from "../../shared/project-plan.ts";
  */
 
 import { parseArgs } from "../../shared/cli-args.ts";
-import { AGENTS, CLI_BIN, getCwd } from "../../constants.js";
+import { AGENTS, CLI_BIN, getCwd } from "../../constants.ts";
 import {
     archivePlan,
     canonicalPlanStatus,

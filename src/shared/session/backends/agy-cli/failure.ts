@@ -1,5 +1,5 @@
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
-import { getHomeDir } from "../../../../constants.js";
+import { getHomeDir } from "../../../../constants.ts";
 import type { HostedSession } from "../../hosted-session.js";
 import { emitSystemStatus } from "../../session-runtime-events.js";
 

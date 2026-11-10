@@ -21,7 +21,7 @@ import {
 import { runPlanFrontMatterTransition, runReviewReopenTransition } from "../../shared/workflow/state-transition.ts";
 import { getWorkflowDiff } from "../../shared/workflow/git-snapshot.ts";
 import { getWorktreeStatus, slugify } from "../../shared/worktree.js";
-import { WORKTREE_BRANCH_PREFIX } from "../../constants.js";
+import { WORKTREE_BRANCH_PREFIX } from "../../constants.ts";
 import {
     findActiveByPlanName as findWorktreeByPlanName,
     findById as findWorktreeById,

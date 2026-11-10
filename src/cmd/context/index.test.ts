@@ -4,7 +4,7 @@ import stripAnsi from "strip-ansi";
 import { initRunWieldTheme } from "../../ui/theme/theme.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import type { SessionContextReport } from "../../shared/session/session-context-report.ts";
 import { formatContextReport, runContextCommand } from "./index.ts";
 

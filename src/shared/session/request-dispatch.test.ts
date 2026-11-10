@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { SessionManager } from "@earendil-works/pi-coding-agent";

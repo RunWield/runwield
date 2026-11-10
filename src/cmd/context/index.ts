@@ -4,7 +4,7 @@
  */
 
 import { theme } from "../../ui/theme/theme.ts";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import type { CommandContext } from "../registry.ts";
 import type { ContextProjectionItem, SessionContextReport } from "../../shared/session/session-context-report.ts";
 

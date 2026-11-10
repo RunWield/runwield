@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { type ScriptProcessOptions, captureScriptProcess } from "./script-process.ts";
-import { getCwd } from "../src/constants.js";
+import { getCwd } from "../src/constants.ts";
 import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
 import process from "node:process";
 /**

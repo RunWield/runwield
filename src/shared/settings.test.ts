@@ -9,7 +9,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { getCwd, getHomeDir } from "../constants.js";
+import { getCwd, getHomeDir } from "../constants.ts";
 /**
  * @module shared/settings.test
  */

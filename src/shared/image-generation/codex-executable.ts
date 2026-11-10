@@ -1,7 +1,7 @@
 import process from "node:process";
 import { stat as fsStat } from "node:fs/promises";
 import { delimiter as DELIMITER, join, resolve } from "node:path";
-import { getCwd, getHomeDir } from "../../constants.js";
+import { getCwd, getHomeDir } from "../../constants.ts";
 
 async function isExecutableFile(path: string): Promise<boolean> {
     try {

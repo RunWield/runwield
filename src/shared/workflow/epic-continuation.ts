@@ -13,7 +13,7 @@ import {
     loadPlan,
     resolveSiblingChildPlanDependencyStates,
 } from "../../plan-store.js";
-import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
+import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
 import { recordPlanEvent } from "./plan-lifecycle.ts";
 import { executePlan, runPlanningAgent } from "./workflow.ts";
 import { decidePostExecution, decidePostPlanning } from "./decisions.ts";

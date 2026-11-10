@@ -1,4 +1,4 @@
-import { isPlannedChangeClassification } from "../../constants.js";
+import { isPlannedChangeClassification } from "../../constants.ts";
 import type { PlanFrontMatter } from "../../plan-store.js";
 import { shouldAutoMergePlansIntoTargetBranch } from "../settings.js";
 import { ensureTargetBranchRef, slugify } from "../worktree.js";

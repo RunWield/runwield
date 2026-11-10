@@ -3,7 +3,7 @@ import { realpathSync as fsRealpathSync, type BigIntStats, statSync as fsStatSyn
 import { lstat as fsLstat, realpath as fsRealpath, stat as fsStat } from "node:fs/promises";
 import { platform } from "node:process";
 import { dirname, isAbsolute, join, normalize, relative } from "node:path";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 
 /** Resource roots for one explicitly activated remote connection. Never set during connection-only startup. */
 export interface RemotePersonalResources {

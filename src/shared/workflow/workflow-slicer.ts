@@ -9,7 +9,7 @@ import { dirname } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
-import { AGENTS, isPlannedChangeClassification, SUBAGENTS } from "../../constants.js";
+import { AGENTS, isPlannedChangeClassification, SUBAGENTS } from "../../constants.ts";
 import {
     findPlansByParent,
     loadPlan,

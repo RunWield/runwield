@@ -1,4 +1,4 @@
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { parsePlanFrontMatter, resolvePlanExecutionPolicy, type PlanExecutionPolicy } from "../../plan-store.js";

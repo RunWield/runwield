@@ -29,7 +29,7 @@ import {
     withPlanCatalogLock,
 } from "../../plan-store.js";
 import type { PlanFrontMatter } from "../../plan-store.js";
-import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
+import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
 import { isGitRepository } from "../git.ts";
 import { getCodeReviewMode, getCustomSetting, getExactProjectCustomSetting } from "../settings.js";

@@ -6,7 +6,7 @@ import { ok as assert } from "node:assert/strict";
 import { withProcessGlobalTestLock } from "./process-global-lock.ts";
 
 // Tripwire. The suite writes to ~/.wld through both a live Deno.env.get("HOME")
-// and a HOME_DIR snapshot taken when each test realm loads src/constants.js, so
+// and a HOME_DIR snapshot taken when each test realm loads src/constants.ts, so
 // running it against a real home silently rewrites the developer's global
 // settings, sessions and workflow metrics. scripts/run-tests.ts sandboxes HOME;
 // this fails loudly when the suite is launched some other way.

@@ -4,7 +4,7 @@
  * Persists RunWield workflow footer context in Pi's append-only session stream.
  */
 
-import { COMPLEXITIES, normalizeRoutingIntent } from "../../constants.js";
+import { COMPLEXITIES, normalizeRoutingIntent } from "../../constants.ts";
 
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { SegmentHandoffPayload } from "../workflow/execution-segment-handoff.ts";

@@ -12,7 +12,7 @@
  * close the workflow as unsupported in this Preview.
  */
 
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import { prepareAttachedPlanning, resolvePlanningSelection } from "./planning.ts";
 import { resolveCodexRoleSettings } from "./codex-role-settings.ts";
 import { readTextPage } from "../text-page.ts";

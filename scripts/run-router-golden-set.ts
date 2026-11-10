@@ -19,7 +19,7 @@ import { parseArgs } from "../src/shared/cli-args.ts";
 import { Type, type TObject, type TString } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { dirname, join } from "node:path";
-import { AGENTS, getCwd, getHomeDir } from "../src/constants.js";
+import { AGENTS, getCwd, getHomeDir } from "../src/constants.ts";
 import { createSessionRuntime } from "../src/shared/session/session-runtime.ts";
 import { readLatestTriageOutcome as readLatestTriageOutcomeFn } from "../src/shared/workflow/orchestrator.ts";
 import {

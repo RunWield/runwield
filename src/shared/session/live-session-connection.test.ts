@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { Agent, request } from "node:http";
 import { platform } from "node:process";
 import { mock, test } from "node:test";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";

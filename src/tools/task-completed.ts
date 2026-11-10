@@ -9,7 +9,7 @@ import { Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "../shared/session/hosted-session.js";
-import { AGENTS } from "../constants.js";
+import { AGENTS } from "../constants.ts";
 import { recordAcceptedTaskCompletion } from "../shared/session/task-completion-session.ts";
 import { readRequestAttemptEntries } from "../shared/session/request-dispatch.ts";
 import {

@@ -10,7 +10,7 @@ import { Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
-import { AGENTS, SUBAGENTS } from "../constants.js";
+import { AGENTS, SUBAGENTS } from "../constants.ts";
 import { formatProviderModelReference } from "../shared/models/model-validation.ts";
 import {
     DELEGATED_READ_TOOLS,

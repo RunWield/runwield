@@ -3,7 +3,7 @@
  * Deterministic Guided Review policy and fallback explainer helpers.
  */
 
-import { isPlannedChangeClassification } from "../../constants.js";
+import { isPlannedChangeClassification } from "../../constants.ts";
 import { parseDiffFiles, summarizeDiffForReview } from "./review-diff-tool.ts";
 
 import type { DiffReviewStats } from "./review-diff-tool.ts";

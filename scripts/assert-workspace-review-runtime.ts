@@ -1,4 +1,4 @@
-import { getCwd } from "../src/constants.js";
+import { getCwd } from "../src/constants.ts";
 import { readFile as fsReadFile } from "node:fs/promises";
 import process from "node:process";
 /**

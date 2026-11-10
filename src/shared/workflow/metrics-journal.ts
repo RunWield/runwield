@@ -4,7 +4,7 @@ import { syncParentDirectory, writeTextAtomically } from "../private-json-file.t
 import { readFileSync, truncateSync, rmSync, mkdirSync, statSync, existsSync, renameSync } from "node:fs";
 /** Durable, content-free Project measurement journal. */
 import { dirname, join } from "node:path";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import lockfile from "proper-lockfile";
 import { metricsDeliveryInFlightForJournal } from "./metrics-export-ledger.ts";
 

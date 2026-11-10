@@ -4,7 +4,7 @@ import { rename as fsRename } from "node:fs/promises";
 import { assertEquals, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { TuiAltScreen, TuiMainScreen } from "@earendil-works/pi-tui";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import { configureRemotePersonalResources, PersonalResourcePathError } from "../../shared/remote/personal-resources.ts";
 import { getSettingsManager, isMascotEnabled } from "../../shared/settings.js";
 import { createChatView } from "./chat-view.ts";

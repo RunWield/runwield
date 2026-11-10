@@ -1,5 +1,5 @@
 // @ts-nocheck: shared from JS command code; JSDoc documents the public shape.
-import { AGENTS } from "../../constants.js";
+import { AGENTS } from "../../constants.ts";
 import { getModelRegistry } from "../models/model-registry.ts";
 import { parseProviderModel } from "../models/model-validation.ts";
 import { getSettingsManager } from "../settings.js";

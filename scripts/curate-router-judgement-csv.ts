@@ -8,7 +8,7 @@ import process from "node:process";
 
 import { parseArgs } from "../src/shared/cli-args.ts";
 import { dirname, join } from "node:path";
-import { getHomeDir } from "../src/constants.js";
+import { getHomeDir } from "../src/constants.ts";
 import { parseCsv, toCsv } from "./router-eval-utils.ts";
 import { JUDGEMENT_COLUMNS } from "./write-router-judgement-csv.ts";
 

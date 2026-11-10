@@ -15,7 +15,7 @@ import type {
     WorkRecordSupersessionCandidate,
 } from "./schema.ts";
 import { ValidationHostRejected, ValidationHostWait } from "../workflow/validation-host-contract.ts";
-import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
+import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
 import {
     compareChildPlansByOrder,
     ensurePlanIdentity,

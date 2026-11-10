@@ -1,7 +1,7 @@
 import { type FileHandle, open } from "node:fs/promises";
 import { mkdir as fsMkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import { remoteBackgroundTaskLogDirectory } from "../remote/background-task-logs.ts";
 import { spawnForegroundShell } from "../foreground-process.ts";
 import { extractAssistantOutput } from "../workflow/workflow-results.ts";

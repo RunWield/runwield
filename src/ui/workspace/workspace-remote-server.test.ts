@@ -1,6 +1,6 @@
 import { serveHttp } from "../../shared/http-server.ts";
 import { tmpdir } from "node:os";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { mkdtemp as fsMkdtemp, rm as fsRm, stat as fsStat } from "node:fs/promises";
 import { test } from "node:test";
 import process from "node:process";

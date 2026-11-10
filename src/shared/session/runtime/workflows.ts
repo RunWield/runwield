@@ -1,6 +1,6 @@
 import { retrySessionWorkRecord } from "./work-record-retry.ts";
 import { buildPlanConversationRequest } from "../../workflow/plan-review-conversation.ts";
-import { AGENTS, SUBAGENTS } from "../../../constants.js";
+import { AGENTS, SUBAGENTS } from "../../../constants.ts";
 import { resolvePlanExecutionRuntimeAgent } from "../../workflow/execution-agent.ts";
 import { runActiveAgentTurn } from ".././agent-switching.ts";
 import { emitSystemStatus, RuntimeEventTypes } from ".././session-runtime-events.js";

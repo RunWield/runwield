@@ -1,5 +1,5 @@
 import { captureForegroundProcess } from "./captured-process.ts";
-import { getCwd } from "../constants.js";
+import { getCwd } from "../constants.ts";
 import process from "node:process";
 /** External capability for asking the operating system to open a URL. */
 export interface BrowserPort {

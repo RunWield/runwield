@@ -24,8 +24,6 @@ export const PROJECT_SECRET_STORE_RELATIVE_PATH = ".wld/collaboration-secrets.js
  * each test realm loads this module at an arbitrary moment, so a `const` snapshot
  * could capture another test file's temporary chdir and keep it forever. Nothing
  * in production chdirs, so this reads identically there.
- *
- * @returns {string}
  */
 export function getCwd() {
     return cwd();
@@ -35,11 +33,8 @@ export function getCwd() {
  * Resolve a bundled passive resource for file APIs, not module imports.
  * Assets embedded with `deno compile --include` are rooted under `src/` in
  * both source runs and the compiled virtual filesystem.
- *
- * @param {...string} parts
- * @returns {string}
  */
-function resolveBundledResourcePath(...parts) {
+function resolveBundledResourcePath(...parts: string[]) {
     return join(RUNWIELD_SOURCE_ROOT, ...parts);
 }
 
@@ -67,6 +62,10 @@ export const SNIP_FILTERS_DIR = resolveBundledResourcePath("snip-filters");
 /** Path to the bundled Catppuccin Mocha theme JSON. */
 export const CATPPUCCIN_MOCHA_THEME_PATH = resolveBundledResourcePath("ui", "theme", "catppuccin-mocha.json");
 
+export type RoutingIntent = "INQUIRY" | "IDEATION" | "OPERATION" | "QUICK_FIX" | "PLANNED_CHANGE" | "PROJECT";
+export type PlanClassification = Extract<RoutingIntent, "QUICK_FIX" | "PLANNED_CHANGE" | "PROJECT">;
+export type WorkKind = "BUG_FIX" | "FEATURE" | "REFACTOR" | "MAINTENANCE" | "DOCUMENTATION";
+
 /** Allowed Routing Intent values emitted by the router. */
 export const ROUTING_INTENTS = [
     "INQUIRY",
@@ -87,50 +86,29 @@ export const LEGACY_ROUTING_INTENT_FEATURE = "FEATURE";
 /** Work Kind values describe the nature of planned executable work. */
 export const WORK_KINDS = ["BUG_FIX", "FEATURE", "REFACTOR", "MAINTENANCE", "DOCUMENTATION"];
 
-/**
- * @param {unknown} value
- * @returns {"INQUIRY"|"IDEATION"|"OPERATION"|"QUICK_FIX"|"PLANNED_CHANGE"|"PROJECT"|null}
- */
-export function normalizeRoutingIntent(value) {
+export function normalizeRoutingIntent(value: unknown): RoutingIntent | null {
     if (typeof value !== "string") return null;
     if (value === LEGACY_ROUTING_INTENT_FEATURE) return ROUTING_INTENT_PLANNED_CHANGE;
-    return ROUTING_INTENTS.includes(value)
-        ? /** @type {"INQUIRY"|"IDEATION"|"OPERATION"|"QUICK_FIX"|"PLANNED_CHANGE"|"PROJECT"} */ (value)
-        : null;
+    return ROUTING_INTENTS.includes(value) ? (value as RoutingIntent) : null;
 }
 
-/**
- * @param {unknown} value
- * @returns {"QUICK_FIX"|"PLANNED_CHANGE"|"PROJECT"}
- */
-export function normalizePlanClassification(value) {
+export function normalizePlanClassification(value: unknown): PlanClassification {
     if (typeof value !== "string") return ROUTING_INTENT_PLANNED_CHANGE;
     if (value === LEGACY_ROUTING_INTENT_FEATURE) return ROUTING_INTENT_PLANNED_CHANGE;
     if (value === ROUTING_INTENT_PLANNED_CHANGE || value === "PROJECT" || value === "QUICK_FIX") return value;
     return ROUTING_INTENT_PLANNED_CHANGE;
 }
 
-/** @param {unknown} value */
-export function isPlannedChangeClassification(value) {
+export function isPlannedChangeClassification(value: unknown) {
     return value === ROUTING_INTENT_PLANNED_CHANGE || value === LEGACY_ROUTING_INTENT_FEATURE;
 }
 
-/**
- * @param {unknown} value
- * @returns {"BUG_FIX"|"FEATURE"|"REFACTOR"|"MAINTENANCE"|"DOCUMENTATION"|undefined}
- */
-export function normalizeWorkKind(value) {
+export function normalizeWorkKind(value: unknown): WorkKind | undefined {
     if (typeof value !== "string") return undefined;
-    return WORK_KINDS.includes(value)
-        ? /** @type {"BUG_FIX"|"FEATURE"|"REFACTOR"|"MAINTENANCE"|"DOCUMENTATION"} */ (value)
-        : undefined;
+    return WORK_KINDS.includes(value) ? (value as WorkKind) : undefined;
 }
 
-/**
- * @param {unknown} workKind
- * @returns {string}
- */
-export function formatPlannedWorkLabel(workKind) {
+export function formatPlannedWorkLabel(workKind: unknown) {
     switch (normalizeWorkKind(workKind)) {
         case "BUG_FIX":
             return "Planned bug fix";
@@ -192,11 +170,8 @@ export const PROJECT_INTERNAL_RUNTIME_DIR_NAME = "internal";
  * another for minutes, and a killed run left a lock that blocked everything after
  * it. Namespacing by sandbox keeps the mechanism identical and simply stops one run
  * from being another run's concurrent writer.
- *
- * @param {string} projectRoot
- * @returns {string}
  */
-export function getRunWieldRuntimeDir(projectRoot) {
+export function getRunWieldRuntimeDir(projectRoot: string) {
     const sandboxHome = readOptionalEnv("WLD_TEST_SANDBOX_HOME");
     if (!sandboxHome) return join(projectRoot, RUNWIELD_DIR_NAME);
     // Keyed by project root so a test that does use its own project still gets its
@@ -232,11 +207,8 @@ export const WORKTREE_BRANCH_PREFIX = "worktree/";
 
 /**
  * Read an environment variable when permission is available.
- *
- * @param {string} name
- * @returns {string}
  */
-function readOptionalEnv(name) {
+function readOptionalEnv(name: string) {
     try {
         return env[name] || "";
     } catch {
@@ -253,11 +225,8 @@ const TEST_MODULE_PATTERN = /(^|[/\\])(test|.+[._]test)\.(js|mjs|jsx|ts|tsx|mts)
 /**
  * Whether a path is a module `deno test` would collect. Exported so the guard's
  * coverage is assertable — see src/constants.test.js.
- *
- * @param {string} path
- * @returns {boolean}
  */
-export function isTestModulePath(path) {
+export function isTestModulePath(path: string) {
     return TEST_MODULE_PATTERN.test(path);
 }
 
@@ -281,6 +250,12 @@ if (IS_TEST_REALM && !readOptionalEnv("WLD_TEST_SANDBOX_HOME")) {
     throw new Error(`Refusing to load RunWield modules in an unsandboxed test run. ${UNSANDBOXED_TEST_RUN_MESSAGE}`);
 }
 
+interface TestRunContext {
+    isTestRealm: boolean;
+    sandboxHome: string;
+    homeDir: string;
+}
+
 /**
  * The rule behind the unsandboxed-test-run guard, as a pure function so it can
  * be asserted without mutating process-global state that concurrent tests read.
@@ -292,11 +267,8 @@ if (IS_TEST_REALM && !readOptionalEnv("WLD_TEST_SANDBOX_HOME")) {
  * own temp directories, or at a fictional path like /home/tester for pure path
  * math. Without the sandbox there is nothing standing between the suite and the
  * real ~/.wld, so no home resolution is safe.
- *
- * @param {{ isTestRealm: boolean, sandboxHome: string, homeDir: string }} context
- * @returns {string | null}
  */
-export function describeUnsandboxedTestRun({ isTestRealm, sandboxHome, homeDir }) {
+export function describeUnsandboxedTestRun({ isTestRealm, sandboxHome, homeDir }: TestRunContext) {
     if (!isTestRealm || !homeDir || sandboxHome || isTempTestHome(homeDir)) return null;
     return (
         `Refusing to resolve a home directory (${homeDir}) during an unsandboxed test run. ` +
@@ -304,11 +276,7 @@ export function describeUnsandboxedTestRun({ isTestRealm, sandboxHome, homeDir }
     );
 }
 
-/**
- * @param {string} homeDir
- * @returns {boolean}
- */
-function isTempTestHome(homeDir) {
+function isTempTestHome(homeDir: string) {
     try {
         const tempDir = realpathSync(readOptionalEnv("TMPDIR") || "/tmp");
         const resolvedHome = realpathSync(homeDir);
@@ -322,10 +290,8 @@ function isTempTestHome(homeDir) {
 /**
  * This is the single choke point every ~/.wld path resolves through, so failing
  * here stops the write before it happens rather than reporting it afterwards.
- *
- * @param {string} homeDir
  */
-function assertTestRunIsSandboxed(homeDir) {
+function assertTestRunIsSandboxed(homeDir: string) {
     const failure = describeUnsandboxedTestRun({
         isTestRealm: IS_TEST_REALM,
         sandboxHome: readOptionalEnv("WLD_TEST_SANDBOX_HOME"),
@@ -342,8 +308,6 @@ function assertTestRunIsSandboxed(homeDir) {
  * arbitrary moment, so a snapshot taken at import time can capture a home that
  * no longer applies — which is how test runs came to write into the real
  * ~/.wld. Read it per call so every caller sees the current value.
- *
- * @returns {string}
  */
 export function getHomeDir() {
     const homeDir = readOptionalEnv("HOME") || (platform === "win32" ? windowsHomeDir() : "");
@@ -351,7 +315,6 @@ export function getHomeDir() {
     return homeDir;
 }
 
-/** @returns {string} */
 function windowsHomeDir() {
     const userProfile = readOptionalEnv("USERPROFILE");
     if (userProfile) return userProfile;
@@ -384,7 +347,6 @@ function windowsHomeDir() {
  * Manual QA is also dispatched through `SUBAGENTS`, but it intentionally uses
  * the normal `OPERATOR` runtime agent identifier for its isolated prompt.
  */
-/** @type {Readonly<{ROUTER: string, GUIDE: string, OPERATOR: string, PLANNER: string, ARCHITECT: string, ENGINEER: string, PLAN_ENGINEER: string, FRONTEND_ENGINEER: string, RECORDER: string, AI_REVIEWER: string, REVIEWER: string, REVIEWER_FEEDBACK_ENGINEER: string, SLICER: string, IDEATOR: string, INIT: string, DELEGATED: string}>} */
 export const AGENTS = Object.freeze({
     ROUTER: "router",
     GUIDE: "guide",
@@ -402,14 +364,12 @@ export const AGENTS = Object.freeze({
     IDEATOR: "ideator",
     INIT: "init",
     DELEGATED: "delegated",
-});
+} satisfies Record<string, string>);
 
 /**
  * Hidden workflow-dispatched subagent definition identifiers. These are loader
  * registry keys, not necessarily the runtime `AgentDefinition.name` returned by
  * the registry entry.
- *
- * @type {Readonly<{DELEGATED: string, DELEGATED_READ: string, INIT: string, INTEGRATION_REVIEWER: string, MANUAL_QA: string, REVIEWER: string, REVIEWER_FEEDBACK_ENGINEER: string, SLICER: string}>}
  */
 export const SUBAGENTS = Object.freeze({
     DELEGATED: "delegated",
@@ -420,7 +380,7 @@ export const SUBAGENTS = Object.freeze({
     REVIEWER: "reviewer",
     REVIEWER_FEEDBACK_ENGINEER: "reviewer-feedback-engineer",
     SLICER: "slicer",
-});
+} satisfies Record<string, string>);
 
 /** Max concurrent read-only Delegated Agent Sessions per HostedSession. */
 export const MAX_DELEGATED_READERS = 3;

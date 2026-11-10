@@ -1,4 +1,4 @@
-import { AGENTS, SUBAGENTS, getCwd } from "../../constants.js";
+import { AGENTS, SUBAGENTS, getCwd } from "../../constants.ts";
 import { createGitPort } from "../git-port.ts";
 import { loadSubAgentDefinition } from "../session/subagent-definitions.ts";
 import { HostedSession } from "../session/hosted-session.js";

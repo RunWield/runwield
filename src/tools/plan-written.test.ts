@@ -20,7 +20,7 @@ import { defineCommittedGitFixture, git } from "../shared/git-test-fixture.ts";
 import { makeManagedSessionFixture } from "../testing/managed-session-fixture.ts";
 import { inspectWorktreeRegistry } from "../shared/worktree-registry.js";
 import { existsSync } from "node:fs";
-import { WORKTREE_REGISTRY_FILE } from "../constants.js";
+import { WORKTREE_REGISTRY_FILE } from "../constants.ts";
 
 const LINKED_REVIEW_GIT = defineCommittedGitFixture();
 

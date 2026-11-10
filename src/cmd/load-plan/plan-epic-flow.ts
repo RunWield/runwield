@@ -9,7 +9,7 @@ import { isSequencePlan, projectPlanType } from "../../shared/project-plan.ts";
  * explicitly declares it done enough.
  */
 
-import { isPlannedChangeClassification } from "../../constants.js";
+import { isPlannedChangeClassification } from "../../constants.ts";
 import { compareChildPlansByOrder, findPlansByParent, isTerminalArchivableStatus } from "../../plan-store.js";
 import { isInValidation, isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
 import { resolveWorkRecordSupersessionProposalsWithUi } from "../../shared/workflow/validation-helpers.ts";

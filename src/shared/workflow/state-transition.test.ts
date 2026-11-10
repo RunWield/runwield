@@ -13,7 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { ok as assert } from "node:assert/strict";
 import { dirname, join } from "node:path";
-import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "../../constants.js";
+import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "../../constants.ts";
 import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
 import {
     closeTransitionRecordByAttestation,

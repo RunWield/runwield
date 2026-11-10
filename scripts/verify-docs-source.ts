@@ -1,6 +1,6 @@
 import { captureScriptProcess } from "./script-process.ts";
 import process from "node:process";
-import { getCwd } from "../src/constants.js";
+import { getCwd } from "../src/constants.ts";
 import { PUBLIC_DOCS } from "./public-docs.ts";
 
 const ALLOWED_PATHS = new Set([

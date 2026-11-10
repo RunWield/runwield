@@ -6,7 +6,7 @@ import { readdir, stat as fsStat } from "node:fs/promises";
 import { clearInterval, clearTimeout, setInterval, setTimeout } from "node:timers";
 import { DatabaseSync } from "../../../shared/sqlite.ts";
 import { dirname, join, relative } from "node:path";
-import { getHomeDir } from "../../../constants.js";
+import { getHomeDir } from "../../../constants.ts";
 import { listPlanResources } from "../../../plan-store.js";
 import { getWorkRecordsDir, listWorkRecords } from "../../../shared/work-records/store.ts";
 import { isCurrentWorkRecord, workRecordNotices } from "../../../shared/work-records/list.ts";

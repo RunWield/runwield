@@ -10,7 +10,7 @@ import { type ChatView, createPastedImagePreview } from "./chat-view.ts";
 import type { ImageAttachment } from "../../shared/session/image-attachments.ts";
 import type { UiAPI } from "./api.ts";
 import type { TutorialContext } from "../../shared/session/tutorial-context-session.ts";
-import { AGENTS } from "../../constants.js";
+import { AGENTS } from "../../constants.ts";
 import { ClaudeCliBackendError } from "../../shared/session/backends/claude-cli/failure.ts";
 import { AgyCliBackendError } from "../../shared/session/backends/agy-cli/failure.ts";
 import { AgyCliMcpSetupApprovalError } from "../../shared/session/backends/agy-cli/mcp-setup.ts";

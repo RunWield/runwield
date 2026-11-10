@@ -2,7 +2,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { getCwd } from "../src/constants.js";
+import { getCwd } from "../src/constants.ts";
 import { runAcceptance } from "../src/attached/codex/acceptance/driver.ts";
 import { runLiveAcceptance } from "../src/attached/codex/acceptance/live.ts";
 

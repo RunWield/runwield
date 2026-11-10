@@ -5,7 +5,7 @@
 
 import { retryWorkRecordForPlan } from "../../shared/work-records/auto-generation.ts";
 import { parseArgs } from "../../shared/cli-args.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import {
     confirmWorkRecordSupersessionProposal,
     formatWorkRecordBackfillOutcomes,

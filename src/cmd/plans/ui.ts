@@ -10,7 +10,7 @@ import {
     PLAN_UI_DEFAULT_HOST,
     PLAN_UI_DEFAULT_PORT,
     PLAN_UI_TOKEN_QUERY,
-} from "../../constants.js";
+} from "../../constants.ts";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 import { startWorkspaceServer } from "../../ui/workspace/server.js";
 

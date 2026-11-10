@@ -15,7 +15,7 @@ import { assertEquals, assertExists, assertRejects, assertStringIncludes } from 
 
 import { ensurePlanIdentity, loadPlan } from "../../plan-store.js";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import { join } from "node:path";
 import { setCustomSetting } from "../settings.js";
 import { executeWorkflowTestTools, type WorkflowTestToolCall } from "../../testing/workflow-agent-tools.ts";

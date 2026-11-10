@@ -30,7 +30,7 @@ import { PhotonImage } from "@silvia-odwyer/photon-node";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { Client } from "@modelcontextprotocol/sdk/client";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp";
-import { getCwd, getHomeDir, SUBAGENTS } from "../constants.js";
+import { getCwd, getHomeDir, SUBAGENTS } from "../constants.ts";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { __resetSettingsForTests } from "../shared/settings.js";
 import { createImage } from "../shared/image-generation.ts";

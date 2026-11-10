@@ -9,7 +9,7 @@ import { appendFile, chmod, copyFile, mkdir, mkdtemp, readFile, readdir, writeFi
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import process from "node:process";
-import { getHomeDir } from "../src/constants.js";
+import { getHomeDir } from "../src/constants.ts";
 import {
     extractReleaseRuntime,
     releaseRuntimeCacheDirectory,

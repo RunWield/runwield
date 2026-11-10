@@ -1,7 +1,7 @@
 import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
 import { fileURLToPath } from "node:url";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

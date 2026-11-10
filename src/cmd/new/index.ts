@@ -3,7 +3,7 @@
  * Command to start a new session.
  */
 
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { setTerminalTitleForName } from "../../ui/tui/terminal-title.ts";
 

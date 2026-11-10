@@ -1,4 +1,4 @@
-import { AGENTS } from "../../../constants.js";
+import { AGENTS } from "../../../constants.ts";
 import { readPersistedManualModelState, resolveResumeAgentName } from ".././active-agent-session.ts";
 import { loadAgentDef } from ".././agents.ts";
 import { resolveModel } from ".././session.js";

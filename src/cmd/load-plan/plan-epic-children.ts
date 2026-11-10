@@ -7,7 +7,7 @@ import { preparePlanDependencies } from "../../shared/workflow/plan-preparation.
  * questions about the children rather than driving the Epic.
  */
 
-import { isPlannedChangeClassification } from "../../constants.js";
+import { isPlannedChangeClassification } from "../../constants.ts";
 import { resolveSiblingChildPlanDependencies as resolveSiblingChildPlanDependenciesFn } from "../../plan-store.js";
 import { isInValidation } from "../../shared/workflow/plan-lifecycle.ts";
 import { buildPlanSummary, type SummarisablePlan } from "../../shared/plan-presentation.ts";

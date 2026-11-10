@@ -1,6 +1,6 @@
 import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
 import { join } from "node:path";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { isInitDone } from "./init-state.ts";
 
 export const INIT_DOMAIN_LANGUAGE_PATH = "docs/domain-language.md";

@@ -1,7 +1,7 @@
 import { opendir as fsOpendir } from "node:fs/promises";
 import { readFile as fsReadFile } from "node:fs/promises";
 import { join } from "node:path";
-import { AGENTS } from "../../constants.js";
+import { AGENTS } from "../../constants.ts";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
 import { listWorkRecords } from "../../shared/work-records/store.ts";
 import { findPlanEvidenceById } from "../../plan-store.js";

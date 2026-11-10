@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import { HostedSession } from "./hosted-session.js";
 
 test("an unwritable log location fails before spawning and frees the slot", async () => {

@@ -1,6 +1,6 @@
 /** Boot summary printed at the top of an interactive session. */
 
-import { getCwd, getHomeDir } from "../../constants.js";
+import { getCwd, getHomeDir } from "../../constants.ts";
 import { recordSnipMissingWarningShown, shouldShowSnipMissingWarning } from "../../cmd/init/init-state.ts";
 import { hasSnipBinary } from "../../shared/runtime-preflight.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";

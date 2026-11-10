@@ -1,6 +1,6 @@
 /** One lazy listener for token-scoped reviews and document readers in this process. */
 import { unlinkSync } from "node:fs";
-import { PLAN_UI_TOKEN_HEADER, PLAN_UI_TOKEN_QUERY } from "../../../constants.js";
+import { PLAN_UI_TOKEN_HEADER, PLAN_UI_TOKEN_QUERY } from "../../../constants.ts";
 import { type HttpHandler, type HttpServer, serveHttp } from "../../../shared/http-server.ts";
 import { isPublicWorkspaceAsset } from "./public-workspace-assets.ts";
 

@@ -1,7 +1,7 @@
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { decodeTextStream } from "../../testing/decode-text-stream.ts";
 import { spawnNativeProcess } from "../foreground-process.ts";
-import { getCwd, getHomeDir } from "../../constants.js";
+import { getCwd, getHomeDir } from "../../constants.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { test } from "node:test";
 import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";

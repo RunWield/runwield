@@ -4,7 +4,7 @@
  */
 
 import { ValidationHostRejected, ValidationHostWait } from "../workflow/validation-host-contract.ts";
-import { isPlannedChangeClassification } from "../../constants.js";
+import { isPlannedChangeClassification } from "../../constants.ts";
 import {
     findPlansByParent,
     getPlanDocumentRoot,

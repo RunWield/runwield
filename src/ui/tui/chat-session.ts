@@ -27,7 +27,7 @@ import {
     getCommandInvocationNames,
     getSlashCommandDefinitions,
 } from "../../cmd/registry.ts";
-import { AGENTS, getCwd } from "../../constants.js";
+import { AGENTS, getCwd } from "../../constants.ts";
 import {
     EMPTY_PROJECT_DIRECTORY_HEADER,
     EMPTY_PROJECT_DIRECTORY_PROMPT_NOTE,

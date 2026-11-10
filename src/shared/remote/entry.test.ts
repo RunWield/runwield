@@ -1,5 +1,5 @@
 import { spawnNativeProcess } from "../foreground-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { parseRemoteInteractiveConfig } from "./entry.ts";

@@ -14,7 +14,7 @@ import { addEntry } from "../../shared/worktree-registry.js";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { join } from "node:path";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
-import { getCwd, getRunWieldRuntimeDir } from "../../constants.js";
+import { getCwd, getRunWieldRuntimeDir } from "../../constants.ts";
 import { type PlanCommandFixture, withPlanCommandFixture } from "./plans-command-test-fixture.ts";
 
 type PlanSeedAttrs = NonNullable<Parameters<typeof savePlan>[3]>;

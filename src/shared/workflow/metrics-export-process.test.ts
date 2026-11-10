@@ -3,7 +3,7 @@ import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { openNativeFileLock } from "../native-file-lock.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { readFile as fsReadFile, rename as fsRename, rm as fsRm, symlink as fsSymlink } from "node:fs/promises";
 import process from "node:process";

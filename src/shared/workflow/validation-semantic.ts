@@ -6,7 +6,7 @@
 
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { recordDeliveryEvidence } from "./delivery-evidence.ts";
-import { AGENTS } from "../../constants.js";
+import { AGENTS } from "../../constants.ts";
 import { captureWorktreeTree, getWorkflowDiff, getWorktreeReviewDiff } from "./git-snapshot.ts";
 import { buildDiffInspectionSection, requiredReviewDiffFiles, ReviewDiffParseError } from "./review-diff.ts";
 import { ReviewInspection } from "./review-inspection.ts";

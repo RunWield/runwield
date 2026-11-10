@@ -11,7 +11,7 @@
 import { parseArgs } from "../../shared/cli-args.ts";
 import { dirname } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
-import { AGENTS, getCwd, SUBAGENTS } from "../../constants.js";
+import { AGENTS, getCwd, SUBAGENTS } from "../../constants.ts";
 import { COMMAND_NAMES } from "../registry.ts";
 import { EMPTY_PROJECT_DIRECTORY_INIT_NOOP_BODY, isEmptyProjectDirectory } from "../../shared/project-state.ts";
 import { extractBundledAgentDefs, extractBundledSkills } from "../../shared/session/agent-assets.ts";

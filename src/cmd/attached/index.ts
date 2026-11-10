@@ -1,4 +1,4 @@
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { compactResult, compactStatus } from "../../shared/attached/presentation.ts";
 import { runAttachedOperation } from "../../shared/attached/coordinator.ts";
 import { ATTACHED_OPERATIONS, MAX_ATTACHED_INPUT_BYTES } from "../../shared/attached/operations.ts";

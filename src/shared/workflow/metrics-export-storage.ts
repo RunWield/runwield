@@ -5,7 +5,7 @@ import { statSync, mkdirSync, chmodSync } from "node:fs";
 import process from "node:process";
 /** Private local export storage. No observation payload is stored here. */
 import { dirname, join } from "node:path";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 
 export function metricsExportDirectory(): string {
     return join(getHomeDir(), ".wld", "metrics-export");

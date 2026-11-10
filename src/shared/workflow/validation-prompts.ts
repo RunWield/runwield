@@ -5,7 +5,7 @@
  * the Reviewer-Feedback Engineer, and the manual QA checklist.
  */
 
-import { SUBAGENTS } from "../../constants.js";
+import { SUBAGENTS } from "../../constants.ts";
 import { loadSubAgentDefinition } from "../session/subagent-definitions.ts";
 
 // Validation prompts use the same layered role names in every runtime.

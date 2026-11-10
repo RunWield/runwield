@@ -1,5 +1,5 @@
 import { writeFileSync } from "node:fs";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import { assertEquals, assertArrayIncludes } from "../../testing/assertions.ts";
 import { match as assertMatch } from "node:assert/strict";

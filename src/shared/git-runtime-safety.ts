@@ -3,7 +3,7 @@ import {
     PROJECT_INTERNAL_RUNTIME_DIR_NAME,
     PROJECT_SECRET_STORE_RELATIVE_PATH,
     RUNWIELD_DIR_NAME,
-} from "../constants.js";
+} from "../constants.ts";
 import { isRunWieldOwnedRuntimePath } from "./runwield-owned-paths.ts";
 import { recordedProjectContextPaths } from "./worktree-project-context.ts";
 
