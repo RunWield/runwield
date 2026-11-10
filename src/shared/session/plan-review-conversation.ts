@@ -1,6 +1,6 @@
 import type { PlanFrontMatter } from "../../plan-store.js";
 import { RuntimeEventTypes } from "./session-runtime-events.ts";
-import type { HostedRuntimeEventObservation } from "./hosted-session.js";
+import type { HostedRuntimeEventObservation } from "./hosted-session.ts";
 
 export interface PlanReviewConversationEvent {
     type: "assistant_text_delta";

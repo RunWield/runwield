@@ -8,7 +8,7 @@ import { test } from "node:test";
  */
 
 import { abortActiveSession } from "./session.js";
-import { HostedSession, type DisposableLike } from "./hosted-session.js";
+import { HostedSession, type DisposableLike } from "./hosted-session.ts";
 
 interface FakeSessionOptions {
     isStreaming?: boolean;

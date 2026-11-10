@@ -6,7 +6,7 @@ import {
     type InterviewParameters,
     type InterviewResultDetails,
 } from "../../tools/user-interview.ts";
-import { HostedSession } from "../../shared/session/hosted-session.js";
+import { HostedSession } from "../../shared/session/hosted-session.ts";
 import type { AgentToolResult, ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 
 type InterviewTool = ReturnType<typeof createUserInterviewTool>;

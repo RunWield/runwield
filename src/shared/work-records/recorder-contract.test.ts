@@ -7,7 +7,7 @@ import { getCwd } from "../../constants.ts";
 import { savePlan } from "../../plan-store.js";
 import { assertEquals, assertExists, assertThrows } from "../../testing/assertions.ts";
 import { createWorkRecordCompletedTool } from "../../tools/work-record-completed.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { findWorkRecordById, parseWorkRecordMarkdown, runWorkRecordBackfill } from "./index.ts";
 import type { WorkRecordFrontMatter } from "./schema.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";

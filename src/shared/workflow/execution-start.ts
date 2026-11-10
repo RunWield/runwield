@@ -110,7 +110,7 @@ async function runCymbalIndexForExecutionWorktree(hostedSession, worktreePath) {
 }
 
 /**
- * @param {import('../session/hosted-session.js').HostedSession} hostedSession
+ * @param {import('../session/hosted-session.ts').HostedSession} hostedSession
  * @param {string} projectRoot
  * @returns {Promise<boolean>}
  */
@@ -291,8 +291,8 @@ interface ExecutionStartOptions {
     triageMeta: Partial<import("../../plan-store.js").PlanFrontMatter>;
     currentStatus: import("./plan-lifecycle.ts").PlanStatus;
     cwd?: string;
-    existingExecution?: import("../session/hosted-session.js").ActiveExecutionWorkflow | null;
-    hostedSession?: import("../session/hosted-session.js").HostedSession;
+    existingExecution?: import("../session/hosted-session.ts").ActiveExecutionWorkflow | null;
+    hostedSession?: import("../session/hosted-session.ts").HostedSession;
     collaborationStyle?: "autonomous" | "pair";
     collaborationRecommendation?: "autonomous" | "pair";
     ports: ExecutionStartPorts;
@@ -300,7 +300,7 @@ interface ExecutionStartOptions {
 
 /** Prepare execution through the shared policy with either a Session or durable carrier inputs.
  * @param {ExecutionStartOptions} opts
- * @returns {Promise<import('../session/hosted-session.js').ActiveExecutionWorkflow>}
+ * @returns {Promise<import('../session/hosted-session.ts').ActiveExecutionWorkflow>}
  */
 export async function startActiveExecutionWorkflow({
     planName,
@@ -312,7 +312,7 @@ export async function startActiveExecutionWorkflow({
     collaborationStyle = CollaborationStyles.AUTONOMOUS,
     collaborationRecommendation = CollaborationStyles.AUTONOMOUS,
     ports,
-}: ExecutionStartOptions): Promise<import("../session/hosted-session.js").ActiveExecutionWorkflow> {
+}: ExecutionStartOptions): Promise<import("../session/hosted-session.ts").ActiveExecutionWorkflow> {
     hostedSession?.getManagedOperationCapability?.()?.assertLive();
     if (!cwd) throw new Error("startActiveExecutionWorkflow: cwd is required");
     const projectRoot = resolvePrimaryCheckoutRoot(cwd);
@@ -458,7 +458,7 @@ export async function startActiveExecutionWorkflow({
             throw new Error(transition.message || `Non-Git execution preparation did not commit for ${planName}.`);
         }
         const activeWorkflow =
-            /** @type {import('../session/hosted-session.js').ActiveExecutionWorkflow} */ transition.value;
+            /** @type {import('../session/hosted-session.ts').ActiveExecutionWorkflow} */ transition.value;
         await completeExecutionSetup(activeWorkflow.executionCwd);
         hostedSession?.setActiveExecutionWorkflow(activeWorkflow);
         return activeWorkflow;
@@ -1007,7 +1007,7 @@ export async function startActiveExecutionWorkflow({
         throw new Error(transition.message || `Execution preparation did not commit for ${planName}.`);
     }
     const activeWorkflow =
-        /** @type {import('../session/hosted-session.js').ActiveExecutionWorkflow} */ transition.value;
+        /** @type {import('../session/hosted-session.ts').ActiveExecutionWorkflow} */ transition.value;
     await completeExecutionSetup(activeWorkflow.executionCwd);
     hostedSession?.setActiveExecutionWorkflow(activeWorkflow);
     return activeWorkflow;

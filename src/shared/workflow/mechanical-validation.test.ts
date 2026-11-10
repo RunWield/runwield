@@ -4,7 +4,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { ensureRootAgentSession } from "../session/session.js";
 import { attachRecorder, makeUi, type ValidationUiRecorder } from "./validation-test-helpers.ts";
 import type { LocalCIPort, LocalCIResult } from "./validation-local-ci.ts";

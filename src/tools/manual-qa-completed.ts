@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 import { defineTool, type SessionManager } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "../shared/session/hosted-session.js";
+import type { HostedSession } from "../shared/session/hosted-session.ts";
 import { recordManualQaChecklistMessage } from "../shared/session/workflow-messages.ts";
 import { emitAssistantMessage } from "../shared/session/session-runtime-events.ts";
 import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";

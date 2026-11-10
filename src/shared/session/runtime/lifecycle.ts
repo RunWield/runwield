@@ -175,7 +175,7 @@ export class RuntimeLifecycle {
         }
     }
 
-    async prepareDeferredManagedCreation(hostedSession: import(".././hosted-session.js").HostedSession) {
+    async prepareDeferredManagedCreation(hostedSession: import(".././hosted-session.ts").HostedSession) {
         const pendingProject = this.pendingManagedCreationProjects.get(hostedSession.id);
         if (!pendingProject) return null;
         await enterGitProjectRuntime(pendingProject.cwd);
@@ -215,13 +215,13 @@ export class RuntimeLifecycle {
         }
     }
 
-    async materializeDeferredWorkflowSession(hostedSession: import(".././hosted-session.js").HostedSession) {
+    async materializeDeferredWorkflowSession(hostedSession: import(".././hosted-session.ts").HostedSession) {
         if (!this.pendingManagedCreationProjects.has(hostedSession.id)) return;
         await this.materializeDeferredManagedShell(hostedSession);
         hostedSession.dehydrateManagedSession();
     }
 
-    async materializeDeferredManagedShell(hostedSession: import(".././hosted-session.js").HostedSession) {
+    async materializeDeferredManagedShell(hostedSession: import(".././hosted-session.ts").HostedSession) {
         if (this.services.remotePersistence) {
             const pending = this.pendingManagedCreationProjects.get(hostedSession.id);
             if (!pending) return hostedSession.getManagedMetadata();
@@ -254,7 +254,7 @@ export class RuntimeLifecycle {
     }
 
     async ensureCreatedSessionTranscriptFile(
-        sessionManager: import("../hosted-session.js").MinimalSessionManagerLike,
+        sessionManager: import("../hosted-session.ts").MinimalSessionManagerLike,
         transcriptPath: string,
     ) {
         try {
@@ -275,7 +275,7 @@ export class RuntimeLifecycle {
 
     async resolveCreatedSessionPath(
         cwd: string,
-        sessionManager: import("../hosted-session.js").MinimalSessionManagerLike,
+        sessionManager: import("../hosted-session.ts").MinimalSessionManagerLike,
     ) {
         return await resolveCreatedRootSessionPath(cwd, sessionManager);
     }

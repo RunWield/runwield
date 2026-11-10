@@ -14,7 +14,7 @@ import { withProcessGlobalTestLock } from "../../../testing/process-global-lock.
 import { getExternalCliPriceModel, getModelRegistry } from "../../models/model-registry.ts";
 import { setCustomSetting } from "../../settings.js";
 import { getWorkflowMetricsFilePath } from "../../workflow/metrics.ts";
-import { HostedSession } from "../hosted-session.js";
+import { HostedSession } from "../hosted-session.ts";
 import { createRootSessionManager } from "../root-session.ts";
 import type { RuntimeUsage, SessionRuntimeEvent } from "../session-runtime-events.ts";
 import { ClaudeCliExecutionSession } from "./claude-cli/execution-session.ts";

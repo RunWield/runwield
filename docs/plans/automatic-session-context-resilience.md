@@ -11,7 +11,7 @@ affectedPaths:
     - "src/shared/session/session.js"
     - "src/shared/session/session-prompt.test.ts"
     - "src/shared/session/session-subscribers.test.ts"
-    - "src/shared/session/hosted-session.js"
+    - "src/shared/session/hosted-session.ts"
     - "src/shared/session/hosted-session.test.ts"
     - "src/shared/session/abort-active-session.test.js"
     - "src/shared/session/runtime/turns.ts"
@@ -307,7 +307,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   continuation, no duplicate User Request/routing, and ordinary behavior below threshold.
 - `src/shared/session/session-subscribers.test.ts` — verify completed-turn observation and canonical context-resilience
   emission without duplicate generic compaction statuses.
-- `src/shared/session/hosted-session.js` — retain the coordinator and current-segment root health across Pi Session
+- `src/shared/session/hosted-session.ts` — retain the coordinator and current-segment root health across Pi Session
   disposal, plus isolated-child health and cancellation. All compaction shares one arbiter per Hosted Session.
 - `src/shared/session/hosted-session.test.ts` — cover arbiter exclusivity, active-turn cancellation/settlement,
   disposal, and isolation between Hosted Sessions.
@@ -369,7 +369,7 @@ Existing functions, modules, or patterns to reuse:
   subscription lifecycle while moving compaction policy out of this broad module.
 - `src/shared/session/session-runtime-events.ts` — reuse fail-fast canonical event creation so TUI and ACP remain
   sibling consumers of one semantic contract.
-- `src/shared/session/hosted-session.js` — reuse per-Session turn ownership and transient Agent registration to scope
+- `src/shared/session/hosted-session.ts` — reuse per-Session turn ownership and transient Agent registration to scope
   the arbiter and cancellation.
 - `src/shared/session/session-context-report.js` — reuse existing context-window/usage normalization where applicable;
   adapters must not inspect Agent Session internals.

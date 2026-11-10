@@ -9,7 +9,7 @@ import { type ExtensionToolContext, SessionManager, type ToolDefinition } from "
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createTaskCompletedTool } from "../../tools/task-completed.ts";
 import { type AgentHandler, createAgentHandler } from "./agent-handler.ts";
-import { HostedSession } from "./hosted-session.js";
+import { HostedSession } from "./hosted-session.ts";
 import { ensureRootAgentSession } from "./session.js";
 import { RuntimeEventTypes } from "./session-runtime-events.ts";
 import { setCustomSetting } from "../settings.js";

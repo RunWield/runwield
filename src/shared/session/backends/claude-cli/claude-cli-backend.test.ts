@@ -20,7 +20,7 @@ import { Type } from "typebox";
 import { withProcessGlobalTestLock } from "../../../../testing/process-global-lock.ts";
 import { getModelRegistry } from "../../../models/model-registry.ts";
 import { createTaskCompletedTool } from "../../../../tools/task-completed.ts";
-import { HostedSession } from "../../hosted-session.js";
+import { HostedSession } from "../../hosted-session.ts";
 import { setCustomSetting } from "../../../settings.js";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../../../workflow/metrics.ts";
 import { readLatestTaskCompletedOutcome } from "../../../workflow/workflow-results.ts";

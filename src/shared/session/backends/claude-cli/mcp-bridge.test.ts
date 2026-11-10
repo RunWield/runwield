@@ -13,7 +13,7 @@ import { Client } from "@modelcontextprotocol/sdk/client";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types";
 import { createMultiFileEditTool } from "../../../../tools/multi_file_edit.ts";
-import { HostedSession } from "../../hosted-session.js";
+import { HostedSession } from "../../hosted-session.ts";
 
 import { CLAUDE_CLI_MCP_PROVENANCE, startRunWieldMcpBridge } from "./mcp-bridge.ts";
 

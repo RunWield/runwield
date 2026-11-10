@@ -107,7 +107,7 @@ export class RuntimeTurns {
     >();
     private steeringCleanup = new Map<string, Promise<void>>();
 
-    clearBackgroundSteering(session: import("../hosted-session.js").HostedSession): Promise<void> {
+    clearBackgroundSteering(session: import("../hosted-session.ts").HostedSession): Promise<void> {
         const existing = this.steeringCleanup.get(session.id);
         if (existing) return existing;
         const cleanup = (async () => {
@@ -153,7 +153,7 @@ export class RuntimeTurns {
     }
 
     /** A recorded root input is stronger evidence than a lost queue notification. */
-    reconcileBackgroundResultConsumption(session: import("../hosted-session.js").HostedSession): void {
+    reconcileBackgroundResultConsumption(session: import("../hosted-session.ts").HostedSession): void {
         const steering = this.steeringResults.get(session.id);
         if (!steering) return;
         const manager = session.getRootSessionManager();

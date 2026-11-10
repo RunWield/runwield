@@ -13,7 +13,7 @@ import {
 } from "../workflow/workflow-tool-events.ts";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "./hosted-session.js";
+import type { HostedSession } from "./hosted-session.ts";
 import type { ImageAttachment } from "./image-attachments.ts";
 
 interface RootAgentSessionState {

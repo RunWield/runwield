@@ -25,7 +25,7 @@ import { loadPlanActionEvidence } from "./plan-actions.ts";
 import { runSequenceReviewTransition } from "./state-transition.ts";
 import { reviewSourceStillMatches } from "./plan-review-actions.ts";
 import { publishWorkflowToolEvent } from "./workflow-tool-events.ts";
-import type { HostedSession } from "../session/hosted-session.js";
+import type { HostedSession } from "../session/hosted-session.ts";
 import type { PlanApprovalAction } from "./plan-approval.ts";
 import type { PlanWrittenEventPayload } from "./workflow-tool-events.ts";
 

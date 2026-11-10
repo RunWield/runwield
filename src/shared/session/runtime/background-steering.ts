@@ -1,4 +1,4 @@
-import type { HostedSession } from "../hosted-session.js";
+import type { HostedSession } from "../hosted-session.ts";
 
 interface BackgroundSteeringOwner {
     clearBackgroundSteering(session: HostedSession): Promise<void>;

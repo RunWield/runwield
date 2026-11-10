@@ -3,7 +3,7 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { HostedSession } from "../../shared/session/hosted-session.js";
+import { HostedSession } from "../../shared/session/hosted-session.ts";
 import { readCurrentPairCheckpoint, restorePairExecutionState } from "../../shared/session/pair-checkpoint-session.ts";
 import { createPairCheckpointTool } from "../pair-checkpoint.ts";
 import { attachSessionEventSubscribers, buildAgentSession, runPrompt } from "../../shared/session/session.js";

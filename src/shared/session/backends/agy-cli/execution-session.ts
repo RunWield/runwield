@@ -3,7 +3,7 @@ import { calculateCost, type Usage } from "@earendil-works/pi-ai";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { SessionManager, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { getExternalCliPriceModel, type RunWieldModel } from "../../../models/model-registry.ts";
-import type { HostedSession } from "../../hosted-session.js";
+import type { HostedSession } from "../../hosted-session.ts";
 import {
     emitHostedSessionRuntimeEvent,
     normalizeRuntimeToolResult,

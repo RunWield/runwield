@@ -7,7 +7,7 @@ import type { TranscriptContext } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createPayload, resolveNamedInvocation } from "./named-invocation.ts";
-import { HostedSession } from "./hosted-session.js";
+import { HostedSession } from "./hosted-session.ts";
 import { ensureRootAgentSession, runRootTurn } from "./session.js";
 
 async function writePrompt(projectRoot: string, name: string, frontMatter: string[], body: string): Promise<void> {

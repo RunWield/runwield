@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
-import { HostedSession } from "../shared/session/hosted-session.js";
+import { HostedSession } from "../shared/session/hosted-session.ts";
 import { runIsolatedAgentSession } from "../shared/session/session.js";
 import { createDelegateAgentTool } from "./delegate-agent.ts";
 

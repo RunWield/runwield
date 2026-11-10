@@ -6,7 +6,7 @@
 import { Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "../shared/session/hosted-session.js";
+import type { HostedSession } from "../shared/session/hosted-session.ts";
 import { ROUTING_INTENTS, WORK_KINDS } from "../constants.ts";
 import { emitSystemStatus } from "../shared/session/session-runtime-events.ts";
 import { recordWorkflowMetric } from "../shared/workflow/metrics.ts";

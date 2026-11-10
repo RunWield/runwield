@@ -167,7 +167,7 @@ export class RuntimeManagedOperations {
     }
 
     async acquirePendingCreation(
-        hostedSession: import("../hosted-session.js").HostedSession,
+        hostedSession: import("../hosted-session.ts").HostedSession,
         projectId: string,
         sessionManager: RuntimeRootSessionManager,
         transcriptPath: string,
@@ -199,7 +199,7 @@ export class RuntimeManagedOperations {
                 lineageGroupKey: acquired.segment.segmentId,
                 kind: "planning",
             });
-            const managed: import("../hosted-session.js").ManagedSessionMetadata = {
+            const managed: import("../hosted-session.ts").ManagedSessionMetadata = {
                 runwieldSessionId: acquired.session.runwieldSessionId,
                 projectId: acquired.session.projectId,
                 piSessionId: acquired.session.piSessionId,
@@ -234,7 +234,7 @@ export class RuntimeManagedOperations {
     }
 
     async runPendingCreation<T>(
-        hostedSession: import("../hosted-session.js").HostedSession,
+        hostedSession: import("../hosted-session.ts").HostedSession,
         pendingCreation: import("../../owner-coordination/session-activations.ts").ActivationProof,
         body: (capability: import("../managed-operation.ts").ManagedOperationCapability) => Promise<T>,
     ): Promise<T> {
@@ -330,7 +330,7 @@ export class RuntimeManagedOperations {
     }
 
     rejectManagedPublicMutation(
-        hostedSession: import(".././hosted-session.js").HostedSession | null | undefined,
+        hostedSession: import(".././hosted-session.ts").HostedSession | null | undefined,
         operation: string,
         capability: import(".././managed-operation.ts").ManagedOperationCapability | null = null,
     ) {
@@ -350,7 +350,7 @@ export class RuntimeManagedOperations {
         sessionId: string,
         name: import(".././managed-operation.ts").ManagedOperationName,
         operation: (
-            session: import(".././hosted-session.js").HostedSession,
+            session: import(".././hosted-session.ts").HostedSession,
             capability: import(".././managed-operation.ts").ManagedOperationCapability | null,
         ) => T | Promise<T>,
         options: { activateAgent?: boolean; hydrate?: boolean } = {},

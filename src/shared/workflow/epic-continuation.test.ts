@@ -12,7 +12,7 @@ import { type PlanFrontMatterInput, loadPlan, updatePlanStatus } from "../../pla
 import { presentEpicChildPlan, resolveEpicContinuation } from "./epic-continuation.ts";
 import { recordPlanEvent } from "./plan-lifecycle.ts";
 
-import type { HostedSession } from "../session/hosted-session.js";
+import type { HostedSession } from "../session/hosted-session.ts";
 import type { RuntimeSystemStatusEvent } from "../session/session-runtime-events.ts";
 
 type CapturedStatusEvent = Pick<RuntimeSystemStatusEvent, "type" | "message" | "header" | "level">;

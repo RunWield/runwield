@@ -6,7 +6,7 @@ import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
-import { type SessionManagerExtensions, HostedSession } from "./hosted-session.js";
+import { type SessionManagerExtensions, HostedSession } from "./hosted-session.ts";
 import { createRootSessionManager, openPersistedRootSession, resolveCreatedRootSessionPath } from "./root-session.ts";
 import { rollSessionTranscriptSegment } from "./segment-rollover.ts";
 import { projectAggregateTranscript } from "./session-transcript-manifest.ts";

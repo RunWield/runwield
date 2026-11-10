@@ -21,7 +21,7 @@ import {
     loadSubAgentDefinition,
 } from "../shared/session/subagent-definitions.ts";
 import type { DelegatedAuthority, DelegatedRoleId } from "../shared/session/subagent-definitions.ts";
-import type { HostedSession } from "../shared/session/hosted-session.js";
+import type { HostedSession } from "../shared/session/hosted-session.ts";
 import type { AgentDefinition } from "../shared/session/agents.ts";
 import type { BashAllowedCommands } from "../shared/bash-command-policy.ts";
 import { extractAssistantOutput } from "../shared/workflow/workflow-results.ts";
@@ -321,7 +321,7 @@ function truncateToolText(text: string): string {
 }
 
 /**
- * @param {import('../shared/session/hosted-session.js').HostedSession} hostedSession
+ * @param {import('../shared/session/hosted-session.ts').HostedSession} hostedSession
  * @param {string | undefined} explicitOverride
  * @returns {string | undefined}
  */

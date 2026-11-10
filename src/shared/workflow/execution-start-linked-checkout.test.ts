@@ -9,7 +9,7 @@ import { loadPlan, savePlan } from "../../plan-store.js";
 import { assertEquals } from "../../testing/assertions.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { inspectWorktreeRegistry } from "../worktree-registry.ts";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 

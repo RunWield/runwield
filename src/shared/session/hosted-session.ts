@@ -3,6 +3,37 @@
  * Per-conversation runtime state owned by a SessionHost entry.
  */
 
+import type { ActiveExecutionWorkflow } from "./execution-workflow-session.ts";
+import type { ThinkingLevel } from "./named-invocation.ts";
+import type { ContextUsageState } from "./session-context-report.ts";
+import type { RuntimeContextModel, RuntimeContextSettingsManager } from "./runtime/types.ts";
+import type { ImageAttachment } from "./image-attachments.ts";
+import type {
+    NotificationSurface,
+    RuntimeManagedSyncStateEvent,
+    RuntimeQueuedMessage,
+} from "./session-runtime-events.ts";
+import type { SessionManager } from "@earendil-works/pi-coding-agent";
+import type {
+    RuntimeInteractionAdapter,
+    RuntimeInteractionRequest,
+    RuntimeInteractionResponse,
+} from "./session-runtime-interactions.ts";
+import type { RemoteSessionRecords } from "../remote/session-protocol.ts";
+import type {
+    LineageSessionManager,
+    WorkflowContext,
+    WorkflowContextInput,
+    WorkflowTriageContextDetails,
+} from "./workflow-context-session.ts";
+import type { TutorialContext, TutorialContextUpdate } from "./tutorial-context-session.ts";
+import type { ManagedOperationCapability } from "./managed-operation.ts";
+import type { McpServerDefinition } from "../mcp/config.ts";
+import type { McpIntegration } from "../mcp/integration.ts";
+import type { ManifestPlanAssociation, PlanAssociation } from "./plan-association.ts";
+import type { AgentHandler } from "./agent-handler.ts";
+import type { ProjectedSessionSnapshot } from "./session-transcript-manifest.ts";
+
 import { setCurrentValidationProgress } from "../workflow/validation-progress.ts";
 import { isAbsolute } from "node:path";
 import { MAX_DELEGATED_READERS } from "../../constants.ts";
@@ -27,139 +58,141 @@ import { BackgroundTasks } from "./background-tasks.ts";
 import { clearBackgroundSteeringForCompletion } from "./runtime/turns.ts";
 import { PlanReviewConversationOwner } from "./plan-review-conversation.ts";
 
-/**
- * @typedef {Object} AgentInfo
- * @property {string} displayName
- * @property {string} model
- * @property {string} provider
- * @property {string} [agentName]
- */
+export type { ActiveExecutionWorkflow, ThinkingLevel };
 
-/**
- * @typedef {AgentInfo & { sessionInfoId: string }} AgentInfoRecord
- */
+export interface AgentInfo {
+    displayName: string;
+    model: string;
+    provider: string;
+    agentName?: string;
+}
 
-/**
- * @typedef {"off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"} ThinkingLevel
- */
+export type AgentInfoRecord = AgentInfo & { sessionInfoId: string };
 
-/** @typedef {import('./execution-workflow-session.ts').ActiveExecutionWorkflow} ActiveExecutionWorkflow */
+export interface HostedRuntimeEventObservation {
+    type: string;
+    delta?: string;
+    messageId?: string;
+    agentName?: string;
+}
 
-/**
- * @typedef {Object} HostedRuntimeEventObservation
- * @property {string} type
- * @property {string} [delta]
- * @property {string} [messageId]
- * @property {string} [agentName]
- */
+export interface DisposableLike {
+    dispose?: () => void | Promise<void>;
+    getContextUsage?: () => ContextUsageState | undefined;
+    settingsManager?: RuntimeContextSettingsManager;
+    model?: RuntimeContextModel;
+}
 
-/**
- * @typedef {Object} DisposableLike
- * @property {() => void | Promise<void>} [dispose]
- * @property {() => {tokens?: number | null, contextWindow?: number | null, percent?: number | null} | undefined} [getContextUsage]
- * @property {{getCompactionSettings?: () => {enabled?: boolean}}} [settingsManager]
- * @property {{contextWindow?: number}} [model]
- */
+export interface AgentTransitionSteering {
+    text: string;
+    images: ImageAttachment[];
+    message?: RuntimeQueuedMessage;
+    submissionOrder?: number;
+}
 
-/**
- * @typedef {Object} AgentTransitionSteering
- * @property {string} text
- * @property {import('./image-attachments.ts').ImageAttachment[]} images
- * @property {import('./session-runtime-events.ts').RuntimeQueuedMessage} [message]
- * @property {number} [submissionOrder]
- */
+export interface SteeringTargetRecord {
+    steeringTargetId: string;
+    session: DisposableLike;
+}
 
-/**
- * @typedef {Object} SteeringTargetRecord
- * @property {string} steeringTargetId
- * @property {DisposableLike} session
- */
+export interface SessionManagerExtensions {
+    addMessage?: (message: Parameters<SessionManager["appendMessage"]>[0]) => void;
+    dispose?: () => void | Promise<void>;
+}
 
-/**
- * @typedef {Object} MinimalSessionManagerShape
- * @property {() => string} [getSessionId]
- * @property {() => string | null} [getLeafId]
- * @property {() => string | undefined} [getSessionFile]
- * @property {() => string} [getCwd]
- * @property {() => string | undefined} [getSessionName]
- * @property {(name: string) => void} [appendSessionInfo]
- * @property {(level: ThinkingLevel) => void} [appendThinkingLevelChange]
- * @property {(provider: string, modelId: string) => void} [appendModelChange]
- * @property {() => unknown[]} [getBranch]
- * @property {() => unknown[]} [getEntries]
- * @property {import('@earendil-works/pi-coding-agent').SessionManager['appendMessage']} [appendMessage]
- * @property {(message: unknown) => void} [addMessage]
- * @property {(customType: string, data: unknown) => void} [appendCustomEntry]
- * @property {() => void | Promise<void>} [dispose]
- */
+export interface MinimalSessionManagerShape
+    extends SessionManagerExtensions, Pick<LineageSessionManager, "getBranch" | "getEntries"> {
+    getSessionId?: () => string;
+    getLeafId?: () => string | null;
+    getSessionFile?: () => string | undefined;
+    getCwd?: () => string;
+    getSessionName?: () => string | undefined;
+    appendSessionInfo?: (name: string) => void;
+    appendThinkingLevelChange?: (level: ThinkingLevel) => void;
+    appendModelChange?: (provider: string, modelId: string) => void;
+    appendMessage?: SessionManager["appendMessage"];
+    appendCustomEntry?: (...args: Parameters<SessionManager["appendCustomEntry"]>) => void;
+}
 
-/**
- * @typedef {Object} SessionManagerExtensions
- * @property {(message: unknown) => void} [addMessage]
- * @property {() => void | Promise<void>} [dispose]
- */
+export type MinimalSessionManagerLike = MinimalSessionManagerShape | (SessionManager & SessionManagerExtensions);
 
-/** @typedef {MinimalSessionManagerShape | (import('@earendil-works/pi-coding-agent').SessionManager & SessionManagerExtensions)} MinimalSessionManagerLike */
+export interface ActiveInteractionRecord {
+    request?: RuntimeInteractionRequest;
+    abortController?: AbortController;
+    answer?: (response: RuntimeInteractionResponse, source?: NotificationSurface) => void;
+}
 
-/**
- * @typedef {Object} ActiveInteractionRecord
- * @property {import('./session-runtime-interactions.ts').RuntimeInteractionRequest} [request]
- * @property {AbortController} [abortController]
- * @property {(response: import('./session-runtime-interactions.ts').RuntimeInteractionResponse, source?: import('./session-runtime-events.ts').NotificationSurface) => void} [answer]
- */
+export interface HostedSessionOptions {
+    id?: string;
+    cwd?: string;
+    sessionManager?: MinimalSessionManagerLike | null;
+    // Legacy adapters supply callbacks or emitters that accept different event shapes.
+    eventSink?: unknown;
+    interactionAdapter?: RuntimeInteractionAdapter;
+    managed?: ManagedSessionMetadata | null;
+}
 
-/**
- * @typedef {Object} HostedSessionOptions
- * @property {string} [id]
- * @property {string} [cwd]
- * @property {MinimalSessionManagerLike | null} [sessionManager]
- * @property {unknown} [eventSink]
- * @property {import('./session-runtime-interactions.ts').RuntimeInteractionAdapter} [interactionAdapter]
- * @property {ManagedSessionMetadata | null} [managed]
- */
+type ManagedSessionSyncState = Pick<
+    RuntimeManagedSyncStateEvent,
+    "type" | "status" | "localGeneration" | "latestGeneration" | "owningSurfaceKind" | "message"
+>;
 
-/**
- * @typedef {Object} ManagedSessionMetadata
- * @property {string} runwieldSessionId
- * @property {string} projectId
- * @property {string} piSessionId
- * @property {string} transcriptPath
- * @property {string} [currentSegmentId]
- * @property {number | null} generation
- * @property {number | null} [acknowledgedGeneration]
- * @property {string | null} [acknowledgedEventId]
- * @property {number | null} [acknowledgedEventOrdinal]
- * @property {import("../remote/session-protocol.ts").RemoteSessionRecords} [remoteRecords]
- * @property {Object} [committedSummary]
- * @property {{ type: "managed_sync_state_changed", status: import('./session-runtime-events.ts').RuntimeManagedSyncStatus, localGeneration: number | null, latestGeneration: number | null, owningSurfaceKind?: "workspace" | "tui" | "acp" | "unknown", message?: string } | null} [syncState]
- * @property {string | null} name
- * @property {string | null} activeAgent
- * @property {string | null} [model]
- * @property {string | null} [provider]
- * @property {string | null} [thinkingLevel]
- * @property {import('./workflow-context-session.ts').WorkflowContext | null} workflowContext
- * @property {import('./tutorial-context-session.ts').TutorialContext | null} [tutorialContext]
- */
+export interface ManagedSessionMetadata {
+    runwieldSessionId: string;
+    projectId: string;
+    piSessionId: string;
+    transcriptPath: string;
+    currentSegmentId?: string;
+    generation: number | null;
+    acknowledgedGeneration?: number | null;
+    acknowledgedEventId?: string | null;
+    acknowledgedEventOrdinal?: number | null;
+    remoteRecords?: RemoteSessionRecords;
+    committedSummary?: ProjectedSessionSnapshot;
+    syncState?: ManagedSessionSyncState | null;
+    name: string | null;
+    activeAgent: string | null;
+    model?: string | null;
+    provider?: string | null;
+    thinkingLevel?: string | null;
+    workflowContext: WorkflowContext | null;
+    tutorialContext?: TutorialContext | null;
+}
 
-/**
- * @typedef {Object} PendingManagedTurnIntent
- * @property {string} [agentName]
- * @property {string} [model]
- * @property {string} [provider]
- * @property {boolean} [manualModel]
- * @property {ThinkingLevel} [thinkingLevel]
- */
+interface ManagedTranscriptSegment {
+    piSessionId: string;
+    transcriptPath: string;
+    currentSegmentId: string;
+    sessionManager: MinimalSessionManagerLike;
+}
 
-/**
- * @typedef {Object} PendingTaskCompletion
- * @property {string} agentName
- * @property {string} report
- * @property {number} timestampMs
- * @property {DisposableLike | null} owningSession
- */
+interface PlanReviewLookup {
+    planId: string;
+    planningAgentName: string;
+}
 
-/** @param {unknown} value */
-function getSessionManagerId(value) {
+interface WorkflowContextReplacementOptions {
+    persist?: boolean;
+}
+
+type PlanAssociationInput = Partial<Pick<PlanAssociation, "planId" | "planName" | "purpose">>;
+
+export interface PendingManagedTurnIntent {
+    agentName?: string;
+    model?: string;
+    provider?: string;
+    manualModel?: boolean;
+    thinkingLevel?: ThinkingLevel;
+}
+
+export interface PendingTaskCompletion {
+    agentName: string;
+    report: string;
+    timestampMs: number;
+    owningSession: DisposableLike | null;
+}
+
+function getSessionManagerId(value: MinimalSessionManagerLike | null | undefined) {
     if (!value || typeof value !== "object" || !("getSessionId" in value) || typeof value.getSessionId !== "function") {
         return null;
     }
@@ -167,8 +200,7 @@ function getSessionManagerId(value) {
     return typeof id === "string" && id ? id : null;
 }
 
-/** @param {unknown} value */
-function getSessionManagerCwd(value) {
+function getSessionManagerCwd(value: MinimalSessionManagerLike | null | undefined) {
     if (!value || typeof value !== "object" || !("getCwd" in value) || typeof value.getCwd !== "function") {
         return null;
     }
@@ -176,19 +208,13 @@ function getSessionManagerCwd(value) {
     return typeof cwd === "string" && cwd ? cwd : null;
 }
 
-/**
- * @param {string | null | undefined} cwd
- * @param {string} source
- * @returns {string}
- */
-function requireAbsoluteProjectRoot(cwd, source) {
+function requireAbsoluteProjectRoot(cwd: string | null | undefined, source: string): string {
     if (!cwd) throw new Error(`HostedSession requires an absolute project root (${source})`);
     if (!isAbsolute(cwd)) throw new Error(`HostedSession project root must be absolute: ${cwd}`);
     return cwd;
 }
 
-/** @param {unknown} value */
-function disposeIfPresent(value) {
+function disposeIfPresent(value: DisposableLike | null | undefined) {
     if (!value || typeof value !== "object" || !("dispose" in value) || typeof value.dispose !== "function") return;
     try {
         value.dispose();
@@ -198,8 +224,7 @@ function disposeIfPresent(value) {
     }
 }
 
-/** @param {unknown} value */
-function disposeIfPresentAsync(value) {
+function disposeIfPresentAsync(value: DisposableLike | null | undefined) {
     if (!value || typeof value !== "object" || !("dispose" in value) || typeof value.dispose !== "function") return;
     try {
         return Promise.resolve(value.dispose()).catch(() => undefined);
@@ -210,10 +235,57 @@ function disposeIfPresentAsync(value) {
 }
 
 export class HostedSession {
-    /**
-     * @param {HostedSessionOptions} options
-     */
-    constructor(options) {
+    declare id: string;
+    declare cwd: string;
+    declare disposed: boolean;
+    declare backgroundTasks: BackgroundTasks;
+    declare backgroundCompletionWarning: string | null;
+    declare agentInfoStack: AgentInfoRecord[];
+    declare agentInfoSequence: number;
+    declare userModelOverrideId: string;
+    declare userModelOverrideProvider: string;
+    declare userModelOverride: boolean;
+    declare activeThinkingLevel: ThinkingLevel;
+    declare activeOnMessage: AgentHandler | null;
+    declare rootSessionManager: MinimalSessionManagerLike | null;
+    declare eventSink: HostedSessionOptions["eventSink"];
+    declare eventObservers: Set<(event: HostedRuntimeEventObservation) => void>;
+    declare planReviewConversations: PlanReviewConversationOwner;
+    declare interactionAdapter: RuntimeInteractionAdapter | null;
+    declare activeInteractions: Map<string, ActiveInteractionRecord>;
+    declare liveCodeReviewUrl: string;
+    declare rootAgentSession: DisposableLike | null;
+    declare rootAgentName: string | null;
+    declare subAgentSessions: Set<DisposableLike>;
+    declare steeringTargetStack: SteeringTargetRecord[];
+    declare steeringTargetSequence: number;
+    declare agentTransitionId: string | null;
+    declare agentTransitionSteering: AgentTransitionSteering[];
+    declare agentSteeringPreparations: Set<string>;
+    declare agentSteeringPreparationWaiters: Set<() => void>;
+    declare delegatedReaderCount: number;
+    declare delegatedWriterActive: boolean;
+    declare projectStateContext: string;
+    declare workflowContext: WorkflowContext | null;
+    declare tutorialContext: TutorialContext | null;
+    declare activeExecutionWorkflow: ActiveExecutionWorkflow | null;
+    declare pendingTaskCompletion: PendingTaskCompletion | null;
+    declare suppressAgentStoppedAttention: boolean;
+    declare notificationSurface: NotificationSurface | null;
+    declare localInputSurface: NotificationSurface | null;
+    declare agentStoppedAttentionTurnId: string | null;
+    declare activeTurnId: string | null;
+    declare activeCommandInvocationId: string | null;
+    declare toolExecutionIds: Map<string, string>;
+    declare generatedTaskTurnId: string | null;
+    declare metricsHumanInputPending: boolean;
+    declare managed: ManagedSessionMetadata | null;
+    declare managedOperationCapability: ManagedOperationCapability | null;
+    declare pendingManagedTurnIntent: PendingManagedTurnIntent;
+    declare mcpIntegration: McpIntegration | null;
+    declare mcpRequestServers: McpServerDefinition[];
+
+    constructor(options: HostedSessionOptions) {
         const id = options?.id || getSessionManagerId(options?.sessionManager);
         if (!id) throw new Error("HostedSession requires an id");
         this.id = id;
@@ -225,110 +297,71 @@ export class HostedSession {
         this.disposed = false;
         /** Session-owned tasks are independent of disposable root and turn state. */
         this.backgroundTasks = new BackgroundTasks(this);
-        /** @type {string | null} */
         this.backgroundCompletionWarning = null;
 
-        /** @type {AgentInfoRecord[]} */
         this.agentInfoStack = [];
         this.agentInfoSequence = 0;
         this.userModelOverrideId = "";
         this.userModelOverrideProvider = "";
         this.userModelOverride = false;
-        /** @type {ThinkingLevel} */
         this.activeThinkingLevel = "off";
-        /** @type {Function | null} */
         this.activeOnMessage = null;
-        /** @type {MinimalSessionManagerLike | null} */
         this.rootSessionManager = options.sessionManager || null;
-        /** @type {unknown} */
         this.eventSink = options.eventSink || null;
-        /** @type {Set<(event: HostedRuntimeEventObservation) => void>} */
         this.eventObservers = new Set();
         this.planReviewConversations = new PlanReviewConversationOwner();
-        /** @type {import('./session-runtime-interactions.ts').RuntimeInteractionAdapter | null} */
         this.interactionAdapter = options.interactionAdapter || null;
-        /** @type {Map<string, ActiveInteractionRecord>} */
         this.activeInteractions = new Map();
         // Browser review lifetime spans the gaps between interaction requests, including repair and CI.
         this.liveCodeReviewUrl = "";
-        /** @type {DisposableLike | null} */
         this.rootAgentSession = null;
-        /** @type {string | null} */
         this.rootAgentName = null;
-        /** @type {Set<DisposableLike>} */
         this.subAgentSessions = new Set();
-        /** @type {SteeringTargetRecord[]} */
         this.steeringTargetStack = [];
         this.steeringTargetSequence = 0;
-        /** @type {string | null} */
         this.agentTransitionId = null;
-        /** @type {AgentTransitionSteering[]} */
         this.agentTransitionSteering = [];
-        /** @type {Set<string>} */
         this.agentSteeringPreparations = new Set();
-        /** @type {Set<() => void>} */
         this.agentSteeringPreparationWaiters = new Set();
         this.delegatedReaderCount = 0;
         this.delegatedWriterActive = false;
         this.projectStateContext = "";
-        /** @type {import('./workflow-context-session.ts').WorkflowContext | null} */
-        this.workflowContext = readPersistedWorkflowContext(
-            /** @type {import('@earendil-works/pi-coding-agent').SessionManager | null} */ (this.rootSessionManager),
-        );
-        /** @type {import('./tutorial-context-session.ts').TutorialContext | null} */
+        this.workflowContext = readPersistedWorkflowContext(this.rootSessionManager);
         this.tutorialContext =
             readPersistedTutorialContext(this.rootSessionManager) || options.managed?.tutorialContext || null;
-        /** @type {ActiveExecutionWorkflow | null} */
         this.activeExecutionWorkflow = null;
-        /** @type {PendingTaskCompletion | null} */
         this.pendingTaskCompletion = null;
         this.suppressAgentStoppedAttention = false;
-        /** @type {import('./session-runtime-events.ts').NotificationSurface | null} */
         this.notificationSurface = null;
-        /** @type {import('./session-runtime-events.ts').NotificationSurface | null} */
         this.localInputSurface = null;
-        /** @type {string | null} */
         this.agentStoppedAttentionTurnId = null;
-        /** @type {string | null} */
         this.activeTurnId = null;
         /** Opaque ID for a named invocation while its resulting work runs. */
-        /** @type {string | null} */
         this.activeCommandInvocationId = null;
-        /** @type {Map<string, string>} Active call IDs to their owning execution IDs. */
         this.toolExecutionIds = new Map();
-        /** @type {string | null} */
         this.generatedTaskTurnId = null;
         /** Consumed once by the first execution started for an accepted human input. */
         this.metricsHumanInputPending = false;
-        /** @type {ManagedSessionMetadata | null} */
         this.managed = options.managed || null;
-        /** @type {import('./managed-operation.ts').ManagedOperationCapability | null} */
         this.managedOperationCapability = null;
-        /** @type {PendingManagedTurnIntent} */
         this.pendingManagedTurnIntent = {};
-        /** @type {import('../mcp/integration.ts').McpIntegration | null} */
         this.mcpIntegration = null;
-        /** @type {import('../mcp/config.ts').McpServerDefinition[]} */
         this.mcpRequestServers = [];
     }
 
-    /** @param {string} callId @param {string} executionId */
-    recordToolExecution(callId, executionId) {
+    recordToolExecution(callId: string, executionId: string) {
         this.toolExecutionIds.set(callId, executionId);
     }
 
-    /** @param {string} callId */
-    getToolExecutionId(callId) {
+    getToolExecutionId(callId: string) {
         return this.toolExecutionIds.get(callId);
     }
 
-    /** @param {string} callId */
-    forgetToolExecution(callId) {
+    forgetToolExecution(callId: string) {
         this.toolExecutionIds.delete(callId);
     }
 
-    /** @param {string} executionId */
-    forgetExecutionToolCalls(executionId) {
+    forgetExecutionToolCalls(executionId: string) {
         for (const [callId, owner] of this.toolExecutionIds) {
             if (owner === executionId) this.toolExecutionIds.delete(callId);
         }
@@ -338,22 +371,14 @@ export class HostedSession {
         if (this.disposed) throw new Error(`HostedSession "${this.id}" is disposed`);
     }
 
-    /**
-     * @param {string} displayName
-     * @param {string} [model]
-     * @param {string} [provider]
-     * @param {string} [agentName]
-     * @returns {string}
-     */
-    pushAgentInfo(displayName, model = "", provider = "", agentName = "") {
+    pushAgentInfo(displayName: string, model: string = "", provider: string = "", agentName: string = ""): string {
         this.assertActive();
         const sessionInfoId = `agent-info-${++this.agentInfoSequence}`;
         this.agentInfoStack.push({ sessionInfoId, displayName, model, provider, ...(agentName ? { agentName } : {}) });
         return sessionInfoId;
     }
 
-    /** @param {string} [sessionInfoId] */
-    popAgentInfo(sessionInfoId = "") {
+    popAgentInfo(sessionInfoId: string = "") {
         this.assertActive();
         if (!sessionInfoId) {
             this.agentInfoStack.pop();
@@ -363,8 +388,7 @@ export class HostedSession {
         if (index >= 0) this.agentInfoStack.splice(index, 1);
     }
 
-    /** @param {string} displayName @param {string} [model] @param {string} [provider] @param {string} [agentName] */
-    resetAgentInfoStack(displayName, model = "", provider = "", agentName = "") {
+    resetAgentInfoStack(displayName: string, model: string = "", provider: string = "", agentName: string = "") {
         this.assertActive();
         const sessionInfoId = `agent-info-${++this.agentInfoSequence}`;
         this.agentInfoStack = [{ sessionInfoId, displayName, model, provider, ...(agentName ? { agentName } : {}) }];
@@ -384,8 +408,7 @@ export class HostedSession {
         return this.getActiveAgentInfo()?.displayName || "";
     }
 
-    /** @param {string} model @param {string} [provider] @param {boolean} [isUserOverride] */
-    setActiveModelState(model, provider = "", isUserOverride = false) {
+    setActiveModelState(model: string, provider: string = "", isUserOverride: boolean = false) {
         this.assertActive();
         if (isUserOverride) {
             this.userModelOverrideId = model;
@@ -420,8 +443,7 @@ export class HostedSession {
         this.userModelOverrideProvider = "";
     }
 
-    /** @param {Function | null} handler */
-    setActiveOnMessage(handler) {
+    setActiveOnMessage(handler: AgentHandler | null) {
         this.assertActive();
         this.activeOnMessage = handler;
     }
@@ -430,8 +452,7 @@ export class HostedSession {
         return this.activeOnMessage;
     }
 
-    /** @param {import('./managed-operation.ts').ManagedOperationCapability | null} capability */
-    setManagedOperationCapability(capability) {
+    setManagedOperationCapability(capability: ManagedOperationCapability | null) {
         this.assertActive();
         this.managedOperationCapability = capability;
     }
@@ -440,8 +461,7 @@ export class HostedSession {
         return this.managedOperationCapability;
     }
 
-    /** @param {import('./managed-operation.ts').ManagedOperationCapability | null} capability */
-    #assertManagedWritableCapability(capability) {
+    #assertManagedWritableCapability(capability: ManagedOperationCapability | null) {
         if (!this.managed) return;
         if (!capability || capability !== this.managedOperationCapability) {
             throw new Error("managed_operation_required");
@@ -449,8 +469,10 @@ export class HostedSession {
         capability.assertLive();
     }
 
-    /** @param {MinimalSessionManagerLike | null} sessionManager @param {import('./managed-operation.ts').ManagedOperationCapability | null} [capability] */
-    setRootSessionManager(sessionManager, capability = null) {
+    setRootSessionManager(
+        sessionManager: MinimalSessionManagerLike | null,
+        capability: ManagedOperationCapability | null = null,
+    ) {
         this.assertActive();
         if (sessionManager) this.#assertManagedWritableCapability(capability);
         const previous = this.workflowContext;
@@ -458,9 +480,7 @@ export class HostedSession {
         if (!sessionManager) return;
 
         this.tutorialContext = readPersistedTutorialContext(sessionManager);
-        const persisted = readPersistedWorkflowContext(
-            /** @type {import('@earendil-works/pi-coding-agent').SessionManager} */ (sessionManager),
-        );
+        const persisted = readPersistedWorkflowContext(sessionManager);
         if (persisted) {
             this.replaceWorkflowContext(persisted, { persist: false });
             return;
@@ -474,8 +494,7 @@ export class HostedSession {
         return this.rootSessionManager;
     }
 
-    /** @param {ManagedSessionMetadata | null} metadata */
-    setManagedMetadata(metadata) {
+    setManagedMetadata(metadata: ManagedSessionMetadata | null) {
         this.assertActive();
         this.managed = metadata ? { ...metadata } : null;
     }
@@ -484,8 +503,7 @@ export class HostedSession {
         return this.managed ? { ...this.managed } : null;
     }
 
-    /** @param {{ piSessionId: string, transcriptPath: string, currentSegmentId: string, sessionManager: MinimalSessionManagerLike }} segment */
-    replaceManagedTranscriptSegment(segment) {
+    replaceManagedTranscriptSegment(segment: ManagedTranscriptSegment) {
         this.assertActive();
         if (!this.managed) throw new Error("Session metadata is unavailable");
         this.#assertManagedWritableCapability(this.managedOperationCapability);
@@ -498,15 +516,12 @@ export class HostedSession {
             transcriptPath: segment.transcriptPath,
             currentSegmentId: segment.currentSegmentId,
         };
-        const persisted = readPersistedWorkflowContext(
-            /** @type {import('@earendil-works/pi-coding-agent').SessionManager} */ (segment.sessionManager),
-        );
+        const persisted = readPersistedWorkflowContext(segment.sessionManager);
         if (persisted) this.replaceWorkflowContext(persisted, { persist: false });
         this.tutorialContext = readPersistedTutorialContext(segment.sessionManager);
     }
 
-    /** @param {PendingManagedTurnIntent} intent */
-    mergePendingManagedTurnIntent(intent) {
+    mergePendingManagedTurnIntent(intent: PendingManagedTurnIntent) {
         this.assertActive();
         this.pendingManagedTurnIntent = { ...this.pendingManagedTurnIntent, ...intent };
     }
@@ -546,8 +561,7 @@ export class HostedSession {
         this.managedOperationCapability = null;
     }
 
-    /** @param {unknown} eventSink */
-    setEventSink(eventSink) {
+    setEventSink(eventSink: HostedSessionOptions["eventSink"]) {
         this.assertActive();
         this.eventSink = eventSink;
     }
@@ -556,21 +570,18 @@ export class HostedSession {
         return this.eventSink;
     }
 
-    /** @param {(event: HostedRuntimeEventObservation) => void} observer */
-    subscribeRuntimeEvents(observer) {
+    subscribeRuntimeEvents(observer: (event: HostedRuntimeEventObservation) => void) {
         this.assertActive();
         this.eventObservers.add(observer);
         return () => this.eventObservers.delete(observer);
     }
 
-    /** @param {{ planId: string, planningAgentName: string }} review */
-    getPlanReviewConversation(review) {
+    getPlanReviewConversation(review: PlanReviewLookup) {
         this.assertActive();
         return this.planReviewConversations.select(review.planId, review.planningAgentName);
     }
 
-    /** @param {HostedRuntimeEventObservation} event */
-    publishRuntimeEvent(event) {
+    publishRuntimeEvent(event: HostedRuntimeEventObservation) {
         this.planReviewConversations.capture(event);
         for (const observer of this.eventObservers) {
             try {
@@ -581,10 +592,7 @@ export class HostedSession {
         }
     }
 
-    /**
-     * @param {import('./session-runtime-interactions.ts').RuntimeInteractionAdapter | null} adapter
-     */
-    setInteractionAdapter(adapter) {
+    setInteractionAdapter(adapter: RuntimeInteractionAdapter | null) {
         this.assertActive();
         this.interactionAdapter = adapter;
     }
@@ -593,8 +601,7 @@ export class HostedSession {
         return this.interactionAdapter;
     }
 
-    /** @param {import('../mcp/config.ts').McpServerDefinition[]} servers */
-    setMcpRequestServers(servers) {
+    setMcpRequestServers(servers: McpServerDefinition[]) {
         this.assertActive();
         this.mcpRequestServers = servers.map((server) => ({ ...server }));
     }
@@ -603,8 +610,7 @@ export class HostedSession {
         return this.mcpRequestServers.map((server) => ({ ...server }));
     }
 
-    /** @param {import('../mcp/integration.ts').McpIntegration | null} pool */
-    async setMcpIntegration(pool) {
+    async setMcpIntegration(pool: McpIntegration | null) {
         this.assertActive();
         const previous = this.mcpIntegration;
         this.mcpIntegration = pool;
@@ -619,8 +625,7 @@ export class HostedSession {
         return this.mcpIntegration?.getTools?.() || [];
     }
 
-    /** @param {HostedSession} targetHostedSession */
-    moveMcpStateTo(targetHostedSession) {
+    moveMcpStateTo(targetHostedSession: HostedSession) {
         this.assertActive();
         targetHostedSession.assertActive();
         targetHostedSession.mcpIntegration = this.mcpIntegration;
@@ -634,14 +639,12 @@ export class HostedSession {
         if (pool) await pool.close();
     }
 
-    /** @param {string} id @param {ActiveInteractionRecord} record */
-    addActiveInteraction(id, record) {
+    addActiveInteraction(id: string, record: ActiveInteractionRecord) {
         this.assertActive();
         this.activeInteractions.set(id, record);
     }
 
-    /** @param {string} id */
-    removeActiveInteraction(id) {
+    removeActiveInteraction(id: string) {
         this.activeInteractions.delete(id);
     }
 
@@ -649,8 +652,7 @@ export class HostedSession {
         return new Map(this.activeInteractions);
     }
 
-    /** @param {string} url */
-    setLiveCodeReviewUrl(url) {
+    setLiveCodeReviewUrl(url: string) {
         this.liveCodeReviewUrl = url;
     }
 
@@ -669,9 +671,7 @@ export class HostedSession {
         return canceled;
     }
 
-    /** @param {DisposableLike | null} session */
-    /** @param {DisposableLike | null} session @param {import('./managed-operation.ts').ManagedOperationCapability | null} [capability] */
-    setRootAgentSession(session, capability = null) {
+    setRootAgentSession(session: DisposableLike | null, capability: ManagedOperationCapability | null = null) {
         this.assertActive();
         if (session) this.#assertManagedWritableCapability(capability);
         this.rootAgentSession = session;
@@ -681,8 +681,7 @@ export class HostedSession {
         return this.rootAgentSession;
     }
 
-    /** @param {string | null} agentName @param {import('./managed-operation.ts').ManagedOperationCapability | null} [capability] */
-    setRootAgentName(agentName, capability = null) {
+    setRootAgentName(agentName: string | null, capability: ManagedOperationCapability | null = null) {
         this.assertActive();
         if (agentName) this.#assertManagedWritableCapability(capability);
         this.rootAgentName = agentName;
@@ -702,12 +701,7 @@ export class HostedSession {
         return true;
     }
 
-    /**
-     * @param {string} agentName
-     * @param {string} report
-     * @param {number} timestampMs
-     */
-    recordPendingTaskCompletion(agentName, report, timestampMs = Date.now()) {
+    recordPendingTaskCompletion(agentName: string, report: string, timestampMs: number = Date.now()) {
         this.assertActive();
         this.pendingTaskCompletion = {
             agentName,
@@ -717,8 +711,7 @@ export class HostedSession {
         };
     }
 
-    /** @param {DisposableLike | null} owningSession */
-    consumePendingTaskCompletion(owningSession) {
+    consumePendingTaskCompletion(owningSession: DisposableLike | null) {
         if (!this.pendingTaskCompletion) return null;
         if (this.pendingTaskCompletion.owningSession !== owningSession) return null;
         const completion = this.pendingTaskCompletion;
@@ -730,22 +723,22 @@ export class HostedSession {
         return this.pendingTaskCompletion ? { ...this.pendingTaskCompletion } : null;
     }
 
-    /** @param {ActiveExecutionWorkflow | null} workflow @param {PendingTaskCompletion | null} pendingTaskCompletion */
-    restoreActiveExecutionWorkflow(workflow, pendingTaskCompletion) {
+    restoreActiveExecutionWorkflow(
+        workflow: ActiveExecutionWorkflow | null,
+        pendingTaskCompletion: PendingTaskCompletion | null,
+    ) {
         this.assertActive();
         this.activeExecutionWorkflow = workflow;
         this.pendingTaskCompletion = pendingTaskCompletion ? { ...pendingTaskCompletion } : null;
     }
 
-    /** @param {DisposableLike} session @param {import('./managed-operation.ts').ManagedOperationCapability | null} [capability] */
-    addSubAgentSession(session, capability = null) {
+    addSubAgentSession(session: DisposableLike, capability: ManagedOperationCapability | null = null) {
         this.assertActive();
         this.#assertManagedWritableCapability(capability);
         this.subAgentSessions.add(session);
     }
 
-    /** @param {DisposableLike} session */
-    removeSubAgentSession(session) {
+    removeSubAgentSession(session: DisposableLike) {
         this.assertActive();
         this.subAgentSessions.delete(session);
     }
@@ -754,16 +747,14 @@ export class HostedSession {
         return new Set(this.subAgentSessions);
     }
 
-    /** @param {DisposableLike} session */
-    pushSteeringTargetSession(session) {
+    pushSteeringTargetSession(session: DisposableLike) {
         this.assertActive();
         const steeringTargetId = `steering-target-${++this.steeringTargetSequence}`;
         this.steeringTargetStack.push({ steeringTargetId, session });
         return steeringTargetId;
     }
 
-    /** @param {string} steeringTargetId */
-    popSteeringTargetSession(steeringTargetId) {
+    popSteeringTargetSession(steeringTargetId: string) {
         this.assertActive();
         if (!steeringTargetId) {
             this.steeringTargetStack.pop();
@@ -778,32 +769,27 @@ export class HostedSession {
         return this.steeringTargetStack[this.steeringTargetStack.length - 1].session;
     }
 
-    /** @returns {string} */
-    beginAgentTransition() {
+    beginAgentTransition(): string {
         this.assertActive();
         if (this.agentTransitionId) throw new Error("An Agent transition is already active");
         this.agentTransitionId = `agent-transition-${crypto.randomUUID()}`;
         return this.agentTransitionId;
     }
 
-    /** @returns {boolean} */
-    isAgentTransitioning() {
+    isAgentTransitioning(): boolean {
         return Boolean(this.agentTransitionId);
     }
 
-    /** @returns {string | null} */
-    getAgentTransitionId() {
+    getAgentTransitionId(): string | null {
         return this.agentTransitionId;
     }
 
-    /**
-     * @param {string} text
-     * @param {import('./image-attachments.ts').ImageAttachment[]} images
-     * @param {import('./session-runtime-events.ts').RuntimeQueuedMessage} [message]
-     * @param {number} [submissionOrder]
-     * @returns {boolean}
-     */
-    queueAgentTransitionSteering(text, images = [], message, submissionOrder) {
+    queueAgentTransitionSteering(
+        text: string,
+        images: ImageAttachment[] = [],
+        message?: RuntimeQueuedMessage,
+        submissionOrder?: number,
+    ): boolean {
         if (!this.agentTransitionId) return false;
         const entry = {
             text,
@@ -829,38 +815,32 @@ export class HostedSession {
         return true;
     }
 
-    /** @param {string} transitionId */
-    completeAgentTransition(transitionId) {
+    completeAgentTransition(transitionId: string) {
         this.assertActive();
         if (this.agentTransitionId === transitionId) this.agentTransitionId = null;
     }
 
-    /** @param {string} messageId */
-    beginAgentSteeringPreparation(messageId) {
+    beginAgentSteeringPreparation(messageId: string) {
         this.assertActive();
         this.agentSteeringPreparations.add(messageId);
     }
 
-    /** @param {string} messageId */
-    completeAgentSteeringPreparation(messageId) {
+    completeAgentSteeringPreparation(messageId: string) {
         if (!this.agentSteeringPreparations.delete(messageId) || this.agentSteeringPreparations.size > 0) return;
         for (const resolve of this.agentSteeringPreparationWaiters) resolve();
         this.agentSteeringPreparationWaiters.clear();
     }
 
-    /** @returns {boolean} */
-    hasAgentSteeringPreparations() {
+    hasAgentSteeringPreparations(): boolean {
         return this.agentSteeringPreparations.size > 0;
     }
 
-    /** @returns {Promise<void>} */
-    async waitForAgentSteeringPreparations() {
+    async waitForAgentSteeringPreparations(): Promise<void> {
         if (!this.hasAgentSteeringPreparations()) return;
         await new Promise((resolve) => this.agentSteeringPreparationWaiters.add(() => resolve(undefined)));
     }
 
-    /** @returns {AgentTransitionSteering[]} */
-    listAgentTransitionSteering() {
+    listAgentTransitionSteering(): AgentTransitionSteering[] {
         return this.agentTransitionSteering.map((entry) => ({
             text: entry.text,
             images: entry.images.map((image) => ({ ...image })),
@@ -875,8 +855,7 @@ export class HostedSession {
         }));
     }
 
-    /** @returns {AgentTransitionSteering[]} */
-    consumeAgentTransitionSteering() {
+    consumeAgentTransitionSteering(): AgentTransitionSteering[] {
         const steering = this.agentTransitionSteering;
         this.agentTransitionSteering = [];
         return steering.map((entry) => ({
@@ -893,21 +872,18 @@ export class HostedSession {
         }));
     }
 
-    /** @param {string} messageId */
-    removeAgentTransitionSteering(messageId) {
+    removeAgentTransitionSteering(messageId: string) {
         const index = this.agentTransitionSteering.findIndex((entry) => entry.message?.id === messageId);
         if (index < 0) return false;
         this.agentTransitionSteering.splice(index, 1);
         return true;
     }
 
-    /** @returns {AgentTransitionSteering[]} */
-    clearAgentTransitionSteering() {
+    clearAgentTransitionSteering(): AgentTransitionSteering[] {
         return this.consumeAgentTransitionSteering();
     }
 
-    /** @param {AgentTransitionSteering[]} entries */
-    restoreAgentTransitionSteering(entries) {
+    restoreAgentTransitionSteering(entries: AgentTransitionSteering[]) {
         const missingEntries = entries.filter(
             (entry) =>
                 !this.agentTransitionSteering.some((current) =>
@@ -935,11 +911,7 @@ export class HostedSession {
         ];
     }
 
-    /**
-     * @param {"read" | "write"} mode
-     * @returns {() => void}
-     */
-    acquireDelegatedAgentLease(mode) {
+    acquireDelegatedAgentLease(mode: "read" | "write"): () => void {
         this.assertActive();
         if (mode === "read") {
             if (this.delegatedWriterActive) {
@@ -979,14 +951,12 @@ export class HostedSession {
         return this.activeThinkingLevel;
     }
 
-    /** @param {ThinkingLevel} level */
-    setThinkingLevel(level) {
+    setThinkingLevel(level: ThinkingLevel) {
         this.assertActive();
         this.activeThinkingLevel = level;
     }
 
-    /** @param {string} context */
-    setProjectStateContext(context) {
+    setProjectStateContext(context: string) {
         this.assertActive();
         this.projectStateContext = context;
     }
@@ -1005,11 +975,7 @@ export class HostedSession {
             : null;
     }
 
-    /**
-     * @param {import('./tutorial-context-session.ts').TutorialContextUpdate} update
-     * @param {import('./plan-association.ts').ManifestPlanAssociation[]} committedPlanAssociations
-     */
-    updateTutorialContext(update, committedPlanAssociations = []) {
+    updateTutorialContext(update: TutorialContextUpdate, committedPlanAssociations: ManifestPlanAssociation[] = []) {
         if (this.disposed) throw new Error("tutorial_context_not_writable");
         const capability = this.getManagedOperationCapability?.() || null;
         this.#assertManagedWritableCapability(capability);
@@ -1031,22 +997,13 @@ export class HostedSession {
         return this.getTutorialContext();
     }
 
-    /**
-     * @param {import('./workflow-context-session.ts').WorkflowContext | null} nextContext
-     * @param {{ persist?: boolean }} options
-     */
-    replaceWorkflowContext(nextContext, options = {}) {
+    replaceWorkflowContext(nextContext: WorkflowContext | null, options: WorkflowContextReplacementOptions = {}) {
         if (this.disposed) return;
         const previous = this.workflowContext;
         let normalized = nextContext;
         try {
             if (options.persist) {
-                normalized = recordNormalizedWorkflowContext(
-                    /** @type {import('@earendil-works/pi-coding-agent').SessionManager | null} */ (
-                        this.rootSessionManager
-                    ),
-                    nextContext,
-                );
+                normalized = recordNormalizedWorkflowContext(this.rootSessionManager, nextContext);
             }
         } catch (_e) {
             // Footer-context persistence is fail-open; keep normalized in-memory context below.
@@ -1060,17 +1017,11 @@ export class HostedSession {
         });
     }
 
-    /** @param {{ routingIntent: unknown, complexity: unknown, summary?: unknown }} details */
-    setWorkflowTriageContext(details) {
+    setWorkflowTriageContext(details: WorkflowTriageContextDetails) {
         if (this.disposed) return;
         try {
             const hasWorkflowContextPersistence = typeof this.rootSessionManager?.appendCustomEntry === "function";
-            const recordedContext = recordWorkflowTriageContext(
-                /** @type {import('@earendil-works/pi-coding-agent').SessionManager | null} */ (
-                    this.rootSessionManager
-                ),
-                details,
-            );
+            const recordedContext = recordWorkflowTriageContext(this.rootSessionManager, details);
             const nextContext =
                 recordedContext && !hasWorkflowContextPersistence
                     ? { ...this.workflowContext, ...recordedContext }
@@ -1082,17 +1033,11 @@ export class HostedSession {
         }
     }
 
-    /** @param {unknown} planName */
-    setWorkflowPlanName(planName) {
+    setWorkflowPlanName(planName: string) {
         if (this.disposed) return;
         try {
             const hasWorkflowContextPersistence = typeof this.rootSessionManager?.appendCustomEntry === "function";
-            const recordedContext = recordWorkflowPlanName(
-                /** @type {import('@earendil-works/pi-coding-agent').SessionManager | null} */ (
-                    this.rootSessionManager
-                ),
-                planName,
-            );
+            const recordedContext = recordWorkflowPlanName(this.rootSessionManager, planName);
             const nextContext =
                 recordedContext && !hasWorkflowContextPersistence
                     ? { ...this.workflowContext, ...recordedContext }
@@ -1106,16 +1051,14 @@ export class HostedSession {
         }
     }
 
-    /** @param {import('./workflow-context-session.ts').WorkflowContextInput} details */
-    setWorkflowExecutionContext(details) {
+    setWorkflowExecutionContext(details: WorkflowContextInput) {
         if (this.disposed) return;
         const nextContext = deriveWorkflowContextFromExecutionWorkflow(details);
         if (!nextContext) return;
         this.replaceWorkflowContext(nextContext, { persist: true });
     }
 
-    /** @param {{ planId?: unknown, planName?: unknown, purpose?: unknown }} details */
-    recordPlanAssociation(details) {
+    recordPlanAssociation(details: PlanAssociationInput) {
         if (this.disposed) throw new Error("plan_association_not_writable");
         const capability = this.getManagedOperationCapability?.() || null;
         this.#assertManagedWritableCapability(capability);
@@ -1137,8 +1080,7 @@ export class HostedSession {
         return entry;
     }
 
-    /** @param {ActiveExecutionWorkflow | null} workflow */
-    setActiveExecutionWorkflow(workflow) {
+    setActiveExecutionWorkflow(workflow: ActiveExecutionWorkflow | null) {
         this.assertActive();
         if (workflow) {
             const owner = workflow.executionAgent;
@@ -1196,8 +1138,7 @@ export class HostedSession {
         return this.activeExecutionWorkflow;
     }
 
-    /** @param {string} cycle */
-    warnBackgroundCompletion(cycle) {
+    warnBackgroundCompletion(cycle: string) {
         if (this.backgroundCompletionWarning === cycle) return false;
         this.backgroundCompletionWarning = cycle;
         return true;
@@ -1217,8 +1158,7 @@ export class HostedSession {
         }
     }
 
-    /** @param {string} cwd */
-    rebindProjectRoot(cwd) {
+    rebindProjectRoot(cwd: string) {
         this.assertActive();
         this.cwd = requireAbsoluteProjectRoot(cwd, "cwd");
     }
@@ -1237,16 +1177,14 @@ export class HostedSession {
         this.pendingTaskCompletion = null;
     }
 
-    /** @param {string} turnId */
-    beginTurn(turnId) {
+    beginTurn(turnId: string) {
         this.assertActive();
         if (this.activeTurnId) return false;
         this.activeTurnId = turnId;
         return true;
     }
 
-    /** @param {string} turnId */
-    endTurn(turnId) {
+    endTurn(turnId: string) {
         if (this.activeTurnId !== turnId) return false;
         this.activeTurnId = null;
         return true;

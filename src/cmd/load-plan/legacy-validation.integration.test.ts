@@ -17,7 +17,7 @@ import { loadPlan } from "../../plan-store.js";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { createGitPort } from "../../shared/git-port.ts";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
-import { HostedSession } from "../../shared/session/hosted-session.js";
+import { HostedSession } from "../../shared/session/hosted-session.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { findById } from "../../shared/worktree-registry.ts";
 import { type ControllerRecord, readControllerRecord } from "../../shared/workflow/controller-registry.ts";

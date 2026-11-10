@@ -25,7 +25,7 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
 import { git } from "../git-test-fixture.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { SessionHost } from "../session/session-host.ts";
 import { SessionRuntime } from "../session/session-runtime.ts";
 import { RuntimeEventTypes } from "../session/session-runtime-events.ts";

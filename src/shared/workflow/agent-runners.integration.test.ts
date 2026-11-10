@@ -5,7 +5,7 @@ import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.ts";
 import { AgyCliBackendError } from "../session/backends/agy-cli/failure.ts";
 import { buildEngineerPausedMessage, runEngineerWithPlan } from "./engineer-runner.ts";

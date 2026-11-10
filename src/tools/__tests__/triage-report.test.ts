@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { ok as assert, match as assertMatch } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
-import { HostedSession } from "../../shared/session/hosted-session.js";
+import { HostedSession } from "../../shared/session/hosted-session.ts";
 import type { TextContent } from "@earendil-works/pi-ai";
 import type { Static } from "typebox";
 import type { RuntimeSystemStatusEvent } from "../../shared/session/session-runtime-events.ts";

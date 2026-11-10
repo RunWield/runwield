@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { getHomeDir } from "../../constants.ts";
-import { HostedSession } from "./hosted-session.js";
+import { HostedSession } from "./hosted-session.ts";
 
 test("an unwritable log location fails before spawning and frees the slot", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));

@@ -89,7 +89,7 @@ interface AggregateProjectionFailure extends ProjectionFailure {
     events: [];
 }
 
-type ProjectedSessionSnapshot = {
+export type ProjectedSessionSnapshot = {
     activeAgent?: string | null;
     tutorialContext?: TutorialContextCandidate | null;
     [key: string]: unknown;

@@ -39,7 +39,7 @@ export class RuntimeManagedSync {
         await restorePublishedSessionProjectRoot(hostedSession, this.services.sessionStore);
         const emitEvents = options.emitEvents !== false;
         const emitSyncState = (
-            state: NonNullable<import("../hosted-session.js").ManagedSessionMetadata["syncState"]>,
+            state: NonNullable<import("../hosted-session.ts").ManagedSessionMetadata["syncState"]>,
         ) => {
             const previousState = managed.syncState;
             hostedSession.setManagedMetadata({ ...managed, syncState: state });
@@ -91,7 +91,7 @@ export class RuntimeManagedSync {
             activationState.activation?.state === "uncertain" ||
             activationState.activation?.state === "reconcile_required"
         ) {
-            const state: NonNullable<import("../hosted-session.js").ManagedSessionMetadata["syncState"]> = {
+            const state: NonNullable<import("../hosted-session.ts").ManagedSessionMetadata["syncState"]> = {
                 type: RuntimeEventTypes.MANAGED_SYNC_STATE_CHANGED,
                 status: "blocked",
                 localGeneration: currentLocalGeneration,
@@ -102,7 +102,7 @@ export class RuntimeManagedSync {
             return { ok: false, error: activationState.activation.state, state };
         }
         if (!activationState.generation) {
-            const state: NonNullable<import("../hosted-session.js").ManagedSessionMetadata["syncState"]> = {
+            const state: NonNullable<import("../hosted-session.ts").ManagedSessionMetadata["syncState"]> = {
                 type: RuntimeEventTypes.MANAGED_SYNC_STATE_CHANGED,
                 status: activeElsewhere ? "active_elsewhere" : "current",
                 localGeneration: currentLocalGeneration,
@@ -119,7 +119,7 @@ export class RuntimeManagedSync {
                 Number.isInteger(managed.acknowledgedEventOrdinal) ||
                 latestGeneration === null)
         ) {
-            const state: NonNullable<import("../hosted-session.js").ManagedSessionMetadata["syncState"]> = {
+            const state: NonNullable<import("../hosted-session.ts").ManagedSessionMetadata["syncState"]> = {
                 type: RuntimeEventTypes.MANAGED_SYNC_STATE_CHANGED,
                 status: activeElsewhere ? "active_elsewhere" : "current",
                 localGeneration: currentLocalGeneration,
@@ -173,7 +173,7 @@ export class RuntimeManagedSync {
                 : await reconcileLegacyCompletion(hostedSession.cwd, savedContext);
             hostedSession.replaceWorkflowContext(workflowContext, { persist: false });
             const previousSyncState = managed.syncState;
-            const nextMetadata: import("../hosted-session.js").ManagedSessionMetadata = {
+            const nextMetadata: import("../hosted-session.ts").ManagedSessionMetadata = {
                 ...managed,
                 generation: projected.generation,
                 acknowledgedGeneration: projected.generation,
@@ -214,7 +214,7 @@ export class RuntimeManagedSync {
             return { ok: true, events, state: managed.syncState || null, snapshot: summary };
         } catch (error) {
             const failure = toProjectionFailure(error);
-            const state: NonNullable<import("../hosted-session.js").ManagedSessionMetadata["syncState"]> = {
+            const state: NonNullable<import("../hosted-session.ts").ManagedSessionMetadata["syncState"]> = {
                 type: RuntimeEventTypes.MANAGED_SYNC_STATE_CHANGED,
                 status: "degraded",
                 localGeneration: currentLocalGeneration,

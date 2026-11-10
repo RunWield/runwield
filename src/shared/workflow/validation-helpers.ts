@@ -153,7 +153,7 @@ export function resolveWorkRecordSupersessionProposalsWithUi({
 export const __dirname = dirname(fromFileUrl(import.meta.url));
 
 interface RunManualQaChecklistPromptOptions {
-    hostedSession: import("../session/hosted-session.js").HostedSession;
+    hostedSession: import("../session/hosted-session.ts").HostedSession;
     name: string;
     classification: "QUICK_FIX" | "PLANNED_CHANGE" | "FEATURE";
     context: string;
@@ -165,7 +165,7 @@ interface RunManualQaChecklistPromptOptions {
  * after automated verification succeeds.
  *
  * @param {Object} args
- * @param {import('../session/hosted-session.js').HostedSession} args.hostedSession
+ * @param {import('../session/hosted-session.ts').HostedSession} args.hostedSession
  * @param {string} args.name
  * @param {"QUICK_FIX"|"PLANNED_CHANGE"|"FEATURE"} args.classification
  * @param {string} args.context
@@ -211,7 +211,7 @@ export async function runManualQaChecklistPrompt({
 }
 
 interface PresentManualQaChecklistOptions {
-    hostedSession: import("../session/hosted-session.js").HostedSession;
+    hostedSession: import("../session/hosted-session.ts").HostedSession;
     name: string;
     classification: "QUICK_FIX" | "PLANNED_CHANGE" | "FEATURE";
     context: string;
@@ -223,7 +223,7 @@ interface PresentManualQaChecklistOptions {
  * be visible, but must not retroactively fail successful validation.
  *
  * @param {Object} args
- * @param {import('../session/hosted-session.js').HostedSession} args.hostedSession
+ * @param {import('../session/hosted-session.ts').HostedSession} args.hostedSession
  * @param {string} args.name
  * @param {"QUICK_FIX"|"PLANNED_CHANGE"|"FEATURE"} args.classification
  * @param {string} args.context
@@ -247,7 +247,7 @@ async function presentManualQaChecklist({
 
 interface RunFeaturePostVerificationHandoffsOptions {
     pendingPublication?: boolean;
-    hostedSession: import("../session/hosted-session.js").HostedSession;
+    hostedSession: import("../session/hosted-session.ts").HostedSession;
     planName: string;
     planContent: string;
     projectRoot: string;
@@ -256,7 +256,7 @@ interface RunFeaturePostVerificationHandoffsOptions {
 
 /**
  * @param {Object} args
- * @param {import('../session/hosted-session.js').HostedSession} args.hostedSession
+ * @param {import('../session/hosted-session.ts').HostedSession} args.hostedSession
  * @param {string} args.planName
  * @param {string} args.planContent
  * @param {string} args.projectRoot
@@ -363,7 +363,7 @@ interface RunCompletionGatedRepairOptions {
     images?: Array<{ base64: string; mimeType: string }>;
     sessionManager: import("@earendil-works/pi-coding-agent").SessionManager | undefined;
     cwd?: string;
-    hostedSession: import("../session/hosted-session.js").HostedSession;
+    hostedSession: import("../session/hosted-session.ts").HostedSession;
 }
 
 async function runCompletionGatedRepair({
@@ -429,7 +429,7 @@ export function shouldContinueParentEpicAfterValidation(triageMeta: import("../.
 
 interface RunMechanicalValidationOptions {
     sessionManager: import("@earendil-works/pi-coding-agent").SessionManager | undefined;
-    hostedSession?: import("../session/hosted-session.js").HostedSession;
+    hostedSession?: import("../session/hosted-session.ts").HostedSession;
     cwd?: string;
     manualQaName?: string;
     manualQaContext?: string;
@@ -443,7 +443,7 @@ interface RunMechanicalValidationOptions {
  *
  * @param {Object} args
  * @param {import('@earendil-works/pi-coding-agent').SessionManager | undefined} args.sessionManager
- * @param {import('../session/hosted-session.js').HostedSession} [args.hostedSession]
+ * @param {import('../session/hosted-session.ts').HostedSession} [args.hostedSession]
  * @param {string} [args.cwd]
  * @param {string} [args.manualQaName]
  * @param {string} [args.manualQaContext]

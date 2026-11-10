@@ -10,7 +10,7 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { archivePlan, loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { setCustomSetting } from "../settings.js";
 import { createGitPort } from "../git-port.ts";
 import { listEntries } from "../worktree-registry.ts";

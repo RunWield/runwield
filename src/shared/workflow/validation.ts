@@ -46,8 +46,8 @@ export type { ValidationPhaseResult, WorkflowValidationResult } from "./validati
 
 type PlanFrontMatter = import("../../plan-store.js").PlanFrontMatter;
 type TriageMeta = import("../../tools/plan-written.ts").TriageMeta & Partial<PlanFrontMatter>;
-type ActiveExecutionWorkflow = import("../session/hosted-session.js").ActiveExecutionWorkflow;
-type HostedSession = import("../session/hosted-session.js").HostedSession;
+type ActiveExecutionWorkflow = import("../session/hosted-session.ts").ActiveExecutionWorkflow;
+type HostedSession = import("../session/hosted-session.ts").HostedSession;
 type GitPort = import("../git-port.ts").GitPort;
 type WorkRecordMnemotecaPort = import("../work-records/mnemoteca-port.ts").WorkRecordMnemotecaPort;
 

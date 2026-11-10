@@ -83,7 +83,7 @@ export async function saveValidationCommand(
 }
 
 async function askForValidationCommand(
-    hostedSession: import("../session/hosted-session.js").HostedSession,
+    hostedSession: import("../session/hosted-session.ts").HostedSession,
     projectRoot: string,
     settingsPolicy: ValidationCommandSettingsPolicy,
 ): Promise<string> {
@@ -135,7 +135,7 @@ export interface ValidationCommandOptions {
 }
 
 export interface LocalCIOptions {
-    hostedSession: import("../session/hosted-session.js").HostedSession;
+    hostedSession: import("../session/hosted-session.ts").HostedSession;
     cwd: string;
     settingsPolicy?: ValidationCommandSettingsPolicy;
 }

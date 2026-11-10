@@ -307,6 +307,7 @@ function attachExternalAgentSession(
 test("SessionRuntime commits a Claude CLI model reconfiguration only after root rebuild succeeds", async () => {
     const sessionHost = new SessionHost();
     const session = sessionHost.createSession({ id: "claude-model-commit", cwd: runtimeProjectRoot() });
+    /** @type {import("./agent-handler.ts").AgentHandler} */
     const previousHandler = () => Promise.resolve({ kind: "complete" });
     const previousAgentSession = { dispose() {} };
     session.setRootAgentName("engineer");
@@ -331,6 +332,7 @@ test("SessionRuntime commits a Claude CLI model reconfiguration only after root 
 test("SessionRuntime restores the previous user model override when active root rebuild fails", async () => {
     const sessionHost = new SessionHost();
     const session = sessionHost.createSession({ id: "model-rollback", cwd: runtimeProjectRoot() });
+    /** @type {import("./agent-handler.ts").AgentHandler} */
     const previousHandler = () => Promise.resolve({ kind: "complete" });
     const previousAgentSession = { dispose() {} };
     session.setRootAgentName("engineer");

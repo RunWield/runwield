@@ -4,7 +4,7 @@ import { fauxAssistantMessage, type FauxResponseFactory, fauxToolCall } from "@e
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { type RuntimeCommandFixture, withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { savePlan } from "../../plan-store.js";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { getRunWieldSessionDir } from "../session/root-session.ts";
 import { listWorkRecords, writeWorkRecord } from "../work-records/store.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";

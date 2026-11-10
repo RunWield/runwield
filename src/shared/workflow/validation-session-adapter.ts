@@ -1,7 +1,7 @@
 import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { type AgentMessage } from "@earendil-works/pi-agent-core";
-import { type HostedSession } from "../session/hosted-session.js";
+import { type HostedSession } from "../session/hosted-session.ts";
 import { runIsolatedAgentSession } from "../session/session.js";
 import { readRequestAttemptEntries } from "../session/request-dispatch.ts";
 import { emitAssistantMessage, type RuntimeValidationProgress } from "../session/session-runtime-events.ts";

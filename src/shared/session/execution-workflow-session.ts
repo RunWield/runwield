@@ -1,6 +1,6 @@
 import type { TriageMeta } from "../../tools/plan-written.ts";
 import type { ReviewLedger } from "../workflow/review-ledger.ts";
-import type { HostedSession, MinimalSessionManagerLike } from "./hosted-session.js";
+import type { HostedSession, MinimalSessionManagerLike } from "./hosted-session.ts";
 
 export interface ActiveExecutionWorkflow {
     planName: string;

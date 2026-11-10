@@ -27,7 +27,7 @@ import {
     withPlanLock,
 } from "../../plan-store.js";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { readControllerRecord, writeControllerState } from "./controller-registry.ts";
 import { findById, getWorktreeRegistryPath, pruneEntry } from "../worktree-registry.ts";
 import { addEntry } from "../worktree-registry.ts";

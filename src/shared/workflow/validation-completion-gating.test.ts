@@ -7,7 +7,7 @@ import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi
 
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan } from "../../plan-store.js";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { ensureRootAgentSession } from "../session/session.js";
 import { createValidationSessionPort } from "./validation-session-adapter.ts";
 import { attachRecorder, makeUi, makeValidationProjectRoot, runValidationLoop } from "./validation-test-helpers.ts";

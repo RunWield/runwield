@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { findPlansByParent, loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { createGitPort } from "../git-port.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { addEntry } from "../worktree-registry.ts";
 import { recordPlanEvent } from "./plan-lifecycle.ts";
 import { continueWorkflowValidation } from "./validation.ts";

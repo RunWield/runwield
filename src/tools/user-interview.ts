@@ -6,7 +6,7 @@
 import { type Static, Type } from "typebox";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "../shared/session/hosted-session.js";
+import type { HostedSession } from "../shared/session/hosted-session.ts";
 import type {
     RuntimeInteractionRequest,
     RuntimeInteractionResponse,

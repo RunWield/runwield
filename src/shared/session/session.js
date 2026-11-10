@@ -178,13 +178,13 @@ const modelSelectionSourceByModel = new WeakMap();
 /**
  * @param {unknown} hostedSession
  * @param {string} caller
- * @returns {import('./hosted-session.js').HostedSession}
+ * @returns {import('./hosted-session.ts').HostedSession}
  */
 function requireHostedSession(hostedSession, caller) {
     if (!hostedSession || typeof hostedSession !== "object") {
         throw new Error(`${caller}: hostedSession is required`);
     }
-    const candidate = /** @type {import('./hosted-session.js').HostedSession} */ (hostedSession);
+    const candidate = /** @type {import('./hosted-session.ts').HostedSession} */ (hostedSession);
     if (
         typeof candidate.getRootAgentSession !== "function" ||
         typeof candidate.setRootAgentSession !== "function" ||
@@ -602,7 +602,7 @@ export async function listLoadedAgentMdFiles(cwd) {
  * so its mere existence does NOT mean a run is in flight; gate on isStreaming
  * to avoid reporting "Agent run canceled" when the user presses Esc at idle.
  *
- * @param {import('./hosted-session.js').HostedSession} [hostedSession]
+ * @param {import('./hosted-session.ts').HostedSession} [hostedSession]
  * @returns {boolean} true when at least one active session was aborted
  */
 export function abortActiveSession(hostedSession) {
@@ -703,7 +703,7 @@ export async function steerAgentSessionWithPreparedInput(session, text, images) 
  * Steer the root (user-facing) session with a message injected between tool calls.
  * Foreground sub-agent steering uses steerActiveSessionWithTarget instead.
  *
- * @param {import('./hosted-session.js').HostedSession | string} hostedSession
+ * @param {import('./hosted-session.ts').HostedSession | string} hostedSession
  * @param {string | import('./image-attachments.ts').ImageAttachment[]} [text]
  * @param {import('./image-attachments.ts').ImageAttachment[]} [images]
  * @returns {Promise<boolean>} true when the root session was steered
@@ -715,7 +715,7 @@ export async function steerRootSession(hostedSession, text, images) {
 /**
  * Steer the root session and return the AgentSession that accepted the message.
  *
- * @param {import('./hosted-session.js').HostedSession | string} hostedSession
+ * @param {import('./hosted-session.ts').HostedSession | string} hostedSession
  * @param {string | import('./image-attachments.ts').ImageAttachment[]} [text]
  * @param {import('./image-attachments.ts').ImageAttachment[]} [images]
  * @param {(target: import('@earendil-works/pi-coding-agent').AgentSession) => void} [beforeSteer]
@@ -732,7 +732,7 @@ export async function steerRootSessionWithTarget(hostedSession, text, images, be
 /**
  * Steer the current foreground session if it is streaming, otherwise the streaming root session.
  *
- * @param {import('./hosted-session.js').HostedSession | string} hostedSession
+ * @param {import('./hosted-session.ts').HostedSession | string} hostedSession
  * @param {string | import('./image-attachments.ts').ImageAttachment[]} [text]
  * @param {import('./image-attachments.ts').ImageAttachment[]} [images]
  * @returns {Promise<import('@earendil-works/pi-coding-agent').AgentSession | null>}
@@ -1117,7 +1117,7 @@ export function applySessionTemperature(session, temperature) {
 const emittedAgentModelFallbacks = new WeakMap();
 
 /**
- * @param {import('./hosted-session.js').HostedSession | undefined} hostedSession
+ * @param {import('./hosted-session.ts').HostedSession | undefined} hostedSession
  * @param {string} agentName
  * @param {string} displayName
  * @param {string} engineerModel
@@ -1152,7 +1152,7 @@ function emitAgentModelFallback(hostedSession, agentName, displayName, engineerM
  * @param {import('./agents.ts').AgentDefinition} agentDef
  * @param {string} [agentName] - Used to look up settings-based model override.
  * @param {ReturnType<typeof getModelRegistry>} [modelRegistry]
- * @param {import('./hosted-session.js').HostedSession} [hostedSession]
+ * @param {import('./hosted-session.ts').HostedSession} [hostedSession]
  * @param {string} [projectRoot]
  * @param {{ ignoreManualModelOverride?: boolean }} [options]
  *
@@ -1588,7 +1588,7 @@ async function readGlobalInstructionFile(homeDir) {
 /**
  * @typedef {Object} SystemPromptContextProjectionOptions
  * @property {string} [homeDir]
- * @property {import('./hosted-session.js').HostedSession} [hostedSession]
+ * @property {import('./hosted-session.ts').HostedSession} [hostedSession]
  * @property {import('@earendil-works/pi-coding-agent').SessionManager} [sessionManager]
  * @property {string} [sessionName]
  */
@@ -1998,7 +1998,7 @@ function repairNamedInvocationContextEdits(sessionManager) {
  *  - runIsolatedAgentSession's transient sub-agent path
  *
  * @param {Object} opts
- * @param {import('./hosted-session.js').HostedSession} [opts.hostedSession]
+ * @param {import('./hosted-session.ts').HostedSession} [opts.hostedSession]
  * @param {string} opts.agentName
  * @param {string[]} [opts.toolNames]
  * @param {import('../bash-command-policy.ts').BashAllowedCommands} [opts.inheritedBashAllowedCommands]
@@ -2579,7 +2579,7 @@ export async function buildAgentSession({
  *   agentDef: import('./agents.ts').AgentDefinition,
  *   inheritedBashAllowedCommands?: import('../bash-command-policy.ts').BashAllowedCommands,
  *   agentName: string,
- *   hostedSession: import('./hosted-session.js').HostedSession | null,
+ *   hostedSession: import('./hosted-session.ts').HostedSession | null,
  *   triageMeta: import('../../tools/plan-written.ts').TriageMeta | undefined,
  *   cwd: string,
  *   customTools?: import('@earendil-works/pi-coding-agent').ToolDefinition[],
@@ -2710,7 +2710,7 @@ export async function composeClaudeCliBridgedTools({
  *   agentDef: import('./agents.ts').AgentDefinition,
  *   inheritedBashAllowedCommands?: import('../bash-command-policy.ts').BashAllowedCommands,
  *   agentName: string,
- *   hostedSession: import('./hosted-session.js').HostedSession | null,
+ *   hostedSession: import('./hosted-session.ts').HostedSession | null,
  *   triageMeta: import('../../tools/plan-written.ts').TriageMeta | undefined,
  *   cwd: string,
  *   customTools?: import('@earendil-works/pi-coding-agent').ToolDefinition[],
@@ -3174,7 +3174,7 @@ function installTaskCompletedAutoCompactionExclusion(session) {
  * when Pi compacts before or after a prompt.
  *
  * @param {import('@earendil-works/pi-coding-agent').AgentSession} session
- * @param {import('./hosted-session.js').HostedSession | null} hostedSession
+ * @param {import('./hosted-session.ts').HostedSession | null} hostedSession
  */
 export function installPairCheckpointAutoCompactionPreservation(session, hostedSession) {
     if (!hostedSession) return;
@@ -3301,7 +3301,7 @@ export async function drainSessionCompactionMetrics(session) {
 
 /**
  * @param {import('@earendil-works/pi-coding-agent').AgentSession} session
- * @param {import('./hosted-session.js').HostedSession} hostedSession
+ * @param {import('./hosted-session.ts').HostedSession} hostedSession
  * @param {import('./session-context-report.ts').SessionContextProjection | undefined} projection
  */
 function attachSessionMetricsObserver(session, hostedSession, projection) {
@@ -3572,7 +3572,7 @@ function attachSessionMetricsObserver(session, hostedSession, projection) {
  * @param {import('@earendil-works/pi-coding-agent').AgentSession} session
  * @param {import('./agents.ts').AgentDefinition} agentDef
  * @param {string} [debugLogPath]
- * @param {import('./hosted-session.js').HostedSession} [hostedSession]
+ * @param {import('./hosted-session.ts').HostedSession} [hostedSession]
  * @param {AbortSignal} [cancellationSignal] Explicit cancellation is not an API failure.
  *
  * @returns {SubscriberState}
@@ -4043,7 +4043,7 @@ function agentTransitionSteeringSignature(steering) {
  * @param {string} [opts.debugLogPath]
  * @param {AbortSignal} [opts.signal]
  * @param {boolean} [opts.disableAutoCompaction]
- * @param {import('./hosted-session.js').HostedSession} [opts.hostedSession]
+ * @param {import('./hosted-session.ts').HostedSession} [opts.hostedSession]
  * @param {AgentTransitionSteeringEntry[]} [opts.transitionSteering]
  * @param {() => void} [opts.onTransitionSteeringConsumed]
  * @param {string} [opts.requestId]
@@ -4269,11 +4269,11 @@ const executionMetricsForSession = new WeakMap();
 /** @type {WeakMap<import('@earendil-works/pi-coding-agent').AgentSession, { agentDef: import('./agents.ts').AgentDefinition, subAgentDefinition?: { id: import('./subagent-definitions.ts').SubAgentDefinitionId, options?: import('./subagent-definitions.ts').LoadSubAgentDefinitionOptions }, promptState: { text: string }, subscriberState: SubscriberState, unsubscribeMetrics: () => void, agentName: string, tools: string[], finalCustomTools: import('@earendil-works/pi-coding-agent').ToolDefinition[], callerCustomTools?: import('@earendil-works/pi-coding-agent').ToolDefinition[], effectiveToolDefinitions: import('@earendil-works/pi-coding-agent').ToolDefinition[], mcpToolNames?: string[], projectStateContext: string, cwd: string, model?: string, resolvedModel?: import('../models/model-registry.ts').RunWieldModel, contextProjection?: import('./session-context-report.ts').SessionContextProjection, imageMode?: string, visionFallbackModelRef?: string, steeringTargetId?: string }>} */
 const rootSessionMetadata = new WeakMap();
 
-/** @type {WeakMap<import('./hosted-session.js').HostedSession, { agentName: string, debugLogPath?: string }>} */
+/** @type {WeakMap<import('./hosted-session.ts').HostedSession, { agentName: string, debugLogPath?: string }>} */
 const pendingAgentSwitchLogs = new WeakMap();
 
 /**
- * @param {import('./hosted-session.js').HostedSession} hostedSession
+ * @param {import('./hosted-session.ts').HostedSession} hostedSession
  * @param {{ agentName: string, debugLogPath?: string }} state
  */
 export function markRootAgentSwitch(hostedSession, state) {
@@ -4281,7 +4281,7 @@ export function markRootAgentSwitch(hostedSession, state) {
 }
 
 /**
- * @param {import('./hosted-session.js').HostedSession} hostedSession
+ * @param {import('./hosted-session.ts').HostedSession} hostedSession
  * @returns {{ agentName: string, debugLogPath?: string } | undefined}
  */
 function consumePendingAgentSwitchLog(hostedSession) {
@@ -4300,7 +4300,7 @@ export function __getRootSessionMetadataForTests(session) {
 }
 
 /**
- * @param {import('./hosted-session.js').HostedSession} hostedSession
+ * @param {import('./hosted-session.ts').HostedSession} hostedSession
  * @returns {{ agentName: string, model?: string, cwd?: string } | null}
  */
 export function getRootSessionSwitchState(hostedSession) {
@@ -4316,7 +4316,7 @@ export function getRootSessionSwitchState(hostedSession) {
 }
 
 /**
- * @param {import('./hosted-session.js').HostedSession} hostedSession
+ * @param {import('./hosted-session.ts').HostedSession} hostedSession
  * @returns {Partial<import('./agent-switching.ts').AgentSwitchOptions>}
  */
 export function getRootSessionRebuildOptions(hostedSession) {
@@ -4335,7 +4335,7 @@ export function getRootSessionRebuildOptions(hostedSession) {
 }
 
 /**
- * @param {import('./hosted-session.js').HostedSession} hostedSession
+ * @param {import('./hosted-session.ts').HostedSession} hostedSession
  * @returns {{ projection: import('./session-context-report.ts').SessionContextProjection, activeMessageTokens: number, agentName: string, agentDisplayName: string, model?: string } | null}
  */
 export function getRootSessionContextProjection(hostedSession) {
@@ -4359,7 +4359,7 @@ export function getRootSessionContextProjection(hostedSession) {
  * without rebuilding or estimating its conversation messages. This is safe to
  * use from lightweight Runtime snapshots read frequently by consumers.
  *
- * @param {import('./hosted-session.js').HostedSession} hostedSession
+ * @param {import('./hosted-session.ts').HostedSession} hostedSession
  * @returns {number | null}
  */
 export function getRootSessionStaticContextTokens(hostedSession) {
@@ -4375,7 +4375,7 @@ export function getRootSessionStaticContextTokens(hostedSession) {
  * agent switches, model switches, and reloads cannot accidentally kill root
  * context. /new is the only production caller.
  *
- * @param {import('./hosted-session.js').HostedSession} hostedSession
+ * @param {import('./hosted-session.ts').HostedSession} hostedSession
  */
 export function disposeRootAgentSessionForNewSession(hostedSession) {
     const targetHostedSession = requireHostedSession(hostedSession, "disposeRootAgentSessionForNewSession");
@@ -4413,7 +4413,7 @@ export function disposeRootAgentSessionForNewSession(hostedSession) {
  * sessions (for example /new) own any intentional disposal/reset behavior.
  *
  * @param {Object} opts
- * @param {import('./hosted-session.js').HostedSession} [opts.hostedSession]
+ * @param {import('./hosted-session.ts').HostedSession} [opts.hostedSession]
  * @param {string} opts.agentName  Internal name (matches agent definition filename).
  * @param {string[]} [opts.toolNames]
  * @param {import('@earendil-works/pi-coding-agent').ToolDefinition[]} [opts.customTools]
@@ -4568,7 +4568,7 @@ export async function ensureRootAgentSession(opts) {
 }
 
 /**
- * @param {import('./hosted-session.js').HostedSession} hostedSession
+ * @param {import('./hosted-session.ts').HostedSession} hostedSession
  * @param {AgentTransitionSteeringEntry[]} transitionSteering
  */
 function publishTransitionSteeringConsumption(hostedSession, transitionSteering) {
@@ -4589,7 +4589,7 @@ function publishTransitionSteeringConsumption(hostedSession, transitionSteering)
 }
 
 /**
- * @param {import('./hosted-session.js').HostedSession} hostedSession
+ * @param {import('./hosted-session.ts').HostedSession} hostedSession
  * @param {AgentTransitionSteeringEntry[]} transitionSteering
  */
 function publishTransitionSteeringCancellation(hostedSession, transitionSteering) {
@@ -4671,7 +4671,7 @@ function recordPiExecutionContext(recorder, session, projection, samplingPoint) 
  * (via ensureRootAgentSession) and must match the requested agentName.
  *
  * @param {Object} opts
- * @param {import('./hosted-session.js').HostedSession} [opts.hostedSession]
+ * @param {import('./hosted-session.ts').HostedSession} [opts.hostedSession]
  * @param {string} opts.agentName  Internal name used to verify the root matches.
  * @param {string} opts.userRequest
  * @param {Array<{base64: string, mimeType: string}>} [opts.images]
@@ -4981,7 +4981,7 @@ export async function runNonInteractiveAgentPrompt({
  * @returns {void}
  *
  * @param {Object} opts
- * @param {import('./hosted-session.js').HostedSession} [opts.hostedSession]
+ * @param {import('./hosted-session.ts').HostedSession} [opts.hostedSession]
  * @param {string} opts.agentName
  * @param {string[]} [opts.toolNames] - Optional explicit tool override; defaults to agent frontmatter tools.
  * @param {import('../bash-command-policy.ts').BashAllowedCommands} [opts.inheritedBashAllowedCommands]

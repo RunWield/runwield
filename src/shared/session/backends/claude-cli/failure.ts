@@ -1,5 +1,5 @@
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "../../hosted-session.js";
+import type { HostedSession } from "../../hosted-session.ts";
 import { emitSystemStatus } from "../../session-runtime-events.ts";
 
 export type ClaudeCliBackendErrorKind =

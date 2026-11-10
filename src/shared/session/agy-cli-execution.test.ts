@@ -30,7 +30,7 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { AGENTS, SUBAGENTS } from "../../constants.ts";
 import { loadPlan } from "../../plan-store.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { HostedSession } from "./hosted-session.js";
+import { HostedSession } from "./hosted-session.ts";
 import { setCustomSetting } from "../settings.js";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/metrics.ts";
 import { installAgyCliMcpSetup } from "./backends/agy-cli/mcp-setup.ts";

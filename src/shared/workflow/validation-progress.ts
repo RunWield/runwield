@@ -7,7 +7,7 @@
  */
 
 import { emitSystemStatus } from "../session/session-runtime-events.ts";
-import type { HostedSession } from "../session/hosted-session.js";
+import type { HostedSession } from "../session/hosted-session.ts";
 import type {
     RuntimeValidationCheckResult,
     RuntimeValidationCheckResults,

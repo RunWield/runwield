@@ -11,7 +11,7 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { tmpdir } from "node:os";
 import { match as assertMatch, strictEqual } from "node:assert/strict";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
-import { HostedSession } from "../../shared/session/hosted-session.js";
+import { HostedSession } from "../../shared/session/hosted-session.ts";
 import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
 import { SESSION_COMPLETE_GUIDANCE } from "../../shared/workflow/plan-review-recovery.ts";
 import { createPlanWrittenTool, type PlanWrittenToolResult, type TriageMeta } from "../plan-written.ts";

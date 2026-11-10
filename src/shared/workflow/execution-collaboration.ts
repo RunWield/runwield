@@ -28,7 +28,7 @@ export const PairPauseReasons = Object.freeze({
 });
 
 /**
- * @param {import('../session/hosted-session.js').HostedSession} hostedSession
+ * @param {import('../session/hosted-session.ts').HostedSession} hostedSession
  * @returns {boolean}
  */
 export function supportsPairExecution(hostedSession) {
@@ -44,7 +44,7 @@ export function supportsPairExecution(hostedSession) {
  */
 
 /**
- * @param {import('../session/hosted-session.js').HostedSession} hostedSession
+ * @param {import('../session/hosted-session.ts').HostedSession} hostedSession
  * @param {{ executionAgent: "engineer"|"frontend-engineer", collaborationRecommendation: "autonomous"|"pair", source: "canonical"|"legacy_frontend"|"legacy_frontend_false"|"absent" }} policy
  * @returns {RuntimeCollaborationSelection}
  */

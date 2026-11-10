@@ -41,7 +41,7 @@ import {
     runRootTurn,
     shouldBypassAutoCompactionForAssistantMessage,
 } from "./session.js";
-import { HostedSession } from "./hosted-session.js";
+import { HostedSession } from "./hosted-session.ts";
 import type { RequestAttemptEntry } from "./request-dispatch.ts";
 import type { ImageAttachment } from "./image-attachments.ts";
 import { getRunWieldSessionDir } from "./root-session.ts";

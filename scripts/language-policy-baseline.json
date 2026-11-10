@@ -1,6 +1,5 @@
 [
     "src/plan-store.js",
-    "src/shared/session/hosted-session.js",
 
     "src/shared/session/session.js",
     "src/shared/settings.js",

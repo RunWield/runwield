@@ -6,7 +6,7 @@ import { remoteBackgroundTaskLogDirectory } from "../remote/background-task-logs
 import { spawnForegroundShell } from "../foreground-process.ts";
 import { extractAssistantOutput } from "../workflow/workflow-results.ts";
 import type { DelegatedAgentSessionOptions } from "../../tools/delegate-agent.ts";
-import type { HostedSession } from "./hosted-session.js";
+import type { HostedSession } from "./hosted-session.ts";
 
 export type BackgroundTaskKind = "shell" | "delegate";
 export type BackgroundTaskState = "running" | "completed" | "failed" | "cancelled" | "timed_out";

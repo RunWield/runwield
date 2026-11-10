@@ -66,7 +66,7 @@ export class RuntimeImages {
     }
 
     async persistActiveSessionImage(
-        session: import(".././hosted-session.js").HostedSession,
+        session: import(".././hosted-session.ts").HostedSession,
         image: import(".././image-attachments.ts").ImageAttachment,
     ) {
         const sessionManager = session.getRootSessionManager();
@@ -83,7 +83,7 @@ export class RuntimeImages {
     }
 
     async prepareSteeringInputForAgentSession(
-        session: import(".././hosted-session.js").HostedSession,
+        session: import(".././hosted-session.ts").HostedSession,
         text: string,
         images: import(".././image-attachments.ts").ImageAttachment[],
         agentSession: RuntimeImageAgentSession,
@@ -114,7 +114,7 @@ export class RuntimeImages {
     }
 
     async preflightImagesForAgentSession(
-        session: import(".././hosted-session.js").HostedSession,
+        session: import(".././hosted-session.ts").HostedSession,
         images: import(".././image-attachments.ts").ImageAttachment[],
         agentSession: RuntimeImageAgentSession | null,
     ) {
@@ -136,7 +136,7 @@ export class RuntimeImages {
     }
 
     async preflightImagesForModel(
-        session: import(".././hosted-session.js").HostedSession,
+        session: import(".././hosted-session.ts").HostedSession,
         images: import(".././image-attachments.ts").ImageAttachment[],
         activeModel: RuntimeImageModel | null | undefined,
         modelRegistry: ReturnType<typeof getModelRegistry>,
@@ -262,7 +262,7 @@ export class RuntimeImages {
     }
 
     async persistPendingPromptImages(
-        hostedSession: import(".././hosted-session.js").HostedSession,
+        hostedSession: import(".././hosted-session.ts").HostedSession,
         images: import(".././image-attachments.ts").ImageAttachment[],
     ) {
         if (images.length === 0) return images;

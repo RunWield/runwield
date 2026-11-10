@@ -16,7 +16,7 @@ import { readExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
 import { readPersistedTutorialContext } from "./tutorial-context-session.ts";
 import { readPersistedWorkflowContext } from "./workflow-context-session.ts";
 import { findProject, sessionDirForProject } from "./file-session-storage.ts";
-import type { ManagedSessionMetadata } from "./hosted-session.js";
+import type { ManagedSessionMetadata } from "./hosted-session.ts";
 import type { RemoteRolloverOptions, RemoteRolloverReceipt } from "../remote/session-protocol.ts";
 import { projectRemoteSessionRecords } from "../remote/session-records.ts";
 import { normalizePlanAssociation } from "./plan-association.ts";

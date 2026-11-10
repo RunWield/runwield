@@ -93,7 +93,7 @@ export class RuntimeLocalShell {
     }
 
     async runLocalShellCommandInSession(
-        session: import(".././hosted-session.js").HostedSession,
+        session: import(".././hosted-session.ts").HostedSession,
         options: { command: string; userRequest?: string; persist?: boolean },
         capability: import(".././managed-operation.ts").ManagedOperationCapability | null,
     ) {
@@ -216,7 +216,7 @@ export class RuntimeLocalShell {
     }
 
     recordLocalToolExchange(
-        session: import(".././hosted-session.js").HostedSession,
+        session: import(".././hosted-session.ts").HostedSession,
         exchange: {
             userRequest: string;
             toolCallId: string;

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { type ExtensionToolContext, SessionManager } from "@earendil-works/pi-coding-agent";
 import { loadPlan } from "../../plan-store.js";
 import { createTaskCompletedTool } from "../../tools/task-completed.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { listPendingTaskCompletions } from "../session/task-completion-session.ts";
 import { finalizePlanImplementation } from "./implementation-checkpoint.ts";
 import { makeValidationProjectRoot } from "./validation-test-helpers.ts";

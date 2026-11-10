@@ -10,7 +10,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
 import { loadPlan, savePlan, updatePlanFrontMatter, type PlanFrontMatterInput } from "../../plan-store.js";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import type {
     RuntimeInteractionAdapter,
     RuntimeInteractionRequest,

@@ -1,5 +1,5 @@
 import { emitSystemStatus } from "../session/session-runtime-events.ts";
-import type { HostedSession } from "../session/hosted-session.js";
+import type { HostedSession } from "../session/hosted-session.ts";
 
 export interface ExecutionWorktreeProgressDetails {
     worktreeBranch: string;

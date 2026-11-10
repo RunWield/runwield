@@ -20,7 +20,7 @@ import { SessionHost } from "../session/session-host.ts";
 import { createPlanWrittenTool } from "../../tools/plan-written.ts";
 import { SessionRuntime } from "../session/session-runtime.ts";
 import { RuntimeEventTypes } from "../session/session-runtime-events.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { buildAgentSession } from "../session/session.js";
 import { createRemoteRootSessionManager, getRemoteSessionSaveBridge } from "../session/root-session.ts";

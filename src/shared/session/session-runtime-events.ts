@@ -11,7 +11,7 @@ import type { WorkflowContext } from "./workflow-context-session.ts";
 import type { BackgroundTaskState } from "./background-tasks.ts";
 import type { SessionHelpItem } from "./session-help.ts";
 import type { PromptTemplateMeta, SkillMeta } from "./session.js";
-import type { HostedSession } from "./hosted-session.js";
+import type { HostedSession } from "./hosted-session.ts";
 
 export const RuntimeEventTypes = Object.freeze({
     SESSION_CREATED: "session_created",

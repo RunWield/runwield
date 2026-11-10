@@ -5,7 +5,7 @@ import { ok as assert } from "node:assert/strict";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { setCustomSetting } from "../settings.js";
 import { createExecutionStartPorts } from "./execution-start.ts";
 import { startActiveExecutionWorkflow } from "./workflow.ts";

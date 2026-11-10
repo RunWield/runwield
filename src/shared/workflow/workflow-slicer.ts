@@ -29,7 +29,7 @@ import { runEpicDecompositionFinalizeTransition } from "./state-transition.ts";
 import { ensureEpicBranch } from "./epic-branch.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { TriageMeta } from "../../tools/plan-written.ts";
-import type { HostedSession } from "../session/hosted-session.js";
+import type { HostedSession } from "../session/hosted-session.ts";
 
 export interface RunSlicerAgentOptions {
     planName: string;
@@ -82,7 +82,7 @@ function isActiveSlicerContextBoundary(entry) {
  *
  * @param {Object} opts
  * @param {string} opts.planName
- * @param {import('../session/hosted-session.js').HostedSession} opts.hostedSession
+ * @param {import('../session/hosted-session.ts').HostedSession} opts.hostedSession
  * @param {import('@earendil-works/pi-coding-agent').SessionManager | undefined} opts.sessionManager
  * @returns {{ manager: import('@earendil-works/pi-coding-agent').SessionManager, previousLeafId: string | null } | null}
  */
@@ -526,7 +526,7 @@ function createSlicerCustomTools(planName, cwd) {
  * @param {import('../../tools/plan-written.ts').TriageMeta} [opts.triageMeta]
  * @param {string} [opts.reviewFeedback]
  * @param {Array<{base64: string, mimeType: string}>} [opts.reviewImages]
- * @param {import('../session/hosted-session.js').HostedSession} opts.hostedSession
+ * @param {import('../session/hosted-session.ts').HostedSession} opts.hostedSession
  * @param {import('@earendil-works/pi-coding-agent').SessionManager} [opts.sessionManager]
  * @returns {Promise<{ ok: boolean, error?: string }>}
  */
@@ -604,7 +604,7 @@ export async function runSlicerAgent({
  * @param {string} opts.planName
  * @param {string} opts.planPath - Absolute path to the plan markdown file.
  * @param {import('../../tools/plan-written.ts').TriageMeta} [opts.triageMeta]
- * @param {import('../session/hosted-session.js').HostedSession} opts.hostedSession
+ * @param {import('../session/hosted-session.ts').HostedSession} opts.hostedSession
  * @param {import('@earendil-works/pi-coding-agent').SessionManager} [opts.sessionManager]
  * @returns {Promise<{ ok: true, slicerInvoked: boolean } | { ok: false, error: string, stage: "slicer" | "validation" }>}
  */

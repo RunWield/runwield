@@ -18,7 +18,7 @@ import { registerApiProvider, unregisterApiProviders } from "@earendil-works/pi-
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { getModelRegistry } from "../models/model-registry.ts";
 import { buildAgentSession, runIsolatedAgentSession } from "./session.js";
-import { HostedSession } from "./hosted-session.js";
+import { HostedSession } from "./hosted-session.ts";
 import { UsageReporter } from "../workflow/usage-reporting.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/metrics.ts";
 

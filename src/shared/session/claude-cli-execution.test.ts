@@ -17,7 +17,7 @@ import { Type } from "typebox";
 import { defineTool, SessionManager } from "@earendil-works/pi-coding-agent";
 import { AGENTS } from "../../constants.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { HostedSession } from "./hosted-session.js";
+import { HostedSession } from "./hosted-session.ts";
 import { getRunWieldSessionDir, openPersistedRootSession } from "./root-session.ts";
 import { __resetSettingsForTests } from "../settings.js";
 import {

@@ -6,7 +6,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { HostedSession } from "../../shared/session/hosted-session.js";
+import { HostedSession } from "../../shared/session/hosted-session.ts";
 import { runIsolatedAgentSession } from "../../shared/session/session.js";
 import { createDelegateAgentTool } from "../delegate-agent.ts";
 

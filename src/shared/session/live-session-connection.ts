@@ -15,7 +15,7 @@ import type {
     SessionRuntimeEvent,
 } from "./session-runtime-events.ts";
 import type { SessionRuntime, SteerSessionResult } from "./session-runtime.ts";
-import type { HostedSession } from "./hosted-session.js";
+import type { HostedSession } from "./hosted-session.ts";
 
 type LiveSessionCommand = {
     action: "answer" | "cancel" | "steer";
