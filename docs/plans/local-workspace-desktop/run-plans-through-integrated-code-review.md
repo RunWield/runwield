@@ -6,7 +6,7 @@ affectedPaths:
     - "src/acp/"
     - "src/shared/workflow/"
     - "src/shared/session/"
-    - "src/ui/workspace/server/session-continuation.js"
+    - "src/ui/workspace/server/session-continuation.ts"
     - "src/ui/workspace/server/owner-plan-progress.ts"
     - "src/ui/workspace/react/CodeReviewSurface.tsx"
     - "src/ui/workspace/react/WorkflowSidebar.tsx"
@@ -49,7 +49,7 @@ The desktop is another presentation surface for those decisions. A new desktop w
 The boundaries this change is expected to touch. This list is guidance, not an allowlist: verify the real footprint during implementation and change whatever the Implementation Steps need, including files not named here. Stop and report only when discovery changes approved intent — the change reaches another subsystem, public behavior or architecture shifts, migration or compatibility risk grows, or the Verification Plan no longer proves the objective.
 
 - `src/acp/`, `src/shared/workflow/`, `src/shared/session/` — negotiated workflow and review operations with canonical authority.
-- `src/ui/workspace/server/session-continuation.js`, `owner-plan-progress.ts`, relevant continuation routes — reusable orchestration extraction.
+- `src/ui/workspace/server/session-continuation.ts`, `owner-plan-progress.ts`, relevant continuation routes — reusable orchestration extraction.
 - `react/CodeReviewSurface.tsx`, `WorkflowSidebar.tsx`, shared review/resource modules, and desktop navigation — integrated workflow UI.
 - `src/ui/review/` and existing standalone handlers — compatibility preserved, not retired.
 - Core/Workspace/ACP scenarios and contract inventory — delivered workflow evidence.

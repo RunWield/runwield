@@ -306,7 +306,7 @@ baseline, lifecycle position, and completion contract.
   baseline, not by itself the resolver of effective project/home/bundled policy. Attached role instructions must use the
   same layered resolution as Core Sessions and avoid independent copies of role policy.
 - `src/ui/review/review-launcher.ts` exposes Plannotator through the Workspace review server. In
-  `src/ui/workspace/server.js`, `startReviewWorkspaceServer()` starts a server in the calling process and returns an
+  `src/ui/workspace/server.ts`, `startReviewWorkspaceServer()` starts a server in the calling process and returns an
   in-memory decision promise. Durable reviewed-revision decisions and browser-process ownership must both be covered.
 - ADR-011 makes TUI and ACP sibling adapters over SessionRuntime. Attached is not another such adapter because the
   External Agent Host executes the model turns. ADR-014 preserves ADR-011's dependency direction by introducing a

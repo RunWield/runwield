@@ -13,7 +13,7 @@ affectedPaths:
     - "src/shared/workflow/"
     - "src/shared/foreground-process.ts"
     - "src/ui/review/"
-    - "src/ui/workspace/server.js"
+    - "src/ui/workspace/server.ts"
     - "scripts/compile.js"
     - "scripts/release-assets.js"
     - "docs/prd/remote-ssh-prd.md"
@@ -452,7 +452,7 @@ platform scope, trust, persistence ownership, or dependency strategy returns for
   integrations, connection-owned processes, cancellation outside blocked Agent execution.
 - `src/shared/workflow/` — preserve project-owned workflow truth, remote validation/publication, and evidence-based
   recovery while Session history is local.
-- `src/shared/browser-port.ts`, `src/ui/review/`, TUI review integration, and `src/ui/workspace/server.js` — automatic
+- `src/shared/browser-port.ts`, `src/ui/review/`, TUI review integration, and `src/ui/workspace/server.ts` — automatic
   local forwarding, local reopen URLs, remote review content and Guided Review. No visual redesign.
 - `scripts/compile.js`, release/helper packaging and runtime resource handling — matched Linux builds, verified private
   dependencies, compiled UI, licensing, and non-destructive bootstrap.

@@ -4,7 +4,7 @@ import type { PlanReadAvailability } from "../../../plan-store.js";
 import { compareChildPlansByOrder, isSequencePlan } from "../../../plan-store.js";
 import { findByPlanId, findByPlanIds, type WorktreeRegistryEntry } from "../../../shared/worktree-registry.ts";
 import { loadPlanActionEvidence } from "../../../shared/workflow/plan-actions.ts";
-import { loadPlanSummaries, loadPlanSummaryCatalog } from "./plan-adapter.js";
+import { loadPlanSummaries, loadPlanSummaryCatalog } from "./plan-adapter.ts";
 import type { OwnerProjectHealth, OwnerProjectRecord, OwnerProjectView } from "./owner-projects.ts";
 import { requireOwnerProjectRoot, serializeOwnerProject } from "./owner-projects.ts";
 import { readLiveSessionConnection } from "../../../shared/session/live-session-connection.ts";

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
-import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
+import { WorkspaceSessionContinuationService } from "./server/session-continuation.ts";
 
 test("Workspace shutdown cancels an active turn before draining accepted work", async () => {
     await withRuntimeCommandFixture(

@@ -21,7 +21,7 @@ import { getWorkflowMetricsFilePath } from "../../shared/workflow/metrics.ts";
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
-import { createOwnerWorkspaceApp } from "./server.js";
+import { createOwnerWorkspaceApp } from "./server.ts";
 import type { OwnerUsageReport } from "./server/owner-usage.ts";
 
 interface FixtureRow {

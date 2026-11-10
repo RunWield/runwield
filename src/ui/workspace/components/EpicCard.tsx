@@ -1,3 +1,4 @@
+import type { PlanCardActions, PlanCardDragActions } from "./PlanCard.tsx";
 import type { PlanReadAvailability } from "../../../plan-store.js";
 import { detailHref } from "./PlanCard.tsx";
 import { RunWieldCard } from "../../design-system/components/react/RunWieldPrimitives.tsx";
@@ -15,14 +16,8 @@ export interface ProjectCardHealth {
     missingDependencies?: ProjectCardChild[];
 }
 
-export interface ProjectCardDragActions {
-    allowedTargetStatuses?: string[];
-}
-
-export interface ProjectCardActions {
-    dnd?: ProjectCardDragActions;
-    allowedManualTargetStatuses?: string[];
-}
+export type ProjectCardDragActions = PlanCardDragActions;
+export type ProjectCardActions = PlanCardActions;
 
 export type ProjectCardProgress = Pick<
     ReturnType<typeof countChildPlanProgress>,
@@ -33,7 +28,7 @@ export interface ProjectCardData {
     planId: string;
     planName: string;
     status: string;
-    attrs?: Pick<PlanFrontMatter, "type">;
+    attrs?: Partial<Pick<PlanFrontMatter, "type" | "classification">>;
     readAvailability?: PlanReadAvailability;
     summary?: string;
     heldFromStatus?: string;
@@ -41,7 +36,7 @@ export interface ProjectCardData {
     holdReason?: string;
     childProgress?: ProjectCardProgress;
     childHealth?: ProjectCardHealth;
-    actions?: ProjectCardActions;
+    actions?: ProjectCardActions | null;
     childCount?: number;
     doneEnough?: boolean;
 }

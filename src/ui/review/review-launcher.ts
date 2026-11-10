@@ -294,7 +294,7 @@ function registerReviewSurface<TDecision>(
     };
 }
 
-interface CodeReviewStatus {
+export interface CodeReviewStatus {
     stagedFiles: string[];
     unstagedFiles: string[];
     untrackedFiles: string[];

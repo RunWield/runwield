@@ -43,7 +43,7 @@ import {
     observeOperationBrowserNotifications,
     syncOperationBrowserNotificationLifecycle,
 } from "./islands/SessionSurface.jsx";
-import { readSessionName, WorkspaceSessionContinuationService } from "./server/session-continuation.js";
+import { readSessionName, WorkspaceSessionContinuationService } from "./server/session-continuation.ts";
 
 class BrowserNotification {
     static permission = "granted";

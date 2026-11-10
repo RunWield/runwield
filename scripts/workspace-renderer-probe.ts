@@ -41,8 +41,8 @@ try {
     await fsCopyFile(join(sourceRoot, "runtime-root.ts"), join(root, "runtime-root.ts"));
     await mirror("src", ["ui"]);
     await mirror("src/ui", ["workspace"]);
-    await mirror("src/ui/workspace", ["server.js"]);
-    await fsCopyFile(join(sourceRoot, "src/ui/workspace/server.js"), join(root, "src/ui/workspace/server.js"));
+    await mirror("src/ui/workspace", ["server.ts"]);
+    await fsCopyFile(join(sourceRoot, "src/ui/workspace/server.ts"), join(root, "src/ui/workspace/server.ts"));
     const source = join(
         root,
         process.versions.bun ? "dist/workspace-bun/server/entry.mjs" : "dist/workspace/server/entry.mjs",
@@ -50,7 +50,7 @@ try {
     const runtime = join(root, "dist/workspace-runtime/server.mjs");
     if (process.argv.slice(2)[0] !== "missing") await entry(source, "source");
     await entry(runtime, "runtime");
-    const { createWorkspaceApp } = await import(toFileUrl(join(root, "src/ui/workspace/server.js")).href);
+    const { createWorkspaceApp } = await import(toFileUrl(join(root, "src/ui/workspace/server.ts")).href);
     const handler = createWorkspaceApp({ cwd: root, token: "secret" }).handler();
     const page = async (value: string): Promise<string> => {
         const response = await handler(new Request(`http://localhost/?token=secret&page=${value}`));

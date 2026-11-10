@@ -23,7 +23,7 @@ import {
     createReviewAgentState,
     reviewAgentApi,
 } from "../ui/workspace/routes/api/review-agent-handlers.ts";
-import { createOwnerWorkspaceApp } from "../ui/workspace/server.js";
+import { createOwnerWorkspaceApp } from "../ui/workspace/server.ts";
 import type { OwnerUsageReport } from "../ui/workspace/server/owner-usage.ts";
 
 export const PRIVATE_TEXT = "journey-private-prompt-and-code";

@@ -10,7 +10,7 @@ import { mkdir as fsMkdir } from "node:fs/promises";
 
 import { dirname } from "node:path";
 import { DEFAULT_REMOTE_MAX_REQUEST_BYTES } from "./routes/remote-api.ts";
-import { createRemoteWorkspaceApp } from "./server.js";
+import { createRemoteWorkspaceApp } from "./server.ts";
 
 export const DEFAULT_REMOTE_HOST = "0.0.0.0";
 export const DEFAULT_REMOTE_PORT = 8080;

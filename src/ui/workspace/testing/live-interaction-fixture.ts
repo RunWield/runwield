@@ -3,8 +3,8 @@ import { withRuntimeCommandFixture, type RuntimeCommandFixture } from "../../../
 import { openOwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
 import type { RuntimeInteractionRequest } from "../../../shared/session/session-runtime-interactions.ts";
 import type { RuntimeInteractionResult } from "../../../shared/session/runtime/types.ts";
-import { WorkspaceSessionContinuationService } from "../server/session-continuation.js";
-import { createOwnerWorkspaceApp } from "../server.js";
+import { WorkspaceSessionContinuationService } from "../server/session-continuation.ts";
+import { createOwnerWorkspaceApp } from "../server.ts";
 
 interface LiveInteractionReference {
     projectId: string;

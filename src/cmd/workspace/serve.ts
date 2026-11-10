@@ -106,7 +106,7 @@ export async function runWorkspaceServeCommand(argv: string[]): Promise<void> {
     const store = openOwnerCoordinationStore();
     const stopMetricsExport = startMetricsExportScheduler({ signal: controller.signal });
     try {
-        const { startWorkspaceServer } = await import("../../ui/workspace/server.js");
+        const { startWorkspaceServer } = await import("../../ui/workspace/server.ts");
         const server = startWorkspaceServer({
             mode: "owner",
             host: parsed.host,

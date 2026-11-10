@@ -8,7 +8,7 @@ import {
     serializePlanError,
     StalePlanBodyError,
     workspaceMetadata,
-} from "../../server/plan-adapter.js";
+} from "../../server/plan-adapter.ts";
 
 export interface WorkspaceApiState {
     cwd: string;

@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import { savePlan } from "../../plan-store.js";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
-import { createOwnerWorkspaceApp, startWorkspaceServer } from "./server.js";
+import { createOwnerWorkspaceApp, startWorkspaceServer } from "./server.ts";
 
 type OwnerStore = ReturnType<typeof openOwnerCoordinationStore>;
 type RegisterProjectInput = Parameters<OwnerStore["registerProject"]>[0];

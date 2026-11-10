@@ -11,7 +11,7 @@ import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixtur
 import { createSessionRuntime } from "../shared/session/session-runtime.ts";
 import { listPersistedRootSessions } from "../shared/session/root-session.ts";
 import { openOwnerCoordinationStore } from "../shared/owner-coordination/index.ts";
-import { WorkspaceSessionContinuationService } from "./workspace/server/session-continuation.js";
+import { WorkspaceSessionContinuationService } from "./workspace/server/session-continuation.ts";
 import { Container, TuiMainScreen } from "@earendil-works/pi-tui";
 import { VirtualTerminal } from "./tui/testing/virtual-terminal.ts";
 import { createUiApi } from "./tui/api.ts";

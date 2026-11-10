@@ -15,7 +15,7 @@ import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
-import { createOwnerWorkspaceApp } from "../../ui/workspace/server.js";
+import { createOwnerWorkspaceApp } from "../../ui/workspace/server.ts";
 
 type OwnerApp = ReturnType<typeof createOwnerWorkspaceApp> & { close(): Promise<void> };
 

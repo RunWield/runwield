@@ -1,7 +1,7 @@
 import { rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import type { OwnerPlanProgress } from "./server/owner-plan-progress.ts";
-import type { WorkspacePlanReviewStarted } from "./server/session-continuation.js";
+import type { WorkspacePlanReviewStarted } from "./server/session-continuation.ts";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
@@ -9,7 +9,7 @@ import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { buildWorkflowPresentation } from "../../shared/workflow/workflow-presentation.ts";
-import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
+import { WorkspaceSessionContinuationService } from "./server/session-continuation.ts";
 import { ownerProjectPlanProgressApi } from "./routes/owner-api.ts";
 import { ownerPlanContinuationApi } from "./routes/owner-plan-continuation.ts";
 import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.ts";

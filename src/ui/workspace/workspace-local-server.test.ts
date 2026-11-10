@@ -14,13 +14,13 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { loadPlanBodyById, savePlan } from "../../plan-store.js";
 import { PLAN_UI_TOKEN_HEADER } from "../../constants.ts";
-import { loadBoard, loadWorkspaceDetail, workspaceMetadata as _workspaceMetadata } from "./server/plan-adapter.js";
+import { loadBoard, loadWorkspaceDetail, workspaceMetadata as _workspaceMetadata } from "./server/plan-adapter.ts";
 import { PlanBoard } from "./components/Board.tsx";
 import { PlanBoardToolbar } from "./components/PlanBoardToolbar.tsx";
 
 import { PlanDetail } from "./components/PlanDetail.tsx";
 
-import { createWorkspaceApp } from "./server.js";
+import { createWorkspaceApp } from "./server.ts";
 import { createWorkRecordMnemotecaFixture } from "../../shared/work-records/test-fixtures/mnemoteca-port.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 

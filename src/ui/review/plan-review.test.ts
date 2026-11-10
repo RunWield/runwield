@@ -7,7 +7,7 @@ import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, writeFile as 
 import { tmpdir } from "node:os";
 import process from "node:process";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { startReviewWorkspaceServer } from "../workspace/server.js";
+import { startReviewWorkspaceServer } from "../workspace/server.ts";
 import { join } from "node:path";
 import { getStoredPlanPath, loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.js";
 import type { PlanFrontMatter } from "../../plan-store.js";

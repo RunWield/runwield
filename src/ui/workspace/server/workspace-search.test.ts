@@ -30,9 +30,9 @@ import { replaceWorkRecord, writeWorkRecord } from "../../../shared/work-records
 import { requestWorkspaceSearchRefresh } from "../../../shared/workspace-search-refresh.ts";
 import { makeManagedSessionFixture, readTranscriptEvidence } from "../../../testing/managed-session-fixture.ts";
 import { readProjectArtifact } from "./project-artifacts.ts";
-import { loadWorkspaceDetail } from "./plan-adapter.js";
+import { loadWorkspaceDetail } from "./plan-adapter.ts";
 import { createWorkspaceSearchService, WORKSPACE_SEARCH_SCAN_INTERVAL_MS } from "./workspace-search.ts";
-import { createOwnerWorkspaceApp, startWorkspaceServer } from "../server.js";
+import { createOwnerWorkspaceApp, startWorkspaceServer } from "../server.ts";
 
 async function waitFor(condition: () => Promise<boolean>, timeoutMs = 60_000) {
     const deadline = Date.now() + timeoutMs;

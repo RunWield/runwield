@@ -9,7 +9,7 @@ import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts"
 import { createWorkRecordMnemotecaFixture } from "../../shared/work-records/test-fixtures/mnemoteca-port.ts";
 import { resolveSelectedThemeJson } from "../theme/theme.ts";
 import { renderRunWieldThemeCss } from "../design-system/theme-bridge.ts";
-import { createWorkspaceApp } from "./server.js";
+import { createWorkspaceApp } from "./server.ts";
 import { GET } from "./pages/theme.css.ts";
 
 test("production and dev browser themes stay dark when a light TUI theme is selected", async () => {

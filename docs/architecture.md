@@ -1106,7 +1106,7 @@ The highest-value cross-boundary paths for later confidence analysis are visible
 | Tool policy                               | `src/tools/registry.ts`, agent front matter in `src/agent-definitions/`       |
 | TUI adapter                               | `src/ui/tui/chat-session.js`, `src/ui/tui/runtime-adapter.ts`                 |
 | ACP adapter                               | `src/acp/server.ts`, `src/acp/session-map.ts`, mapper modules in `src/acp/`   |
-| Workspace Plan adapter                    | `src/ui/workspace/server/plan-adapter.js`                                     |
+| Workspace Plan adapter                    | `src/ui/workspace/server/plan-adapter.ts`                                     |
 | Review consumer surface                   | `src/ui/review/review-launcher.js`, `src/review-workspace-server.ts`          |
 
 [Mnemoteca]: https://github.com/gandazgul/mnemoteca

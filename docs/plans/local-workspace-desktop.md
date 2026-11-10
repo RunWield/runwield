@@ -76,7 +76,7 @@ Source inspected on 2026-11-01:
    data. `components/OwnerDashboard.astro` streams dashboard updates directly. A shared React library alone will not
    remove host coupling; composition, data access, and subscriptions need a common client boundary.
 2. `src/ui/workspace/routes/owner-session-api.ts` reaches `WorkspaceSessionContinuationService` in
-   `server/session-continuation.js`. Its constructor calls `createSessionRuntime` with the coordination store and owns
+   `server/session-continuation.ts`. Its constructor calls `createSessionRuntime` with the coordination store and owns
    live operations, retained Sessions, listeners, and background work. That runtime ownership moves into `wld`.
 3. `server/owner-plan-actions.ts` calls Core Plan actions and manages operation receipts, generation checks, and writer
    admission. Those semantics must move behind ACP with the authoritative service; an Electron wrapper must not
@@ -94,7 +94,7 @@ Source inspected on 2026-11-01:
 Additional retirement findings, checked during this review:
 
 - `src/ui/review/review-launcher.ts` calls `startReviewWorkspaceServer`, which creates `createReviewWorkspaceApp`
-  in `src/ui/workspace/server.js`. This is a token-scoped review host, not the full owner workbench. TUI, Connect,
+  in `src/ui/workspace/server.ts`. This is a token-scoped review host, not the full owner workbench. TUI, Connect,
   standalone Code Review, and external ACP review links use this path. Review-only support can survive workbench removal.
 - Shared Plan links use `/p/<spaceId>` URLs from `src/shared/collaboration/urls.ts` and a separate remote collaboration
   host. They are not owner-workbench routes. Their removal or migration is a separate product decision.

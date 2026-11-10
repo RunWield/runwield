@@ -1,4 +1,13 @@
-// @ts-nocheck: local wrapper includes a tiny Fresh-free router and production Astro bridge with dynamic handler shapes.
+import type { WorkRecordMnemotecaPort } from "../../shared/work-records/mnemoteca-port.ts";
+import type { OwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
+import type { RemoteWorkspaceAdapter } from "./server/remote-adapter.ts";
+import type { RuntimeInteractionRequest } from "../../shared/session/session-runtime-interactions.ts";
+import type { WorkspaceApiState, WorkspaceLifecycleApiState } from "./routes/api/handlers.ts";
+import type { RemoteApiState } from "./routes/remote-api.ts";
+import type { ReviewPayload, ReviewRequestState } from "./routes/api/review-handlers.ts";
+import type { ReviewAgentPayload } from "./routes/api/review-agent-handlers.ts";
+import type { CodeReviewStatus, ReviewConversation } from "../review/review-launcher.ts";
+import type { OwnerRouteContext, OwnerSessionState, OwnerStoreState, ProjectParams } from "./routes/owner-api.ts";
 import { ownerPlanContinuationApi } from "./routes/owner-plan-continuation.ts";
 import { serveHttp } from "../../shared/http-server.ts";
 import { env, versions } from "node:process";
@@ -79,7 +88,7 @@ import {
     isOwnerUpgradeRequest,
     renewDeviceCookies,
 } from "./server/owner-auth.ts";
-import { createWorkspaceSessionContinuationService } from "./server/session-continuation.js";
+import { createWorkspaceSessionContinuationService } from "./server/session-continuation.ts";
 import {
     ownerNotificationsStreamApi,
     ownerProjectCommandMetricsApi,
@@ -143,35 +152,103 @@ const ASTRO_RUNTIME_CLIENT_ASSET_DIR = join(ASTRO_RUNTIME_DIR, "client", "_astro
 const WORKSPACE_CWD_HEADER = "x-runwield-workspace-cwd";
 const WORKSPACE_PLAN_ADAPTER_URL_KEY = Symbol.for("runwield.workspace.plan-adapter-url");
 
-/** @type {any} */ (globalThis)[WORKSPACE_PLAN_ADAPTER_URL_KEY] = toFileUrl(
-    join(WORKSPACE_DIR, "server", "plan-adapter.js"),
+(globalThis as typeof globalThis & WorkspacePlanAdapterRuntime)[WORKSPACE_PLAN_ADAPTER_URL_KEY] = toFileUrl(
+    join(WORKSPACE_DIR, "server", "plan-adapter.ts"),
 ).href;
 
-/** @typedef {{ handler: () => (request: Request) => Promise<Response> }} WorkspaceApp */
-/** @typedef {WorkspaceApp & { adapter: import("./server/remote-adapter.ts").RemoteWorkspaceAdapter }} RemoteWorkspaceApp */
+interface WorkspacePlanAdapterRuntime {
+    [WORKSPACE_PLAN_ADAPTER_URL_KEY]?: string;
+}
+
+interface SessionPageParams extends ProjectParams {
+    runwieldSessionId: string;
+}
+
+type OwnerProjectPageContext = OwnerRouteContext<OwnerStoreState, ProjectParams>;
+type OwnerSessionPageContext = OwnerRouteContext<OwnerStoreState, SessionPageParams>;
+
+export interface WorkspaceQuestionPayload extends Partial<
+    Pick<RuntimeInteractionRequest, "prompt" | "defaultValue" | "placeholder" | "allowEmpty" | "options">
+> {
+    mode?: string;
+    action?: string;
+    sessionId?: string;
+    questionId?: string;
+}
+
+interface CreateSessionQuestionWorkspaceAppOptions {
+    cwd: string;
+    token: string;
+    questionPayload: WorkspaceQuestionPayload;
+    answerQuestion: (request: Request) => Promise<Response> | Response;
+}
+
+interface CurrentReviewPagePayloadOptions {
+    cwd: string;
+    reviewPayload: WorkspaceReviewPayload;
+    reviewType: "plan" | "code";
+    token: string;
+}
+
+interface OwnerHtmlResponseOptions {
+    status?: number;
+    surfaceTitle?: string;
+}
+
+interface AssertWorkspaceServerTransportPolicyOptions {
+    mode?: string;
+    host: string;
+    port: number;
+    publicOrigin?: string;
+    trustTlsTerminator?: boolean;
+}
+
+interface StartWorkspaceServerOptions {
+    mode?: "local" | "remote" | "owner";
+    cwd?: string;
+    host: string;
+    port: number;
+    token?: string;
+    dbPath?: string;
+    signal?: AbortSignal;
+    maxRequestBytes?: number;
+    retentionDays?: number;
+    publicOrigin?: string;
+    trustTlsTerminator?: boolean;
+    store?: OwnerCoordinationStore;
+}
+
+interface StartSessionQuestionWorkspaceServerOptions {
+    cwd?: string;
+    token: string;
+    questionPayload: WorkspaceQuestionPayload;
+    answerQuestion: (request: Request) => Promise<Response> | Response;
+    host?: string;
+    port?: number;
+    signal?: AbortSignal;
+}
+
+export type WorkspaceApp = { handler: () => (request: Request) => Promise<Response> };
+export type RemoteWorkspaceApp = WorkspaceApp & {
+    adapter: RemoteWorkspaceAdapter;
+};
 const REVIEW_PAYLOAD_HEADER = "x-runwield-review-payload";
 const QUESTION_PAYLOAD_HEADER = "x-runwield-question-payload";
 
-/**
- * @typedef {Object} ReviewServerOutput
- * @property {"stdout" | "stderr"} stream
- * @property {string} text
- */
+export interface ReviewServerOutput {
+    stream: "stdout" | "stderr";
+    text: string;
+}
 
-/** @typedef {(output: ReviewServerOutput) => void} ReviewServerOutputListener */
+export type ReviewServerOutputListener = (output: ReviewServerOutput) => void;
 
-/**
- * @typedef {Object} OwnerWorkspaceAppOptions
- * @property {"owner"} mode
- * @property {string} publicOrigin
- * @property {import("../../shared/owner-coordination/index.ts").OwnerCoordinationStore} store
- */
+export interface OwnerWorkspaceAppOptions {
+    mode: "owner";
+    publicOrigin: string;
+    store: OwnerCoordinationStore;
+}
 
-/**
- * @param {Request} request
- * @param {string} expectedToken
- */
-export function hasWorkspaceToken(request, expectedToken) {
+export function hasWorkspaceToken(request: Request, expectedToken: string) {
     const url = new URL(request.url);
     return (
         url.searchParams.get(PLAN_UI_TOKEN_QUERY) === expectedToken ||
@@ -179,33 +256,31 @@ export function hasWorkspaceToken(request, expectedToken) {
     );
 }
 
-/**
- * @typedef {Object} LocalWorkspaceAppOptions
- * @property {"local"} [mode]
- * @property {string} cwd
- * @property {string} token
- * @property {boolean} [skipTokenCheck]
- * @property {import("../../shared/work-records/mnemoteca-port.ts").WorkRecordMnemotecaPort} mnemotecaPort
- */
+export interface LocalWorkspaceAppOptions {
+    mode?: "local";
+    cwd: string;
+    token: string;
+    skipTokenCheck?: boolean;
+    mnemotecaPort: WorkRecordMnemotecaPort;
+}
 
-/**
- * @typedef {Object} RemoteWorkspaceAppOptions
- * @property {"remote"} mode
- * @property {string} [dbPath]
- * @property {number} [maxRequestBytes]
- * @property {number} [retentionDays]
- */
+export interface RemoteWorkspaceAppOptions {
+    mode: "remote";
+    dbPath?: string;
+    maxRequestBytes?: number;
+    retentionDays?: number;
+}
 
-/** @param {LocalWorkspaceAppOptions | RemoteWorkspaceAppOptions | OwnerWorkspaceAppOptions} options */
-export function createWorkspaceApp(options) {
+export function createWorkspaceApp(
+    options: LocalWorkspaceAppOptions | RemoteWorkspaceAppOptions | OwnerWorkspaceAppOptions,
+) {
     if (options.mode === "remote") return createRemoteWorkspaceApp(options);
     if (options.mode === "owner") return createOwnerWorkspaceApp(options);
     return createLocalWorkspaceApp(options);
 }
 
-/** @param {RemoteWorkspaceAppOptions} options @returns {RemoteWorkspaceApp} */
-export function createRemoteWorkspaceApp(options = { mode: "remote" }) {
-    const app = createWorkspaceRouter();
+export function createRemoteWorkspaceApp(options: RemoteWorkspaceAppOptions = { mode: "remote" }): RemoteWorkspaceApp {
+    const app = createWorkspaceRouter<RemoteApiState>();
     const adapter = openRemoteWorkspaceAdapter({
         dbPath: options.dbPath,
         retention: { days: options.retentionDays },
@@ -231,13 +306,11 @@ export function createRemoteWorkspaceApp(options = { mode: "remote" }) {
         return workspaceBuildUnavailable();
     });
     app.notFound(() => jsonNotFound());
-    app.adapter = adapter;
-    return app;
+    return Object.assign(app, { adapter });
 }
 
-/** @param {OwnerWorkspaceAppOptions} options */
-export function createOwnerWorkspaceApp(options) {
-    const app = createWorkspaceRouter();
+export function createOwnerWorkspaceApp(options: OwnerWorkspaceAppOptions) {
+    const app = createWorkspaceRouter<OwnerWorkspaceRouterState>();
     const store = options.store;
     setAstroOwnerWorkspaceStore(store);
     const connections = createOwnerConnectionRegistry();
@@ -407,7 +480,7 @@ export function createOwnerWorkspaceApp(options) {
             status: 404,
         });
     });
-    let closePromise;
+    let closePromise: Promise<void> | undefined;
     const close = () => {
         closePromise ||= Promise.resolve(workspaceSearch.close()).finally(() => {
             connections.closeAll();
@@ -424,12 +497,10 @@ export function createOwnerWorkspaceApp(options) {
     });
 }
 
-/** @param {LocalWorkspaceAppOptions} options */
-function createLocalWorkspaceApp({ cwd, token, skipTokenCheck = false, mnemotecaPort }) {
+function createLocalWorkspaceApp({ cwd, token, skipTokenCheck = false, mnemotecaPort }: LocalWorkspaceAppOptions) {
     return {
         handler() {
-            /** @param {Request} request */
-            return async (request) => {
+            return async (request: Request) => {
                 const url = new URL(request.url);
                 if (isPublicWorkspaceAsset(url.pathname)) return await handleStaticRoute(url.pathname);
                 if (!skipTokenCheck && !hasWorkspaceToken(request, token)) {
@@ -441,17 +512,15 @@ function createLocalWorkspaceApp({ cwd, token, skipTokenCheck = false, mnemoteca
     };
 }
 
-/**
- * @param {{ cwd: string, token: string, reviewPayload: Record<string, unknown>, reviewType: "plan" | "code", reviewConversation?: import("../review/review-launcher.ts").ReviewConversation }} options
- */
-/**
- * @param {{ cwd: string, token: string, questionPayload: Record<string, unknown>, answerQuestion: (request: Request) => Promise<Response>|Response }} options
- */
-export function createSessionQuestionWorkspaceApp({ cwd, token, questionPayload, answerQuestion }) {
+export function createSessionQuestionWorkspaceApp({
+    cwd,
+    token,
+    questionPayload,
+    answerQuestion,
+}: CreateSessionQuestionWorkspaceAppOptions) {
     return {
         handler() {
-            /** @param {Request} request */
-            return async (request) => {
+            return async (request: Request) => {
                 const url = new URL(request.url);
                 if (isPublicWorkspaceAsset(url.pathname)) return await handleStaticRoute(url.pathname);
                 if (!hasWorkspaceToken(request, token)) {
@@ -475,22 +544,18 @@ export function createSessionQuestionWorkspaceApp({ cwd, token, questionPayload,
     };
 }
 
-/**
- * @typedef {Object} DocumentReadWorkspaceAppOptions
- * @property {string} cwd Canonical active Project root.
- * @property {string} token Active host bearer token.
- */
+export interface DocumentReadWorkspaceAppOptions {
+    cwd: string;
+    token: string;
+}
 
 /**
  * Passive, current-file reader. It owns no review decisions or lifecycle actions.
- * @param {DocumentReadWorkspaceAppOptions} options
- * @returns {WorkspaceApp}
  */
-export function createDocumentReadWorkspaceApp({ cwd, token }) {
+export function createDocumentReadWorkspaceApp({ cwd, token }: DocumentReadWorkspaceAppOptions): WorkspaceApp {
     return {
         handler() {
-            /** @param {Request} request */
-            return async (request) => {
+            return async (request: Request) => {
                 const url = new URL(request.url);
                 if (isPublicWorkspaceAsset(url.pathname)) return await handleStaticRoute(url.pathname);
                 const headers = { "cache-control": "no-store", "referrer-policy": "same-origin" };
@@ -523,7 +588,7 @@ export function createDocumentReadWorkspaceApp({ cwd, token }) {
                     }
                     const markdown = await readFile(file.absolutePath, "utf8");
                     const artifactKind = linkedDocumentKind(file.path);
-                    let notices = [];
+                    let notices: string[] = [];
                     if (artifactKind === "work-record" && dirname(file.path) === "docs/work-records") {
                         try {
                             const record = parseWorkRecordMarkdown(markdown, { relativePath: file.path });
@@ -551,9 +616,9 @@ export function createDocumentReadWorkspaceApp({ cwd, token }) {
                     response.headers.set("referrer-policy", "same-origin");
                     return response;
                 } catch (error) {
-                    const status = ["EACCES", "EPERM"].includes(error.code)
+                    const status = ["EACCES", "EPERM"].includes((error as NodeJS.ErrnoException).code!)
                         ? 403
-                        : ["ENOENT", "ENOTDIR"].includes(error.code)
+                        : ["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code!)
                           ? 404
                           : 500;
                     return new Response(
@@ -570,8 +635,7 @@ export function createDocumentReadWorkspaceApp({ cwd, token }) {
     };
 }
 
-/** @param {string} path */
-function linkedDocumentKind(path) {
+function linkedDocumentKind(path: string) {
     if (path.startsWith("docs/plans/")) {
         return isEpicArtifactPlanName(path.slice("docs/plans/".length)) ? "epic-artifact" : "plan";
     }
@@ -581,8 +645,7 @@ function linkedDocumentKind(path) {
     return "document";
 }
 
-/** @param {ReviewWorkspaceServerOptions} options */
-export function createReviewWorkspaceApp(options) {
+export function createReviewWorkspaceApp(options: ReviewWorkspaceServerOptions) {
     const { cwd = getCwd(), token, reviewPayload, reviewType, reviewConversation } = options;
     const reviewAgentState =
         reviewType === "code"
@@ -591,8 +654,7 @@ export function createReviewWorkspaceApp(options) {
     return {
         cleanup: () => (reviewAgentState ? cleanupReviewAgentState(reviewAgentState) : Promise.resolve()),
         handler() {
-            /** @param {Request} request */
-            return async (request) => {
+            return async (request: Request) => {
                 const url = new URL(request.url);
                 if (isPublicWorkspaceAsset(url.pathname)) return await handleStaticRoute(url.pathname);
                 if (request.method === "POST" && url.pathname === "/api/upload") {
@@ -703,7 +765,7 @@ export function createReviewWorkspaceApp(options) {
                     ) {
                         return new Response("Review token required.", { status: 401 });
                     }
-                    const response = await reviewAgentApi(request, url, reviewAgentState);
+                    const response = await reviewAgentApi(request, url, reviewAgentState!);
                     if (response) return response;
                 }
                 if (reviewType === "code" && url.pathname.startsWith("/api/review/widgets/")) {
@@ -716,7 +778,7 @@ export function createReviewWorkspaceApp(options) {
                     const response = reviewWidgetApi(request, url, {
                         token,
                         reviewPayload,
-                        widgets: reviewAgentState.widgets,
+                        widgets: reviewAgentState!.widgets,
                     });
                     if (response) return response;
                 }
@@ -753,19 +815,17 @@ export function createReviewWorkspaceApp(options) {
 /**
  * Refresh Code Review from the working tree on every document request. The
  * recorded target branch is resolved for each refresh.
- *
- * @param {{ cwd: string, reviewPayload: Record<string, unknown>, reviewType: "plan" | "code", token: string }} options
  */
-async function currentReviewPagePayload({ cwd, reviewPayload, reviewType, token }) {
-    const payload = { ...reviewPayload, token, mode: "workflow" };
+async function currentReviewPagePayload({ cwd, reviewPayload, reviewType, token }: CurrentReviewPagePayloadOptions) {
+    const payload: WorkspaceReviewPayload = { ...reviewPayload, token, mode: "workflow" };
     if (reviewType === "plan") {
-        const relativePlanPath = (path) =>
+        const relativePlanPath = (path: string | undefined) =>
             typeof path === "string" ? relative(cwd, resolve(cwd, path)).replaceAll("\\", "/") : path;
         payload.planPath = relativePlanPath(payload.planPath);
         if (Array.isArray(payload.sequenceDocuments)) {
             payload.sequenceDocuments = payload.sequenceDocuments.map((document) => ({
                 ...document,
-                planPath: relativePlanPath(document.planPath),
+                planPath: relativePlanPath(document.planPath)!,
             }));
         }
     }
@@ -787,8 +847,7 @@ async function currentReviewPagePayload({ cwd, reviewPayload, reviewType, token 
     return payload;
 }
 
-/** @param {Request} request @param {string} token */
-function hasReviewAssetToken(request, token) {
+function hasReviewAssetToken(request: Request, token: string) {
     if (hasWorkspaceToken(request, token)) return true;
     const referer = request.headers.get("referer");
     if (!referer) return false;
@@ -799,8 +858,7 @@ function hasReviewAssetToken(request, token) {
     }
 }
 
-/** @param {Request} request @param {{ cwd: string, mnemotecaPort: import("../../shared/work-records/mnemoteca-port.ts").WorkRecordMnemotecaPort }} state */
-async function handleLocalWorkspaceRequest(request, state) {
+async function handleLocalWorkspaceRequest(request: Request, state: WorkspaceLifecycleApiState) {
     const url = new URL(request.url);
     const pathname = url.pathname;
     const apiResponse = await handleLocalApiRequest(request, state, pathname);
@@ -815,13 +873,11 @@ async function handleLocalWorkspaceRequest(request, state) {
     return new Response("Not found", { status: 404 });
 }
 
-/** @param {string} pathname */
-function isAstroPageRoute(pathname) {
+function isAstroPageRoute(pathname: string) {
     return pathname === "/" || pathname === "/closed" || pathname === "/on-hold" || pathname.startsWith("/plans/");
 }
 
-/** @param {Request} request @param {{ cwd: string, mnemotecaPort: import("../../shared/work-records/mnemoteca-port.ts").WorkRecordMnemotecaPort }} state @param {string} pathname */
-async function handleLocalApiRequest(request, state, pathname) {
+async function handleLocalApiRequest(request: Request, state: WorkspaceLifecycleApiState, pathname: string) {
     if (request.method === "GET" && pathname === "/api/workspace") return await workspaceApi(ctx(request, state));
     if (request.method === "GET" && pathname === "/api/plans") return await plansApi(ctx(request, state));
     if (request.method === "GET" && pathname === "/api/board") return await boardApi(ctx(request, state));
@@ -845,8 +901,7 @@ async function handleLocalApiRequest(request, state, pathname) {
     return null;
 }
 
-/** @param {Request} request @param {{ cwd: string }} state @param {string} pathname */
-async function handleReviewApiRequest(request, state, pathname) {
+async function handleReviewApiRequest(request: Request, state: ReviewRequestState, pathname: string) {
     if (request.method === "POST" && (pathname === "/api/review/decision" || pathname === "/api/decision")) {
         return await reviewDecisionApi(ctx(request, state));
     }
@@ -862,17 +917,17 @@ async function handleReviewApiRequest(request, state, pathname) {
     return jsonNotFound();
 }
 
-/**
- * @template {import('./routes/api/handlers.ts').WorkspaceApiState} State
- * @param {Request} req
- * @param {State} state
- * @param {Record<string, string>} [params]
- */
-function ctx(req, state, params = {}) {
+function ctx<State extends WorkspaceApiState>(req: Request, state: State, params: Record<string, string> = {}) {
     return { req, request: req, url: new URL(req.url), state, params };
 }
 
-let astroHandlePromise;
+type AstroHandle = (request: Request) => Response | Promise<Response>;
+
+interface AstroRendererModule {
+    handle?: AstroHandle;
+}
+
+let astroHandlePromise: Promise<AstroHandle | null> | null | undefined;
 let astroImportFailure = false;
 
 function loadAstroHandle() {
@@ -883,7 +938,7 @@ function loadAstroHandle() {
             for (const entryPath of entryPaths) {
                 try {
                     if (!(await isAstroEntryImportable(entryPath))) continue;
-                    const entry = await import(/* @vite-ignore */ toFileUrl(entryPath).href);
+                    const entry: AstroRendererModule = await import(/* @vite-ignore */ toFileUrl(entryPath).href);
                     if (typeof entry.handle === "function") return entry.handle;
                 } catch (error) {
                     astroImportFailure = true;
@@ -909,7 +964,7 @@ function loadAstroHandle() {
     return astroHandlePromise;
 }
 
-async function isAstroEntryImportable(entryPath) {
+async function isAstroEntryImportable(entryPath: string) {
     try {
         const source = await readFile(entryPath, "utf8");
         return source.includes('"key":');
@@ -918,16 +973,14 @@ async function isAstroEntryImportable(entryPath) {
     }
 }
 
-/** @param {Request} request @param {string} cwd */
-async function renderAstroPage(request, cwd) {
+async function renderAstroPage(request: Request, cwd: string) {
     const handle = await loadAstroHandle();
     if (!handle) return null;
     const response = await handle(withWorkspaceCwdHeader(request, cwd));
     return response.status === 404 ? null : response;
 }
 
-/** @param {Request} request @param {string} cwd @param {Record<string, unknown>} payload */
-async function renderAstroReviewPage(request, cwd, payload) {
+async function renderAstroReviewPage(request: Request, cwd: string, payload: WorkspaceReviewPayload) {
     const handle = await loadAstroHandle();
     if (!handle) return null;
     const headers = new Headers(request.headers);
@@ -941,8 +994,7 @@ async function renderAstroReviewPage(request, cwd, payload) {
     }
 }
 
-/** @param {Request} request @param {string} cwd @param {Record<string, unknown>} payload */
-async function renderAstroQuestionPage(request, cwd, payload) {
+async function renderAstroQuestionPage(request: Request, cwd: string, payload: WorkspaceQuestionPayload) {
     const handle = await loadAstroHandle();
     if (!handle) return null;
     const headers = new Headers(request.headers);
@@ -956,8 +1008,7 @@ async function renderAstroQuestionPage(request, cwd, payload) {
     }
 }
 
-/** @param {string} pathname */
-function isLegacyReviewApiPath(pathname) {
+function isLegacyReviewApiPath(pathname: string) {
     return (
         pathname === "/api/decision" ||
         pathname === "/api/deny" ||
@@ -966,14 +1017,10 @@ function isLegacyReviewApiPath(pathname) {
     );
 }
 
-/**
- * @param {"plan" | "code"} reviewType
- * @param {Record<string, unknown>} payload
- */
-function renderStaticReviewFallback(reviewType, payload) {
+function renderStaticReviewFallback(reviewType: "plan" | "code", payload: WorkspaceReviewPayload) {
     const title =
         payload?.surface === "artifact-read"
-            ? `${sessionArtifactKindLabel(payload.artifactKind)} · RunWield Workspace`
+            ? `${sessionArtifactKindLabel(payload.artifactKind!)} · RunWield Workspace`
             : reviewType === "plan"
               ? "Plan Review · RunWield Workspace"
               : "Code Review · RunWield Workspace";
@@ -1021,8 +1068,7 @@ function workspaceBuildUnavailable() {
     );
 }
 
-/** @param {string} value */
-function escapeHtml(value) {
+function escapeHtml(value: string) {
     return String(value)
         .replaceAll("&", "&amp;")
         .replaceAll("<", "&lt;")
@@ -1030,8 +1076,7 @@ function escapeHtml(value) {
         .replaceAll('"', "&quot;");
 }
 
-/** @param {unknown} body @param {number} [status] */
-function ownerJsonResponse(body, status = 200) {
+function ownerJsonResponse<Body>(body: Body, status: number = 200) {
     const response = new Response(JSON.stringify(body), {
         status,
         headers: { "content-type": "application/json; charset=utf-8" },
@@ -1039,17 +1084,11 @@ function ownerJsonResponse(body, status = 200) {
     return withOwnerSecurityHeaders(response);
 }
 
-/** @param {string} location */
-function redirectResponse(location) {
+function redirectResponse(location: string) {
     return withOwnerSecurityHeaders(new Response(null, { status: 302, headers: { location } }));
 }
 
-/**
- * @param {string} title
- * @param {string} body
- * @param {{ status?: number, surfaceTitle?: string }} [options]
- */
-function ownerHtmlResponse(title, body, options = {}) {
+function ownerHtmlResponse(title: string, body: string, options: OwnerHtmlResponseOptions = {}) {
     const status = options.status ?? 200;
     const headerTitle = options.surfaceTitle
         ? `<strong class="workspace-main-session-name" data-workspace-surface-title>${escapeHtml(
@@ -1067,11 +1106,20 @@ function ownerHtmlResponse(title, body, options = {}) {
     );
 }
 
-function createInProcessRateLimit({ limit, windowMs }) {
-    const buckets = new Map();
+interface RateLimitOptions {
+    limit: number;
+    windowMs: number;
+}
+
+interface RateLimitBucket {
+    count: number;
+    resetAt: number;
+}
+
+function createInProcessRateLimit({ limit, windowMs }: RateLimitOptions) {
+    const buckets = new Map<string, RateLimitBucket>();
     return {
-        /** @param {Request} request */
-        check(request) {
+        check(request: Request) {
             const now = Date.now();
             const url = new URL(request.url);
             const key = `${url.protocol}//${url.host}:${request.headers.get("user-agent") || "unknown"}`;
@@ -1087,8 +1135,7 @@ function createInProcessRateLimit({ limit, windowMs }) {
     };
 }
 
-/** @param {Request} request */
-function ownerReviewProjectId(request) {
+function ownerReviewProjectId(request: Request) {
     const referer = request.headers.get("referer");
     if (!referer) return "";
     try {
@@ -1099,8 +1146,7 @@ function ownerReviewProjectId(request) {
     }
 }
 
-/** @param {Request} request */
-function ownerCodeReviewContext(request) {
+function ownerCodeReviewContext(request: Request) {
     try {
         const url = new URL(request.headers.get("referer") || "");
         const match = /^\/projects\/([^/]+)\/sessions\/([^/]+)\/review\/code$/.exec(url.pathname);
@@ -1118,8 +1164,7 @@ function ownerCodeReviewContext(request) {
     }
 }
 
-/** @param {any} ctx */
-async function ownerInSituReviewFileContent(ctx) {
+async function ownerInSituReviewFileContent(ctx: Pick<OwnerRouteContext<OwnerSessionState, never>, "req" | "state">) {
     const projectId = ownerReviewProjectId(ctx.req);
     if (!projectId) return ownerErrorJson(new Error("Review Project context is missing."), 400);
     try {
@@ -1136,25 +1181,19 @@ async function ownerInSituReviewFileContent(ctx) {
  * Owner pages have one production renderer. Unlike the optional local-page
  * bridge, a genuine Astro 404 must remain a 404 instead of looking like a
  * missing build.
- *
- * @param {any} ctx
- * @param {string} [cwd]
  */
-async function renderRequiredOwnerAstroPage(ctx, cwd = getCwd()) {
+async function renderRequiredOwnerAstroPage(ctx: Pick<OwnerProjectPageContext, "req">, cwd: string = getCwd()) {
     const handle = await loadAstroHandle();
     if (!handle) return workspaceBuildUnavailable();
     return await handle(withWorkspaceCwdHeader(ctx.req, cwd));
 }
 
-/** @param {any} component @param {Record<string, unknown>} props */
-/** @param {any} ctx */
-async function renderOwnerProjectArtifactPage(ctx) {
+async function renderOwnerProjectArtifactPage(ctx: OwnerProjectPageContext) {
     const root = requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
     return await renderRequiredOwnerAstroPage(ctx, root);
 }
 
-/** @param {any} ctx */
-async function renderOwnerProjectSessionsPage(ctx) {
+async function renderOwnerProjectSessionsPage(ctx: OwnerProjectPageContext) {
     const root = requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
     const response = await renderAstroPage(ctx.req, root);
     if (response) return response;
@@ -1165,8 +1204,7 @@ async function renderOwnerProjectSessionsPage(ctx) {
     );
 }
 
-/** @param {any} ctx */
-async function renderOwnerProjectSessionNewPage(ctx) {
+async function renderOwnerProjectSessionNewPage(ctx: OwnerProjectPageContext) {
     const root = requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
     const response = await renderAstroPage(ctx.req, root);
     if (response) return response;
@@ -1179,8 +1217,7 @@ async function renderOwnerProjectSessionNewPage(ctx) {
     );
 }
 
-/** @param {any} ctx */
-async function renderOwnerProjectSessionDetailPage(ctx) {
+async function renderOwnerProjectSessionDetailPage(ctx: OwnerSessionPageContext) {
     const root = requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
     const session = ctx.state.store.getSessionById(ctx.params.runwieldSessionId);
     if (!session || !sessionBelongsToOwnerProject(ctx.state.store, session, ctx.params.projectId)) {
@@ -1201,8 +1238,7 @@ async function renderOwnerProjectSessionDetailPage(ctx) {
     );
 }
 
-/** @param {Request} request @param {string} cwd */
-function withWorkspaceCwdHeader(request, cwd) {
+function withWorkspaceCwdHeader(request: Request, cwd: string) {
     const headers = new Headers(request.headers);
     headers.set(WORKSPACE_CWD_HEADER, cwd);
     return rebuildRequestWithHeaders(request, headers);
@@ -1213,14 +1249,9 @@ function withWorkspaceCwdHeader(request, cwd) {
  * signal. Cloning a Deno.serve request also clones the runtime's legacy abort
  * signal, which emits a native stderr warning after every successful response
  * unless the parent process was started with an unstable flag.
- *
- * @param {Request} request
- * @param {Headers} headers
- * @returns {Request}
  */
-export function rebuildRequestWithHeaders(request, headers) {
-    /** @type {RequestInit} */
-    const init = {
+export function rebuildRequestWithHeaders(request: Request, headers: Headers): Request {
+    const init: RequestInit = {
         method: request.method,
         headers,
         redirect: request.redirect,
@@ -1231,50 +1262,98 @@ export function rebuildRequestWithHeaders(request, headers) {
     return new Request(request.url, init);
 }
 
-function createWorkspaceRouter() {
-    const routes = [];
-    const middleware = [];
-    let notFoundHandler = () => jsonNotFound();
-    const add = (method, pattern, handler) => routes.push({ method, pattern, handler });
+interface OwnerWorkspaceRouterState extends OwnerSessionState {
+    publicOrigin: string;
+    ownerConnections: ReturnType<typeof createOwnerConnectionRegistry>;
+    workspaceSearch: ReturnType<typeof createWorkspaceSearchService>;
+    pairingRateLimit: ReturnType<typeof createInProcessRateLimit>;
+    bootstrapProofCookieHeader(proof: string): string;
+    ownerDevice: NonNullable<ReturnType<typeof authenticateOwnerRequest>>;
+}
+
+type PathParameter<Path extends string> = Path extends `${string}:${infer Name}/${infer Rest}`
+    ? Name | PathParameter<Rest>
+    : Path extends `${string}:${infer Name}`
+      ? Name
+      : never;
+
+type RouteParams = Record<string, string>;
+
+interface WorkspaceRouteContext<State, Params = RouteParams> {
+    req: Request;
+    request: Request;
+    url: URL;
+    state: State;
+    params: Params;
+    next(): Promise<Response>;
+}
+
+type WorkspaceRouteHandler<State, Params = RouteParams> = (
+    context: WorkspaceRouteContext<State, Params>,
+) => Response | Promise<Response>;
+
+interface WorkspaceRoute<State> {
+    method: string;
+    pattern: string;
+    handler: WorkspaceRouteHandler<State>;
+}
+
+function createWorkspaceRouter<State>() {
+    const routes: WorkspaceRoute<State>[] = [];
+    const middleware: WorkspaceRouteHandler<State>[] = [];
+    let notFoundHandler: WorkspaceRouteHandler<State> = () => jsonNotFound();
+    const add = <Path extends string>(
+        method: string,
+        pattern: Path,
+        handler: WorkspaceRouteHandler<State, Record<PathParameter<Path>, string>>,
+    ) => routes.push({ method, pattern, handler: handler as WorkspaceRouteHandler<State> });
     return {
-        get: (pattern, handler) => add("GET", pattern, handler),
-        post: (pattern, handler) => add("POST", pattern, handler),
-        use: (handler) => middleware.push(handler),
-        notFound: (handler) => {
+        get: <Path extends string>(
+            pattern: Path,
+            handler: WorkspaceRouteHandler<State, Record<PathParameter<Path>, string>>,
+        ) => add("GET", pattern, handler),
+        post: <Path extends string>(
+            pattern: Path,
+            handler: WorkspaceRouteHandler<State, Record<PathParameter<Path>, string>>,
+        ) => add("POST", pattern, handler),
+        use: (handler: WorkspaceRouteHandler<State>) => middleware.push(handler),
+        notFound: (handler: WorkspaceRouteHandler<State>) => {
             notFoundHandler = handler;
         },
-        handler: () => async (request) => {
-            const url = new URL(request.url);
-            const route = routes.find(
-                (candidate) => candidate.method === request.method && matchRoute(candidate.pattern, url.pathname),
-            );
-            const params = route ? matchRoute(route.pattern, url.pathname) : {};
-            const state = {};
-            const context = {
-                req: request,
-                request,
-                url,
-                params,
-                state,
-                next: async () => await runMiddleware(0),
-            };
-            const runMiddleware = async (index) => {
-                const item = middleware[index];
-                if (!item) return route ? await route.handler(context) : await notFoundHandler(context);
-                context.next = async () => await runMiddleware(index + 1);
-                return await item(context);
-            };
-            return await runMiddleware(0);
-        },
+        handler:
+            () =>
+            async (request: Request): Promise<Response> => {
+                const url = new URL(request.url);
+                const route = routes.find(
+                    (candidate) => candidate.method === request.method && matchRoute(candidate.pattern, url.pathname),
+                );
+                const params = route ? matchRoute(route.pattern, url.pathname) : {};
+                // The mode-specific middleware initializes state before the matched handler runs.
+                const state = {} as State;
+                const context = {
+                    req: request,
+                    request,
+                    url,
+                    params: params!,
+                    state,
+                    next: async () => await runMiddleware(0),
+                };
+                const runMiddleware = async (index: number): Promise<Response> => {
+                    const item = middleware[index];
+                    if (!item) return route ? await route.handler(context) : await notFoundHandler(context);
+                    context.next = async () => await runMiddleware(index + 1);
+                    return await item(context);
+                };
+                return await runMiddleware(0);
+            },
     };
 }
 
-/** @param {string} pattern @param {string} pathname */
-function matchRoute(pattern, pathname) {
+function matchRoute(pattern: string, pathname: string) {
     const patternParts = pattern.split("/").filter(Boolean);
     const pathParts = pathname.split("/").filter(Boolean);
     if (patternParts.length !== pathParts.length) return null;
-    const params = {};
+    const params: RouteParams = {};
     for (let index = 0; index < patternParts.length; index += 1) {
         const patternPart = patternParts[index];
         const pathPart = pathParts[index];
@@ -1284,8 +1363,7 @@ function matchRoute(pattern, pathname) {
     return params;
 }
 
-/** @param {ReturnType<typeof createWorkspaceRouter>} app */
-function registerStaticRoutes(app) {
+function registerStaticRoutes<State>(app: ReturnType<typeof createWorkspaceRouter<State>>) {
     for (const path of WORKSPACE_PWA_PATHS) app.get(path, () => workspacePwaResponse(path));
     app.get("/styles.css", async () => await handleStaticRoute("/styles.css"));
     app.get("/tokens.css", async () => await handleStaticRoute("/tokens.css"));
@@ -1302,8 +1380,7 @@ function registerStaticRoutes(app) {
     app.get("/_astro/:asset", async (ctx) => await handleStaticRoute(ctx.url.pathname));
 }
 
-/** @param {string} pathname */
-async function handleStaticRoute(pathname) {
+async function handleStaticRoute(pathname: string) {
     if (pathname === "/design-system/panel-icon.ts") {
         return await textFileResponse(join(DESIGN_SYSTEM_DIR, "panel-icon.ts"), "text/javascript; charset=utf-8");
     }
@@ -1331,8 +1408,7 @@ async function handleStaticRoute(pathname) {
     return new Response("Not found", { status: 404 });
 }
 
-/** @param {string} pathname */
-async function handleAstroAsset(pathname) {
+async function handleAstroAsset(pathname: string) {
     const encodedName = pathname.slice("/_astro/".length);
     let assetName = "";
     try {
@@ -1365,15 +1441,13 @@ async function handleAstroAsset(pathname) {
     return new Response("Not found", { status: 404 });
 }
 
-/** @param {string} name */
-function getOpaqueWorkspaceAssetName(name) {
+function getOpaqueWorkspaceAssetName(name: string) {
     return [".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"].includes(extname(name).toLowerCase())
         ? `${name}.asset`
         : name;
 }
 
-/** @param {string} path */
-function contentTypeForAsset(path) {
+function contentTypeForAsset(path: string) {
     const extension = extname(path);
     if (extension === ".css") return "text/css; charset=utf-8";
     if (extension === ".js" || extension === ".mjs") return "text/javascript; charset=utf-8";
@@ -1385,8 +1459,7 @@ function contentTypeForAsset(path) {
     return "application/octet-stream";
 }
 
-/** @param {string} path @param {string} contentType */
-async function textFileResponse(path, contentType) {
+async function textFileResponse(path: string, contentType: string) {
     try {
         const body = path === WORKSPACE_CSS_PATH ? await readWorkspaceStyles(path) : await readFile(path, "utf8");
         return new Response(body, { headers: { "content-type": contentType } });
@@ -1405,22 +1478,19 @@ function jsonNotFound() {
     );
 }
 
-/** @param {unknown} data @param {number} [status] */
-function remoteJson(data, status = 200) {
+function remoteJson<Body>(data: Body, status: number = 200) {
     return Response.json(data, {
         status,
         headers: { "cache-control": "no-store" },
     });
 }
 
-/** @param {string} host */
-function isLoopbackWorkspaceHost(host) {
+function isLoopbackWorkspaceHost(host: string) {
     const value = String(host || "").toLowerCase();
     return value === "localhost" || value === "127.0.0.1" || value === "::1" || value === "[::1]";
 }
 
-/** @param {string} origin */
-function normalizeWorkspacePublicOrigin(origin) {
+function normalizeWorkspacePublicOrigin(origin: string) {
     const url = new URL(origin);
     if (url.pathname !== "/" || url.search || url.hash) {
         throw new Error("Owner Workspace public origin must be an origin only, with no path, query, or fragment.");
@@ -1428,8 +1498,7 @@ function normalizeWorkspacePublicOrigin(origin) {
     return url.origin;
 }
 
-/** @param {{ mode?: string, host: string, port: number, publicOrigin?: string, trustTlsTerminator?: boolean }} options */
-function assertWorkspaceServerTransportPolicy(options) {
+function assertWorkspaceServerTransportPolicy(options: AssertWorkspaceServerTransportPolicyOptions) {
     if (options.mode !== "owner") return;
     const publicOrigin = normalizeWorkspacePublicOrigin(
         options.publicOrigin || `http://${options.host}:${options.port}`,
@@ -1442,10 +1511,7 @@ function assertWorkspaceServerTransportPolicy(options) {
     }
 }
 
-/**
- * @param {{ mode?: "local" | "remote" | "owner", cwd?: string, host: string, port: number, token?: string, dbPath?: string, signal?: AbortSignal, maxRequestBytes?: number, retentionDays?: number, publicOrigin?: string, trustTlsTerminator?: boolean, store?: import("../../shared/owner-coordination/index.ts").OwnerCoordinationStore }} options
- */
-export function startWorkspaceServer(options) {
+export function startWorkspaceServer(options: StartWorkspaceServerOptions) {
     assertWorkspaceServerTransportPolicy(options);
     if (options.mode === "owner" && !options.store) {
         throw new Error("Owner Workspace requires an open owner-coordination store.");
@@ -1465,7 +1531,7 @@ export function startWorkspaceServer(options) {
             : options.mode === "owner"
               ? createWorkspaceApp({
                     mode: "owner",
-                    store: options.store,
+                    store: options.store!,
                     publicOrigin: ownerPublicOrigin,
                 })
               : createWorkspaceApp({
@@ -1488,14 +1554,14 @@ export function startWorkspaceServer(options) {
         }),
     );
     if (options.mode !== "owner") return server;
-    const finished = server.finished.finally(() => app.close());
+    const finished = server.finished.finally(() => (app as ReturnType<typeof createOwnerWorkspaceApp>).close());
     return new Proxy(server, {
         get(target, property) {
             if (property === "finished") return finished;
             if (property === "shutdown") {
                 return async () => {
                     await target.shutdown();
-                    await app.close();
+                    await (app as ReturnType<typeof createOwnerWorkspaceApp>).close();
                 };
             }
             const value = Reflect.get(target, property, target);
@@ -1504,10 +1570,7 @@ export function startWorkspaceServer(options) {
     });
 }
 
-/**
- * @param {{ cwd?: string, token: string, questionPayload: Record<string, unknown>, answerQuestion: (request: Request) => Promise<Response>|Response, host?: string, port?: number, signal?: AbortSignal }} options
- */
-export function startSessionQuestionWorkspaceServer(options) {
+export function startSessionQuestionWorkspaceServer(options: StartSessionQuestionWorkspaceServerOptions) {
     const host = options.host ?? "127.0.0.1";
     const app = createSessionQuestionWorkspaceApp({
         cwd: options.cwd ?? getCwd(),
@@ -1527,38 +1590,65 @@ export function startSessionQuestionWorkspaceServer(options) {
     );
 }
 
-/**
- * @typedef {Object} ReviewWorkspaceConversationEvent
- * @property {string} type
- * @property {string} delta
- * @property {string} messageId
- * @property {string} agentName
- *
- * @typedef {Object} ReviewWorkspaceConversation
- * @property {string} id
- * @property {string} agentLabel
- * @property {number} revision
- * @property {ReviewWorkspaceConversationEvent[]} events
- *
- * @callback ReviewPageOpenListener
- * @returns {Promise<void | Response>}
- *
- * @typedef {Object} ReviewWorkspaceServerOptions
- * @property {string} [cwd]
- * @property {string} token
- * @property {Record<string, unknown>} reviewPayload
- * @property {"plan" | "code"} reviewType
- * @property {import("../review/review-launcher.ts").ReviewConversation} [reviewConversation]
- * @property {string} [host]
- * @property {number} [port]
- * @property {AbortSignal} [signal]
- * @property {ReviewServerOutputListener} [onOutput]
- * @property {import("./routes/api/review-handlers.ts").ReviewDecisionSink} [onDecision]
- * @property {ReviewPageOpenListener} [onReviewOpen]
- */
+export interface ReviewWorkspaceConversationEvent {
+    type: string;
+    delta: string;
+    messageId: string;
+    agentName: string;
+}
 
-/** @param {ReviewWorkspaceServerOptions} options */
-export function startReviewWorkspaceServer(options) {
+export interface ReviewWorkspaceConversation {
+    id: string;
+    agentLabel: string;
+    revision: number;
+    events: ReviewWorkspaceConversationEvent[];
+}
+
+export type ReviewPageOpenListener = () => Promise<void | Response>;
+
+type WorkspaceReviewAgentFields = Pick<
+    ReviewAgentPayload,
+    "agentTurnOwner" | "rawPatch" | "gitRef" | "planContent" | "planAttrs" | "standaloneReview" | "guidedReviewFixture"
+>;
+
+type WorkspaceReviewPayload = Pick<ReviewPayload, keyof ReviewPayload> &
+    WorkspaceReviewAgentFields & {
+        planPath?: string;
+        reviewRevisionUrl?: string;
+        plan?: string;
+        reviewStatus?: CodeReviewStatus | null;
+        token?: string;
+        mode?: string;
+        targetBranch?: string;
+        targetBaseRef?: string;
+        agentCwd?: string;
+        surface?: string;
+        markdown?: string;
+        artifactKind?: string;
+        title?: string;
+        artifactPath?: string;
+        imageBaseDir?: string;
+        notices?: string[];
+    };
+
+interface ReviewRoundOptions {
+    reviewPayload: WorkspaceReviewPayload;
+    reviewConversation?: ReviewConversation;
+    onDecision?: ReviewRequestState["onDecision"];
+    onReviewOpen?: ReviewPageOpenListener;
+}
+
+export interface ReviewWorkspaceServerOptions extends ReviewRoundOptions {
+    cwd?: string;
+    token: string;
+    reviewType: "plan" | "code";
+    host?: string;
+    port?: number;
+    signal?: AbortSignal;
+    onOutput?: ReviewServerOutputListener;
+}
+
+export function startReviewWorkspaceServer(options: ReviewWorkspaceServerOptions) {
     const cwd = options.cwd ?? getCwd();
     if (options.reviewType === "code") options.reviewPayload.reviewRevision = 0;
     let decision = registerReviewDecisionPromise(options.token);
@@ -1580,8 +1670,7 @@ export function startReviewWorkspaceServer(options) {
     }
     const url = registration.origin;
     options.onOutput?.({ stream: "stdout", text: `Listening on ${url}/\n` });
-    /** @type {Promise<void> | null} */
-    let stopPromise = null;
+    let stopPromise: Promise<void> | null = null;
 
     const stop = () => {
         options.signal?.removeEventListener("abort", onAbort);
@@ -1608,11 +1697,12 @@ export function startReviewWorkspaceServer(options) {
     return {
         url,
         waitForDecision: () => decision.promise,
-        beginReviewRound({ reviewPayload, reviewConversation, onDecision, onReviewOpen }) {
+        beginReviewRound({ reviewPayload, reviewConversation, onDecision, onReviewOpen }: ReviewRoundOptions) {
             appOptions.onDecision = onDecision;
             appOptions.onReviewOpen = onReviewOpen;
             const priorRevision = options.reviewPayload.reviewRevision;
-            for (const key of Object.keys(options.reviewPayload)) delete options.reviewPayload[key];
+            for (const key of Object.keys(options.reviewPayload))
+                delete options.reviewPayload[key as keyof WorkspaceReviewPayload];
             Object.assign(options.reviewPayload, reviewPayload);
             if (options.reviewType === "code" || reviewPayload.reviewRevisionUrl)
                 options.reviewPayload.reviewRevision = (priorRevision ?? 0) + 1;

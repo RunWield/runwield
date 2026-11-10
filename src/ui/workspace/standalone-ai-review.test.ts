@@ -6,7 +6,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { type WorkflowMetricsFixture, withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { writeRuntimeExecutableFixture } from "../../testing/runtime-executable-fixture.ts";
 import { encodeGuidedReviewMetadata, encodeGuidedReviewUsageEvent } from "../../cmd/guided-review/protocol.ts";
-import { createReviewWorkspaceApp } from "./server.js";
+import { createReviewWorkspaceApp } from "./server.ts";
 import {
     cleanupReviewAgentState,
     createReviewAgentState,

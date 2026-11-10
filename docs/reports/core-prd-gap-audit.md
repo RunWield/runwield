@@ -65,7 +65,8 @@ Workspace claims interaction support
 
 **Evidence:**
 
-- `src/ui/workspace/server/session-continuation.js:925`: interaction support claim.
+- `WorkspaceSessionContinuationService.createInteractionAdapter` in `src/ui/workspace/server/session-continuation.ts`
+  supplies the Workspace interaction adapter.
 - `src/tools/pair-checkpoint.ts:173`: checkpoint request; `:226`: selected-only decision extraction; `:295`: fallback.
 - `src/ui/workspace/components/SessionTimeline.jsx:442,487`: typed-response mapping and generic interaction card.
 

@@ -7,7 +7,7 @@ import process from "node:process";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 
-import "./server/plan-adapter.js";
+import "./server/plan-adapter.ts";
 
 import {
     parseMaxRequestBytes,
@@ -19,7 +19,7 @@ import {
 } from "./remote-server.ts";
 import { handleRemoteSpaceApi } from "./server/remote-dev-api.ts";
 
-import { createWorkspaceApp } from "./server.js";
+import { createWorkspaceApp } from "./server.ts";
 
 import { createTestApiContext, createTestEnv } from "./workspace-test-helpers.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";

@@ -3,7 +3,7 @@ import { realpathSync, statSync } from "node:fs";
 import { reviewHost, type ReviewHostRegistration } from "../workspace/server/review-host.ts";
 import { extname } from "node:path";
 import { PLAN_UI_TOKEN_QUERY } from "../../constants.ts";
-import { createDocumentReadWorkspaceApp } from "../workspace/server.js";
+import { createDocumentReadWorkspaceApp } from "../workspace/server.ts";
 import { resolveWorkspaceFile } from "../workspace/routes/api/review-file-handlers.ts";
 
 type DocumentRequestHandler = (request: Request) => Promise<Response>;

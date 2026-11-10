@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { join } from "node:path";
 import { assertEquals } from "../../testing/assertions.ts";
 import { RUNWIELD_ROOT } from "../../../runtime-root.ts";
-import { createReviewWorkspaceApp } from "./server.js";
+import { createReviewWorkspaceApp } from "./server.ts";
 
 for (const absolute of [false, true]) {
     test(`Plan review sends project-relative document paths (${absolute ? "absolute" : "relative"} input)`, async () => {

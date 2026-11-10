@@ -7,7 +7,7 @@ affectedPaths:
     - "src/shared/session/session.js"
     - "src/tools/registry.ts"
     - "src/ui/review/review-launcher.ts"
-    - "src/ui/workspace/server.js"
+    - "src/ui/workspace/server.ts"
     - "src/ui/workspace/react/PlanReviewSurface.tsx"
     - "src/ui/workspace/react/ArtifactReadSurface.tsx"
     - "docs/prd/runwield-core-prd.md"
@@ -195,7 +195,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   existing locking or losing other custom keys; document enablement, voices, first-use storage, and endpoint setup.
 - New `src/tools/read-aloud.ts`, `src/tools/registry.ts`, `src/shared/session/session.js`, and shared Agent guidance —
   expose the capability in native and bridged root turns, with correct lifetime and result reporting.
-- `src/ui/review/review-launcher.ts`, `src/ui/workspace/server.js`, relevant owner/review routes, and
+- `src/ui/review/review-launcher.ts`, `src/ui/workspace/server.ts`, relevant owner/review routes, and
   `src/ui/workspace/server/review-host.ts` — deliver authorized speech requests, assets, settings, and acknowledgements
   across standalone, linked-document, and owner Workspace readers without changing review decisions.
 - `src/ui/workspace/react/PlanReviewSurface.tsx`, `ArtifactReadSurface.tsx`, and new shared speech controls/worker —

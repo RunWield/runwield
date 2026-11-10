@@ -1,3 +1,7 @@
+import type { WorkRecordMnemotecaPort } from "../../../shared/work-records/mnemoteca-port.ts";
+import type { PlanActionName } from "../../../shared/workflow/plan-actions.ts";
+import type { PlanFrontMatter, PlanResource } from "../../../plan-store.js";
+import type { PlanEvent, PlanEventDetails, PlanStatus } from "../../../shared/workflow/plan-lifecycle.ts";
 /**
  * Server-only Plan adapter for the read-only Workspace.
  */
@@ -37,13 +41,19 @@ import {
 import { executePlanAction, loadPlanActionEvidence } from "../../../shared/workflow/plan-actions.ts";
 import { PLAN_LIFECYCLE_ACTIONS } from "../constants.ts";
 
-/** @typedef {{ reviewOnly?: boolean, documentName?: string }} WorkspacePlanDetailOptions */
+export type WorkspacePlanDetailOptions = { reviewOnly?: boolean; documentName?: string };
 
 export const ACTIVE_STATUSES = ACTIVE_PLAN_STATUSES;
 export const CLOSED_STATUSES = CLOSED_PLAN_STATUSES;
 export const ON_HOLD_STATUSES = ON_HOLD_PLAN_STATUSES;
 
-export const STATUS_META = {
+interface StatusMetadata {
+    status: string;
+    label: string;
+    description: string;
+}
+
+export const STATUS_META: Record<string, StatusMetadata> = {
     draft: {
         status: "draft",
         label: "Draft",
@@ -150,11 +160,7 @@ export const ACTION_META = {
     },
 };
 
-/**
- * @param {string} value
- * @returns {Promise<string>}
- */
-async function sha256Hex(value) {
+async function sha256Hex(value: string): Promise<string> {
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
     return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
@@ -186,56 +192,37 @@ export const BOARD_SCREENS = {
     },
 };
 
-/**
- * @param {unknown} value
- * @returns {Record<string, unknown>}
- */
-function safeObject(value) {
-    return value && typeof value === "object" && !Array.isArray(value)
-        ? /** @type {Record<string, unknown>} */ (value)
-        : {};
+// Payloads and stored front matter can originate outside TypeScript.
+function safeObject(value: unknown): Record<string, unknown> {
+    return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-/**
- * @param {unknown} value
- * @returns {Record<string, unknown>}
- */
-function workspaceSafeFrontMatter(value) {
-    const frontMatter = { ...safeObject(value) };
+type WorkspacePlanFrontMatter = Partial<PlanFrontMatter> & {
+    title?: string;
+    dependsOn?: string[];
+};
+
+function workspaceSafeFrontMatter(value: WorkspacePlanFrontMatter): WorkspacePlanFrontMatter {
+    const frontMatter: WorkspacePlanFrontMatter = { ...safeObject(value) };
     delete frontMatter.worktreePath;
     if (frontMatter.classification !== "PROJECT") delete frontMatter.type;
     return frontMatter;
 }
 
-/**
- * @param {unknown} value
- * @returns {string[]}
- */
-function stringArray(value) {
+function stringArray(value: string[] | undefined): string[] {
     return Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
 }
 
-/**
- * @param {string} status
- * @returns {boolean}
- */
-function isKnownStatus(status) {
-    return PLAN_STATUSES.includes(/** @type {any} */ (status));
+function isKnownStatus(status: string): boolean {
+    return PLAN_STATUSES.includes(status);
 }
 
-/**
- * @param {string} status
- */
-function statusOption(status) {
-    const meta = /** @type {any} */ (STATUS_META)[status] || { status, label: status, description: "" };
+function statusOption(status: string) {
+    const meta = STATUS_META[status] || { status, label: status, description: "" };
     return { status, label: meta.label, description: meta.description };
 }
 
-/**
- * @param {string} message
- * @param {string[]} [sensitivePaths]
- */
-function sanitizeWorkspaceMessage(message, sensitivePaths = []) {
+function sanitizeWorkspaceMessage(message: string, sensitivePaths: string[] = []) {
     let sanitized = message;
     for (const sensitivePath of sensitivePaths.filter(Boolean)) {
         sanitized = sanitized.split(sensitivePath).join("[workspace path]");
@@ -243,20 +230,13 @@ function sanitizeWorkspaceMessage(message, sensitivePaths = []) {
     return sanitized.replace(/(?:[A-Za-z]:)?[\\/][^\s"'`<>)]*/g, "[workspace path]");
 }
 
-/**
- * @param {string[]} messages
- * @param {string[]} sensitivePaths
- */
-function sanitizeWorkspaceMessages(messages, sensitivePaths) {
+function sanitizeWorkspaceMessages(messages: string[], sensitivePaths: string[]) {
     return messages.map((message) => sanitizeWorkspaceMessage(message, sensitivePaths));
 }
 
-/**
- * @param {Record<string, unknown>} attrs
- */
-function lifecycleActionsForAttrs(attrs) {
+function lifecycleActionsForAttrs(attrs: Partial<PlanFrontMatter>) {
     const status = String(attrs.status || "draft");
-    const metadata = getPlanLifecycleActionMetadata(/** @type {any} */ (status), attrs);
+    const metadata = getPlanLifecycleActionMetadata(status as PlanStatus, attrs);
     return {
         metadata: ACTION_META,
         allowedManualTargetStatuses: metadata.allowedManualTargetStatuses,
@@ -267,7 +247,7 @@ function lifecycleActionsForAttrs(attrs) {
         canResumeFromHold: metadata.canResumeFromHold,
         canResetToDraft: metadata.canResetToDraft,
         blockedReasons: metadata.blockedReasons,
-        terminalMessage: CLOSED_STATUSES.includes(/** @type {any} */ (status))
+        terminalMessage: CLOSED_STATUSES.includes(status)
             ? "Closed Plans are complete. Reopen or revise the Plan before making changes."
             : "",
         holdMessage: status === "on_hold" ? "On-hold Plans can be resumed or reset to draft." : "",
@@ -278,14 +258,46 @@ function lifecycleActionsForAttrs(attrs) {
     };
 }
 
-/**
- * @param {any} resource
- * @returns {any}
- */
-export function serializePlanSummary(resource) {
+interface ColumnsForStatusesOptions {
+    topLevelOnly?: boolean;
+}
+
+interface SerializePlanErrorResult {
+    error: string;
+    repair: string;
+    blockedReason?: string;
+}
+
+interface PlanSummaryResource extends Partial<Pick<PlanResource, "readAvailability" | "revision">> {
+    planId: string;
+    planName?: string;
+    name: string;
+    relativePath: string;
+    attrs: WorkspacePlanFrontMatter;
+}
+
+export interface PlanDetailResource extends PlanSummaryResource, Partial<Pick<PlanResource, "body" | "markdown">> {
+    bodyHash?: string;
+    workspaceKey?: string;
+    capabilities?: PlanDetailCapabilities;
+}
+
+interface PlanDetailCapabilities {
+    bodyEditing?: boolean;
+}
+
+type BoardPlan = Pick<WorkspacePlanSummary, "name" | "attrs" | "status" | "hierarchyRole"> &
+    Partial<Pick<WorkspacePlanSummary, "isEpic" | "dependsOn" | "blockedByDependencies" | "missingDependencyCount">>;
+
+type PlanDependencyStates = ReturnType<typeof resolveSiblingChildPlanDependencyStates>;
+export type WorkspacePlanSummary = ReturnType<typeof serializePlanSummary>;
+type WorkspacePlanDetail = ReturnType<typeof serializePlanDetail>;
+
+export function serializePlanSummary(resource: PlanSummaryResource) {
     const attrs = workspaceSafeFrontMatter(resource.attrs);
     const status = String(attrs.status || "draft");
     attrs.planId = resource.planId;
+    const dependencyStates: PlanDependencyStates = [];
     return {
         planId: resource.planId,
         readAvailability: resource.readAvailability || { kind: "ready" },
@@ -297,7 +309,7 @@ export function serializePlanSummary(resource) {
         status,
         statusLabel: statusOption(status).label,
         actions: resource.readAvailability?.kind === "pending" ? null : lifecycleActionsForAttrs(attrs),
-        classification: attrs.classification || "PLANNED_CHANGE",
+        classification: attrs.classification || ("PLANNED_CHANGE" as const),
         title: attrs.title || resource.planName || resource.name,
         summary: attrs.summary || "",
         complexity: attrs.complexity || "",
@@ -307,9 +319,9 @@ export function serializePlanSummary(resource) {
             ? stringArray(attrs.dependencies)
             : stringArray(attrs.dependsOn),
         dependencies: stringArray(attrs.dependencies),
-        worktreeStatus: attrs.worktreeStatus || "",
+        worktreeStatus: attrs.worktreeStatus || ("" as const),
         worktreeBranch: attrs.worktreeBranch || "",
-        humanReviewMode: attrs.humanReviewMode || "",
+        humanReviewMode: attrs.humanReviewMode || ("" as const),
         closedWithoutVerificationReason: attrs.closedWithoutVerificationReason || "",
         userVerifiedAt: attrs.userVerifiedAt || "",
         userVerificationNote: attrs.userVerificationNote || "",
@@ -319,7 +331,7 @@ export function serializePlanSummary(resource) {
         holdReason: attrs.holdReason || "",
         failureReason: attrs.failureReason || "",
         failedAt: attrs.failedAt || "",
-        epicCompletionMode: attrs.epicCompletionMode || "",
+        epicCompletionMode: attrs.epicCompletionMode || ("" as const),
         epicDoneEnoughSummary: attrs.epicDoneEnoughSummary || "",
         epicDoneEnoughAt: attrs.epicDoneEnoughAt || "",
         doneEnough: attrs.epicCompletionMode === "done_enough",
@@ -329,17 +341,14 @@ export function serializePlanSummary(resource) {
         parentResolved: !isChildFeaturePlan(resource),
         parentPlanId: "",
         orphanReason: "",
-        dependencyStates: [],
+        dependencyStates,
         blockedByDependencies: false,
         missingDependencyCount: 0,
         unverifiedDependencyCount: 0,
     };
 }
 
-/**
- * @param {any[]} plans
- */
-function annotatePlanHierarchy(plans) {
+function annotatePlanHierarchy(plans: WorkspacePlanSummary[]) {
     const epicsByName = new Map(plans.filter((plan) => plan.isEpic).map((plan) => [plan.name, plan]));
     return plans.map((plan) => {
         const parentEpic = plan.isChild ? epicsByName.get(plan.parentPlan) : undefined;
@@ -363,11 +372,8 @@ function annotatePlanHierarchy(plans) {
     });
 }
 
-/**
- * @param {any[]} plans
- */
-function enrichPlanSetDependencies(plans) {
-    const byParent = new Map();
+function enrichPlanSetDependencies(plans: WorkspacePlanSummary[]) {
+    const byParent = new Map<string, WorkspacePlanSummary[]>();
     for (const plan of plans.filter((item) => item.isChild)) {
         const siblings = byParent.get(plan.parentPlan) || [];
         siblings.push(plan);
@@ -380,12 +386,11 @@ function enrichPlanSetDependencies(plans) {
     });
 }
 
-/**
- * @param {any[]} children
- * @param {string} parentPlanName
- * @param {any[]} [dependencySource]
- */
-function enrichChildrenWithDependencies(children, parentPlanName, dependencySource = children) {
+function enrichChildrenWithDependencies<T extends BoardPlan>(
+    children: T[],
+    parentPlanName: string,
+    dependencySource: T[] = children,
+) {
     return children.map((child) => {
         const dependencyStates = resolveSiblingChildPlanDependencyStates(
             parentPlanName,
@@ -404,28 +409,19 @@ function enrichChildrenWithDependencies(children, parentPlanName, dependencySour
     });
 }
 
-/**
- * @param {any[]} plans
- * @param {string} status
- */
-function topLevelCardsForStatus(plans, status) {
+function topLevelCardsForStatus<T extends BoardPlan>(plans: T[], status: string) {
     return plans.filter(
         (plan) => String(plan.status) === status && (plan.isEpic || plan.hierarchyRole === "top-level"),
     );
 }
 
-/**
- * @param {any[]} plans
- * @param {string} status
- */
-function orphanCardsForStatus(plans, status) {
+function orphanCardsForStatus<T extends BoardPlan>(plans: T[], status: string) {
     return plans.filter((plan) => String(plan.status) === status && plan.hierarchyRole === "orphan-child");
 }
 
-/**
- * @param {any[]} children
- */
-function childHealth(children) {
+type EnrichedChild = Pick<WorkspacePlanSummary, "status" | "blockedByDependencies" | "missingDependencyCount">;
+
+function childHealth<T extends EnrichedChild>(children: T[]) {
     return {
         failed: children.filter((child) => child.status === "failed"),
         held: children.filter((child) => child.status === "on_hold"),
@@ -437,18 +433,17 @@ function childHealth(children) {
     };
 }
 
-/**
- * @param {any[]} plans
- * @param {string[]} statuses
- * @param {{ topLevelOnly?: boolean }} [options]
- */
-function columnsForStatuses(plans, statuses, options = {}) {
+function columnsForStatuses<T extends BoardPlan>(
+    plans: T[],
+    statuses: string[],
+    options: ColumnsForStatusesOptions = {},
+) {
     return statuses.map((status) => {
         const cards = options.topLevelOnly
             ? topLevelCardsForStatus(plans, status)
             : plans.filter((plan) => String(plan.status) === status && plan.hierarchyRole !== "orphan-child");
         const orphanChildren = orphanCardsForStatus(plans, status);
-        const meta = /** @type {any} */ (STATUS_META)[status] || {
+        const meta = STATUS_META[status] || {
             status,
             label: status,
             description: "",
@@ -463,13 +458,9 @@ function columnsForStatuses(plans, statuses, options = {}) {
     });
 }
 
-/**
- * @param {any[]} plans
- * @param {keyof typeof BOARD_SCREENS} screenId
- */
-export function buildBoardScreen(plans, screenId) {
+export function buildBoardScreen<T extends BoardPlan>(plans: T[], screenId: keyof typeof BOARD_SCREENS) {
     const screen = BOARD_SCREENS[screenId];
-    const hierarchy = /** @type {any} */ (groupPlanHierarchy(/** @type {any} */ (plans)));
+    const hierarchy = groupPlanHierarchy(plans);
     const childrenByParent = hierarchy.childrenByParent;
     const enrichedPlans = plans.map((plan) => {
         if (!plan.isEpic) return plan;
@@ -488,10 +479,7 @@ export function buildBoardScreen(plans, screenId) {
     };
 }
 
-/**
- * @param {any[]} plans
- */
-export function buildWorkspaceBoard(plans) {
+export function buildWorkspaceBoard<T extends BoardPlan>(plans: T[]) {
     return {
         active: buildBoardScreen(plans, "active"),
         closed: buildBoardScreen(plans, "closed"),
@@ -499,11 +487,7 @@ export function buildWorkspaceBoard(plans) {
     };
 }
 
-/**
- * @param {any} resource
- * @param {any[]} [plans]
- */
-export function serializePlanDetail(resource, plans) {
+export function serializePlanDetail(resource: PlanDetailResource, plans?: WorkspacePlanSummary[]) {
     const summary = plans?.find((plan) => plan.planId === resource.planId) || serializePlanSummary(resource);
     return {
         ...summary,
@@ -518,12 +502,8 @@ export function serializePlanDetail(resource, plans) {
     };
 }
 
-/**
- * @param {any} epic
- * @param {any[]} plans
- */
-function serializeEpicDetail(epic, plans) {
-    const hierarchy = /** @type {any} */ (groupPlanHierarchy(/** @type {any} */ (plans)));
+function serializeEpicDetail(epic: WorkspacePlanDetail, plans: WorkspacePlanSummary[]) {
+    const hierarchy = groupPlanHierarchy(plans);
     const children = enrichChildrenWithDependencies(hierarchy.childrenByParent.get(epic.name) || [], epic.name);
     return {
         ...epic,
@@ -535,11 +515,7 @@ function serializeEpicDetail(epic, plans) {
     };
 }
 
-/**
- * @param {any} plan
- * @param {any[]} plans
- */
-function serializeNonEpicDetail(plan, plans) {
+function serializeNonEpicDetail(plan: WorkspacePlanDetail, plans: WorkspacePlanSummary[]) {
     if (!plan.isChild) return { ...plan, detailKind: "plan", inheritedEpicTickets: [] };
     const parentEpic = plans.find((candidate) => candidate.name === plan.parentPlan && candidate.isEpic);
     const siblings = plans.filter((candidate) => candidate.parentPlan === plan.parentPlan && candidate.isChild);
@@ -558,11 +534,7 @@ function serializeNonEpicDetail(plan, plans) {
     };
 }
 
-/**
- * @param {unknown} error
- * @returns {{ error: string, repair: string, blockedReason?: string }}
- */
-export function serializePlanError(error) {
+export function serializePlanError<ErrorValue>(error: ErrorValue): SerializePlanErrorResult {
     const message = error instanceof Error ? error.message : String(error);
     if (error instanceof SharedPlanLockError) {
         return { error: message, blockedReason: error.blockedReason, repair: error.repair };
@@ -574,19 +546,15 @@ export function serializePlanError(error) {
     return { error: message, repair };
 }
 
-/**
- * @param {string} cwd
- */
-export async function loadPlanSummaries(cwd) {
+export async function loadPlanSummaries(cwd: string) {
     const resources = await listPlanResources(cwd);
     return enrichPlanSetDependencies(annotatePlanHierarchy(resources.map(serializePlanSummary)));
 }
 
 /**
  * Browser-safe, display-only catalog. Detail and action callers keep the strict reader.
- * @param {string} cwd
  */
-export async function loadPlanSummaryCatalog(cwd) {
+export async function loadPlanSummaryCatalog(cwd: string) {
     const { resources, diagnostics } = await readPlanResourceCatalog(cwd);
     const plans = enrichPlanSetDependencies(annotatePlanHierarchy(resources.map(serializePlanSummary)));
     return {
@@ -600,22 +568,13 @@ export async function loadPlanSummaryCatalog(cwd) {
     };
 }
 
-/**
- * @param {string} cwd
- * @param {string} planId
- */
-export async function loadPlanDetail(cwd, planId) {
+export async function loadPlanDetail(cwd: string, planId: string) {
     const resource = await findPlanById(cwd, planId);
     const summaries = await loadPlanSummaries(cwd);
     return serializePlanDetail(resource, summaries);
 }
 
-/**
- * @param {string} cwd
- * @param {string} planId
- * @param {WorkspacePlanDetailOptions} [options]
- */
-export async function loadWorkspaceDetail(cwd, planId, options = {}) {
+export async function loadWorkspaceDetail(cwd: string, planId: string, options: WorkspacePlanDetailOptions = {}) {
     if (options.documentName) {
         const resource = (await listPlanResources(cwd)).find(
             (candidate) => !candidate.planId && candidate.planName === options.documentName,
@@ -650,23 +609,19 @@ export async function loadWorkspaceDetail(cwd, planId, options = {}) {
 /**
  * Project a Plan resource through the same detail shape used by production and
  * the dev-only in-memory Workspace.
- *
- * @param {any} resource
- * @param {any[]} plans
  */
-export function projectWorkspaceDetail(resource, plans) {
+export function projectWorkspaceDetail(resource: PlanDetailResource, plans: WorkspacePlanSummary[]) {
     const detail = serializePlanDetail(resource, plans);
     return detail.isEpic ? serializeEpicDetail(detail, plans) : serializeNonEpicDetail(detail, plans);
 }
 
-/**
- * @param {string} cwd
- * @param {string} planId
- * @param {string} body
- * @param {string} expectedBodyHash
- * @param {string} expectedRevision
- */
-export async function saveWorkspacePlanBody(cwd, planId, body, expectedBodyHash, expectedRevision) {
+export async function saveWorkspacePlanBody(
+    cwd: string,
+    planId: string,
+    body: string,
+    expectedBodyHash: string,
+    expectedRevision: string,
+) {
     if (!expectedRevision) throw new Error("Workspace body save requires expectedRevision.");
     const saved = await savePlanBodyById(cwd, planId, body, expectedBodyHash, { expectedRevision });
     const summaries = await loadPlanSummaries(cwd);
@@ -680,20 +635,14 @@ export async function saveWorkspacePlanBody(cwd, planId, body, expectedBodyHash,
     );
 }
 
-/**
- * @typedef {Object} ResumeCheck
- * @property {boolean} ok
- * @property {string[]} warnings
- * @property {string[]} failures
- * @property {string} message
- */
+export interface ResumeCheck {
+    ok: boolean;
+    warnings: string[];
+    failures: string[];
+    message: string;
+}
 
-/**
- * @param {string} cwd
- * @param {Record<string, unknown>} attrs
- * @returns {Promise<ResumeCheck>}
- */
-export async function runWorkspaceResumeCheck(cwd, attrs) {
+export async function runWorkspaceResumeCheck(cwd: string, attrs: WorkspacePlanFrontMatter): Promise<ResumeCheck> {
     if (attrs.status !== "on_hold" || !attrs.heldFromStatus) {
         return {
             ok: false,
@@ -702,10 +651,8 @@ export async function runWorkspaceResumeCheck(cwd, attrs) {
             message: "Resume Check failed.",
         };
     }
-    /** @type {string[]} */
-    const warnings = [];
-    /** @type {string[]} */
-    const failures = [];
+    const warnings: string[] = [];
+    const failures: string[] = [];
     const worktreePath = typeof attrs.worktreePath === "string" ? attrs.worktreePath : "";
     const worktreeBranch = typeof attrs.worktreeBranch === "string" ? attrs.worktreeBranch : "";
     const baseline = typeof attrs.holdStalenessBaseline === "string" ? attrs.holdStalenessBaseline : "";
@@ -767,14 +714,18 @@ export async function runWorkspaceResumeCheck(cwd, attrs) {
     };
 }
 
-/**
- * @param {unknown} payload
- * @param {{ requireRevision?: boolean }} [options]
- */
-function validateLifecycleActionPayload(payload, options = {}) {
+interface LifecyclePayloadOptions {
+    requireRevision?: boolean;
+}
+
+interface LifecyclePlan extends WorkspacePlanSummary {
+    frontMatter?: WorkspacePlanFrontMatter;
+}
+
+function validateLifecycleActionPayload(payload: unknown, options: LifecyclePayloadOptions = {}) {
     const body = safeObject(payload);
     const action = typeof body.action === "string" ? body.action : "";
-    if (!Object.values(PLAN_LIFECYCLE_ACTIONS).includes(/** @type {any} */ (action))) {
+    if (!Object.values(PLAN_LIFECYCLE_ACTIONS).includes(action)) {
         throw new Error("Unknown lifecycle action.");
     }
     if (options.requireRevision && typeof body.expectedRevision !== "string") {
@@ -802,38 +753,33 @@ function validateLifecycleActionPayload(payload, options = {}) {
  * Apply a Workspace lifecycle action to an already-loaded Plan without writing
  * its markdown file. This is intentionally limited to the Astro dev server;
  * production continues through recordPlanEvent and the canonical Plan store.
- *
- * @param {any} plan
- * @param {unknown} payload
  */
-export function applyWorkspaceLifecycleActionInMemory(plan, payload) {
+export function applyWorkspaceLifecycleActionInMemory<T extends LifecyclePlan>(plan: T, payload: unknown) {
     const request = validateLifecycleActionPayload(payload);
-    const attrs = { ...safeObject(plan.attrs), ...safeObject(plan.frontMatter) };
-    const currentStatus = /** @type {any} */ (String(attrs.status || plan.status || "draft"));
+    const attrs: WorkspacePlanFrontMatter = { ...safeObject(plan.attrs), ...safeObject(plan.frontMatter) };
+    const currentStatus = String(attrs.status || plan.status || "draft") as PlanStatus;
     const action = String(request.action);
     const metadata = getPlanLifecycleActionMetadata(currentStatus, attrs);
-    /** @type {any} */
-    const details = { triageMeta: attrs };
-    /** @type {any} */
-    let event = "manual_status_change";
+    const details: PlanEventDetails = { triageMeta: attrs };
+    let event: PlanEvent = "manual_status_change";
     let message = "Plan lifecycle action applied.";
 
     if (action === PLAN_LIFECYCLE_ACTIONS.MOVE_STATUS) {
         const targetStatus = String(request.targetStatus);
-        if (!metadata.allowedManualTargetStatuses.includes(/** @type {any} */ (targetStatus))) {
+        if (!metadata.allowedManualTargetStatuses.includes(targetStatus as PlanStatus)) {
             throw new Error(metadata.blockedReasons.move_status || `Manual move to ${targetStatus} is blocked.`);
         }
-        details.manualTargetStatus = targetStatus;
+        details.manualTargetStatus = targetStatus as PlanStatus;
         message = `Plan moved to ${statusOption(targetStatus).label}.`;
     } else if (action === PLAN_LIFECYCLE_ACTIONS.USER_VERIFY) {
         if (!metadata.canUserVerify) throw new Error(metadata.blockedReasons.user_verify);
         event = "manual_user_verified";
-        details.userVerificationNote = request.userVerificationNote;
+        details.userVerificationNote = request.userVerificationNote as string;
         message = "Plan marked User Verified. RunWield Workflow Validation was not claimed.";
     } else if (action === PLAN_LIFECYCLE_ACTIONS.CLOSE_WITHOUT_VERIFICATION) {
         if (!metadata.canCloseWithoutVerification) throw new Error(metadata.blockedReasons.close_without_verification);
         event = "manual_closed_without_verification";
-        details.closedWithoutVerificationReason = request.closedWithoutVerificationReason;
+        details.closedWithoutVerificationReason = request.closedWithoutVerificationReason as string;
         message = "Plan closed without Workflow Validation.";
     } else if (action === PLAN_LIFECYCLE_ACTIONS.PUT_ON_HOLD) {
         if (!metadata.canPutOnHold) throw new Error(metadata.blockedReasons.put_on_hold);
@@ -849,7 +795,7 @@ export function applyWorkspaceLifecycleActionInMemory(plan, payload) {
     } else if (action === PLAN_LIFECYCLE_ACTIONS.RESUME_FROM_HOLD) {
         if (!metadata.canResumeFromHold) throw new Error(metadata.blockedReasons.resume_from_hold);
         event = "hold_resumed";
-        details.heldFromStatus = attrs.heldFromStatus;
+        details.heldFromStatus = attrs.heldFromStatus!;
         message = `Plan resumed to ${statusOption(String(attrs.heldFromStatus)).label}.`;
     } else if (action === PLAN_LIFECYCLE_ACTIONS.RESET_TO_DRAFT) {
         if (!metadata.canResetToDraft) throw new Error(metadata.blockedReasons.reset_to_draft);
@@ -879,23 +825,21 @@ export function applyWorkspaceLifecycleActionInMemory(plan, payload) {
     };
 }
 
-/**
- * @typedef {Object} WorkspaceLifecycleActionOptions
- * @property {import('../../../shared/work-records/mnemoteca-port.ts').WorkRecordMnemotecaPort} mnemotecaPort
- */
+export interface WorkspaceLifecycleActionOptions {
+    mnemotecaPort: WorkRecordMnemotecaPort;
+}
 
-/**
- * @param {string} cwd
- * @param {string} planId
- * @param {unknown} payload
- * @param {WorkspaceLifecycleActionOptions} options
- */
-export async function applyWorkspaceLifecycleAction(cwd, planId, payload, options) {
+export async function applyWorkspaceLifecycleAction(
+    cwd: string,
+    planId: string,
+    payload: unknown,
+    options: WorkspaceLifecycleActionOptions,
+) {
     const request = validateLifecycleActionPayload(payload, { requireRevision: true });
     const evidenceResult = await loadPlanActionEvidence(cwd, planId);
     if (evidenceResult.kind !== "success") throw new Error(evidenceResult.message);
     const resource = await findPlanById(cwd, planId);
-    const attrs = safeObject(resource.attrs);
+    const attrs: WorkspacePlanFrontMatter = safeObject(resource.attrs);
     if (isSharedPlanLocked(attrs)) {
         const lockError = new SharedPlanLockError(attrs);
         return {
@@ -928,7 +872,7 @@ export async function applyWorkspaceLifecycleAction(cwd, planId, payload, option
         expectedRevision: String(request.expectedRevision),
         expectedStatus: evidenceResult.evidence.status,
         expectedWorktree: evidenceResult.evidence.worktree,
-        action: /** @type {import('../../../shared/workflow/plan-actions.ts').PlanActionName} */ (action),
+        action: action as PlanActionName,
         targetStatus: typeof request.targetStatus === "string" ? request.targetStatus : undefined,
         holdReason: typeof request.holdReason === "string" ? request.holdReason : undefined,
         acceptResumeWarnings: request.acceptResumeWarnings === true,
@@ -958,7 +902,7 @@ export async function applyWorkspaceLifecycleAction(cwd, planId, payload, option
         } catch (error) {
             const reason = error instanceof Error ? error.message : String(error);
             workRecordResult = {
-                status: /** @type {const} */ ("failed"),
+                status: "failed" as const,
                 planName: result.evidence.planName,
                 error: reason,
                 message: formatWorkRecordAutoGenerationResult({
@@ -985,17 +929,13 @@ export async function applyWorkspaceLifecycleAction(cwd, planId, payload, option
 
 export { StalePlanBodyError };
 
-/**
- * @param {any[]} plans
- * @param {string[]} statuses
- */
-function hierarchyForPlans(plans, statuses) {
-    const hierarchy = /** @type {any} */ (groupPlanHierarchy(/** @type {any} */ (plans)));
+function hierarchyForPlans<T extends BoardPlan>(plans: T[], statuses: string[]) {
+    const hierarchy = groupPlanHierarchy(plans);
     const allowed = new Set(statuses);
-    const hasAllowedStatus = (/** @type {any} */ plan) => allowed.has(String(plan.status));
+    const hasAllowedStatus = (plan: T) => allowed.has(String(plan.status));
     return {
         epics: hierarchy.epics
-            .map((/** @type {any} */ epic) => {
+            .map((epic) => {
                 const allChildren = enrichChildrenWithDependencies(
                     hierarchy.childrenByParent.get(epic.name) || [],
                     epic.name,
@@ -1008,16 +948,13 @@ function hierarchyForPlans(plans, statuses) {
                     children,
                 };
             })
-            .filter((/** @type {any} */ epic) => hasAllowedStatus(epic) || epic.children.length > 0),
+            .filter((epic) => hasAllowedStatus(epic) || epic.children.length > 0),
         standalone: hierarchy.standalone.filter(hasAllowedStatus),
         orphanChildren: hierarchy.orphanChildren.filter(hasAllowedStatus),
     };
 }
 
-/**
- * @param {any[]} plans
- */
-export function buildBoardGroups(plans) {
+export function buildBoardGroups<T extends BoardPlan>(plans: T[]) {
     return {
         active: hierarchyForPlans(plans, ACTIVE_STATUSES),
         closed: hierarchyForPlans(plans, CLOSED_STATUSES),
@@ -1025,18 +962,12 @@ export function buildBoardGroups(plans) {
     };
 }
 
-/**
- * @param {string} cwd
- */
-export async function loadBoard(cwd) {
+export async function loadBoard(cwd: string) {
     const { plans, diagnostics } = await loadPlanSummaryCatalog(cwd);
     return { plans, groups: buildBoardGroups(plans), screens: buildWorkspaceBoard(plans), diagnostics };
 }
 
-/**
- * @param {string} cwd
- */
-export function workspaceMetadata(cwd) {
+export function workspaceMetadata(cwd: string) {
     return {
         projectName: cwd.split(/[\\/]/).filter(Boolean).at(-1) || cwd,
         readOnly: true,

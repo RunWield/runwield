@@ -17,7 +17,7 @@ import { loadPlan, savePlan } from "../../plan-store.js";
 import { preparePlanningWorktreeForPlan } from "../../shared/workflow/planning-worktree.ts";
 import { loadPlanActionEvidence } from "../../shared/workflow/plan-actions.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
-import { WorkspaceSessionContinuationService } from "../../ui/workspace/server/session-continuation.js";
+import { WorkspaceSessionContinuationService } from "../../ui/workspace/server/session-continuation.ts";
 import {
     prepareSequenceReview,
     type SequenceReviewDocument,

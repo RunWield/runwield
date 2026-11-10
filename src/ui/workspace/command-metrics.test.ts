@@ -10,7 +10,7 @@ import {
 } from "node:fs/promises";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
-import { createOwnerWorkspaceApp } from "./server.js";
+import { createOwnerWorkspaceApp } from "./server.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../../shared/workflow/metrics.ts";
 import { setCustomSetting } from "../../shared/settings.js";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";

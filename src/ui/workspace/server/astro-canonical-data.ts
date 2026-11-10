@@ -5,29 +5,19 @@ import { getCwd } from "../../../constants.ts";
 
 import { isAstroDevelopmentMode } from "./astro-dev-mode.ts";
 
-import type { PlanBodyResource, PlanResource } from "../../../plan-store.js";
 import type { DevPlanCatalogVariant } from "./dev-owner-fixtures.ts";
-import type { WorkspacePlanDetailOptions } from "./plan-adapter.js";
+import type { PlanDetailResource, WorkspacePlanDetailOptions, WorkspacePlanSummary } from "./plan-adapter.ts";
 
-type WorkspaceAdapter = typeof import("./plan-adapter.js");
+type WorkspaceAdapter = typeof import("./plan-adapter.ts");
 type WorkspaceAdapterImporter = (specifier: string) => Promise<WorkspaceAdapter>;
 type WorkspaceCatalog = Awaited<ReturnType<WorkspaceAdapter["loadPlanSummaryCatalog"]>>;
-type DevPlanSummary = Pick<PlanResource, "planId" | "attrs">;
-
-interface DevPlanCapabilities {
-    bodyEditing?: boolean;
-}
-
-interface DevPlanDetail extends Pick<PlanBodyResource, "attrs" | "body" | "markdown" | "bodyHash"> {
-    frontMatter: PlanResource["attrs"];
-    workspaceKey: string;
-    capabilities?: DevPlanCapabilities;
-}
+type DevPlanDetail = Awaited<ReturnType<WorkspaceAdapter["loadWorkspaceDetail"]>>;
+type DevPlanDetailResource = PlanDetailResource & Pick<DevPlanDetail, "frontMatter">;
 
 interface DevWorkspaceState {
-    plans: DevPlanSummary[];
+    plans: WorkspacePlanSummary[];
     diagnostics: WorkspaceCatalog["diagnostics"];
-    details: Map<string, DevPlanDetail>;
+    details: Map<string, DevPlanDetailResource>;
     workspaceKey: string;
 }
 
@@ -43,7 +33,7 @@ const ADAPTER_URL_KEY = Symbol.for("runwield.workspace.plan-adapter-url");
 const ADAPTER_MODULE_KEY = Symbol.for("runwield.workspace.plan-adapter-module");
 const DEV_WORKSPACES_KEY = Symbol.for("runwield.workspace.dev-memory-state");
 const runtime: CanonicalWorkspaceRuntime = globalThis;
-const ADAPTER_URL = runtime[ADAPTER_URL_KEY] || new URL("./plan-adapter.js", import.meta.url).href;
+const ADAPTER_URL = runtime[ADAPTER_URL_KEY] || new URL("./plan-adapter.ts", import.meta.url).href;
 const devWorkspaces = (runtime[DEV_WORKSPACES_KEY] ||= new Map<string, DevWorkspaceState>());
 
 async function workspaceAdapter(): Promise<WorkspaceAdapter> {
@@ -54,7 +44,7 @@ async function workspaceAdapter(): Promise<WorkspaceAdapter> {
     } catch (error) {
         const cwd = getCwd();
         if (!cwd) throw error;
-        const sourceAdapterUrl = new URL("src/ui/workspace/server/plan-adapter.js", `file://${cwd}/`).href;
+        const sourceAdapterUrl = new URL("src/ui/workspace/server/plan-adapter.ts", `file://${cwd}/`).href;
         return await nativeImport(await devVersionedAdapterUrl(sourceAdapterUrl));
     }
 }
@@ -88,7 +78,7 @@ async function loadDevWorkspace(cwd: string) {
     state = {
         plans: structuredClone(catalog.plans),
         diagnostics: structuredClone(catalog.diagnostics),
-        details: new Map<string, DevPlanDetail>(),
+        details: new Map<string, DevPlanDetailResource>(),
         workspaceKey: await sha256Hex(cwd),
     };
     devWorkspaces.set(cwd, state);
@@ -102,7 +92,7 @@ async function loadDevDetail(cwd: string, planId: string): Promise<DevPlanDetail
     if (!summary) throw new Error(`Plan not found for planId: ${planId}`);
     let resource = state.details.get(planId);
     if (!resource) {
-        const loaded: DevPlanDetail = await adapter.loadWorkspaceDetail(cwd, planId);
+        const loaded = await adapter.loadWorkspaceDetail(cwd, planId);
         resource = {
             ...loaded,
             attrs: summary.attrs,
