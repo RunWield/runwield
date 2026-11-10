@@ -3,7 +3,7 @@
 import type { OwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
 import { findPlanEvidenceById } from "../../../plan-store.js";
 import { findPlanAssociatedSessions } from "../../../shared/session/plan-session-lookup.ts";
-import { ownerErrorJson, ownerJson } from "../routes/owner-api.js";
+import { ownerErrorJson, ownerJson } from "../routes/owner-api.ts";
 import { requireOwnerProjectRoot } from "./owner-projects.ts";
 
 interface OwnerRouteState {

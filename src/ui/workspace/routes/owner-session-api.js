@@ -4,7 +4,7 @@ import { resolveWorkflowPlanLocation } from "../../../shared/workflow/plan-locat
 /* @module ui/workspace/routes/owner-session-api */
 
 import { ImageSubmissionValidationError } from "../server/session-continuation.js";
-import { ownerErrorJson, ownerJson, sanitizeOwnerError } from "./owner-api.js";
+import { ownerErrorJson, ownerJson, sanitizeOwnerError } from "./owner-api.ts";
 import { ownerSecurityHeaders } from "../server/owner-origin.ts";
 import { findPlanEvidenceById } from "../../../plan-store.js";
 import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "../server/owner-projects.ts";

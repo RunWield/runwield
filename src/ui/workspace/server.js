@@ -72,7 +72,7 @@ import {
     projectsApi,
     registerProjectApi,
     revokeDeviceApi,
-} from "./routes/owner-api.js";
+} from "./routes/owner-api.ts";
 import {
     authenticateOwnerRequest,
     authorizeOwnerUpgradeRequest,

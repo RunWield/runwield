@@ -81,7 +81,7 @@ type SessionSummary = {
     name?: string;
     href?: string;
     state?: string;
-    headerTimestamp?: string;
+    headerTimestamp?: string | null;
     archivedAt?: string | null;
 };
 
@@ -148,7 +148,7 @@ type DashboardInteractionRequest = {
 
 type WorkspaceOperation = {
     projectId?: string;
-    runwieldSessionId?: string;
+    runwieldSessionId?: string | null;
     status?: string;
     liveInteraction?: { interactionId?: string; request?: DashboardInteractionRequest };
     error?: string;
@@ -367,7 +367,7 @@ function dashboardItem(
     };
 }
 
-function latestTimestamp(...values: Array<string | undefined>): string {
+function latestTimestamp(...values: Array<string | null | undefined>): string {
     return (
         values
             .filter((value): value is string => Boolean(value && Number.isFinite(Date.parse(value))))

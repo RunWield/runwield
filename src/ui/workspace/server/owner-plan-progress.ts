@@ -45,7 +45,7 @@ type PlanEvidence = {
 type OwnerSession = {
     runwieldSessionId: string;
     projectId: string;
-    displayName?: string;
+    displayName?: string | null;
     transcriptCwd: string;
 };
 type OwnerStore = {
@@ -53,14 +53,14 @@ type OwnerStore = {
     requireEnabledProjectRoot: (projectId: string) => string;
     getSessionById: (runwieldSessionId: string) => OwnerSession | null;
     inspectSessionActivation: (runwieldSessionId: string) => {
-        activation?: { state?: string; ownerProcessKind?: string; activeAgentName?: string };
+        activation?: { state?: string; ownerProcessKind?: string | null; activeAgentName?: string } | null;
         generation?: {
             generation: number;
             byteLength: number;
             terminalEntryId: string | null;
             digestHex: string;
             currentSegmentId: string | null;
-        };
+        } | null;
     };
     listSessionTranscriptSegments: (runwieldSessionId: string) => Array<{
         segmentId: string;
