@@ -7,8 +7,8 @@ import process from "node:process";
 
 import type { SequenceReviewDocument } from "../../shared/workflow/sequence-review.ts";
 import { startReviewWorkspaceServer } from "../../review-workspace-server.ts";
-import { parsePlanFrontMatter, resolvePlanExecutionPolicy } from "../../plan-store.js";
-import type { PlanExecutionPolicy, PlanFrontMatter } from "../../plan-store.js";
+import { parsePlanFrontMatter, resolvePlanExecutionPolicy } from "../../plan-store.ts";
+import type { PlanExecutionPolicy, PlanFrontMatter } from "../../plan-store.ts";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 import type { GuidedReviewPolicy } from "../../shared/workflow/guided-review.ts";
 import type { ReviewDecisionSink } from "../workspace/routes/api/review-handlers.ts";

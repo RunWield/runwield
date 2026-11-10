@@ -21,7 +21,7 @@ import { platform, tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../../testing/assertions.ts";
 import { join } from "node:path";
 import { DatabaseSync } from "../../../shared/sqlite.ts";
-import { savePlan, writePlanMarkdownWithRevision } from "../../../plan-store.js";
+import { savePlan, writePlanMarkdownWithRevision } from "../../../plan-store.ts";
 import { openOwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
 import { defineCommittedGitFixture, git } from "../../../shared/git-test-fixture.ts";
 import { addEntry, withWorktreeRegistryLock } from "../../../shared/worktree-registry.ts";

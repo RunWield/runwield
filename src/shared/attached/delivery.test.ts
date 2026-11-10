@@ -7,7 +7,7 @@ import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { approveSemantic, prepareIndexRuntime, toDelivery } from "./delivery-test-fixture.ts";
 import { listWorkRecords } from "../work-records/store.js";
 import { git } from "../git-test-fixture.ts";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store.ts";
 import {
     type CliRun,
     CLI_PATH,

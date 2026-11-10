@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import type { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { createTestWorktreeAttempt } from "../../shared/worktree-test-helpers.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";

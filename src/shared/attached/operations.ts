@@ -330,7 +330,7 @@ export type AttachedNextAction = (
           planName: string;
           guidance: string;
           completionMode?: import("../workflow/validation-host-contract.ts").HostDeliveryMode;
-          workRecord?: import("../../plan-store.js").PlanFrontMatter["workRecord"];
+          workRecord?: import("../../plan-store.ts").PlanFrontMatter["workRecord"];
       }
     | { kind: "return_to_host"; reason: "unsupported_in_preview" | "plan_advanced_in_core"; message?: string }
 ) & { dispatch?: CodexRoleDispatch };
@@ -355,7 +355,7 @@ export type AttachedWorkflowClosure =
     | {
           reason: "delivered";
           completionMode?: import("../workflow/validation-host-contract.ts").HostDeliveryMode;
-          workRecord?: import("../../plan-store.js").PlanFrontMatter["workRecord"];
+          workRecord?: import("../../plan-store.ts").PlanFrontMatter["workRecord"];
       };
 
 export interface ProjectMovedRecovery {

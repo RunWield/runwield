@@ -8,7 +8,7 @@ import type {
     RuntimeInteractionRequest,
     RuntimeInteractionResponse,
 } from "../../shared/session/session-runtime-interactions.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { createPlanDeviationTool } from "../plan-deviation.ts";
 
 type PlanDeviationTool = ReturnType<typeof createPlanDeviationTool>;

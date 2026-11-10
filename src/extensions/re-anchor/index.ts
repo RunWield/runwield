@@ -17,7 +17,7 @@ import { readFileSync } from "node:fs";
 import type { ContextEvent, ExtensionAPI, SessionCompactEvent } from "@earendil-works/pi-coding-agent";
 import { buildReAnchorMessage, type ReAnchorContext } from "../../shared/workflow/workflow-prompts.ts";
 import { projectEngineerPlanBody } from "../../shared/workflow/engineer-plan-projection.ts";
-import { getStoredPlanPath } from "../../plan-store.js";
+import { getStoredPlanPath } from "../../plan-store.ts";
 import { normalizeWorkflowPlanName } from "../../shared/session/workflow-context-session.ts";
 import { normalizeLedger, renderOpenItems } from "../../shared/workflow/review-ledger.ts";
 import type { HostedSession } from "../../shared/session/hosted-session.ts";

@@ -24,7 +24,7 @@ import { resolveRecoveryWorktree, persistRecoveredWorktreeMetadata } from "./pla
 import { dirname } from "node:path";
 import { handlePlanRecovery, SYSTEM_RECOVERY_FLOW_PORTS } from "./plan-recovery-flow.ts";
 import { abandonRecoveryPlan, continueRecoveryPlan } from "./plan-recovery-actions.ts";
-import { getStoredPlanPath, listPlans, loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
+import { getStoredPlanPath, listPlans, loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.ts";
 import { getTransitionJournalDir } from "../../shared/workflow/state-transition.ts";
 import { readControllerRecord, writeControllerState } from "../../shared/workflow/controller-registry.ts";
 import { resolvePlanWithPrimaryRecovery } from "./primary-plan-recovery.ts";
@@ -35,7 +35,7 @@ import {
 } from "../../shared/worktree-registry.ts";
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 import type { UiAPI } from "../../ui/tui/api.ts";
 import type { PlanSessionSurface } from "./plan-session-types.ts";
 import type { HandlePlanRecoveryOptions, RecoveryFlowPlan } from "./plan-recovery-flow.ts";

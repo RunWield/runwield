@@ -14,7 +14,7 @@ const fixture = defineCommittedGitFixture({
     "README.md": "# Passive read denial\n",
     "docs/plans/example.md": "---\nplanId: example-id\nstatus: draft\n---\n# Example\n",
 });
-const storeUrl = new URL("../plan-store.js", import.meta.url).href;
+const storeUrl = new URL("../plan-store.ts", import.meta.url).href;
 const registryUrl = new URL("./worktree-registry.ts", import.meta.url).href;
 const doctorUrl = new URL("../cmd/plans/doctor.ts", import.meta.url).href;
 

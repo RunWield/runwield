@@ -27,7 +27,7 @@ import { PLAN_RUNTIME_FIELDS } from "../../../shared/workflow/controller-state.t
 import { readControllerRecord } from "../../../shared/workflow/controller-registry.ts";
 import { getCurrentSystemPrompt, getCurrentTools } from "@earendil-works/pi-ai";
 import { registerFauxProvider } from "@earendil-works/pi-ai/compat";
-import { findPlansByParent, loadPlan, parsePlanFrontMatter } from "../../../plan-store.js";
+import { findPlansByParent, loadPlan, parsePlanFrontMatter } from "../../../plan-store.ts";
 import { withProcessGlobalTestLock } from "../../../testing/process-global-lock.ts";
 import { submitPlanForReview } from "../../review/plan-review.ts";
 import { createScriptedReviewBrowser } from "../../review/review-test-fixture.ts";
@@ -2158,7 +2158,7 @@ async function runComposedTuiScenario(scenario, options) {
                     if (!loaded) throw new Error(`Cannot seed worktree for missing Plan ${planName}`);
                     const { createTestWorktreeAttempt } = await import("../../../shared/worktree-test-helpers.ts");
                     const { updateEntry } = await import("../../../shared/worktree-registry.ts");
-                    const { updatePlanFrontMatter } = await import("../../../plan-store.js");
+                    const { updatePlanFrontMatter } = await import("../../../plan-store.ts");
                     const entry = await createTestWorktreeAttempt({
                         projectRoot: getCwd(),
                         planName,
@@ -2288,7 +2288,7 @@ async function runComposedTuiScenario(scenario, options) {
                     );
                     const loaded = await loadPlan(getCwd(), planName);
                     if (!loaded) throw new Error(`Cannot update missing primary Plan ${planName}`);
-                    const { updatePlanFrontMatter } = await import("../../../plan-store.js");
+                    const { updatePlanFrontMatter } = await import("../../../plan-store.ts");
                     const clearWorktreeEvidence = typed.clearWorktreeEvidence === true;
                     const clearPrimaryWorktreeEvidence =
                         clearWorktreeEvidence || typed.clearPrimaryWorktreeEvidence === true;

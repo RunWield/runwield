@@ -19,7 +19,7 @@ import {
 } from "../work-records/index-adapter.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
 import { conversation, reviewApi, sendChat } from "./review-chat-test-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import type {
     AttachedJsonObject,
     AttachedOperationName,

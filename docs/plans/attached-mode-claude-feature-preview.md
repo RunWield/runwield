@@ -288,7 +288,7 @@ baseline, lifecycle position, and completion contract.
 
 - `src/shared/workflow/plan-lifecycle.ts` and `state-transition.ts` already centralize Plan Events and guarded Plan
   Status transitions. This is the authority the coordinator must call rather than a Claude-specific lifecycle.
-- `src/plan-store.js`, `src/shared/worktree.js`, `worktree-registry.js`, review-ledger logic, merge verification, and
+- `src/plan-store.ts`, `src/shared/worktree.js`, `worktree-registry.js`, review-ledger logic, merge verification, and
   Work Record generation are largely session-independent and reusable.
 - `src/shared/workflow/orchestrator.ts`, `workflow.js`, `engineer-runner.ts`, and `planning-agent.ts` drive
   Pi/HostedSession turns directly and interpret protected tool results as orchestration signals. Retrofitting Attached
@@ -373,7 +373,7 @@ child decomposition. If discovery changes approved scope or ownership, return th
 
 - `src/shared/workflow/plan-lifecycle.ts` and `src/shared/workflow/state-transition.ts` — reuse canonical Plan Event
   guards, atomic transition behavior, locks, recovery actions, and Verified semantics.
-- `src/plan-store.js` — reuse canonical Plan parsing, atomic writes, front-matter normalization, and project-root
+- `src/plan-store.ts` — reuse canonical Plan parsing, atomic writes, front-matter normalization, and project-root
   resolution.
 - `src/shared/git-port.ts`, `src/shared/worktree.js`, and `src/shared/worktree-registry.js` — reuse real Git operations,
   baseline evidence, execution isolation, merge safeguards, and recovery records.

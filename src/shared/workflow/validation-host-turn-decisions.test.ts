@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { join } from "node:path";
-import { updatePlanFrontMatter } from "../../plan-store.js";
+import { updatePlanFrontMatter } from "../../plan-store.ts";
 import { getExactProjectCustomSetting } from "../settings.js";
 import { captureWorktreeTree } from "./git-snapshot.ts";
 import { getWorktreeReviewDiff } from "./git-snapshot.ts";

@@ -12,7 +12,7 @@ import {
     isProjectPlan,
     listArchivedPlans,
     loadArchivedPlan,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { resolveWorkflowPlanLocation } from "../workflow/plan-location.ts";
 import { shouldAutoGenerateWorkRecordsOnPlanCompletion } from "../settings.js";
 import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
@@ -54,7 +54,7 @@ interface TargetedWorkRecordSource {
     targetPlanName?: string;
 }
 
-type WorkRecordParentState = Pick<import("../../plan-store.js").PlanFrontMatter, "status" | "epicCompletionMode">;
+type WorkRecordParentState = Pick<import("../../plan-store.ts").PlanFrontMatter, "status" | "epicCompletionMode">;
 
 /** The parent must be terminal before a child completion can record its Epic. */
 export function isTerminalWorkRecordParent(attrs: WorkRecordParentState): boolean {

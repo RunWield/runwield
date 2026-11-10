@@ -335,7 +335,7 @@ export class RuntimeWorkflows {
     async reviewSavedPlan(sessionId: string, planId: string): Promise<RuntimeValidationResult> {
         const session = this.services.sessionHost.getSession(sessionId);
         if (!session) throw new Error("Session not found.");
-        const { findPlanEvidenceById } = await import("../../../plan-store.js");
+        const { findPlanEvidenceById } = await import("../../../plan-store.ts");
         const { loadPlanActionEvidence } = await import("../../workflow/plan-actions.ts");
         const { createPlanWrittenTool } = await import("../../../tools/plan-written.ts");
         const { claimWorkflowToolEvent, settleWorkflowToolEvent } =
@@ -669,7 +669,7 @@ ${outcome.feedback || ""}`,
             ...validationResult.semanticRepairHandoff.activeWorkflow,
         };
         const { loadPlanActionEvidence } = await import("../../workflow/plan-actions.ts");
-        const { getPlanRevisionForText } = await import("../../../plan-store.js");
+        const { getPlanRevisionForText } = await import("../../../plan-store.ts");
         const { buildSemanticRepairSegmentContinuation } = await import("../../workflow/execution-segment-handoff.ts");
         const planId = workflow.triageMeta?.planId || options.triageMeta?.planId;
         if (!planId) throw new Error("Semantic repair handoff requires Plan identity.");
@@ -824,7 +824,7 @@ ${outcome.feedback || ""}`,
             ? await runRepair()
             : await this.runWorkflowOperation(session, "semanticRepairSegment", options, runRepair);
         if (repairResult?.kind === "semantic_repair_completed") {
-            const { loadPlan } = await import("../../../plan-store.js");
+            const { loadPlan } = await import("../../../plan-store.ts");
             const completedPlan = await loadPlan(executionCwd, continuation.plan.planName || options.planName);
             if (!completedPlan) throw new Error("Completed semantic repair Plan is unavailable.");
             const refreshedWorkflow = {

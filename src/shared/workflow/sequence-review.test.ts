@@ -9,7 +9,7 @@ import { assertEquals, assertExists, assertRejects, assertStringIncludes } from 
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { HostedSession } from "../session/hosted-session.ts";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
-import { loadPlan, resolveSiblingChildPlanDependencies, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
+import { loadPlan, resolveSiblingChildPlanDependencies, savePlan, updatePlanFrontMatter } from "../../plan-store.ts";
 import { applySequenceReviewDecision, prepareSequenceReview } from "./sequence-review.ts";
 import {
     claimWorkflowToolEvent,
@@ -326,7 +326,7 @@ test("An interrupted Sequence write blocks child actions until the complete grou
     try {
         const documents = await prepareSequenceReview(cwd, "sequence");
         const { getTransitionJournalPath } = await import("./state-transition.ts");
-        const { getPlanRevisionForText } = await import("../../plan-store.js");
+        const { getPlanRevisionForText } = await import("../../plan-store.ts");
         const { healSettledTransitionRecords } = await import("./transition-recovery.ts");
         const { executePlanAction } = await import("./plan-actions.ts");
         const plans = await Promise.all(

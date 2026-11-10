@@ -5,7 +5,7 @@ import { join, relative } from "node:path";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
-import { savePlan } from "../../plan-store.js";
+import { savePlan } from "../../plan-store.ts";
 import { git } from "../workflow/validation-test-helpers.ts";
 import { assertRemoteStorageAbsent, withRemoteRuntimeFixture } from "./remote-runtime-test-fixture.ts";
 import type { BackgroundTaskStatus } from "../session/background-tasks.ts";
@@ -216,7 +216,7 @@ for (const boundary of ["handoff", "validation", "repair", "publication"] as con
             const { runPublicationPhase } = await import("../workflow/validation-publication.ts");
             const { createGitPort } = await import("../git-port.ts");
             const { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } = await import("../work-records/mnemoteca-port.ts");
-            const { loadPlan } = await import("../../plan-store.js");
+            const { loadPlan } = await import("../../plan-store.ts");
             const { writeFile } = await import("node:fs/promises");
             await savePlan(f.remoteProject, "effect-gate", "# Local effect gate\n", {
                 planId: "local-effect-plan",

@@ -3,7 +3,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { RunWieldButton } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 import { PLAN_UI_TOKEN_HEADER, PLAN_UI_TOKEN_QUERY } from "../constants.ts";
 import { MarkdownView } from "../components/MarkdownView.tsx";
-import type { PlanBodyResource } from "../../../plan-store.js";
+import type { PlanBodyResource } from "../../../plan-store.ts";
 import type {
     MarkdownEditorHandle,
     WorkspacePlanDocumentMode,

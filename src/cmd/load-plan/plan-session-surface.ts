@@ -17,7 +17,7 @@ import {
 } from "../../shared/session/session-runtime-interactions.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import type { UiAPI } from "../../ui/tui/api.ts";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 import type { PlanApprovalAction } from "../../shared/workflow/plan-approval.ts";
 import type { SequenceReviewDecision } from "../../shared/workflow/sequence-review.ts";
 import type { ActiveExecutionWorkflow, PlanSessionSurface } from "./plan-session-types.ts";

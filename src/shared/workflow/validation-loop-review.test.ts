@@ -13,7 +13,7 @@ import { test } from "node:test";
 import { notDeepStrictEqual as assertNotEquals, partialDeepStrictEqual as assertObjectMatch } from "node:assert/strict";
 import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 
-import { ensurePlanIdentity, loadPlan } from "../../plan-store.js";
+import { ensurePlanIdentity, loadPlan } from "../../plan-store.ts";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { getHomeDir } from "../../constants.ts";
 import { join } from "node:path";

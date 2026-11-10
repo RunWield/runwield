@@ -1,5 +1,5 @@
 import { AGENTS } from "../../constants.ts";
-import { resolvePlanExecutionPolicy } from "../../plan-store.js";
+import { resolvePlanExecutionPolicy } from "../../plan-store.ts";
 import { decidePostExecution } from "../../shared/workflow/decisions.ts";
 import { validatePostExecutionDecision } from "./plan-execution.ts";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";

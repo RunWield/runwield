@@ -2,7 +2,7 @@ import { captureForegroundProcess } from "../../captured-process.ts";
 import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import process from "node:process";
 import { publishExecutionWorktreeIsolated } from "../../isolated-publication.ts";
-import { withPlanLock } from "../../../plan-store.js";
+import { withPlanLock } from "../../../plan-store.ts";
 import { checkpointExecutionWorktree } from "../../worktree.js";
 import { findById } from "../../worktree-registry.ts";
 import {

@@ -2,7 +2,7 @@ import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
 /** Shared Plan action evidence and lifecycle executor. */
 
-import { findPlanEvidenceById, getPlanRevisionForText, loadPlan, type PlanFrontMatter } from "../../plan-store.js";
+import { findPlanEvidenceById, getPlanRevisionForText, loadPlan, type PlanFrontMatter } from "../../plan-store.ts";
 import {
     prepareWorktreeRegistry,
     readPlanActionWorktreeEvidence,

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { assertEquals } from "../../testing/assertions.ts";
-import { savePlan } from "../../plan-store.js";
+import { savePlan } from "../../plan-store.ts";
 import { assertRemoteStorageAbsent, withRemoteRuntimeFixture } from "./remote-runtime-test-fixture.ts";
 
 test("remote plan_written commits its exact artifact, association and review and a fresh runtime reopens the saved review", async () => {

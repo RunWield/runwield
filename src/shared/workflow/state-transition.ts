@@ -31,7 +31,7 @@ import {
     withPlanCatalogLock,
     withPlanLock,
     writePlanMarkdownWithRevision,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { SharedPlanLockError } from "../collaboration/lock.ts";
 import { findById as findWorktreeRegistryEntryById } from "../worktree-registry.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";

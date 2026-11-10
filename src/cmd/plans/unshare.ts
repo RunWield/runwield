@@ -7,7 +7,7 @@ import { prepareWorktreeRegistry } from "../../shared/worktree-registry.ts";
 
 import { parseArgs } from "../../shared/cli-args.ts";
 import { CLI_BIN, getCwd } from "../../constants.ts";
-import { clearPlanCollaborationMetadata, listPlans, listPlanResources } from "../../plan-store.js";
+import { clearPlanCollaborationMetadata, listPlans, listPlanResources } from "../../plan-store.ts";
 import { redactSecrets } from "../../shared/collaboration/capabilities.ts";
 import {
     CollaborationApiError,

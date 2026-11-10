@@ -14,7 +14,7 @@ import { test } from "node:test";
 import process from "node:process";
 import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
 import { dirname, join } from "node:path";
-import { listPlans, savePlan } from "../plan-store.js";
+import { listPlans, savePlan } from "../plan-store.ts";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "./project-runtime-layout.ts";

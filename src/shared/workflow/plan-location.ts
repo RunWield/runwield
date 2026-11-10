@@ -1,6 +1,6 @@
 import { effectiveDeliveryBranch } from "./plan-branch.ts";
 /** Locate the editable document independently from the shared controller files. */
-import { canonicalizeStoredPlanName, isCompletedPlanStatus, loadPlan } from "../../plan-store.js";
+import { canonicalizeStoredPlanName, isCompletedPlanStatus, loadPlan } from "../../plan-store.ts";
 import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { findActiveByPlanName } from "../worktree-registry.ts";
 import { isGitRepository } from "../git.ts";

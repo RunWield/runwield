@@ -12,7 +12,7 @@ import {
     hashPlanBody,
     listPlanResources,
     updatePlanCollaborationMetadata,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { MAINTAINER_SCOPE, redactSecrets } from "../../shared/collaboration/capabilities.ts";
 import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../../shared/collaboration/client.ts";
 import { decryptJsonPayload, importContentKey } from "../../shared/collaboration/crypto.ts";

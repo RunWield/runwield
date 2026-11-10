@@ -40,7 +40,7 @@ import {
     type TriageReportEventPayload,
     type WorkflowToolEvent,
 } from "../workflow/workflow-tool-events.ts";
-import { getStoredPlanPath, loadPlan } from "../../plan-store.js";
+import { getStoredPlanPath, loadPlan } from "../../plan-store.ts";
 import { AGENTS } from "../../constants.ts";
 import { resolvePlanExecutionRuntimeAgent } from "../workflow/execution-agent.ts";
 import { loadPlanActionEvidence } from "../workflow/plan-actions.ts";

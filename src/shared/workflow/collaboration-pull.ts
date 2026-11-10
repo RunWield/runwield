@@ -4,7 +4,7 @@ import { isEpicPlan } from "../project-plan.ts";
 import { AGENTS, CLI_BIN, normalizePlanClassification } from "../../constants.ts";
 import { redactSecrets } from "../collaboration/capabilities.ts";
 
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 import type { DecryptedReviewCommentPayload } from "../collaboration/protocol.ts";
 
 export interface PullReviewComment {

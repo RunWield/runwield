@@ -15,7 +15,7 @@ import { HostedSession } from "../../shared/session/hosted-session.ts";
 import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
 import { SESSION_COMPLETE_GUIDANCE } from "../../shared/workflow/plan-review-recovery.ts";
 import { createPlanWrittenTool, type PlanWrittenToolResult, type TriageMeta } from "../plan-written.ts";
-import { getStoredPlanPath, loadPlan } from "../../plan-store.js";
+import { getStoredPlanPath, loadPlan } from "../../plan-store.ts";
 import { addEntry as addRegistryEntry } from "../../shared/worktree-registry.ts";
 import { join } from "node:path";
 import type {

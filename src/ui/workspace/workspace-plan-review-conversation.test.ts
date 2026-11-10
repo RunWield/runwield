@@ -3,7 +3,7 @@ import { ok as assert } from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { savePlan, loadPlan, ensurePlanIdentity } from "../../plan-store.js";
+import { savePlan, loadPlan, ensurePlanIdentity } from "../../plan-store.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { WorkspaceSessionContinuationService } from "./server/session-continuation.ts";

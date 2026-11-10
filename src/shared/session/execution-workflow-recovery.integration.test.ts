@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { addEntry, getWorktreeRegistryPath } from "../worktree-registry.ts";
 import { HostedSession } from "./hosted-session.ts";
 import { restoreExecutionWorkflow } from "./execution-workflow-recovery.ts";

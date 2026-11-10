@@ -1,4 +1,4 @@
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 import { RuntimeEventTypes } from "./session-runtime-events.ts";
 import type { HostedRuntimeEventObservation } from "./hosted-session.ts";
 

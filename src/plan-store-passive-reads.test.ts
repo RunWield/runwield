@@ -14,7 +14,7 @@ import {
     loadPlan,
     loadPlanBodyById,
     parsePlanTextStrict,
-} from "./plan-store.js";
+} from "./plan-store.ts";
 import { getRunWieldRuntimeDir } from "./constants.ts";
 import { defineGitFixture, git } from "./shared/git-test-fixture.ts";
 import {

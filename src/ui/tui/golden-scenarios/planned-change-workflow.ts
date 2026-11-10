@@ -9,7 +9,7 @@ import { assertEquals, assertStringIncludes } from "../../../testing/assertions.
 import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.js";
 import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-assertions.ts";
 
-import type { PlanFrontMatter } from "../../../plan-store.js";
+import type { PlanFrontMatter } from "../../../plan-store.ts";
 import type { TutorialContext } from "../../../shared/session/tutorial-context-session.ts";
 import type { WorkflowControllerState } from "../../../shared/workflow/controller-state.ts";
 import type { WorktreeRegistryEntry } from "../../../shared/worktree-registry.ts";

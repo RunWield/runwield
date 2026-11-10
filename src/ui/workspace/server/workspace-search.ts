@@ -7,7 +7,7 @@ import { clearInterval, clearTimeout, setInterval, setTimeout } from "node:timer
 import { DatabaseSync } from "../../../shared/sqlite.ts";
 import { dirname, join, relative } from "node:path";
 import { getHomeDir } from "../../../constants.ts";
-import { listPlanResources } from "../../../plan-store.js";
+import { listPlanResources } from "../../../plan-store.ts";
 import { getWorkRecordsDir, listWorkRecords } from "../../../shared/work-records/store.ts";
 import { isCurrentWorkRecord, workRecordNotices } from "../../../shared/work-records/list.ts";
 import { projectAggregateTranscript } from "../../../shared/session/session-transcript-manifest.ts";

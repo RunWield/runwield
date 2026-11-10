@@ -11,8 +11,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
 
-import { loadPlan, savePlan } from "../plan-store.js";
-import type { PlanFrontMatterInput } from "../plan-store.js";
+import { loadPlan, savePlan } from "../plan-store.ts";
+import type { PlanFrontMatterInput } from "../plan-store.ts";
 import type { WorktreeRegistryEntry } from "./worktree-registry.ts";
 
 async function savePlanForTest(cwd: string, planName: string, content: string, attrs: PlanFrontMatterInput) {

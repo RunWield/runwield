@@ -33,7 +33,7 @@ import { requestLocalReviewInteraction } from "../session/local-review-interacti
 import { resolveWorkflowPlanLocation } from "../workflow/plan-location.ts";
 import { listEntries } from "../worktree-registry.ts";
 import { reconcileStoredPublication } from "../workflow/publication-machine.ts";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store.ts";
 import { continueWorkflowValidation } from "../workflow/validation.ts";
 import { createGitPort } from "../git-port.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";

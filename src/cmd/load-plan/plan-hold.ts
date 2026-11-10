@@ -7,7 +7,7 @@
  */
 
 import { CLI_BIN } from "../../constants.ts";
-import { findPlansByParent } from "../../plan-store.js";
+import { findPlansByParent } from "../../plan-store.ts";
 import { isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
 import { listCommitsTouchingPathsSince } from "../../shared/workflow/git-snapshot.ts";
 import { runRecoveryTransition } from "../../shared/workflow/state-transition.ts";
@@ -29,11 +29,11 @@ import { formatEpicProgressSummary } from "./plan-epic-children.ts";
 import { confirmWorktreeAction, hasWorktreeContext, resolveRecoveryWorktree } from "./plan-recovery-worktree.ts";
 import { settleDiscardedRecoveryAttempt } from "./plan-recovery-discard.ts";
 import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store.ts";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
 import { completeUserVerification } from "./user-verification-completion.ts";
 import { resolvePrimaryCheckoutRoot } from "../../shared/project-checkout.ts";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 import type { UiAPI } from "../../ui/tui/api.ts";
 import type { PlanSessionSurface } from "./plan-session-types.ts";
 
@@ -123,7 +123,7 @@ export function isUserVerifiableStatus(status: string): boolean {
 }
 
 /**
- * @param {Partial<import('../../plan-store.js').PlanFrontMatter>} attrs
+ * @param {Partial<import('../../plan-store.ts').PlanFrontMatter>} attrs
  * @returns {string | undefined}
  */
 export function getHoldStalenessBaseline(attrs: PlanFrontMatter): string | undefined {
@@ -131,7 +131,7 @@ export function getHoldStalenessBaseline(attrs: PlanFrontMatter): string | undef
 }
 
 /**
- * @param {Partial<import('../../plan-store.js').PlanFrontMatter>} attrs
+ * @param {Partial<import('../../plan-store.ts').PlanFrontMatter>} attrs
  * @returns {boolean}
  */
 export function hasRecordedWorktreeMetadata(attrs: PlanFrontMatter): boolean {
@@ -155,7 +155,7 @@ export async function confirmHoldWarning(uiAPI: UiAPI, message: string): Promise
 /**
  * @param {Object} opts
  * @param {string} opts.projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter }} opts.plan
+ * @param {{ planName: string, attrs: import('../../plan-store.ts').PlanFrontMatter }} opts.plan
  * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @returns {Promise<boolean>}
  */
@@ -211,7 +211,7 @@ export async function putPlanOnHold({ projectRoot, plan, uiAPI }: PutPlanOnHoldO
 /**
  * @param {Object} opts
  * @param {string} opts.projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter }} opts.plan
+ * @param {{ planName: string, attrs: import('../../plan-store.ts').PlanFrontMatter }} opts.plan
  * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @returns {Promise<boolean>}
  */
@@ -307,7 +307,7 @@ export async function markPlanUserVerified({
 /**
  * @param {Object} opts
  * @param {string} opts.projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter }} opts.plan
+ * @param {{ planName: string, attrs: import('../../plan-store.ts').PlanFrontMatter }} opts.plan
  * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @returns {Promise<{ status: "pass" | "warn" | "fail", messages: string[] }>}
  */
@@ -397,7 +397,7 @@ export async function runResumeCheck({
 /**
  * @param {Object} opts
  * @param {string} opts.projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter }} opts.plan
+ * @param {{ planName: string, attrs: import('../../plan-store.ts').PlanFrontMatter }} opts.plan
  * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @returns {Promise<boolean>}
  */
@@ -504,7 +504,7 @@ export async function resetHeldPlanToDraft({ projectRoot, plan, uiAPI }: ResetHe
 /**
  * @param {Object} opts
  * @param {string} opts.projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter, body: string, markdown?: string }} opts.plan
+ * @param {{ planName: string, attrs: import('../../plan-store.ts').PlanFrontMatter, body: string, markdown?: string }} opts.plan
  * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @param {PlanSessionSurface} opts.session
  * @returns {Promise<"resume" | "handled">}

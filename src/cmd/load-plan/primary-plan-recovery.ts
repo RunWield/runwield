@@ -10,7 +10,7 @@ import {
     loadPlan,
     resolvePlan,
     updatePlanFrontMatter,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import {
     type MissingExecutionWorktreeRecovery,
     resolveWorkflowPlanLocation,

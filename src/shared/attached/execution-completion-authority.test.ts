@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { readdir as fsReaddir, writeFile as fsWriteFile } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { loadPlan, withPlanLock } from "../../plan-store.js";
+import { loadPlan, withPlanLock } from "../../plan-store.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { findById } from "../worktree-registry.ts";
 import { runOperation, withProject } from "./attached-test-fixture.ts";

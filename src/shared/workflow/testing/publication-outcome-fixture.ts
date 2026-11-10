@@ -10,7 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { mergeFrontMatterText, savePlan } from "../../../plan-store.js";
+import { mergeFrontMatterText, savePlan } from "../../../plan-store.ts";
 import { publishExecutionWorktreeIsolated } from "../../isolated-publication.ts";
 import { defineGitFixture, git } from "../../git-test-fixture.ts";
 import { addEntry } from "../../worktree-registry.ts";

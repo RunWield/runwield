@@ -345,7 +345,7 @@ test("production Workspace reads target-only Plans from local Git objects withou
         await git(root, ["remote", "add", "origin", `${root}-unavailable.git`]);
         const before = await snapshot(root);
         owner = await workspace(root);
-        const { findPlanById } = await import("../../plan-store.js");
+        const { findPlanById } = await import("../../plan-store.ts");
         const { assertAuthorizedPlanPath, assertReadablePlanResource } = await import("./server/project-artifacts.ts");
         const { loadWorkspaceDetail } = await import("./server/plan-adapter.ts");
         const resource = await findPlanById(root, "target-id");

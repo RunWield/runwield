@@ -5,7 +5,7 @@ import { writeFile as fsWriteFile, stat as fsStat } from "node:fs/promises";
 import { assertEquals, assertExists, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { getLockHostname } from "../process-liveness.ts";
-import { updatePlanFrontMatter } from "../../plan-store.js";
+import { updatePlanFrontMatter } from "../../plan-store.ts";
 import { recordValidationRepairCompletion } from "./validation-supervisor.ts";
 import { complete, hostFixture, hostRequest } from "./testing/validation-host-fixture.ts";
 

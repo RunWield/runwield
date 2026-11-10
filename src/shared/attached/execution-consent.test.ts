@@ -4,7 +4,7 @@ import { realpath as fsRealpath, rm as fsRm, writeFile as fsWriteFile, mkdir as 
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store.ts";
 import { hasNonGitExecutionConsent } from "../non-git-execution-consent.ts";
 import {
     getTransitionJournalDir,

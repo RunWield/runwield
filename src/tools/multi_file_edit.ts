@@ -17,7 +17,7 @@ import {
     withPlanCatalogLock,
     withPlanLock,
     writePlanMarkdownWithRevision,
-} from "../plan-store.js";
+} from "../plan-store.ts";
 
 const fileEditSchema = Type.Object(
     {

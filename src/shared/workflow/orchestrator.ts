@@ -26,7 +26,7 @@
 import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { ensurePlansDir, loadPlan } from "../../plan-store.js";
+import { ensurePlansDir, loadPlan } from "../../plan-store.ts";
 import { probeGitRepository } from "../git.ts";
 import { hasNonGitExecutionConsent, rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
 import { resolvePlanExecutionRuntimeAgent } from "./execution-agent.ts";

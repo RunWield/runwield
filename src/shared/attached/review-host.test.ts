@@ -19,7 +19,7 @@ import {
     submitReview,
     withProject,
 } from "./attached-test-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { recordPlanEvent } from "../workflow/plan-lifecycle.ts";
 
 test("Codex browser review and restored chat identify the coordinating host", async () => {

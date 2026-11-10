@@ -14,7 +14,7 @@ import { HostedSession } from "../shared/session/hosted-session.ts";
 import { createPlanWrittenTool } from "./plan-written.ts";
 import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../plan-store.js";
+import { loadPlan, savePlan } from "../plan-store.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../shared/project-runtime-layout.ts";
 import { defineCommittedGitFixture, git } from "../shared/git-test-fixture.ts";
 import { makeManagedSessionFixture } from "../testing/managed-session-fixture.ts";
@@ -186,7 +186,7 @@ test("plan_written returns a conversation outcome and the reply-or-revise rule w
             executionAgent: "engineer",
             collaborationRecommendation: "autonomous",
         });
-        const { ensurePlanIdentity } = await import("../plan-store.js");
+        const { ensurePlanIdentity } = await import("../plan-store.ts");
         const before = await ensurePlanIdentity(projectRoot, "target");
         const session = new HostedSession({ id: crypto.randomUUID(), cwd: projectRoot });
         try {

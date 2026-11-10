@@ -9,7 +9,7 @@ import {
 } from "node:fs/promises";
 /** Recover a changed, unpublished source without reusing stale validation evidence. */
 import { join } from "node:path";
-import { loadPlan, parsePlanFrontMatter, updatePlanFrontMatter, withPlanLock } from "../../plan-store.js";
+import { loadPlan, parsePlanFrontMatter, updatePlanFrontMatter, withPlanLock } from "../../plan-store.ts";
 import { resolveTargetedWorkRecordSource } from "../work-records/auto-generation.ts";
 import { listWorkRecords } from "../work-records/store.js";
 import { gitStatusPaths } from "../git-runtime-safety.ts";

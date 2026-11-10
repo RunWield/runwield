@@ -42,7 +42,7 @@ import {
     resolvePlanExecutionPolicy,
     updatePlanFrontMatter,
     type PlanFrontMatter,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { assertNotReservedEpicArtifactPlanName } from "../epic-artifacts.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { runWieldGitignoreNeedsUpdate } from "../runwield-owned-paths.ts";

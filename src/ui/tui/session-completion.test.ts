@@ -31,7 +31,7 @@ for (const columns of [60, 140]) {
                     "---\nstatus: draft\nclassification: PLANNED_CHANGE\nplanId: next-change\n---\n# Next change\n",
                 );
                 if (choice === "record-retry") {
-                    const { savePlan } = await import("../../plan-store.js");
+                    const { savePlan } = await import("../../plan-store.ts");
                     await savePlan(projectRoot, "record-retry", "# Delivered", {
                         planId: "record-retry",
                         classification: "PLANNED_CHANGE",

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { AGENTS } from "../../constants.ts";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
 import { listWorkRecords } from "../../shared/work-records/store.ts";
-import { findPlanEvidenceById } from "../../plan-store.js";
+import { findPlanEvidenceById } from "../../plan-store.ts";
 import { readControllerRecord } from "../../shared/workflow/controller-registry.ts";
 import { getCustomSetting } from "../../shared/settings.js";
 import { INIT_VERIFICATION_COMMAND_PLACEHOLDER } from "../../tools/init-verification-command.ts";

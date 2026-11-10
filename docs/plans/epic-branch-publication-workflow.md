@@ -9,7 +9,7 @@ affectedPaths:
     - "src/shared/worktree-registry.js"
     - "src/shared/workflow/"
     - "src/shared/epic-artifacts.ts"
-    - "src/plan-store.js"
+    - "src/plan-store.ts"
     - "src/plan-front-matter.js"
     - "src/cmd/plans/"
     - "src/tools/"
@@ -135,7 +135,7 @@ Three existing invariants constrain the design and are not open for renegotiatio
 - `src/shared/workflow/` — add the publication workflow, its resumable stages, bounded conflict repair dispatch,
   integrated re-validation, and Delivery Evidence at Epic level.
 - `src/shared/epic-artifacts.ts` — record the publication result beside the Epic's other artifacts.
-- `src/plan-store.js` and `src/plan-front-matter.js` — add the `published` status, its transition, publication-attempt
+- `src/plan-store.ts` and `src/plan-front-matter.js` — add the `published` status, its transition, publication-attempt
   metadata, and Epic Delivery Evidence fields.
 - `src/cmd/plans/` — the owner-facing publication command, its confirmation, and its resume path.
 - `src/tools/` — a typed publication-conflict completion boundary for the bounded repair role, separate from

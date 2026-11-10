@@ -14,7 +14,7 @@ import type { BrowserNotificationPolicy } from "../../../shared/session/notifica
 import type { ImageAttachment } from "../../../shared/session/image-attachments.ts";
 import type { OwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
 import type { SequenceReviewDecision, SequenceReviewDocument } from "../../../shared/workflow/sequence-review.ts";
-import type { PlanFrontMatter } from "../../../plan-store.js";
+import type { PlanFrontMatter } from "../../../plan-store.ts";
 import type { PlanWorktreeExpectation } from "../../../shared/workflow/plan-actions.ts";
 import type { SharedPlanReviewDecision } from "../../../shared/workflow/plan-review-actions.ts";
 import type { ReviewImageDecision } from "../../../shared/workflow/review-feedback-images.ts";
@@ -44,7 +44,7 @@ import {
     waitForSessionActivationSettlement,
 } from "../../../shared/session/live-session-connection.ts";
 import { createHash } from "node:crypto";
-import { findPlanEvidenceById } from "../../../plan-store.js";
+import { findPlanEvidenceById } from "../../../plan-store.ts";
 import {
     clearMascotEnabledCache,
     getMergedCustomSetting,

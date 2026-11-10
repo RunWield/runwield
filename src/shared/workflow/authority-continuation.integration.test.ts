@@ -21,7 +21,7 @@ import {
     savePlan,
     savePlanBodyById,
     updatePlanFrontMatter,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { addEntry, findById, updateEntry } from "../worktree-registry.ts";
 import { resolvePlanWithPrimaryRecovery } from "../../cmd/load-plan/primary-plan-recovery.ts";

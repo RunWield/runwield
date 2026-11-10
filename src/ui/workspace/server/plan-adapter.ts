@@ -1,6 +1,6 @@
 import type { WorkRecordMnemotecaPort } from "../../../shared/work-records/mnemoteca-port.ts";
 import type { PlanActionName } from "../../../shared/workflow/plan-actions.ts";
-import type { PlanFrontMatter, PlanResource } from "../../../plan-store.js";
+import type { PlanFrontMatter, PlanResource } from "../../../plan-store.ts";
 import type { PlanEvent, PlanEventDetails, PlanStatus } from "../../../shared/workflow/plan-lifecycle.ts";
 /**
  * Server-only Plan adapter for the read-only Workspace.
@@ -19,7 +19,7 @@ import {
     resolveSiblingChildPlanDependencyStates,
     savePlanBodyById,
     StalePlanBodyError,
-} from "../../../plan-store.js";
+} from "../../../plan-store.ts";
 import {
     ACTIVE_PLAN_STATUSES,
     buildPlanEventUpdates,

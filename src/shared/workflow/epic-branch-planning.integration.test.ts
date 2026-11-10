@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
-import { listPlans, loadPlan, updatePlanCollaborationMetadata } from "../../plan-store.js";
+import { listPlans, loadPlan, updatePlanCollaborationMetadata } from "../../plan-store.ts";
 import { runLoadPlanCommand } from "../../cmd/load-plan/index.ts";
 import { resolvePlanWithPrimaryRecovery } from "../../cmd/load-plan/primary-plan-recovery.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";

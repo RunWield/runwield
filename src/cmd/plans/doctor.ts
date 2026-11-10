@@ -21,7 +21,7 @@ import {
     inspectPlanFileStrict,
     isProjectPlan,
     parsePlanFrontMatter,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import {
     enterProjectRuntime,
     inspectProjectRuntimeLayout,

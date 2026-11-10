@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { ok as assert } from "node:assert/strict";
 import { fauxAssistantMessage, fauxToolCall, type AssistantMessage } from "@earendil-works/pi-ai";
 import { assertEquals } from "./assertions.ts";
-import { loadPlan, savePlan, updatePlanFrontMatter } from "../plan-store.js";
+import { loadPlan, savePlan, updatePlanFrontMatter } from "../plan-store.ts";
 import { createGitPort } from "../shared/git-port.ts";
 import { git } from "../shared/git-test-fixture.ts";
 import { setExactProjectCustomSetting } from "../shared/settings.js";

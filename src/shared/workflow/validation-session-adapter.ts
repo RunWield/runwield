@@ -19,7 +19,7 @@ import { clearValidationPosition, rememberValidationPosition } from "./validatio
 import { runFeaturePostVerificationHandoffs } from "./validation-helpers.ts";
 import { runValidationAgentUntilEvent } from "../session/agent-workflow-step.ts";
 import { logValidationFailure } from "./validation-state-errors.ts";
-import { loadPlan, updatePlanFrontMatter } from "../../plan-store.js";
+import { loadPlan, updatePlanFrontMatter } from "../../plan-store.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { getLockHostname } from "../process-liveness.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";

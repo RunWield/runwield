@@ -3,7 +3,7 @@ import { validateSequenceReviewDecision } from "../../../../shared/workflow/sequ
 
 import { normalizePlanClassification } from "../../../../constants.ts";
 import { readPlanApprovalAction } from "../../../../shared/workflow/plan-approval.ts";
-import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../../plan-store.js";
+import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../../plan-store.ts";
 
 import type { SequenceReviewDecision, SequenceReviewDocument } from "../../../../shared/workflow/sequence-review.ts";
 import type {
@@ -12,7 +12,7 @@ import type {
     ReviewAnnotationInput,
 } from "../../../../shared/workflow/review-feedback-images.ts";
 import type { PlanQuestionAnswer } from "../../../../shared/plan-questions.ts";
-import type { PlanFrontMatter } from "../../../../plan-store.js";
+import type { PlanFrontMatter } from "../../../../plan-store.ts";
 
 export interface ReviewExecutionPolicy {
     executionAgent?: "engineer" | "frontend-engineer";

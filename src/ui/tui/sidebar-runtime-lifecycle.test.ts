@@ -134,7 +134,7 @@ for (const legacy of [false, true]) {
 
 test("runtime resumes saved Code Review from its name without stale Plan content", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId, session, projectRoot }) => {
-        const { savePlan } = await import("../../plan-store.js");
+        const { savePlan } = await import("../../plan-store.ts");
         await savePlan(projectRoot, "resume-review", "# Saved Code Review", {
             classification: "PLANNED_CHANGE",
             status: "reviewed",

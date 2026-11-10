@@ -30,7 +30,7 @@ import {
 } from "./workflow.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { loadPlan, savePlan, type PlanFrontMatterInput } from "../../plan-store.js";
+import { loadPlan, savePlan, type PlanFrontMatterInput } from "../../plan-store.ts";
 import { getTransitionJournalDir } from "./state-transition.ts";
 import { createExecutionStartPorts } from "./execution-start.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";

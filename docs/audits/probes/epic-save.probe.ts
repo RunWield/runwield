@@ -1,10 +1,10 @@
 import { makeTempDirectory } from "../../../src/testing/temp-file.ts";
 import { rm, mkdir, writeFile } from "node:fs/promises";
 import { test } from "node:test";
-// Historical audit probe; run explicitly through scripts/run-tests.js.
+// Historical audit probe. Import it from a temporary .test.ts file to run it with scripts/run-tests.ts.
 // See ../2026-09-07-plan-workflow-transitions.md.
 import { assertEquals } from "../../../src/testing/assertions.ts";
-import { loadPlan } from "../../../src/plan-store.js";
+import { loadPlan } from "../../../src/plan-store.ts";
 import { HostedSession } from "../../../src/shared/session/hosted-session.ts";
 import { listPendingWorkflowToolEvents } from "../../../src/shared/workflow/workflow-tool-events.ts";
 import { createPlanWrittenTool } from "../../../src/tools/plan-written.ts";
@@ -39,7 +39,7 @@ test("AUDIT A1: PROJECT approve-later emits its saved workflow event", async () 
             { planName: "audit-epic" },
             new AbortController().signal,
             () => {},
-            {},
+            {} as Parameters<typeof tool.execute>[4],
         );
         const plan = await loadPlan(cwd, "audit-epic");
         const events = listPendingWorkflowToolEvents(hostedSession);
@@ -54,7 +54,10 @@ test("AUDIT A1: PROJECT approve-later emits its saved workflow event", async () 
         assertEquals(result.details?.outcome, "saved");
         assertEquals(plan?.attrs.status, "ready_for_decomposition");
         assertEquals(
-            events.some((event) => event.kind === "plan_written" && event.payload.outcome === "saved"),
+            events.some(
+                (event) =>
+                    event.kind === "plan_written" && "outcome" in event.payload && event.payload.outcome === "saved",
+            ),
             true,
         );
     } finally {

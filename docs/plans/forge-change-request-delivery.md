@@ -8,7 +8,7 @@ affectedPaths:
     - "docs/plan-lifecycle.md"
     - "src/agent-definitions/"
     - "src/plan-front-matter.js"
-    - "src/plan-store.js"
+    - "src/plan-store.ts"
     - "src/shared/ticket-references.ts"
     - "src/shared/workflow/"
     - "src/shared/worktree-registry.js"
@@ -321,7 +321,7 @@ conform to the same application state model rather than create parallel lifecycl
   finalization, recovery, and the unchanged Direct Delivery path.
 - `src/agent-definitions/` — make public Ticket content explicitly untrusted planning input; require repository
   grounding and direct Ticket Reference preservation without changing Router URL semantics.
-- `src/plan-front-matter.js` and `src/plan-store.js` — represent explicit Plan-owned delivery/review policy and durable
+- `src/plan-front-matter.js` and `src/plan-store.ts` — represent explicit Plan-owned delivery/review policy and durable
   terminal Forge delivery evidence while keeping attempt state out of Markdown.
 - `src/shared/ticket-references.ts` — retain provider-neutral URL relations and safe display behavior; no issue schema
   or synchronized state enters this module.

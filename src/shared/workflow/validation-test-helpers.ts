@@ -3,7 +3,7 @@ import { captureForegroundProcess } from "../captured-process.ts";
 import { getCwd } from "../../constants.ts";
 import { mkdtemp as fsMkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import type { PlanFrontMatterInput } from "../../plan-store.js";
+import type { PlanFrontMatterInput } from "../../plan-store.ts";
 import type { runCodeReview } from "../../ui/review/code-review.ts";
 import type { UiAPI } from "../../ui/tui/api.ts";
 import type { GitPort } from "../git-port.ts";
@@ -188,7 +188,7 @@ export const NO_ISOLATED_AGENT_PORT = Object.freeze({
  */
 export async function makeValidationProjectRoot(planName = "p", attrs: PlanFrontMatterInput = {}) {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-validation-root-"));
-    const { savePlan, ensurePlanIdentity } = await import("../../plan-store.js");
+    const { savePlan, ensurePlanIdentity } = await import("../../plan-store.ts");
     await savePlan(root, planName, `# ${planName}\n\nvalidation fixture\n`, {
         classification: "FEATURE",
         status: "in_progress",

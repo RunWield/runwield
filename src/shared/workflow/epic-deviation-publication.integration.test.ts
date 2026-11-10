@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { createTestWorktreeAttempt, git, makeRepo } from "../worktree-test-helpers.ts";
 import { createGitPort } from "../git-port.ts";
 import { removeWorktreeGitArtifacts } from "../worktree.js";

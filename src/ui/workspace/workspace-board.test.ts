@@ -15,7 +15,7 @@ import {
     loadPlan,
     updatePlanFrontMatter,
     resolveSiblingChildPlanDependencyStates,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 
 import {
     buildBoardGroups,

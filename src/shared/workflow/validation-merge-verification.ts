@@ -10,7 +10,7 @@ import { effectiveDeliveryBranch } from "./plan-branch.ts";
  * reach the target branch actually did.
  */
 
-import { getDeclaredPlanStatus, planDocumentMarkdown, type PlanFrontMatter } from "../../plan-store.js";
+import { getDeclaredPlanStatus, planDocumentMarkdown, type PlanFrontMatter } from "../../plan-store.ts";
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
 import { dirname, join, resolve } from "node:path";
 

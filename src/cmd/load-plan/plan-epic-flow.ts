@@ -10,7 +10,7 @@ import { isSequencePlan, projectPlanType } from "../../shared/project-plan.ts";
  */
 
 import { isPlannedChangeClassification } from "../../constants.ts";
-import { compareChildPlansByOrder, findPlansByParent, isTerminalArchivableStatus } from "../../plan-store.js";
+import { compareChildPlansByOrder, findPlansByParent, isTerminalArchivableStatus } from "../../plan-store.ts";
 import { isInValidation, isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
 import { resolveWorkRecordSupersessionProposalsWithUi } from "../../shared/workflow/validation-helpers.ts";
 import {
@@ -40,7 +40,7 @@ import {
 } from "./plan-epic-children.ts";
 import { isHoldableStatus, isUserVerifiableStatus, markPlanUserVerified, putPlanOnHold } from "./plan-hold.ts";
 import { validatePlanExecutionPolicyForReadiness } from "./plan-execution.ts";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 import type { UiAPI } from "../../ui/tui/api.ts";
 import type { PlanSessionSurface } from "./plan-session-types.ts";
 
@@ -65,7 +65,7 @@ export interface HandleEpicPlanOptions {
 /**
  * @param {Object} opts
  * @param {string} opts.projectRoot
- * @param {{ planName: string, body: string, markdown: string, attrs: import('../../plan-store.js').PlanFrontMatter }} opts.plan
+ * @param {{ planName: string, body: string, markdown: string, attrs: import('../../plan-store.ts').PlanFrontMatter }} opts.plan
  * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @param {PlanSessionSurface["runSlicerAgent"]} opts.runSlicerAgent
  * @param {(childPlanName: string) => Promise<void>} opts.loadChildPlan

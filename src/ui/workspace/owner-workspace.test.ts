@@ -10,7 +10,7 @@ import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
-import { savePlan } from "../../plan-store.js";
+import { savePlan } from "../../plan-store.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { createOwnerWorkspaceApp, startWorkspaceServer } from "./server.ts";
 

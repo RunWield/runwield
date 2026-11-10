@@ -3,7 +3,7 @@ import { captureForegroundProcess } from "../captured-process.ts";
 import { readFile as fsReadFile } from "node:fs/promises";
 /** Child completion combines current definitions with already-published branch history. */
 import { join } from "node:path";
-import { findPlansByParent, loadArchivedPlan, loadPlan } from "../../plan-store.js";
+import { findPlansByParent, loadArchivedPlan, loadPlan } from "../../plan-store.ts";
 import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { listControllerDocumentWorktrees } from "./controller-registry.ts";
 

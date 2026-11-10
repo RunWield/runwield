@@ -6,7 +6,7 @@ import { writeFile as fsWriteFile, readFile as fsReadFile, rm as fsRm } from "no
 import { ok as assert, notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { loadPlan, parsePlanFrontMatter, updatePlanFrontMatter } from "../../plan-store.js";
+import { loadPlan, parsePlanFrontMatter, updatePlanFrontMatter } from "../../plan-store.ts";
 import { addEntry, findById, listEntries } from "../worktree-registry.ts";
 import { EVIDENCE, runOperation, spawnAttachedCli, withProject } from "./attached-test-fixture.ts";
 import { locateAttachedWorkflows, type AttachedWorkflowRecord } from "./record-store.ts";

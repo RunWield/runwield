@@ -13,7 +13,7 @@ import { HostedSession } from "../../shared/session/hosted-session.ts";
 import { executePlan } from "../../shared/workflow/plan-executor.ts";
 import { join } from "node:path";
 import { defineGitFixture, git } from "../../shared/git-test-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { preparePlanningWorktreeForPlan } from "../../shared/workflow/planning-worktree.ts";
 import { loadPlanActionEvidence } from "../../shared/workflow/plan-actions.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";

@@ -8,7 +8,7 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
-import { type PlanFrontMatterInput, loadPlan, updatePlanStatus } from "../../plan-store.js";
+import { type PlanFrontMatterInput, loadPlan, updatePlanStatus } from "../../plan-store.ts";
 import { presentEpicChildPlan, resolveEpicContinuation } from "./epic-continuation.ts";
 import { recordPlanEvent } from "./plan-lifecycle.ts";
 

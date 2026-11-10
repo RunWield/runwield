@@ -6,7 +6,7 @@ import { recordDeliveryEvidence } from "./delivery-evidence.ts";
 
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { AGENTS } from "../../constants.ts";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store.ts";
 import type { AgentTurnOutcome, ValidationLocalCIResult } from "./validation-ports.ts";
 import type { PhaseContext, UserActionPause, ValidationLoopArgs, ValidationPhaseResult } from "./validation-types.ts";
 import {

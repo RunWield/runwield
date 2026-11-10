@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { WORKTREE_REGISTRY_FILE } from "../../constants.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";

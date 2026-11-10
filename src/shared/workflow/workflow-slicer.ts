@@ -18,7 +18,7 @@ import {
     resolveChildPlanNames,
     withPlanCatalogLock,
     writePlanMarkdownWithRevision,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { emitSystemStatus } from "../session/session-runtime-events.ts";
 import { runActiveAgentTurn, switchActiveAgent } from "../session/agent-switching.ts";
 import { SUBAGENT_DEFINITIONS } from "../session/subagent-definitions.ts";
@@ -193,9 +193,9 @@ const CHILD_DESCRIPTOR_SCHEMA = Type.Object({
  * @param {Object} opts
  * @param {string} opts.cwd - Project root.
  * @param {string} opts.epicPlanName - Parent Epic plan name.
- * @param {import('../../plan-store.js').ChildFeaturePlanDescriptor[]} opts.children
+ * @param {import('../../plan-store.ts').ChildFeaturePlanDescriptor[]} opts.children
  * @param {string} [opts.parentTargetBranch]
- * @param {import('../../plan-store.js').PlanWriteOptions} [opts.writeOptions]
+ * @param {import('../../plan-store.ts').PlanWriteOptions} [opts.writeOptions]
  * @returns {ReturnType<typeof saveChildFeaturePlans>}
  */
 export async function materializeSlicerDraft({ cwd, epicPlanName, children, parentTargetBranch, writeOptions }) {
@@ -259,7 +259,7 @@ export function createSlicerFinalizeTool({ planName, cwd }) {
                         );
                     }
                     const childDescriptors =
-                        /** @type {import('../../plan-store.js').ChildFeaturePlanDescriptor[]} */
+                        /** @type {import('../../plan-store.ts').ChildFeaturePlanDescriptor[]} */
                         params.children || [];
                     const beforeChildren = await findPlansByParent(cwd, planName);
                     /** @type {Array<{ name: string, path: string, markdown: string, revision: string }>} */
@@ -312,7 +312,7 @@ export function createSlicerFinalizeTool({ planName, cwd }) {
                                     );
                                 }
                             }
-                            /** @param {import('../../plan-store.js').SavedChildFeaturePlan} writeResult */
+                            /** @param {import('../../plan-store.ts').SavedChildFeaturePlan} writeResult */
                             const captureWrittenChild = async (writeResult) => {
                                 writeResults.push(writeResult);
                                 const staged = await loadPlan(cwd, writeResult.name);
@@ -400,7 +400,7 @@ export function createSlicerFinalizeTool({ planName, cwd }) {
                 };
                 const result = /** @type {any} */ await withPlanCatalogLock(cwd, async () => {
                     const childDescriptors =
-                        /** @type {import('../../plan-store.js').ChildFeaturePlanDescriptor[]} */
+                        /** @type {import('../../plan-store.ts').ChildFeaturePlanDescriptor[]} */
                         params.children || [];
                     const plannedChildNames = await resolveChildPlanNames(cwd, planName, childDescriptors);
                     const existingChildNames = (await findPlansByParent(cwd, planName)).map((child) => child.name);
@@ -493,7 +493,7 @@ async function prepareEpicBranchSummary(cwd, planName) {
 }
 
 /**
- * @param {{ name: string, attrs: import('../../plan-store.js').PlanFrontMatter }} child
+ * @param {{ name: string, attrs: import('../../plan-store.ts').PlanFrontMatter }} child
  * @returns {{ name: string, order: number | undefined, status: string | undefined, summary: string | undefined, workKind: string | undefined, dependencies: string[], affectedPaths: string[], tickets?: import('../ticket-references.ts').TicketReference[] }}
  */
 function summarizeChild(child) {

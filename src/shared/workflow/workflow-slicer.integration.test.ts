@@ -5,7 +5,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import type { SessionRuntimeEvent } from "../session/session-runtime-events.ts";
 import { __resetSettingsForTests } from "../settings.js";

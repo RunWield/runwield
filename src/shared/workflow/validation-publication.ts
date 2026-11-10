@@ -31,7 +31,7 @@ import {
 
 import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
 import { logValidationFailure } from "./validation-state-errors.ts";
-import { loadPlan, withPlanLock } from "../../plan-store.js";
+import { loadPlan, withPlanLock } from "../../plan-store.ts";
 import { resolveTargetedWorkRecordSource } from "../work-records/auto-generation.ts";
 import { findEpicManualQaSection } from "../epic-artifacts.ts";
 import { checkpointExecutionWorktree, resolveTargetBranchName } from "../worktree.js";
@@ -88,8 +88,8 @@ import {
 import type { PublicationAttempt } from "./publication-attempt.ts";
 import { preparePublicationRevalidation, PUBLICATION_REVALIDATION_MESSAGE } from "./publication-revalidation.ts";
 
-type DeliveryEvidence = import("../../plan-store.js").DeliveryEvidence;
-type WorktreeDeliveryEvidence = import("../../plan-store.js").WorktreeDeliveryEvidence;
+type DeliveryEvidence = import("../../plan-store.ts").DeliveryEvidence;
+type WorktreeDeliveryEvidence = import("../../plan-store.ts").WorktreeDeliveryEvidence;
 type ManualQaPreparationResult = { kind: "ready" } | { kind: "blocked"; outcome: PublicationOutcome };
 
 function firstMarkdownHeading(markdown: string, fallback: string): string {

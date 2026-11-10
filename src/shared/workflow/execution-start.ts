@@ -20,7 +20,7 @@ import {
     getPlanFrontMatterRevisionForText,
     loadPlan,
     updatePlanFrontMatter,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import {
     defaultPlanBranchName,
     effectiveDeliveryBranch,
@@ -288,7 +288,7 @@ export async function reconcileExecutionPreparationLocation(
 
 interface ExecutionStartOptions {
     planName: string;
-    triageMeta: Partial<import("../../plan-store.js").PlanFrontMatter>;
+    triageMeta: Partial<import("../../plan-store.ts").PlanFrontMatter>;
     currentStatus: import("./plan-lifecycle.ts").PlanStatus;
     cwd?: string;
     existingExecution?: import("../session/hosted-session.ts").ActiveExecutionWorkflow | null;

@@ -29,7 +29,7 @@ import {
 } from "./index.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "../../constants.ts";
-import { savePlan } from "../../plan-store.js";
+import { savePlan } from "../../plan-store.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";

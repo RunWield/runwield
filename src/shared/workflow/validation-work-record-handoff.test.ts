@@ -3,7 +3,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { fauxAssistantMessage, type FauxResponseFactory, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { type RuntimeCommandFixture, withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { savePlan } from "../../plan-store.js";
+import { savePlan } from "../../plan-store.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import { getRunWieldSessionDir } from "../session/root-session.ts";
 import { listWorkRecords, writeWorkRecord } from "../work-records/store.ts";

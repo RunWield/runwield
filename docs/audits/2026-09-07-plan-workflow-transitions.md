@@ -54,7 +54,7 @@ for decomposition.
 - Producer: [PROJECT later branch](../../src/tools/plan-written.ts#L759), in `createPlanWrittenTool`.
 - Consumer: [runPlanningAgent](../../src/shared/workflow/planning-agent.ts#L64) awaits the turn, claims the event, and
   maps an absent event to `no_call`.
-- Probe: [epic-save.probe.js](probes/epic-save.probe.js).
+- Probe: [epic-save.probe.ts](probes/epic-save.probe.ts).
 - Observed: `outcome="saved"`, `status="ready_for_decomposition"`, `events=[]`; required saved-event assertion fails.
 - Coverage gap: the existing [Plan tool test](../../src/tools/__tests__/plan-written.test.ts) named “plan_written
   project approval can save for later with session-complete guidance” checks the returned result, termination flag, and

@@ -25,7 +25,7 @@ import {
     onboardExternalPlan,
     resolvePlan,
     resolveSiblingChildPlanDependencies,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { isPlanArchivePending, startBackgroundArchive } from "./archive-background.ts";
 import { decidePostPlanning } from "../../shared/workflow/decisions.ts";
 import { buildPlanningReReviewRequest, buildResumeRequest } from "./plan-presentation.ts";

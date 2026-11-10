@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { withProcessGlobalTestLock } from "./testing/process-global-lock.ts";
 import { dirname, join } from "node:path";
-import { listPlanResources, listPlans, readPlanResourceCatalog, ensurePlanIdentity } from "./plan-store.js";
+import { listPlanResources, listPlans, readPlanResourceCatalog, ensurePlanIdentity } from "./plan-store.ts";
 import { defineGitFixture, git } from "./shared/git-test-fixture.ts";
 import { enterProjectRuntime } from "./shared/project-runtime-layout.ts";
 import { getRunWieldRuntimeDir } from "./constants.ts";

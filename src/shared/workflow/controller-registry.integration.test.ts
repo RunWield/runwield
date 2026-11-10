@@ -27,7 +27,7 @@ import {
     type PlanDocumentMetadata,
     savePlan,
     updatePlanFrontMatter,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { addEntry, getWorktreeRegistryPath, pruneEntry, updateEntry } from "../worktree-registry.ts";
 import { loadPlanActionEvidence } from "./plan-actions.ts";
