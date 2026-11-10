@@ -1,5 +1,4 @@
 [
     "src/shared/session/session.js",
-    "src/ui/design-system/sidebar-motion.js",
-    "src/ui/tui/testing/scenario-runner.js"
+    "src/ui/design-system/sidebar-motion.js"
 ]

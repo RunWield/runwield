@@ -12,7 +12,7 @@ import { fileURLToPath as fromFileUrl, pathToFileURL as toFileUrl } from "node:u
 import { join } from "node:path";
 import { createGoldenIsolatedEnvironment, type GoldenIsolatedEnvironment } from "./isolated-environment.ts";
 import { GOLDEN_CHILD_READY_MARKER, runGoldenChild, type GoldenChildResult } from "./subprocess-runner.ts";
-import type { GoldenScenario, GoldenScenarioResult } from "./scenario-runner.js";
+import type { GoldenScenario, GoldenScenarioResult } from "./scenario-runner.ts";
 import type { JsonRecord } from "../../../shared/jsonc.ts";
 import { releaseProcessGlobalTestLockSync } from "../../../testing/process-global-lock.ts";
 
@@ -258,7 +258,7 @@ async function runChild(request: GoldenChildScenarioRequest) {
         const { _setTestStatePath } = await import("../../../cmd/init/init-state.ts");
         _setTestStatePath(join(env.runwieldDir, "init-state.json"));
         await fsWriteFile(join(timeoutArtifactDir, "startup-phase.txt"), "loading scenario runner\n");
-        const { runGoldenScenario } = await import("./scenario-runner.js");
+        const { runGoldenScenario } = await import("./scenario-runner.ts");
         const moduleUrl = request.scenarioModule.startsWith("file:")
             ? request.scenarioModule
             : toFileUrl(join(REPO_ROOT, request.scenarioModule)).href;

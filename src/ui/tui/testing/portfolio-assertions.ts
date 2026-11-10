@@ -5,9 +5,9 @@ import { assertEquals } from "../../../testing/assertions.ts";
  */
 
 import { ok as assert } from "node:assert/strict";
-import { assertEventIncludes, assertScreenIncludes } from "./scenario-runner.js";
+import { assertEventIncludes, assertScreenIncludes } from "./scenario-runner.ts";
 
-import type { GoldenScenarioResult } from "./scenario-runner.js";
+import type { GoldenScenarioResult } from "./scenario-runner.ts";
 import type { GoldenAssertionSource, GoldenCoverageAssertion } from "./coverage-matrix.ts";
 
 export interface GoldenCoverageCallback extends GoldenAssertionSource {

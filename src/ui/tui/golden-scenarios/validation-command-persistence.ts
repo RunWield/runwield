@@ -1,7 +1,8 @@
+import type { GoldenAction } from "../testing/mod.ts";
 import { assertEquals } from "../../../testing/assertions.ts";
 import { ok as assert } from "node:assert/strict";
-import type { GoldenScenario, GoldenScenarioResult } from "../testing/scenario-runner.js";
-import { assertEventIncludes } from "../testing/scenario-runner.js";
+import type { GoldenScenario, GoldenScenarioResult } from "../testing/scenario-runner.ts";
+import { assertEventIncludes } from "../testing/scenario-runner.ts";
 import type { ScriptedInteractionSurface } from "../testing/scripted-review-surface.ts";
 import { plannedChangeCiRepairReentryScenario } from "./planned-change-workflow.ts";
 import { startupInitScenario } from "./slash-command-tree-lifecycle.ts";
@@ -70,7 +71,7 @@ function assertCommandPrompts(result: GoldenScenarioResult, expected: number) {
     assert(result.actor.consumed.includes("engineer-reports-ci-repair-complete"));
 }
 
-const deliveryActions = [
+const deliveryActions: GoldenAction[] = [
     ...base.actions.slice(0, 3),
     // Prove the answer is durable before repair/publication can incidentally
     // copy a settings file back from the execution worktree.

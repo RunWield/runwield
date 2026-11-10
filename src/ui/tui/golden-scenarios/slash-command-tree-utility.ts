@@ -1,4 +1,4 @@
-import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.js";
+import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.ts";
 import { VERSION } from "../../../shared/version.js";
 
 function typed(command: string) {

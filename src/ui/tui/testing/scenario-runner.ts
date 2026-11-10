@@ -1,3 +1,22 @@
+/** Golden TUI scenario action runner and diagnostics helpers. */
+
+import type { ValidationPhaseName } from "../../../shared/workflow/validation-ports.ts";
+import type { PlanApprovalAction } from "../../../shared/workflow/plan-approval.ts";
+import type { JsonRecord } from "../../../shared/jsonc.ts";
+import type { SessionRuntimeEvent } from "../../../shared/session/session-runtime-events.ts";
+import type { RuntimeInteractionRequest } from "../../../shared/session/session-runtime-interactions.ts";
+import type { GoldenScriptTurn } from "./scenario-actor.ts";
+import type {
+    ScriptedReviewDecision,
+    ScriptedHumanReviewDecision,
+    ScriptedRuntimeInteraction,
+    ScriptedSurfaceRequest,
+} from "./scripted-review-surface.ts";
+import type { VirtualTerminalOptions } from "./virtual-terminal.ts";
+import type { GoldenModelDefinition } from "./isolated-environment.ts";
+import type { TranscriptContext, AssistantMessage } from "@earendil-works/pi-ai";
+import type { UiAPI } from "../api.ts";
+import type { createInteractiveTuiComposition } from "../interactive-tui-composition.ts";
 import { captureForegroundProcess } from "../../../shared/captured-process.ts";
 import { tmpdir } from "node:os";
 import {
@@ -12,10 +31,6 @@ import {
 } from "node:fs/promises";
 import { readdirSync as fsReaddirSync, readFileSync as fsReadFileSync, realpathSync as fsRealpathSync } from "node:fs";
 import process from "node:process";
-/**
- * @module ui/tui/testing/scenario-runner
- * Golden TUI scenario action runner and diagnostics helpers.
- */
 
 import { dirname, join, relative } from "node:path";
 import { createSessionRuntime } from "../../../shared/session/session-runtime.ts";
@@ -27,7 +42,7 @@ import { PLAN_RUNTIME_FIELDS } from "../../../shared/workflow/controller-state.t
 import { readControllerRecord } from "../../../shared/workflow/controller-registry.ts";
 import { getCurrentSystemPrompt, getCurrentTools } from "@earendil-works/pi-ai";
 import { registerFauxProvider } from "@earendil-works/pi-ai/compat";
-import { findPlansByParent, loadPlan, parsePlanFrontMatter } from "../../../plan-store.ts";
+import { findPlansByParent, loadPlan, parsePlanFrontMatter, type PlanFrontMatter } from "../../../plan-store.ts";
 import { withProcessGlobalTestLock } from "../../../testing/process-global-lock.ts";
 import { submitPlanForReview } from "../../review/plan-review.ts";
 import { createScriptedReviewBrowser } from "../../review/review-test-fixture.ts";
@@ -53,11 +68,394 @@ import {
     PROJECT_INTERNAL_RUNTIME_DIR_NAME,
     WORKTREE_REGISTRY_FILE,
 } from "../../../constants.ts";
-import { getWorktreeRegistryPath } from "../../../shared/worktree-registry.ts";
+import { getWorktreeRegistryPath, type WorktreeRegistryEntry } from "../../../shared/worktree-registry.ts";
 import { enterProjectRuntime } from "../../../shared/project-runtime-layout.ts";
 import { isCurrentProjectRuntimePath } from "../../../shared/runwield-owned-paths.ts";
-import { PLAN_STATUSES } from "../../../shared/workflow/plan-lifecycle.ts";
+import { PLAN_STATUSES, type PlanStatus } from "../../../shared/workflow/plan-lifecycle.ts";
 import { readScenarioRegistryForPoll } from "./scenario-registry-poll.ts";
+
+/**
+ * Snapshot keys are scenario-selected, and values include extension-owned runtime payloads.
+ * Keep this serialization boundary open while naming the fields the runner reads.
+ */
+export interface GoldenScenarioState {
+    [key: string]: unknown;
+}
+interface BasicGoldenState extends GoldenScenarioState {
+    screen: string;
+    canceled: boolean;
+    editorUsable: boolean;
+}
+type GoldenComposition = Awaited<ReturnType<typeof createInteractiveTuiComposition>>;
+type GoldenFauxResponse = Parameters<ReturnType<typeof registerFauxProvider>["setResponses"]>[0][number];
+type GoldenResponseFactory = Exclude<GoldenFauxResponse, AssistantMessage>;
+interface ConcurrentGoldenSession {
+    terminal: VirtualTerminal;
+    composition: GoldenComposition;
+    unsubscribe: () => void;
+}
+interface GoldenRegistrySnapshot {
+    entries?: WorktreeRegistryEntry[];
+}
+interface PersistedLifecycleEvent extends FindFixturePlanLifecycleResult {
+    event: string;
+}
+interface GoldenArtifactDetails {
+    artifactDir?: string;
+}
+type GoldenArtifactError = Error & GoldenArtifactDetails;
+export interface GoldenProjectFile {
+    path: string;
+    text: string;
+}
+interface ConversationDocumentObservation {
+    before?: string;
+    after?: string;
+}
+interface GoldenExpectedInteraction {
+    interactionType: string;
+    decision?: string;
+}
+interface GoldenStartupInput {
+    marker: string;
+    keys?: string;
+    text?: string;
+}
+interface GoldenPriorSession {
+    userText: string;
+    agentName?: string;
+    assistantText: string;
+    model?: string;
+    provider?: string;
+    planName?: string;
+    classification?: string;
+    complexity?: string;
+    interrupted?: boolean;
+}
+interface GoldenAssertion {
+    (result: GoldenScenarioResult): void | Promise<void>;
+    goldenCoverage?: string[];
+}
+type GoldenReviewObserver = (response: ReturnType<ScriptedReviewSurface["submit"]>) => void;
+type GoldenHumanReviewObserver = (response: ReturnType<ScriptedHumanReviewSurface["submit"]>) => void;
+type GoldenTriageMeta = Parameters<typeof submitPlanForReview>[0]["triageMeta"];
+
+export interface GoldenModelTurnAction {
+    type: "modelTurn" | "modelProviderTurn";
+    agent: string;
+    availableTools?: string[];
+    phase?: string;
+}
+
+export interface GoldenTextAction {
+    type: "screen" | "type" | "setNextModelResponse";
+    text?: string;
+}
+
+export interface GoldenSimpleAction {
+    type:
+        | "cancel"
+        | "clearEditor"
+        | "captureConcurrentScreens"
+        | "enter"
+        | "escape"
+        | "ctrlC"
+        | "assertProjectUnchanged"
+        | "assertWorkflowDurability"
+        | "capturePublishedWorkRecords"
+        | "uiPresentationState"
+        | "promptFocusRoundTrip"
+        | "slashAutocomplete";
+}
+
+export interface GoldenSlashAction {
+    type: "slash";
+    command?: string;
+}
+
+export interface GoldenInteractionAction {
+    type: "interaction";
+    decision?: string;
+    interactionType?: string;
+}
+
+export interface GoldenPlanReviewTransactionAction {
+    type: "planReviewTransaction";
+    decisions?: ScriptedReviewDecision[];
+    plan?: string;
+    reviewedPlan?: string;
+    triageMeta?: GoldenTriageMeta;
+}
+
+export interface GoldenStartConcurrentSessionAction {
+    type: "startConcurrentSession";
+    initialAgentName?: string;
+    name?: string;
+    sessionStartMode?: "new" | "continue";
+    terminal?: VirtualTerminalOptions;
+}
+
+export interface GoldenConcurrentTypeAction {
+    type: "concurrentType";
+    name?: string;
+    text?: string;
+}
+
+export interface GoldenConcurrentEnterAction {
+    type: "concurrentEnter";
+    name?: string;
+}
+
+export interface GoldenWaitForConcurrentIdleAction {
+    type: "waitForConcurrentIdle";
+    name?: string;
+    timeoutMs?: number;
+}
+
+export interface GoldenRestartTuiAction {
+    type: "restartTui";
+    initialAgentName?: string;
+    sessionStartMode?: "new" | "continue";
+    terminal?: VirtualTerminalOptions;
+}
+
+export interface GoldenSwitchAgentAction {
+    type: "switchAgent";
+    agentName?: string;
+}
+
+export interface GoldenResizeAction {
+    type: "resize" | "assertTerminalSize";
+    columns: number;
+    rows: number;
+}
+
+export interface GoldenWriteProjectFileAction {
+    type: "writeProjectFile" | "appendProjectFile";
+    path?: string;
+    text?: string;
+}
+
+export interface GoldenDeleteProjectFileAction {
+    type: "deleteProjectFile";
+    path?: string;
+}
+
+export interface GoldenAssertProjectFileAction {
+    type: "assertProjectFile";
+    exists?: boolean;
+    path?: string;
+}
+
+export interface GoldenCaptureProjectFileTextAction {
+    type: "captureProjectFileText";
+    key?: string;
+    path?: string;
+}
+
+export interface GoldenPathsAction {
+    type: "assertOnlyProjectChanges" | "captureGitState" | "capturePublicationBaseline";
+    paths?: string[];
+}
+
+export interface GoldenPlanAction {
+    type:
+        | "runSlicerDecomposition"
+        | "captureProjectDurability"
+        | "mergeReviewedEpicToFinalTarget"
+        | "removePlanRemote"
+        | "installPlanWorktreeFailingPreCommitHook"
+        | "assertNoPlanFile"
+        | "captureExecutionPlanState"
+        | "capturePendingPublicationState";
+    planName?: string;
+}
+
+export interface GoldenDeletePlanWorktreeBaseBranchAction {
+    type: "deletePlanWorktreeBaseBranch";
+    planName?: string;
+    replacementBranch?: string;
+}
+
+export interface GoldenPlanFileCommitAction {
+    type: "commitPlanWorktreeBaseBranchFile" | "advancePlanRemoteTarget";
+    message?: string;
+    path?: string;
+    planName?: string;
+    text?: string;
+}
+
+export interface GoldenCommitProjectPathsAction {
+    type: "commitProjectPaths";
+    message?: string;
+    paths?: string[];
+}
+
+export interface GoldenRemoteAvailabilityAction {
+    type: "setPlanRemotePushRejection" | "setPlanRemoteUnavailable";
+    enabled?: boolean;
+    planName?: string;
+}
+
+export interface GoldenSeedActiveWorktreeAction {
+    type: "seedActiveWorktree";
+    attrs?: JsonRecord;
+    files?: GoldenProjectFile[];
+    legacyStrandedPublication?: boolean;
+    planName?: string;
+    registryStatus?: NonNullable<PlanFrontMatter["worktreeStatus"]>;
+    rememberedValidationPhase?: ValidationPhaseName;
+    status?: PlanStatus;
+}
+
+export interface GoldenSetPrimaryPlanStatusAction {
+    type: "setPrimaryPlanStatus";
+    clearPrimaryWorktreeEvidence?: boolean;
+    clearWorktreeEvidence?: boolean;
+    planName?: string;
+    status?: PlanStatus;
+}
+
+export interface GoldenCaptureProjectStateAction {
+    type: "captureProjectState";
+    key?: string;
+    planNames?: string[];
+    primaryPlanNames?: string[];
+}
+
+export interface GoldenRuntimeInteractionAction {
+    type: "runtimeInteraction";
+    expectedOutcome?: string;
+    request: RuntimeInteractionRequest;
+}
+
+export interface GoldenSleepAction {
+    type: "sleep";
+    ms?: number;
+}
+
+export interface GoldenWaitForEventAction {
+    type: "waitForEvent";
+    event?: string;
+    timeoutMs?: number;
+}
+
+export interface GoldenWaitForEventCountAction {
+    type: "waitForEventCount";
+    count?: number;
+    event?: string;
+    timeoutMs?: number;
+}
+
+export interface GoldenWaitForPlanStatusAction {
+    type: "waitForPlanStatus";
+    planName?: string;
+    statuses?: string[];
+    timeoutMs?: number;
+    validationPhase?: string;
+    workRecordStatus?: string;
+}
+
+export interface GoldenWaitForStatusAction {
+    type: "waitForExecutionPlanStatus" | "waitForWorktreeRegistryStatus" | "waitForRemotePlanStatus";
+    planName?: string;
+    statuses?: string[];
+    timeoutMs?: number;
+}
+
+export interface GoldenCapturePublicationStateAction {
+    type: "capturePublicationState";
+    deliveredPath?: string;
+    key?: string;
+    planName?: string;
+}
+
+export interface GoldenCaptureLocalPublicationStateAction {
+    type: "captureLocalPublicationState";
+    deliveredPath?: string;
+    planName?: string;
+}
+
+export interface GoldenWaitForPlanAbsentAction {
+    type: "waitForPlanAbsent";
+    planName?: string;
+    timeoutMs?: number;
+}
+
+export interface GoldenWaitForIdleAction {
+    type: "waitForIdle";
+    timeoutMs?: number;
+}
+
+export interface GoldenWaitForScriptedInteractionsAction {
+    type: "waitForScriptedInteractions";
+    remaining?: number;
+    timeoutMs?: number;
+}
+
+export interface GoldenWaitForScreenAction {
+    type: "waitForScreen";
+    text?: string;
+    timeoutMs?: number;
+}
+
+export type GoldenAction =
+    | GoldenModelTurnAction
+    | GoldenTextAction
+    | GoldenSimpleAction
+    | GoldenSlashAction
+    | GoldenInteractionAction
+    | GoldenPlanReviewTransactionAction
+    | GoldenStartConcurrentSessionAction
+    | GoldenConcurrentTypeAction
+    | GoldenConcurrentEnterAction
+    | GoldenWaitForConcurrentIdleAction
+    | GoldenRestartTuiAction
+    | GoldenSwitchAgentAction
+    | GoldenResizeAction
+    | GoldenWriteProjectFileAction
+    | GoldenDeleteProjectFileAction
+    | GoldenAssertProjectFileAction
+    | GoldenCaptureProjectFileTextAction
+    | GoldenPathsAction
+    | GoldenPlanAction
+    | GoldenDeletePlanWorktreeBaseBranchAction
+    | GoldenPlanFileCommitAction
+    | GoldenCommitProjectPathsAction
+    | GoldenRemoteAvailabilityAction
+    | GoldenSeedActiveWorktreeAction
+    | GoldenSetPrimaryPlanStatusAction
+    | GoldenCaptureProjectStateAction
+    | GoldenRuntimeInteractionAction
+    | GoldenSleepAction
+    | GoldenWaitForEventAction
+    | GoldenWaitForEventCountAction
+    | GoldenWaitForPlanStatusAction
+    | GoldenWaitForStatusAction
+    | GoldenCapturePublicationStateAction
+    | GoldenCaptureLocalPublicationStateAction
+    | GoldenWaitForPlanAbsentAction
+    | GoldenWaitForIdleAction
+    | GoldenWaitForScriptedInteractionsAction
+    | GoldenWaitForScreenAction;
+
+interface FindFixturePlanLifecycleResult {
+    status?: string;
+    updatedAt?: string;
+    markdown?: string;
+}
+
+interface InferGoldenTurnIdentityResult {
+    agent: string;
+    phase: string;
+}
+
+export interface GoldenScenarioOptions {
+    keepArtifacts?: boolean;
+    artifactRoot?: string;
+    heartbeatPath?: string;
+    onReady?: () => void;
+}
 
 /**
  * Scenario waits poll and return the moment the condition holds, so this budget
@@ -66,8 +464,7 @@ import { readScenarioRegistryForPoll } from "./scenario-registry-poll.ts";
  */
 const DEFAULT_WAIT_TIMEOUT_MS = 20_000;
 
-/** @param {unknown} plan */
-function planReviewClassification(plan) {
+function planReviewClassification(plan: string | undefined) {
     if (typeof plan !== "string") return null;
     try {
         const classification = parsePlanFrontMatter(plan).attrs.classification;
@@ -80,25 +477,17 @@ function planReviewClassification(plan) {
 /**
  * Keep the browser external while driving the real review launcher, server,
  * token check, and decision transport.
- *
- * @param {ScriptedReviewSurface | null} reviewSurface
- * @param {ScriptedHumanReviewSurface | null} humanReviewSurface
- * @param {Record<string, unknown>} request
- * @param {unknown} reviewedPlan
- * @param {(response: ReturnType<ScriptedReviewSurface['submit']>) => void} [onDecision]
- * @param {(response: ReturnType<ScriptedHumanReviewSurface['submit']>) => void} [onHumanReviewDecision]
  */
 function createGoldenReviewBrowser(
-    reviewSurface,
-    humanReviewSurface,
-    request,
-    reviewedPlan,
-    onDecision,
-    onHumanReviewDecision,
+    reviewSurface: ScriptedReviewSurface | null,
+    humanReviewSurface: ScriptedHumanReviewSurface | null,
+    request: ScriptedSurfaceRequest,
+    reviewedPlan: string | undefined,
+    onDecision?: GoldenReviewObserver,
+    onHumanReviewDecision?: GoldenHumanReviewObserver,
 ) {
     const browser = {
-        /** @param {string} url */
-        async open(url) {
+        async open(url: string) {
             if (url.includes("/review/code")) {
                 if (!humanReviewSurface) throw new Error("Unexpected Code Review interaction.");
                 const response = humanReviewSurface.submit({ url });
@@ -152,8 +541,7 @@ function createGoldenReviewBrowser(
                     : typeof response.plan === "string"
                       ? response.plan
                       : undefined;
-            /** @type {"run" | "decompose" | "later" | undefined} */
-            const approvalAction =
+            const approvalAction: PlanApprovalAction | undefined =
                 response.approvalAction === "run" ||
                 response.approvalAction === "decompose" ||
                 response.approvalAction === "later"
@@ -209,12 +597,8 @@ function createGoldenReviewBrowser(
 /**
  * Read the lifecycle state synchronously from isolated fixture Plans at the
  * interaction-resolved boundary, before the workflow can advance it again.
- *
- * @param {string} directory
- * @param {string} expectedStatus
- * @returns {{ status?: unknown, updatedAt?: unknown, markdown?: string }}
  */
-function findFixturePlanLifecycle(directory, expectedStatus) {
+function findFixturePlanLifecycle(directory: string, expectedStatus: string): FindFixturePlanLifecycleResult {
     try {
         for (const entry of fsReaddirSync(directory, { withFileTypes: true })) {
             const path = join(directory, entry.name);
@@ -234,58 +618,57 @@ function findFixturePlanLifecycle(directory, expectedStatus) {
     return {};
 }
 
-/**
- * @typedef {Object} GoldenScenario
- * @property {string} name
- * @property {{ columns?: number, rows?: number }} [terminal]
- * @property {Array<Object>} [actions]
- * @property {Array<import('./scenario-actor.ts').GoldenScriptTurn>} [script]
- * @property {Array<{ interactionType: string, decision?: string }>} [interactions]
- * @property {Array<import('./scripted-review-surface.ts').ScriptedRuntimeInteraction>} [scriptedInteractions]
- * @property {string[]} [interactiveSelectPrompts] Prompt fragments driven by real terminal input even with other scripted interactions.
- * @property {Array<import('./scripted-review-surface.ts').ScriptedReviewDecision>} [reviewDecisions]
- * @property {Array<import('./scripted-review-surface.ts').ScriptedHumanReviewDecision>} [humanReviewDecisions]
- * @property {"new" | "continue"} [sessionStartMode]
- * @property {string} [initialAgentName]
- * @property {unknown} [reviewedPlan]
- * @property {Array<{ path: string, text: string }>} [initialProjectFiles]
- * @property {Array<{ path: string, text: string }>} [committedProjectFiles]
- * @property {boolean} [nonGitProject]
- * @property {Array<((result: GoldenScenarioResult) => void | Promise<void>) & { goldenCoverage?: string[] }>} [assertions]
- * @property {string[]} [coverage]
- * @property {number} [timeoutMs]
- * @property {number} [modelTokensPerSecond] external streaming latency; defaults to unlimited
- * @property {boolean} [composedTui]
- * @property {{ userText: string, agentName?: string, assistantText: string, model?: string, provider?: string, planName?: string, classification?: string, complexity?: string, interrupted?: boolean }} [priorSession]
- * @property {boolean} [corruptSession]
- * @property {"default" | "none" | "provider-without-models"} [modelSetup]
- * @property {Array<{ id: string, name?: string, reasoning?: boolean }>} [models]
- * @property {Record<string, unknown>} [globalSettings]
- * @property {boolean} [onboardingOfferHandled]
- * @property {boolean} [skipModelWelcome]
- * @property {boolean} [captureModelTurns]
- * @property {boolean} [captureGlobalSettings]
- * @property {boolean} [captureSystemMessages]
- * @property {Array<{ marker: string, keys?: string, text?: string }>} [startupInput]
- * @property {boolean} [expectedCleanExit]
- */
+export interface GoldenScenario {
+    name: string;
+    terminal?: VirtualTerminalOptions;
+    actions?: GoldenAction[];
+    script?: Array<GoldenScriptTurn>;
+    interactions?: GoldenExpectedInteraction[];
+    scriptedInteractions?: Array<ScriptedRuntimeInteraction>;
+    /** Prompt fragments driven by real terminal input even with other scripted interactions. */
+    interactiveSelectPrompts?: string[];
+    reviewDecisions?: Array<ScriptedReviewDecision>;
+    humanReviewDecisions?: Array<ScriptedHumanReviewDecision>;
+    sessionStartMode?: "new" | "continue";
+    initialAgentName?: string;
+    reviewedPlan?: string;
+    initialProjectFiles?: GoldenProjectFile[];
+    committedProjectFiles?: GoldenProjectFile[];
+    nonGitProject?: boolean;
+    assertions?: GoldenAssertion[];
+    coverage?: string[];
+    timeoutMs?: number;
+    /** external streaming latency; defaults to unlimited */
+    modelTokensPerSecond?: number;
+    composedTui?: boolean;
+    priorSession?: GoldenPriorSession;
+    corruptSession?: boolean;
+    modelSetup?: "default" | "none" | "provider-without-models";
+    models?: GoldenModelDefinition[];
+    globalSettings?: JsonRecord;
+    onboardingOfferHandled?: boolean;
+    skipModelWelcome?: boolean;
+    captureModelTurns?: boolean;
+    captureGlobalSettings?: boolean;
+    captureSystemMessages?: boolean;
+    startupInput?: GoldenStartupInput[];
+    expectedCleanExit?: boolean;
+}
 
-/**
- * @typedef {Object} GoldenScenarioResult
- * @property {string} name
- * @property {Record<string, unknown>} state
- * @property {string[]} events
- * @property {string} screenText
- * @property {string} [scrollbackText]
- * @property {ReturnType<GoldenScenarioActor['diagnostics']>} actor
- * @property {string | null} artifactDir
- */
+export interface GoldenScenarioResult {
+    name: string;
+    state: GoldenScenarioState;
+    events: string[];
+    screenText: string;
+    scrollbackText?: string;
+    actor: ReturnType<GoldenScenarioActor["diagnostics"]>;
+    artifactDir: string | null;
+}
 
-/**
- * @typedef {Object} ProjectSnapshotEntry
- * @property {"file"|"dir"} kind
- * @property {string} [hash]
- */
+export interface ProjectSnapshotEntry {
+    kind: "file" | "dir";
+    hash?: string;
+}
 
 /**
  * Evidence a composed scenario accumulates for its golden snapshot.
@@ -294,33 +677,49 @@ function findFixturePlanLifecycle(directory, expectedStatus) {
  * written once by whichever scenario action produced them and then serialized —
  * which is what `GoldenScenarioResult.state` already declares as an opaque record,
  * and what the golden files, not the type system, assert.
- *
- * @typedef {Record<string, unknown> & {
- *     canceled: boolean,
- *     editorUsable: boolean,
- *     cleanupSucceeded: boolean,
- *     priorSession: Awaited<ReturnType<typeof seedGoldenPriorSession>> | null,
- *     turnSequence: string[],
- *     screen?: string,
- *     activeAgent?: string,
- *     publicationBaseline?: PublicationBaseline,
- *     validationCiRuns?: Array<{ output: string, isError: boolean }>,
- *     systemMessages?: Array<{ text: string, isError: boolean, header?: string }>,
- * }} ComposedScenarioState
  */
+interface ValidationRunObservation {
+    output: string;
+    isError: boolean;
+}
+interface SystemMessageObservation {
+    text: string;
+    isError: boolean;
+    header?: string;
+}
+interface ModelTurnObservation {
+    agent: string;
+    phase: string;
+    runtimeAgent: string;
+    model: string;
+    provider: string;
+    systemPrompt: string;
+}
+interface ComposedScenarioState extends GoldenScenarioState {
+    canceled: boolean;
+    editorUsable: boolean;
+    cleanupSucceeded: boolean;
+    priorSession: Awaited<ReturnType<typeof seedGoldenPriorSession>> | null;
+    turnSequence: string[];
+    screen?: string;
+    activeAgent?: string;
+    publicationBaseline?: PublicationBaseline;
+    validationCiRuns?: ValidationRunObservation[];
+    systemMessages?: SystemMessageObservation[];
+    modelTurns?: ModelTurnObservation[];
+    savedRemoteUrls?: Record<string, string>;
+}
 
-/**
- * @typedef {Object} PublicationBaseline
- * @property {string} head
- * @property {string} branch
- * @property {string} status
- * @property {Record<string, string | null>} files
- * @property {string[]} executionWorktrees
- * @property {string[]} executionCommits
- */
+export interface PublicationBaseline {
+    head: string;
+    branch: string;
+    status: string;
+    files: Record<string, string | null>;
+    executionWorktrees: string[];
+    executionCommits: string[];
+}
 
-/** @param {Uint8Array} bytes */
-async function sha256Hex(bytes) {
+async function sha256Hex(bytes: Uint8Array) {
     const copy = new Uint8Array(bytes);
     const hash = await crypto.subtle.digest("SHA-256", copy.buffer);
     return Array.from(new Uint8Array(hash))
@@ -328,15 +727,9 @@ async function sha256Hex(bytes) {
         .join("");
 }
 
-/**
- * @param {string} projectRoot
- * @returns {Promise<Record<string, ProjectSnapshotEntry>>}
- */
-async function snapshotProjectRoot(projectRoot) {
-    /** @type {Record<string, ProjectSnapshotEntry>} */
-    const snapshot = {};
-    /** @param {string} directory */
-    async function visit(directory) {
+async function snapshotProjectRoot(projectRoot: string): Promise<Record<string, ProjectSnapshotEntry>> {
+    const snapshot: Record<string, ProjectSnapshotEntry> = {};
+    async function visit(directory: string) {
         try {
             for await (const entry of await fsReaddir(directory, { withFileTypes: true })) {
                 if (entry.name === ".git") continue;
@@ -362,14 +755,12 @@ async function snapshotProjectRoot(projectRoot) {
     return snapshot;
 }
 
-/**
- * @param {Record<string, ProjectSnapshotEntry>} before
- * @param {Record<string, ProjectSnapshotEntry>} after
- */
-function diffProjectSnapshots(before, after) {
+function diffProjectSnapshots(
+    before: Record<string, ProjectSnapshotEntry>,
+    after: Record<string, ProjectSnapshotEntry>,
+) {
     const paths = [...new Set([...Object.keys(before), ...Object.keys(after)])].sort();
-    /** @type {string[]} */
-    const changes = [];
+    const changes: string[] = [];
     for (const path of paths) {
         const previous = before[path];
         const current = after[path];
@@ -380,26 +771,19 @@ function diffProjectSnapshots(before, after) {
     return changes;
 }
 
-/** @param {unknown} value */
-function isObject(value) {
+function isObject<Value>(value: Value) {
     return Boolean(value && typeof value === "object");
 }
 
-/** @param {import('@earendil-works/pi-ai').TranscriptContext} context */
-function getContextToolNames(context) {
+function getContextToolNames(context: TranscriptContext) {
     return getCurrentTools(context.messages).map((tool) => tool.name);
 }
 
-/** @param {import('@earendil-works/pi-ai').TranscriptContext} context */
-function getContextSystemPrompt(context) {
+function getContextSystemPrompt(context: TranscriptContext) {
     return getCurrentSystemPrompt(context.messages);
 }
 
-/**
- * @param {string[]} args
- * @param {string} cwd
- */
-async function runGoldenGit(args, cwd) {
+async function runGoldenGit(args: string[], cwd: string) {
     const output = await captureForegroundProcess("git", { args, cwd });
     const stdout = new TextDecoder().decode(output.stdout).trim();
     const stderr = new TextDecoder().decode(output.stderr).trim();
@@ -407,21 +791,18 @@ async function runGoldenGit(args, cwd) {
     return stdout;
 }
 
-/** @param {string} agentName */
-function inferGoldenPhase(agentName) {
+function inferGoldenPhase(agentName: string) {
     if (agentName === "router") return "triage";
     if (agentName === "guide") return "inquiry";
     if (agentName === "planner") return "plan_review";
     return agentName || "unknown";
 }
 
-/**
- * @param {string | undefined} snapshotAgentName
- * @param {string[]} availableTools
- * @param {string} [systemPrompt]
- * @returns {{ agent: string, phase: string }}
- */
-function inferGoldenTurnIdentity(snapshotAgentName, availableTools, systemPrompt = "") {
+function inferGoldenTurnIdentity(
+    snapshotAgentName: string | undefined,
+    availableTools: string[],
+    systemPrompt: string = "",
+): InferGoldenTurnIdentityResult {
     // The Recorder runs in its own non-interactive session, so the composed
     // Session's snapshot still names whichever Agent was last active there. Its
     // system prompt is the only thing that distinguishes it — which is the same
@@ -469,18 +850,15 @@ function inferGoldenTurnIdentity(snapshotAgentName, availableTools, systemPrompt
     return { agent, phase: inferGoldenPhase(agent) };
 }
 
-/**
- * @typedef {Object} GoldenProviderOptions
- * @property {string} [runwieldDir]
- * @property {GoldenScenario["models"]} [models]
- * @property {number} [tokensPerSecond]
- */
+export interface GoldenProviderOptions {
+    runwieldDir?: string;
+    models?: GoldenScenario["models"];
+    tokensPerSecond?: number;
+}
 
-/**
- * @param {GoldenProviderOptions} options
- * @returns {Promise<ReturnType<typeof registerFauxProvider>>}
- */
-async function registerGoldenFauxProviderForEnvironment(options = {}) {
+async function registerGoldenFauxProviderForEnvironment(
+    options: GoldenProviderOptions = {},
+): Promise<ReturnType<typeof registerFauxProvider>> {
     if (options.runwieldDir) {
         await writeGoldenModelConfig(options.runwieldDir, { api: GOLDEN_FAUX_API, models: options.models });
     }
@@ -495,12 +873,10 @@ async function registerGoldenFauxProviderForEnvironment(options = {}) {
     });
 }
 
-/**
- * @param {GoldenScenario} scenario
- * @param {{ keepArtifacts?: boolean, artifactRoot?: string, heartbeatPath?: string, onReady?: () => void }} [options]
- * @returns {Promise<GoldenScenarioResult>}
- */
-export async function runGoldenScenario(scenario, options = {}) {
+export async function runGoldenScenario(
+    scenario: GoldenScenario,
+    options: GoldenScenarioOptions = {},
+): Promise<GoldenScenarioResult> {
     if (scenario.composedTui && process.env["WLD_GOLDEN_TUI_CHILD"] !== "1") {
         throw new Error(
             "Composed Golden TUI scenarios must run through runGoldenScenarioChildProcess for subprocess isolation.",
@@ -509,12 +885,9 @@ export async function runGoldenScenario(scenario, options = {}) {
     if (scenario.composedTui) return await runComposedTuiScenario(scenario, options);
     const actor = new GoldenScenarioActor(scenario.script || []);
     const expectedInteractions = [...(scenario.interactions || [])];
-    /** @type {Record<string, unknown> & { screen: string, canceled: boolean, editorUsable: boolean }} */
-    const state = { screen: "", canceled: false, editorUsable: true };
-    /** @type {string[]} */
-    const events = [];
-    /** @type {string | null} */
-    let artifactDir = null;
+    const state: BasicGoldenState = { screen: "", canceled: false, editorUsable: true };
+    const events: string[] = [];
+    let artifactDir: string | null = null;
     const timeoutMs = scenario.timeoutMs || DEFAULT_WAIT_TIMEOUT_MS;
     options.onReady?.();
     const startedAt = performance.now();
@@ -522,7 +895,7 @@ export async function runGoldenScenario(scenario, options = {}) {
         for (const action of scenario.actions || []) {
             if (performance.now() - startedAt > timeoutMs) throw new Error(`Scenario timed out after ${timeoutMs}ms.`);
             if (!isObject(action)) continue;
-            const typed = /** @type {any} */ (action);
+            const typed = action;
             if (typed.type === "modelTurn" || typed.type === "modelProviderTurn") {
                 const response = actor.next({
                     agent: typed.agent,
@@ -660,11 +1033,10 @@ export async function runGoldenScenario(scenario, options = {}) {
     }
 }
 
-/**
- * @param {GoldenScenario["priorSession"]} priorSession
- * @param {ReturnType<typeof registerFauxProvider>} fauxProvider
- */
-async function seedGoldenPriorSession(priorSession, fauxProvider) {
+async function seedGoldenPriorSession(
+    priorSession: GoldenScenario["priorSession"],
+    fauxProvider: ReturnType<typeof registerFauxProvider>,
+) {
     if (!priorSession) return null;
     const sessionStore = openFileSessionStore();
     const runtime = createSessionRuntime({ sessionStore, ownerProcessKind: "tui" });
@@ -771,8 +1143,7 @@ async function seedGoldenPriorSession(priorSession, fauxProvider) {
     }
 }
 
-/** @param {ReturnType<typeof registerFauxProvider>} fauxProvider */
-async function seedGoldenCorruptSession(fauxProvider) {
+async function seedGoldenCorruptSession(fauxProvider: ReturnType<typeof registerFauxProvider>) {
     const sessionStore = openFileSessionStore();
     const runtime = createSessionRuntime({ sessionStore, ownerProcessKind: "tui" });
     try {
@@ -800,13 +1171,9 @@ async function seedGoldenCorruptSession(fauxProvider) {
     }
 }
 
-/** Failure-only reads of real fixture evidence; never acquire a registry lock or repair state.
- * @param {string} projectRoot
- * @param {string} home
- */
-async function captureNativeFailureEvidence(projectRoot, home) {
-    /** @param {string[]} args */
-    const git = async (args) => {
+/** Failure-only reads of real fixture evidence; never acquire a registry lock or repair state. */
+async function captureNativeFailureEvidence(projectRoot: string, home: string) {
+    const git = async (args: string[]) => {
         try {
             const result = await captureForegroundProcess("git", {
                 cwd: projectRoot,
@@ -822,8 +1189,7 @@ async function captureNativeFailureEvidence(projectRoot, home) {
             return { error: String(error) };
         }
     };
-    /** @param {string} path */
-    const tail = (path) =>
+    const tail = (path: string) =>
         fsReadFile(path, "utf8")
             .then((text) => text.slice(-16384))
             .catch((error) => String(error));
@@ -837,12 +1203,10 @@ async function captureNativeFailureEvidence(projectRoot, home) {
     return { projectRoot, status, planDiff, registry, externalCalls, unsupportedCalls };
 }
 
-/**
- * @param {GoldenScenario} scenario
- * @param {{ keepArtifacts?: boolean, artifactRoot?: string, heartbeatPath?: string, onReady?: () => void }} options
- * @returns {Promise<GoldenScenarioResult>}
- */
-async function runComposedTuiScenario(scenario, options) {
+async function runComposedTuiScenario(
+    scenario: GoldenScenario,
+    options: GoldenScenarioOptions,
+): Promise<GoldenScenarioResult> {
     return await withProcessGlobalTestLock(async () => {
         const useCurrentEnvironment = process.env["WLD_GOLDEN_TUI_CHILD"] === "1";
         const previousHome = process.env["HOME"];
@@ -862,9 +1226,9 @@ async function runComposedTuiScenario(scenario, options) {
         }
         for (const fixture of scenario.initialProjectFiles || []) {
             if (!isObject(fixture)) continue;
-            const path = join(getCwd(), String(/** @type {any} */ (fixture).path || ""));
+            const path = join(getCwd(), String(fixture.path || ""));
             await fsMkdir(join(path, ".."), { recursive: true });
-            await fsWriteFile(path, String(/** @type {any} */ (fixture).text || ""));
+            await fsWriteFile(path, String(fixture.text || ""));
         }
         // Committed baseline state, as opposed to `initialProjectFiles`, which stay
         // dirty in the primary checkout. Publication runs in an isolated clone and
@@ -874,9 +1238,9 @@ async function runComposedTuiScenario(scenario, options) {
         if (committedProjectFiles.length > 0) {
             for (const fixture of committedProjectFiles) {
                 if (!isObject(fixture)) continue;
-                const path = join(getCwd(), String(/** @type {any} */ (fixture).path || ""));
+                const path = join(getCwd(), String(fixture.path || ""));
                 await fsMkdir(join(path, ".."), { recursive: true });
-                await fsWriteFile(path, String(/** @type {any} */ (fixture).text || ""));
+                await fsWriteFile(path, String(fixture.text || ""));
             }
             await runGoldenGit(["add", "-A"], getCwd());
             await runGoldenGit(["commit", "-m", "Golden fixture baseline"], getCwd());
@@ -944,22 +1308,15 @@ async function runComposedTuiScenario(scenario, options) {
         const corruptSessionState =
             scenario.corruptSession && fauxProvider ? await seedGoldenCorruptSession(fauxProvider) : null;
         const actor = new GoldenScenarioActor(scenario.script || []);
-        /** @type {Map<string, number>} */
-        const turnOrdinals = new Map();
+        const turnOrdinals: Map<string, number> = new Map();
         const { createInteractiveTuiComposition } = await import("../interactive-tui-composition.ts");
         let terminal = new VirtualTerminal(scenario.terminal);
-        /** @type {Awaited<ReturnType<typeof createInteractiveTuiComposition>> | null} */
-        let composition = null;
-        /** @type {Map<string, { terminal: VirtualTerminal, composition: Awaited<ReturnType<typeof createInteractiveTuiComposition>>, unsubscribe: () => void }>} */
-        const concurrentSessions = new Map();
-        /** @type {string[]} */
-        const events = [];
-        /** @type {string[]} */
-        const turnSequence = [];
-        /** @type {string} */
-        let lastWorkflowPlanName = "";
-        /** @type {ComposedScenarioState} */
-        const state = {
+        let composition: GoldenComposition | null = null;
+        const concurrentSessions: Map<string, ConcurrentGoldenSession> = new Map();
+        const events: string[] = [];
+        const turnSequence: string[] = [];
+        let lastWorkflowPlanName: string = "";
+        const state: ComposedScenarioState = {
             canceled: false,
             editorUsable: true,
             cleanupSucceeded: false,
@@ -967,18 +1324,12 @@ async function runComposedTuiScenario(scenario, options) {
             corruptSession: corruptSessionState,
             turnSequence,
         };
-        /** @type {() => void} */
-        let unsubscribe = () => {};
-        /** @type {string | null} */
-        let artifactDir = null;
+        let unsubscribe: () => void = () => {};
+        let artifactDir: string | null = null;
         let restartedTuiHistory = "";
-        /** @type {Array<{ event: string, status?: unknown, updatedAt?: unknown }>} */
-        const persistedLifecycleEvents = [];
-        /** @type {string | undefined} */
-        let reviewDocumentBeforeConversation;
-        /** @typedef {{ before?: string, after?: string }} ConversationDocumentObservation */
-        /** @type {ConversationDocumentObservation[]} */
-        const conversationDocuments = [];
+        const persistedLifecycleEvents: PersistedLifecycleEvent[] = [];
+        let reviewDocumentBeforeConversation: string | undefined;
+        const conversationDocuments: ConversationDocumentObservation[] = [];
         const writeHeartbeat = async () => {
             if (!options.heartbeatPath) return;
             await fsMkdir(join(options.heartbeatPath, ".."), { recursive: true }).catch(() => {});
@@ -1007,13 +1358,9 @@ async function runComposedTuiScenario(scenario, options) {
                 ),
             ).catch(() => {});
         };
-        const reviewSurface = scenario.reviewDecisions
-            ? new ScriptedReviewSurface(/** @type {any[]} */ (scenario.reviewDecisions))
-            : null;
-        /** @type {Array<ReturnType<ScriptedReviewSurface['submit']>>} */
-        const pendingReviewLifecycleObservations = [];
-        /** @param {ReturnType<ScriptedReviewSurface['submit']>} response */
-        const observeReviewDecision = (response) => {
+        const reviewSurface = scenario.reviewDecisions ? new ScriptedReviewSurface(scenario.reviewDecisions) : null;
+        const pendingReviewLifecycleObservations: Array<ReturnType<ScriptedReviewSurface["submit"]>> = [];
+        const observeReviewDecision = (response: ReturnType<ScriptedReviewSurface["submit"]>) => {
             if (response.conversationTurn) {
                 events.push("interaction:PLAN_REVIEW:conversation");
                 reviewDocumentBeforeConversation = findFixturePlanLifecycle(
@@ -1029,12 +1376,10 @@ async function runComposedTuiScenario(scenario, options) {
             pendingReviewLifecycleObservations.push(response);
         };
         const humanReviewSurface = scenario.humanReviewDecisions
-            ? new ScriptedHumanReviewSurface(/** @type {any[]} */ (scenario.humanReviewDecisions))
+            ? new ScriptedHumanReviewSurface(scenario.humanReviewDecisions)
             : null;
-        /** @type {Array<ReturnType<ScriptedHumanReviewSurface['submit']>>} */
-        const consumedHumanReviews = [];
-        /** @param {ReturnType<ScriptedHumanReviewSurface['submit']>} response */
-        const observeHumanReviewDecision = (response) => {
+        const consumedHumanReviews: Array<ReturnType<ScriptedHumanReviewSurface["submit"]>> = [];
+        const observeHumanReviewDecision = (response: ReturnType<ScriptedHumanReviewSurface["submit"]>) => {
             events.push(
                 `interaction:CODE_REVIEW:${
                     response.approved ? "approved" : response.canceled ? "canceled" : "feedback"
@@ -1044,16 +1389,14 @@ async function runComposedTuiScenario(scenario, options) {
             consumedHumanReviews.push(response);
         };
         const interactionSurface = scenario.scriptedInteractions
-            ? new ScriptedInteractionSurface(/** @type {any[]} */ (scenario.scriptedInteractions), (planName) => {
+            ? new ScriptedInteractionSurface(scenario.scriptedInteractions, (planName) => {
                   const activeComposition = composition;
                   const executionCwd = activeComposition?.runtime.getSessionSnapshot(activeComposition.sessionId)
                       ?.activeExecutionWorkflow?.executionCwd;
                   if (typeof executionCwd === "string" && executionCwd) return executionCwd;
                   if (planName) {
                       const registryText = fsReadFileSync(getWorktreeRegistryPath(getCwd()), "utf8");
-                      const parsed = /** @type {{ entries?: Array<{ planName?: string, path?: string }> }} */ (
-                          JSON.parse(registryText)
-                      );
+                      const parsed = JSON.parse(registryText) as GoldenRegistrySnapshot;
                       const matches = (parsed.entries || []).filter((entry) => entry.planName === planName);
                       const durablePath = matches.at(-1)?.path;
                       if (durablePath) return durablePath;
@@ -1062,10 +1405,8 @@ async function runComposedTuiScenario(scenario, options) {
               })
             : null;
         if (interactionSurface) state.scriptedInteractions = interactionSurface.consumed;
-        /** @type {"select"|"text"|"approval"|null} */
-        let activeScriptedInteractionType = null;
-        /** @param {import('../api.ts').UiAPI} uiAPI */
-        const configureScriptedUiAPI = (uiAPI) => {
+        let activeScriptedInteractionType: "select" | "text" | "approval" | null = null;
+        const configureScriptedUiAPI = (uiAPI: UiAPI) => {
             if (scenario.captureSystemMessages) {
                 const originalAppendSystemMessage = uiAPI.appendSystemMessage.bind(uiAPI);
                 uiAPI.appendSystemMessage = (text, isError = false, header, style) => {
@@ -1134,151 +1475,139 @@ async function runComposedTuiScenario(scenario, options) {
             // through the same strict actor dispatch as every other model turn.
             const scriptedResponseFactories = Array.from(
                 { length: (scenario.script || []).length + 8 },
-                () =>
-                    (
-                        /** @type {import('@earendil-works/pi-ai').TranscriptContext} */ context,
-                        /** @type {unknown} */ _options,
-                        /** @type {unknown} */ _providerState,
-                        /** @type {{ id?: string, provider?: string }} */ model,
-                    ) => {
-                        let snapshot = composition?.runtime.getSessionSnapshot(composition.sessionId);
-                        const availableTools = getContextToolNames(context);
-                        const systemPrompt = getContextSystemPrompt(context);
-                        // Route the external model fixture by the request's real working
-                        // directory. Concurrent sessions must never borrow the first TUI's
-                        // Plan identity or consume its scripted turns.
-                        if (concurrentSessions.size > 0) {
-                            const requestCwd =
-                                systemPrompt.match(/^Current working directory: (.+)$/m)?.[1]?.trim() ||
-                                systemPrompt.match(/<cwd>\s*([\s\S]*?)\s*<\/cwd>/)?.[1]?.trim();
-                            const snapshots = [
-                                snapshot,
-                                ...[...concurrentSessions.values()].map(({ composition: sessionComposition }) =>
-                                    sessionComposition.runtime.getSessionSnapshot(sessionComposition.sessionId),
-                                ),
-                            ].filter(
-                                (candidate) =>
-                                    candidate &&
-                                    requestCwd &&
-                                    fsRealpathSync(candidate.cwd) === fsRealpathSync(requestCwd),
-                            );
-                            if (snapshots.length === 1) snapshot = snapshots[0];
-                            else if (
-                                availableTools.includes("task_completed") ||
-                                availableTools.includes("review_complete")
-                            ) {
-                                const message = `Cannot route concurrent model request for ${requestCwd || "missing cwd"}`;
-                                events.push(`model:fixture-error:${message}`);
-                                void writeHeartbeat().catch(() => {});
-                                throw new Error(message);
-                            }
-                        }
-                        const { agent, phase } = inferGoldenTurnIdentity(
-                            snapshot?.activeAgent || undefined,
-                            availableTools,
-                            systemPrompt,
+                (): GoldenResponseFactory => (context, _options, _providerState, model) => {
+                    let snapshot = composition?.runtime.getSessionSnapshot(composition.sessionId);
+                    const availableTools = getContextToolNames(context);
+                    const systemPrompt = getContextSystemPrompt(context);
+                    // Route the external model fixture by the request's real working
+                    // directory. Concurrent sessions must never borrow the first TUI's
+                    // Plan identity or consume its scripted turns.
+                    if (concurrentSessions.size > 0) {
+                        const requestCwd =
+                            systemPrompt.match(/^Current working directory: (.+)$/m)?.[1]?.trim() ||
+                            systemPrompt.match(/<cwd>\s*([\s\S]*?)\s*<\/cwd>/)?.[1]?.trim();
+                        const snapshots = [
+                            snapshot,
+                            ...[...concurrentSessions.values()].map(({ composition: sessionComposition }) =>
+                                sessionComposition.runtime.getSessionSnapshot(sessionComposition.sessionId),
+                            ),
+                        ].filter(
+                            (candidate) =>
+                                candidate && requestCwd && fsRealpathSync(candidate.cwd) === fsRealpathSync(requestCwd),
                         );
-                        const checklistTool = availableTools.includes("manual_qa_completed")
-                            ? "manual_qa_completed"
-                            : availableTools.includes("qa_checklist_generated")
-                              ? "qa_checklist_generated"
-                              : null;
-                        if (
-                            checklistTool &&
-                            !actor.remaining.some((turn) => turn.toolCalls?.some((call) => call.name === checklistTool))
+                        if (snapshots.length === 1) snapshot = snapshots[0];
+                        else if (
+                            availableTools.includes("task_completed") ||
+                            availableTools.includes("review_complete")
                         ) {
-                            events.push("model:faux-provider:manual-qa:manual_qa");
-                            return createFauxMessageForTurn({
-                                id: "golden-default-manual-qa",
-                                agent: "manual-qa",
-                                phase: "manual_qa",
-                                toolCalls: [
-                                    {
-                                        name: checklistTool,
-                                        arguments: {
-                                            checklistMarkdown: `Manual verification steps for ${
-                                                lastWorkflowPlanName || "the completed Plan"
-                                            }\n\n- [ ] Verify the completed behavior.`,
-                                        },
+                            const message = `Cannot route concurrent model request for ${requestCwd || "missing cwd"}`;
+                            events.push(`model:fixture-error:${message}`);
+                            void writeHeartbeat().catch(() => {});
+                            throw new Error(message);
+                        }
+                    }
+                    const { agent, phase } = inferGoldenTurnIdentity(
+                        snapshot?.activeAgent || undefined,
+                        availableTools,
+                        systemPrompt,
+                    );
+                    const checklistTool = availableTools.includes("manual_qa_completed")
+                        ? "manual_qa_completed"
+                        : availableTools.includes("qa_checklist_generated")
+                          ? "qa_checklist_generated"
+                          : null;
+                    if (
+                        checklistTool &&
+                        !actor.remaining.some((turn) => turn.toolCalls?.some((call) => call.name === checklistTool))
+                    ) {
+                        events.push("model:faux-provider:manual-qa:manual_qa");
+                        return createFauxMessageForTurn({
+                            id: "golden-default-manual-qa",
+                            agent: "manual-qa",
+                            phase: "manual_qa",
+                            toolCalls: [
+                                {
+                                    name: checklistTool,
+                                    arguments: {
+                                        checklistMarkdown: `Manual verification steps for ${
+                                            lastWorkflowPlanName || "the completed Plan"
+                                        }\n\n- [ ] Verify the completed behavior.`,
                                     },
-                                ],
-                            });
-                        }
-                        // Most scenarios do not prescribe prose for the Work Record.
-                        // Only that ancillary model response has a default: persistence,
-                        // indexing, and linking still run through the production tool.
-                        if (
-                            availableTools.includes("work_record_completed") &&
-                            !actor.remaining.some((turn) => turn.agent === "recorder")
-                        ) {
-                            events.push("model:faux-provider:recorder:work_record");
-                            return createFauxMessageForTurn({
-                                id: "golden-default-work-record",
-                                agent: "recorder",
-                                phase: "work_record",
-                                toolCalls: [
-                                    {
-                                        name: "work_record_completed",
-                                        arguments: {
-                                            title: "Golden Work Record",
-                                            summary:
-                                                "Recorded the completed Golden Planned Change for planning memory.",
-                                        },
+                                },
+                            ],
+                        });
+                    }
+                    // Most scenarios do not prescribe prose for the Work Record.
+                    // Only that ancillary model response has a default: persistence,
+                    // indexing, and linking still run through the production tool.
+                    if (
+                        availableTools.includes("work_record_completed") &&
+                        !actor.remaining.some((turn) => turn.agent === "recorder")
+                    ) {
+                        events.push("model:faux-provider:recorder:work_record");
+                        return createFauxMessageForTurn({
+                            id: "golden-default-work-record",
+                            agent: "recorder",
+                            phase: "work_record",
+                            toolCalls: [
+                                {
+                                    name: "work_record_completed",
+                                    arguments: {
+                                        title: "Golden Work Record",
+                                        summary: "Recorded the completed Golden Planned Change for planning memory.",
                                     },
-                                ],
-                            });
-                        }
-                        if (scenario.captureModelTurns) {
-                            const modelTurns = Array.isArray(state.modelTurns) ? state.modelTurns : [];
-                            modelTurns.push({
-                                agent,
-                                phase,
-                                runtimeAgent: snapshot?.activeAgent || "",
-                                model: model?.id || "",
-                                provider: model?.provider || "",
-                                systemPrompt,
-                            });
-                            state.modelTurns = modelTurns;
-                        }
-                        // The Runtime's own view of which Plan is executing. An Epic drives
-                        // several child Plans through the same Agent and phase, so execution
-                        // and review turns count ordinals per Plan: one child's turn count
-                        // then cannot shift the next child's script. Planning turns are not
-                        // scoped this way — a Planner turn runs before its Plan exists, and
-                        // the Runtime still reports whichever Plan came before.
-                        const reportedPlanName = String(
-                            /** @type {{ workflowContext?: { planName?: unknown }, activeExecutionWorkflow?: { planName?: unknown } }} */ (
-                                snapshot || {}
-                            ).workflowContext?.planName ||
-                                /** @type {{ activeExecutionWorkflow?: { planName?: unknown } }} */ (snapshot || {})
-                                    .activeExecutionWorkflow?.planName ||
-                                "",
-                        );
-                        // The Runtime clears workflowContext between phases while retaining
-                        // activeExecutionWorkflow. An empty reading must not open a second
-                        // ordinal series for the same Plan — that silently shifts later
-                        // turns. Carry the last Plan the Runtime named until it names another.
-                        if (reportedPlanName) lastWorkflowPlanName = reportedPlanName;
-                        const planName = reportedPlanName || lastWorkflowPlanName;
-                        const planScoped = agent === "engineer" || agent === "reviewer";
-                        const ordinalKey = planScoped ? `${agent}:${phase}:${planName}` : `${agent}:${phase}`;
-                        const ordinal = (turnOrdinals.get(ordinalKey) || 0) + 1;
-                        turnOrdinals.set(ordinalKey, ordinal);
-                        // Recorded before dispatch so a failing turn still appears: the
-                        // identity/ordinal a turn was offered under is the one fact needed to
-                        // script agent loops that run to a text-only answer, and it is
-                        // invisible from events alone.
-                        turnSequence.push(`${agent}:${phase}:${planScoped ? planName || "-" : "*"}:${ordinal}`);
-                        const response = actor.next({
+                                },
+                            ],
+                        });
+                    }
+                    if (scenario.captureModelTurns) {
+                        const modelTurns = Array.isArray(state.modelTurns) ? state.modelTurns : [];
+                        modelTurns.push({
                             agent,
                             phase,
-                            ordinal,
-                            planName: planScoped ? planName : undefined,
-                            availableTools,
+                            runtimeAgent: snapshot?.activeAgent || "",
+                            model: model?.id || "",
+                            provider: model?.provider || "",
+                            systemPrompt,
                         });
-                        events.push(`model:faux-provider:${agent}:${phase}`);
-                        return createFauxMessageForTurn(actor.consumed.at(-1) || /** @type {any} */ ({ response }));
-                    },
+                        state.modelTurns = modelTurns;
+                    }
+                    // The Runtime's own view of which Plan is executing. An Epic drives
+                    // several child Plans through the same Agent and phase, so execution
+                    // and review turns count ordinals per Plan: one child's turn count
+                    // then cannot shift the next child's script. Planning turns are not
+                    // scoped this way — a Planner turn runs before its Plan exists, and
+                    // the Runtime still reports whichever Plan came before.
+                    const reportedPlanName = String(
+                        (snapshot || {}).workflowContext?.planName ||
+                            (snapshot || {}).activeExecutionWorkflow?.planName ||
+                            "",
+                    );
+                    // The Runtime clears workflowContext between phases while retaining
+                    // activeExecutionWorkflow. An empty reading must not open a second
+                    // ordinal series for the same Plan — that silently shifts later
+                    // turns. Carry the last Plan the Runtime named until it names another.
+                    if (reportedPlanName) lastWorkflowPlanName = reportedPlanName;
+                    const planName = reportedPlanName || lastWorkflowPlanName;
+                    const planScoped = agent === "engineer" || agent === "reviewer";
+                    const ordinalKey = planScoped ? `${agent}:${phase}:${planName}` : `${agent}:${phase}`;
+                    const ordinal = (turnOrdinals.get(ordinalKey) || 0) + 1;
+                    turnOrdinals.set(ordinalKey, ordinal);
+                    // Recorded before dispatch so a failing turn still appears: the
+                    // identity/ordinal a turn was offered under is the one fact needed to
+                    // script agent loops that run to a text-only answer, and it is
+                    // invisible from events alone.
+                    turnSequence.push(`${agent}:${phase}:${planScoped ? planName || "-" : "*"}:${ordinal}`);
+                    const response = actor.next({
+                        agent,
+                        phase,
+                        ordinal,
+                        planName: planScoped ? planName : undefined,
+                        availableTools,
+                    });
+                    events.push(`model:faux-provider:${agent}:${phase}`);
+                    return createFauxMessageForTurn(actor.consumed.at(-1) || { response });
+                },
             );
             fauxProvider?.setResponses(scriptedResponseFactories);
             // The welcome prompt blocks inside createInteractiveTuiComposition while
@@ -1375,11 +1704,10 @@ async function runComposedTuiScenario(scenario, options) {
             // parent can switch from its startup budget to the scenario budget.
             options.onReady?.();
             const runtime = composition.runtime;
-            /** @param {import('../../../shared/session/session-runtime-events.ts').SessionRuntimeEvent} event */
-            const handleRuntimeEvent = (event) => {
+            const handleRuntimeEvent = (event: SessionRuntimeEvent) => {
                 events.push(`runtime:${event.type}`);
                 if (event.type === "agent_changed") {
-                    const name = /** @type {{ agentName?: string }} */ (event).agentName || "";
+                    const name = event.agentName || "";
                     events.push(`runtime:agent:${name}`);
                     state.activeAgent = name;
                 }
@@ -1388,12 +1716,12 @@ async function runComposedTuiScenario(scenario, options) {
                     events.push("runtime:cancellation");
                 }
                 if (event.type === "tool_start") {
-                    const name = /** @type {{ toolName?: string }} */ (event).toolName || "";
+                    const name = event.toolName || "";
                     events.push(`runtime:tool:start:${name}`);
                     if (event.toolCallId.startsWith("validation-ci-")) events.push("runtime:validation-ci:started");
                 }
                 if (event.type === "tool_end") {
-                    const name = /** @type {{ toolName?: string }} */ (event).toolName || "";
+                    const name = event.toolName || "";
                     events.push(`runtime:tool:end:${name}`);
                     if (event.toolCallId.startsWith("validation-ci-")) {
                         events.push(`runtime:validation-ci:${event.isError ? "failed" : "passed"}`);
@@ -1404,8 +1732,7 @@ async function runComposedTuiScenario(scenario, options) {
                 if (event.type === "assistant_thinking_delta") events.push("runtime:assistant:thinking");
                 if (event.type === "queued_message_changed") events.push("runtime:queue");
                 if (event.type === "interaction_resolved") {
-                    const interaction =
-                        /** @type {{ interactionType?: string, outcome?: string, message?: string }} */ (event);
+                    const interaction = event;
                     events.push(
                         `runtime:interaction:${interaction.interactionType || "unknown"}:${
                             interaction.outcome || "unknown"
@@ -1432,16 +1759,13 @@ async function runComposedTuiScenario(scenario, options) {
                     }
                 }
                 if (event.type === "session_replaced") {
-                    const replaced =
-                        /** @type {{ oldSessionId?: string, newSessionId?: string, reason?: string, childPlanName?: string, action?: string }} */ (
-                            event
-                        );
+                    const replaced = event;
                     state.replacedSession = {
                         previousSessionId: replaced.oldSessionId,
                         currentSessionId: replaced.newSessionId,
                         reason: replaced.reason,
-                        childPlanName: replaced.childPlanName,
-                        action: replaced.action,
+                        childPlanName: "childPlanName" in replaced ? replaced.childPlanName : undefined,
+                        action: "action" in replaced ? replaced.action : undefined,
                     };
                     events.push(`runtime:session-replaced:${replaced.reason || "unknown"}`);
                     if (replaced.newSessionId) {
@@ -1460,7 +1784,7 @@ async function runComposedTuiScenario(scenario, options) {
             unsubscribe = runtime.subscribeSessionEvents(composition.sessionId, handleRuntimeEvent);
             for (const action of scenario.actions || []) {
                 if (!isObject(action)) continue;
-                const typed = /** @type {any} */ (action);
+                const typed = action;
                 // Real terminals retain input while a command temporarily stops the TUI.
                 // Wait for its real restart before injecting the next scripted key.
                 if (["type", "clearEditor", "enter", "escape", "ctrlC"].includes(typed.type)) {
@@ -1500,7 +1824,7 @@ async function runComposedTuiScenario(scenario, options) {
                         (event) => {
                             events.push(`concurrent:${name}:runtime:${event.type}`);
                             if (event.type === "tool_start") {
-                                const eventToolName = /** @type {{ toolName?: string }} */ (event).toolName || "";
+                                const eventToolName = event.toolName || "";
                                 events.push(`concurrent:${name}:runtime:tool:start:${eventToolName}`);
                             }
                         },
@@ -1853,8 +2177,7 @@ async function runComposedTuiScenario(scenario, options) {
                                   getCwd(),
                               ).catch(() => primaryHead)
                             : primaryHead;
-                    /** @param {string} name @param {string} head */
-                    const loadRemotePlanAttrsAt = async (name, head) => {
+                    const loadRemotePlanAttrsAt = async (name: string, head: string) => {
                         if (!remotePath || !head) return null;
                         const markdown = await runGoldenGit(
                             ["--git-dir", remotePath, "show", `${head}:docs/plans/${name}.md`],
@@ -1862,8 +2185,7 @@ async function runComposedTuiScenario(scenario, options) {
                         ).catch(() => "");
                         return markdown ? parsePlanFrontMatter(markdown).attrs : null;
                     };
-                    /** @param {string} name */
-                    const loadRemotePlanAttrs = (name) => loadRemotePlanAttrsAt(name, remoteHead);
+                    const loadRemotePlanAttrs = (name: string) => loadRemotePlanAttrsAt(name, remoteHead);
                     state.projectPlans = {
                         parent: (await loadRemotePlanAttrsAt(epicPlanName, primaryHead)) || localParent?.attrs,
                         firstChild: localChildren[0]
@@ -1875,8 +2197,9 @@ async function runComposedTuiScenario(scenario, options) {
                     };
                     const registryPath = getWorktreeRegistryPath(getCwd());
                     const registryText = await fsReadFile(registryPath, "utf8").catch(() => "");
-                    /** @type {import('../../../shared/worktree-registry.ts').WorktreeRegistryEntry[]} */
-                    const registryEntries = registryText ? JSON.parse(registryText).entries || [] : [];
+                    const registryEntries: WorktreeRegistryEntry[] = registryText
+                        ? JSON.parse(registryText).entries || []
+                        : [];
                     state.projectDurability = {
                         branch,
                         epicBranch,
@@ -2107,7 +2430,7 @@ async function runComposedTuiScenario(scenario, options) {
                     const remote =
                         (await runGoldenGit(["config", "--get", `branch.${targetBranch}.remote`], getCwd())) ||
                         "origin";
-                    const savedRemoteUrls = /** @type {Record<string, string>} */ (state.savedRemoteUrls ||= {});
+                    const savedRemoteUrls = (state.savedRemoteUrls ||= {});
                     if (typed.enabled === false) {
                         const savedUrl = savedRemoteUrls[remote];
                         if (typeof savedUrl !== "string" || !savedUrl) {
@@ -2184,23 +2507,23 @@ async function runComposedTuiScenario(scenario, options) {
                     const executionCommit = legacyStrandedPublication
                         ? await runGoldenGit(["rev-parse", "HEAD"], entry.path)
                         : "";
-                    const status = legacyStrandedPublication
+                    const status: PlanStatus = legacyStrandedPublication
                         ? "verified"
                         : typeof typed.status === "string"
                           ? typed.status
                           : "in_progress";
                     const rememberedValidationPhase = ["mechanical", "semantic", "delivery"].includes(
-                        typed.rememberedValidationPhase,
+                        typed.rememberedValidationPhase ?? "",
                     )
                         ? typed.rememberedValidationPhase
                         : null;
-                    const rememberedStatus =
+                    const rememberedStatus: PlanStatus =
                         rememberedValidationPhase === "mechanical"
                             ? "implemented"
                             : rememberedValidationPhase === "semantic"
                               ? "validated_ci"
                               : "reviewed";
-                    const registryStatus = legacyStrandedPublication
+                    const registryStatus: NonNullable<PlanFrontMatter["worktreeStatus"]> = legacyStrandedPublication
                         ? "completed"
                         : typed.registryStatus === "validation_failed"
                           ? "validation_failed"
@@ -2219,7 +2542,7 @@ async function runComposedTuiScenario(scenario, options) {
                               worktreeBaseBranch: entry.baseBranch,
                               worktreeStatus: registryStatus,
                           };
-                    const seededPlanUpdates = {
+                    const seededPlanUpdates: Partial<PlanFrontMatter> = {
                         status,
                         ...attemptMetadata,
                         ...(legacyStrandedPublication
@@ -2276,16 +2599,10 @@ async function runComposedTuiScenario(scenario, options) {
                 } else if (typed.type === "setPrimaryPlanStatus") {
                     const planName = String(typed.planName || "");
                     const rawStatus = String(typed.status || "");
-                    if (
-                        !PLAN_STATUSES.includes(
-                            /** @type {import('../../../shared/workflow/plan-lifecycle.ts').PlanStatus} */ (rawStatus),
-                        )
-                    ) {
+                    if (!PLAN_STATUSES.includes(rawStatus)) {
                         throw new Error(`Cannot set invalid primary Plan status: ${rawStatus}`);
                     }
-                    const status = /** @type {import('../../../shared/workflow/plan-lifecycle.ts').PlanStatus} */ (
-                        rawStatus
-                    );
+                    const status = rawStatus as PlanStatus;
                     const loaded = await loadPlan(getCwd(), planName);
                     if (!loaded) throw new Error(`Cannot update missing primary Plan ${planName}`);
                     const { updatePlanFrontMatter } = await import("../../../plan-store.ts");
@@ -2405,10 +2722,8 @@ async function runComposedTuiScenario(scenario, options) {
                         .then(() => true)
                         .catch(() => false);
                     if (exists) throw new Error(`Expected no Plan file at ${planPath}`);
-                    /** @type {string[]} */
-                    const planFiles = [];
-                    /** @type {(directory: string) => Promise<void>} */
-                    const collectPlanFiles = async (directory) => {
+                    const planFiles: string[] = [];
+                    const collectPlanFiles: (directory: string) => Promise<void> = async (directory) => {
                         try {
                             for await (const entry of await fsReaddir(directory, { withFileTypes: true })) {
                                 const child = join(directory, entry.name);
@@ -2474,7 +2789,7 @@ async function runComposedTuiScenario(scenario, options) {
                     // Capable terminals receive image bytes. Headless/unsupported
                     // terminals receive pi-tui's visible image fallback instead. Both
                     // are real rendered outcomes, unlike merely recording the API call.
-                    const presentationWrites = String(/** @type {{ writes?: string }} */ (terminal).writes || "");
+                    const presentationWrites = String(terminal.writes || "");
                     state.presentationImageRendered =
                         presentationWrites.includes("iVBORw0KGgoAAA") ||
                         presentationScreen.includes("[Image: [image/png]") ||
@@ -2498,10 +2813,7 @@ async function runComposedTuiScenario(scenario, options) {
                     terminal.input("\t");
                     events.push("terminal:autocomplete:/he");
                 } else if (typed.type === "runtimeInteraction") {
-                    const request =
-                        /** @type {import('../../../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest} */ (
-                            typed.request || {}
-                        );
+                    const request = typed.request || ({} as RuntimeInteractionRequest);
                     activeScriptedInteractionType =
                         request.type === "approval" ? "approval" : request.type === "text" ? "text" : "select";
                     try {
@@ -2659,8 +2971,7 @@ async function runComposedTuiScenario(scenario, options) {
                     events.push(`project:execution-plan-state:${planName}`);
                 } else if (typed.type === "capturePublicationBaseline") {
                     const paths = Array.isArray(typed.paths) ? typed.paths.map(String) : [];
-                    /** @type {Record<string, string | null>} */
-                    const files = {};
+                    const files: Record<string, string | null> = {};
                     for (const path of paths) {
                         files[path] = await fsReadFile(join(getCwd(), path), "utf8").catch(() => null);
                     }
@@ -2721,8 +3032,7 @@ async function runComposedTuiScenario(scenario, options) {
                         .then(() => true)
                         .catch(() => false);
                     const baselineFiles = state.publicationBaseline?.files || {};
-                    /** @type {Record<string, string | null>} */
-                    const currentFiles = {};
+                    const currentFiles: Record<string, string | null> = {};
                     for (const path of Object.keys(baselineFiles)) {
                         currentFiles[path] = await fsReadFile(join(getCwd(), path), "utf8").catch(() => null);
                     }
@@ -2797,8 +3107,7 @@ async function runComposedTuiScenario(scenario, options) {
                         await import("../../../shared/worktree-registry.ts")
                     ).inspectWorktreeRegistry(getCwd());
                     const baselineFiles = state.publicationBaseline?.files || {};
-                    /** @type {Record<string, string | null>} */
-                    const currentFiles = {};
+                    const currentFiles: Record<string, string | null> = {};
                     for (const path of Object.keys(baselineFiles)) {
                         currentFiles[path] = await fsReadFile(join(getCwd(), path), "utf8").catch(() => null);
                     }
@@ -2888,8 +3197,7 @@ async function runComposedTuiScenario(scenario, options) {
                         await import("../../../shared/worktree-registry.ts")
                     ).inspectWorktreeRegistry(getCwd());
                     const baselineFiles = state.publicationBaseline?.files || {};
-                    /** @type {Record<string, string | null>} */
-                    const currentFiles = {};
+                    const currentFiles: Record<string, string | null> = {};
                     for (const path of Object.keys(baselineFiles)) {
                         currentFiles[path] = await fsReadFile(join(getCwd(), path), "utf8").catch(() => null);
                     }
@@ -3038,11 +3346,10 @@ async function runComposedTuiScenario(scenario, options) {
         } catch (error) {
             if (options.keepArtifacts !== false) {
                 artifactDir = await fsMkdtemp(join(options.artifactRoot ?? tmpdir(), "runwield-golden-tui-failure-"));
-                /** @type {Error & { artifactDir?: string }} */ (
-                    error instanceof Error ? error : new Error(String(error))
-                ).artifactDir = artifactDir;
+                const diagnosticError: GoldenArtifactError = error instanceof Error ? error : new Error(String(error));
+                diagnosticError.artifactDir = artifactDir;
                 if (error && typeof error === "object") {
-                    /** @type {{ artifactDir?: string }} */ (error).artifactDir = artifactDir;
+                    (error as GoldenArtifactDetails).artifactDir = artifactDir;
                 }
                 await fsWriteFile(
                     join(artifactDir, "diagnostics.json"),
@@ -3094,11 +3401,7 @@ async function runComposedTuiScenario(scenario, options) {
     });
 }
 
-/**
- * @param {GoldenScenarioResult} result
- * @param {string} text
- */
-export function assertScreenIncludes(result, text) {
+export function assertScreenIncludes(result: GoldenScenarioResult, text: string) {
     const textSurfaces = [result.screenText, result.scrollbackText || ""];
     assert(
         textSurfaces.some((surfaceText) => surfaceText.includes(text)),
@@ -3106,10 +3409,6 @@ export function assertScreenIncludes(result, text) {
     );
 }
 
-/**
- * @param {GoldenScenarioResult} result
- * @param {string} event
- */
-export function assertEventIncludes(result, event) {
+export function assertEventIncludes(result: GoldenScenarioResult, event: string) {
     assert(result.events.includes(event), `Expected events to include ${event}; got ${result.events.join(", ")}`);
 }

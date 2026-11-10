@@ -1,4 +1,4 @@
-import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.js";
+import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.ts";
 
 function typed(command: string) {
     return (result: Parameters<typeof assertEventIncludes>[0]) =>

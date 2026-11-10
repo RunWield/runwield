@@ -300,6 +300,7 @@ test("golden runner writes diagnostic artifacts on failure", async () => {
     const artifactRoot = await fsMkdtemp(join(tmpdir(), "golden-artifacts-test-"));
     try {
         await assertRejects(
+            // @ts-expect-error Exercise rejection of an unsupported runtime action.
             () => runGoldenScenario({ name: "artifact", actions: [{ type: "unknown" }] }, { artifactRoot }),
             Error,
             "Unknown scenario action",
