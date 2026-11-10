@@ -3,7 +3,7 @@ import { deepStrictEqual, strictEqual, ok, rejects } from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, readdir, readlink, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { getRunWieldRuntimeDir } from "../../constants.js";
+import { getRunWieldRuntimeDir } from "../../constants.ts";
 import { defineGitFixture, git } from "../../shared/git-test-fixture.ts";
 import {
     enterProjectRuntime,

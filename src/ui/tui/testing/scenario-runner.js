@@ -52,7 +52,7 @@ import {
     getRunWieldRuntimeDir,
     PROJECT_INTERNAL_RUNTIME_DIR_NAME,
     WORKTREE_REGISTRY_FILE,
-} from "../../../constants.js";
+} from "../../../constants.ts";
 import { getWorktreeRegistryPath } from "../../../shared/worktree-registry.js";
 import { enterProjectRuntime } from "../../../shared/project-runtime-layout.ts";
 import { isCurrentProjectRuntimePath } from "../../../shared/runwield-owned-paths.ts";

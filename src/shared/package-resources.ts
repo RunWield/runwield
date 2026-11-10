@@ -9,7 +9,7 @@ import type { PackageSource, ResolvedPaths, ResolvedResource, SettingsManager } 
 export type { PathMetadata, ResolvedPaths, ResolvedResource } from "@earendil-works/pi-coding-agent";
 
 import { isAbsolute, join, relative } from "node:path";
-import { getCwd } from "../constants.js";
+import { getCwd } from "../constants.ts";
 import { getSettingsDir, getSettingsManager } from "./settings.js";
 import {
     assertPersonalResourcePath,

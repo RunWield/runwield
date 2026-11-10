@@ -203,7 +203,7 @@ async function main(): Promise<void> {
 
     if (requiresProjectDirectoryConsent(firstPositional, normalizedArgs.slice(1))) {
         const { confirmProjectDirectory } = await import("./ui/tui/directory-warning.ts");
-        const { getCwd } = await import("./constants.js");
+        const { getCwd } = await import("./constants.ts");
         if (!(await confirmProjectDirectory(getCwd(), allowSystemDirectory))) return;
         const { resolvePrimaryCheckoutRoot } = await import("./shared/project-checkout.ts");
         const primaryRoot = resolvePrimaryCheckoutRoot(getCwd());

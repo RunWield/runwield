@@ -1,5 +1,5 @@
 import { assertEquals } from "../../testing/assertions.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import { ok as assert, match as assertMatch } from "node:assert/strict";
 import { createUserInterviewTool, type InterviewResultDetails } from "../user-interview.ts";

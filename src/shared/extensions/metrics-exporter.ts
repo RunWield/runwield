@@ -4,7 +4,7 @@ import { realpathSync, readFileSync } from "node:fs";
 import { DefaultPackageManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { isAbsolute, join, relative } from "node:path";
 import { withExportConfigurationLock } from "../workflow/metrics-export-storage.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import type { PackagePromptResourceOptions } from "../package-resources.ts";
 import { getCustomSetting, getSettingsDir, getSettingsManager, setCustomSetting } from "../settings.js";
 import {

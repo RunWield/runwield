@@ -10,7 +10,7 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
-import { getCwd } from "../../src/constants.js";
+import { getCwd } from "../../src/constants.ts";
 import { DefaultPackageManager, DefaultResourceLoader } from "@earendil-works/pi-coding-agent";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../src/testing/assertions.ts";

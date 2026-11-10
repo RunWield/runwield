@@ -1,6 +1,6 @@
 /** @module cmd/workspace/pair */
 
-import { CLI_BIN } from "../../constants.js";
+import { CLI_BIN } from "../../constants.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { normalizePairingCode } from "../../shared/owner-coordination/crypto.ts";
 import { stripTerminalControlCharacters } from "../../shared/owner-coordination/pairing.ts";

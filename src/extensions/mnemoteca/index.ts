@@ -3,7 +3,7 @@
  * Mnemoteca memory extension for RunWield agent invocations.
  */
 
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createMnemotecaTools, type MnemotecaToolHost } from "./tools.ts";
 export { memoryToolDef } from "./tools.ts";

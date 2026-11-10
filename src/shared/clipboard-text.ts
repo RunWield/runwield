@@ -1,6 +1,6 @@
 /** Native text clipboard writes shared by interactive copy actions. */
 import process from "node:process";
-import { getCwd } from "../constants.js";
+import { getCwd } from "../constants.ts";
 import { captureForegroundProcess } from "./captured-process.ts";
 
 /**

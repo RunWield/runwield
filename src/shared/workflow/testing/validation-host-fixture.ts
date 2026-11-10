@@ -11,7 +11,7 @@ import {
     rm as fsRm,
 } from "node:fs/promises";
 import { join } from "node:path";
-import { getCwd } from "../../../constants.js";
+import { getCwd } from "../../../constants.ts";
 import { captureForegroundProcess } from "../../captured-process.ts";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertExists } from "../../../testing/assertions.ts";

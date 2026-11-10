@@ -37,7 +37,7 @@ import {
     normalizeWorkKind,
     PLANS_DIR_NAME,
     ROUTING_INTENT_PLANNED_CHANGE,
-} from "./constants.js";
+} from "./constants.ts";
 import { PLAN_FRONT_MATTER_KEY_ORDER, PLAN_FRONT_MATTER_KEYS } from "./plan-front-matter.ts";
 import { normalizeTicketReferences } from "./shared/ticket-references.ts";
 import { normalizePlanDeviations } from "./shared/plan-deviations.ts";

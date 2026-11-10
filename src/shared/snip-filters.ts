@@ -6,7 +6,7 @@ import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWr
  */
 
 import { join } from "node:path";
-import { getCwd, getHomeDir, SNIP_FILTERS_DIR } from "../constants.js";
+import { getCwd, getHomeDir, SNIP_FILTERS_DIR } from "../constants.ts";
 
 export interface SnipFilterOptions {
     homeDir?: string;

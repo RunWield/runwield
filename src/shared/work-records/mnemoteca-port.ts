@@ -1,5 +1,5 @@
 import { captureForegroundProcess } from "../captured-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 /** External Mnemoteca process capability used by Work Record indexing. */
 
 export interface MnemotecaCommandResult {

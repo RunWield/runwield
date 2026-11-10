@@ -1,5 +1,5 @@
 import { env } from "node:process";
-import { getCwd } from "../constants.js";
+import { getCwd } from "../constants.ts";
 import { captureForegroundProcess } from "./captured-process.ts";
 /**
  * @module shared/runtime-preflight

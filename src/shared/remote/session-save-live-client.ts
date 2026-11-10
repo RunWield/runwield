@@ -1,7 +1,7 @@
 import { stdinStream } from "../../testing/stdin-stream.ts";
 import { isStandaloneExecutable } from "../runtime-identity.ts";
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { spawnNativeProcess, terminateOwnedLinuxGroup } from "../foreground-process.ts";
 import process from "node:process";
 

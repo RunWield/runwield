@@ -3,7 +3,7 @@ import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp as fsMkdtemp, writeFile as fsWriteFile, chmod as fsChmod, rm as fsRm } from "node:fs/promises";
 import { join } from "node:path";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { type RemoteControlService } from "./control.ts";
 import process from "node:process";

@@ -13,7 +13,7 @@ import {
 import { throws as assertThrows, ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
-import { WORK_KINDS } from "../../constants.js";
+import { WORK_KINDS } from "../../constants.ts";
 import { git } from "../git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { ATTACHED_OPERATIONS, type AttachedJsonObject } from "./operations.ts";

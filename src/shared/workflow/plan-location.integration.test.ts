@@ -1,7 +1,7 @@
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { realpathSync as fsRealpathSync } from "node:fs";
@@ -17,7 +17,7 @@ import process from "node:process";
 import { ok as assert } from "node:assert/strict";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { join } from "node:path";
-import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "../../constants.js";
+import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "../../constants.ts";
 import {
     listPlans,
     loadPlan,

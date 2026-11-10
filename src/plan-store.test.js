@@ -18,7 +18,7 @@ import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "./testing/assertions.ts";
 import { dirname, join } from "node:path";
-import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "./constants.js";
+import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "./constants.ts";
 import { getWorktreeRegistryPath } from "./shared/worktree-registry.js";
 import { readControllerRecord } from "./shared/workflow/controller-registry.ts";
 import {

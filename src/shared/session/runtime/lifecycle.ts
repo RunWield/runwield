@@ -1,5 +1,5 @@
 import { stat as fsStat } from "node:fs/promises";
-import { AGENTS } from "../../../constants.js";
+import { AGENTS } from "../../../constants.ts";
 import {
     classifyRootSessionLocator,
     createRootSessionManager,

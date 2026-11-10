@@ -7,7 +7,7 @@ import { readFile as fsReadFile } from "node:fs/promises";
 
 import { extractYaml } from "../front-matter.ts";
 import { join } from "node:path";
-import { AGENT_DEFS_DIR, AGENTS, SUBAGENTS } from "../../constants.js";
+import { AGENT_DEFS_DIR, AGENTS, SUBAGENTS } from "../../constants.ts";
 import { ensureBundledAgentDefFile } from "./agent-assets.ts";
 import { composeSharedPracticePrompt, loadAgentDefFromPath } from "./agents.ts";
 import type { AgentDefinition } from "./agents.ts";

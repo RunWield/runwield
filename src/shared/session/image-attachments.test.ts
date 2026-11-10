@@ -9,7 +9,7 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import process from "node:process";
-import { getCwd, getHomeDir } from "../../constants.js";
+import { getCwd, getHomeDir } from "../../constants.ts";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { PhotonImage } from "@silvia-odwyer/photon-node";

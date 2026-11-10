@@ -4,7 +4,7 @@ import { chmod } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { createServer as createSocketServer, type Socket } from "node:net";
 import { createServer, request as httpRequest, type ServerResponse } from "node:http";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 
 import type { ImageAttachment } from "./image-attachments.ts";
 import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "./session-runtime-interactions.ts";

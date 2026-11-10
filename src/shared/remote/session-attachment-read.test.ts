@@ -2,7 +2,7 @@ import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { open as fsOpen } from "node:fs/promises";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { mkdir as fsMkdir, writeFile as fsWriteFile, stat as fsStat, truncate as fsTruncate } from "node:fs/promises";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { test } from "node:test";
 import { readdirSync } from "node:fs";

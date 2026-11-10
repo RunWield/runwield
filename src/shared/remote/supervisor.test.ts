@@ -8,7 +8,7 @@ import { randomBytes } from "node:crypto";
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { serveHttp } from "../http-server.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import process from "node:process";
 import {
     chmod as fsChmod,
@@ -28,7 +28,7 @@ import { dirname, join } from "node:path";
 
 import { BUILD_ID, REMOTE_PROTOCOL_VERSION } from "../build-identity.js";
 import { startRemoteControlService } from "./control.ts";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import { startLaptopSftp } from "./sftp-mount.ts";
 
 // The compiled test entry exercises the production supervisor with a disposable

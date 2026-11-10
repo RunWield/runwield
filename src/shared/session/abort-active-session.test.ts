@@ -1,5 +1,5 @@
 import { assertEquals } from "../../testing/assertions.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 /**
  * Regression tests for HostedSession-scoped abort behavior. The root

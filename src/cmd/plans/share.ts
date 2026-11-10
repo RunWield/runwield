@@ -6,7 +6,7 @@ import { prepareWorktreeRegistry } from "../../shared/worktree-registry.js";
  */
 
 import { parseArgs } from "../../shared/cli-args.ts";
-import { CLI_BIN, getCwd } from "../../constants.js";
+import { CLI_BIN, getCwd } from "../../constants.ts";
 import { ensurePlanIdentity, hashPlanBody, listPlans, updatePlanCollaborationMetadata } from "../../plan-store.js";
 import {
     generateBearerCapability,

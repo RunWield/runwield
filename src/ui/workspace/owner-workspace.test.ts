@@ -599,7 +599,7 @@ test("owner Workspace keeps read-only Project Plan progress API and removes prog
 });
 
 test("owner add and relink expose redacted confirmation before writes and keep auth", async () => {
-    const { getHomeDir } = await import("../../constants.js");
+    const { getHomeDir } = await import("../../constants.ts");
     const dir = await fsMkdtemp(join(tmpdir(), "owner-consent-"));
     const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
     const pairing = store.createPairingRequest({ codeFactory: () => "HOME12", proofFactory: () => "home-proof" });

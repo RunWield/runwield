@@ -1,4 +1,4 @@
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { denoHelperBinaryExec } from "../../extensions/helper-binary-exec.ts";
 import { createMnemotecaTools, MISSING_BINARY_MSG } from "../../extensions/mnemoteca/tools.ts";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";

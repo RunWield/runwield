@@ -6,7 +6,7 @@ import { mkdir as fsMkdir, readdir as fsReaddir, readFile as fsReadFile, rm as f
 
 import { dirname, join, resolve } from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { CLI_BIN } from "../../constants.js";
+import { CLI_BIN } from "../../constants.ts";
 import { pickControllerState, type WorkflowControllerState, WORKTREE_CONTEXT_FIELDS } from "./controller-state.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import {

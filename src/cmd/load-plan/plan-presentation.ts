@@ -7,7 +7,7 @@
  */
 
 import { buildTriageReport } from "../../shared/workflow/workflow-prompts.ts";
-import { AGENTS } from "../../constants.js";
+import { AGENTS } from "../../constants.ts";
 import type { PlanFrontMatter } from "../../plan-store.js";
 
 /** One commit in the "these paths changed since the Plan was written" warning. */

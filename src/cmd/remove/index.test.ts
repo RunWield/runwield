@@ -10,7 +10,7 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import process from "node:process";
 import { DefaultPackageManager } from "@earendil-works/pi-coding-agent";
 import { ok as assert } from "node:assert/strict";

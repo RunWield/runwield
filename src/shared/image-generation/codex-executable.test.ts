@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import process from "node:process";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
-import { getCwd, getHomeDir } from "../../constants.js";
+import { getCwd, getHomeDir } from "../../constants.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { resolveCodexExecutable } from "./codex-executable.ts";
 

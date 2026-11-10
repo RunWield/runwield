@@ -6,7 +6,7 @@
  * staleness baseline so the Resume Check can tell what moved underneath it.
  */
 
-import { CLI_BIN } from "../../constants.js";
+import { CLI_BIN } from "../../constants.ts";
 import { findPlansByParent } from "../../plan-store.js";
 import { isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
 import { listCommitsTouchingPathsSince } from "../../shared/workflow/git-snapshot.ts";

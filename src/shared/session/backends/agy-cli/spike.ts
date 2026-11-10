@@ -1,4 +1,4 @@
-import { getCwd } from "../../../../constants.js";
+import { getCwd } from "../../../../constants.ts";
 import { cleanupAgyCustomAgent, materializeAgyCustomAgent, resolveAgyCustomAgentPaths } from "./custom-agent.ts";
 import type { AgyCustomAgentOwnership } from "./custom-agent.ts";
 import { prepareAgyCliAgentsCommand, prepareAgyCliStreamCommand } from "./command.ts";

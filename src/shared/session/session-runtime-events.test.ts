@@ -1,4 +1,4 @@
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import type { RuntimeAgentChangedEvent } from "./session-runtime-events.js";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";

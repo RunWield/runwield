@@ -4,7 +4,7 @@ import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { AGENTS } from "../../constants.js";
+import { AGENTS } from "../../constants.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";

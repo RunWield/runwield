@@ -404,7 +404,7 @@ test("the Slicer receives the show-the-work practice through the subagent regist
     // Slicer is a workflow-only subagent, so it never appears in the agent listing.
     // It shapes the child Plans a person reads, so the practice must reach it too.
     const { loadSubAgentDefinition } = await import("./subagent-definitions.ts");
-    const { SUBAGENTS } = await import("../../constants.js");
+    const { SUBAGENTS } = await import("../../constants.ts");
     const slicer = await loadSubAgentDefinition(SUBAGENTS.SLICER);
 
     assertStringIncludes(slicer.systemPrompt, SHOW_THE_WORK_MARKER);

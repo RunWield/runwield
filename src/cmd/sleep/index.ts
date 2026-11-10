@@ -1,5 +1,5 @@
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { mkdir as fsMkdir, readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
 /**
  * @module cmd/sleep
@@ -8,7 +8,7 @@ import { mkdir as fsMkdir, readFile as fsReadFile, stat as fsStat } from "node:f
 
 import { parseArgs } from "../../shared/cli-args.ts";
 import { dirname, join, resolve } from "node:path";
-import { AGENTS, SLEEP_PROMPT_PATH } from "../../constants.js";
+import { AGENTS, SLEEP_PROMPT_PATH } from "../../constants.ts";
 import { remotePersonalResourcesActive } from "../../shared/remote/personal-resources.ts";
 import { resolveMemoryCollection } from "../../shared/memory-collection.ts";
 import { ensureMnemotecaBinary } from "../../shared/runtime-preflight.ts";

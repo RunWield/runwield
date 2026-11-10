@@ -8,7 +8,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { extractYaml, test as hasFrontMatter, type FrontMatterRecord, type FrontMatterValue } from "../front-matter.ts";
-import { AGENT_DEFS_DIR, AGENTS, SYSTEM_PROMPT_TEMPLATE_PATH } from "../../constants.js";
+import { AGENT_DEFS_DIR, AGENTS, SYSTEM_PROMPT_TEMPLATE_PATH } from "../../constants.ts";
 import { directoryExists, fileExists } from "../helpers.ts";
 import {
     assertPersonalResourcePath,

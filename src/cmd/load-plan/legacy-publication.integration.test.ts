@@ -1,6 +1,6 @@
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import {
     mkdir as fsMkdir,
@@ -16,7 +16,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { join } from "node:path";
-import { getRunWieldRuntimeDir } from "../../constants.js";
+import { getRunWieldRuntimeDir } from "../../constants.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";

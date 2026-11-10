@@ -1,4 +1,4 @@
-import { getCwd } from "../../../constants.js";
+import { getCwd } from "../../../constants.ts";
 import { rmSync as fsRmSync } from "node:fs";
 import { mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

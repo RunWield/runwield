@@ -4,7 +4,7 @@
  * Shared utilities for Router evaluation CSV generation and scoring.
  */
 
-import { LEGACY_ROUTING_INTENT_FEATURE, ROUTING_INTENT_PLANNED_CHANGE, ROUTING_INTENTS } from "../src/constants.js";
+import { LEGACY_ROUTING_INTENT_FEATURE, ROUTING_INTENT_PLANNED_CHANGE, ROUTING_INTENTS } from "../src/constants.ts";
 
 export type CsvRow<TCell = string> = Record<string, TCell>;
 

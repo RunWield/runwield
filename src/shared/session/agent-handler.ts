@@ -41,7 +41,7 @@ import {
     type WorkflowToolEvent,
 } from "../workflow/workflow-tool-events.ts";
 import { getStoredPlanPath, loadPlan } from "../../plan-store.js";
-import { AGENTS } from "../../constants.js";
+import { AGENTS } from "../../constants.ts";
 import { resolvePlanExecutionRuntimeAgent } from "../workflow/execution-agent.ts";
 import { loadPlanActionEvidence } from "../workflow/plan-actions.ts";
 import { resolveWorkflowPlanLocation } from "../workflow/plan-location.ts";

@@ -12,7 +12,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import process from "node:process";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";

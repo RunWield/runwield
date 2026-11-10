@@ -8,7 +8,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { isPlannedChangeClassification } from "../../constants.js";
+import { isPlannedChangeClassification } from "../../constants.ts";
 import { isRunWieldOwnedRuntimePath } from "../runwield-owned-paths.ts";
 import type { TriageMeta } from "../../tools/plan-written.ts";
 

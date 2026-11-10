@@ -6,7 +6,7 @@
 import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { basename, isAbsolute, join, resolve } from "node:path";
-import { getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.js";
+import { getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.ts";
 import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import {

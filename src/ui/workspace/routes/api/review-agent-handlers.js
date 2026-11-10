@@ -1,7 +1,7 @@
 import { spawnNativeProcess } from "../../../../shared/foreground-process.ts";
 import { isStandaloneExecutable } from "../../../../shared/runtime-identity.ts";
 import { captureForegroundProcess } from "../../../../shared/captured-process.ts";
-import { getCwd } from "../../../../constants.js";
+import { getCwd } from "../../../../constants.ts";
 import process from "node:process";
 /** Review-surface background review agent/job routes. */
 

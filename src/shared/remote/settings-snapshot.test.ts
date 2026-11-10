@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { copyFile, readFile, rename } from "node:fs/promises";
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { serveHttp } from "../http-server.ts";
 import process from "node:process";
 import {

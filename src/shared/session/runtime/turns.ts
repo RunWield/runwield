@@ -1,4 +1,4 @@
-import { AGENTS } from "../../../constants.js";
+import { AGENTS } from "../../../constants.ts";
 import { abortActiveSession as abortActiveSessionFn, steerRootSessionWithTarget } from ".././session.js";
 import { formatBackgroundTaskCompletion } from "../background-tasks.ts";
 import type { BackgroundTaskStatus } from "../background-tasks.ts";

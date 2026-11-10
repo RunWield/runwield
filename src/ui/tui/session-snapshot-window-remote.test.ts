@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { ok as assert, strictEqual as assertStrictEquals } from "node:assert/strict";
 import { notStrictEqual as assertNotStrictEquals } from "node:assert/strict";
 import { join } from "node:path";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import { configureRemotePersonalResources } from "../../shared/remote/personal-resources.ts";
 import { createSessionSnapshotWindow } from "./session-snapshot-window.ts";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";

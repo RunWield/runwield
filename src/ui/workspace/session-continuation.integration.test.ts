@@ -28,7 +28,7 @@ import {
 } from "./routes/owner-session-api.js";
 import { associatedPlanSession } from "./routes/owner-api.js";
 import { createOwnerConnectionRegistry } from "./server/owner-connections.ts";
-import { AGENTS, getHomeDir } from "../../constants.js";
+import { AGENTS, getHomeDir } from "../../constants.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { setCustomSetting } from "../../shared/settings.js";

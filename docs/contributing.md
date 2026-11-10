@@ -255,7 +255,7 @@ rewriting, and focused tests.
   `@param` block rather than adding casts or body-local `@type` declarations.
 - Keep CLI entry points thin. Command behavior belongs under `src/cmd/<command>/`; shared behavior belongs under
   `src/shared/` or the narrower center of gravity that owns it.
-- Resolve home and cwd through `getHomeDir()` and `getCwd()` from `src/constants.js` in `src/`. Do not read
+- Resolve home and cwd through `getHomeDir()` and `getCwd()` from `src/constants.ts` in `src/`. Do not read
   `Deno.env.get("HOME")` or `Deno.cwd()` directly in source, and do not cache process-global state at module scope.
 - Wrap tests that mutate `HOME` or the working directory in `withProcessGlobalTestLock` from
   `src/testing/process-global-lock.ts`.

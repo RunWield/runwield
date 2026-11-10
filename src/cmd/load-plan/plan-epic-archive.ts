@@ -4,7 +4,7 @@ import { rmdir as fsRmdir } from "node:fs/promises";
  * Archive a terminal Epic with its child Plans.
  */
 
-import { CLI_BIN } from "../../constants.js";
+import { CLI_BIN } from "../../constants.ts";
 import {
     archivePlan,
     compareChildPlansByOrder,

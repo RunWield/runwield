@@ -11,7 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";

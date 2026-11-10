@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { captureForegroundProcess } from "../captured-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { mkdtemp as fsMkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import type { PlanFrontMatterInput } from "../../plan-store.js";

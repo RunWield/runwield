@@ -12,7 +12,7 @@ import {
     getMarkdownTheme as upstreamGetMarkdownTheme,
     getSelectListTheme as upstreamGetSelectListTheme,
 } from "@earendil-works/pi-coding-agent";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import defaultThemeJson from "./catppuccin-mocha.json" with { type: "json" };
 import { getSettingsDir, getSettingsManager } from "../../shared/settings.js";
 import { loadExternalThemeJsons } from "./theme-discovery.ts";

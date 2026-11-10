@@ -7,7 +7,7 @@ import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
 
 import { parseArgs } from "../../shared/cli-args.ts";
 import { relative } from "node:path";
-import { CLI_BIN, getCwd } from "../../constants.js";
+import { CLI_BIN, getCwd } from "../../constants.ts";
 import {
     archivePlan,
     getPlanDocumentRoot,

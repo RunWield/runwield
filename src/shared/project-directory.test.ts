@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { assertEquals, assertThrows } from "../testing/assertions.ts";
 import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
-import { getHomeDir } from "../constants.js";
+import { getHomeDir } from "../constants.ts";
 import {
     inspectMissingManagedProjectDirectory,
     inspectProjectDirectory,

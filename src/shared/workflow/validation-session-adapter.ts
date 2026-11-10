@@ -9,7 +9,7 @@ import { requestHostedSessionInteraction } from "../session/session-runtime-inte
 import { getAgentDisplayName as getSessionAgentDisplayName } from "../session/agents.ts";
 import { ClaudeCliBackendError } from "../session/backends/claude-cli/failure.ts";
 import { INTEGRATION_REVIEWER_SUBAGENT_TOOLS, REVIEWER_SUBAGENT_TOOLS } from "../session/subagent-definitions.ts";
-import { AGENTS, SUBAGENTS } from "../../constants.js";
+import { AGENTS, SUBAGENTS } from "../../constants.ts";
 import {
     emitRunWieldSystemStatus,
     getCurrentValidationProgress,

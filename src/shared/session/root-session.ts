@@ -20,7 +20,7 @@ import { basename, isAbsolute, join, relative, resolve, sep as SEPARATOR } from 
 import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 export { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import { requireLocalSessionWriter } from "../remote/personal-resources.ts";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import { parseRemoteSessionTranscript } from "../remote/session-protocol.ts";
 
 export type RootSessionStartMode = "new" | "continue";

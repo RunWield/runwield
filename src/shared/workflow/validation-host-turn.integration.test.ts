@@ -9,7 +9,7 @@ import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { basename, dirname, join } from "node:path";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import { updatePlanFrontMatter } from "../../plan-store.js";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { getWorkspaceSearchRefreshMarker } from "../workspace-search-refresh.ts";

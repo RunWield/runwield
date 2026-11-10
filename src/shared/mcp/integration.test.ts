@@ -14,7 +14,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { dirname, join } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { openFileSessionStore } from "../session/file-session-store.ts";
 import { SessionHost } from "../session/session-host.ts";

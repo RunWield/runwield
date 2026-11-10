@@ -1,7 +1,7 @@
 import type { RunWieldPackageInstall } from "../src/shared/package-install.ts";
 import { captureScriptProcess } from "./script-process.ts";
 import { tmpdir } from "node:os";
-import { getCwd } from "../src/constants.js";
+import { getCwd } from "../src/constants.ts";
 import {
     copyFile as fsCopyFile,
     mkdir as fsMkdir,

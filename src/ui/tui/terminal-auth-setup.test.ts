@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { stat as fsStat } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";

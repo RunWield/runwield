@@ -3162,7 +3162,7 @@ for (const mapped of [false, true]) {
             if (process.platform === "win32") return;
             const { createServer } = await import("node:http");
             const { createHash } = await import("node:crypto");
-            const { getHomeDir } = await import("../constants.js");
+            const { getHomeDir } = await import("../constants.ts");
             await withRuntimeCommandFixture("runwield-acp-delete-remote-", async (fixture) => {
                 const handle = startTestServer();
                 const store = openFileSessionStore();

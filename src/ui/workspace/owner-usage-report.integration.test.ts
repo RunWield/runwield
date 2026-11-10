@@ -1,5 +1,5 @@
 import process from "node:process";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { spawnNativeProcess } from "../../shared/foreground-process.ts";
 import { setCustomSetting } from "../../shared/settings.js";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";

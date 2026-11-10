@@ -1,4 +1,4 @@
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 import {

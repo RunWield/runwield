@@ -29,7 +29,7 @@ import {
     RUNWIELD_DIR_NAME,
     WORKTREE_REGISTRY_FILE,
     WORKTREE_REGISTRY_LOCK_FILE,
-} from "../constants.js";
+} from "../constants.ts";
 import {
     type LockFileSnapshot,
     lockFileSnapshotMatches,

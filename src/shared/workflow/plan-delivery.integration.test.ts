@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import process from "node:process";
 import { readFile as fsReadFile, rm as fsRm, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";

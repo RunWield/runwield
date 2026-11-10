@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { strictEqual, ok } from "node:assert/strict";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { getRunWieldRuntimeDir } from "../../constants.js";
+import { getRunWieldRuntimeDir } from "../../constants.ts";
 import { getPlanRevisionForText, loadPlan } from "../../plan-store.js";
 import { resolvePlanWithPrimaryRecovery } from "../../cmd/load-plan/primary-plan-recovery.ts";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";

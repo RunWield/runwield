@@ -2,7 +2,7 @@ import { delimiter } from "node:path";
 import process from "node:process";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { getCwd, getHomeDir } from "../../constants.js";
+import { getCwd, getHomeDir } from "../../constants.ts";
 import { mkdir as fsMkdir, realpath as fsRealpath, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { env } from "node:process";
 import { fauxAssistantMessage, type FauxResponseFactory, fauxText, type Provider } from "@earendil-works/pi-ai";

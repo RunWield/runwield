@@ -1,5 +1,5 @@
 import { ok as assert } from "node:assert/strict";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { writeFile } from "node:fs/promises";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { join } from "node:path";

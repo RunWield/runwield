@@ -12,7 +12,7 @@ import {
 import { dirname, join } from "node:path";
 import { redactCapabilityValue, redactSecrets } from "./capabilities.ts";
 import { assertRecord, normalizeLocalSecretRecord } from "./protocol.ts";
-import { getHomeDir, PROJECT_SECRET_STORE_RELATIVE_PATH } from "../../constants.js";
+import { getHomeDir, PROJECT_SECRET_STORE_RELATIVE_PATH } from "../../constants.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { ensureRunWieldOwnedGitignoreBlock } from "../runwield-owned-paths.ts";
 

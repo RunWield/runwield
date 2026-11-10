@@ -1,7 +1,7 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import {
     applyTutorialContextUpdate,
     normalizeTutorialContext,

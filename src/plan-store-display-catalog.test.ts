@@ -9,7 +9,7 @@ import { dirname, join } from "node:path";
 import { listPlanResources, listPlans, readPlanResourceCatalog, ensurePlanIdentity } from "./plan-store.js";
 import { defineGitFixture, git } from "./shared/git-test-fixture.ts";
 import { enterProjectRuntime } from "./shared/project-runtime-layout.ts";
-import { getRunWieldRuntimeDir } from "./constants.js";
+import { getRunWieldRuntimeDir } from "./constants.ts";
 import { addEntry } from "./shared/worktree-registry.js";
 import {
     findTargetBranchPlansByParent,

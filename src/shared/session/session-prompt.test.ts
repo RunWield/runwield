@@ -1,4 +1,4 @@
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import process from "node:process";
 import { Type } from "typebox";
 import {
@@ -22,7 +22,7 @@ import {
     type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { basename, join } from "node:path";
-import { AGENTS } from "../../constants.js";
+import { AGENTS } from "../../constants.ts";
 import { loadAgentDef } from "./agents.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import {

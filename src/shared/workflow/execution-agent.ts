@@ -15,7 +15,7 @@
  * record: it is a runtime identity, never a policy value.
  */
 
-import { AGENTS } from "../../constants.js";
+import { AGENTS } from "../../constants.ts";
 import type { ActiveExecutionWorkflow } from "../session/execution-workflow-session.ts";
 
 /** The owner a Plan may name. This is what gets written down. */

@@ -3,7 +3,7 @@
  * Open active or archived Plan markdown in a read-only browser view.
  */
 
-import { CLI_BIN, getCwd, PLANS_DIR_NAME } from "../../constants.js";
+import { CLI_BIN, getCwd, PLANS_DIR_NAME } from "../../constants.ts";
 import {
     findPlanById,
     listArchivedPlans,

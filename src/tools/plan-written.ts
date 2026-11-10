@@ -23,7 +23,7 @@ import { join } from "node:path";
 import { pathToFileURL as toFileUrl } from "node:url";
 import { Type } from "typebox";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
-import { CLI_BIN, normalizePlanClassification, normalizeWorkKind, PLANS_DIR_NAME } from "../constants.js";
+import { CLI_BIN, normalizePlanClassification, normalizeWorkKind, PLANS_DIR_NAME } from "../constants.ts";
 import {
     ensurePlanIdentity,
     loadPlan,

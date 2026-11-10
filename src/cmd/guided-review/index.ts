@@ -1,5 +1,5 @@
 import process from "node:process";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { createSessionRuntime, generateInMemoryGuide } from "../../shared/session/session-runtime.ts";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
 import { encodeGuidedReviewMetadata, encodeGuidedReviewUsageEvent, type GuidedReviewUsage } from "./protocol.ts";

@@ -10,7 +10,7 @@ import {
     RUNWIELD_DIR_NAME,
     WORKTREE_REGISTRY_FILE,
     WORKTREE_REGISTRY_LOCK_FILE,
-} from "../constants.js";
+} from "../constants.ts";
 
 export interface RunWieldGitignoreWarning {
     kind: "broad_wld_ignore" | "unmatched_managed_marker";

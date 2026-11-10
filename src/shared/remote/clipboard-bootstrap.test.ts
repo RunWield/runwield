@@ -123,7 +123,7 @@ terminal.typeText("Unsubmitted production prompt");
 await new Promise((resolve) => setTimeout(resolve, 200));
 await terminal.flush();
 console.log(JSON.stringify({ returned, imagePreviewed, screen: terminal.getScreenText(), home: (await import(${JSON.stringify(
-                    new URL("../../constants.js", import.meta.url).href,
+                    new URL("../../constants.ts", import.meta.url).href,
                 )})).getHomeDir() }));
 await running;
 console.log("RETURNED_AFTER_TERMINATION");

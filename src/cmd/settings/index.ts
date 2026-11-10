@@ -5,7 +5,7 @@
 
 import type { SettingsManager } from "@earendil-works/pi-coding-agent";
 import type { ModelPreset, ModelPresetsMap } from "../../shared/model-presets.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import {
     getCustomSetting,

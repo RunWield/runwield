@@ -1,6 +1,6 @@
 // @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
 import { isEpicPlan } from "../project-plan.ts";
-import { AGENTS, CLI_BIN, PLANS_DIR_NAME } from "../../constants.js";
+import { AGENTS, CLI_BIN, PLANS_DIR_NAME } from "../../constants.ts";
 import { resolvePlanExecutionPolicy } from "../../plan-store.js";
 import { join } from "node:path";
 import { emitSystemStatus } from "../session/session-runtime-events.js";

@@ -47,7 +47,7 @@ import { createTestWorktreeAttempt } from "../../shared/worktree-test-helpers.ts
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runLoadPlanCommand } from "./index.ts";
 import { getLoadPlanCompletions } from "./getArgumentCompletions.ts";
-import { getRunWieldRuntimeDir } from "../../constants.js";
+import { getRunWieldRuntimeDir } from "../../constants.ts";
 import type { PlanFrontMatterInput } from "../../plan-store.js";
 import type { EditorAPI, SelectOption, UiAPI } from "../../ui/tui/api.ts";
 

@@ -8,7 +8,7 @@ import { defineCommittedGitFixture } from "./git-test-fixture.ts";
 import { captureForegroundProcess } from "./captured-process.ts";
 import { spawnNativeProcess } from "./foreground-process.ts";
 import { enterProjectRuntime } from "./project-runtime-layout.ts";
-import { getRunWieldRuntimeDir } from "../constants.js";
+import { getRunWieldRuntimeDir } from "../constants.ts";
 
 const fixture = defineCommittedGitFixture({
     "README.md": "# Passive read denial\n",

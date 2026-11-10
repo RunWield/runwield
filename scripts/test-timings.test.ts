@@ -1,6 +1,6 @@
 import { captureScriptProcess } from "./script-process.ts";
 import { runtimeSourceArgs } from "../src/testing/runtime-source-args.ts";
-import { getCwd } from "../src/constants.js";
+import { getCwd } from "../src/constants.ts";
 import {
     mkdtemp as fsMkdtemp,
     readFile as fsReadFile,

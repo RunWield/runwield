@@ -17,7 +17,7 @@ import {
     writePlanMarkdownWithRevisionLocked,
 } from "../../plan-store.js";
 import type { PlanFrontMatter } from "../../plan-store.js";
-import { isPlannedChangeClassification } from "../../constants.js";
+import { isPlannedChangeClassification } from "../../constants.ts";
 import { isGitRepository } from "../git.ts";
 import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";

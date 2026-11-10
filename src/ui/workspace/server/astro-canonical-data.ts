@@ -1,6 +1,6 @@
 // Compiled Workspace injects its bundled adapter. Astro dev can fall back to a native dynamic import
 import { stat } from "node:fs/promises";
-import { getCwd } from "../../../constants.js";
+import { getCwd } from "../../../constants.ts";
 // so both surfaces use the canonical adapter without reimplementing it.
 
 import { isAstroDevelopmentMode } from "./astro-dev-mode.ts";

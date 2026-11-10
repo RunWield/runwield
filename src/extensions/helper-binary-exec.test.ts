@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { kill, platform } from "node:process";
 import { assertEquals, assertRejects, assertThrows } from "../testing/assertions.ts";
-import { getCwd } from "../constants.js";
+import { getCwd } from "../constants.ts";
 import { denoHelperBinaryExec } from "./helper-binary-exec.ts";
 
 test(

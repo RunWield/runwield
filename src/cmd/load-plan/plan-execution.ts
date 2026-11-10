@@ -7,7 +7,7 @@
  * decides *when* they happen, never how they are persisted.
  */
 
-import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
+import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
 import { loadPlan, resolvePlanExecutionPolicy } from "../../plan-store.js";
 import { isGitRepositoryRequiredError } from "../../shared/git.ts";
 import { isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";

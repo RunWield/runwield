@@ -5,7 +5,7 @@ import { captureForegroundProcess } from "../captured-process.ts";
  * dispatch for the publication phase.
  */
 
-import { AGENTS } from "../../constants.js";
+import { AGENTS } from "../../constants.ts";
 import { loadPlan, PlanLockTimeoutError } from "../../plan-store.js";
 import { requestHostRepair } from "./validation-host-state.ts";
 import { logValidationFailure } from "./validation-state-errors.ts";

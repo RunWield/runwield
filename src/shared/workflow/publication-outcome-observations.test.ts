@@ -1,6 +1,6 @@
 import lockfile from "proper-lockfile";
 import type { PublicationAttempt } from "./publication-attempt.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { test } from "node:test";

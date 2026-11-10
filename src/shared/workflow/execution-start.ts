@@ -13,7 +13,7 @@ import { isMissingExecutableError } from "../foreground-process.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { stat as fsStat } from "node:fs/promises";
 import { prepareEditedSiblingPlans } from "./epic-sibling-drafts.ts";
-import { CLI_BIN } from "../../constants.js";
+import { CLI_BIN } from "../../constants.ts";
 import {
     ensurePlanIdentity,
     findPlansByParent,

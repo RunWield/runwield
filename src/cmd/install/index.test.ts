@@ -4,7 +4,7 @@ import { readFileSync, chmodSync } from "node:fs";
 import { stat as fsStat, chmod as fsChmod, readFile as fsReadFile, rename as fsRename } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import {
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,

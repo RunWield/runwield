@@ -7,7 +7,7 @@ import { effectiveDeliveryBranch } from "./plan-branch.ts";
  * Fail-closed resolver for Workflow Validation execution context.
  */
 
-import { isPlannedChangeClassification } from "../../constants.js";
+import { isPlannedChangeClassification } from "../../constants.ts";
 import { ensurePlanIdentity, loadPlan, normalizeExecutionMode, updatePlanFrontMatter } from "../../plan-store.js";
 import {
     describeRegistryAmbiguity,

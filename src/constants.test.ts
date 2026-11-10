@@ -14,7 +14,7 @@ import {
     SKILLS_DIR,
     SNIP_FILTERS_DIR,
     SYSTEM_PROMPT_TEMPLATE_PATH,
-} from "./constants.js";
+} from "./constants.ts";
 import { getWorkflowMetricsFilePath } from "./shared/workflow/metrics.js";
 import { withProcessGlobalTestLock } from "./testing/process-global-lock.ts";
 

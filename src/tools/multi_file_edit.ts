@@ -11,7 +11,7 @@ import { defineTool, withFileMutationQueue } from "@earendil-works/pi-coding-age
 import type { AgentToolResult, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { isAbsolute, join, relative } from "node:path";
-import { getHomeDir } from "../constants.js";
+import { getHomeDir } from "../constants.ts";
 import {
     getPlanRevisionForText,
     withPlanCatalogLock,

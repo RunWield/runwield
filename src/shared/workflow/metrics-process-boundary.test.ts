@@ -8,7 +8,7 @@ import { drainWorkflowMetrics, getWorkflowMetricsFilePath, recordWorkflowMetric 
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { spawnNativeProcess } from "../foreground-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import process from "node:process";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";

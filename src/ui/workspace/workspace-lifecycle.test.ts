@@ -7,7 +7,7 @@ import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { loadPlanBodyById, savePlan } from "../../plan-store.js";
-import { PLAN_UI_TOKEN_HEADER } from "../../constants.js";
+import { PLAN_UI_TOKEN_HEADER } from "../../constants.ts";
 import {
     applyWorkspaceLifecycleActionInMemory,
     loadBoard,

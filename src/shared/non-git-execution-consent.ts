@@ -1,4 +1,4 @@
-import { getCwd } from "../constants.js";
+import { getCwd } from "../constants.ts";
 import { getCustomSetting, setCustomSetting } from "./settings.js";
 
 // Consent uses settings; ordinary Git operations must not load the agent runtime
