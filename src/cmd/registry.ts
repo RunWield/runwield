@@ -4,6 +4,9 @@
  */
 
 import { CLI_BIN, DEV_CLI_RUN } from "../constants.js";
+import type { SessionRuntime } from "../shared/session/session-runtime.ts";
+import type { EditorAPI, SelectOption, TuiAPI, UiAPI } from "../ui/tui/api.ts";
+import type { NotificationResult, RunWieldEventNotifier } from "../ui/tui/system-notifications.ts";
 import { runLoginCommand, runLogoutCommand, runStatusCommand } from "./auth/index.ts";
 import { runQuitCommand } from "./quit/index.ts";
 import { runExportCommand } from "./export/index.ts";
@@ -35,7 +38,6 @@ import { getAgentDisplayName } from "../shared/session/agents.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../shared/work-records/mnemoteca-port.ts";
 
 /** Known CLI / slash command names. Defined alongside the registry so adding a new command only touches one file. */
-/** @type {Readonly<{ROUTER: string, ONBOARD: string, AGENT: string, MODEL: string, LOGIN: string, LOGOUT: string, STATUS: string, EXPORT: string, SHARE: string, LOAD_PLAN: string, REVIEW: string, PLAN_REVIEW: string, RESUME: string, NEW: string, NAME: string, SESSION: string, PLANS: string, WR: string, SLEEP: string, HELP: string, VERSION: string, UPDATE: string, QUIT: string, EXIT: string, INIT: string, THEME: string, INSTALL: string, REMOVE: string, COMPACT: string, SETTINGS: string, RELOAD: string, SNIP_FILTERS: string, COPY: string, CONTEXT: string, ACP: string, MCP: string, WORKSPACE: string, REMOTE: string, ATTACHED: string}>} */
 export const COMMAND_NAMES = Object.freeze({
     ROUTER: "router",
     ONBOARD: "onboard",
@@ -76,67 +78,67 @@ export const COMMAND_NAMES = Object.freeze({
     WORKSPACE: "workspace",
     REMOTE: "remote",
     ATTACHED: "attached",
-});
+} satisfies Record<string, string>);
 
-/** @param {...string} parts */
-const bin = (...parts) => [CLI_BIN, ...parts].join(" ");
+const bin = (...parts: string[]) => [CLI_BIN, ...parts].join(" ");
 
 /**
  * Slash-only commands are dispatched with a real interactive UI. Keep that
  * surface guarantee at the registry boundary so the command itself receives a
  * required capability instead of an optional dependency bag.
- *
- * @param {CommandContext | undefined} options
- * @returns {CommandContext & { uiAPI: import('../ui/tui/api.ts').UiAPI }}
+
  */
-function requireInteractiveCommandContext(options) {
+function requireInteractiveCommandContext(options: CommandContext | undefined) {
     if (!options?.uiAPI) throw new Error("This command is only available in the interactive session.");
     return { ...options, uiAPI: options.uiAPI };
 }
 
-/**
- * @typedef {{ value: string, label: string, description?: string, [key: string]: unknown }} CommandCompletionItem
- */
+export type CommandCompletionItem = SelectOption;
+export type SlashSurface = "tui" | "acp" | "workspace";
 
-/**
- * @typedef {Object} CommandContext
- * @property {import('../ui/tui/api.ts').UiAPI} [uiAPI]
- * @property {import('../ui/tui/api.ts').EditorAPI} [editor]
- * @property {string} [sessionId]
- * @property {import('../shared/session/session-runtime.ts').SessionRuntime} [sessionRuntime]
- * @property {string} [sessionStartedAt]
- * @property {string} [commandInvocationId]
- * @property {import('../ui/tui/api.ts').TuiAPI} [tui]
- * @property {(data: string) => void | Promise<void>} [originalHandleInput]
- * @property {"new" | "continue"} [sessionStartMode]
- * @property {(nextSessionId: string) => void} [replaceRuntimeSession]
- * @property {(eventName: string, options?: object) => void | Promise<unknown>} [notifyRunWieldEvent]
- * @property {"tui" | "acp" | "workspace"} [slashSurface]
- * @property {boolean} [skipPostLoginSetup]
- * @property {() => Promise<void>} [beginOnboarding]
- */
+type CommandSurface = "cli" | "slash";
+type NotifyCommandEvent = (
+    eventName: string,
+    options?: Parameters<RunWieldEventNotifier>[1],
+) => void | Promise<void | NotificationResult>;
 
-/**
- * @typedef {(argv: string[], options?: CommandContext) => Promise<void | "succeeded" | "failed" | "canceled" | "rejected">} CommandHandler
- */
+export interface CommandContext {
+    uiAPI?: UiAPI;
+    editor?: EditorAPI;
+    sessionId?: string;
+    sessionRuntime?: SessionRuntime;
+    sessionStartedAt?: string;
+    commandInvocationId?: string;
+    tui?: TuiAPI;
+    originalHandleInput?: (data: string) => void | Promise<void>;
+    sessionStartMode?: "new" | "continue";
+    replaceRuntimeSession?: (nextSessionId: string) => void;
+    notifyRunWieldEvent?: NotifyCommandEvent;
+    slashSurface?: SlashSurface;
+    skipPostLoginSetup?: boolean;
+    beginOnboarding?: () => Promise<void>;
+}
 
-/**
- * @typedef {Object} CommandDefinition
- * @property {string} name
- * @property {string[]} [aliases]
- * @property {string} displayName
- * @property {string} description
- * @property {string} summary
- * @property {string[]} usage
- * @property {string[]} [notes]
- * @property {CommandHandler} execute
- * @property {("cli" | "slash")[]} surfaces
- * @property {("tui" | "acp" | "workspace")[]} [slashSurfaces]
- * @property {(argumentPrefix: string) => Promise<CommandCompletionItem[]>} [getArgumentCompletions]
- */
+export type CommandHandler = (
+    argv: string[],
+    options?: CommandContext,
+) => Promise<void | "succeeded" | "failed" | "canceled" | "rejected">;
 
-/** @type {Record<string, CommandDefinition>} */
-export const commandRegistry = {
+export interface CommandDefinition {
+    name: string;
+    aliases?: string[];
+    displayName: string;
+    description: string;
+    summary: string;
+    usage: string[];
+    notes?: string[];
+    execute: CommandHandler;
+    surfaces: CommandSurface[];
+    slashSurfaces?: SlashSurface[];
+    getArgumentCompletions?: (argumentPrefix: string) => Promise<CommandCompletionItem[]>;
+}
+
+export const commandRegistry: Record<string, CommandDefinition> = {
     [COMMAND_NAMES.REMOTE]: {
         name: COMMAND_NAMES.REMOTE,
         displayName: "Remote SSH connection",
@@ -858,80 +860,47 @@ export const commandRegistry = {
     },
 };
 
-/**
- * @typedef {"tui" | "acp" | "workspace"} SlashSurface
- */
-
-/**
- * @param {CommandDefinition} command
- * @param {"cli" | "slash"} surface
- * @param {SlashSurface} [slashSurface]
- * @returns {boolean}
- */
-export function hasCommandSurface(command, surface, slashSurface = "tui") {
+export function hasCommandSurface(
+    command: CommandDefinition,
+    surface: CommandSurface,
+    slashSurface: SlashSurface = "tui",
+) {
     if (surface !== "slash") return command.surfaces.includes(surface);
     if (command.surfaces.includes("slash")) return (command.slashSurfaces || ["tui"]).includes(slashSurface);
     return (command.slashSurfaces || []).includes(slashSurface);
 }
 
-/**
- * @param {string | undefined} commandName
- * @returns {CommandDefinition | undefined}
- */
-export function getCommandDefinition(commandName) {
+export function getCommandDefinition(commandName: string | undefined): CommandDefinition | undefined {
     if (!commandName) return undefined;
     const name = String(commandName);
     if (commandRegistry[name]) return commandRegistry[name];
     return Object.values(commandRegistry).find((command) => command.aliases?.includes(name));
 }
 
-/**
- * @returns {CommandDefinition[]}
- */
 export function getCliCommandDefinitions() {
     return Object.values(commandRegistry).filter((command) => hasCommandSurface(command, "cli"));
 }
 
-/**
- * @param {SlashSurface} [slashSurface]
- * @returns {CommandDefinition[]}
- */
-export function getSlashCommandDefinitions(slashSurface = "tui") {
+export function getSlashCommandDefinitions(slashSurface: SlashSurface = "tui") {
     return Object.values(commandRegistry).filter((command) => hasCommandSurface(command, "slash", slashSurface));
 }
 
-/**
- * @param {CommandDefinition} command
- * @returns {string[]}
- */
-export function getCommandInvocationNames(command) {
+export function getCommandInvocationNames(command: CommandDefinition) {
     return [command.name, ...(command.aliases || [])];
 }
 
-/**
- * @param {SlashSurface} [slashSurface]
- * @returns {string[]}
- */
-export function getSlashCommandInvocationNames(slashSurface = "tui") {
+export function getSlashCommandInvocationNames(slashSurface: SlashSurface = "tui") {
     return getSlashCommandDefinitions(slashSurface).flatMap(getCommandInvocationNames);
 }
 
-/**
- * @param {string | undefined} commandName
- * @param {SlashSurface} [slashSurface]
- * @returns {CommandDefinition | undefined}
- */
-export function getSlashCommandDefinition(commandName, slashSurface = "tui") {
+export function getSlashCommandDefinition(commandName: string | undefined, slashSurface: SlashSurface = "tui") {
     const command = getCommandDefinition(commandName);
     if (!command || !hasCommandSurface(command, "slash", slashSurface)) return undefined;
     return command;
 }
 
-/** Project-directory policy stays beside the CLI registry and alias resolution.
- * @param {string | undefined} name
- * @param {string[]} args
- */
-export function requiresProjectDirectoryConsent(name, args = []) {
+/** Project-directory policy stays beside the CLI registry and alias resolution. */
+export function requiresProjectDirectoryConsent(name: string | undefined, args: string[] = []) {
     if (name === "guided-review" || name === "ai-review") return true;
     const command = getCommandDefinition(name);
     if (!command) return true;

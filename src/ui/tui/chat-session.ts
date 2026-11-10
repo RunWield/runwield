@@ -26,7 +26,7 @@ import {
     commandRegistry,
     getCommandInvocationNames,
     getSlashCommandDefinitions,
-} from "../../cmd/registry.js";
+} from "../../cmd/registry.ts";
 import { AGENTS, getCwd } from "../../constants.js";
 import {
     EMPTY_PROJECT_DIRECTORY_HEADER,

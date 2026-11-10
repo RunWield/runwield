@@ -4,7 +4,7 @@
  */
 
 import { theme } from "../../ui/theme/theme.ts";
-import type { CommandContext } from "../registry.js";
+import type { CommandContext } from "../registry.ts";
 
 function notifyCompactionFinished(options: CommandContext) {
     try {

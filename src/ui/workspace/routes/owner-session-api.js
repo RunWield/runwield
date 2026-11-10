@@ -8,7 +8,7 @@ import { ownerErrorJson, ownerJson, sanitizeOwnerError } from "./owner-api.js";
 import { ownerSecurityHeaders } from "../server/owner-origin.ts";
 import { findPlanEvidenceById } from "../../../plan-store.js";
 import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "../server/owner-projects.ts";
-import { getSlashCommandDefinition } from "../../../cmd/registry.js";
+import { getSlashCommandDefinition } from "../../../cmd/registry.ts";
 
 const MAX_JSON_BYTES = 12 * 1024 * 1024;
 

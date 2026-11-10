@@ -3,7 +3,7 @@
  * Maps adapter-neutral SessionRuntime events to ACP session/update notifications.
  */
 
-import { getCommandDefinition, getSlashCommandDefinitions } from "../cmd/registry.js";
+import { getCommandDefinition, getSlashCommandDefinitions } from "../cmd/registry.ts";
 import { RuntimeEventTypes } from "../shared/session/session-runtime-events.js";
 
 import type { SessionNotification, SessionUpdate, ToolCallContent, UsageUpdate } from "@agentclientprotocol/sdk";

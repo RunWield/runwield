@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
-import { COMMAND_NAMES, commandRegistry, hasCommandSurface } from "../registry.js";
+import { COMMAND_NAMES, commandRegistry, hasCommandSurface } from "../registry.ts";
 import { runReviewCommand } from "./index.ts";
 test("review is CLI only and help lists all three source forms", () => {
     const definition = commandRegistry[COMMAND_NAMES.REVIEW];

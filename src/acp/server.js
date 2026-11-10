@@ -19,7 +19,7 @@ import { mapRuntimeContextToAcpUpdate, mapRuntimeEventToAcpSessionNotification }
 import { createAcpInteractionAdapter } from "./interaction-mapper.ts";
 import { formatChatQuestion, parseChatReply } from "./chat-interaction.ts";
 import { buildAcpModelOptions } from "./model-options.ts";
-import { getCommandDefinition, getSlashCommandDefinition, getSlashCommandDefinitions } from "../cmd/registry.js";
+import { getCommandDefinition, getSlashCommandDefinition, getSlashCommandDefinitions } from "../cmd/registry.ts";
 import { ProjectRuntimeEntryRefusedError } from "../shared/project-runtime-layout.ts";
 import { RuntimeInteractionOutcomes, RuntimeInteractionTypes } from "../shared/session/session-runtime-interactions.ts";
 import {

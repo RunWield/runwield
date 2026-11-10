@@ -1,6 +1,5 @@
 [
     "src/acp/server.js",
-    "src/cmd/registry.js",
     "src/constants.js",
     "src/plan-store.js",
     "src/shared/owner-coordination/sessions.js",

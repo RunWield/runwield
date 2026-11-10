@@ -16,7 +16,7 @@ affectedPaths:
     - "src/cmd/load-plan/plan-recovery-flow.ts"
     - "src/cmd/auth/index.ts"
     - "src/cmd/sleep/index.ts"
-    - "src/cmd/registry.js"
+    - "src/cmd/registry.ts"
     - "src/cmd/router/index.ts"
     - "src/cmd/agents/index.ts"
     - "src/cmd/init/index.ts"
@@ -193,7 +193,7 @@ grows, or the Verification Plan no longer proves the objective.
   ownership.
 - `src/shared/git-port.ts`, `src/shared/workflow/execution-start.ts`, and `src/cmd/load-plan/plan-recovery-flow.ts` —
   separate raw Git/clock work from RunWield execution and recovery policy.
-- `src/cmd/{auth,sleep,router,agents,init,resume}/`, `src/cmd/registry.js`, and `src/ui/tui/interactive-session-port.ts`
+- `src/cmd/{auth,sleep,router,agents,init,resume}/`, `src/cmd/registry.ts`, and `src/ui/tui/interactive-session-port.ts`
   — remove replaceable Session startup and mixed command ports while preserving every CLI and slash-command route.
 - `src/ui/theme/theme-discovery.ts` and `src/ui/tui/{boot-banner,chat-session,system-notifications}.ts` — retain only
   cohesive package/host capabilities; remove optional or dead test controls.

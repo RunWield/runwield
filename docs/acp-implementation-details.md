@@ -96,7 +96,7 @@ calling all elicitation experimental is no longer an accurate description of tho
 The implementation evidence comes from these source files:
 
 - `src/cli.ts`
-- `src/cmd/registry.js`
+- `src/cmd/registry.ts`
 - `src/cmd/acp/index.ts`
 - `src/acp/server.js`
 - `src/acp/session-map.ts`
@@ -340,7 +340,7 @@ the next request answers it. An Agent turn started by a command uses that same q
 updates stay ordered across requests, and Runtime Session replacement moves the operation's adapter and subscription to
 the adopted Session. Command metrics finish when the command settles, not when its first ACP response ends.
 
-Evidence: `src/acp/server.js` (`buildAcpAvailableCommands`, `dispatchAcpBuiltinCommand`), `src/cmd/registry.js`, and
+Evidence: `src/acp/server.js` (`buildAcpAvailableCommands`, `dispatchAcpBuiltinCommand`), `src/cmd/registry.ts`, and
 `src/acp/server.test.js` command/catalog tests.
 
 ## `session/update` event mapping

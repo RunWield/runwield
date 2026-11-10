@@ -1,6 +1,6 @@
 import { compareChildPlansByOrder, listPlanDocuments } from "../../plan-store.js";
 import { getCwd } from "../../constants.js";
-import type { CommandCompletionItem } from "../registry.js";
+import type { CommandCompletionItem } from "../registry.ts";
 
 export async function getLoadPlanCompletions(argumentPrefix: string): Promise<CommandCompletionItem[]> {
     // Completion is an optional hint. A malformed or unreadable Plan must not

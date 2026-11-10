@@ -8,7 +8,7 @@
  * editor, TUI, session), plus the project root that scopes settings.
  */
 
-import { COMMAND_NAMES, commandRegistry } from "../../cmd/registry.js";
+import { COMMAND_NAMES, commandRegistry } from "../../cmd/registry.ts";
 import {
     detectModelAvailability,
     getConfiguredModelAvailability,

@@ -729,7 +729,7 @@ export class WorkspaceSessionContinuationService {
         const [templates, skills, commandRegistry] = await Promise.all([
             listPromptTemplates({ cwd: projectRoot }),
             listSkills({ cwd: projectRoot }),
-            import("../../../cmd/registry.js"),
+            import("../../../cmd/registry.ts"),
         ]);
         const builtins = commandRegistry.getSlashCommandDefinitions("workspace");
         // Options load infrequently, unlike animation renders. Refresh settings
