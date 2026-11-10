@@ -316,6 +316,23 @@ async function readSessionDisplayName(paths) {
     return name || infos.find((info) => info.firstMessage)?.firstMessage || "";
 }
 
+/**
+ * @typedef {Object} WorkspaceInteractionFields
+ * @property {string} [type]
+ * @property {string} [prompt]
+ * @property {string | null} [reviewUrl]
+ * @property {NonNullable<ReturnType<typeof safePlanReviewReference>>} [planReview]
+ * @property {ReturnType<typeof safeCodeReviewReference> & { planId?: string }} [codeReview]
+ */
+
+/** @typedef {WorkspaceInteractionFields & Record<string, unknown>} WorkspaceInteractionRequest */
+
+/**
+ * @typedef {Object} WorkspaceLiveInteraction
+ * @property {string} interactionId
+ * @property {WorkspaceInteractionRequest} request
+ */
+
 /** @param {import('../../../shared/owner-coordination/index.ts').OwnerCoordinationStore} store @param {{ transcriptCwd: string }} session @param {string} projectId */
 /**
  * @typedef {Object} WorkspaceOperationRecord
@@ -332,7 +349,7 @@ async function readSessionDisplayName(paths) {
  * @property {string} [planId]
  * @property {number} [expectedGeneration]
  * @property {{ agentName?: string, model?: string, provider?: string }} [pendingConfiguration]
- * @property {{ interactionId: string, request: Record<string, unknown> }} [liveInteraction]
+ * @property {WorkspaceLiveInteraction} [liveInteraction]
  * @property {import('../../../shared/session/notification-content.ts').BrowserNotificationPolicy} [browserNotificationPolicy]
  * @property {{ resolve: (value: import("../../../shared/session/session-runtime-interactions.ts").RuntimeInteractionResponse) => void | Promise<void>, reject: (error: Error) => void } | null} [answer]
  */

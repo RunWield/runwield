@@ -8,7 +8,7 @@ import {
 import { runWorkspaceResumeCheck } from "../server/plan-adapter.js";
 import { runOwnerPlanAction } from "../server/owner-plan-actions.ts";
 import { requireOwnerProjectRoot } from "../server/owner-projects.ts";
-import { associatedPlanSession, ownerErrorJson, ownerJson } from "./owner-api.js";
+import { associatedPlanSession, ownerErrorJson, ownerJson } from "./owner-api.ts";
 
 type PlanContinuationContext = {
     req: Request;

@@ -1,11 +1,22 @@
-import { loadOwnerUsage } from "../server/owner-usage.ts";
-import { loadUsageSettings, mutateUsageSettings, UsageSettingsError } from "../server/owner-usage-settings.ts";
-import { DirectoryConfirmationRequired } from "../../../shared/project-directory.ts";
-import { loadPlanActionEvidence } from "../../../shared/workflow/plan-actions.ts";
 /** @module ui/workspace/routes/owner-api */
+
+import { loadOwnerUsage } from "../server/owner-usage.ts";
+import {
+    loadUsageSettings,
+    mutateUsageSettings,
+    UsageSettingsError,
+    type UsageSettingsRequest,
+} from "../server/owner-usage-settings.ts";
+import { DirectoryConfirmationRequired } from "../../../shared/project-directory.ts";
+import { loadPlanActionEvidence, type PlanActionRequest } from "../../../shared/workflow/plan-actions.ts";
+import type { OwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
+import type { WorkspaceLiveInteraction, WorkspaceSessionContinuationService } from "../server/session-continuation.js";
+import type { createWorkspaceSearchService } from "../server/workspace-search.ts";
+import type { OwnerConnectionRegistry } from "../server/owner-connections.ts";
 
 import {
     authenticateOwnerRequest,
+    type OwnerCookieOrigin,
     clearBootstrapProofCookieHeader,
     clearDeviceCookieHeaders,
     deviceCookieHeaders,
@@ -19,45 +30,134 @@ import { listOwnerProjects, requireOwnerProjectRoot, serializeOwnerProject } fro
 import { ownerSecurityHeaders } from "../server/owner-origin.ts";
 import { reviewFileContentApi } from "./api/review-file-handlers.ts";
 
+interface OwnerStoreState {
+    store: OwnerCoordinationStore;
+}
+
+interface OwnerDeviceState extends OwnerStoreState {
+    ownerDevice?: Pick<NonNullable<ReturnType<typeof authenticateOwnerRequest>>, "deviceId"> | null;
+}
+
+interface PairingRateLimit {
+    check(request: Request): void;
+}
+
+interface OwnerPairingState extends OwnerStoreState {
+    pairingRateLimit?: PairingRateLimit;
+    bootstrapProofCookieHeader(proof: string): string;
+}
+
+interface OwnerSessionState extends OwnerStoreState {
+    sessionContinuation: WorkspaceSessionContinuationService;
+}
+
+interface OwnerSearchState {
+    workspaceSearch: ReturnType<typeof createWorkspaceSearchService>;
+}
+
+interface OwnerDeviceRevocationState extends OwnerDeviceState, OwnerCookieOrigin {
+    ownerConnections?: Partial<Pick<OwnerConnectionRegistry, "closeDevice">>;
+}
+
+interface OwnerStateContext<State> {
+    state: State;
+}
+
+interface OwnerRequestContext<State> extends OwnerStateContext<State> {
+    req: Request;
+}
+
+interface OwnerUrlContext<State> extends OwnerStateContext<State> {
+    url: URL;
+}
+
+interface OwnerRouteContext<State, Params> extends OwnerRequestContext<State> {
+    params: Params;
+}
+
+interface ProjectParams {
+    projectId: string;
+}
+
+interface ProjectBoardParams extends ProjectParams {
+    view?: string;
+}
+
+interface ProjectPlanParams extends ProjectParams {
+    planId: string;
+}
+
+interface DeviceParams {
+    deviceId: string;
+}
+
+interface UsageSettingsParams {
+    action?: string;
+}
+
+interface PairingBody {
+    deviceLabel?: string;
+}
+
+type RegisterProjectBody = Partial<
+    Pick<Parameters<OwnerCoordinationStore["registerProject"]>[0], "root" | "displayName" | "directoryConfirmation">
+>;
+
+interface ProjectActionBody {
+    action?: string;
+    newRoot?: string;
+    directoryConfirmation?: string;
+}
+
+interface PlanActionBody {
+    requestId?: string;
+    runwieldSessionId?: string;
+    expectedGeneration?: number;
+    action?: Omit<PlanActionRequest, "planId">;
+}
+
+type RevokeDeviceBody = NonNullable<Parameters<OwnerCoordinationStore["revokeDevice"]>[1]>;
+
+interface LivePlanInteraction extends WorkspaceLiveInteraction {
+    operationId: string;
+}
+
+type OwnerUsageState = { store: Parameters<typeof loadOwnerUsage>[0] };
+type OwnerUsageSettingsState = { store: Parameters<typeof loadUsageSettings>[0] };
+type OwnerUsageSettingsContext = OwnerRouteContext<OwnerUsageSettingsState, UsageSettingsParams> &
+    OwnerUrlContext<OwnerUsageSettingsState>;
+
 const MAX_JSON_BYTES = 64 * 1024;
 
-/** @param {unknown} body @param {number} [status] */
-export function ownerJson(body, status = 200, headers = new Headers()) {
+export function ownerJson<Body>(body: Body, status = 200, headers = new Headers()) {
     ownerSecurityHeaders(headers);
     headers.set("content-type", "application/json; charset=utf-8");
     return new Response(JSON.stringify(body), { status, headers });
 }
 
-/** @param {Request} request */
-async function readJson(request) {
+// Keep the wire body intact for the existing route and service validation.
+async function readJson<Body>(request: Request): Promise<Body> {
     const text = await request.text();
     if (text.length > MAX_JSON_BYTES) throw new Error("Request body is too large.");
-    return text ? JSON.parse(text) : {};
+    return (text ? JSON.parse(text) : {}) as Body;
 }
 
-/** @param {unknown} value */
-async function requestHash(value) {
+async function requestHash<Value>(value: Value) {
     const text = JSON.stringify(value);
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
     return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-/** @param {unknown} error */
-export function sanitizeOwnerError(error) {
+export function sanitizeOwnerError(error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     if (/[/\\]|[A-Za-z]:/.test(message)) return "Owner Workspace operation failed.";
     return message;
 }
 
-/**
- * @param {unknown} value
- * @returns {unknown}
- */
-function sanitizeOwnerPlanValue(value) {
+function sanitizeOwnerPlanValue(value: unknown): unknown {
     if (!value || typeof value !== "object") return value;
     if (Array.isArray(value)) return value.map(sanitizeOwnerPlanValue);
-    /** @type {Record<string, unknown>} */
-    const safe = {};
+    const safe: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(value)) {
         if (/(path|root|cwd|file)$/i.test(key)) continue;
         safe[key] = sanitizeOwnerPlanValue(child);
@@ -65,23 +165,17 @@ function sanitizeOwnerPlanValue(value) {
     return safe;
 }
 
-/** @param {string} value */
-function scrubLocalPaths(value) {
+function scrubLocalPaths(value: string) {
     return value
         .replace(/\b[A-Za-z]:[\\/][^\s"'`<>),;]*/g, "[local path]")
         .replace(/(^|[\s("'`=:])\/[A-Za-z0-9._~+\-/]+/g, "$1[local path]");
 }
 
-/**
- * @param {unknown} value
- * @returns {unknown}
- */
-function sanitizeOwnerDiagnosticValue(value) {
+function sanitizeOwnerDiagnosticValue(value: unknown): unknown {
     if (typeof value === "string") return scrubLocalPaths(value);
     if (!value || typeof value !== "object") return value;
     if (Array.isArray(value)) return value.map(sanitizeOwnerDiagnosticValue);
-    /** @type {Record<string, unknown>} */
-    const safe = {};
+    const safe: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(value)) {
         if (/(path|root|cwd|file)$/i.test(key)) continue;
         safe[key] = sanitizeOwnerDiagnosticValue(child);
@@ -92,15 +186,12 @@ function sanitizeOwnerDiagnosticValue(value) {
 /**
  * Dashboard links are generated from encoded IDs. Preserve these relative links while
  * scrubbing all free-text fields, including diagnostics and Session prompts.
- * @param {unknown} value
- * @returns {unknown}
  */
-function sanitizeOwnerDashboardFrame(value) {
+function sanitizeOwnerDashboardFrame(value: unknown): unknown {
     if (typeof value === "string") return scrubLocalPaths(value);
     if (!value || typeof value !== "object") return value;
     if (Array.isArray(value)) return value.map(sanitizeOwnerDashboardFrame);
-    /** @type {Record<string, unknown>} */
-    const safe = {};
+    const safe: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(value)) {
         if (/(path|root|cwd|file)$/i.test(key)) continue;
         safe[key] =
@@ -113,8 +204,7 @@ function sanitizeOwnerDashboardFrame(value) {
     return safe;
 }
 
-/** @param {unknown} error */
-export function ownerErrorJson(error, status = 400) {
+export function ownerErrorJson(error: unknown, status = 400) {
     if (error instanceof DirectoryConfirmationRequired) {
         return ownerJson(
             {
@@ -128,15 +218,10 @@ export function ownerErrorJson(error, status = 400) {
     return ownerJson({ error: sanitizeOwnerError(error) }, status);
 }
 
-/**
- * @param {unknown} value
- * @returns {unknown}
- */
-function ownerReadOnlyPlanValue(value) {
+function ownerReadOnlyPlanValue(value: unknown): unknown {
     if (!value || typeof value !== "object") return value;
     if (Array.isArray(value)) return value.map(ownerReadOnlyPlanValue);
-    /** @type {Record<string, unknown>} */
-    const readOnly = {};
+    const readOnly: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(value)) {
         if (key === "actions") readOnly[key] = {};
         else if (key === "capabilities" && child && typeof child === "object" && !Array.isArray(child)) {
@@ -146,11 +231,10 @@ function ownerReadOnlyPlanValue(value) {
     return readOnly;
 }
 
-/** @param {any} ctx */
-export async function pairingRequestApi(ctx) {
+export async function pairingRequestApi(ctx: OwnerRequestContext<OwnerPairingState>) {
     try {
         ctx.state.pairingRateLimit?.check(ctx.req);
-        const body = await readJson(ctx.req);
+        const body = await readJson<PairingBody>(ctx.req);
         const request = ctx.state.store.createPairingRequest({ deviceLabel: body.deviceLabel || "Browser device" });
         const headers = new Headers();
         headers.append("set-cookie", ctx.state.bootstrapProofCookieHeader(request.proof));
@@ -163,8 +247,7 @@ export async function pairingRequestApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-export function pairingStatusApi(ctx) {
+export function pairingStatusApi(ctx: OwnerRequestContext<OwnerStoreState & OwnerCookieOrigin>) {
     const device = authenticateOwnerRequest(ctx.req, ctx.state);
     if (device) return ownerJson({ state: "paired" });
     const proof = getCookie(ctx.req, "rw_pairing_proof");
@@ -174,8 +257,7 @@ export function pairingStatusApi(ctx) {
     return ownerJson({ state: request.state, expiresAt: request.expiresAt, deviceLabel: request.deviceLabel });
 }
 
-/** @param {any} ctx */
-export function pairingClaimApi(ctx) {
+export function pairingClaimApi(ctx: OwnerRequestContext<OwnerStoreState & OwnerCookieOrigin>) {
     try {
         const proof = getCookie(ctx.req, "rw_pairing_proof");
         if (!proof) throw new Error("Pairing browser proof is missing.");
@@ -194,13 +276,11 @@ export function pairingClaimApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-export function projectsApi(ctx) {
+export function projectsApi(ctx: OwnerStateContext<OwnerStoreState>) {
     return ownerJson({ projects: listOwnerProjects(ctx.state.store) });
 }
 
-/** @param {any} ctx */
-export async function ownerSidebarApi(ctx) {
+export async function ownerSidebarApi(ctx: OwnerStateContext<OwnerSessionState>) {
     try {
         const projects = await loadOwnerSidebar(ctx.state.store, ctx.state.sessionContinuation);
         return ownerJson({ projects });
@@ -209,13 +289,7 @@ export async function ownerSidebarApi(ctx) {
     }
 }
 
-/**
- * @typedef {Object} OwnerUsageContext
- * @property {{ store: Parameters<typeof loadOwnerUsage>[0] }} state
- * @property {URL} url
- */
-/** @param {OwnerUsageContext} ctx */
-export async function ownerUsageApi(ctx) {
+export async function ownerUsageApi(ctx: OwnerUrlContext<OwnerUsageState>) {
     try {
         return ownerJson(await loadOwnerUsage(ctx.state.store, ctx.url.searchParams));
     } catch (error) {
@@ -223,15 +297,7 @@ export async function ownerUsageApi(ctx) {
     }
 }
 
-/**
- * @typedef {Object} OwnerUsageSettingsContext
- * @property {{ store: Parameters<typeof loadUsageSettings>[0] }} state
- * @property {Request} req
- * @property {{ action?: string }} params
- * @property {URL} url
- */
-/** @param {OwnerUsageSettingsContext} ctx */
-export async function ownerUsageSettingsApi(ctx) {
+export async function ownerUsageSettingsApi(ctx: OwnerStateContext<OwnerUsageSettingsState>) {
     try {
         return ownerJson(await loadUsageSettings(ctx.state.store));
     } catch (error) {
@@ -239,11 +305,10 @@ export async function ownerUsageSettingsApi(ctx) {
     }
 }
 
-/** @param {OwnerUsageSettingsContext} ctx */
-export async function ownerUsageSettingsMutationApi(ctx) {
-    let body;
+export async function ownerUsageSettingsMutationApi(ctx: OwnerUsageSettingsContext) {
+    let body: UsageSettingsRequest;
     try {
-        body = await readJson(ctx.req);
+        body = await readJson<UsageSettingsRequest>(ctx.req);
     } catch {
         return ownerJson({ error: "Invalid request body." }, 400);
     }
@@ -255,8 +320,7 @@ export async function ownerUsageSettingsMutationApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-export async function ownerDashboardApi(ctx) {
+export async function ownerDashboardApi(ctx: OwnerStateContext<OwnerSessionState>) {
     try {
         return ownerJson(await loadOwnerDashboard(ctx.state.store, ctx.state.sessionContinuation));
     } catch (error) {
@@ -264,11 +328,9 @@ export async function ownerDashboardApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-export function ownerDashboardStreamApi(ctx) {
+export function ownerDashboardStreamApi(ctx: OwnerRequestContext<OwnerSessionState>) {
     const encoder = new TextEncoder();
-    /** @type {(() => void) | undefined} */
-    let unsubscribe;
+    let unsubscribe: (() => void) | undefined;
     let closed = false;
     const cleanup = () => {
         closed = true;
@@ -307,8 +369,7 @@ export function ownerDashboardStreamApi(ctx) {
     return new Response(stream, { headers });
 }
 
-/** @param {any} ctx */
-export async function ownerWorkspaceSearchApi(ctx) {
+export async function ownerWorkspaceSearchApi(ctx: OwnerUrlContext<OwnerSearchState>) {
     try {
         const input = {
             query: ctx.url.searchParams.get("q") || "",
@@ -323,8 +384,7 @@ export async function ownerWorkspaceSearchApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-export async function ownerWorkspaceSearchRefreshApi(ctx) {
+export async function ownerWorkspaceSearchRefreshApi(ctx: OwnerStateContext<OwnerSearchState>) {
     try {
         await ctx.state.workspaceSearch.refresh();
         return ownerJson({ refreshed: true });
@@ -333,10 +393,9 @@ export async function ownerWorkspaceSearchRefreshApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-export async function registerProjectApi(ctx) {
+export async function registerProjectApi(ctx: OwnerRequestContext<OwnerStoreState>) {
     try {
-        const body = await readJson(ctx.req);
+        const body = await readJson<RegisterProjectBody>(ctx.req);
         if (!body.root) throw new Error("Project root is required.");
         const project = ctx.state.store.registerProject({
             root: String(body.root),
@@ -354,10 +413,9 @@ export async function registerProjectApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-export async function projectActionApi(ctx) {
+export async function projectActionApi(ctx: OwnerRouteContext<OwnerStoreState, ProjectParams>) {
     try {
-        const body = await readJson(ctx.req);
+        const body = await readJson<ProjectActionBody>(ctx.req);
         const { projectId } = ctx.params;
         if (body.action === "disable") ctx.state.store.setProjectEnabled(projectId, false);
         else if (body.action === "enable") ctx.state.store.setProjectEnabled(projectId, true);
@@ -382,9 +440,7 @@ export async function projectActionApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-/** @param {any} ctx */
-export async function ownerProjectBoardApi(ctx) {
+export async function ownerProjectBoardApi(ctx: OwnerRouteContext<OwnerStoreState, ProjectBoardParams>) {
     try {
         const root = requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
         const board = await loadBoard(root);
@@ -408,8 +464,7 @@ export async function ownerProjectBoardApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-export async function ownerProjectPlanDetailApi(ctx) {
+export async function ownerProjectPlanDetailApi(ctx: OwnerRouteContext<OwnerStoreState, ProjectPlanParams>) {
     try {
         const root = requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
         const plan = ownerReadOnlyPlanValue(await loadWorkspaceDetail(root, ctx.params.planId));
@@ -419,8 +474,7 @@ export async function ownerProjectPlanDetailApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-export async function ownerProjectFileContentApi(ctx) {
+export async function ownerProjectFileContentApi(ctx: OwnerRouteContext<OwnerStoreState, ProjectParams>) {
     try {
         const root = requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
         return await reviewFileContentApi(ctx.req, { cwd: root });
@@ -431,11 +485,8 @@ export async function ownerProjectFileContentApi(ctx) {
 
 /**
  * Resolve a saved association even when navigation supplied only a Plan ID.
- * @param {import('../../../shared/owner-coordination/index.ts').OwnerCoordinationStore} store
- * @param {string} projectId
- * @param {string} planId
  */
-export async function associatedPlanSession(store, projectId, planId) {
+export async function associatedPlanSession(store: OwnerCoordinationStore, projectId: string, planId: string) {
     let selected = "";
     let selectedAt = "";
     let selectedCurrent = false;
@@ -467,8 +518,7 @@ export async function associatedPlanSession(store, projectId, planId) {
     }
 }
 
-/** @param {any} ctx */
-export async function ownerProjectPlanProgressApi(ctx) {
+export async function ownerProjectPlanProgressApi(ctx: OwnerRouteContext<OwnerSessionState, ProjectPlanParams>) {
     try {
         const url = new URL(ctx.req.url);
         const runwieldSessionId =
@@ -480,7 +530,7 @@ export async function ownerProjectPlanProgressApi(ctx) {
             runwieldSessionId: runwieldSessionId || null,
         });
         if (runwieldSessionId) await ctx.state.sessionContinuation.liveSession(ctx.params.projectId, runwieldSessionId);
-        let live = null;
+        let live: LivePlanInteraction | null = null;
         let effectiveSessionId = runwieldSessionId;
         for (const [operationId, operation] of ctx.state.sessionContinuation.operations?.entries?.() || []) {
             if (operation.projectId !== ctx.params.projectId) continue;
@@ -489,9 +539,9 @@ export async function ownerProjectPlanProgressApi(ctx) {
             const request = operation.liveInteraction.request || {};
             const planReview = request.planReview && typeof request.planReview === "object" ? request.planReview : null;
             const codeReview = request.codeReview && typeof request.codeReview === "object" ? request.codeReview : null;
-            const associations = /** @type {Array<{ planId?: string, committedGeneration?: number | null }>} */ (
-                ctx.state.store.listSessionPlanAssociations?.(operation.runwieldSessionId, ctx.params.projectId) || []
-            );
+            // Preserve the legacy lookup and error handling for operations without a stable Session ID.
+            const associations =
+                ctx.state.store.listSessionPlanAssociations?.(operation.runwieldSessionId!, ctx.params.projectId) || [];
             const info = operation.runtimeSessionId
                 ? ctx.state.sessionContinuation.runtime.getSessionSnapshot(operation.runtimeSessionId)
                 : operation.sessionInfo;
@@ -572,10 +622,9 @@ export async function ownerProjectPlanProgressApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-export async function ownerProjectPlanActionApi(ctx) {
+export async function ownerProjectPlanActionApi(ctx: OwnerRouteContext<OwnerDeviceState, ProjectPlanParams>) {
     try {
-        const body = await readJson(ctx.req);
+        const body = await readJson<PlanActionBody>(ctx.req);
         if (typeof body.requestId !== "string" || !body.requestId) {
             throw new Error("Plan action requestId is required.");
         }
@@ -596,7 +645,8 @@ export async function ownerProjectPlanActionApi(ctx) {
             requestId: body.requestId,
             requestHash: hash,
             expectedGeneration: Number(body.expectedGeneration),
-            action,
+            // Pass the empty fallback through the existing action service.
+            action: action as PlanActionRequest,
         });
         return ownerJson(sanitizeOwnerPlanValue(result.body), result.status);
     } catch (error) {
@@ -604,18 +654,16 @@ export async function ownerProjectPlanActionApi(ctx) {
     }
 }
 
-/** @param {any} ctx */
-export function devicesApi(ctx) {
+export function devicesApi(ctx: OwnerStateContext<OwnerDeviceState>) {
     return ownerJson({
         devices: ctx.state.store.listDevices(),
         currentDeviceId: ctx.state.ownerDevice?.deviceId || null,
     });
 }
 
-/** @param {any} ctx */
-export async function revokeDeviceApi(ctx) {
+export async function revokeDeviceApi(ctx: OwnerRouteContext<OwnerDeviceRevocationState, DeviceParams>) {
     try {
-        const body = await readJson(ctx.req);
+        const body = await readJson<RevokeDeviceBody>(ctx.req);
         const device = ctx.state.store.revokeDevice(ctx.params.deviceId, { reason: body.reason || "revoked" });
         ctx.state.ownerConnections?.closeDevice?.(ctx.params.deviceId);
         const headers = new Headers();

@@ -15,7 +15,7 @@ import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
 import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.js";
-import { ownerProjectPlanProgressApi } from "./routes/owner-api.js";
+import { ownerProjectPlanProgressApi } from "./routes/owner-api.ts";
 
 type FixtureWorkflowStarted = Pick<WorkspacePlanReviewStarted, "operationId">;
 type FixtureSelectRequest = Pick<RuntimeInteractionRequest, "prompt">;

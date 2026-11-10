@@ -26,7 +26,7 @@ import {
     ownerSessionCreateApi,
     ownerSessionUnarchiveApi,
 } from "./routes/owner-session-api.js";
-import { associatedPlanSession } from "./routes/owner-api.js";
+import { associatedPlanSession } from "./routes/owner-api.ts";
 import { createOwnerConnectionRegistry } from "./server/owner-connections.ts";
 import { AGENTS, getHomeDir } from "../../constants.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";

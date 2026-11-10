@@ -10,7 +10,7 @@ import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { buildWorkflowPresentation } from "../../shared/workflow/workflow-presentation.ts";
 import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
-import { ownerProjectPlanProgressApi } from "./routes/owner-api.js";
+import { ownerProjectPlanProgressApi } from "./routes/owner-api.ts";
 import { ownerPlanContinuationApi } from "./routes/owner-plan-continuation.ts";
 import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.js";
 
