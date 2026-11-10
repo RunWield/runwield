@@ -812,7 +812,7 @@ async function exerciseRepairCompactionFollowUp(disconnect) {
             const actionEvidence = await loadPlanActionEvidence(worktreeRoot, planId);
             if (actionEvidence.kind !== "success") throw new Error(actionEvidence.message);
             const approvedRevision = await getPlanRevisionForText(planBody);
-            /** @type {import('../types.js').ActiveExecutionWorkflow} */
+            /** @type {import('./execution-workflow-session.ts').ActiveExecutionWorkflow} */
             const activeWorkflow = {
                 planName: "repair-follow-up",
                 projectRoot: worktreeRoot,

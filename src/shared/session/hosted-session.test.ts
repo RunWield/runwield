@@ -5,7 +5,7 @@ import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { HostedSession } from "./hosted-session.js";
 import { WORKFLOW_CONTEXT_CUSTOM_TYPE } from "./workflow-context-session.ts";
 import { SessionManager, type CustomEntry } from "@earendil-works/pi-coding-agent";
-import type { ActiveExecutionWorkflow } from "../types.js";
+import type { ActiveExecutionWorkflow } from "./execution-workflow-session.ts";
 
 type SessionManagerFixtureEntry = Required<Pick<CustomEntry<Record<string, string>>, "customType" | "data">>;
 

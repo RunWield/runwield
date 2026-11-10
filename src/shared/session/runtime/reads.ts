@@ -87,7 +87,7 @@ type ProjectedSessionInfo = Omit<
 > & {
     ok?: true;
     compactionSettings?: import("./types.ts").RuntimeCompactionSettings | null;
-    contextUsage?: import("../../types.js").ContextUsageSnapshot | null;
+    contextUsage?: import("./types.ts").ContextUsageSnapshot | null;
 };
 type SessionInfoResult = ProjectedSessionInfo | ManagedProjectionFailure | null;
 type SessionContextReportResult =

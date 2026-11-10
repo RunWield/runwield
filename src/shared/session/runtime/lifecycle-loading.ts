@@ -86,7 +86,7 @@ export class RuntimeLifecycleLoading {
     }
     async replaceSessionForExecutionFollowUp(
         oldSessionId: string,
-        workflow: import("../../types.js").ActiveExecutionWorkflow,
+        workflow: import("../execution-workflow-session.ts").ActiveExecutionWorkflow,
     ) {
         const oldSession = this.services.sessionHost.getSession(oldSessionId);
         if (!oldSession) throw new Error("SessionRuntime.replaceSessionForExecutionFollowUp: old session not found");

@@ -16,7 +16,7 @@
  */
 
 import { AGENTS } from "../../constants.js";
-import type { ActiveExecutionWorkflow } from "../types.js";
+import type { ActiveExecutionWorkflow } from "../session/execution-workflow-session.ts";
 
 /** The owner a Plan may name. This is what gets written down. */
 export type PlanExecutionPolicyAgent = "engineer" | "frontend-engineer";

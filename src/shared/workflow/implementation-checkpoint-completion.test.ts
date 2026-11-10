@@ -25,7 +25,7 @@ test("implementation checkpoint acknowledges its accepted task_completed JSONL e
     });
     const root = { dispose: () => {} };
     hostedSession.setRootAgentSession(root);
-    const workflow: import("../types.js").ActiveExecutionWorkflow = {
+    const workflow: import("../session/execution-workflow-session.ts").ActiveExecutionWorkflow = {
         planName: "p",
         triageMeta: { classification: "PLANNED_CHANGE", status: "in_progress" },
         executionAgent: "engineer" as const,

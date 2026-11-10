@@ -5,7 +5,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { HostedSession } from "./hosted-session.js";
 import { restoreExecutionWorkflow } from "./execution-workflow-recovery.ts";
 import { recordExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
-import type { ActiveExecutionWorkflow } from "../types.js";
+import type { ActiveExecutionWorkflow } from "./execution-workflow-session.ts";
 
 type SnapshotCase = "active" | "paused" | "stopped" | "cleared";
 for (const state of ["active", "paused", "stopped", "cleared"] as SnapshotCase[]) {

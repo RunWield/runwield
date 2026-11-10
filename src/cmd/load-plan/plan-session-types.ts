@@ -7,12 +7,13 @@
  */
 
 import type { PlanFrontMatter } from "../../plan-store.js";
+import type { ActiveExecutionWorkflow } from "../../shared/session/execution-workflow-session.ts";
 import type { PlanApprovalAction } from "../../shared/workflow/plan-approval.ts";
 import type { PlanActionRequest, PlanActionResult } from "../../shared/workflow/plan-actions.ts";
 import type { SequenceReviewDecision, SequenceReviewDocument } from "../../shared/workflow/sequence-review.ts";
 import type { EpicIntegrationGateResult } from "../../shared/workflow/epic-integration.ts";
 
-export type ActiveExecutionWorkflow = import("../../shared/types.js").ActiveExecutionWorkflow;
+export type { ActiveExecutionWorkflow };
 
 /** An image attached to a review decision. */
 export interface ReviewImage {

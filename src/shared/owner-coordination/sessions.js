@@ -21,6 +21,10 @@ import {
 } from "../session/workflow-context-session.ts";
 import { getProjectById, listProjectRootEvidence } from "./projects.ts";
 
+/** @typedef {import('../session/file-session-store-types.ts').SessionLineageDiagnostic} SessionLineageDiagnostic */
+/** @typedef {import('../session/file-session-store-types.ts').SessionSegmentLineageEvidence} SessionSegmentLineageEvidence */
+/** @typedef {import('../session/file-session-store-types.ts').SessionTranscriptSegment} SessionTranscriptSegment */
+
 /**
  * @typedef {Object} CatalogedSession
  * @property {string} runwieldSessionId
@@ -83,7 +87,7 @@ function sessionFromRow(row) {
     };
 }
 
-/** @param {Record<string, string | number | bigint | Uint8Array | null>} row @returns {import('../types.js').SessionTranscriptSegment} */
+/** @param {Record<string, string | number | bigint | Uint8Array | null>} row @returns {SessionTranscriptSegment} */
 function segmentFromRow(row) {
     return {
         segmentId: String(row.id),
@@ -256,12 +260,12 @@ async function listIncrementalRootSessionLocators(cwd, sessionDir, knownTranscri
 }
 
 /**
- * @typedef {import('../session/root-session.ts').CatalogSafeRootSessionLocator & { lineage: import('../types.js').SessionSegmentLineageEvidence | null }} LineageCatalogLocator
+ * @typedef {import('../session/root-session.ts').CatalogSafeRootSessionLocator & { lineage: SessionSegmentLineageEvidence | null }} LineageCatalogLocator
  */
 
 /**
  * @param {string} sessionPath
- * @returns {Promise<import('../types.js').SessionSegmentLineageEvidence | null>}
+ * @returns {Promise<SessionSegmentLineageEvidence | null>}
  */
 async function readSegmentLineageEvidenceFromTranscript(sessionPath) {
     const text = await fsReadFile(sessionPath, "utf8");
@@ -373,7 +377,7 @@ function catalogLineageSegmentGroup(database, projectId, group, options) {
     if (group.length < 2) throw new Error("Lineage group requires multiple segments");
     const now = isoNow(options.now);
     const first = group[0];
-    const firstLineage = /** @type {import('../types.js').SessionSegmentLineageEvidence} */ (first.lineage);
+    const firstLineage = /** @type {SessionSegmentLineageEvidence} */ (first.lineage);
     return database.transaction(() => {
         if (getSessionById(database, firstLineage.runwieldSessionId)) {
             throw new Error(`Lineage Session already exists: ${firstLineage.runwieldSessionId}`);
@@ -405,7 +409,7 @@ function catalogLineageSegmentGroup(database, projectId, group, options) {
         );
         for (let index = 0; index < group.length; index++) {
             const locator = group[index];
-            const lineage = /** @type {import('../types.js').SessionSegmentLineageEvidence} */ (locator.lineage);
+            const lineage = /** @type {SessionSegmentLineageEvidence} */ (locator.lineage);
             insertSegment.run(
                 lineage.segmentId,
                 lineage.runwieldSessionId,
@@ -638,7 +642,7 @@ export async function ensureSessionCatalogRecord(database, locator) {
 /**
  * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {string} runwieldSessionId
- * @returns {import('../types.js').SessionTranscriptSegment[]}
+ * @returns {SessionTranscriptSegment[]}
  */
 export function listSessionTranscriptSegments(database, runwieldSessionId) {
     const db = requireDatabase(database).handle;
@@ -652,7 +656,7 @@ export function listSessionTranscriptSegments(database, runwieldSessionId) {
 /**
  * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {string} runwieldSessionId
- * @returns {import('../types.js').SessionTranscriptSegment | null}
+ * @returns {SessionTranscriptSegment | null}
  */
 export function getCurrentSessionSegment(database, runwieldSessionId) {
     const db = requireDatabase(database).handle;
@@ -668,13 +672,13 @@ export function getCurrentSessionSegment(database, runwieldSessionId) {
 /**
  * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {{ runwieldSessionId: string, projectId: string, piSessionId: string, transcriptPath: string, transcriptCwd: string, kind: 'planning' | 'execution' | 'semantic_repair', lineageParentSegmentId?: string | null, lineageParentPiSessionId?: string | null, lineageGroupKey?: string | null, idFactory?: () => string, now?: () => string }} segment
- * @returns {Promise<import('../types.js').SessionTranscriptSegment>}
+ * @returns {Promise<SessionTranscriptSegment>}
  */
 /**
  * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {{ runwieldSessionId: string, projectId: string, piSessionId: string, transcriptPath: string, transcriptCwd: string, kind: 'planning' | 'execution' | 'semantic_repair', lineageParentSegmentId?: string | null, lineageParentPiSessionId?: string | null, lineageGroupKey?: string | null, idFactory?: () => string, now?: () => string }} segment
  * @param {import('../session/root-session.ts').CatalogSafeRootSessionLocator} safeLocator
- * @returns {import('../types.js').SessionTranscriptSegment}
+ * @returns {SessionTranscriptSegment}
  */
 export function insertSessionTranscriptSegmentRow(database, segment, safeLocator) {
     const ownerDb = requireDatabase(database);
@@ -715,7 +719,7 @@ export function insertSessionTranscriptSegmentRow(database, segment, safeLocator
         segment.lineageGroupKey ?? null,
         segment.lineageParentSegmentId || segment.lineageParentPiSessionId || segment.lineageGroupKey ? now : null,
     );
-    return /** @type {import('../types.js').SessionTranscriptSegment} */ (getCurrentSessionSegment(
+    return /** @type {SessionTranscriptSegment} */ (getCurrentSessionSegment(
         ownerDb,
         segment.runwieldSessionId,
     ));
@@ -724,7 +728,7 @@ export function insertSessionTranscriptSegmentRow(database, segment, safeLocator
 /**
  * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {{ runwieldSessionId: string, projectId: string, piSessionId: string, transcriptPath: string, transcriptCwd: string, kind: 'planning' | 'execution' | 'semantic_repair', lineageParentSegmentId?: string | null, lineageParentPiSessionId?: string | null, lineageGroupKey?: string | null, idFactory?: () => string, now?: () => string }} segment
- * @returns {Promise<import('../types.js').SessionTranscriptSegment>}
+ * @returns {Promise<SessionTranscriptSegment>}
  */
 export async function appendSessionTranscriptSegment(database, segment) {
     const ownerDb = requireDatabase(database);
@@ -748,7 +752,7 @@ export async function appendSessionTranscriptSegment(database, segment) {
 /**
  * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {{ runwieldSessionId: string, segmentId: string, evidence?: { byteLength: number, digestHex: string, terminalEntryId: string | null }, now?: () => string }} options
- * @returns {import('../types.js').SessionTranscriptSegment}
+ * @returns {SessionTranscriptSegment}
  */
 export function sealSessionTranscriptSegmentRow(database, options) {
     const ownerDb = requireDatabase(database);
@@ -782,7 +786,7 @@ export function sealSessionTranscriptSegmentRow(database, options) {
         options.runwieldSessionId,
     );
     if (result.changes !== 1) throw new Error("Segment seal proof was rejected");
-    return /** @type {import('../types.js').SessionTranscriptSegment} */ (listSessionTranscriptSegments(
+    return /** @type {SessionTranscriptSegment} */ (listSessionTranscriptSegments(
         ownerDb,
         options.runwieldSessionId,
     ).find((item) => item.segmentId === options.segmentId));
@@ -791,7 +795,7 @@ export function sealSessionTranscriptSegmentRow(database, options) {
 /**
  * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {{ runwieldSessionId: string, segmentId: string, evidence?: { byteLength: number, digestHex: string, terminalEntryId: string | null }, now?: () => string }} options
- * @returns {import('../types.js').SessionTranscriptSegment}
+ * @returns {SessionTranscriptSegment}
  */
 export function sealSessionTranscriptSegment(database, options) {
     const ownerDb = requireDatabase(database);
@@ -944,12 +948,12 @@ export async function discardOrphanRolloverCandidate(database, options) {
 /**
  * @param {import('./database.ts').OwnerCoordinationDatabase} database
  * @param {string} runwieldSessionId
- * @returns {import('../types.js').SessionLineageDiagnostic[]}
+ * @returns {SessionLineageDiagnostic[]}
  */
 export function diagnoseSessionSegmentLineage(database, runwieldSessionId) {
     const segments = listSessionTranscriptSegments(database, runwieldSessionId);
     const byId = new Map(segments.map((segment) => [segment.segmentId, segment]));
-    /** @type {import('../types.js').SessionLineageDiagnostic[]} */
+    /** @type {SessionLineageDiagnostic[]} */
     const diagnostics = [];
     const children = new Map();
     for (const segment of segments) {

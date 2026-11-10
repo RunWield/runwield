@@ -43,7 +43,7 @@ import { PlanReviewConversationOwner } from "./plan-review-conversation.ts";
  * @typedef {"off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"} ThinkingLevel
  */
 
-/** @typedef {import('../types.js').ActiveExecutionWorkflow} ActiveExecutionWorkflow */
+/** @typedef {import('./execution-workflow-session.ts').ActiveExecutionWorkflow} ActiveExecutionWorkflow */
 
 /**
  * @typedef {Object} HostedRuntimeEventObservation

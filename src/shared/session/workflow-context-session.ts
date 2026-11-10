@@ -10,7 +10,7 @@ import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { SegmentHandoffPayload } from "../workflow/execution-segment-handoff.ts";
 import type { RuntimeValidationProgress } from "./session-runtime-events.js";
 import type { WorkflowProgressFact } from "../workflow/workflow-presentation.ts";
-import type { SessionSegmentLineageEvidence } from "../types.js";
+import type { SessionSegmentLineageEvidence } from "./file-session-store-types.ts";
 
 export interface LineageSessionManager {
     appendCustomEntry?: (customType: string, data: SessionSegmentLineageEvidence) => string | void;

@@ -11,8 +11,8 @@ import { INIT_VERIFICATION_COMMAND_PLACEHOLDER } from "../../tools/init-verifica
 import type { UiAPI } from "./types.js";
 
 type SessionRuntimeEvent = import("../../shared/session/session-runtime-events.js").SessionRuntimeEvent;
-type SessionSnapshot = import("../../shared/types.js").SessionSnapshot;
 type SessionRuntime = ReturnType<typeof import("../../shared/session/session-runtime.ts").createSessionRuntime>;
+type SessionSnapshot = NonNullable<ReturnType<SessionRuntime["getSessionSnapshot"]>>;
 type LoadedPlan = Awaited<ReturnType<typeof findPlanEvidenceById>>;
 
 type TutorialExplanation = {
