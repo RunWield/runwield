@@ -3,6 +3,35 @@
  * RunWield ACP stdio server.
  */
 
+import type {
+    AgentApp,
+    AgentConnection,
+    AgentRequestMethod,
+    ClientCapabilities,
+    ClientNotificationMethod,
+    CloseSessionRequest,
+    InitializeRequest,
+    InitializeResponse,
+    LoadSessionRequest,
+    NewSessionRequest,
+    PromptRequest,
+    PromptResponse,
+    SessionNotification,
+    Stream,
+} from "@agentclientprotocol/sdk";
+import type { SessionRuntime } from "../shared/session/session-runtime.ts";
+import type { AcpInteractionContext } from "./interaction-mapper.ts";
+import type { FileSessionStore } from "../shared/session/file-session-store-types.ts";
+import type { ImageAttachment } from "../shared/session/image-attachments.ts";
+import type { SelectOption } from "../ui/tui/api.ts";
+import type { McpServerDefinition } from "../shared/mcp/config.ts";
+import type {
+    RuntimeInteractionRequest,
+    RuntimeInteractionResponse,
+} from "../shared/session/session-runtime-interactions.ts";
+import type { SlashCommandOutcome } from "../shared/workflow/command-metrics.ts";
+import type { SessionRuntimeEvent } from "../shared/session/session-runtime-events.ts";
+import type { AcpPromptRecord } from "./session-map.ts";
 import { agent, methods, ndJsonStream, PROTOCOL_VERSION, RequestError } from "@agentclientprotocol/sdk";
 import { isAbsolute } from "node:path";
 import { VERSION } from "../shared/version.js";
@@ -15,7 +44,11 @@ import { getSelectedDefaultModelAvailability } from "../shared/session/model-rea
 import { createSessionRuntime, SessionTurnInProgressError } from "../shared/session/session-runtime.ts";
 import { RuntimeEventTypes } from "../shared/session/session-runtime-events.ts";
 import { AcpSessionMap, normalizeAcpSessionIdForLoad } from "./session-map.ts";
-import { mapRuntimeContextToAcpUpdate, mapRuntimeEventToAcpSessionNotification } from "./event-mapper.ts";
+import {
+    type AcpContextUsage,
+    mapRuntimeContextToAcpUpdate,
+    mapRuntimeEventToAcpSessionNotification,
+} from "./event-mapper.ts";
 import { createAcpInteractionAdapter } from "./interaction-mapper.ts";
 import { formatChatQuestion, parseChatReply } from "./chat-interaction.ts";
 import { buildAcpModelOptions } from "./model-options.ts";
@@ -29,6 +62,70 @@ import {
 } from "../shared/session/user-selection.ts";
 import { SlashCommandMetricsTracker } from "../shared/workflow/command-metrics.ts";
 
+type AcpWireRecord = Record<string, unknown>;
+
+interface AcpBuiltinCommand {
+    name: string;
+    args: string[];
+}
+
+interface AcpCommandUiOptions {
+    runtime: SessionRuntime;
+    runtimeSessionId: string;
+    sendMessage(text: string, isError?: boolean): void;
+    onCanceled?: () => void;
+}
+
+type AcpTextOptions = Pick<RuntimeInteractionRequest, "defaultValue" | "placeholder" | "allowEmpty">;
+
+type ReleasePrompt = (requestId: string, release: () => void) => void;
+
+interface AcpLiveOperationOptions {
+    runtime: SessionRuntime;
+    sessionMap: AcpSessionMap;
+    acpSessionId: string;
+    runtimeSessionId: string;
+    clientCapabilities: ClientCapabilities | null;
+    releasePromptAfterResponse?: ReleasePrompt;
+}
+
+interface AcpPromptContext extends AcpNotificationContext {
+    requestId?: string | number | null;
+}
+
+interface AcpBuiltinCommandOptions extends AcpLiveOperationOptions {
+    context: AcpPromptContext;
+    commandName: string;
+    args: string[];
+    requestId?: string;
+    onOperation(operation: ReturnType<typeof createLiveOperation>): void;
+}
+
+interface AcpPendingQuestion {
+    interaction: RuntimeInteractionRequest;
+    delivered: boolean;
+    queued: boolean;
+}
+
+type AcpTurnResult = Pick<Awaited<ReturnType<SessionRuntime["promptUserTurn"]>>, "ok" | "error">;
+
+interface AcpCommandMessageMetadata {
+    command: string;
+    level: string;
+}
+
+interface AcpLoadMetadata {
+    runwield?: AcpLoadPathMetadata;
+}
+
+interface AcpLoadPathMetadata {
+    sessionPath?: unknown;
+}
+
+type AcpLoadRequest = LoadSessionRequest & { _meta?: AcpLoadMetadata };
+
+type PendingNotification = (context: AcpNotificationContext) => void | Promise<void>;
+
 const ACP_AUTH_REQUIRED = -32000;
 const ACP_NOT_IMPLEMENTED = -32004;
 const ACP_INVALID_PARAMS = -32602;
@@ -36,30 +133,26 @@ const ACP_NOT_FOUND = -32001;
 const ACP_INVALID_STATE = -32002;
 const ACP_THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 
-/** @typedef {"off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"} AcpThinkingLevel */
+type AcpThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
-/** @param {string} value @returns {value is AcpThinkingLevel} */
-function isAcpThinkingLevel(value) {
+function isAcpThinkingLevel(value: string): value is AcpThinkingLevel {
     return ACP_THINKING_LEVELS.has(value);
 }
 
-/** @param {unknown} value */
-function isRecord(value) {
+function isRecord(value: unknown): value is AcpWireRecord {
     return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
-/** @param {unknown} clientCapabilities */
-function supportsTerminalAuth(clientCapabilities) {
+function supportsTerminalAuth(clientCapabilities: unknown) {
     if (!isRecord(clientCapabilities)) return false;
-    const capabilities = /** @type {Record<string, unknown>} */ (clientCapabilities);
+    const capabilities = clientCapabilities;
     const auth = capabilities.auth;
-    if (isRecord(auth) && /** @type {Record<string, unknown>} */ (auth).terminal === true) return true;
+    if (isRecord(auth) && auth.terminal === true) return true;
     const meta = capabilities._meta;
-    return isRecord(meta) && /** @type {Record<string, unknown>} */ (meta)["terminal-auth"] === true;
+    return isRecord(meta) && meta["terminal-auth"] === true;
 }
 
-/** @param {string} cwd */
-function throwAuthenticationRequired(cwd) {
+function throwAuthenticationRequired(cwd: string): never {
     throw new RequestError(
         ACP_AUTH_REQUIRED,
         "RunWield login and default model setup are required before starting ACP.",
@@ -69,8 +162,7 @@ function throwAuthenticationRequired(cwd) {
     );
 }
 
-/** @param {string} message */
-function isAuthenticationSetupFailure(message) {
+function isAuthenticationSetupFailure(message: string) {
     return (
         /^Unknown .*model:/.test(message) ||
         /^Invalid .*model:/.test(message) ||
@@ -81,26 +173,21 @@ function isAuthenticationSetupFailure(message) {
     );
 }
 
-/** @typedef {import('@agentclientprotocol/sdk').AgentApp} AgentApp */
-/** @typedef {import('@agentclientprotocol/sdk').AgentConnection} AgentConnection */
-/** @typedef {import('@agentclientprotocol/sdk').Stream} AcpStream */
-/** @typedef {import('../shared/session/session-runtime.ts').SessionRuntime} SessionRuntime */
+type AcpStream = Stream;
 
-/** @typedef {import('./interaction-mapper.ts').AcpInteractionContext} AcpNotificationContext */
+type AcpNotificationContext = AcpInteractionContext;
 
-/**
- * @typedef {Object} RunWieldAcpServerOptions
- * @property {(message: string) => void | Promise<void>} [diagnostic]
- */
+interface RunWieldAcpServerOptions {
+    diagnostic?: (message: string) => void | Promise<void>;
+}
 
-/**
- * @typedef {Object} AcpServerContext
- * @property {SessionRuntime} runtime
- * @property {import("../shared/session/file-session-store-types.ts").FileSessionStore} sessionStore
- * @property {AcpSessionMap} sessionMap
- * @property {(requestId: string, release: () => void) => void} [releasePromptAfterResponse]
- * @property {Map<string, ReturnType<typeof createLiveOperation>>} operations
- */
+interface AcpServerContext {
+    runtime: SessionRuntime;
+    sessionStore: FileSessionStore;
+    sessionMap: AcpSessionMap;
+    releasePromptAfterResponse?: ReleasePrompt;
+    operations: Map<string, ReturnType<typeof createLiveOperation>>;
+}
 
 /**
  * Build the stable initialize response for the ACP MVP.
@@ -109,11 +196,8 @@ function isAuthenticationSetupFailure(message) {
  * decision on the Client: it reads the Agent's version and either accepts it or
  * disconnects. Echoing a requested version RunWield does not implement would tell the
  * Client the wrong thing.
- *
- * @param {import('@agentclientprotocol/sdk').InitializeRequest | undefined} request
- * @returns {import('@agentclientprotocol/sdk').InitializeResponse}
  */
-export function createInitializeResponse(request) {
+export function createInitializeResponse(request: InitializeRequest | undefined): InitializeResponse {
     const authMethods = supportsTerminalAuth(request?.clientCapabilities)
         ? [
               {
@@ -159,36 +243,22 @@ export function createInitializeResponse(request) {
     };
 }
 
-/**
- * @param {string} method
- * @returns {never}
- */
-function throwUnimplemented(method) {
+function throwUnimplemented(method: string): never {
     throw new RequestError(ACP_NOT_IMPLEMENTED, `RunWield ACP method is not implemented yet: ${method}`, {
         method,
         phase: "session-runtime-acp-mvp",
     });
 }
 
-/**
- * @param {string} message
- * @param {Record<string, unknown>} [data]
- * @returns {never}
- */
-function throwInvalidParams(message, data = {}) {
+function throwInvalidParams(message: string, data: Record<string, unknown> = {}): never {
     throw new RequestError(ACP_INVALID_PARAMS, message, data);
 }
 
-/**
- * @param {string} sessionId
- * @returns {never}
- */
-function throwUnknownSession(sessionId) {
+function throwUnknownSession(sessionId: string): never {
     throw new RequestError(ACP_NOT_FOUND, `Unknown ACP session: ${sessionId}`, { sessionId });
 }
 
-/** @param {unknown} error @param {string} cwd @returns {never|void} */
-function throwProjectRuntimeRefusal(error, cwd) {
+function throwProjectRuntimeRefusal(error: unknown, cwd: string): never | void {
     if (!(error instanceof ProjectRuntimeEntryRefusedError)) return;
     throw new RequestError(ACP_INVALID_STATE, error.message, {
         cwd,
@@ -198,52 +268,35 @@ function throwProjectRuntimeRefusal(error, cwd) {
     });
 }
 
-/**
- * @param {{ client?: { notify?: Function }, notify?: Function }} context
- * @param {import('@agentclientprotocol/sdk').ClientNotificationMethod} method
- * @param {unknown} params
- * @returns {Promise<void>}
- */
-function notifyClient(context, method, params) {
-    const maybeContextNotify = /** @type {{ notify?: Function }} */ (context).notify;
+function notifyClient(context: AcpNotificationContext, method: ClientNotificationMethod, params: SessionNotification) {
+    const maybeContextNotify = context.notify;
     if (typeof maybeContextNotify === "function") {
         return maybeContextNotify.call(context, method, params);
     }
     const clientContext = context.client;
     if (clientContext && typeof clientContext.notify === "function") {
-        return clientContext.notify(method, /** @type {any} */ (params));
+        return clientContext.notify(method, params);
     }
     return Promise.resolve();
 }
 
-/**
- * @param {AgentApp} app
- * @param {import('@agentclientprotocol/sdk').AgentRequestMethod} method
- */
-function registerUnimplementedRequest(app, method) {
+function registerUnimplementedRequest(app: AgentApp, method: AgentRequestMethod) {
     app.onRequest(method, () => throwUnimplemented(method));
 }
 
-/** @param {unknown} value */
-function isNonEmptyArray(value) {
+function isNonEmptyArray(value: unknown) {
     return Array.isArray(value) && value.length > 0;
 }
 
-/** @param {unknown} value */
-function isPlainRecord(value) {
+function isPlainRecord(value: unknown): value is AcpWireRecord {
     return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
-/**
- * @param {unknown} value
- * @returns {Record<string, string>}
- */
-function validateAcpMcpEnv(value) {
+function validateAcpMcpEnv(value: unknown): Record<string, string> {
     if (!Array.isArray(value)) {
         throwInvalidParams("ACP stdio MCP server env must be an array", { field: "mcpServers.env" });
     }
-    /** @type {Record<string, string>} */
-    const env = {};
+    const env: Record<string, string> = {};
     for (const entry of value) {
         if (!isPlainRecord(entry) || typeof entry.name !== "string" || typeof entry.value !== "string") {
             throwInvalidParams("ACP stdio MCP server env entries require string name and value", {
@@ -255,14 +308,9 @@ function validateAcpMcpEnv(value) {
     return env;
 }
 
-/**
- * @param {unknown} value
- * @returns {import('../shared/mcp/config.ts').McpServerDefinition[]}
- */
-function validateAcpMcpServers(value) {
+function validateAcpMcpServers(value: unknown): McpServerDefinition[] {
     if (!Array.isArray(value)) throwInvalidParams("ACP mcpServers must be an array", { field: "mcpServers" });
-    /** @type {import('../shared/mcp/config.ts').McpServerDefinition[]} */
-    const servers = [];
+    const servers: McpServerDefinition[] = [];
     for (const server of value) {
         if (!isPlainRecord(server)) throwInvalidParams("ACP MCP server must be an object", { field: "mcpServers" });
         if (server.type === "http" || server.type === "sse" || server.type === "acp") {
@@ -282,7 +330,7 @@ function validateAcpMcpServers(value) {
                 field: "mcpServers.command",
             });
         }
-        if (!Array.isArray(server.args) || server.args.some((/** @type {unknown} */ arg) => typeof arg !== "string")) {
+        if (!Array.isArray(server.args) || server.args.some((arg: unknown) => typeof arg !== "string")) {
             throwInvalidParams("ACP stdio MCP server args must be an array of strings", { field: "mcpServers.args" });
         }
         servers.push({
@@ -296,35 +344,27 @@ function validateAcpMcpServers(value) {
     return servers;
 }
 
-/**
- * @typedef {Object} AcpPromptBlock
- * @property {string} [type]
- * @property {string | null} [text]
- * @property {string | null} [data]
- * @property {string | null} [mimeType]
- * @property {string | null} [title]
- * @property {string | null} [name]
- * @property {string | null} [uri]
- */
+interface AcpPromptBlock {
+    type?: string;
+    text?: string | null;
+    data?: string | null;
+    mimeType?: string | null;
+    title?: string | null;
+    name?: string | null;
+    uri?: string | null;
+}
 
-/**
- * @typedef {Object} ConvertedAcpPrompt
- * @property {string} text
- * @property {import('../shared/session/image-attachments.ts').ImageAttachment[]} images
- */
+interface ConvertedAcpPrompt {
+    text: string;
+    images: ImageAttachment[];
+}
 
-/**
- * @param {AcpPromptBlock[]} blocks
- * @returns {ConvertedAcpPrompt}
- */
-export function convertAcpPrompt(blocks) {
+export function convertAcpPrompt(blocks: AcpPromptBlock[]): ConvertedAcpPrompt {
     if (!Array.isArray(blocks) || blocks.length === 0) {
         throwInvalidParams("session/prompt requires at least one prompt content block");
     }
-    /** @type {string[]} */
-    const parts = [];
-    /** @type {import('../shared/session/image-attachments.ts').ImageAttachment[]} */
-    const images = [];
+    const parts: string[] = [];
+    const images: ImageAttachment[] = [];
     for (const block of blocks) {
         if (!block || typeof block !== "object") throwInvalidParams("Invalid prompt content block");
         if (block.type === "text") {
@@ -357,29 +397,22 @@ export function convertAcpPrompt(blocks) {
     return { text: parts.join("\n").trim(), images };
 }
 
-/**
- * @typedef {Object} AcpSteeringOptions
- * @property {string} [idleBehavior]
- */
+interface AcpSteeringOptions {
+    idleBehavior?: string;
+}
 
-/**
- * @typedef {Object} AcpSteeringMetadata
- * @property {AcpSteeringOptions} [steering]
- */
+interface AcpSteeringMetadata {
+    steering?: AcpSteeringOptions;
+}
 
-/**
- * @typedef {Object} AcpSteeringRequest
- * @property {string} sessionId
- * @property {AcpPromptBlock[]} prompt
- * @property {AcpSteeringMetadata} [_meta]
- */
+interface AcpSteeringRequest {
+    sessionId: string;
+    prompt: AcpPromptBlock[];
+    _meta?: AcpSteeringMetadata;
+}
 
-/**
- * @param {unknown} params
- * @returns {AcpSteeringRequest}
- */
-function validateSteeringParams(params) {
-    const request = /** @type {AcpSteeringRequest | null} */ (params);
+function validateSteeringParams(params: unknown): AcpSteeringRequest {
+    const request = params as AcpSteeringRequest | null;
     if (typeof request?.sessionId !== "string" || !request.sessionId.trim()) {
         throwInvalidParams("_session/steering requires sessionId");
     }
@@ -399,8 +432,7 @@ function validateSteeringParams(params) {
     return request;
 }
 
-/** @param {string} text */
-function isOpenAbSenderContext(text) {
+function isOpenAbSenderContext(text: string) {
     const match = /^<sender_context>\s*([\s\S]*)\s*<\/sender_context>$/.exec(text.trim());
     if (!match) return false;
     try {
@@ -410,16 +442,11 @@ function isOpenAbSenderContext(text) {
     }
 }
 
-/**
- * @param {unknown} blocks
- * @returns {{ name: string, args: string[] } | null}
- */
-function extractAcpBuiltinCommand(blocks) {
+function extractAcpBuiltinCommand(blocks: unknown): AcpBuiltinCommand | null {
     if (!Array.isArray(blocks) || blocks.length === 0) {
         throwInvalidParams("session/prompt requires at least one prompt content block");
     }
-    /** @type {string[]} */
-    const commandTexts = [];
+    const commandTexts: string[] = [];
     for (const block of blocks) {
         if (!block || typeof block !== "object") throwInvalidParams("Invalid prompt content block");
         if (block.type !== "text") continue;
@@ -435,11 +462,7 @@ function extractAcpBuiltinCommand(blocks) {
     return { name, args };
 }
 
-/**
- * @param {SessionRuntime} runtime
- * @param {string} runtimeSessionId
- */
-async function buildAcpAvailableCommands(runtime, runtimeSessionId) {
+async function buildAcpAvailableCommands(runtime: SessionRuntime, runtimeSessionId: string) {
     const snapshot = runtime.getSessionSnapshot(runtimeSessionId);
     const cwd = snapshot?.cwd;
     const builtins = getSlashCommandDefinitions("acp").map((command) => ({
@@ -468,13 +491,12 @@ async function buildAcpAvailableCommands(runtime, runtimeSessionId) {
     ];
 }
 
-/**
- * @param {{ client?: { notify?: Function }, notify?: Function }} context
- * @param {SessionRuntime} runtime
- * @param {string} runtimeSessionId
- * @param {string} acpSessionId
- */
-async function notifyAcpCommandCatalog(context, runtime, runtimeSessionId, acpSessionId) {
+async function notifyAcpCommandCatalog(
+    context: AcpNotificationContext,
+    runtime: SessionRuntime,
+    runtimeSessionId: string,
+    acpSessionId: string,
+) {
     await notifyClient(context, methods.client.session.update, {
         sessionId: acpSessionId,
         update: {
@@ -484,13 +506,12 @@ async function notifyAcpCommandCatalog(context, runtime, runtimeSessionId, acpSe
     });
 }
 
-/**
- * @param {AcpNotificationContext} context
- * @param {SessionRuntime} runtime
- * @param {string} runtimeSessionId
- * @param {string} acpSessionId
- */
-async function notifyAcpModelOptions(context, runtime, runtimeSessionId, acpSessionId) {
+async function notifyAcpModelOptions(
+    context: AcpNotificationContext,
+    runtime: SessionRuntime,
+    runtimeSessionId: string,
+    acpSessionId: string,
+) {
     await notifyClient(context, methods.client.session.update, {
         sessionId: acpSessionId,
         update: {
@@ -500,34 +521,27 @@ async function notifyAcpModelOptions(context, runtime, runtimeSessionId, acpSess
     });
 }
 
-/**
- * @param {AcpNotificationContext} context
- * @param {SessionRuntime} runtime
- * @param {AcpSessionMap} sessionMap
- * @param {string} runtimeSessionId
- * @param {string} acpSessionId
- */
-async function notifyAcpContextUsage(context, runtime, sessionMap, runtimeSessionId, acpSessionId) {
+async function notifyAcpContextUsage(
+    context: AcpNotificationContext,
+    runtime: SessionRuntime,
+    sessionMap: AcpSessionMap,
+    runtimeSessionId: string,
+    acpSessionId: string,
+) {
     const contextUsage = runtime.getSessionSnapshot(runtimeSessionId)?.contextUsage || null;
     const update = mapRuntimeContextToAcpUpdate(contextUsage, sessionMap.getRecord(acpSessionId)?.usageCostUsd || 0);
     if (update) await notifyClient(context, methods.client.session.update, { sessionId: acpSessionId, update });
 }
 
-/**
- * @typedef {import('../ui/tui/api.ts').SelectOption} AcpCommandSelectOption
- */
+type AcpCommandSelectOption = SelectOption;
 
-/**
- * @param {{ runtime: SessionRuntime, runtimeSessionId: string, sendMessage: (text: string, isError?: boolean) => void, onCanceled?: () => void }} options
- */
-function createAcpCommandUiAPI(options) {
-    /**
-     * @param {import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest['type']} type
-     * @param {string} title
-     * @param {AcpCommandSelectOption[]} choices
-     * @param {{ defaultValue?: string, placeholder?: string, allowEmpty?: boolean }} [requestOptions]
-     */
-    const requestSelection = async (type, title, choices, requestOptions = {}) => {
+function createAcpCommandUiAPI(options: AcpCommandUiOptions) {
+    const requestSelection = async (
+        type: RuntimeInteractionRequest["type"],
+        title: string,
+        choices: AcpCommandSelectOption[],
+        requestOptions: AcpTextOptions = {},
+    ) => {
         const response = await options.runtime.requestInteraction(options.runtimeSessionId, {
             type,
             prompt: title,
@@ -549,12 +563,10 @@ function createAcpCommandUiAPI(options) {
             options.onCanceled?.();
         return String(response.value || "");
     };
-    /** @param {string} text */
-    const appendAgentText = (text) => options.sendMessage(text);
-    /** @param {string} title @param {AcpCommandSelectOption[]} choices */
-    const promptSelect = (title, choices) => requestSelection(RuntimeInteractionTypes.SELECT, title, choices);
-    /** @param {string} title @param {{ defaultValue?: string, placeholder?: string, allowEmpty?: boolean }} [textOptions] */
-    const promptText = (title, textOptions = {}) =>
+    const appendAgentText = (text: string) => options.sendMessage(text);
+    const promptSelect = (title: string, choices: AcpCommandSelectOption[]) =>
+        requestSelection(RuntimeInteractionTypes.SELECT, title, choices);
+    const promptText = (title: string, textOptions: AcpTextOptions = {}) =>
         requestSelection(RuntimeInteractionTypes.TEXT, title, [], {
             defaultValue: textOptions.defaultValue,
             placeholder: textOptions.placeholder,
@@ -596,19 +608,14 @@ function createAcpCommandUiAPI(options) {
     };
 }
 
-/**
- * @param {{ context: any, runtime: SessionRuntime, sessionMap: AcpSessionMap, acpSessionId: string, runtimeSessionId: string, clientCapabilities: import("@agentclientprotocol/sdk").ClientCapabilities | null, commandName: string, args: string[], requestId?: string, releasePromptAfterResponse?: (requestId: string, release: () => void) => void, onOperation: (operation: ReturnType<typeof createLiveOperation>) => void }} options
- * @returns {Promise<import('@agentclientprotocol/sdk').PromptResponse>}
- */
-async function dispatchAcpBuiltinCommand(options) {
+async function dispatchAcpBuiltinCommand(options: AcpBuiltinCommandOptions): Promise<PromptResponse> {
     let runtimeSessionId = options.runtimeSessionId;
     const definition = getSlashCommandDefinition(options.commandName, "acp");
     const operation = createLiveOperation(options);
     options.onOperation(operation);
     operation.start(options.context, `command-${crypto.randomUUID()}`);
     let menuCanceled = false;
-    /** @param {string} text @param {boolean} [isError] */
-    const sendMessage = (text, isError = false) =>
+    const sendMessage = (text: string, isError: boolean = false) =>
         operation.sendMessage(text, { command: options.commandName, level: isError ? "error" : "info" });
     const execution = (async () => {
         if (!definition) {
@@ -692,7 +699,7 @@ async function dispatchAcpBuiltinCommand(options) {
                 return selected;
             };
         }
-        let outcome = "succeeded";
+        let outcome: SlashCommandOutcome = "succeeded";
         let errorReason = null;
         try {
             const result = await definition.execute(options.args, {
@@ -716,7 +723,7 @@ async function dispatchAcpBuiltinCommand(options) {
         } finally {
             if ((operation.cancelled || menuCanceled) && outcome !== "failed") outcome = "canceled";
             await tracker?.recordFinish({
-                outcome: /** @type {import('../shared/workflow/command-metrics.ts').SlashCommandOutcome} */ (outcome),
+                outcome: outcome,
                 errorReason,
             });
         }
@@ -728,11 +735,8 @@ async function dispatchAcpBuiltinCommand(options) {
     return await operation.waitForRequest(options.context, settlement, "", []);
 }
 
-/**
- * @param {unknown} params
- */
-export function validateNewSessionParams(params) {
-    const request = /** @type {import('@agentclientprotocol/sdk').NewSessionRequest} */ (params || {});
+export function validateNewSessionParams(params: unknown) {
+    const request = (params || {}) as NewSessionRequest;
     if (!request.cwd || typeof request.cwd !== "string" || !isAbsolute(request.cwd)) {
         throwInvalidParams("session/new requires an absolute cwd", { cwd: request.cwd });
     }
@@ -750,11 +754,8 @@ export function validateNewSessionParams(params) {
     return { ...request, mcpServers: request.mcpServers, runwieldMcpServers: mcpServers };
 }
 
-/** @param {unknown} params */
-function validateLoadSessionParams(params) {
-    const request =
-        /** @type {import('@agentclientprotocol/sdk').LoadSessionRequest & { _meta?: { runwield?: { sessionPath?: unknown } } }} */
-        (params || {});
+function validateLoadSessionParams(params: unknown) {
+    const request = (params || {}) as AcpLoadRequest;
     const validated = validateNewSessionParams(request);
     if (!request.sessionId || typeof request.sessionId !== "string") {
         throwInvalidParams("session/load requires sessionId", { sessionId: request.sessionId });
@@ -766,21 +767,15 @@ function validateLoadSessionParams(params) {
     return { ...request, runwieldMcpServers: validated.runwieldMcpServers, sessionPath };
 }
 
-/** @param {unknown} params */
-function validateCloseSessionParams(params) {
-    const request = /** @type {import('@agentclientprotocol/sdk').CloseSessionRequest} */ (params || {});
+function validateCloseSessionParams(params: unknown) {
+    const request = (params || {}) as CloseSessionRequest;
     if (!request.sessionId || typeof request.sessionId !== "string") {
         throwInvalidParams("session/close requires sessionId", { sessionId: request.sessionId });
     }
     return request;
 }
 
-/**
- * @param {SessionRuntime} runtime
- * @param {AcpSessionMap} sessionMap
- * @param {string} acpSessionId
- */
-async function closeMappedSession(runtime, sessionMap, acpSessionId) {
+async function closeMappedSession(runtime: SessionRuntime, sessionMap: AcpSessionMap, acpSessionId: string) {
     const record = sessionMap.getRecord(acpSessionId);
     if (!record) return { ok: false, closed: false, error: "not_found" };
     const runtimeSessionId = sessionMap.getRuntimeSessionId(acpSessionId);
@@ -801,8 +796,7 @@ async function closeMappedSession(runtime, sessionMap, acpSessionId) {
     return { ok: true, closed: Boolean(runtimeSessionId), record };
 }
 
-/** @param {SessionRuntime} runtime @param {AcpSessionMap} sessionMap */
-async function closeAllMappedSessions(runtime, sessionMap) {
+async function closeAllMappedSessions(runtime: SessionRuntime, sessionMap: AcpSessionMap) {
     for (const record of sessionMap.listRecords()) await closeMappedSession(runtime, sessionMap, record.acpSessionId);
     if (runtime.closeAllSessionsWhenIdle) await runtime.closeAllSessionsWhenIdle();
     else runtime.closeAllSessions?.();
@@ -814,13 +808,13 @@ async function closeAllMappedSessions(runtime, sessionMap) {
  * The Runtime reports the cost of a single assistant message; ACP wants the cumulative
  * Session cost. Every mapping site goes through here so live, replayed, and setup events
  * all add to the same total.
- *
- * @param {AcpSessionMap} sessionMap
- * @param {string} acpSessionId
- * @param {import('../shared/session/session-runtime-events.ts').SessionRuntimeEvent} event
- * @param {{ tokens: number | null, contextWindow: number } | null} [contextUsage]
  */
-export function mapEventWithSessionCost(sessionMap, acpSessionId, event, contextUsage = null) {
+export function mapEventWithSessionCost(
+    sessionMap: AcpSessionMap,
+    acpSessionId: string,
+    event: SessionRuntimeEvent,
+    contextUsage: AcpContextUsage | null = null,
+) {
     const sessionCostUsd =
         event.type === RuntimeEventTypes.USAGE
             ? sessionMap.addUsageCost(acpSessionId, event.usage?.costUsd)
@@ -828,12 +822,7 @@ export function mapEventWithSessionCost(sessionMap, acpSessionId, event, context
     return mapRuntimeEventToAcpSessionNotification(acpSessionId, event, sessionCostUsd, contextUsage);
 }
 
-/**
- * @param {AcpStream} stream
- * @param {Map<string, () => void>} promptReleases
- * @returns {AcpStream}
- */
-function releasePromptsAfterResponses(stream, promptReleases) {
+function releasePromptsAfterResponses(stream: AcpStream, promptReleases: Map<string, () => void>): AcpStream {
     const writer = stream.writable.getWriter();
     return {
         readable: stream.readable,
@@ -865,16 +854,14 @@ function releasePromptsAfterResponses(stream, promptReleases) {
     };
 }
 
-/**
- * @param {{ client?: { notify?: Function }, notify?: Function }} context
- * @param {SessionRuntime} runtime
- * @param {AcpSessionMap} sessionMap
- * @param {string} runtimeSessionId
- * @param {string} acpSessionId
- */
-async function replaySetupEvents(context, runtime, sessionMap, runtimeSessionId, acpSessionId) {
-    /** @type {Promise<unknown>[]} */
-    const pendingNotifications = [];
+async function replaySetupEvents(
+    context: AcpNotificationContext,
+    runtime: SessionRuntime,
+    sessionMap: AcpSessionMap,
+    runtimeSessionId: string,
+    acpSessionId: string,
+) {
+    const pendingNotifications: Array<void | Promise<void>> = [];
     const unsubscribe = runtime.subscribeSessionEvents(runtimeSessionId, (event) => {
         const contextUsage = runtime.getSessionSnapshot(runtimeSessionId)?.contextUsage || null;
         const notification = mapEventWithSessionCost(sessionMap, acpSessionId, event, contextUsage);
@@ -894,37 +881,24 @@ async function replaySetupEvents(context, runtime, sessionMap, runtimeSessionId,
 /**
  * One live Runtime turn may serve several ACP prompt requests. Only the request's
  * response owns activePrompt; the operation owns its adapter and event subscription.
- * @param {{ runtime: SessionRuntime, sessionMap: AcpSessionMap, acpSessionId: string, runtimeSessionId: string, clientCapabilities: import("@agentclientprotocol/sdk").ClientCapabilities | null, releasePromptAfterResponse?: (id: string, release: () => void) => void }} options
  */
-function createLiveOperation(options) {
+function createLiveOperation(options: AcpLiveOperationOptions) {
     const { runtime, sessionMap, acpSessionId, clientCapabilities, releasePromptAfterResponse } = options;
     let runtimeSessionId = options.runtimeSessionId;
-    /** @type {AcpNotificationContext | null} */
-    let attached = null;
-    /** @type {AcpNotificationContext | null} */
-    let initialContext = null;
-    /** @type {import('./session-map.ts').AcpPromptRecord | null} */
-    let prompt = null;
-    /** @type {(() => void)} */
-    let unsubscribe = () => {};
-    /** @type {Array<(context: AcpNotificationContext) => Promise<void>>} */
-    const undelivered = [];
-    /** @type {Promise<void>} */
-    let tail = Promise.resolve();
-    /** @type {PromiseWithResolvers<void>} */
-    let wake = Promise.withResolvers();
-    /** @type {{ interaction: import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest, delivered: boolean, queued: boolean } | null} */
-    let question = null;
+    let attached: AcpNotificationContext | null = null;
+    let initialContext: AcpNotificationContext | null = null;
+    let prompt: AcpPromptRecord | null = null;
+    let unsubscribe: () => void = () => {};
+    const undelivered: PendingNotification[] = [];
+    let tail: Promise<void> = Promise.resolve();
+    let wake: PromiseWithResolvers<void> = Promise.withResolvers();
+    let question: AcpPendingQuestion | null = null;
     let settled = false;
     let cancelled = false;
-    /** @type {Pick<Awaited<ReturnType<SessionRuntime['promptUserTurn']>>, 'ok' | 'error'> | null} */
-    let result = null;
-    /** @type {Error | null} */
-    let failure = null;
-    /** @type {PromiseWithResolvers<void>} */
-    const started = Promise.withResolvers();
-    /** @type {PromiseWithResolvers<void>} */
-    let completed = Promise.withResolvers();
+    let result: AcpTurnResult | null = null;
+    let failure: Error | null = null;
+    const started: PromiseWithResolvers<void> = Promise.withResolvers();
+    let completed: PromiseWithResolvers<void> = Promise.withResolvers();
     let generatedTurnActive = false;
     let stopped = false;
 
@@ -933,8 +907,7 @@ function createLiveOperation(options) {
         wake = Promise.withResolvers();
     }
 
-    /** @param {(context: AcpNotificationContext) => Promise<void>} send */
-    function queue(send) {
+    function queue(send: PendingNotification) {
         if (stopped) return;
         if (!attached) {
             undelivered.push(send);
@@ -965,8 +938,7 @@ function createLiveOperation(options) {
             () => {},
         );
     }
-    /** @param {AcpNotificationContext} context */
-    function installAdapter(context) {
+    function installAdapter(context: AcpNotificationContext) {
         runtime.setInteractionAdapter(
             runtimeSessionId,
             createAcpInteractionAdapter({
@@ -980,8 +952,7 @@ function createLiveOperation(options) {
                             message: "Interaction canceled.",
                         });
                     }
-                    /** @type {PromiseWithResolvers<import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionResponse>} */
-                    const answered = Promise.withResolvers();
+                    const answered: PromiseWithResolvers<RuntimeInteractionResponse> = Promise.withResolvers();
                     const current = { interaction, delivered: false, queued: false };
                     question = current;
                     const abort = () => {
@@ -1001,8 +972,7 @@ function createLiveOperation(options) {
     }
     // Answers are sent to the broker's existing callback, not to the adapter's
     // presentation Promise. Its abort listener dismisses the losing surface.
-    /** @param {string} nextId */
-    function replaceRuntimeSession(nextId) {
+    function replaceRuntimeSession(nextId: string) {
         if (nextId === runtimeSessionId) return;
         sessionMap.replaceRuntimeSession(acpSessionId, {
             sessionId: nextId,
@@ -1052,8 +1022,7 @@ function createLiveOperation(options) {
             if (notification) queue((context) => notifyClient(context, methods.client.session.update, notification));
         });
     }
-    /** @param {AcpNotificationContext} context */
-    async function flush(context) {
+    async function flush(context: AcpNotificationContext) {
         if (undelivered.length) {
             const updates = undelivered.splice(0);
             for (const update of updates) {
@@ -1075,14 +1044,19 @@ function createLiveOperation(options) {
             throw error;
         }
     }
-    /** @param {AcpNotificationContext} context @param {Promise<void>} settlement */
-    async function finishCancellation(context, settlement) {
+    async function finishCancellation(
+        context: AcpNotificationContext,
+        settlement: Promise<void>,
+    ): Promise<PromptResponse> {
         await settlement;
         await flush(context);
-        return /** @type {const} */ ({ stopReason: "cancelled" });
+        return { stopReason: "cancelled" };
     }
-    /** @param {AcpNotificationContext} context @param {Promise<void>} settlement @param {typeof question} [answeredQuestion] */
-    async function waitForQuestionOrSettlement(context, settlement, answeredQuestion = null) {
+    async function waitForQuestionOrSettlement(
+        context: AcpNotificationContext,
+        settlement: Promise<void>,
+        answeredQuestion: typeof question = null,
+    ) {
         while (true) {
             const nextWake = wake.promise;
             await flush(context);
@@ -1092,8 +1066,7 @@ function createLiveOperation(options) {
             await Promise.race([nextWake, settlement]);
         }
     }
-    /** @param {AcpNotificationContext & { requestId?: string | number | null }} context */
-    function attachRequest(context) {
+    function attachRequest(context: AcpPromptContext) {
         attached = context;
         wake = Promise.withResolvers();
         prompt = sessionMap.beginPrompt(
@@ -1122,9 +1095,12 @@ function createLiveOperation(options) {
             releasePromptAfterResponse(current.requestId, release);
         } else release();
     }
-    /** @param {AcpNotificationContext & { requestId?: string | number | null }} context @param {Promise<void>} operationSettlement @param {string} text @param {import('../shared/session/image-attachments.ts').ImageAttachment[]} images
-     * @returns {Promise<import('@agentclientprotocol/sdk').PromptResponse>} */
-    async function waitForRequest(context, operationSettlement, text, images) {
+    async function waitForRequest(
+        context: AcpPromptContext,
+        operationSettlement: Promise<void>,
+        text: string,
+        images: ImageAttachment[],
+    ): Promise<PromptResponse> {
         // onTurnStarted can run after the Runtime's asynchronous setup.
         if (!prompt) await Promise.race([operationSettlement, started.promise]);
         try {
@@ -1169,8 +1145,7 @@ function createLiveOperation(options) {
         get runtimeSessionId() {
             return runtimeSessionId;
         },
-        /** @param {string} text @param {{ command: string, level: string }} metadata */
-        sendMessage(text, metadata) {
+        sendMessage(text: string, metadata: AcpCommandMessageMetadata) {
             queue((context) =>
                 notifyClient(context, methods.client.session.update, {
                     sessionId: acpSessionId,
@@ -1191,8 +1166,7 @@ function createLiveOperation(options) {
         get cancelled() {
             return cancelled;
         },
-        /** @param {AcpNotificationContext & { requestId?: string | number | null }} context */
-        async replay(context) {
+        async replay(context: AcpPromptContext) {
             attachRequest(context);
             try {
                 await flush(context);
@@ -1200,8 +1174,7 @@ function createLiveOperation(options) {
                 finishRequest();
             }
         },
-        /** @param {AcpNotificationContext & { requestId?: string | number | null }} context @param {string} turnId */
-        start(context, turnId) {
+        start(context: AcpPromptContext, turnId: string) {
             attached = context;
             initialContext = context;
             prompt = sessionMap.beginPrompt(
@@ -1219,8 +1192,7 @@ function createLiveOperation(options) {
             unsubscribe();
             runtime.setInteractionAdapter(runtimeSessionId, null);
         },
-        /** @param {Pick<Awaited<ReturnType<SessionRuntime['promptUserTurn']>>, 'ok' | 'error'> | null} value @param {Error | null} [error] */
-        settle(value, error) {
+        settle(value: AcpTurnResult | null, error?: Error | null) {
             settled = true;
             result = value;
             failure = error instanceof Error ? error : error ? new Error(String(error)) : null;
@@ -1231,9 +1203,12 @@ function createLiveOperation(options) {
         cancel() {
             cancelled = true;
         },
-        /** @param {AcpNotificationContext & { requestId?: string | number | null }} context @param {string | undefined} expectedInteractionId @param {import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionResponse | null | undefined} reply @param {string} [feedback]
-         * @returns {Promise<import('@agentclientprotocol/sdk').PromptResponse>} */
-        async attach(context, expectedInteractionId, reply, feedback) {
+        async attach(
+            context: AcpPromptContext,
+            expectedInteractionId: string | undefined,
+            reply: RuntimeInteractionResponse | null | undefined,
+            feedback?: string,
+        ): Promise<PromptResponse> {
             attachRequest(context);
             try {
                 await flush(context);
@@ -1304,15 +1279,12 @@ function createLiveOperation(options) {
 
 /**
  * Create the RunWield ACP agent app.
- * @param {AcpServerContext} context
- * @returns {AgentApp}
  */
-function createRunWieldAcpServer(context) {
+function createRunWieldAcpServer(context: AcpServerContext): AgentApp {
     const app = agent({ name: "RunWield ACP MVP" });
     const { runtime, sessionMap, releasePromptAfterResponse } = context;
     const operations = context.operations;
-    /** @type {import("@agentclientprotocol/sdk").ClientCapabilities | null} */
-    let clientCapabilities = null;
+    let clientCapabilities: ClientCapabilities | null = null;
 
     app.onRequest(methods.agent.initialize, (context) => {
         clientCapabilities = context.params?.clientCapabilities || null;
@@ -1401,7 +1373,7 @@ function createRunWieldAcpServer(context) {
                     ),
                 )
                 .filter(Boolean)
-                .map((notification) => notifyClient(context, methods.client.session.update, notification));
+                .map((notification) => notifyClient(context, methods.client.session.update, notification!));
             await Promise.allSettled(notifications);
             const configOptions = await buildAcpModelOptions(runtime, result.sessionId);
             queueMicrotask(() => {
@@ -1522,12 +1494,12 @@ function createRunWieldAcpServer(context) {
     });
 
     app.onRequest(methods.agent.session.prompt, async (context) => {
-        const request = /** @type {import('@agentclientprotocol/sdk').PromptRequest} */ (context.params || {});
+        const request = (context.params || {}) as PromptRequest;
         const acpSessionId = request.sessionId;
         if (!acpSessionId || typeof acpSessionId !== "string") {
             throwInvalidParams("session/prompt requires sessionId");
         }
-        const runtimeSessionId = /** @type {string} */ (sessionMap.getRuntimeSessionId(acpSessionId));
+        const runtimeSessionId = sessionMap.getRuntimeSessionId(acpSessionId);
         if (!runtimeSessionId) throwUnknownSession(acpSessionId);
         // A pending question owns its reply, even when that text looks like a malformed command.
         const requestedCommand = operations.get(acpSessionId)?.question
@@ -1672,7 +1644,7 @@ function createRunWieldAcpServer(context) {
                 });
             }
             return {
-                stopReason: /** @type {const} */ ("end_turn"),
+                stopReason: "end_turn" satisfies PromptResponse["stopReason"],
                 _meta: { runwield: { queued: queued.queued, queuedMessageId: queued.message?.id || "" } },
             };
         }
@@ -1688,7 +1660,7 @@ function createRunWieldAcpServer(context) {
         const runtimePrompt = runtime.promptUserTurn(runtimeSessionId, {
             initialRequest: promptText,
             initialImages: promptImages,
-            onTurnStarted: (/** @type {{ turnId: string }} */ { turnId }) => {
+            onTurnStarted: ({ turnId }) => {
                 operation?.stop();
                 interview.start(context, turnId);
                 operations.set(acpSessionId, interview);
@@ -1787,21 +1759,18 @@ function createRunWieldAcpServer(context) {
 
 /**
  * Start the RunWield ACP server on newline-delimited JSON streams.
- *
- * @param {ReadableStream<Uint8Array>} input
- * @param {WritableStream<Uint8Array>} output
- * @param {RunWieldAcpServerOptions} [options]
- * @returns {AgentConnection}
  */
-export function startRunWieldAcpServer(input, output, options = {}) {
-    /** @type {Map<string, () => void>} */
-    const promptReleases = new Map();
+export function startRunWieldAcpServer(
+    input: ReadableStream<Uint8Array>,
+    output: WritableStream<Uint8Array>,
+    options: RunWieldAcpServerOptions = {},
+): AgentConnection {
+    const promptReleases: Map<string, () => void> = new Map();
     const stream = releasePromptsAfterResponses(ndJsonStream(output, input), promptReleases);
     const sessionStore = openFileSessionStore();
     const runtime = createSessionRuntime({ sessionStore, ownerProcessKind: "acp" });
     const sessionMap = new AcpSessionMap();
-    /** @type {Map<string, ReturnType<typeof createLiveOperation>>} */
-    const operations = new Map();
+    const operations: Map<string, ReturnType<typeof createLiveOperation>> = new Map();
     const connection = createRunWieldAcpServer({
         runtime,
         sessionStore,

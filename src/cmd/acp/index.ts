@@ -6,7 +6,7 @@ import process from "node:process";
  * ACP stdio command entrypoint.
  */
 
-import { startRunWieldAcpServer } from "../../acp/server.js";
+import { startRunWieldAcpServer } from "../../acp/server.ts";
 
 function writeDiagnostic(message: string): void {
     console.error(`[RunWield ACP] ${message}`);
