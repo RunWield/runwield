@@ -2,11 +2,9 @@ import process from "node:process";
 import { generateGuidedReview } from "../../cmd/guided-review/index.ts";
 import { RuntimeUsageTotals } from "../session/runtime-usage-totals.ts";
 import type { GuidedReviewUsage } from "../../cmd/guided-review/protocol.ts";
-import { runWldJobCommand } from "../../ui/workspace/routes/api/review-agent-handlers.js";
+import { runWldJobCommand, type GuideProgress } from "../../ui/workspace/routes/api/review-agent-handlers.ts";
 
-export interface GuideProgress {
-    onUsage?: (usage: GuidedReviewUsage) => void;
-}
+export type { GuideProgress };
 
 /** The remote view must configure personal resources, settings and the laptop model registry first. */
 export async function runRemoteGuideCommand(

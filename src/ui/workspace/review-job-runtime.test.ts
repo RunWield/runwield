@@ -11,7 +11,7 @@ import { writeRuntimeExecutableFixture } from "../../testing/runtime-executable-
 // A compiled parent must not dispatch its private commands to a different installed wld.
 test("compiled review jobs use their owning executable instead of wld on PATH", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
-        const handler = fileURLToPath(new URL("./routes/api/review-agent-handlers.js", import.meta.url));
+        const handler = fileURLToPath(new URL("./routes/api/review-agent-handlers.ts", import.meta.url));
         const entry = join(projectRoot, "parent.ts");
         await writeFile(
             entry,

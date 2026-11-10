@@ -41,7 +41,7 @@ import {
     createReviewAgentState,
     reviewAgentApi,
     getGuideRunner,
-} from "./routes/api/review-agent-handlers.js";
+} from "./routes/api/review-agent-handlers.ts";
 import {
     resolveWorkspaceFile,
     reviewFileContentApi,

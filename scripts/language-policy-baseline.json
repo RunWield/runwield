@@ -15,7 +15,6 @@
     "src/ui/workspace/components/SessionTimeline.jsx",
     "src/ui/workspace/islands/SessionSurface.jsx",
 
-    "src/ui/workspace/routes/api/review-agent-handlers.js",
     "src/ui/workspace/server.js",
     "src/ui/workspace/server/plan-adapter.js",
     "src/ui/workspace/server/session-continuation.js"

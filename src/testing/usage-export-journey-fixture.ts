@@ -22,7 +22,7 @@ import {
     cleanupReviewAgentState,
     createReviewAgentState,
     reviewAgentApi,
-} from "../ui/workspace/routes/api/review-agent-handlers.js";
+} from "../ui/workspace/routes/api/review-agent-handlers.ts";
 import { createOwnerWorkspaceApp } from "../ui/workspace/server.js";
 import type { OwnerUsageReport } from "../ui/workspace/server/owner-usage.ts";
 

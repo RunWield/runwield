@@ -390,7 +390,7 @@ resources from the skill directory. MCP definitions merge personal then project;
 local stdio subprocesses. Moving text alone does not move resource files or preserve integration location.
 
 `review-launcher.ts` calls `BrowserPort.open`; the review server binds loopback and resolves an in-process pending
-promise. Frontend URLs are same-origin. `review-agent-handlers.js` starts Guided Review as another `wld` process. Whole
+promise. Frontend URLs are same-origin. `review-agent-handlers.ts` starts Guided Review as another `wld` process. Whole
 origin forwarding and inherited remote context fit the existing personal workflow.
 
 Release packaging already creates Linux x64 and ARM64 binaries. The ordinary installer can mutate profiles and install

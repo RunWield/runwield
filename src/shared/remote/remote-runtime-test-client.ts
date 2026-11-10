@@ -39,7 +39,7 @@ import { createGitPort } from "../git-port.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
 import { loadPlanActionEvidence } from "../workflow/plan-actions.ts";
 import { configureRemoteReviewHost } from "../../ui/workspace/server/review-host.ts";
-import { configureGuideRunner } from "../../ui/workspace/routes/api/review-agent-handlers.js";
+import { configureGuideRunner } from "../../ui/workspace/routes/api/review-agent-handlers.ts";
 import { runRemoteGuideCommand } from "./guide-runner.ts";
 import { createRemoteBrowserPort } from "./browser-bridge.ts";
 
