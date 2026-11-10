@@ -13,7 +13,7 @@ try {
 }
 const loadWorkspacePlanDocument = /** @type {() => Promise<{ default: import("react").ComponentType<any> }>} */ (
     workspacePlanDocumentModules["../react/WorkspacePlanDocument.tsx"] ||
-    (() => Promise.resolve({ default: WorkspacePlanDocumentFallback }))
+        (() => Promise.resolve({ default: WorkspacePlanDocumentFallback }))
 );
 const WorkspacePlanDocument = lazy(loadWorkspacePlanDocument);
 
@@ -159,13 +159,25 @@ export function PlanBodyEditor({ plan, initialEdit = false }) {
         try {
             const url = new URL(location.href);
             const token = url.searchParams.get(PLAN_UI_TOKEN_QUERY) || "";
-            const response = await fetch(`/api/plans/${encodeURIComponent(plan.planId)}/body`, {
+            const response = await fetch(plan.documentUrl || `/api/plans/${encodeURIComponent(plan.planId)}/body`, {
                 method: "POST",
                 headers: {
                     "content-type": "application/json",
+                    ...(plan.documentUrl
+                        ? {
+                              "x-runwield-csrf": decodeURIComponent(
+                                  globalThis.document.cookie
+                                      .split("; ")
+                                      .find((entry) => entry.startsWith("rw_owner_csrf="))
+                                      ?.split("=")
+                                      .slice(1)
+                                      .join("=") || "",
+                              ),
+                          }
+                        : {}),
                     ...(token ? { [PLAN_UI_TOKEN_HEADER]: token } : {}),
                 },
-                body: JSON.stringify({ body, expectedBodyHash, expectedRevision }),
+                body: JSON.stringify({ body, expectedBodyHash, expectedRevision, revision: expectedRevision }),
             });
             const payload = await response.json();
             if (response.status === 409) {
@@ -176,8 +188,8 @@ export function PlanBodyEditor({ plan, initialEdit = false }) {
                 setMessage(payload.error || "Unable to save Plan body.");
                 return;
             }
-            const nextHash = payload.bodyHash || payload.plan?.bodyHash || "";
-            setExpectedRevision(payload.plan?.revision || expectedRevision);
+            const nextHash = payload.bodyHash || payload.plan?.bodyHash || payload.revision || "";
+            setExpectedRevision(payload.revision || payload.plan?.revision || expectedRevision);
             setBodyHash(nextHash);
             setExpectedBodyHash(nextHash);
             setSavedBody(body);
@@ -185,64 +197,64 @@ export function PlanBodyEditor({ plan, initialEdit = false }) {
             setDraft(null);
             setMode("read");
             setMessage("Plan body saved.");
+            plan.onSaved?.(payload);
         } finally {
             setSaving(false);
         }
     }
 
     const recovery = draftRecoveryState(draft, bodyHash);
-    const document = clientReady
-        ? (
-            <Suspense fallback={<MarkdownView markdown={mode === "edit" ? body : savedBody} />}>
-                <WorkspacePlanDocument
-                    mode={mode}
-                    markdown={mode === "edit" ? body : savedBody}
-                    documentId={`${plan.planId}:${bodyHash || "initial"}`}
-                    editorHandleRef={editorHandleRef}
-                    onMarkdownChange={setBody}
-                />
-            </Suspense>
-        )
-        : <MarkdownView markdown={savedBody} />;
+    const document = clientReady ? (
+        <Suspense fallback={<MarkdownView markdown={mode === "edit" ? body : savedBody} />}>
+            <WorkspacePlanDocument
+                mode={mode}
+                markdown={mode === "edit" ? body : savedBody}
+                documentId={`${plan.planId}:${bodyHash || "initial"}`}
+                editorHandleRef={editorHandleRef}
+                onMarkdownChange={setBody}
+            />
+        </Suspense>
+    ) : (
+        <MarkdownView markdown={savedBody} />
+    );
 
     return (
         <section className="plan-body-editor" data-editor-mode={mode} data-plannotator-workspace-document>
             <div className="editor-toolbar">
-                {mode === "edit"
-                    ? (
-                        <>
-                            <RunWieldButton
-                                type="button"
-                                variant="primary"
-                                disabled={saving || !dirty}
-                                onClick={saveBody}
-                            >
-                                {saving ? <RunWieldThinkingDots label="Saving" /> : "Save"}
-                            </RunWieldButton>
-                            <RunWieldButton type="button" onClick={cancelEdit}>Cancel</RunWieldButton>
-                            <span className={dirty ? "dirty-indicator" : "saved-indicator"}>
-                                {dirty ? "Unsaved changes" : "No changes"}
-                            </span>
-                        </>
-                    )
-                    : canEdit
-                    ? <RunWieldButton type="button" variant="primary" onClick={startEdit}>Edit</RunWieldButton>
-                    : null}
+                {mode === "edit" ? (
+                    <>
+                        <RunWieldButton type="button" variant="primary" disabled={saving || !dirty} onClick={saveBody}>
+                            {saving ? <RunWieldThinkingDots label="Saving" /> : "Save"}
+                        </RunWieldButton>
+                        <RunWieldButton type="button" onClick={cancelEdit}>
+                            Cancel
+                        </RunWieldButton>
+                        <span className={dirty ? "dirty-indicator" : "saved-indicator"}>
+                            {dirty ? "Unsaved changes" : "No changes"}
+                        </span>
+                    </>
+                ) : canEdit ? (
+                    <RunWieldButton type="button" variant="primary" onClick={startEdit}>
+                        Edit
+                    </RunWieldButton>
+                ) : null}
             </div>
             {message ? <p className="notice editor-notice">{message}</p> : null}
-            {canEdit && draft && mode === "read"
-                ? (
-                    <div className={recovery === "changed-on-disk" ? "notice warning" : "notice"}>
-                        {recovery === "changed-on-disk"
-                            ? "A local draft exists, but this Plan changed on disk. Restore only if you want to copy or merge it manually."
-                            : "A local unsaved draft is available for this Plan body."}
-                        <div className="inline-actions">
-                            <RunWieldButton type="button" onClick={restoreDraft}>Restore draft</RunWieldButton>
-                            <RunWieldButton type="button" onClick={discardDraft}>Discard draft</RunWieldButton>
-                        </div>
+            {canEdit && draft && mode === "read" ? (
+                <div className={recovery === "changed-on-disk" ? "notice warning" : "notice"}>
+                    {recovery === "changed-on-disk"
+                        ? "A local draft exists, but this Plan changed on disk. Restore only if you want to copy or merge it manually."
+                        : "A local unsaved draft is available for this Plan body."}
+                    <div className="inline-actions">
+                        <RunWieldButton type="button" onClick={restoreDraft}>
+                            Restore draft
+                        </RunWieldButton>
+                        <RunWieldButton type="button" onClick={discardDraft}>
+                            Discard draft
+                        </RunWieldButton>
                     </div>
-                )
-                : null}
+                </div>
+            ) : null}
             <div className={mode === "edit" ? "workspace-plan-document is-editing" : "workspace-plan-document"}>
                 {document}
             </div>

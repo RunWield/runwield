@@ -1,4 +1,5 @@
 // @ts-nocheck: server module uses the repository's JSDoc JavaScript style while keeping the TypeScript production extension.
+import { capturePackageWorkflowAccess } from "../../../shared/workflow/package-workflow.ts";
 /** @module ui/workspace/server/workspace-search */
 
 import { mkdirSync, renameSync } from "node:fs";
@@ -14,6 +15,7 @@ import { projectAggregateTranscript } from "../../../shared/session/session-tran
 import { getWorkspaceSearchRefreshMarker } from "../../../shared/workspace-search-refresh.ts";
 import {
     assertReadablePlanResource,
+    assertReadableWorkRecordPath,
     assertContainedProjectPath,
     domainLanguagePaths,
     readSafeProjectMarkdown,
@@ -172,7 +174,7 @@ async function scanProjectDocuments(root) {
     documents.push(
         ...(await readSearchDocuments("Work Record reader", async () => {
             try {
-                await assertContainedProjectPath(root, getWorkRecordsDir(root));
+                await assertReadableWorkRecordPath(root, getWorkRecordsDir(root));
             } catch (error) {
                 if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
                 throw error;
@@ -181,7 +183,7 @@ async function scanProjectDocuments(root) {
             const records = await listWorkRecords(root, { createDir: false });
             const recordIds = new Map();
             for (const record of records) {
-                await assertContainedProjectPath(root, record.path);
+                await assertReadableWorkRecordPath(root, record.path);
                 const id = record.attrs.recordId.toLowerCase();
                 recordIds.set(id, (recordIds.get(id) || 0) + 1);
             }
@@ -425,7 +427,7 @@ async function hydrateCandidate(root, row, store, catalogs) {
         };
     }
     if (row.content_type === "work-record") {
-        await assertContainedProjectPath(root, getWorkRecordsDir(root));
+        await assertReadableWorkRecordPath(root, getWorkRecordsDir(root));
         const records = (
             await cachedCatalog(catalogs, `${row.project_id}:work-record`, () =>
                 listWorkRecords(root, { createDir: false }),
@@ -435,7 +437,7 @@ async function hydrateCandidate(root, row, store, catalogs) {
             throw new Error("Work Record is not current.");
         }
         const record = records[0];
-        await assertContainedProjectPath(root, record.path);
+        await assertReadableWorkRecordPath(root, record.path);
         const facts = markdownFacts(record.markdown);
         return {
             ...row,
@@ -469,6 +471,7 @@ async function hydrateCandidate(root, row, store, catalogs) {
 
 /** @param {{ store: import('../../../shared/owner-coordination/index.js').OwnerCoordinationStore, dbPath?: string, scanIntervalMs?: number }} options */
 export function createWorkspaceSearchService(options) {
+    const packageAccess = capturePackageWorkflowAccess();
     const dbPath =
         options.dbPath ||
         (options.store.path === ":memory:"
@@ -506,7 +509,7 @@ export function createWorkspaceSearchService(options) {
                 projectStates.set(project.projectId, { state: "indexing" });
                 try {
                     const root = options.store.requireEnabledProjectRoot(project.projectId);
-                    const documents = await scanProjectDocuments(root);
+                    const documents = await packageAccess(root, () => scanProjectDocuments(root));
                     documents.push(
                         ...(await readSearchDocuments("Session reader", () =>
                             scanSessionDocuments(options.store, project.projectId, root),
@@ -643,7 +646,7 @@ export function createWorkspaceSearchService(options) {
         for (const row of rows) {
             try {
                 const root = options.store.requireEnabledProjectRoot(String(row.project_id));
-                const hydrated = await hydrateCandidate(root, row, options.store, catalogs);
+                const hydrated = await packageAccess(root, () => hydrateCandidate(root, row, options.store, catalogs));
                 const candidate = /** @type {SearchDocument} */ {
                     projectId: String(row.project_id),
                     projectName: String(row.project_name),

@@ -316,6 +316,15 @@ extend the [Codex qualification evidence](#codex-acceptance) or claim an unobser
 
 ### Shared Plan and verification outcomes
 
+**Internally admitted package path:** Connect submits and reads the same home Plan identity through Core. Implementation
+context reports the authoritative document path and revision. A restricted host must use an existing authorized root;
+if it denies access and offers no authorized document route, the action stops with a request for that directory's
+permission. Core does not grant host roots or create repository links or copies. The host owns enforcement of its
+filesystem permissions. Public default package admission remains target scope.
+
+**Acceptance:** Submit an internally admitted home Plan without creating repository Plan Markdown, then read the same
+identity in a fresh admitted call. A host permission failure must not be reported as successful Plan access.
+
 **Scope and maturity:** The Claude FEATURE Preview delivers Plan review, Feedback, approval, and readiness through
 Plannotator and Core. Review decisions are durable before browser acknowledgment. Claude retrieves Feedback and image
 paths explicitly with current instructions, revises the Plan, and submits the next round into the same browser page. Cancellation returns to

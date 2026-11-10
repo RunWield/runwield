@@ -22,6 +22,7 @@ type WorkspacePlanAttrs = {
 
 type WorkspacePlanDetail = {
     readAvailability?: PlanReadAvailability;
+    packageDocument?: Awaited<ReturnType<typeof import("../../../../../../shared/workflow/plan-documents.ts").readPlanDocuments>>;
     planName?: string;
     title?: string;
     status?: string;
@@ -130,6 +131,8 @@ const canRecover = false;
 const planHomePayload = plan
     ? {
         mode: "workspace",
+        packageDocument: plan.packageDocument,
+        documentUrl: plan.packageDocument ? `/api/owner/projects/${encodeURIComponent(projectId)}/plans/${encodeURIComponent(planId)}/documents` : undefined,
         planId,
         planName: plan.planName,
         title: plan.title || plan.planName || planId,

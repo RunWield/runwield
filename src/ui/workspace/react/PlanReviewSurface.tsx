@@ -1,4 +1,5 @@
 // @ts-nocheck: Workspace React islands compile TSX, but this module uses JSDoc-style JavaScript only.
+import { ArtifactReadSurface } from "./ArtifactReadSurface.tsx";
 import { RunWieldPanelIcon } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 import { PlanQuestionBlocks } from "./PlanQuestionBlocks.tsx";
 import { parsePlanQuestions } from "../../../shared/plan-questions.ts";
@@ -73,6 +74,38 @@ function isStaleReviewError(message) {
 
 export function PlanReviewSurface({ payload, presentation = "standalone" }) {
     const source = payload || readEmbeddedPayload("review-payload") || DEFAULT_PLAN_PAYLOAD;
+    const [document, setDocument] = useState("context.md");
+    const choices = source.documentRevision ? Object.keys(source.linkedFiles || {}) : [];
+    if (choices.length > 1)
+        return (
+            <>
+                <div className="rw-plan-document-controls">
+                    <label htmlFor="review-document">Document</label>
+                    <select id="review-document" value={document} onChange={(event) => setDocument(event.target.value)}>
+                        {choices.map((name) => (
+                            <option key={name} value={name}>
+                                {name.replace(/\.md$/, "")}
+                            </option>
+                        ))}
+                    </select>
+                    <span>Revision {source.documentRevision.slice(0, 12)}</span>
+                </div>
+                <div hidden={document !== "context.md"}>
+                    <PlanReviewDocument payload={source} presentation={presentation} />
+                </div>
+                {document !== "context.md" && (
+                    <ArtifactReadSurface
+                        payload={{
+                            markdown: source.linkedFiles[document],
+                            title: document,
+                            mode: source.mode,
+                            artifactKind: "plan",
+                        }}
+                        embedded
+                    />
+                )}
+            </>
+        );
     return source.sequenceDocuments?.length ? (
         <SequenceReviewSurface payload={source} presentation={presentation} />
     ) : (
@@ -377,21 +410,37 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
         (requestedPath) => {
             const filePath = requestedPath.replace(/#.*$/, "").replace(/:\d+(?:-\d+)?$/, "");
             const devContents = initialPayload.linkedFiles?.[filePath];
-            if (initialPayload.mode === "dev") {
+            if (initialPayload.mode === "dev" || typeof devContents === "string") {
                 const body =
                     typeof devContents === "string"
                         ? { codeFile: true, contents: devContents, filepath: filePath }
                         : { codeFile: false, error: `File not found in project: ${filePath}` };
                 return `data:application/json;charset=utf-8,${encodeURIComponent(JSON.stringify(body))}`;
             }
-            const params = new URLSearchParams({ path: requestedPath, base: "docs/plans" });
+            const contextPath = initialPayload.planName
+                ? `docs/plans/${initialPayload.planName}.md`
+                : initialPayload.planPath || "docs/plans/plan.md";
+            const projectPath = contextPath.includes("/docs/plans/")
+                ? `docs/plans/${contextPath.split("/docs/plans/").pop()}`
+                : contextPath;
+            const base = projectPath.startsWith("docs/plans/")
+                ? projectPath.slice(0, projectPath.lastIndexOf("/"))
+                : "docs/plans";
+            const params = new URLSearchParams({ path: requestedPath, base });
             if (initialPayload.mode === "workspace" && initialPayload.projectId) {
+                if (initialPayload.documentRevision) params.set("planId", initialPayload.planId);
                 return `/api/owner/projects/${encodeURIComponent(initialPayload.projectId)}/files/content?${params}`;
             }
             params.set("token", initialPayload.token);
             return `/api/file-content?${params}`;
         },
-        [initialPayload.linkedFiles, initialPayload.mode, initialPayload.projectId, initialPayload.token],
+        [
+            initialPayload.linkedFiles,
+            initialPayload.mode,
+            initialPayload.projectId,
+            initialPayload.token,
+            initialPayload.planPath,
+        ],
     );
     const codeFilePopout = useCodeFilePopout({ buildUrl: buildFileContentUrl });
     const trustedPolicy = readPlanReviewExecutionPolicy(initialPayload, parsed.frontmatter);
@@ -1901,7 +1950,11 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
             "x-runwield-review-token": initialPayload.token,
         };
         if (initialPayload.csrfToken) headers["x-runwield-csrf"] = initialPayload.csrfToken;
-        body = { ...body, ...reviewRevisionFields };
+        body = {
+            ...body,
+            ...reviewRevisionFields,
+            ...(initialPayload.documentRevision ? { documentRevision: initialPayload.documentRevision } : {}),
+        };
         const requestId = crypto.randomUUID();
         const response = await fetch(targetUrl, {
             method: "POST",
@@ -1934,7 +1987,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
             return payload;
         }
         if (!response.ok) {
-            const message = payload?.error || `Decision failed: ${response.status}`;
+            const message = payload?.message || payload?.error || `Decision failed: ${response.status}`;
             setError(message || `Decision failed: ${response.status}`);
             throw new Error(message || `Decision failed: ${response.status}`);
         }

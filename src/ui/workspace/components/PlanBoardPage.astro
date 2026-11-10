@@ -78,6 +78,11 @@ const pageTitle = context === "workspace" ? `${heading} · RunWield Workspace` :
             <p>{error.repair}</p>
         </section>
     ) : (
-        <PlanBoard board={board} view={view} url={Astro.url.href} client:load />
+        <>
+            {view === "active" && board?.plans.length === 0 && !board?.diagnostics.length && (
+                <p class="empty">No Plans are available. Import existing Plans explicitly through RunWield; opening this view does not import files.</p>
+            )}
+            <PlanBoard board={board} view={view} url={Astro.url.href} client:load />
+        </>
     )}
 </WorkspaceLayout>

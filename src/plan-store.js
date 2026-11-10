@@ -2827,6 +2827,29 @@ export async function updatePlanFrontMatter(cwd, planName, updates, recoveryAttr
  * @returns {Promise<PlanFrontMatter>}
  */
 export async function updatePlanCollaborationMetadata(cwd, planName, updates, collaborationLockBypass, options = {}) {
+    const selection = currentPackageSelection();
+    if (selection)
+        return await packageWorkflowLocks([planName], async () => {
+            const plan = await selectedPackage(planName);
+            const view = await loadPackageWorkflowPlan({ planId: plan.metadata.planId });
+            assertSharedPlanWriteAllowed(view.attrs, { collaborationLockBypass });
+            const collaboration = normalizeCollaborationFrontMatter(updates);
+            const next = Object.fromEntries(Object.entries(collaboration).filter(([, value]) => value !== undefined));
+            if (typeof options.body === "string") {
+                const document = plan.documents.find((entry) => entry.name === "context.md");
+                if (!document) throw new Error("Plan context is unavailable.");
+                await savePlanPackageDocument(
+                    selection.identity,
+                    plan.metadata.planId,
+                    "context.md",
+                    document.hash,
+                    options.body,
+                );
+                next.collaborationBodyHash = await hashPlanBody(options.body);
+            }
+            // Remote metadata never replaces the local lifecycle, controller, or execution binding.
+            return await updatePackageWorkflowMetadata({ planId: plan.metadata.planId }, next);
+        });
     cwd = (await resolveWorkflowPlanLocation(cwd, planName)).documentRoot;
     return await withPlanLock(cwd, planName, async () => {
         const plan = await prepareStoredPlan(cwd, planName);
@@ -4225,10 +4248,7 @@ export async function onboardExternalPlan(cwd, planName, options = {}) {
  * @returns {Promise<PlanResource[]>}
  */
 export async function listPlanResources(cwd) {
-    if (currentPackageSelection())
-        return await Promise.all(
-            (await listPlans(cwd)).map((plan) => findPlanEvidenceById(cwd, plan.attrs.planId || "")),
-        );
+    if (currentPackageSelection()) return (await readPlanResourceCatalog(cwd)).resources;
     return (await readPlanResources(cwd, false)).resources;
 }
 
@@ -4238,6 +4258,31 @@ export async function listPlanResources(cwd) {
  * @returns {Promise<{ resources: PlanResource[], diagnostics: PlanDocumentDiagnostic[] }>}
  */
 export async function readPlanResourceCatalog(cwd) {
+    const selection = currentPackageSelection();
+    if (selection) {
+        const catalog = await listPlanPackages(selection.identity);
+        const resources = await Promise.all(
+            catalog.packages.map(async (entry) => {
+                const loaded = await loadPackageWorkflowPlan({ planId: entry.metadata.planId });
+                return {
+                    ...loaded,
+                    planName: entry.metadata.name,
+                    name: entry.metadata.name,
+                    planId: entry.metadata.planId,
+                    relativePath: `plans/${entry.metadata.planId}/context.md`,
+                };
+            }),
+        );
+        return {
+            resources,
+            diagnostics: catalog.issues.map((issue) => ({
+                name: "Plan package",
+                path: issue.path,
+                kind: "malformed",
+                message: issue.message,
+            })),
+        };
+    }
     return await readPlanResources(cwd, true);
 }
 
@@ -4359,6 +4404,17 @@ export async function findPlanById(cwd, planId) {
  * @returns {Promise<PlanResource>}
  */
 export async function findPlanEvidenceById(cwd, planId) {
+    if (currentPackageSelection()) {
+        const plan = await loadPackageWorkflowPlan({ planId });
+        const entry = await selectedPackage({ planId });
+        return {
+            ...plan,
+            name: entry.metadata.name,
+            planName: entry.metadata.name,
+            planId: entry.metadata.planId,
+            relativePath: `plans/${entry.metadata.planId}/context.md`,
+        };
+    }
     return await withProjectRuntimeReadScope(async () => {
         const normalized = normalizePlanId(planId);
         if (!normalized) throw new Error("Plan ID cannot be empty");
@@ -4436,11 +4492,16 @@ export async function loadPlanBodyById(cwd, planId) {
 export async function savePlanBodyById(cwd, planId, newBody, expectedBodyHash, options = {}) {
     const selection = currentPackageSelection();
     if (selection) {
-        const resource = await findPlanEvidenceById(cwd, planId);
-        const actual = await hashPlanBody(resource.body);
-        if (actual !== expectedBodyHash) throw new StalePlanBodyError(expectedBodyHash, actual);
-        await savePlanPackageDocument(selection.identity, planId, "context.md", actual, newBody);
-        return { ...(await findPlanEvidenceById(cwd, planId)), bodyHash: await hashPlanBody(newBody) };
+        return await packageWorkflowLocks([{ planId }], async () => {
+            const resource = await findPlanEvidenceById(cwd, planId);
+            assertSharedPlanWriteAllowed(resource.attrs, options);
+            if (options.expectedRevision !== resource.revision)
+                throw new StalePlanWriteError(options.expectedRevision || "required", resource.revision);
+            const actual = await hashPlanBody(resource.body);
+            if (actual !== expectedBodyHash) throw new StalePlanBodyError(expectedBodyHash, actual);
+            await savePlanPackageDocument(selection.identity, planId, "context.md", actual, newBody);
+            return { ...(await findPlanEvidenceById(cwd, planId)), bodyHash: await hashPlanBody(newBody) };
+        });
     }
     await prepareWorktreeRegistry(cwd);
     return await withPlanCatalogLock(cwd, async () => {

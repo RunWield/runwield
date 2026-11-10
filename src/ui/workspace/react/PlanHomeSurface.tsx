@@ -1,4 +1,5 @@
 // @ts-nocheck: Workspace React islands compile TSX, but this module uses JSDoc-style JavaScript only.
+import { PlanBodyEditor } from "../islands/PlanBodyEditor.jsx";
 import { submitWorkflowAction } from "../browser/workflow-action.ts";
 
 import { useEffect, useMemo, useState } from "react";
@@ -70,6 +71,20 @@ function buildPresentation(payload, progress) {
 }
 
 export function PlanHomeSurface({ payload, presentation = "standalone" }) {
+    const [document, setDocument] = useState(payload.packageDocument || null);
+    const [documentError, setDocumentError] = useState("");
+    const [documentLoading, setDocumentLoading] = useState(false);
+    async function selectDocument(name) {
+        setDocumentLoading(true);
+        setDocumentError("");
+        try {
+            setDocument(await ownerFetch(`${payload.documentUrl}/${encodeURIComponent(name)}`));
+        } catch (error) {
+            setDocumentError(error.message);
+        } finally {
+            setDocumentLoading(false);
+        }
+    }
     const [progress, setProgress] = useState(payload.workflow || null);
     useEffect(() => {
         if (!payload.progressApiUrl) return;
@@ -126,7 +141,7 @@ export function PlanHomeSurface({ payload, presentation = "standalone" }) {
 
     const artifactPayload = useMemo(
         () => ({
-            markdown: payload.markdown || payload.body || "",
+            markdown: document?.body || payload.markdown || payload.body || "",
             mode: payload.mode || "dev",
             artifactKind: "plan",
             title: payload.title || payload.planName || "Plan",
@@ -144,7 +159,7 @@ export function PlanHomeSurface({ payload, presentation = "standalone" }) {
                 ),
             ],
         }),
-        [payload, progress],
+        [payload, progress, document],
     );
     const workflow = useMemo(() => buildPresentation(payload, progress), [payload, progress]);
 
@@ -154,6 +169,63 @@ export function PlanHomeSurface({ payload, presentation = "standalone" }) {
             embedded={presentation === "workspace"}
             showLogo={false}
             contentsInitiallyOpen={false}
+            documentContent={
+                document && (
+                    <section
+                        className="rw-plan-documents"
+                        aria-label="Plan documents"
+                        onClick={(event) => {
+                            const anchor = event.target.closest?.("a");
+                            const target = anchor?.getAttribute("href");
+                            if (document.documents.some((entry) => entry.name === target)) {
+                                event.preventDefault();
+                                void selectDocument(target);
+                            }
+                        }}
+                    >
+                        <div className="rw-plan-document-controls">
+                            <label htmlFor="plan-document">Document</label>{" "}
+                            <select
+                                id="plan-document"
+                                value={document.resource}
+                                disabled={documentLoading}
+                                onChange={(event) => selectDocument(event.target.value)}
+                            >
+                                {document.documents.map((entry) => (
+                                    <option key={entry.name} value={entry.name}>
+                                        {entry.role}
+                                    </option>
+                                ))}
+                            </select>{" "}
+                            <button
+                                type="button"
+                                className="rw-button"
+                                disabled={documentLoading}
+                                onClick={() => selectDocument(document.resource)}
+                            >
+                                Refresh
+                            </button>
+                        </div>
+                        <p role="status">
+                            {documentLoading ? "Loading document…" : `Revision ${document.revision.slice(0, 12)}`}
+                        </p>
+                        {documentError && <p role="alert">{documentError}</p>}
+                        <PlanBodyEditor
+                            key={`${document.resource}:${document.revision}`}
+                            plan={{
+                                planId: `${payload.planId}:${document.resource}`,
+                                workspaceKey: payload.documentUrl,
+                                body: document.body,
+                                bodyHash: document.revision,
+                                revision: document.revision,
+                                capabilities: { bodyEditing: document.writable },
+                                documentUrl: `${payload.documentUrl}/${encodeURIComponent(document.resource)}`,
+                                onSaved: setDocument,
+                            }}
+                        />
+                    </section>
+                )
+            }
             workflowSidebar={
                 <WorkflowSidebar
                     presentation={workflow}

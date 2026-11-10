@@ -254,6 +254,8 @@ export type AttachedNextAction = (
           kind: "implementation";
           planName: string;
           planPath: string;
+          planRevision?: string;
+          documentAccess?: string;
           executionCwd: string;
           executionMode: string;
           worktreeBranch?: string;

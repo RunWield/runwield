@@ -36,6 +36,7 @@ import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../..
  * @typedef {Object} ReviewRequestFields
  * @property {string} [executionAgent]
  * @property {string} [collaborationRecommendation]
+ * @property {string} [documentRevision]
  * @property {number} [reviewRevision]
  * @property {string} [approvalAction]
  * @property {"plan" | "code"} [reviewType]
@@ -44,6 +45,7 @@ import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../..
  * @typedef {Omit<ReviewDecision, "executionAgent" | "collaborationRecommendation" | "approvalAction"> & ReviewRequestFields} ReviewRequestBody
  *
  * @typedef {Object} ReviewPayload
+ * @property {string} [documentRevision]
  * @property {number} [reviewRevision]
  * @property {string} [classification]
  * @property {Pick<import("../../../../plan-store.js").PlanFrontMatter, "classification">} [frontmatter]
@@ -257,6 +259,9 @@ async function resolveFromRequest(ctx, createDecision) {
         body = {};
     }
 
+    const documentRevision = ctx.state?.reviewPayload?.documentRevision;
+    if (documentRevision && body.documentRevision !== documentRevision)
+        return jsonError("stale_plan_review", "Plan documents changed. Refresh the review; your draft was kept.", 409);
     const expectedRevision = ctx.state?.reviewPayload?.reviewRevision;
     if (expectedRevision !== undefined && body?.reviewRevision !== expectedRevision) {
         return jsonError(

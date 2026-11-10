@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 // @ts-nocheck: The live session and owner service expose JavaScript records.
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
@@ -79,8 +80,8 @@ async function withRemoteReview(changePlan, expectDecision) {
         try {
             let operation;
             for (let index = 0; index < 400; index++) {
-                operation =
-                    (await service.liveSession(fixture.project.projectId, fixture.session.runwieldSessionId)).operation;
+                operation = (await service.liveSession(fixture.project.projectId, fixture.session.runwieldSessionId))
+                    .operation;
                 if (operation?.liveInteraction?.request?.reviewUrl) break;
                 await new Promise((resolve) => setTimeout(resolve, 25));
             }
@@ -133,19 +134,94 @@ test("Workspace approves the original Plan from a live TUI review", async () => 
 });
 
 test("Workspace rejects a changed Plan from a live TUI review", async () => {
-    await withRemoteReview(async (root) => {
-        const current = await loadPlan(root, "saved");
-        await savePlan(root, "saved", "# Saved\n\n## Context\n\nChanged after review opened.\n", current.attrs, {
-            expectedRevision: current.revision,
+    await withRemoteReview(
+        async (root) => {
+            const current = await loadPlan(root, "saved");
+            await savePlan(root, "saved", "# Saved\n\n## Context\n\nChanged after review opened.\n", current.attrs, {
+                expectedRevision: current.revision,
+            });
+        },
+        async (answer, root) => {
+            let error;
+            try {
+                await answer();
+            } catch (cause) {
+                error = cause;
+            }
+            assert(error, "The changed Plan must not be approved");
+            assertStringIncludes((await loadPlan(root, "saved")).body, "Changed after review opened.");
+        },
+    );
+});
+
+test("ordinary Core browser review rejects a concurrent package edit and reloads the admitted input", async () => {
+    const { packageFixture, create, read } = await import("../../shared/testing/plan-package-fixture.ts");
+    const { withPackageWorkflow, loadPackageWorkflowPlan } = await import("../../shared/workflow/package-workflow.ts");
+    const { submitPlanForReview } = await import("../review/plan-review.ts");
+    const { savePlanDocument } = await import("../../shared/workflow/plan-documents.ts");
+    const { equal } = await import("node:assert/strict");
+    const f = await packageFixture();
+    const abort = new AbortController();
+    let completion;
+    try {
+        const plan = await create(f.identity, {
+            definition: {
+                classification: "PLANNED_CHANGE",
+                status: "draft",
+                executionAgent: "engineer",
+                collaborationRecommendation: "pair",
+            },
         });
-    }, async (answer, root) => {
-        let error;
-        try {
-            await answer();
-        } catch (cause) {
-            error = cause;
-        }
-        assert(error, "The changed Plan must not be approved");
-        assertStringIncludes((await loadPlan(root, "saved")).body, "Changed after review opened.");
-    });
+        let opened;
+        const ready = new Promise((resolve) => {
+            opened = resolve;
+        });
+        completion = withPackageWorkflow(
+            f.root,
+            { identity: f.identity, planId: "plan-one", expectedRevision: 1 },
+            () =>
+                submitPlanForReview({
+                    cwd: f.root,
+                    planName: "one",
+                    planPath: join(plan.path, "context.md"),
+                    signal: abort.signal,
+                    browser: { open: () => Promise.resolve(false) },
+                    onSurfaceReady: opened,
+                }),
+        );
+        const surface = await ready;
+        const page = await fetch(surface.url);
+        equal(page.status, 200);
+        const first = await withPackageWorkflow(
+            f.root,
+            { identity: f.identity, planId: "plan-one", expectedRevision: 1 },
+            async () => await loadPackageWorkflowPlan({ planId: "plan-one" }),
+        );
+        await withPackageWorkflow(f.root, { identity: f.identity, planId: "plan-one", expectedRevision: 1 }, () =>
+            savePlanDocument("plan-one", "validation.md", first.revision, "# Changed validation\n"),
+        );
+        const url = new URL(surface.url);
+        url.pathname = "/api/review/decision";
+        const decide = (revision) =>
+            fetch(url, {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ approved: true, approvalAction: "later", documentRevision: revision }),
+            });
+        equal((await decide(first.revision)).status, 409);
+        equal((await read(f.identity)).metadata.definition.status, "draft");
+        equal((await fetch(surface.url)).status, 200);
+        const current = await withPackageWorkflow(
+            f.root,
+            { identity: f.identity, planId: "plan-one", expectedRevision: 1 },
+            async () => await loadPackageWorkflowPlan({ planId: "plan-one" }),
+        );
+        equal((await decide(current.revision)).status, 200);
+        const result = await completion;
+        assert(result.approved, JSON.stringify(result));
+    } finally {
+        abort.abort();
+        await completion;
+        await f.cleanup();
+    }
 });

@@ -89,3 +89,8 @@ export async function withWorkRecordMutation<T>(run: () => Promise<T>): Promise<
         lock.close();
     }
 }
+
+/** A registered legacy Project must not inherit another Project's personal authority. */
+export function withoutWorkRecordOwner<T>(run: () => Promise<T>): Promise<T> {
+    return owners.exit(run);
+}

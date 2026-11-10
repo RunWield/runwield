@@ -185,7 +185,7 @@ test("ACP load queues a prompt while Workspace owns activation and sends it afte
                 for (let index = 0; index < 200; index++) {
                     const idle =
                         workspace.inspectSessionActivation(fixture.session.runwieldSessionId).activation?.state ===
-                            "idle";
+                        "idle";
                     if (fixture.modelRequests.length === 2 && idle) break;
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
@@ -205,16 +205,20 @@ test("ACP load queues a prompt while Workspace owns activation and sends it afte
                 for (let index = 0; index < 200; index++) {
                     const idle =
                         workspace.inspectSessionActivation(fixture.session.runwieldSessionId).activation?.state ===
-                            "idle";
+                        "idle";
                     if (fixture.modelRequests.length === 3 && idle) break;
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
                 assertEquals(fixture.modelRequests.length, 3);
-                const acceptedGeneration =
-                    workspace.inspectSessionActivation(fixture.session.runwieldSessionId).generation;
+                const acceptedGeneration = workspace.inspectSessionActivation(
+                    fixture.session.runwieldSessionId,
+                ).generation;
                 assertEquals(acceptedGeneration?.generation, 4);
                 assertEquals(acceptedGeneration?.currentSegmentId, "acp-successor-segment");
-                assertEquals(server.diagnostics.every((message) => !message.trim().startsWith("{")), true);
+                assertEquals(
+                    server.diagnostics.every((message) => !message.trim().startsWith("{")),
+                    true,
+                );
             } finally {
                 await closeTestServer(server).catch(() => {});
                 workspace.close();
@@ -222,4 +226,65 @@ test("ACP load queues a prompt while Workspace owns activation and sends it afte
             }
         },
     );
+});
+
+test("ACP protocol load-plan reads the same admitted home Plan after a document revision", async () => {
+    const { admitProjectIdentity } = await import("../shared/project-identity.ts");
+    const { create } = await import("../shared/testing/plan-package-fixture.ts");
+    const { withPackageWorkflow, loadPackageWorkflowPlan } = await import("../shared/workflow/package-workflow.ts");
+    const { savePlanDocument } = await import("../shared/workflow/plan-documents.ts");
+    await withRuntimeCommandFixture("acp-home-plan-", async ({ projectRoot }) => {
+        const identity = await admitProjectIdentity(projectRoot);
+        assert(identity.kind === "existing");
+        await create(identity.identity, {
+            definition: { classification: "PLANNED_CHANGE", status: "draft", summary: "Canonical ACP Plan" },
+        });
+        const selection = { identity: identity.identity, planId: "plan-one", expectedRevision: 1 };
+        const revision = await withPackageWorkflow(projectRoot, selection, async () => {
+            const current = await loadPackageWorkflowPlan({ planId: "plan-one" });
+            return await savePlanDocument(
+                "plan-one",
+                "context.md",
+                current.revision,
+                "# Canonical ACP Plan\n\n## Objective\n\nEdited shared home revision.\n",
+            );
+        });
+        for (let connection = 0; connection < 2; connection++) {
+            const server = await withPackageWorkflow(projectRoot, selection, async () => await startTestServer());
+            try {
+                await sendMessage(server, {
+                    jsonrpc: "2.0",
+                    id: "package-new",
+                    method: "session/new",
+                    params: { cwd: projectRoot, mcpServers: [] },
+                });
+                const created = await readThroughResponse(server, "package-new");
+                const result = created.response.result as { sessionId: string };
+                assert(result?.sessionId, JSON.stringify(created));
+                const prompt = async (text: string) => {
+                    const id = crypto.randomUUID();
+                    await sendMessage(server, {
+                        jsonrpc: "2.0",
+                        id,
+                        method: "session/prompt",
+                        params: { sessionId: result.sessionId, prompt: [{ type: "text", text }] },
+                    });
+                    return await readThroughResponse(server, id);
+                };
+                const loaded = await prompt("/load-plan one");
+                assert(JSON.stringify(loaded.messages).includes("Plan loaded: one"), JSON.stringify(loaded));
+                const details = await prompt("View plan details");
+                assert(
+                    JSON.stringify(details.messages).includes("Edited shared home revision"),
+                    JSON.stringify(details),
+                );
+                await prompt("Cancel");
+                await withPackageWorkflow(projectRoot, selection, async () => {
+                    assertEquals((await loadPackageWorkflowPlan({ planId: "plan-one" })).revision, revision.revision);
+                });
+            } finally {
+                await closeTestServer(server);
+            }
+        }
+    });
 });

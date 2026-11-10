@@ -1,4 +1,4 @@
-import { withWorkRecordOwner } from "../work-records/owner.ts";
+import { withWorkRecordOwner, withoutWorkRecordOwner } from "../work-records/owner.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { validationCheckpointCanResume } from "./validation-checkpoint.ts";
 import { journalPackageMetadataWrite } from "./state-transition.ts";
@@ -552,4 +552,30 @@ export async function reservePackageExecution(
             },
         },
     });
+}
+
+/** Retain an explicit admission across requests; resolve fresh revisions under its verified owner. */
+export function capturePackageWorkflowAccess() {
+    const admitted = currentPackageSelection();
+    return async function access<T>(cwd: string, run: () => Promise<T>): Promise<T> {
+        if (!admitted) return await sources.exit(() => withoutWorkRecordOwner(run));
+        const inspected = inspectProjectIdentity(cwd);
+        if (
+            inspected.kind !== "existing" ||
+            inspected.identity.projectId !== admitted.identity.projectId ||
+            inspected.identity.personalOwner.identity !== admitted.identity.personalOwner.identity
+        )
+            return await sources.exit(() => withoutWorkRecordOwner(run));
+        const selected = await readPlanPackage(inspected.identity, { planId: admitted.planId });
+        if (selected.kind !== "loaded") throw new Error(selected.message);
+        return await withPackageWorkflow(
+            cwd,
+            {
+                ...admitted,
+                identity: inspected.identity,
+                expectedRevision: selected.metadata.revision,
+            },
+            run,
+        );
+    };
 }

@@ -35,13 +35,19 @@ function workspaceNavigate(href) {
     if (document.dispatchEvent(event)) globalThis.location.assign(href);
 }
 
-export function ArtifactReadSurface(
-    { payload, workflowSidebar = null, showLogo = true, contentsInitiallyOpen = true, embedded = false },
-) {
+export function ArtifactReadSurface({
+    payload,
+    workflowSidebar = null,
+    documentContent = null,
+    showLogo = true,
+    contentsInitiallyOpen = true,
+    embedded = false,
+}) {
     useDocumentPrintMode();
-    const initialPayload = useMemo(() => payload || readEmbeddedPayload("review-payload") || DEFAULT_READ_PAYLOAD, [
-        payload,
-    ]);
+    const initialPayload = useMemo(
+        () => payload || readEmbeddedPayload("review-payload") || DEFAULT_READ_PAYLOAD,
+        [payload],
+    );
     const markdown = initialPayload.markdown || initialPayload.plan || "";
     const artifactKind = initialPayload.artifactKind || "report";
     const artifactLabel = sessionArtifactKindLabel(artifactKind);
@@ -55,8 +61,8 @@ export function ArtifactReadSurface(
     const [closeBlocked, setCloseBlocked] = useState(false);
     const [error, setError] = useState("");
     const uiPreferences = useMemo(() => getUIPreferences(), []);
-    const [sidebarOpen, setSidebarOpen] = useState(() =>
-        contentsInitiallyOpen && !globalThis.matchMedia("(max-width: 980px)").matches && uiPreferences.tocEnabled
+    const [sidebarOpen, setSidebarOpen] = useState(
+        () => contentsInitiallyOpen && !globalThis.matchMedia("(max-width: 980px)").matches && uiPreferences.tocEnabled,
     );
     const [workflowOpen, setWorkflowOpen] = useState(() => !globalThis.matchMedia("(max-width: 980px)").matches);
     useEffect(() => {
@@ -128,14 +134,16 @@ export function ArtifactReadSurface(
             onClick={closeReadSurface}
             disabled={closing || closed}
         >
-            {initialPayload.returnHref || initialPayload.launch === "project"
-                ? initialPayload.returnLabel ||
-                    (initialPayload.launch === "project" ? "Back to Search" : "Back to Session")
-                : closing
-                ? <RunWieldThinkingDots label="Closing" />
-                : closed
-                ? "Closed"
-                : "Close"}
+            {initialPayload.returnHref || initialPayload.launch === "project" ? (
+                initialPayload.returnLabel ||
+                (initialPayload.launch === "project" ? "Back to Search" : "Back to Session")
+            ) : closing ? (
+                <RunWieldThinkingDots label="Closing" />
+            ) : closed ? (
+                "Closed"
+            ) : (
+                "Close"
+            )}
         </button>
     );
 
@@ -154,27 +162,25 @@ export function ArtifactReadSurface(
                     data-artifact-kind={artifactKind}
                     data-workflow-open={Boolean(workflowSidebar && workflowOpen)}
                 >
-                    {embedded
-                        ? <WorkspaceHeaderActionsPortal>{closeAction}</WorkspaceHeaderActionsPortal>
-                        : (
-                            <header className="rw-plannotator-toolbar">
-                                <div className="rw-plan-review-heading rw-artifact-read-heading">
-                                    {showLogo && <img src="/brand/logo.svg" alt="" aria-hidden="true" />}
-                                    <div className="rw-artifact-read-title-block">
-                                        <h1>{title}</h1>
-                                        {initialPayload.artifactPath && (
-                                            <p className="rw-artifact-path">
-                                                {initialPayload.launch === "linked" && `${artifactLabel} · `}
-                                                {initialPayload.artifactPath}
-                                            </p>
-                                        )}
-                                    </div>
+                    {embedded ? (
+                        <WorkspaceHeaderActionsPortal>{closeAction}</WorkspaceHeaderActionsPortal>
+                    ) : (
+                        <header className="rw-plannotator-toolbar">
+                            <div className="rw-plan-review-heading rw-artifact-read-heading">
+                                {showLogo && <img src="/brand/logo.svg" alt="" aria-hidden="true" />}
+                                <div className="rw-artifact-read-title-block">
+                                    <h1>{title}</h1>
+                                    {initialPayload.artifactPath && (
+                                        <p className="rw-artifact-path">
+                                            {initialPayload.launch === "linked" && `${artifactLabel} · `}
+                                            {initialPayload.artifactPath}
+                                        </p>
+                                    )}
                                 </div>
-                                <div className="rw-plan-review-header-actions rw-plannotator-actions">
-                                    {closeAction}
-                                </div>
-                            </header>
-                        )}
+                            </div>
+                            <div className="rw-plan-review-header-actions rw-plannotator-actions">{closeAction}</div>
+                        </header>
+                    )}
                     <div className="rw-artifact-document-toolbar" data-sidebar-open={sidebarOpen}>
                         <div className="rw-artifact-contents-heading">
                             {sidebarOpen && <span>Contents</span>}
@@ -187,7 +193,8 @@ export function ArtifactReadSurface(
                                     animateSidebarUpdate(() => {
                                         setSidebarOpen((open) => !open);
                                         if (globalThis.matchMedia("(max-width: 980px)").matches) setWorkflowOpen(false);
-                                    })}
+                                    })
+                                }
                             />
                         </div>
                         {workflowSidebar && (
@@ -204,12 +211,17 @@ export function ArtifactReadSurface(
                                             if (globalThis.matchMedia("(max-width: 980px)").matches) {
                                                 setSidebarOpen(false);
                                             }
-                                        })}
+                                        })
+                                    }
                                 />
                             </div>
                         )}
                     </div>
-                    {error && <p className="rw-review-error" role="alert">{error}</p>}
+                    {error && (
+                        <p className="rw-review-error" role="alert">
+                            {error}
+                        </p>
+                    )}
                     {closed && closeBlocked && (
                         <div className="rw-artifact-close-notice" role="status">
                             <strong>{artifactLabel} view closed.</strong>
@@ -272,7 +284,9 @@ export function ArtifactReadSurface(
                             <main className="rw-plannotator-main-pane">
                                 {(notices.length > 0 || sourceLinks.length > 0) && (
                                     <section className="rw-artifact-notices" aria-label={`${artifactLabel} notices`}>
-                                        {notices.map((notice) => <p key={notice}>{notice}</p>)}
+                                        {notices.map((notice) => (
+                                            <p key={notice}>{notice}</p>
+                                        ))}
                                         {sourceLinks.length > 0 && (
                                             <p>
                                                 Source Plans:{" "}
@@ -292,24 +306,26 @@ export function ArtifactReadSurface(
                                         onViewportReady={setScrollViewport}
                                     >
                                         <div className="rw-plan-document-canvas">
-                                            <Viewer
-                                                blocks={parsed.blocks}
-                                                markdown={markdown}
-                                                frontmatter={parsed.frontmatter}
-                                                annotations={[]}
-                                                onAddAnnotation={() => {}}
-                                                onSelectAnnotation={() => {}}
-                                                selectedAnnotationId={null}
-                                                mode="selection"
-                                                inputMethod="drag"
-                                                taterMode={false}
-                                                stickyActions={false}
-                                                copyLabel="Copy Markdown"
-                                                gridEnabled={gridEnabled}
-                                                maxWidth={planMaxWidth}
-                                                imageBaseDir={initialPayload.imageBaseDir}
-                                                readOnly
-                                            />
+                                            {documentContent || (
+                                                <Viewer
+                                                    blocks={parsed.blocks}
+                                                    markdown={markdown}
+                                                    frontmatter={parsed.frontmatter}
+                                                    annotations={[]}
+                                                    onAddAnnotation={() => {}}
+                                                    onSelectAnnotation={() => {}}
+                                                    selectedAnnotationId={null}
+                                                    mode="selection"
+                                                    inputMethod="drag"
+                                                    taterMode={false}
+                                                    stickyActions={false}
+                                                    copyLabel="Copy Markdown"
+                                                    gridEnabled={gridEnabled}
+                                                    maxWidth={planMaxWidth}
+                                                    imageBaseDir={initialPayload.imageBaseDir}
+                                                    readOnly
+                                                />
+                                            )}
                                         </div>
                                     </OverlayScrollArea>
                                 </div>

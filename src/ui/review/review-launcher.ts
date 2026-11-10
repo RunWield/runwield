@@ -1,3 +1,4 @@
+import { currentPackageSelection, loadPackageWorkflowPlan } from "../../shared/workflow/package-workflow.ts";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
 import process from "node:process";
 /**
@@ -369,7 +370,10 @@ export async function startPlanReviewSurface<TDecision = ReviewDecisionValue>({
     onReviewOpen,
 }: PlanReviewSurfaceOptions): Promise<ReviewSurface<TDecision>> {
     if (!cwd) throw new Error("startPlanReviewSurface: cwd is required");
-    const { attrs } = parsePlanFrontMatter(plan);
+    const selection = currentPackageSelection();
+    const { attrs } = selection
+        ? await loadPackageWorkflowPlan({ planId: selection.planId })
+        : parsePlanFrontMatter(plan);
     const policy = resolvePlanExecutionPolicy(attrs);
     const executionPolicy = policy.ok ? policy.policy : undefined;
     const resolvedAgentLabel = agentLabel || reviewConversation?.agentLabel || "Planner";
@@ -381,12 +385,26 @@ export async function startPlanReviewSurface<TDecision = ReviewDecisionValue>({
         ...(planVersions && { planVersions }),
         classification: attrs.classification,
         frontmatter: attrs,
+        ...(selection
+            ? {
+                  planId: selection.planId,
+                  documentRevision: (await loadPackageWorkflowPlan({ planId: selection.planId })).revision,
+              }
+            : {}),
         ...(executionPolicy && { executionPolicy }),
         ...((agentLabel || reviewConversation) && { agentLabel: resolvedAgentLabel }),
         ...(reviewConversation && { conversationStatusUrl: "/api/review/conversation" }),
         ...(reviewConversation?.turns && { savedConversation: true }),
         ...(surfaceId && { reviewRevisionUrl: "/api/review/revision", reviewRevision: 0 }),
     };
+    const externalDecision = onDecision;
+    if (selection)
+        onDecision = async (decision) => {
+            const current = await loadPackageWorkflowPlan({ planId: selection.planId });
+            if (!decision.exit && !decision.canceled && current.revision !== reviewPayload.documentRevision)
+                throw new Error("Plan documents changed. Refresh the review; your draft was kept.");
+            return await externalDecision?.(decision);
+        };
     const reuseId = reviewConversation?.id ?? surfaceId;
     const existing = reuseId ? activePlanReviewConversations.get(reuseId) : null;
     if (reuseId && existing?.server.beginReviewRound) {

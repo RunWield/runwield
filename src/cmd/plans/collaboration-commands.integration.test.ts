@@ -828,3 +828,54 @@ test("unstarted shared child refuses push and unshare before changing remote rev
         });
     });
 });
+
+test("admitted package sharing keeps remote revisions and refuses independent local edits", async () => {
+    const { packageFixture, create, read } = await import("../../shared/testing/plan-package-fixture.ts");
+    const { withPackageWorkflow } = await import("../../shared/workflow/package-workflow.ts");
+    const { readPlanDocuments, savePlanDocument } = await import("../../shared/workflow/plan-documents.ts");
+    const f = await packageFixture();
+    try {
+        await create(f.identity, { controller: { validationCiAttempts: 3 } });
+        await withPackageWorkflow(
+            f.root,
+            { identity: f.identity, planId: "plan-one", expectedRevision: 1 },
+            async () => {
+                await withCollaborationServer(async ({ serverUrl }) => {
+                    const shared = await sharePlanForReview({ target: "one", cwd: f.root, planServer: serverUrl });
+                    assertEquals(shared.revision, 1);
+                    const document = await readPlanDocuments("plan-one");
+                    assertEquals(document.writable, false);
+                    await assertRejects(() =>
+                        savePlanDocument("plan-one", "context.md", document.revision, "unapproved local write"),
+                    );
+                    await fsWriteFile(join((await read(f.identity)).path, "context.md"), "# Maintainer revision\n");
+                    const pushed = await pushPlanRevision({ target: "one", cwd: f.root });
+                    assertEquals(pushed.revision, 2);
+                    const pulled = await pullPlanForRevision({ target: "one", cwd: f.root });
+                    assertEquals(pulled.revision, 2);
+                    assertEquals((await read(f.identity)).metadata.controller.validationCiAttempts, 3);
+                    const maintainer = parseCollaborationUrl(shared.maintainerUrl);
+                    const client = createCollaborationClient({
+                        serverUrl,
+                        bearerCapability: maintainer.bearerCapability,
+                        fetch: SYSTEM_COLLABORATION_FETCH,
+                    });
+                    await client.appendRevision(shared.spaceId, {
+                        payloadCiphertext: "opaque-concurrent-revision",
+                        expectedRevision: 3,
+                    });
+                    const before = await read(f.identity);
+                    await assertRejects(
+                        () => pushPlanRevision({ target: "one", cwd: f.root }),
+                        Error,
+                        "Run `wld plans pull` before pushing",
+                    );
+                    assertEquals((await read(f.identity)).metadata, before.metadata);
+                    assertEquals(await fsReadFile(join(before.path, "context.md"), "utf8"), "# Maintainer revision\n");
+                });
+            },
+        );
+    } finally {
+        await f.cleanup();
+    }
+});

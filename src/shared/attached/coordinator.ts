@@ -1,3 +1,4 @@
+import { currentPackageSelection } from "../workflow/package-workflow.ts";
 /**
  * @module shared/attached/coordinator
  * The Attached Workflow Coordinator: a sibling runtime to `SessionRuntime` (ADR-014).
@@ -236,11 +237,19 @@ async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNe
     }
     if (record.state === "implementing" && record.execution && record.plan && pending) {
         const executionCwd = record.execution.executionCwd || currentAttachedProjectRoot(record);
+        const packagePlan = currentPackageSelection() ? await loadPlan(executionCwd, record.plan.planName) : null;
         return {
             kind: "implementation",
             ...pending,
             planName: record.plan.planName,
-            planPath: join(executionCwd, "docs/plans", `${record.plan.planName}.md`),
+            planPath: packagePlan?.path || join(executionCwd, "docs/plans", `${record.plan.planName}.md`),
+            ...(packagePlan
+                ? {
+                      planRevision: packagePlan.revision,
+                      documentAccess:
+                          "This Plan is stored outside the checkout. Use an existing host-authorized root grant. If the host denies access, request permission for the displayed Plan directory and stop this action until granted; do not copy or link it into the repository.",
+                  }
+                : {}),
             executionCwd,
             executionMode: record.execution.executionMode || "worktree",
             worktreeBranch: record.execution.worktreeBranch,
