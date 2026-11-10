@@ -285,7 +285,7 @@ function makeRuntime(options = {}) {
  * @param {SessionRuntime} _runtime
  * @param {SessionHost} sessionHost
  * @param {ReturnType<typeof makeSteeringAgentSession> | Record<string, any>} agentSession
- * @param {import('./types.js').AgentMessageHandler} [handler]
+ * @param {import('./agent-handler.ts').AgentMessageHandler} [handler]
  */
 function attachExternalAgentSession(
     _runtime,

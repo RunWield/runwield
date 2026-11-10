@@ -24,7 +24,43 @@ import {
 } from "../../tools/registry.ts";
 import { normalizeBashAllowedCommands, type BashAllowedCommands } from "../bash-command-policy.ts";
 import type { DelegationMode } from "../../tools/delegate-agent.ts";
-import type { AgentDefinition, LoadedAgentDefinition } from "./types.js";
+
+type AgentContextContract = "quick-fix" | "plan-execution" | "frontend-plan-execution" | "validation-repair";
+
+export type AgentDefinition = {
+    /** Agent name from frontmatter or the filename. */
+    name: string;
+    displayName: string;
+    model: string;
+    /** One-line description from merged frontmatter. */
+    description: string;
+    /** Declared execution context from merged frontmatter. Runtime authority is resolved separately. */
+    contextContract?: AgentContextContract;
+    /** Allowed tool names from merged frontmatter. */
+    tools: string[];
+    /** Allowed delegate_agent modes. Absent allows every mode. */
+    delegationModes?: DelegationMode[];
+    /** Restricted RunWield shell selectors. Absent allows all commands. */
+    bashAllowedCommands?: readonly string[];
+    /** Workflow-only Agents are hidden from listings and manual selection. */
+    workflowOnly?: boolean;
+    /** Active-Agent busy labels. Absent uses the default label. */
+    busyLines?: readonly string[];
+    /** Provider thinking or reasoning level. */
+    thinkingLevel?: string;
+    /** Provider temperature from frontmatter, between 0 and 2. */
+    temperature?: number;
+    /** Core system prompt and merged Agent prompt. */
+    systemPrompt: string;
+};
+
+export type AgentRolePrompt = {
+    /** Merged Agent prompt and shared practice, without the Core system prompt template. */
+    rolePrompt: string;
+};
+
+/** An Agent definition loaded from its layered files. */
+export type LoadedAgentDefinition = AgentDefinition & AgentRolePrompt;
 
 export interface AgentDefinitionFrontMatter extends FrontMatterRecord {
     bashAllowedCommands?: BashAllowedCommands | null;
@@ -55,7 +91,6 @@ export interface LoadAgentDefFromPathOptions {
     agentName?: string;
 }
 
-type AgentContextContract = NonNullable<AgentDefinition["contextContract"]>;
 type RawAgentField = FrontMatterValue | undefined;
 
 function homeAgentDefsDir() {

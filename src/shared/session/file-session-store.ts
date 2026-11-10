@@ -3,7 +3,7 @@ import type { FileEntry, SessionHeader } from "@earendil-works/pi-coding-agent";
 import { readFileSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { readSessionImageAttachment, saveImageAttachment } from "./image-attachments.ts";
-import type { ImageAttachment } from "./types.js";
+import type { ImageAttachment } from "./image-attachments.ts";
 import { rollSessionTranscriptSegment } from "./segment-rollover.ts";
 import type {
     FileActivationProof,

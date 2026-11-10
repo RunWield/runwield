@@ -9,7 +9,7 @@ import {
     normalizeRuntimeUsage,
     RuntimeEventTypes,
 } from "../../session-runtime-events.js";
-import type { ImageAttachment } from "../../types.js";
+import type { ImageAttachment } from "../../image-attachments.ts";
 import { WorkflowStepCompleted } from "../../../workflow/workflow-tool-events.ts";
 import {
     prepareClaudeCliCommand,

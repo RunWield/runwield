@@ -41,7 +41,7 @@ import { installUiApiOverrides } from "./ui-api-overrides.ts";
 import { disposeKeybindings } from "./keybindings.ts";
 import type { Component } from "@earendil-works/pi-tui";
 import type { ThemeColor } from "@earendil-works/pi-coding-agent";
-import type { ImageAttachment } from "../../shared/session/types.js";
+import type { ImageAttachment } from "../../shared/session/image-attachments.ts";
 import type { WorkflowPresentationAction } from "../../shared/workflow/workflow-presentation.ts";
 import type { UiAPI } from "./types.js";
 import {

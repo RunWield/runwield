@@ -47,17 +47,67 @@ import { loadPlanActionEvidence } from "../workflow/plan-actions.ts";
 import { resolveWorkflowPlanLocation } from "../workflow/plan-location.ts";
 import { isValidationCheckpoint, validationCheckpointCanResume } from "../workflow/validation-checkpoint.ts";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { ImageAttachment } from "./image-attachments.ts";
 
 type ActiveExecutionWorkflow = import("./hosted-session.js").ActiveExecutionWorkflow;
 type HostedSession = import("./hosted-session.js").HostedSession;
-type ImageAttachment = import("./types.js").ImageAttachment;
 type SessionManager = import("@earendil-works/pi-coding-agent").SessionManager;
 type TriageMeta = import("../../tools/plan-written.ts").TriageMeta;
 type PlanExecutionResult = import("../workflow/workflow.ts").PlanExecutionResult;
 type WorkflowMetric = Parameters<typeof recordWorkflowMetric>[0];
 
-interface AgentHandlerCompleteResult {
+export type SessionContentBlock = {
+    type?: string;
+    text?: string;
+    // JavaScript Session Manager adapters can carry provider-specific content fields.
+    [key: string]: unknown;
+};
+
+export type SessionMessageLike = {
+    role: string;
+    content: SessionContentBlock[];
+    stopReason?: string;
+    errorMessage?: string;
+};
+
+export type BashExecutionMessageLike = {
+    role: "bashExecution";
+    command: string;
+    output: string;
+    exitCode: number | undefined;
+    cancelled: boolean;
+    truncated: boolean;
+    fullOutputPath?: string;
+    timestamp: number;
+    excludeFromContext?: boolean;
+};
+
+type SessionHeaderLike = {
+    timestamp?: string;
+};
+
+type SessionManagerExtensions = {
+    addMessage?: (message: SessionMessageLike | BashExecutionMessageLike) => void;
+    appendMessage?: (message: SessionMessageLike | BashExecutionMessageLike) => string;
+    appendCustomMessageEntry?: (role: string, text: string, visible: boolean, persisted?: string) => void;
+    getHeader?: () => SessionHeaderLike | null;
+};
+
+export type SessionManagerLike = SessionManager & SessionManagerExtensions;
+
+export type AgentTurnCompleteResult = {
     kind: "complete";
+};
+
+export type AgentTurnResult = AgentTurnCompleteResult;
+
+export type AgentMessageHandler = (
+    userRequest: string,
+    images: ImageAttachment[],
+    sessionManager: SessionManagerLike,
+) => Promise<AgentTurnResult>;
+
+interface AgentHandlerCompleteResult extends AgentTurnCompleteResult {
     validationResult?: WorkflowValidationResult;
     executionToStart?: import("./runtime/workflow-options.ts").RuntimeExecutePlanOptions;
 }

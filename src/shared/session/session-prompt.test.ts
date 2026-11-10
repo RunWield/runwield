@@ -43,7 +43,7 @@ import {
 } from "./session.js";
 import { HostedSession } from "./hosted-session.js";
 import type { RequestAttemptEntry } from "./request-dispatch.ts";
-import type { ImageAttachment } from "./types.js";
+import type { ImageAttachment } from "./image-attachments.ts";
 import { getRunWieldSessionDir } from "./root-session.ts";
 import { RunawayLoopGuardStoppedError } from "./runaway-loop-guard.ts";
 import { estimateContextTextTokens } from "./session-context-report.ts";

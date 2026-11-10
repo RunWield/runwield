@@ -65,7 +65,7 @@ export const RuntimeEventTypes = Object.freeze({
  */
 
 /**
- * @typedef {RuntimeEventBase & { type: "user_message", text: string, messageId: string, images: import('./types.js').ImageAttachment[], origin?: "background_task_result", taskId?: string }} RuntimeUserMessageEvent
+ * @typedef {RuntimeEventBase & { type: "user_message", text: string, messageId: string, images: import('./image-attachments.ts').ImageAttachment[], origin?: "background_task_result", taskId?: string }} RuntimeUserMessageEvent
  */
 
 /**
@@ -181,7 +181,7 @@ export const RuntimeEventTypes = Object.freeze({
  * @property {NotificationSurface} [inputSurface]
  * @property {string} id
  * @property {string} text
- * @property {import('./types.js').ImageAttachment[]} images
+ * @property {import('./image-attachments.ts').ImageAttachment[]} images
  * @property {"steer" | "next_turn"} delivery
  * @property {string} queuedAt
  */

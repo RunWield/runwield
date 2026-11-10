@@ -301,7 +301,7 @@ export class RuntimeAgentSettings {
                 id: import(".././subagent-definitions.ts").SubAgentDefinitionId;
                 options?: import(".././subagent-definitions.ts").LoadSubAgentDefinitionOptions;
             };
-            images?: import(".././types.js").ImageAttachment[];
+            images?: import(".././image-attachments.ts").ImageAttachment[];
             toolNames?: string[];
             customTools?: import("@earendil-works/pi-coding-agent").ToolDefinition[];
             modelOverride?: string;

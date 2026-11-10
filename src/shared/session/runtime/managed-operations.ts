@@ -115,7 +115,7 @@ export class RuntimeManagedOperations {
     steerSession(
         sessionId: string,
         text: string,
-        images: import("../types.js").ImageAttachment[],
+        images: import("../image-attachments.ts").ImageAttachment[],
         inputSurface?: import("../session-runtime-events.js").NotificationSurface,
     ) {
         return this.queues.steerSession(sessionId, text, images, inputSurface);

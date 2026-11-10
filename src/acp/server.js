@@ -310,7 +310,7 @@ function validateAcpMcpServers(value) {
 /**
  * @typedef {Object} ConvertedAcpPrompt
  * @property {string} text
- * @property {import('../shared/session/types.js').ImageAttachment[]} images
+ * @property {import('../shared/session/image-attachments.ts').ImageAttachment[]} images
  */
 
 /**
@@ -323,7 +323,7 @@ export function convertAcpPrompt(blocks) {
     }
     /** @type {string[]} */
     const parts = [];
-    /** @type {import('../shared/session/types.js').ImageAttachment[]} */
+    /** @type {import('../shared/session/image-attachments.ts').ImageAttachment[]} */
     const images = [];
     for (const block of blocks) {
         if (!block || typeof block !== "object") throwInvalidParams("Invalid prompt content block");
@@ -1122,7 +1122,7 @@ function createLiveOperation(options) {
             releasePromptAfterResponse(current.requestId, release);
         } else release();
     }
-    /** @param {AcpNotificationContext & { requestId?: string | number | null }} context @param {Promise<void>} operationSettlement @param {string} text @param {import('../shared/session/types.js').ImageAttachment[]} images
+    /** @param {AcpNotificationContext & { requestId?: string | number | null }} context @param {Promise<void>} operationSettlement @param {string} text @param {import('../shared/session/image-attachments.ts').ImageAttachment[]} images
      * @returns {Promise<import('@agentclientprotocol/sdk').PromptResponse>} */
     async function waitForRequest(context, operationSettlement, text, images) {
         // onTurnStarted can run after the Runtime's asynchronous setup.

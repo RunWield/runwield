@@ -7,7 +7,7 @@ import { resolveTemplateModel } from "../../shared/models/model-validation.ts";
 import { persistThinkingLevel, recordUserInputHistory, type SessionRuntime } from "./chat-session.ts";
 import { createGenerationGuard } from "./generation-guard.ts";
 import { type ChatView, createPastedImagePreview } from "./chat-view.ts";
-import type { ImageAttachment } from "../../shared/session/types.js";
+import type { ImageAttachment } from "../../shared/session/image-attachments.ts";
 import type { UiAPI } from "./types.js";
 import type { TutorialContext } from "../../shared/session/tutorial-context-session.ts";
 import { AGENTS } from "../../constants.js";

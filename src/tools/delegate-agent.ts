@@ -22,7 +22,7 @@ import {
 } from "../shared/session/subagent-definitions.ts";
 import type { DelegatedAuthority, DelegatedRoleId } from "../shared/session/subagent-definitions.ts";
 import type { HostedSession } from "../shared/session/hosted-session.js";
-import type { AgentDefinition } from "../shared/session/types.js";
+import type { AgentDefinition } from "../shared/session/agents.ts";
 import type { BashAllowedCommands } from "../shared/bash-command-policy.ts";
 import { extractAssistantOutput } from "../shared/workflow/workflow-results.ts";
 
@@ -156,7 +156,7 @@ export function resolveDelegatedToolNames(parentTools: string[], mode: Delegatio
 
 /**
  * @param {import('../shared/session/subagent-definitions.ts').DelegatedRoleId} [role]
- * @returns {Promise<import('../shared/session/types.js').AgentDefinition>}
+ * @returns {Promise<import('../shared/session/agents.ts').AgentDefinition>}
  */
 export async function loadDelegatedAgentPrompt(
     role: DelegatedRoleId = DELEGATED_ROLE_GENERAL,

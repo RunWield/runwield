@@ -245,7 +245,7 @@ export class RuntimeQueues {
     async steerSession(
         sessionId: string,
         text: string,
-        images: import(".././types.js").ImageAttachment[] = [],
+        images: import(".././image-attachments.ts").ImageAttachment[] = [],
         inputSurface: import("../session-runtime-events.js").NotificationSurface = this.services.ownerProcessKind,
     ): Promise<import("./types.ts").SteerSessionResult> {
         const hostedSession = this.services.sessionHost.getSession(sessionId);
@@ -371,7 +371,7 @@ export class RuntimeQueues {
     queueNextTurnMessage(
         sessionId: string,
         text: string,
-        images: import(".././types.js").ImageAttachment[] = [],
+        images: import(".././image-attachments.ts").ImageAttachment[] = [],
         options: {
             deliverWhenAvailable?: boolean;
             inputSurface?: import("../session-runtime-events.js").NotificationSurface;

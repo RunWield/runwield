@@ -1194,7 +1194,7 @@ export class WorkspaceSessionContinuationService {
      * @property {string} operationId
      * @property {string} requestId
      * @property {string} text
-     * @property {import('../../../shared/session/types.js').ImageAttachment[]} images
+     * @property {import('../../../shared/session/image-attachments.ts').ImageAttachment[]} images
      */
     /** @param {WorkspaceSteeringRequest} options */
     async steerOperation(options) {
@@ -1437,7 +1437,7 @@ export class WorkspaceSessionContinuationService {
     }
 
     /**
-     * @param {{ deviceId?: string | null, projectId: string, requestId: string, text: string, images?: import("../../../shared/session/types.js").ImageAttachment[], agentName?: string, model?: string, provider?: string, thinkingLevel?: string }} options
+     * @param {{ deviceId?: string | null, projectId: string, requestId: string, text: string, images?: import("../../../shared/session/image-attachments.ts").ImageAttachment[], agentName?: string, model?: string, provider?: string, thinkingLevel?: string }} options
      * @returns {Promise<CreateSessionResult>}
      */
     async createSession(options) {

@@ -20,7 +20,6 @@ affectedPaths:
     - "src/shared/session/session-runtime.test.js"
     - "src/shared/session/session-runtime-events.js"
     - "src/shared/session/session-runtime-events.test.js"
-    - "src/shared/session/types.js"
     - "src/shared/session/agent-handler.ts"
     - "src/shared/session/agent-handler.test.ts"
     - "src/shared/session/root-workflow-turn.ts"
@@ -323,7 +322,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   reason, message, and content-free pressure/recovery fields.
 - `src/shared/session/session-runtime-events.test.js` — enforce the new event's exact required fields/enums and producer
   payload allowlist.
-- `src/shared/session/types.js` — add a `context_paused` Agent turn result so recoverable pressure is distinguishable
+- `src/shared/session/agent-handler.ts` — add a `context_paused` Agent turn result so recoverable pressure is distinguishable
   from normal completion and handoff without becoming a provider/runtime error.
 - `src/shared/session/agent-handler.ts`, `root-workflow-turn.ts`, and `agent-handler.test.ts` — distinguish a pause from
   a consume-once accepted Workflow Tool Event. Do not restore the retired transcript-outcome scanner.
