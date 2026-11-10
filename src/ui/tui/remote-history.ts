@@ -3,7 +3,7 @@ import type { SavedRemoteSession } from "../../shared/remote/laptop-session-cont
 import { parseRemoteSessionTranscript } from "../../shared/remote/session-protocol.ts";
 import { createReplayEvents } from "../../shared/session/session-transcript-projection.js";
 import { createUiApi } from "./api.ts";
-import { SpinnerBlock } from "./blocks.js";
+import { SpinnerBlock } from "./blocks.ts";
 import { createTuiDisplayConsumer } from "./runtime-display.ts";
 import { theme } from "../theme/theme.ts";
 

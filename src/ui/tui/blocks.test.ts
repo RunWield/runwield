@@ -28,7 +28,7 @@ import {
     ToolExecutionBlock,
     ToolExecutionGroupBlock,
     ValidationHandoffBlock,
-} from "./blocks.js";
+} from "./blocks.ts";
 import { getCapabilities, setCapabilities } from "@earendil-works/pi-tui";
 import stripAnsi from "strip-ansi";
 

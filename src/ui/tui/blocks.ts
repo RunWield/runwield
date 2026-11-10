@@ -10,6 +10,8 @@ import {
     truncateToWidth,
     visibleWidth,
 } from "@earendil-works/pi-tui";
+import type { ThemeBg, ThemeColor } from "@earendil-works/pi-coding-agent";
+import type { SelectItem, SelectListLayoutOptions, SelectListTheme } from "@earendil-works/pi-tui";
 import { getMarkdownTheme, getSelectListTheme, imageTheme, theme } from "../theme/theme.ts";
 import { buildActiveConversationStatusMessage } from "../../shared/session/session-user-messages.ts";
 import {
@@ -18,21 +20,57 @@ import {
 } from "../../shared/workflow/validation-progress-presentation.ts";
 import { MermaidMarkdown } from "./mermaid-markdown.ts";
 import stripAnsi from "strip-ansi";
+import type { SessionHelpItem, SessionHelpPayload } from "../../shared/session/session-help.ts";
+import type { RuntimeValidationProgress } from "../../shared/session/session-runtime-events.js";
+import type { DocumentLinkHost } from "../review/document-link-host.ts";
+import type { ManagedSyncStatus, RunningTask, UiAPI } from "./types.js";
 
-/**
- * @typedef {Object} ToolDisplayImage
- * @property {string} base64
- * @property {string} mimeType
- */
+export interface ToolDisplayImage {
+    base64: string;
+    mimeType: string;
+}
 
-/**
- * Per-report markdown renderer slot.
- * @typedef {Object} ReportRendererSlot
- * @property {string | null} text
- * @property {MermaidMarkdown | null} renderer
- * @property {number} width
- * @property {string[] | null} lines
- */
+/** Per-report markdown renderer slot. */
+export interface ReportRendererSlot {
+    text: string | null;
+    renderer: MermaidMarkdown | null;
+    width: number;
+    lines: string[] | null;
+}
+
+export interface EngineerReport {
+    agentName: string;
+    markdown: string;
+    completedOrder: number;
+}
+
+export interface ReviewerReport extends EngineerReport {
+    approved: boolean;
+}
+
+export interface ValidationHandoffState {
+    progress: RuntimeValidationProgress;
+    engineer?: EngineerReport | null;
+    reviewer?: ReviewerReport | null;
+}
+
+type ReportRendererSlots = Record<"engineer" | "reviewer", ReportRendererSlot>;
+
+interface StyledBlockContent {
+    render(width: number): string[];
+    invalidate?(): void;
+}
+
+interface ThinkingBlockOptions {
+    hidden?: boolean;
+}
+
+interface BlockRenderCache {
+    width: number;
+    lines: string[];
+}
+
+type SystemMessageStyle = NonNullable<Parameters<UiAPI["appendSystemMessage"]>[3]>;
 
 const TOOL_OUTPUT_LINE_LIMIT = 500;
 
@@ -43,27 +81,21 @@ const TOOL_OUTPUT_LINE_LIMIT = 500;
  * `header` (when provided) is rendered bold in `style.headingColor` (default
  * `accent` / `error` based on isError). The body text uses normal text color
  * unless `style.bodyColor` overrides it.
- *
- * @param {string} text
- * @param {boolean} isError
- * @param {string} [header]
- * @param {{ headingColor?: string, bodyColor?: string }} [style]
- * @returns {string}
  */
-function formatSystemLine(text, isError, header = "", style) {
-    const baseColor = style?.bodyColor || (isError ? "error" : "text");
+function formatSystemLine(text: string, isError: boolean, header = "", style?: SystemMessageStyle) {
+    // The existing UI API accepts string tokens, which the upstream theme resolves.
+    const baseColor = (style?.bodyColor || (isError ? "error" : "text")) as ThemeColor;
 
     if (!header) {
-        // @ts-ignore: baseColor is always a valid ThemeColor but TS can't verify dynamic strings
         return theme.fg(baseColor, text);
     }
 
-    const headerColor = style?.headingColor || (isError ? "error" : "accent");
-    // @ts-ignore: headerColor is always a valid ThemeColor but TS can't verify dynamic strings
+    const headerColor = (style?.headingColor || (isError ? "error" : "accent")) as ThemeColor;
+
     const renderedHeader = theme.fg(headerColor, theme.bold(header));
 
     if (!text) return renderedHeader;
-    // @ts-ignore: baseColor is always a valid ThemeColor but TS can't verify dynamic strings
+
     return `${renderedHeader} ${theme.fg(baseColor, text)}`;
 }
 
@@ -76,12 +108,8 @@ function formatSystemLine(text, isError, header = "", style) {
  * Instead of chalk.bgHex()(line) which can't handle raw resets, this manually
  * wraps the line with the bg open/close codes and re-applies the bg after any
  * embedded full reset.
- *
- * @param {string} bgCode - raw ANSI bg open code (e.g. "\x1b[48;2;49;50;68m")
- * @param {string} line
- * @returns {string}
  */
-function applyBg(bgCode, line) {
+function applyBg(bgCode: string, line: string) {
     if (line.includes("\x1b[0m")) {
         // deno-lint-ignore no-control-regex
         return bgCode + line.replace(/\x1b\[0m/g, "\x1b[0m" + bgCode) + "\x1b[49m";
@@ -96,12 +124,8 @@ function applyBg(bgCode, line) {
  *
  * Not cached: theme can swap at runtime, and the regex extraction is cheap
  * (single small string). Caching would require a clear hook on every swap.
- *
- * @param {string} bgTokenName - a ThemeBg token (e.g. "userMessageBg")
- * @returns {string}
  */
-function getBgCode(bgTokenName) {
-    // @ts-ignore: bgTokenName is always a valid ThemeBg but TS can't verify dynamic strings
+function getBgCode(bgTokenName: ThemeBg) {
     const rendered = theme.bg(bgTokenName, " ");
     // deno-lint-ignore no-control-regex
     const match = rendered.match(/^(\x1b\[(?:48;2;\d+;\d+;\d+|48;5;\d+)m)/);
@@ -113,22 +137,18 @@ function getBgCode(bgTokenName) {
  * Raw newlines in a header are especially dangerous: the TUI receives one
  * rendered array entry, but the terminal paints multiple lines and escapes the
  * block background/padding.
- *
- * @param {string} text
- * @returns {string}
  */
-function normalizeToolHeaderText(text) {
-    // deno-lint-ignore no-control-regex
-    return stripAnsi(text).replace(/[\x00-\x1f\x7f]+/g, " ").trim();
+function normalizeToolHeaderText(text: string) {
+    return (
+        stripAnsi(text)
+            // deno-lint-ignore no-control-regex
+            .replace(/[\x00-\x1f\x7f]+/g, " ")
+            .trim()
+    );
 }
 
-/**
- * @param {string} text
- * @returns {string}
- */
-function stripAnsiPreservingOsc8(text) {
-    /** @type {string[]} */
-    const links = [];
+function stripAnsiPreservingOsc8(text: string) {
+    const links: string[] = [];
     // deno-lint-ignore no-control-regex
     const protectedText = text.replace(/\x1b\]8;;[^\x07]*(?:\x07|\x1b\\).*?\x1b\]8;;(?:\x07|\x1b\\)/g, (link) => {
         const marker = `\u0000RUNWIELD_OSC8_${links.length}\u0000`;
@@ -146,17 +166,12 @@ function stripAnsiPreservingOsc8(text) {
  * Wrap plain text to terminal-width lines. Existing newlines are handled by the
  * caller; this preserves words where possible and hard-wraps words longer than
  * the viewport.
- *
- * @param {string} text
- * @param {number} width
- * @returns {string[]}
  */
-function wrapPlainLine(text, width) {
+function wrapPlainLine(text: string, width: number) {
     if (width <= 0) return [""];
     if (!text) return [""];
 
-    /** @type {string[]} */
-    const lines = [];
+    const lines: string[] = [];
     let line = "";
 
     for (const word of text.split(/\s+/)) {
@@ -183,8 +198,7 @@ function wrapPlainLine(text, width) {
 
 const THINKING_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
-/** @param {number} frameIndex */
-function getThinkingFrame(frameIndex) {
+function getThinkingFrame(frameIndex: number) {
     return THINKING_FRAMES[frameIndex % THINKING_FRAMES.length];
 }
 
@@ -193,11 +207,8 @@ function getThinkingFrame(frameIndex) {
  * thinking deltas. Thinking blocks intentionally render as muted plain text,
  * so CommonMark comments should be invisible and simple emphasis wrappers
  * should not leak as literal punctuation.
- *
- * @param {string} text
- * @returns {string}
  */
-function normalizeThinkingText(text) {
+function normalizeThinkingText(text: string) {
     return text
         .replace(/<!--[^]*?-->/g, "")
         .split(/\r?\n/)
@@ -214,13 +225,17 @@ function normalizeThinkingText(text) {
  * (e.g. pi-tui's truncateToWidth) by re-applying the bg after each reset.
  */
 export class StyledBlock {
+    declare bgToken: ThemeBg;
+    declare paddingX: number;
+    declare paddingY: number;
+    declare child: StyledBlockContent | null | undefined;
+
     /**
-     * @param {string} bgToken - ThemeBg token name (e.g. "userMessageBg", "selectedBg")
-     * @param {number} paddingX - horizontal padding (left and right)
-     * @param {number} paddingY - vertical padding (top and bottom empty lines)
-     * @param {{ render: (w: number) => string[], invalidate?: () => void } | null | undefined} child
+     * @param bgToken - Theme background token (e.g. "userMessageBg", "selectedBg")
+     * @param paddingX - Horizontal padding on each side
+     * @param paddingY - Empty lines above and below the content
      */
-    constructor(bgToken, paddingX, paddingY, child) {
+    constructor(bgToken: ThemeBg, paddingX: number, paddingY: number, child: StyledBlockContent | null | undefined) {
         this.bgToken = bgToken;
         this.paddingX = paddingX;
         this.paddingY = paddingY;
@@ -233,8 +248,7 @@ export class StyledBlock {
         }
     }
 
-    /** @param {number} w */
-    render(w) {
+    render(w: number) {
         if (!this.child) return [];
 
         const innerW = Math.max(0, w - this.paddingX * 2);
@@ -243,7 +257,7 @@ export class StyledBlock {
         const padX = " ".repeat(this.paddingX);
         const emptyLine = " ".repeat(w);
 
-        const lines = innerLines.map((/** @type {string} */ line) => {
+        const lines = innerLines.map((line) => {
             const vw = visibleWidth(line);
             const clamped = vw > innerW ? truncateToWidth(line, innerW) : line;
             const clampedW = vw > innerW ? visibleWidth(clamped) : vw;
@@ -265,8 +279,10 @@ export class StyledBlock {
  * The User Prompt Block.
  */
 export class UserPromptBlock {
-    /** @param {string} text */
-    constructor(text) {
+    declare content: Container;
+    declare block: StyledBlock;
+
+    constructor(text: string) {
         this.content = new Container();
         this.content.addChild(new Text(theme.fg("text", text), 0, 0));
         this.block = new StyledBlock("userMessageBg", 2, 1, this.content);
@@ -276,8 +292,7 @@ export class UserPromptBlock {
         this.block.invalidate();
     }
 
-    /** @param {number} w */
-    render(w) {
+    render(w: number) {
         return this.block.render(w);
     }
 }
@@ -290,18 +305,22 @@ export class UserPromptBlock {
  * execution without colliding with their backgrounds.
  */
 export class ThinkingBlock {
-    /** @param {{ hidden?: boolean }} [options] */
-    constructor(options = {}) {
+    declare hidden: boolean;
+    declare currentText: string;
+    declare frameIndex: number;
+    declare ended: boolean;
+    declare renderCache: BlockRenderCache | null;
+
+    constructor(options: ThinkingBlockOptions = {}) {
         this.hidden = options.hidden ?? false;
         this.currentText = "";
         this.frameIndex = 0;
         this.ended = false;
-        /** @type {{ width: number, lines: string[] } | null} */
+
         this.renderCache = null;
     }
 
-    /** @param {string} delta */
-    appendText(delta) {
+    appendText(delta: string) {
         this.currentText += delta;
         this.frameIndex++;
         this.invalidate();
@@ -316,24 +335,21 @@ export class ThinkingBlock {
         this.renderCache = null;
     }
 
-    /** @param {number} w */
-    render(w) {
+    render(w: number) {
         if (this.renderCache !== null && this.renderCache.width === w) return this.renderCache.lines;
         const lines = this.renderLines(w);
         this.renderCache = { width: w, lines };
         return lines;
     }
 
-    /** @param {number} w */
-    renderLines(w) {
+    renderLines(w: number) {
         const rawBody = this.hidden ? "hidden" : normalizeThinkingText(this.currentText).trim();
         const bodyLines = rawBody ? rawBody.split(/\r?\n/).flatMap((line) => wrapPlainLine(line, w)) : [];
         const renderedLines = bodyLines.map((line) => theme.fg("thinkingText", line));
-        return renderedLines
-            .map((line) => {
-                const clamped = visibleWidth(line) > w ? truncateToWidth(line, w) : line;
-                return clamped + " ".repeat(Math.max(0, w - visibleWidth(clamped)));
-            });
+        return renderedLines.map((line) => {
+            const clamped = visibleWidth(line) > w ? truncateToWidth(line, w) : line;
+            return clamped + " ".repeat(Math.max(0, w - visibleWidth(clamped)));
+        });
     }
 }
 
@@ -342,11 +358,11 @@ export class ThinkingBlock {
  * Renders without a background, matching the upstream Pi style.
  */
 export class AgentMessageBlock {
-    /**
-     * @param {string} agentName
-     * @param {import('../review/document-link-host.ts').DocumentLinkHost | null} documentLinks
-     */
-    constructor(agentName, documentLinks) {
+    declare container: Container;
+    declare currentText: string;
+    declare markdown: MermaidMarkdown;
+
+    constructor(agentName: string, documentLinks: DocumentLinkHost | null) {
         this.container = new Container();
 
         if (agentName) {
@@ -356,14 +372,11 @@ export class AgentMessageBlock {
         this.currentText = "";
         this.markdown = new MermaidMarkdown("", 0, 0, getMarkdownTheme());
         this.markdown.setDocumentLinks(documentLinks);
-        this.container.addChild(
-            /** @type {import('@earendil-works/pi-tui').Component} */ (/** @type {unknown} */ (this.markdown)),
-        );
+        this.container.addChild(this.markdown);
         this.container.addChild(new Spacer(1));
     }
 
-    /** @param {string} delta */
-    appendText(delta) {
+    appendText(delta: string) {
         this.currentText += delta;
         this.markdown.setText(this.currentText);
         this.invalidate();
@@ -373,8 +386,7 @@ export class AgentMessageBlock {
         this.container.invalidate();
     }
 
-    /** @param {number} w */
-    render(w) {
+    render(w: number) {
         return this.container.render(w);
     }
 }
@@ -383,12 +395,15 @@ export class AgentMessageBlock {
  * System Message Block.
  */
 export class ReviewResultBlock {
-    /**
-     * @param {string} agentName
-     * @param {string} markdownText
-     * @param {boolean} approved
-     */
-    constructor(agentName, markdownText, approved) {
+    declare container: Container;
+    declare agentName: string;
+    declare markdownText: string;
+    declare approved: boolean;
+    declare bgToken: ThemeBg;
+    declare markdown: MermaidMarkdown;
+    declare block: StyledBlock;
+
+    constructor(agentName: string, markdownText: string, approved: boolean) {
         this.container = new Container();
         this.agentName = agentName || "Reviewer";
         this.markdownText = markdownText || "";
@@ -397,9 +412,7 @@ export class ReviewResultBlock {
 
         this.container.addChild(new Text(theme.fg("success", theme.bold(`${this.agentName}:`)), 0, 0));
         this.markdown = new MermaidMarkdown(this.markdownText, 0, 0, getMarkdownTheme());
-        this.container.addChild(
-            /** @type {import('@earendil-works/pi-tui').Component} */ (/** @type {unknown} */ (this.markdown)),
-        );
+        this.container.addChild(this.markdown);
         this.block = new StyledBlock(this.bgToken, 2, 1, this.container);
     }
 
@@ -408,8 +421,7 @@ export class ReviewResultBlock {
         this.block.invalidate();
     }
 
-    /** @param {number} w */
-    render(w) {
+    render(w: number) {
         return this.block.render(w);
     }
 }
@@ -419,33 +431,25 @@ export class ReviewResultBlock {
  * validation snapshot plus the latest semantic reports mirrored from history.
  */
 export class ValidationHandoffBlock {
-    /**
-     * @param {Object} state
-     * @param {import('../../shared/session/session-runtime-events.js').RuntimeValidationProgress} state.progress
-     * @param {{ agentName: string, markdown: string, completedOrder: number } | null} [state.engineer]
-     * @param {{ agentName: string, markdown: string, approved: boolean, completedOrder: number } | null} [state.reviewer]
-     */
-    constructor(state) {
+    declare state: ValidationHandoffState;
+    declare block: StyledBlock;
+    declare reportRenderers: ReportRendererSlots;
+
+    constructor(state: ValidationHandoffState) {
         this.state = state;
         this.block = new StyledBlock("customMessageBg", 2, 1, {
             render: (w) => this.renderContent(w),
             invalidate: () => {},
         });
         // Keep one renderer per report so the mermaid cache stays warm between renders.
-        /** @type {{ engineer: ReportRendererSlot, reviewer: ReportRendererSlot }} */
+
         this.reportRenderers = {
             engineer: { text: null, renderer: null, width: 0, lines: null },
             reviewer: { text: null, renderer: null, width: 0, lines: null },
         };
     }
 
-    /**
-     * @param {Object} state
-     * @param {import('../../shared/session/session-runtime-events.js').RuntimeValidationProgress} state.progress
-     * @param {{ agentName: string, markdown: string, completedOrder: number } | null} [state.engineer]
-     * @param {{ agentName: string, markdown: string, approved: boolean, completedOrder: number } | null} [state.reviewer]
-     */
-    setState(state) {
+    setState(state: ValidationHandoffState) {
         this.state = state;
         this.invalidate();
     }
@@ -458,23 +462,24 @@ export class ValidationHandoffBlock {
         this.block.invalidate();
     }
 
-    /** @param {import('../../shared/session/session-runtime-events.js').RuntimeValidationProgress} progress */
-    formatHeading(progress) {
+    formatHeading(progress: RuntimeValidationProgress) {
         const heading = validationProgressHeading(progress);
         const checks = progress.checks
-            ? validationProgressCheckSummary(progress).split(", ").filter((check) => check !== heading).join(", ")
+            ? validationProgressCheckSummary(progress)
+                  .split(", ")
+                  .filter((check) => check !== heading)
+                  .join(", ")
             : "";
         return checks ? `${heading} • ${checks}` : heading;
     }
 
-    /**
-     * @param {string[]} lines
-     * @param {string} title
-     * @param {string} markdownText
-     * @param {number} width
-     * @param {"engineer" | "reviewer"} slot
-     */
-    appendMarkdownSection(lines, title, markdownText, width, slot) {
+    appendMarkdownSection(
+        lines: string[],
+        title: string,
+        markdownText: string,
+        width: number,
+        slot: keyof ReportRendererSlots,
+    ) {
         lines.push("");
         lines.push(theme.fg("accent", theme.bold(title)));
         const body = markdownText || "(no report text)";
@@ -494,16 +499,12 @@ export class ValidationHandoffBlock {
         lines.push(...(cached.lines ?? []));
     }
 
-    /** @param {number} w */
-    renderContent(w) {
+    renderContent(w: number) {
         const width = Math.max(1, w);
         const progress = this.state.progress;
-        const headingColor = progress.outcome === "failed"
-            ? "error"
-            : progress.outcome === "verified"
-            ? "success"
-            : "accent";
-        /** @type {string[]} */
+        const headingColor =
+            progress.outcome === "failed" ? "error" : progress.outcome === "verified" ? "success" : "accent";
+
         const lines = [theme.fg(headingColor, theme.bold(this.formatHeading(progress)))];
         if (progress.message) lines.push(theme.fg("muted", progress.message));
         const engineer = this.state.engineer || null;
@@ -518,9 +519,10 @@ export class ValidationHandoffBlock {
             );
         }
         if (reviewer) {
-            const stale = engineer && reviewer.completedOrder < engineer.completedOrder && !reviewer.approved
-                ? " (feedback addressed; rechecking)"
-                : "";
+            const stale =
+                engineer && reviewer.completedOrder < engineer.completedOrder && !reviewer.approved
+                    ? " (feedback addressed; rechecking)"
+                    : "";
             const verdict = reviewer.approved ? "approved" : "rejected";
             this.appendMarkdownSection(
                 lines,
@@ -533,20 +535,18 @@ export class ValidationHandoffBlock {
         return lines;
     }
 
-    /** @param {number} w */
-    render(w) {
+    render(w: number) {
         return this.block.render(w);
     }
 }
 
 export class SystemMessageBlock {
-    /**
-     * @param {string} text
-     * @param {boolean} [isError=false]
-     * @param {string} [header='']
-     * @param {{ headingColor?: string, bodyColor?: string }} [style]
-     */
-    constructor(text, isError = false, header = "", style = {}) {
+    declare container: Container;
+    declare isError: boolean;
+    declare style: SystemMessageStyle;
+    declare block: StyledBlock;
+
+    constructor(text: string, isError: boolean = false, header: string = "", style: SystemMessageStyle = {}) {
         this.container = new Container();
         this.isError = isError;
         this.style = style;
@@ -554,15 +554,8 @@ export class SystemMessageBlock {
         this.block = new StyledBlock("customMessageBg", 2, 1, this.container);
     }
 
-    /**
-     * @param {string} text
-     * @param {string} [header='']
-     * @param {{ headingColor?: string, bodyColor?: string }} [style]
-     */
-    appendText(text, header = "", style) {
-        this.container.addChild(
-            new Text(formatSystemLine(text, this.isError, header, style || this.style), 0, 0),
-        );
+    appendText(text: string, header: string = "", style?: SystemMessageStyle) {
+        this.container.addChild(new Text(formatSystemLine(text, this.isError, header, style || this.style), 0, 0));
         this.invalidate();
     }
 
@@ -570,47 +563,42 @@ export class SystemMessageBlock {
         this.block.invalidate();
     }
 
-    /** @param {number} w */
-    render(w) {
+    render(w: number) {
         return this.block.render(w);
     }
 }
 
 export class ManagedSyncStatusBlock {
-    /** @param {import('./types.js').ManagedSyncStatus} state */
-    constructor(state) {
+    declare state: ManagedSyncStatus;
+
+    constructor(state: ManagedSyncStatus) {
         this.state = { ...state };
     }
 
-    /** @param {import('./types.js').ManagedSyncStatus} state */
-    setState(state) {
+    setState(state: ManagedSyncStatus) {
         this.state = { ...state };
     }
 
     invalidate() {}
 
-    /** @param {number} w */
-    render(w) {
+    render(w: number) {
         const state = this.state;
         if (state.status === "active_elsewhere") {
-            return [
-                truncateToWidth(
-                    theme.fg("dim", buildActiveConversationStatusMessage(state.owningSurfaceKind)),
-                    w,
-                ),
-            ];
+            return [truncateToWidth(theme.fg("dim", buildActiveConversationStatusMessage(state.owningSurfaceKind)), w)];
         }
         const surface = state.owningSurfaceKind ? ` (${state.owningSurfaceKind} active)` : "";
-        const generations = state.latestGeneration === null
-            ? "no committed generation"
-            : `gen ${state.localGeneration ?? "?"}/${state.latestGeneration}`;
-        const label = state.status === "current"
-            ? "Session current"
-            : state.status === "syncing"
-            ? "Syncing committed updates"
-            : state.status === "blocked"
-            ? "Managed submission blocked"
-            : "Sync degraded — refresh required";
+        const generations =
+            state.latestGeneration === null
+                ? "no committed generation"
+                : `gen ${state.localGeneration ?? "?"}/${state.latestGeneration}`;
+        const label =
+            state.status === "current"
+                ? "Session current"
+                : state.status === "syncing"
+                  ? "Syncing committed updates"
+                  : state.status === "blocked"
+                    ? "Managed submission blocked"
+                    : "Sync degraded — refresh required";
         const message = state.message ? ` — ${state.message}` : "";
         return [
             truncateToWidth(
@@ -625,14 +613,17 @@ export class ManagedSyncStatusBlock {
 }
 
 export class KeyboardHelpBlock {
-    /** @param {import('../../shared/session/session-help.ts').SessionHelpPayload} help */
-    constructor(help) {
+    declare help: SessionHelpPayload;
+    declare content: Required<StyledBlockContent>;
+    declare block: StyledBlock;
+
+    constructor(help: SessionHelpPayload) {
         this.help = {
             title: help.title,
             items: help.items.map((item) => ({ ...item })),
         };
         this.content = {
-            render: (/** @type {number} */ w) => this.renderContent(w),
+            render: (w: number) => this.renderContent(w),
             invalidate: () => {},
         };
         this.block = new StyledBlock("customMessageBg", 2, 1, this.content);
@@ -642,13 +633,7 @@ export class KeyboardHelpBlock {
         this.block.invalidate();
     }
 
-    /**
-     * @param {import('../../shared/session/session-help.ts').SessionHelpItem} item
-     * @param {number} keyWidth
-     * @param {number} width
-     * @returns {string[]}
-     */
-    renderItem(item, keyWidth, width) {
+    renderItem(item: SessionHelpItem, keyWidth: number, width: number) {
         const key = theme.fg("accent", item.key.padEnd(keyWidth));
         const prefixWidth = keyWidth + 1;
         const descriptionWidth = Math.max(1, width - prefixWidth);
@@ -659,18 +644,11 @@ export class KeyboardHelpBlock {
         });
     }
 
-    /**
-     * @param {import('../../shared/session/session-help.ts').SessionHelpItem[]} items
-     * @param {number} keyWidth
-     * @param {number} columnWidth
-     * @returns {string[]}
-     */
-    renderColumn(items, keyWidth, columnWidth) {
+    renderColumn(items: SessionHelpItem[], keyWidth: number, columnWidth: number) {
         return items.flatMap((item) => this.renderItem(item, keyWidth, columnWidth));
     }
 
-    /** @param {number} w */
-    renderContent(w) {
+    renderContent(w: number) {
         const width = Math.max(1, w);
         const lines = [theme.fg("accent", theme.bold(this.help.title))];
         const maxKeyWidth = Math.max(...this.help.items.map((item) => visibleWidth(item.key)), 1);
@@ -693,8 +671,7 @@ export class KeyboardHelpBlock {
         return lines;
     }
 
-    /** @param {number} w */
-    render(w) {
+    render(w: number) {
         return this.block.render(w);
     }
 }
@@ -706,16 +683,28 @@ export class KeyboardHelpBlock {
  * Contains a header (tool name + args), a body for streaming output, and a footer (duration + expand hint).
  */
 export class ToolExecutionBlock {
-    /**
-     * @param {string} toolName
-     * @param {string} title
-     */
-    constructor(toolName, title) {
+    declare previewLineLimit: number;
+    declare expanded: boolean;
+    declare durationStr: string;
+    declare bodyText: string;
+    declare displayImages: ToolDisplayImage[];
+    declare isError: boolean;
+    declare ended: boolean;
+    declare showElapsedTime: boolean;
+    declare startTime: number;
+    declare bgToken: ThemeBg;
+    declare toolName: string;
+    declare headerText: string;
+    declare bodyTextComponent: MermaidMarkdown | Text;
+    declare outputLineCount: number;
+    declare renderCache: BlockRenderCache | null;
+
+    constructor(toolName: string, title: string) {
         this.previewLineLimit = 6;
         this.expanded = toolName === "pair_checkpoint";
         this.durationStr = "";
         this.bodyText = "";
-        /** @type {ToolDisplayImage[]} */
+
         this.displayImages = [];
         this.isError = false;
         this.ended = false;
@@ -727,25 +716,22 @@ export class ToolExecutionBlock {
         this.headerText = normalizeToolHeaderText(title);
 
         // Body text component (rendered inside the block)
-        this.bodyTextComponent = this.toolName === "pair_checkpoint"
-            ? new MermaidMarkdown("", 0, 0, getMarkdownTheme())
-            : new Text("", 0, 0);
-        /** @type {number} */
+        this.bodyTextComponent =
+            this.toolName === "pair_checkpoint"
+                ? new MermaidMarkdown("", 0, 0, getMarkdownTheme())
+                : new Text("", 0, 0);
+
         this.outputLineCount = 0;
-        /** @type {{ width: number, lines: string[] } | null} */
+
         this.renderCache = null;
     }
 
-    /**
-     * @returns {string[]}
-     */
     getOutputLines() {
         if (!this.bodyText) return [];
         return this.bodyText.replaceAll("\r\n", "\n").replaceAll("\r", "\n").split("\n");
     }
 
-    /** @private */
-    updateBodyText() {
+    private updateBodyText() {
         // Every way of changing the output funnels through here, so this one
         // clear keeps the cache honest.
         this.renderCache = null;
@@ -768,23 +754,23 @@ export class ToolExecutionBlock {
             this.bodyTextComponent.setText(shown.join("\n"));
             return;
         }
-        const renderedText = shown.map((line) => {
-            if (!this.isError && (line.startsWith("Review Plan:") || line.startsWith("Review Code:"))) {
-                return theme.fg("success", theme.bold(line));
-            }
-            return this.isError ? theme.fg("text", line) : theme.fg("toolOutput", line);
-        }).join("\n");
+        const renderedText = shown
+            .map((line) => {
+                if (!this.isError && (line.startsWith("Review Plan:") || line.startsWith("Review Code:"))) {
+                    return theme.fg("success", theme.bold(line));
+                }
+                return this.isError ? theme.fg("text", line) : theme.fg("toolOutput", line);
+            })
+            .join("\n");
         this.bodyTextComponent.setText(renderedText);
     }
 
-    /** @param {boolean} expanded */
-    setExpanded(expanded) {
+    setExpanded(expanded: boolean) {
         this.expanded = expanded;
         this.updateBodyText();
     }
 
-    /** @param {string} text */
-    setOutput(text) {
+    setOutput(text: string) {
         // Strip ANSI codes from tool output to prevent embedded resets (\x1b[0m)
         // from breaking the block's background coloring. Preserve OSC 8 links so
         // live review URLs stay clickable.
@@ -792,8 +778,7 @@ export class ToolExecutionBlock {
         this.updateBodyText();
     }
 
-    /** @param {string} text */
-    appendOutput(text) {
+    appendOutput(text: string) {
         // Strip ANSI codes from tool output to prevent embedded resets (\x1b[0m)
         // from breaking the block's background coloring. Preserve OSC 8 links so
         // live review URLs stay clickable.
@@ -801,11 +786,7 @@ export class ToolExecutionBlock {
         this.updateBodyText();
     }
 
-    /**
-     * @param {string} base64
-     * @param {string} mimeType
-     */
-    appendDisplayImage(base64, mimeType) {
+    appendDisplayImage(base64: string, mimeType: string) {
         this.displayImages.push({ base64, mimeType });
         this.renderCache = null;
     }
@@ -816,16 +797,11 @@ export class ToolExecutionBlock {
         }
     }
 
-    /** @returns {string} */
     formatElapsedTime() {
         return `Elapsed time: ${((Date.now() - this.startTime) / 1000).toFixed(1)}s`;
     }
 
-    /**
-     * @param {boolean} isError
-     * @param {number | null} durationMs
-     */
-    endExecution(isError, durationMs) {
+    endExecution(isError: boolean, durationMs: number | null) {
         this.isError = isError;
         this.ended = true;
         this.showElapsedTime = false;
@@ -842,8 +818,7 @@ export class ToolExecutionBlock {
         this.renderCache = null;
     }
 
-    /** @param {number} w */
-    render(w) {
+    render(w: number) {
         // While a tool is running, its elapsed clock ticks in real time, so
         // those lines can never come from the cache.
         const live = this.showElapsedTime && !this.ended;
@@ -853,20 +828,17 @@ export class ToolExecutionBlock {
         return lines;
     }
 
-    /** @param {number} w */
-    renderLines(w) {
+    renderLines(w: number) {
         const bg = this.bgToken;
         const paddingX = 2;
         const innerW = Math.max(0, w - paddingX * 2);
 
-        /** @type {string[]} */
         const allLines = [];
 
         // ── Header: bold tool name, with vertical padding ──
         const rawHeaderLine = theme.fg("text", theme.bold(this.headerText));
-        const headerLine = visibleWidth(rawHeaderLine) > innerW
-            ? truncateToWidth(rawHeaderLine, innerW)
-            : rawHeaderLine;
+        const headerLine =
+            visibleWidth(rawHeaderLine) > innerW ? truncateToWidth(rawHeaderLine, innerW) : rawHeaderLine;
         const headerBlock = new StyledBlock(bg, paddingX, 1, { render: () => [headerLine], invalidate: () => {} });
         allLines.push(...headerBlock.render(w));
 
@@ -909,11 +881,8 @@ export class ToolExecutionBlock {
 
     /**
      * Render the footer content lines (duration left, expand hint right).
-     * @param {number} innerW
-     * @returns {string[]}
-     * @private
      */
-    renderFooterContent(innerW) {
+    private renderFooterContent(innerW: number) {
         // The count is cached because splitting the whole output on every
         // keystroke was the slow part.
         const canExpand = this.outputLineCount > this.previewLineLimit;
@@ -946,23 +915,20 @@ export class ToolExecutionBlock {
 }
 
 export class ToolExecutionGroupBlock {
+    declare children: ToolExecutionBlock[];
+    declare expanded: boolean;
+
     constructor() {
-        /** @type {ToolExecutionBlock[]} */
         this.children = [];
         this.expanded = false;
     }
 
-    /** @param {ToolExecutionBlock} block */
-    addBlock(block) {
+    addBlock(block: ToolExecutionBlock) {
         this.children.push(block);
         block.setExpanded(this.expanded);
     }
 
-    /**
-     * @param {Set<ToolExecutionBlock>} activeBlocks
-     * @param {number} maxChildren
-     */
-    trimCompletedChildren(activeBlocks, maxChildren) {
+    trimCompletedChildren(activeBlocks: Set<ToolExecutionBlock>, maxChildren: number) {
         while (this.children.length > maxChildren) {
             const removableIndex = this.children.findIndex((child) => !activeBlocks.has(child));
             if (removableIndex === -1) return;
@@ -970,19 +936,16 @@ export class ToolExecutionGroupBlock {
         }
     }
 
-    /** @param {boolean} expanded */
-    setExpanded(expanded) {
+    setExpanded(expanded: boolean) {
         this.expanded = expanded;
         for (const child of this.children) child.setExpanded(expanded);
     }
 
-    /** @param {ToolExecutionBlock} block */
-    contains(block) {
+    contains(block: ToolExecutionBlock) {
         return this.children.includes(block);
     }
 
-    /** @returns {string} */
-    getPaddingBgToken() {
+    getPaddingBgToken(): ThemeBg {
         if (this.children.some((child) => child.ended && !child.isError)) return "toolSuccessBg";
         if (this.children.length > 0 && this.children.every((child) => child.ended && child.isError)) {
             return "toolErrorBg";
@@ -990,52 +953,43 @@ export class ToolExecutionGroupBlock {
         return "toolPendingBg";
     }
 
-    /**
-     * @param {ToolExecutionBlock} child
-     * @param {number} width
-     * @returns {string}
-     */
-    renderCompactRow(child, width) {
+    renderCompactRow(child: ToolExecutionBlock, width: number) {
         const bgCode = getBgCode(child.bgToken);
         const leftPadding = Math.min(2, Math.max(0, width));
         const rightPadding = Math.min(2, Math.max(0, width - leftPadding));
         const innerWidth = Math.max(0, width - leftPadding - rightPadding);
-        const titlePrefix = child.headerText === child.toolName || child.headerText.startsWith(`${child.toolName} `)
-            ? child.toolName
-            : child.headerText.split(" ")[0] || child.headerText;
+        const titlePrefix =
+            child.headerText === child.toolName || child.headerText.startsWith(`${child.toolName} `)
+                ? child.toolName
+                : child.headerText.split(" ")[0] || child.headerText;
         const titleSuffix = child.headerText.slice(titlePrefix.length);
         const title = theme.fg("text", `\x1b[1m${titlePrefix}\x1b[22m${titleSuffix}`);
-        const durationText = child.durationStr ||
-            (child.showElapsedTime && !child.ended ? child.formatElapsedTime() : "");
+        const durationText =
+            child.durationStr || (child.showElapsedTime && !child.ended ? child.formatElapsedTime() : "");
         const duration = durationText ? theme.fg("dim", durationText) : "";
         const durationWidth = visibleWidth(duration);
         let content = title;
         if (duration && durationWidth + 1 < innerWidth) {
             const titleWidth = innerWidth - durationWidth - 1;
             const visibleTitle = visibleWidth(title) > titleWidth ? truncateToWidth(title, titleWidth) : title;
-            content = `${visibleTitle}${
-                " ".repeat(Math.max(1, innerWidth - visibleWidth(visibleTitle) - durationWidth))
-            }${duration}`;
+            content = `${visibleTitle}${" ".repeat(
+                Math.max(1, innerWidth - visibleWidth(visibleTitle) - durationWidth),
+            )}${duration}`;
         }
         const clamped = visibleWidth(content) > innerWidth ? truncateToWidth(content, innerWidth) : content;
-        const row = `${" ".repeat(leftPadding)}${clamped}${
-            " ".repeat(Math.max(0, innerWidth - visibleWidth(clamped) + rightPadding))
-        }`;
+        const row = `${" ".repeat(leftPadding)}${clamped}${" ".repeat(
+            Math.max(0, innerWidth - visibleWidth(clamped) + rightPadding),
+        )}`;
         return applyBg(bgCode, row);
     }
 
-    /** @param {number} w */
-    render(w) {
+    render(w: number) {
         if (!this.expanded) {
             const paddingLine = applyBg(getBgCode(this.getPaddingBgToken()), " ".repeat(Math.max(0, w)));
-            return [
-                paddingLine,
-                ...this.children.map((child) => this.renderCompactRow(child, w)),
-                paddingLine,
-            ];
+            return [paddingLine, ...this.children.map((child) => this.renderCompactRow(child, w)), paddingLine];
         }
-        /** @type {string[]} */
-        const lines = [];
+
+        const lines: string[] = [];
         this.children.forEach((child, index) => {
             lines.push(...child.render(w));
             if (index < this.children.length - 1) lines.push("");
@@ -1053,30 +1007,28 @@ export class ToolExecutionGroupBlock {
 // ─── Prompt Blocks ───────────────────────────────────────────────────────────
 
 /**
- * SelectList subclass that filters by substring across value, label, and description.
+ * SelectList subclass that filters by substring across value and label.
  */
 class SearchableSelectList extends SelectList {
-    /**
-     * @param {import("@earendil-works/pi-tui").SelectItem[]} items
-     * @param {number} maxVisible
-     * @param {import("@earendil-works/pi-tui").SelectListTheme} slTheme
-     * @param {import("@earendil-works/pi-tui").SelectListLayoutOptions} [layout]
-     */
-    constructor(items, maxVisible, slTheme, layout = {}) {
+    constructor(
+        items: SelectItem[],
+        maxVisible: number,
+        slTheme: SelectListTheme,
+        layout: SelectListLayoutOptions = {},
+    ) {
         super(items, maxVisible, slTheme, layout);
     }
 
-    /** @override */
-    // @ts-ignore: SelectList private fields not accessible to subclass in TS
-    setFilter(filter) {
+    override setFilter(filter: string) {
         const lower = filter.toLowerCase();
-        // @ts-ignore: SelectList private fields not accessible to subclass in TS
-        this.filteredItems = this.items.filter((/** @type {import("@earendil-works/pi-tui").SelectItem} */ item) =>
-            item.value.toLowerCase().includes(lower) ||
-            (item.label && item.label.toLowerCase().includes(lower))
+
+        // Pi keeps these JavaScript fields private in its TypeScript declarations.
+        this["filteredItems"] = this["items"].filter(
+            (item: SelectItem) =>
+                item.value.toLowerCase().includes(lower) || (item.label && item.label.toLowerCase().includes(lower)),
         );
-        // @ts-ignore: SelectList private fields not accessible to subclass in TS
-        this.selectedIndex = 0;
+
+        this["selectedIndex"] = 0;
     }
 }
 
@@ -1085,13 +1037,21 @@ class SearchableSelectList extends SelectList {
  * Embeds a searchable SelectList vertically in the chat stream.
  */
 export class PromptSelectBlock {
-    /**
-     * @param {string} promptTitle
-     * @param {import("@earendil-works/pi-tui").SelectItem[]} items
-     * @param {string} [hint]
-     * @param {import("@earendil-works/pi-tui").SelectListLayoutOptions} [layout]
-     */
-    constructor(promptTitle, items, hint = "", layout = {}) {
+    declare container: Container;
+    declare promptTitle: string;
+    declare hintText: string;
+    declare _headerText: Text;
+    declare header: StyledBlock;
+    declare input: Input;
+    declare searchBlock: StyledBlock;
+    declare list: SearchableSelectList;
+    declare bodyBlock: StyledBlock;
+    declare _footerText: Text;
+    declare footer: StyledBlock;
+    declare settled: boolean;
+    declare chosenValue: string | null;
+
+    constructor(promptTitle: string, items: SelectItem[], hint: string = "", layout: SelectListLayoutOptions = {}) {
         this.container = new Container();
 
         // Raw prompt + hint, re-baked into Text on invalidate so theme swaps recolor live.
@@ -1139,9 +1099,8 @@ export class PromptSelectBlock {
 
     /**
      * Called when selection completes
-     * @param {string|null} value
      */
-    settle(value) {
+    settle(value: string | null) {
         this.settled = true;
         this.chosenValue = value;
         this.container.children = [];
@@ -1152,8 +1111,7 @@ export class PromptSelectBlock {
         this.invalidate();
     }
 
-    /** @param {string} data */
-    handleInput(data) {
+    handleInput(data: string) {
         if (this.settled) return;
 
         // Navigation keys go to the list
@@ -1190,8 +1148,7 @@ export class PromptSelectBlock {
         this.container.invalidate();
     }
 
-    /** @param {number} w */
-    render(w) {
+    render(w: number) {
         return this.container.render(w);
     }
 }
@@ -1201,11 +1158,19 @@ export class PromptSelectBlock {
  * Embeds an Input vertically in the chat stream.
  */
 export class PromptTextBlock {
-    /**
-     * @param {string} promptTitle
-     * @param {string} [hint]
-     */
-    constructor(promptTitle, hint = "") {
+    declare container: Container;
+    declare promptTitle: string;
+    declare hintText: string;
+    declare _headerText: Text;
+    declare header: StyledBlock;
+    declare input: Input;
+    declare bodyBlock: StyledBlock;
+    declare _footerText: Text;
+    declare footer: StyledBlock;
+    declare settled: boolean;
+    declare chosenValue: string | null;
+
+    constructor(promptTitle: string, hint: string = "") {
         this.container = new Container();
 
         this.promptTitle = promptTitle;
@@ -1232,9 +1197,8 @@ export class PromptTextBlock {
 
     /**
      * Called when input completes
-     * @param {string|null} value
      */
-    settle(value) {
+    settle(value: string | null) {
         this.settled = true;
         this.chosenValue = value;
         this.container.children = [];
@@ -1245,8 +1209,7 @@ export class PromptTextBlock {
         this.invalidate();
     }
 
-    /** @param {string} data */
-    handleInput(data) {
+    handleInput(data: string) {
         if (this.settled) return;
         this.input.handleInput(data);
     }
@@ -1267,8 +1230,7 @@ export class PromptTextBlock {
         this.container.invalidate();
     }
 
-    /** @param {number} w */
-    render(w) {
+    render(w: number) {
         return this.container.render(w);
     }
 }
@@ -1276,30 +1238,31 @@ export class PromptTextBlock {
 // ─── Spinner Block ───────────────────────────────────────────────────────────
 
 export class SpinnerBlock {
+    declare frame: number;
+    declare isBusy: boolean;
+    declare tasks: RunningTask[];
+    declare busyLines: readonly string[] | undefined;
+    declare busyLabel: string | undefined;
+
     constructor() {
         this.frame = 0;
         this.isBusy = false;
-        /** @type {Array<{task: number, assignee: string, description: string}>} */
+
         this.tasks = [];
-        /** @type {readonly string[] | undefined} */
+
         this.busyLines = undefined;
-        /** @type {string | undefined} */
+
         this.busyLabel = undefined;
     }
 
-    /**
-     * @param {boolean} busy
-     * @param {Array<{task: number, assignee: string, description: string}>} tasks
-     */
-    setBusy(busy, tasks = []) {
+    setBusy(busy: boolean, tasks: RunningTask[] = []) {
         this.isBusy = busy;
         if (!busy) this.busyLabel = undefined;
         this.tasks = tasks;
         this.invalidate();
     }
 
-    /** @param {readonly string[] | undefined} lines */
-    setBusyLines(lines) {
+    setBusyLines(lines: readonly string[] | undefined) {
         this.busyLines = lines;
         this.busyLabel = undefined;
         this.invalidate();
@@ -1314,23 +1277,27 @@ export class SpinnerBlock {
 
     invalidate() {}
 
-    /** @param {number} w */
-    render(w) {
+    render(w: number) {
         if (!this.isBusy && this.tasks.length === 0) return [];
 
         const f = getThinkingFrame(this.frame);
         if (this.tasks.length > 0) {
             return this.tasks.map((t) => {
-                const line = theme.fg("accent", f) + " " + theme.fg("success", t.assignee) + " " +
+                const line =
+                    theme.fg("accent", f) +
+                    " " +
+                    theme.fg("success", t.assignee) +
+                    " " +
                     theme.fg("dim", `(Task ${t.task})`);
                 return line + " ".repeat(Math.max(0, w - visibleWidth(line)));
             });
         }
 
         // Keep the selected label until the agent stops or switches; only the spinner frame advances.
-        this.busyLabel ??= this.busyLines && this.busyLines.length > 0
-            ? this.busyLines[Math.floor(Math.random() * this.busyLines.length)]
-            : "Working...";
+        this.busyLabel ??=
+            this.busyLines && this.busyLines.length > 0
+                ? this.busyLines[Math.floor(Math.random() * this.busyLines.length)]
+                : "Working...";
         const line = theme.fg("accent", `${f} ${this.busyLabel}`);
         return [line + " ".repeat(Math.max(0, w - visibleWidth(line)))];
     }

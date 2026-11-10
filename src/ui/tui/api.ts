@@ -7,11 +7,13 @@ import type { DocumentLinkHost } from "../review/document-link-host.ts";
 import type { ManagedSyncStatus, TuiAPI, UiAPI } from "./types.js";
 import {
     AgentMessageBlock,
+    type EngineerReport,
     KeyboardHelpBlock,
     ManagedSyncStatusBlock,
     PromptSelectBlock,
     PromptTextBlock,
     ReviewResultBlock,
+    type ReviewerReport,
     SystemMessageBlock,
     type SpinnerBlock,
     ThinkingBlock,
@@ -19,7 +21,7 @@ import {
     ToolExecutionGroupBlock,
     UserPromptBlock,
     ValidationHandoffBlock,
-} from "./blocks.js";
+} from "./blocks.ts";
 
 const MAX_MESSAGE_LIST_CHILDREN = 1000;
 const WORKFLOW_TOOL_NAME_SET = new Set(WORKFLOW_TOOL_NAMES);
@@ -78,9 +80,6 @@ interface BlockWithSpacer<Block> {
 
 type InvalidatableMessageBlock =
     ToolExecutionBlock | ToolExecutionGroupBlock | ThinkingBlock | AgentMessageBlock | SystemMessageBlock;
-type ValidationHandoffState = ConstructorParameters<typeof ValidationHandoffBlock>[0];
-type EngineerReport = NonNullable<ValidationHandoffState["engineer"]>;
-type ReviewerReport = NonNullable<ValidationHandoffState["reviewer"]>;
 type ValidationProgressListener = (progress: RuntimeValidationProgress | null) => void;
 
 /**
