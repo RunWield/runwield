@@ -23,7 +23,7 @@ import stripAnsi from "strip-ansi";
 import type { SessionHelpItem, SessionHelpPayload } from "../../shared/session/session-help.ts";
 import type { RuntimeValidationProgress } from "../../shared/session/session-runtime-events.js";
 import type { DocumentLinkHost } from "../review/document-link-host.ts";
-import type { ManagedSyncStatus, RunningTask, UiAPI } from "./types.js";
+import type { ManagedSyncStatus, RunningTask, UiAPI } from "./api.ts";
 
 export interface ToolDisplayImage {
     base64: string;

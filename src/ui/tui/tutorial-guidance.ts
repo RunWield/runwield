@@ -8,7 +8,7 @@ import { findPlanEvidenceById } from "../../plan-store.js";
 import { readControllerRecord } from "../../shared/workflow/controller-registry.ts";
 import { getCustomSetting } from "../../shared/settings.js";
 import { INIT_VERIFICATION_COMMAND_PLACEHOLDER } from "../../tools/init-verification-command.ts";
-import type { UiAPI } from "./types.js";
+import type { UiAPI } from "./api.ts";
 
 type SessionRuntimeEvent = import("../../shared/session/session-runtime-events.js").SessionRuntimeEvent;
 type SessionRuntime = ReturnType<typeof import("../../shared/session/session-runtime.ts").createSessionRuntime>;

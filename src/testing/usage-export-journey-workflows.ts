@@ -1,4 +1,4 @@
-import type { UiAPI } from "../ui/tui/types.js";
+import type { UiAPI } from "../ui/tui/api.ts";
 import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";
 import { join } from "node:path";
 import { ok as assert } from "node:assert/strict";

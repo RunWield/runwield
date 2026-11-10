@@ -36,7 +36,7 @@ import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location
 import { ProjectRuntimeEntryRefusedError } from "../../shared/project-runtime-layout.ts";
 
 import { updatePlanFrontMatter } from "../../plan-store.js";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { UiAPI } from "../../ui/tui/api.ts";
 import type { PlanSessionSurface, RecoveryWorktreeContext } from "./plan-session-types.ts";
 import type { RecoveryFlowPlan, UnresolvedTransitionRecord } from "./plan-recovery-flow.ts";
 

@@ -2,7 +2,7 @@ import process from "node:process";
 import { runAgyCliMcpSetupPrompt } from "../../shared/session/backends/agy-cli/mcp-setup.ts";
 import { runRunWieldMcpStdioTransport } from "../../shared/session/bridged-tools/stdio-transport.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { UiAPI } from "../../ui/tui/api.ts";
 
 interface McpCommandContext {
     sessionId?: string;

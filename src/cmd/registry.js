@@ -87,7 +87,7 @@ const bin = (...parts) => [CLI_BIN, ...parts].join(" ");
  * required capability instead of an optional dependency bag.
  *
  * @param {CommandContext | undefined} options
- * @returns {CommandContext & { uiAPI: import('../ui/tui/types.js').UiAPI }}
+ * @returns {CommandContext & { uiAPI: import('../ui/tui/api.ts').UiAPI }}
  */
 function requireInteractiveCommandContext(options) {
     if (!options?.uiAPI) throw new Error("This command is only available in the interactive session.");
@@ -100,13 +100,13 @@ function requireInteractiveCommandContext(options) {
 
 /**
  * @typedef {Object} CommandContext
- * @property {import('../ui/tui/types.js').UiAPI} [uiAPI]
- * @property {import('../ui/tui/types.js').EditorAPI} [editor]
+ * @property {import('../ui/tui/api.ts').UiAPI} [uiAPI]
+ * @property {import('../ui/tui/api.ts').EditorAPI} [editor]
  * @property {string} [sessionId]
  * @property {import('../shared/session/session-runtime.ts').SessionRuntime} [sessionRuntime]
  * @property {string} [sessionStartedAt]
  * @property {string} [commandInvocationId]
- * @property {import('../ui/tui/types.js').TuiAPI} [tui]
+ * @property {import('../ui/tui/api.ts').TuiAPI} [tui]
  * @property {(data: string) => void | Promise<void>} [originalHandleInput]
  * @property {"new" | "continue"} [sessionStartMode]
  * @property {(nextSessionId: string) => void} [replaceRuntimeSession]

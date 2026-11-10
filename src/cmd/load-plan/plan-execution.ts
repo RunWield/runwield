@@ -26,7 +26,7 @@ import {
     buildValidationUserMessage,
 } from "../../shared/workflow/validation-user-messages.ts";
 import type { PlanFrontMatter } from "../../plan-store.js";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { UiAPI } from "../../ui/tui/api.ts";
 import type { PlanSessionSurface, RecoveryWorktreeContext, ReviewImage } from "./plan-session-types.ts";
 import type { WorkflowDecision } from "../../shared/workflow/decisions.ts";
 import type { WorkflowValidationResult } from "../../shared/workflow/validation-types.ts";
@@ -104,7 +104,7 @@ export interface ExecuteReadyPlanOptions {
  * @param {string} opts.projectRoot
  * @param {string} opts.planName
  * @param {Partial<import('../../plan-store.js').PlanFrontMatter>} opts.triageMeta
- * @param {import('../../ui/tui/types.js').UiAPI} opts.uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @returns {Promise<boolean>}
  */
 export async function confirmAffectedPathChangesBeforeExecution({
@@ -172,7 +172,7 @@ export async function confirmAffectedPathChangesBeforeExecution({
  * @param {PlanSessionSurface["runValidation"]} continueWorkflowValidation
  * @param {RecoveryWorktreeContext | null} worktreeContext
  * @param {PlanSessionSurface} session
- * @param {import('../../ui/tui/types.js').UiAPI} [uiAPI]
+ * @param {import('../../ui/tui/api.ts').UiAPI} [uiAPI]
  * @returns {Promise<ValidationStartResult>}
  */
 export async function validateCompletedExecution(
@@ -344,7 +344,7 @@ export async function validateCompletedExecution(
  * @param {string} opts.fallbackPlanContent
  * @param {PlanSessionSurface["runValidation"]} opts.continueWorkflowValidation
  * @param {PlanSessionSurface} opts.session
- * @param {import('../../ui/tui/types.js').UiAPI} [opts.uiAPI]
+ * @param {import('../../ui/tui/api.ts').UiAPI} [opts.uiAPI]
  * @returns {Promise<ValidationStartResult>}
  */
 export async function validatePostExecutionDecision({
@@ -379,7 +379,7 @@ export async function validatePostExecutionDecision({
  * @param {Object} opts
  * @param {import('../../shared/workflow/decisions.ts').WorkflowDecision} opts.decision
  * @param {string} opts.fallbackPlanContent
- * @param {import('../../ui/tui/types.js').UiAPI} opts.uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @param {PlanSessionSurface["executePlan"]} opts.executePlan
  * @param {PlanSessionSurface["runValidation"]} opts.continueWorkflowValidation
  * @param {PlanSessionSurface["runSlicerAgent"]} opts.runSlicerAgent
@@ -456,7 +456,7 @@ export function shouldKeepPlanningAgentActive(decision: WorkflowDecision): boole
 
 /**
  * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter }} plan
- * @param {import('../../ui/tui/types.js').UiAPI} uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} uiAPI
  * @returns {boolean}
  */
 export function validatePlanExecutionPolicyForReadiness(plan: { attrs: PlanFrontMatter }, uiAPI: UiAPI): boolean {
@@ -473,7 +473,7 @@ export function validatePlanExecutionPolicyForReadiness(plan: { attrs: PlanFront
  *
  * @param {string} projectRoot
  * @param {{ planName: string, path: string, attrs: import('../../plan-store.js').PlanFrontMatter }} plan
- * @param {import('../../ui/tui/types.js').UiAPI} uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} uiAPI
  * @returns {Promise<boolean>}
  */
 export async function prepareApprovedPlanForWork(
@@ -517,7 +517,7 @@ export async function prepareApprovedPlanForWork(
  * @param {string} opts.projectRoot
  * @param {{ planName: string, markdown?: string, body: string, attrs: import('../../plan-store.js').PlanFrontMatter }} opts.plan
  * @param {string} opts.agentName
- * @param {import('../../ui/tui/types.js').UiAPI} opts.uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @param {PlanSessionSurface["executePlan"]} opts.executePlan
  * @param {PlanSessionSurface["runPlanningAgent"]} opts.runPlanningAgent
  * @param {PlanSessionSurface["runValidation"]} opts.continueWorkflowValidation

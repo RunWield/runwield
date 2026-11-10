@@ -20,7 +20,7 @@ import { formatEpicProgressSummary } from "./plan-epic-children.ts";
 import { transitionFailureError } from "./transition-failure.ts";
 import { relative } from "node:path";
 import type { PlanFrontMatter } from "../../plan-store.js";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { UiAPI } from "../../ui/tui/api.ts";
 
 export interface ArchiveEpicPlanRef {
     planName: string;

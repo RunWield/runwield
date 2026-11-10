@@ -3,7 +3,7 @@
  * Routes built-in slash commands, prompt templates, and skill macros.
  */
 
-import type { EditorAPI, TuiAPI, UiAPI } from "./types.js";
+import type { EditorAPI, TuiAPI, UiAPI } from "./api.ts";
 import type { ImageAttachment } from "../../shared/session/image-attachments.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import type { GenerationGuard } from "./generation-guard.ts";

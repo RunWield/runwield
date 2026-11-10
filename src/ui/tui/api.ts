@@ -1,10 +1,24 @@
-import { Image, isFocusable, Spacer, type Component, type Container, type Focusable } from "@earendil-works/pi-tui";
+import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import {
+    Image,
+    isFocusable,
+    Spacer,
+    type AutocompleteProvider,
+    type Component,
+    type Container,
+    type Focusable,
+    type SelectItem,
+    type SelectListLayoutOptions,
+} from "@earendil-works/pi-tui";
 import { getSettingsManager } from "../../shared/settings.js";
 import { WORKFLOW_TOOL_NAMES } from "../../tools/registry.ts";
 import { imageTheme } from "../theme/theme.ts";
-import type { RuntimeValidationProgress } from "../../shared/session/session-runtime-events.js";
+import type {
+    RuntimeManagedSyncStateEvent,
+    RuntimeValidationProgress,
+} from "../../shared/session/session-runtime-events.js";
 import type { DocumentLinkHost } from "../review/document-link-host.ts";
-import type { ManagedSyncStatus, TuiAPI, UiAPI } from "./types.js";
+import type { SessionHelpPayload } from "../../shared/session/session-help.ts";
 import {
     AgentMessageBlock,
     type EngineerReport,
@@ -26,7 +40,128 @@ import {
 const MAX_MESSAGE_LIST_CHILDREN = 1000;
 const WORKFLOW_TOOL_NAME_SET = new Set(WORKFLOW_TOOL_NAMES);
 
-export type { UiAPI } from "./types.js";
+export interface AgentMessageAppender {
+    appendText: (delta: string) => void;
+}
+
+export interface ToolExecutionBlockApi {
+    setOutput: (text: string) => void;
+    endExecution: (isError: boolean, durationMs: number | null) => void;
+    appendDisplayImage?: (base64: string, mimeType: string) => void;
+    bodyText?: string;
+    startTime: number;
+    setExpanded?: (expanded: boolean) => void;
+}
+
+export type ManagedSyncStatus = Omit<RuntimeManagedSyncStateEvent, "type" | "sessionId" | "timestamp">;
+
+export interface RunningTask {
+    task: number;
+    assignee: string;
+    description: string;
+}
+
+export type SelectOption = SelectItem;
+
+export interface ModelSelectorResult {
+    selected: boolean;
+}
+
+interface ThinkingAppender {
+    appendDelta: (delta: string) => void;
+    end: () => void;
+}
+
+interface SystemMessageStyle {
+    headingColor?: string;
+    bodyColor?: string;
+}
+
+interface SelectPromptHooks {
+    onSelectionChange?: (value: string) => void;
+    layout?: SelectListLayoutOptions;
+    hint?: string;
+    persistResult?: boolean;
+}
+
+interface ComposerPromptOptions {
+    defaultValue?: string;
+    placeholder?: string;
+    allowEmpty?: boolean;
+}
+
+interface TextPromptOptions extends ComposerPromptOptions {
+    persistResult?: boolean;
+}
+
+interface ValidationReport extends Pick<EngineerReport, "agentName" | "markdown"> {
+    approved?: boolean;
+}
+
+export interface UiAPI {
+    appendThinkingStart?: () => ThinkingAppender;
+    appendSystemMessage: (text: string, isError?: boolean, header?: string, style?: SystemMessageStyle) => void;
+    appendAgentMessageStart: (agentName: string) => AgentMessageAppender;
+    appendUserMessage?: (text: string) => void;
+    appendImage?: (base64: string, mimeType: string) => void;
+    appendQueuedMessage?: (id: string, text: string) => void;
+    removeQueuedMessage?: (id: string) => void;
+    requestRender: () => void;
+    advanceSpinner?: () => void;
+    setBusy?: (busy: boolean) => void;
+    setAgentBusyLines?: (lines: readonly string[] | undefined) => void;
+    setRunningTasks?: (tasks: RunningTask[]) => void;
+    clearMessages?: () => void;
+    promptSelect: <Option extends SelectOption>(
+        title: string,
+        options: Option[],
+        hooks?: SelectPromptHooks,
+    ) => Promise<string | null>;
+    promptText: (title: string, options?: TextPromptOptions) => Promise<string | null>;
+    promptComposerText?: (title: string, options?: ComposerPromptOptions) => Promise<string | null>;
+    showModelSelector: (
+        initialSearchInput?: string,
+    ) => Promise<ModelSelectorResult | void> | ModelSelectorResult | void;
+    withHiddenInput?: <Result>(operation: () => Promise<Result>) => Promise<Result>;
+    disableInput?: () => void;
+    enableInput?: () => void;
+    startToolExecution?: (id: string, toolName: string, title: string) => ToolExecutionBlockApi;
+    appendReviewResult?: (agentName: string, markdown: string, approved: boolean) => void;
+    updateValidationProgress?: (progress: RuntimeValidationProgress) => void;
+    updateValidationReport?: (role: "engineer" | "reviewer", report: ValidationReport) => void;
+    clearValidationPanel?: (preserveProgress?: boolean) => void;
+    setValidationPanelVisible?: (visible: boolean) => void;
+    setManagedSyncStatus?: (status: ManagedSyncStatus) => void;
+    getActiveToolBlock?: (id: string) => ToolExecutionBlockApi | undefined;
+    toggleToolOutputsExpanded?: () => void;
+    showKeyboardHelp?: (help: SessionHelpPayload) => void;
+    hideKeyboardHelp?: () => void;
+    addToolInvoked?: (event: AgentSessionEvent) => void;
+    addToolResult?: (event: AgentSessionEvent) => void;
+    isOutputSuppressed?: () => boolean;
+    suppressOutput?: () => void;
+    abortActivePrompt: () => void;
+    focusActivePrompt?: () => boolean;
+    dispose?: () => void;
+}
+
+export interface EditorAPI {
+    disableSubmit: boolean;
+    setText: (text: string) => void;
+    setAutocompleteProvider: (provider: AutocompleteProvider) => void;
+    handleInput: (data: string) => void | Promise<void>;
+    onSubmit?: (text: string) => void | Promise<void>;
+    onChange?: (text: string) => void;
+    onFocus?: () => void;
+    onBlur?: () => void;
+    addToHistory?: (text: string) => void;
+}
+
+export interface TuiAPI {
+    requestRender: () => void;
+    setFocus: (component: Component | null) => void;
+    addChild?: (component: Component) => void;
+}
 
 export interface ToolElapsedTimerState {
     renderTimer: ReturnType<typeof setTimeout> | null;

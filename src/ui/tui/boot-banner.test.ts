@@ -16,7 +16,7 @@ import { normalizeScreenText, VirtualTerminal } from "./testing/virtual-terminal
 interface BannerHarness {
     messageList: Container;
     tui: TUI;
-    uiAPI: import("./types.js").UiAPI;
+    uiAPI: import("./api.ts").UiAPI;
 }
 
 class CompatibleVirtualTerminal extends VirtualTerminal {

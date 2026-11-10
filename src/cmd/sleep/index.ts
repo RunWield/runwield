@@ -32,11 +32,11 @@ export interface InteractiveSessionPort {
     startInteractiveSession(
         initialRequest: string | null,
         options: { initialAgentName?: string },
-    ): Promise<import("../../ui/tui/types.js").UiAPI | void>;
+    ): Promise<import("../../ui/tui/api.ts").UiAPI | void>;
 }
 
 export interface SleepCommandOptions {
-    uiAPI?: Pick<import("../../ui/tui/types.js").UiAPI, "appendSystemMessage">;
+    uiAPI?: Pick<import("../../ui/tui/api.ts").UiAPI, "appendSystemMessage">;
     sessionId?: string;
     sessionRuntime?: SessionRuntime;
     mnemotecaPort: MnemotecaPort;

@@ -49,7 +49,7 @@ import { runLoadPlanCommand } from "./index.ts";
 import { getLoadPlanCompletions } from "./getArgumentCompletions.ts";
 import { getRunWieldRuntimeDir } from "../../constants.js";
 import type { PlanFrontMatterInput } from "../../plan-store.js";
-import type { EditorAPI, SelectOption, UiAPI } from "../../ui/tui/types.js";
+import type { EditorAPI, SelectOption, UiAPI } from "../../ui/tui/api.ts";
 
 interface LoadPlanUiFixture {
     editor: EditorAPI;

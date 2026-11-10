@@ -26,7 +26,7 @@ import {
     recordPublicationFailure,
 } from "../../shared/workflow/publication-attempt.ts";
 import { findById } from "../../shared/worktree-registry.js";
-import type { EditorAPI, UiAPI } from "../../ui/tui/types.js";
+import type { EditorAPI, UiAPI } from "../../ui/tui/api.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runLoadPlanCommand } from "./index.ts";
 

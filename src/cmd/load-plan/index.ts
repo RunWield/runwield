@@ -75,7 +75,7 @@ import {
     resolveWorkflowPlanLocation,
 } from "../../shared/workflow/plan-location.ts";
 import type { CommandContext } from "../registry.js";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { UiAPI } from "../../ui/tui/api.ts";
 import {
     buildPlanRecoveryUserMessage,
     buildValidationRecoveryNotice,

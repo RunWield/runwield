@@ -4,7 +4,7 @@ import { archivePlan, loadArchivedPlan, loadPlan, savePlan, withPlanCatalogLock 
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runLoadPlanCommand } from "./index.ts";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { UiAPI } from "../../ui/tui/api.ts";
 import { createTestWorktreeAttempt, git } from "../../shared/worktree-test-helpers.ts";
 import { updateEntry } from "../../shared/worktree-registry.js";
 import { runArchiveTransition } from "../../shared/workflow/state-transition.ts";

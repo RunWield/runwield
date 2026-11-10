@@ -1,5 +1,5 @@
 /** Shared conversation renderer. It consumes live or replay events, never a Runtime. */
-import type { AgentMessageAppender, UiAPI } from "./types.js";
+import type { AgentMessageAppender, UiAPI } from "./api.ts";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
 
 const HIDDEN_TOOL_BLOCK_NAMES = new Set(["task_completed", "review_complete", "triage_report", "user_interview"]);

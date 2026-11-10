@@ -29,8 +29,8 @@ import { confirmInitFiles, INIT_DECLINED_MESSAGE } from "./init-consent.ts";
 import { recordInitializedProjectContext } from "../../shared/worktree-project-context.ts";
 
 interface InitCommandBaseOptions {
-    uiAPI?: Pick<import("../../ui/tui/types.js").UiAPI, "appendSystemMessage"> &
-        Partial<Pick<import("../../ui/tui/types.js").UiAPI, "promptSelect">>;
+    uiAPI?: Pick<import("../../ui/tui/api.ts").UiAPI, "appendSystemMessage"> &
+        Partial<Pick<import("../../ui/tui/api.ts").UiAPI, "promptSelect">>;
     sessionPort: InteractiveSessionPort;
     projectRoot?: string;
 }

@@ -12,7 +12,7 @@ import { resolveSiblingChildPlanDependencies as resolveSiblingChildPlanDependenc
 import { isInValidation } from "../../shared/workflow/plan-lifecycle.ts";
 import { buildPlanSummary, type SummarisablePlan } from "../../shared/plan-presentation.ts";
 import type { PlanFrontMatter } from "../../plan-store.js";
-import type { SelectOption, UiAPI } from "../../ui/tui/types.js";
+import type { SelectOption, UiAPI } from "../../ui/tui/api.ts";
 
 /** Tallies used by the Epic progress views. */
 export interface EpicChildCounts {
@@ -253,7 +253,7 @@ export function formatDependencyWarning(unmetDependencies: UnmetChildDependency[
 /**
  * @param {string} projectRoot
  * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter }} plan
- * @param {import('../../ui/tui/types.js').UiAPI} uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} uiAPI
  * @param {typeof resolveSiblingChildPlanDependenciesFn} resolveSiblingChildPlanDependencies
  * @returns {Promise<boolean>}
  */

@@ -8,7 +8,7 @@ import { runRecoveryTransition } from "../../shared/workflow/state-transition.ts
 import { hasWorktreeContext, resolveRecoveryWorktree } from "./plan-recovery-worktree.ts";
 import type { HoldablePlan } from "./plan-hold.ts";
 import type { PlanSessionSurface } from "./plan-session-types.ts";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { UiAPI } from "../../ui/tui/api.ts";
 
 interface CompleteUserVerificationOptions {
     projectRoot: string;

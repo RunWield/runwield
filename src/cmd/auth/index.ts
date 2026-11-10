@@ -10,7 +10,7 @@ import {
     type RunWieldModelRegistry,
 } from "../../shared/models/model-registry.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { UiAPI } from "../../ui/tui/api.ts";
 
 export interface AuthUiPort {
     abortActivePrompt: NonNullable<UiAPI["abortActivePrompt"]>;

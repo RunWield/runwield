@@ -514,7 +514,7 @@ async function notifyAcpContextUsage(context, runtime, sessionMap, runtimeSessio
 }
 
 /**
- * @typedef {{ value: string, label: string, description?: string, [key: string]: unknown }} AcpCommandSelectOption
+ * @typedef {import('../ui/tui/api.ts').SelectOption} AcpCommandSelectOption
  */
 
 /**

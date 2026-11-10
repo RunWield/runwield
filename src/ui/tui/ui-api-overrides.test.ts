@@ -23,7 +23,7 @@ interface OverridesHarness {
     validationPanel: Container;
     terminal: VirtualTerminal;
     tui: TUI;
-    uiAPI: import("./types.js").UiAPI;
+    uiAPI: import("./api.ts").UiAPI;
 }
 
 const ONE_PIXEL_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";

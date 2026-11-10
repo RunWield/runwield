@@ -33,7 +33,7 @@ import {
 import type { WorkRecordSupersessionCandidate } from "../../shared/work-records/schema.ts";
 
 export interface WorkRecordCommandOptions {
-    uiAPI?: Pick<import("../../ui/tui/types.js").UiAPI, "appendSystemMessage" | "promptSelect">;
+    uiAPI?: Pick<import("../../ui/tui/api.ts").UiAPI, "appendSystemMessage" | "promptSelect">;
     mnemotecaPort: WorkRecordMnemotecaPort;
 }
 

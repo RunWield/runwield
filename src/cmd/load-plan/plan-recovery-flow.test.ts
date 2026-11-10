@@ -36,7 +36,7 @@ import {
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 
 import type { PlanFrontMatter } from "../../plan-store.js";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { UiAPI } from "../../ui/tui/api.ts";
 import type { PlanSessionSurface } from "./plan-session-types.ts";
 import type { HandlePlanRecoveryOptions, RecoveryFlowPlan } from "./plan-recovery-flow.ts";
 import type { RecoveryActionContext } from "./plan-recovery-actions.ts";

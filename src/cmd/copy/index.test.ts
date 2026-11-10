@@ -1,7 +1,7 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { runCopyCommand } from "./index.ts";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { UiAPI } from "../../ui/tui/api.ts";
 import { initRunWieldTheme } from "../../ui/theme/theme.ts";
 
 initRunWieldTheme();

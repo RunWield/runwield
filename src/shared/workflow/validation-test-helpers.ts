@@ -5,7 +5,7 @@ import { mkdtemp as fsMkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import type { PlanFrontMatterInput } from "../../plan-store.js";
 import type { runCodeReview } from "../../ui/review/code-review.ts";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { UiAPI } from "../../ui/tui/api.ts";
 import type { GitPort } from "../git-port.ts";
 import type { SessionRuntimeEventSink } from "../session/session-host.ts";
 import type { RuntimeToolTitleArgs } from "../session/tool-event-title.ts";
