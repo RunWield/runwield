@@ -1,5 +1,4 @@
 import type { AgentSession, SessionManager, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { ContextUsageSnapshot } from "../../types.js";
 import type { McpServerDefinition } from "../../mcp/config.ts";
 import type { FileSessionStore } from "../file-session-store-types.ts";
 import type { MinimalSessionManagerLike } from "../hosted-session.js";
@@ -45,6 +44,12 @@ export interface RuntimeCompactionSettings {
 
 export interface RuntimeContextSettingsManager {
     getCompactionSettings?(): RuntimeCompactionSettings | null;
+}
+
+export interface ContextUsageSnapshot {
+    tokens: number | null;
+    contextWindow: number;
+    percent: number | null;
 }
 
 export interface RuntimeContextAgentSession {

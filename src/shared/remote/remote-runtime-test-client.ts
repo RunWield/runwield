@@ -136,7 +136,7 @@ export interface RuntimeClientReport {
     rollover?: import("../session/segment-rollover.ts").SegmentRolloverResult;
     workflowContext?: import("../session/workflow-context-session.ts").WorkflowContext | null;
     tutorialContext?: import("../session/tutorial-context-session.ts").TutorialContext | null;
-    activeWorkflow?: import("../types.js").ActiveExecutionWorkflow | null;
+    activeWorkflow?: import("../session/execution-workflow-session.ts").ActiveExecutionWorkflow | null;
     piSessionId?: string;
     result?: Awaited<ReturnType<SessionRuntime["runValidation"]>>;
     reviewUrl?: string;

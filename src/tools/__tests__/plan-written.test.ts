@@ -23,7 +23,7 @@ import type {
     RuntimeInteractionResponse,
 } from "../../shared/session/session-runtime-interactions.ts";
 import type { PlanReviewConversation } from "../../shared/session/plan-review-conversation.ts";
-import type { SessionRuntimeEventSink } from "../../shared/types.js";
+import type { SessionRuntimeEventSink } from "../../shared/session/session-host.ts";
 import type { PlanApprovalAction } from "../../shared/workflow/plan-approval.ts";
 import {
     applySharedPlanReviewDecision,

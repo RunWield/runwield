@@ -21,7 +21,7 @@ import {
 } from "./validation-test-helpers.ts";
 
 import type { SemanticReviewPort } from "./validation-session-adapter.ts";
-import type { ActiveExecutionWorkflow } from "../types.js";
+import type { ActiveExecutionWorkflow } from "../session/execution-workflow-session.ts";
 import type { LocalCIPort } from "./validation-local-ci.ts";
 
 type RepairMessages = Awaited<ReturnType<SemanticReviewPort["runIsolatedAgentSession"]>>;

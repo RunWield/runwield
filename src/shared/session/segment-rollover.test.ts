@@ -17,7 +17,7 @@ import {
     recordSegmentLineageEvidence,
 } from "./workflow-context-session.ts";
 import { readExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
-import type { ActiveExecutionWorkflow } from "../types.js";
+import type { ActiveExecutionWorkflow } from "./execution-workflow-session.ts";
 import { type TutorialContext, readPersistedTutorialContext } from "./tutorial-context-session.ts";
 
 type ManagedFixture = Awaited<ReturnType<typeof createManagedFixture>>;

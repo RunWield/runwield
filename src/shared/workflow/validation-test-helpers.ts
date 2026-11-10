@@ -7,7 +7,7 @@ import type { PlanFrontMatterInput } from "../../plan-store.js";
 import type { runCodeReview } from "../../ui/review/code-review.ts";
 import type { UiAPI } from "../../ui/tui/types.js";
 import type { GitPort } from "../git-port.ts";
-import type { SessionRuntimeEventSink } from "../types.js";
+import type { SessionRuntimeEventSink } from "../session/session-host.ts";
 import type { RuntimeToolTitleArgs } from "../session/tool-event-title.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { createSessionRuntimeEvent, type RuntimeSystemStatusEvent } from "../session/session-runtime-events.js";

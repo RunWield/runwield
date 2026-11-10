@@ -1,5 +1,41 @@
-import type { ActiveExecutionWorkflow } from "../types.js";
+import type { TriageMeta } from "../../tools/plan-written.ts";
+import type { ReviewLedger } from "../workflow/review-ledger.ts";
 import type { HostedSession, MinimalSessionManagerLike } from "./hosted-session.js";
+
+export interface ActiveExecutionWorkflow {
+    planName: string;
+    triageMeta: TriageMeta;
+    executionAgent: "engineer" | "frontend-engineer";
+    executionStarted?: boolean;
+    executionAttemptStartedAtMs?: number;
+    collaborationStyle?: "autonomous" | "pair";
+    collaborationRecommendation?: "autonomous" | "pair";
+    pairCheckpointCount?: number;
+    pairSwitchedToAutonomous?: boolean;
+    pairCapabilityLost?: boolean;
+    pairPauseReason?: "stop" | "canceled";
+    pairStopRequested?: boolean;
+    executionMode?: "worktree" | "non_git_in_place";
+    baselineTree?: string;
+    projectRoot?: string;
+    executionCwd?: string;
+    worktreeId?: string;
+    worktreeBranch?: string;
+    worktreeBaseBranch?: string;
+    worktreeBaseRef?: string;
+    worktreeBaseCommit?: string;
+    nonGitInPlace?: boolean;
+    validationContinuation?: boolean;
+    validationGeneration?: string;
+    validationRepairGeneration?: string;
+    manualQaName?: string;
+    manualQaContext?: string;
+    semanticRound?: number;
+    reviewLedger?: ReviewLedger;
+    repairBaselineTree?: string;
+    lastRepairReport?: string;
+    humanReviewCycle?: number;
+}
 
 export interface ExecutionWorkflowSnapshot {
     version: 1;

@@ -34,7 +34,7 @@ import { loadPlan, savePlan, type PlanFrontMatterInput } from "../../plan-store.
 import { getTransitionJournalDir } from "./state-transition.ts";
 import { createExecutionStartPorts } from "./execution-start.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import type { SessionRuntimeEventSink } from "../types.js";
+import type { SessionRuntimeEventSink } from "../session/session-host.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { setCustomSetting } from "../settings.js";
 import { getCwd } from "../../constants.js";

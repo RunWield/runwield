@@ -11,7 +11,6 @@
     "src/shared/session/session-transcript-projection.js",
     "src/shared/session/session.js",
     "src/shared/settings.js",
-    "src/shared/types.js",
     "src/shared/workflow/metrics.js",
     "src/shared/worktree-registry.js",
     "src/shared/worktree.js",
