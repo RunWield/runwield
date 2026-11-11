@@ -1,31 +1,33 @@
 ---
+planId: "691eeb72-d286-4c8a-9be0-3df2a0b1397e"
 classification: "PLANNED_CHANGE"
 workKind: "FEATURE"
 complexity: "MEDIUM"
 affectedPaths:
-  - "src/ui/desktop/"
-  - "package.json"
-  - "bun.lock"
-  - "scripts/compile-command.ts"
-  - "scripts/compile-bun.ts"
-  - "scripts/"
-  - "docs/releasing.md"
-  - "docs/prd/runwield-workspace-prd.md"
-  - "docs/adr/020-electron-workspace-acp-client.md"
+    - "src/ui/desktop/"
+    - "package.json"
+    - "bun.lock"
+    - "scripts/compile-command.ts"
+    - "scripts/compile-bun.ts"
+    - "scripts/"
+    - "docs/releasing.md"
+    - "docs/prd/runwield-workspace-prd.md"
+    - "docs/adr/020-electron-workspace-acp-client.md"
 executionAgent: "engineer"
 createdAt: "2026-11-06T04:04:38.185Z"
 status: "draft"
 origin: "internal"
 parentPlan: "local-workspace-desktop"
-order: 10
+order: 11
 dependencies:
-  - "keep-work-safe-across-window-and-process-changes"
-  - "run-plans-through-integrated-code-review"
-  - "find-and-act-on-work-that-needs-attention"
-  - "read-and-search-project-knowledge"
-  - "inspect-usage-and-control-recording-and-export"
+    - "keep-work-safe-across-window-and-process-changes"
+    - "run-plans-through-integrated-code-review"
+    - "find-and-act-on-work-that-needs-attention"
+    - "read-and-search-project-knowledge"
+    - "inspect-usage-and-control-recording-and-export"
+    - "configure-model-providers-in-desktop-settings"
+userVerifiedAt: null
 targetBranch: "epic/local-workspace-desktop"
-planId: "691eeb72-d286-4c8a-9be0-3df2a0b1397e"
 ---
 
 # Install and Update the Bundled Application
@@ -34,7 +36,11 @@ planId: "691eeb72-d286-4c8a-9be0-3df2a0b1397e"
 
 The repository has compiled CLI and browser-asset builds but no Electron distribution boundary. Desktop must run without Bun, Node, a global `wld`, a development server, or a cloud website.
 
-This child implements installation/update machinery under [Desktop Workspace](../../prd/runwield-workspace-prd.md#desktop-workspace) and [ADR-020](../../adr/020-electron-workspace-acp-client.md). Final installed-app qualification/publication evidence belongs to child 12.
+This child implements installation/update machinery under [Desktop Workspace](../../prd/runwield-workspace-prd.md#desktop-workspace) and [ADR-020](../../adr/020-electron-workspace-acp-client.md). Final installed-app qualification/publication evidence belongs to [platform qualification](qualify-and-release-desktop-on-three-platforms.md).
+
+### Epic Scope Changes
+
+Child 2's review moved provider setup into [Configure Model Providers in Desktop Settings](configure-model-providers-in-desktop-settings.md), inserted before packaging. This child depends on that setup journey so installed users need no separately installed `wld` to configure a provider. Packaging scope is otherwise unchanged.
 
 ## Objective
 
@@ -76,7 +82,7 @@ The boundaries this change is expected to touch. This list is guidance, not an a
 - Built-artifact checks must fail if the bundled executable/assets are missing, the app launches a global CLI, or the renderer needs a development/cloud server. Exercise paths with spaces and relocated installations.
 - Prove an installed candidate launches/registers a disposable Project without a development toolchain and with Workspace cloud endpoints blocked. Collect platform-specific evidence available here without claiming the other platforms passed.
 - Exercise an update while work is active, cancellation settlement, compatible data preservation, incompatible capability refusal, and migration-aware rollback refusal. Inspect process separation and canonical data, not only updater status.
-- Recheck compiled standalone viewer assets and Plan share server build support. Existing CLI packaging remains independently usable; final three-platform acceptance and publication occur in child 12.
+- Recheck compiled standalone viewer assets and Plan share server build support. Existing CLI packaging remains independently usable; final three-platform acceptance and publication occur in the platform-qualification child.
 
 ## Edge Cases & Considerations
 

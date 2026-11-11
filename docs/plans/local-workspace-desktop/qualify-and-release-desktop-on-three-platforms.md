@@ -1,27 +1,28 @@
 ---
+planId: "7ef0a812-e7ec-404b-aa4e-b5b2871bb96b"
 classification: "PLANNED_CHANGE"
 workKind: "MAINTENANCE"
 complexity: "MEDIUM"
 affectedPaths:
-  - "src/ui/desktop/"
-  - "scripts/"
-  - "docs/releasing.md"
-  - "docs/user-documentation/"
-  - "docs/prd/runwield-workspace-prd.md"
-  - "docs/prd/runwield-acp-protocol-prd.md"
-  - "docs/prd/runwield.md"
-  - "docs/adr/020-electron-workspace-acp-client.md"
-  - "docs/domain-language.md"
+    - "src/ui/desktop/"
+    - "scripts/"
+    - "docs/releasing.md"
+    - "docs/user-documentation/"
+    - "docs/prd/runwield-workspace-prd.md"
+    - "docs/prd/runwield-acp-protocol-prd.md"
+    - "docs/prd/runwield.md"
+    - "docs/adr/020-electron-workspace-acp-client.md"
+    - "docs/domain-language.md"
 executionAgent: "engineer"
 createdAt: "2026-11-06T04:04:39.404Z"
 status: "draft"
 origin: "internal"
 parentPlan: "local-workspace-desktop"
-order: 12
+order: 13
 dependencies:
-  - "retire-only-the-local-browser-workbench"
+    - "retire-only-the-local-browser-workbench"
+userVerifiedAt: null
 targetBranch: "epic/local-workspace-desktop"
-planId: "7ef0a812-e7ec-404b-aa4e-b5b2871bb96b"
 ---
 
 # Qualify and Release Desktop on Three Platforms
