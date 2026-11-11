@@ -28,7 +28,7 @@ import {
     getPromptTemplatePaths,
     listPromptTemplates,
     readGlobalAgentMd,
-} from "../session/session.js";
+} from "../session/session.ts";
 import { resolveInstalledPackagePromptResources } from "../package-resources.ts";
 import { expandSkillRecord, listSkills } from "../session/skill-catalog.ts";
 import { getAgentDisplayName, listAgentDefNames, loadAgentDef, resolveAgentDefsDir } from "../session/agents.ts";

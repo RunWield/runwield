@@ -36,7 +36,7 @@ test("whole Attached delivery starts zero Core model sessions and excludes priva
     try {
         const marker = join(fixture.parent, "core-model-turns");
         const hosted = fileURLToPath(new URL("../session/hosted-session.ts", import.meta.url));
-        const sessions = fileURLToPath(new URL("../session/session.js", import.meta.url));
+        const sessions = fileURLToPath(new URL("../session/session.ts", import.meta.url));
         const monitor = join(fixture.parent, "monitor.ts");
         await writeFile(
             monitor,

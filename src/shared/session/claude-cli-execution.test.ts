@@ -26,7 +26,7 @@ import {
     runIsolatedAgentSession,
     runRootTurn,
     steerActiveSessionWithTarget,
-} from "./session.js";
+} from "./session.ts";
 import { ClaudeCliBackendError } from "./backends/claude-cli/failure.ts";
 import { CLAUDE_CLI_MCP_PROVENANCE } from "./backends/claude-cli/mcp-bridge.ts";
 import { readLatestTaskCompletedOutcome } from "../workflow/workflow-results.ts";

@@ -1,3 +1,4 @@
+import { ok as assert } from "node:assert/strict";
 import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
@@ -8,7 +9,7 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createPayload, resolveNamedInvocation } from "./named-invocation.ts";
 import { HostedSession } from "./hosted-session.ts";
-import { ensureRootAgentSession, runRootTurn } from "./session.js";
+import { ensureRootAgentSession, runRootTurn } from "./session.ts";
 
 async function writePrompt(projectRoot: string, name: string, frontMatter: string[], body: string): Promise<void> {
     const promptDir = join(projectRoot, ".wld", "prompts");
@@ -236,6 +237,7 @@ test("Prompt Template expansion is restored for kept pre-compaction Pi entries",
             });
             try {
                 const session = await ensureRootAgentSession({ hostedSession: resumed, agentName: "operator" });
+                assert("agent" in session);
                 await session.compact("Preserve the exact kept request.");
                 await runRootTurn({ hostedSession: resumed, agentName: "operator", userRequest: "continue" });
             } finally {

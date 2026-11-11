@@ -10,7 +10,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { createTaskCompletedTool } from "../../tools/task-completed.ts";
 import { type AgentHandler, createAgentHandler } from "./agent-handler.ts";
 import { HostedSession } from "./hosted-session.ts";
-import { ensureRootAgentSession } from "./session.js";
+import { ensureRootAgentSession } from "./session.ts";
 import { RuntimeEventTypes } from "./session-runtime-events.ts";
 import { setCustomSetting } from "../settings.ts";
 import { listPendingWorkflowToolEvents, publishWorkflowToolEvent } from "../workflow/workflow-tool-events.ts";

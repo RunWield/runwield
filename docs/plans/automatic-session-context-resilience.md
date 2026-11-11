@@ -8,7 +8,7 @@ affectedPaths:
     - "deno.lock"
     - "src/shared/session/session-context-resilience.ts"
     - "src/shared/session/session-context-resilience.test.js"
-    - "src/shared/session/session.js"
+    - "src/shared/session/session.ts"
     - "src/shared/session/session-prompt.test.ts"
     - "src/shared/session/session-subscribers.test.ts"
     - "src/shared/session/hosted-session.ts"
@@ -17,7 +17,7 @@ affectedPaths:
     - "src/shared/session/runtime/turns.ts"
     - "src/shared/session/runtime/agent-settings.ts"
     - "src/shared/session/runtime/managed-operations.ts"
-    - "src/shared/session/session-runtime.test.js"
+    - "src/shared/session/session-runtime.test.ts"
     - "src/shared/session/session-runtime-events.ts"
     - "src/shared/session/session-runtime-events.test.js"
     - "src/shared/session/agent-handler.ts"
@@ -146,7 +146,7 @@ imports and lockfile aligned; avoid unrelated upgrades.
 
 `session-context-resilience.ts` owns threshold selection, measurement, compaction serialization, and continuation.
 Callers provide the real Hosted Session, Agent identity, Pi Session, and operation signal. They do not choose
-thresholds, supply replacement policy, or inject RunWield-owned storage and workflow functions. `session.js` keeps Agent
+thresholds, supply replacement policy, or inject RunWield-owned storage and workflow functions. `session.ts` keeps Agent
 construction and subscription. Adapters only render Core outcomes.
 
 ```text
@@ -300,7 +300,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   TypeScript under ADR-013; do not add a JavaScript baseline exception.
 - `src/shared/session/session-context-resilience.test.js` — characterize the released public Pi contract and cover the
   policy, state machine, long autonomous run, compaction serialization, queue ordering, continuation, pause, and re-arm.
-- `src/shared/session/session.js` — replace private compaction calls and Engineer wrappers with one public-policy path
+- `src/shared/session/session.ts` — replace private compaction calls and Engineer wrappers with one public-policy path
   for root, foreground isolated, and background Pi turns. Preserve checkpoint/request snapshots and prepared prompt
   estimation. Classify pause before backend-failure recording; leave non-Pi backend dispatch unchanged.
 - `src/shared/session/session-prompt.test.ts` — verify pre-request estimation, fail-before-provider behavior, internal
@@ -316,7 +316,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/shared/session/runtime/turns.ts`, `runtime/agent-settings.ts`, and `runtime/managed-operations.ts` — integrate
   pause/cancellation settlement, fail-fast manual compaction, and health retention across ordinary dehydration. Keep
   `session-runtime.ts` as the public facade; policy belongs in the private owners.
-- `src/shared/session/session-runtime.test.js` — cover cancellation races, recoverable paused settlement, busy-state
+- `src/shared/session/session-runtime.test.ts` — cover cancellation races, recoverable paused settlement, busy-state
   continuity, root/transient parity, and independent Hosted Session progress.
 - `src/shared/session/session-runtime-events.ts` — add one canonical `context_resilience` event with validated status,
   reason, message, and content-free pressure/recovery fields.
@@ -365,7 +365,7 @@ Existing functions, modules, or patterns to reuse:
 - `@earendil-works/pi-coding-agent` and `pi-agent-core` — characterize current public `finishTurn`, recovery events,
   model-effective settings, `shouldCompact()`, projected context, and compaction/continuation operations. Reuse Pi's
   summaries and transcript format; do not infer missing behavior from hook names.
-- `src/shared/session/session.js` — reuse prepared User Request token estimation, Agent Session metadata, and
+- `src/shared/session/session.ts` — reuse prepared User Request token estimation, Agent Session metadata, and
   subscription lifecycle while moving compaction policy out of this broad module.
 - `src/shared/session/session-runtime-events.ts` — reuse fail-fast canonical event creation so TUI and ACP remain
   sibling consumers of one semantic contract.
@@ -457,7 +457,7 @@ unless the complete public AgentSession contract has been verified; a partial ga
   `bun scripts/run-tests.ts src/shared/session/session-context-resilience.test.js
 src/shared/session/session-prompt.test.ts src/shared/session/session-subscribers.test.ts
 src/shared/session/hosted-session.test.ts src/shared/session/abort-active-session.test.js
-src/shared/session/session-runtime-events.test.js src/shared/session/session-runtime.test.js
+src/shared/session/session-runtime-events.test.js src/shared/session/session-runtime.test.ts
 src/shared/session/agent-handler.test.ts src/shared/session/request-dispatch.test.ts
 src/shared/session/background-tasks.test.ts src/shared/session/background-tasks-extra.test.ts
 src/shared/session/segment-rollover.test.js src/shared/session/session-transcript-projection.test.ts

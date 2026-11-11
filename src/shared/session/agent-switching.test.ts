@@ -15,7 +15,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { runActiveAgentTurn, switchActiveAgent } from "./agent-switching.ts";
-import { __getRootSessionMetadataForTests } from "./session.js";
+import { __getRootSessionMetadataForTests } from "./session.ts";
 import { HostedSession } from "./hosted-session.ts";
 import { buildPostTriageRequest } from "../workflow/workflow-prompts.ts";
 import { RuntimeEventTypes } from "./session-runtime-events.ts";

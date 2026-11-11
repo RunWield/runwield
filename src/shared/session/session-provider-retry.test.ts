@@ -18,7 +18,7 @@ import {
     runPrompt,
     runIsolatedAgentSession,
     runNonInteractiveAgentPrompt,
-} from "./session.js";
+} from "./session.ts";
 import { HostedSession } from "./hosted-session.ts";
 import { createReplayEvents } from "./session-transcript-projection.ts";
 import { attachRunawayLoopGuard, RunawayLoopGuardStoppedError } from "./runaway-loop-guard.ts";

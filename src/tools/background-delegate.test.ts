@@ -4,7 +4,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
 import { HostedSession } from "../shared/session/hosted-session.ts";
-import { runIsolatedAgentSession } from "../shared/session/session.js";
+import { runIsolatedAgentSession } from "../shared/session/session.ts";
 import { createDelegateAgentTool } from "./delegate-agent.ts";
 
 test("background read delegation returns before an isolated child model turn settles", async () => {

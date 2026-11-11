@@ -365,7 +365,7 @@ export class BackgroundTasks {
                     finalState = "cancelled";
                     return;
                 }
-                const { runIsolatedAgentSession } = await import("./session.js");
+                const { runIsolatedAgentSession } = await import("./session.ts");
                 const messages = await runIsolatedAgentSession({
                     ...options,
                     background: true,

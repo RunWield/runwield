@@ -10,7 +10,7 @@ import type { DeliveryReport } from "../workflow/delivery-report.ts";
 import type { WorkflowContext } from "./workflow-context-session.ts";
 import type { BackgroundTaskState } from "./background-tasks.ts";
 import type { SessionHelpItem } from "./session-help.ts";
-import type { PromptTemplateMeta, SkillMeta } from "./session.js";
+import type { PromptTemplateMeta, SkillMeta } from "./session.ts";
 import type { HostedSession } from "./hosted-session.ts";
 
 export const RuntimeEventTypes = Object.freeze({

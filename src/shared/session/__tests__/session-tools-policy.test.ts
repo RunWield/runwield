@@ -42,9 +42,15 @@ import {
     composeAgyCliBridgedTools,
     composeClaudeCliBridgedTools,
     resolveEffectiveSessionToolNames,
-} from "../session.js";
+} from "../session.ts";
 import { createReviewDiffTool } from "../../workflow/review-diff-tool.ts";
 import { startMcpIntegration } from "../../mcp/integration.ts";
+
+import type { WorkRecordAccessMode } from "../../work-records/search.ts";
+
+interface WorkRecordAccessDetails {
+    accessMode: WorkRecordAccessMode;
+}
 
 type ToolExecutionContext = Parameters<ToolDefinition["execute"]>[4];
 
@@ -1280,18 +1286,15 @@ test("buildAgentSession auto-wires Work Record tools with role access modes", as
             const plannerSearch = plannerBuilt.finalCustomTools.find((tool) => tool.name === "work_record_search")!;
             const customRead = customBuilt.finalCustomTools.find((tool) => tool.name === "work_record_read")!;
             assertEquals(
-                (await guideSearch.execute("1", { query: "" }, undefined, undefined, {} as ToolExecutionContext))
-                    .details.accessMode,
+                ((await guideSearch.execute("1", { query: "" }, undefined, undefined, {} as ToolExecutionContext)).details as WorkRecordAccessDetails).accessMode,
                 "all",
             );
             assertEquals(
-                (await plannerSearch.execute("1", { query: "" }, undefined, undefined, {} as ToolExecutionContext))
-                    .details.accessMode,
+                ((await plannerSearch.execute("1", { query: "" }, undefined, undefined, {} as ToolExecutionContext)).details as WorkRecordAccessDetails).accessMode,
                 "current",
             );
             assertEquals(
-                (await customRead.execute("1", { recordId: "" }, undefined, undefined, {} as ToolExecutionContext))
-                    .details.accessMode,
+                ((await customRead.execute("1", { recordId: "" }, undefined, undefined, {} as ToolExecutionContext)).details as WorkRecordAccessDetails).accessMode,
                 "current",
             );
         } finally {
@@ -1310,7 +1313,7 @@ test("Guide bash policy reaches Pi and background tools and refreshes after root
         const originalHome = process.env["HOME"];
         const cwd = await fsMkdtemp(join(tmpdir(), "runwield-guide-bash-policy-"));
         const { ensureRootAgentSession, getRootSessionRebuildOptions, __getRootSessionMetadataForTests } =
-            await import("../session.js");
+            await import("../session.ts");
         const overrideDir = join(cwd, ".wld", "agents");
         const overridePath = join(overrideDir, "guide.md");
         const hostedSession = new HostedSession({ id: "guide-bash-policy", cwd });

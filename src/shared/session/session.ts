@@ -1,12 +1,52 @@
+/** Shared helpers for loading agent definitions and running agent invocations. */
+
+import type { JsonValue } from "../jsonc.ts";
+import type { FrontMatterRecord } from "../front-matter.ts";
+import type { ModelPresetsMap, ModelPresetAgentOverride } from "../model-presets.ts";
+import type { DisposableLike } from "./hosted-session.ts";
+import type { RuntimeAgentSession } from "./runtime/support.ts";
+import type { EarlySteeringSession } from "./early-steering.ts";
+import type { AgentDefinition } from "./agents.ts";
+import type { ResolvedResource } from "../package-resources.ts";
+import type { SessionContextProjection, ContextProjectionItem } from "./session-context-report.ts";
+import type {
+    ToolDefinition,
+    AgentSession,
+    SessionEntry,
+    ContextEditableContent,
+    ExtensionAPI,
+} from "@earendil-works/pi-coding-agent";
+import type { HostedSession } from "./hosted-session.ts";
+import type { BashAllowedCommands } from "../bash-command-policy.ts";
+import type { McpIntegration } from "../mcp/integration.ts";
+import type { TriageMeta } from "../../tools/plan-written.ts";
+import type { SubAgentDefinitionId, LoadSubAgentDefinitionOptions } from "./subagent-definitions.ts";
+import type { ManagedOperationCapability } from "./managed-operation.ts";
+import type { ExecutionSession } from "./execution-backend.ts";
+import type { AgentMessageHandler } from "./agent-handler.ts";
+import type { RequestDispatchKind } from "./request-dispatch.ts";
+import type { RunWieldModel } from "../models/model-registry.ts";
+import type { SkillRecord } from "./skill-catalog.ts";
+import type { ImageAttachment } from "./image-attachments.ts";
+import type {
+    Model,
+    Api,
+    AssistantMessageEventStream,
+    AssistantMessageEvent,
+    TranscriptContext,
+    SimpleStreamOptions,
+    UserMessage,
+    AssistantMessage,
+} from "@earendil-works/pi-ai";
+import type { ThinkingLevel, AgentMessage } from "@earendil-works/pi-agent-core";
+import type { SessionRuntimeEvent, RuntimeQueuedMessage } from "./session-runtime-events.ts";
+import type { AgentSwitchOptions } from "./agent-switching.ts";
+import type { ContextSnapshotObservation, ExecutionOutcome } from "../workflow/execution-metrics.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { readdir as fsReaddir, readFile as fsReadFile, realpath as fsRealpath } from "node:fs/promises";
 import { env } from "node:process";
-/**
- * @module shared/session
- * Shared helpers for loading agent definitions and running agent invocations.
- */
 
 import { requestRemoteMemory } from "../remote/memory-bridge.ts";
 import { resolveMemoryCollection } from "../memory-collection.ts";
@@ -143,8 +183,328 @@ import { formatGitPromptState, readGitPromptState } from "../git.ts";
 import { sanitizeSessionName } from "../session-name.ts";
 import { attachRunawayLoopGuard, RunawayLoopGuardStoppedError } from "./runaway-loop-guard.ts";
 
-/** @returns {string | null} */
-function homePromptsDir() {
+import type { AgentSessionEvent, PromptOptions } from "@earendil-works/pi-coding-agent";
+
+export type SessionRoot = AgentSession | ExecutionSession;
+type ModelCompatibility = NonNullable<RunWieldModel["compat"]> & SamplingCompatibility;
+interface SamplingCompatibility {
+    supportsDeveloperRole?: boolean;
+    supportsTemperature?: boolean;
+}
+type ResolvedSessionModel = RunWieldModel & { compat?: ModelCompatibility };
+type ProviderStreamAgent = AgentSession["agent"] & { streamFn: AgentSession["agent"]["streamFunction"] };
+type ThinkingModel = Partial<Pick<RunWieldModel, "provider" | "id" | "reasoning" | "executionBackend">>;
+type SteeringSession = Pick<RuntimeAgentSession, "model" | "isStreaming" | "clearQueue"> &
+    SessionModelContext &
+    Partial<Pick<AgentSession, "steer" | "abort">>;
+interface SessionManagerCarrier {
+    sessionManager?: SessionManager;
+}
+interface SessionModelContext {
+    runWieldProjectRoot?: string;
+    runWieldModelRegistry?: ReturnType<typeof getModelRegistry>;
+    modelRegistry?: ReturnType<typeof getModelRegistry>;
+}
+type ToolArguments = Extract<AgentSessionEvent, { type: "tool_execution_start" }>["args"];
+interface LegacyCompactionOutcome {
+    outcome?: string;
+}
+interface LegacyMessageId {
+    id?: string;
+}
+interface LegacyTextBlock {
+    text?: string;
+}
+interface LegacyUsageMessage {
+    usage?: AssistantMessage["usage"];
+}
+interface LegacyAssistantDiagnostics {
+    stopReason?: string;
+    errorMessage?: string;
+}
+interface LegacyCallId {
+    callId: string;
+}
+interface LegacyTurnId {
+    turnId?: string;
+}
+
+interface ResolveExecutionThinkingLevelOptions {
+    agentName: string;
+    cwd: string;
+    agentDef: AgentDefinition;
+    thinkingLevelOverride?: string;
+}
+
+interface ParsePromptTemplateMetaResult {
+    description: string;
+    argumentHint?: string;
+    model?: string;
+    agent?: string;
+    thinkingLevel?: string;
+}
+
+interface PromptTemplateLayer {
+    dir: string;
+    source: PromptTemplateSource;
+}
+
+interface ListPromptTemplatesOptions {
+    cwd?: string;
+    packagePromptResources?: ResolvedResource[];
+}
+
+type GlobalInstructionSource = "home" | "external";
+export interface LoadedAgentInstruction {
+    path: string;
+    source: GlobalInstructionSource | "local";
+}
+interface AgentInstruction<Source extends LoadedAgentInstruction["source"]> {
+    text: string;
+    path: string;
+    source: Source;
+}
+
+interface GlobalAgentMdOptions {
+    includeExternal?: boolean;
+}
+
+interface ModelCandidate {
+    model: string;
+    source: string;
+    strict: boolean;
+}
+
+interface ResolveModelOptions {
+    ignoreManualModelOverride?: boolean;
+}
+
+interface AssembleFinalSystemPromptWithContextProjectionResult {
+    prompt: string;
+    projection: SessionContextProjection;
+    effectiveToolDefinitions: ToolDefinition[];
+}
+
+interface SessionSubAgentDefinition {
+    id: SubAgentDefinitionId;
+    options?: LoadSubAgentDefinitionOptions;
+}
+interface SessionPromptState {
+    text: string;
+}
+type SessionImageInput = Pick<ImageAttachment, "base64" | "mimeType">;
+
+export interface BuildAgentSessionOptions {
+    hostedSession?: HostedSession;
+    agentName: string;
+    toolNames?: string[];
+    inheritedBashAllowedCommands?: BashAllowedCommands;
+    customTools?: ToolDefinition[];
+    mcpRootTools?: ToolDefinition[];
+    mcpIntegration?: McpIntegration;
+    modelOverride?: string;
+    thinkingLevelOverride?: ThinkingLevel;
+    temperatureOverride?: number;
+    sessionManager?: SessionManager;
+    triageMeta?: TriageMeta;
+    subAgentDefinition?: SessionSubAgentDefinition;
+    /** Execution cwd for file tools and agent operations. Defaults to primary project root. */
+    cwd?: string;
+    /** Optional DEBUG log destination for this invocation. */
+    debugLogPath?: string;
+    /** Optional session-scoped project state note for the system prompt. */
+    projectStateContext?: string;
+    /** Legacy option name: whether to register the single-replacement edit tool. */
+    includeEditFallback?: boolean;
+    /** True when invocation policy must not borrow root /model state. */
+    ignoreManualModelOverride?: boolean;
+    /** False when thinking is temporary and must not update root footer state. */
+    updateHostedThinkingLevel?: boolean;
+    /** False for temporary Claude CLI turns that must not append a root model marker. */
+    persistModelChange?: boolean;
+    /** True when a temporary turn must fail instead of compacting root context. */
+    disableAutoCompaction?: boolean;
+}
+
+export interface BuildAgentSessionResult {
+    session: AgentSession;
+    agentDef: AgentDefinition;
+    promptState: SessionPromptState;
+    tools: string[];
+    finalCustomTools: ToolDefinition[];
+    effectiveToolDefinitions: ToolDefinition[];
+    resolvedModel: ResolvedSessionModel;
+    resolvedThinkingLevel: string | undefined;
+    resolvedTemperature: number | undefined;
+    contextProjection: SessionContextProjection;
+    imageMode?: string;
+    visionFallbackModelRef?: string;
+}
+
+interface ComposeCliBridgedToolsOptions {
+    agentDef: AgentDefinition;
+    inheritedBashAllowedCommands?: BashAllowedCommands;
+    agentName: string;
+    hostedSession: HostedSession | null;
+    triageMeta: TriageMeta | undefined;
+    cwd: string;
+    customTools?: ToolDefinition[];
+    mcpRootTools?: ToolDefinition[];
+    sessionManager?: SessionManager;
+}
+
+interface BuildExecutionSessionOptions extends AgyImageInputOptions {
+    managedOperationCapability?: ManagedOperationCapability;
+}
+
+export interface BuildExecutionSessionResult extends Omit<BuildAgentSessionResult, "session"> {
+    executionSession: ExecutionSession;
+    session: ExecutionSession["session"];
+}
+
+interface SessionEventType {
+    type: string;
+}
+
+interface RunPromptOptions {
+    session: AgentSession;
+    agentDef: AgentDefinition;
+    agentName: string;
+    userRequest: string;
+    /** Used only for debug log. */
+    finalSystemPrompt: string;
+    images?: SessionImageInput[];
+    subscriberState: SubscriberState;
+    resolvedModel?: RunWieldModel;
+    resolvedThinkingLevel?: string;
+    cwd?: string;
+    debugLogPath?: string;
+    signal?: AbortSignal;
+    disableAutoCompaction?: boolean;
+    hostedSession?: HostedSession;
+    transitionSteering?: AgentTransitionSteeringEntry[];
+    onTransitionSteeringConsumed?: () => void;
+    requestId?: string;
+}
+
+interface MarkRootAgentSwitchOptions {
+    agentName: string;
+    debugLogPath?: string;
+}
+
+export interface EnsureRootAgentSessionOptions {
+    hostedSession?: HostedSession;
+    /** Internal name (matches agent definition filename). */
+    agentName: string;
+    toolNames?: string[];
+    customTools?: ToolDefinition[];
+    mcpRootTools?: ToolDefinition[];
+    mcpIntegration?: McpIntegration;
+    modelOverride?: string;
+    thinkingLevelOverride?: ThinkingLevel;
+    sessionManager?: SessionManager;
+    subAgentDefinition?: SessionSubAgentDefinition;
+    cwd?: string;
+    projectStateContext?: string;
+    includeEditFallback?: boolean;
+    activeHandler?: AgentMessageHandler;
+    debugLogPath?: string;
+    managedOperationCapability?: ManagedOperationCapability;
+}
+
+interface AssembleToolExposureDefinitionsResult {
+    name: string;
+    description?: string;
+    parameters?: ToolDefinition["parameters"];
+    residentTokens?: number;
+}
+
+interface RunRootTurnOptions {
+    hostedSession?: HostedSession;
+    /** Internal name used to verify the root matches. */
+    agentName: string;
+    userRequest: string;
+    images?: SessionImageInput[];
+    customTools?: ToolDefinition[];
+    mcpRootTools?: ToolDefinition[];
+    mcpIntegration?: McpIntegration;
+    signal?: AbortSignal;
+    dispatchKind?: RequestDispatchKind;
+    /** Explicitly continue the preceding unfinished request. */
+    resumePreviousRequest?: boolean;
+    /** Stable identity for the controller-owned task being continued. */
+    taskId?: string;
+    disableAutoCompaction?: boolean;
+    managedOperationCapability?: ManagedOperationCapability;
+}
+
+interface RunNonInteractiveAgentPromptOptions {
+    cwd: string;
+    agentName: string;
+    userRequest: string;
+    modelOverride?: string;
+    thinkingLevelOverride?: ThinkingLevel;
+    debugLogPath?: string;
+    projectStateContext?: string;
+}
+
+interface RunIsolatedAgentSessionOptions {
+    hostedSession?: HostedSession;
+    agentName: string;
+    /** Optional explicit tool override; defaults to agent frontmatter tools. */
+    toolNames?: string[];
+    inheritedBashAllowedCommands?: BashAllowedCommands;
+    customTools?: ToolDefinition[];
+    mcpRootTools?: ToolDefinition[];
+    mcpIntegration?: McpIntegration;
+    /** Optional explicit model override in provider/id format. */
+    modelOverride?: string;
+    thinkingLevelOverride?: ThinkingLevel;
+    temperatureOverride?: number;
+    /** The user-facing request/instruction to send to the agent */
+    userRequest: string;
+    images?: SessionImageInput[];
+    /** Optional triage metadata threaded into auto-wired plan_written. */
+    triageMeta?: TriageMeta;
+    /** Select a definition from RunWield's canonical hidden-subagent registry. */
+    subAgentDefinition?: SessionSubAgentDefinition;
+    /** Optional manager to carry
+context across successive isolated invocations (e.g. nudging a Reviewer that omitted its terminal tool call).
+Defaults to a fresh in-memory manager, which keeps the invocation isolated from the workflow transcript. */
+    sessionManager?: SessionManager;
+    /** Execution cwd for file tools and agent operations. */
+    cwd?: string;
+    /** Optional DEBUG log destination for this invocation. */
+    debugLogPath?: string;
+    /** Optional session-scoped project state note for the system prompt. */
+    projectStateContext?: string;
+    /** Legacy option name: whether to register the single-replacement edit tool. */
+    includeEditFallback?: boolean;
+    /** True when invocation policy must not borrow root /model state. */
+    ignoreManualModelOverride?: boolean;
+    /** False when thinking is temporary and must not update root footer state. */
+    updateHostedThinkingLevel?: boolean;
+    /** False for temporary Claude CLI turns that must not append a root model marker. */
+    persistModelChange?: boolean;
+    /** True when a temporary turn must fail instead of compacting root context. */
+    disableAutoCompaction?: boolean;
+    /** Optional cancellation signal for transient delegated sessions. */
+    signal?: AbortSignal;
+    /** Independent read-only child without foreground ownership. */
+    background?: boolean;
+    dispatchKind?: RequestDispatchKind;
+    /** Explicitly continue this isolated request's prior failed attempt. */
+    resumePreviousRequest?: boolean;
+    /** Request identity owned by a controller that runs several attempts as one unfinished unit of work. */
+    controllerRequestId?: string;
+    managedOperationCapability?: ManagedOperationCapability;
+    onExecutionSessionBuilt?: (built: BuildExecutionSessionResult) => void;
+    parentExecutionId?: string;
+    parentToolCallId?: string;
+    taskId?: string;
+}
+
+function homePromptsDir(): string {
     return join(personalGlobalRoot(), "prompts");
 }
 
@@ -156,8 +516,7 @@ const REMOTE_PROVIDER_EXTENSION_OPTIONS = new Map([
     ["provider_stream_event", "onProviderStreamEvent"],
 ]);
 
-/** @param {import('@earendil-works/pi-coding-agent').AgentSession} session */
-function assertRemoteProviderExtensionsSupported(session) {
+function assertRemoteProviderExtensionsSupported(session: AgentSession) {
     if (!remotePersonalResourcesActive()) return;
     for (const [event, option] of REMOTE_PROVIDER_EXTENSION_OPTIONS) {
         if (session.hasExtensionHandlers(event)) {
@@ -169,22 +528,15 @@ function assertRemoteProviderExtensionsSupported(session) {
 const UNSUPPORTED_TEMPERATURE_RE =
     /\bunsupported (?:parameter|field|argument)\b[^.:\n]*(?::|\b)\s*["']?temperature["']?|\btemperature\b[^.:\n]*\b(?:unsupported|not supported|not allowed|not accepted|invalid temperature)\b|\binvalid temperature\b.*\bonly\b.*\ballowed\b/i;
 
-/** @type {Set<string>} */
-const modelsWithoutTemperature = new Set();
+const modelsWithoutTemperature: Set<string> = new Set();
 
-/** @type {WeakMap<object, string>} */
-const modelSelectionSourceByModel = new WeakMap();
+const modelSelectionSourceByModel: WeakMap<RunWieldModel, string> = new WeakMap();
 
-/**
- * @param {unknown} hostedSession
- * @param {string} caller
- * @returns {import('./hosted-session.ts').HostedSession}
- */
-function requireHostedSession(hostedSession, caller) {
+function requireHostedSession(hostedSession: HostedSession | string | null | undefined, caller: string): HostedSession {
     if (!hostedSession || typeof hostedSession !== "object") {
         throw new Error(`${caller}: hostedSession is required`);
     }
-    const candidate = /** @type {import('./hosted-session.ts').HostedSession} */ (hostedSession);
+    const candidate = hostedSession;
     if (
         typeof candidate.getRootAgentSession !== "function" ||
         typeof candidate.setRootAgentSession !== "function" ||
@@ -196,11 +548,7 @@ function requireHostedSession(hostedSession, caller) {
     return candidate;
 }
 
-/**
- * @param {string | undefined} msg
- * @returns {boolean}
- */
-function isAbortSignalMessage(msg) {
+function isAbortSignalMessage(msg: string | undefined): boolean {
     return (
         String(msg || "")
             .trim()
@@ -208,11 +556,7 @@ function isAbortSignalMessage(msg) {
     );
 }
 
-/**
- * @param {string | undefined} debugLogPath
- * @param {string} text
- */
-export function appendDebugLog(debugLogPath, text) {
+export function appendDebugLog(debugLogPath: string | undefined, text: string) {
     if (!debugLogPath) return;
     try {
         mkdirSync(dirname(debugLogPath), { recursive: true });
@@ -222,19 +566,11 @@ export function appendDebugLog(debugLogPath, text) {
     }
 }
 
-/**
- * @param {string | undefined} debugLogPath
- * @returns {boolean}
- */
-function shouldWriteDebugLog(debugLogPath) {
+function shouldWriteDebugLog(debugLogPath: string | undefined): boolean {
     return Boolean(debugLogPath) || env.DEBUG === "1";
 }
 
-/**
- * @param {unknown} value
- * @returns {string}
- */
-function formatDebugJson(value) {
+function formatDebugJson(value: unknown): string {
     try {
         return JSON.stringify(value, null, 2);
     } catch {
@@ -242,15 +578,12 @@ function formatDebugJson(value) {
     }
 }
 
-/**
- * Resolve the effective tool list for a session.
- *
- * @param {string[]} agentTools
- * @param {unknown} toolNames
- * @param {string[]} customToolNames
- * @returns {string[]}
- */
-export function resolveEffectiveSessionToolNames(agentTools, toolNames, customToolNames) {
+/** Resolve the effective tool list for a session. */
+export function resolveEffectiveSessionToolNames(
+    agentTools: string[],
+    toolNames: string[] | undefined,
+    customToolNames: string[],
+): string[] {
     const resolvedTools = resolveSessionToolNames(agentTools, toolNames, customToolNames);
     const normalizedTools = resolvedTools.map((toolName) =>
         toolName === "multi_replace_file_content" ? "multi_file_edit" : toolName,
@@ -258,14 +591,11 @@ export function resolveEffectiveSessionToolNames(agentTools, toolNames, customTo
     return [...new Set(normalizedTools)];
 }
 
-/** @type {Set<string>} */
-
-/**
- * @param {any} model
- * @param {string} thinkingLevel
- * @param {boolean} explicit
- */
-export function assertThinkingLevelSupportedForInvocation(model, thinkingLevel, explicit) {
+export function assertThinkingLevelSupportedForInvocation(
+    model: ThinkingModel | undefined,
+    thinkingLevel: string,
+    explicit: boolean,
+) {
     if (!explicit || !thinkingLevel || thinkingLevel === "off") return;
     if (
         model?.executionBackend === "agy-cli" &&
@@ -278,8 +608,10 @@ export function assertThinkingLevelSupportedForInvocation(model, thinkingLevel, 
     );
 }
 
-/** @param {import('../models/model-registry.ts').RunWieldModel | undefined} model @param {string | undefined} thinkingLevel */
-export function assertThinkingLevelBackendSupportedForInvocation(model, thinkingLevel) {
+export function assertThinkingLevelBackendSupportedForInvocation(
+    model: RunWieldModel | undefined,
+    thinkingLevel: string | undefined,
+) {
     if (!thinkingLevel || thinkingLevel === "off") return;
     if (model?.executionBackend === "agy-cli") {
         if (["minimal", "low", "medium", "high", "xhigh", "max"].includes(thinkingLevel)) return;
@@ -297,16 +629,16 @@ export function assertThinkingLevelBackendSupportedForInvocation(model, thinking
     );
 }
 
-/** @param {{ provider?: string, id?: string } | undefined} model @param {number} totalTokens @param {number} contextWindow */
-function contextCapacityGuidance(model, totalTokens, contextWindow) {
+function contextCapacityGuidance(
+    model: { provider?: string; id?: string } | undefined,
+    totalTokens: number,
+    contextWindow: number,
+) {
     const modelLabel = `${model?.provider || ""}/${model?.id || ""}`.replace(/^\//, "") || "the selected model";
     return `The current Session history does not fit ${modelLabel}. Estimated input: ${totalTokens} tokens; context window: ${contextWindow} tokens. Compact the Session, start a fresh Session, or choose a larger model.`;
 }
 
-/**
- * @param {{ agentName: string, cwd: string, agentDef: import('./agents.ts').AgentDefinition, thinkingLevelOverride?: string }} options
- */
-export function resolveExecutionThinkingLevel(options) {
+export function resolveExecutionThinkingLevel(options: ResolveExecutionThinkingLevelOptions) {
     let thinkingLevelSource = undefined;
     let resolvedThinkingLevel = options.thinkingLevelOverride;
     if (resolvedThinkingLevel) {
@@ -337,57 +669,43 @@ export function resolveExecutionThinkingLevel(options) {
     return { resolvedThinkingLevel, thinkingLevelSource };
 }
 
-/** @typedef {"local" | "home" | "bundled" | "package"} PromptTemplateSource */
+export type PromptTemplateSource = "local" | "home" | "bundled" | "package";
 
-/**
- * @typedef {Object} PreparedSteeringImage
- * @property {"image"} type
- * @property {string} data
- * @property {string} mimeType
- */
+export interface PreparedSteeringImage {
+    type: "image";
+    data: string;
+    mimeType: string;
+}
 
-/** @type {Map<string, string | undefined>} */
-const promptTemplateModelByName = new Map();
+const promptTemplateModelByName: Map<string, string | undefined> = new Map();
 
-/**
- * @typedef {Object} PromptTemplateMeta
- * @property {string} name
- * @property {string} description
- * @property {string | undefined} argumentHint
- * @property {string | undefined} model
- * @property {string | undefined} agent
- * @property {string | undefined} thinkingLevel
- * @property {string} path
- * @property {PromptTemplateSource} source
- * @property {string | undefined} [packageSource]
- * @property {string | undefined} [packageBaseDir]
- */
+export interface PromptTemplateMeta {
+    name: string;
+    description: string;
+    argumentHint: string | undefined;
+    model: string | undefined;
+    agent: string | undefined;
+    thinkingLevel: string | undefined;
+    path: string;
+    source: PromptTemplateSource;
+    packageSource?: string | undefined;
+    packageBaseDir?: string | undefined;
+}
 
-/**
- * Resolve prompt template search paths by priority: local > home > bundled.
- *
- * @param {string} [cwd]
- * @returns {string[]}
- */
-export function getPromptTemplatePaths(cwd) {
+/** Resolve prompt template search paths by priority: local > home > bundled. */
+export function getPromptTemplatePaths(cwd?: string): string[] {
     return [
         ...(cwd ? [join(cwd, ".wld", "prompts")] : []),
-        ...(homePromptsDir() ? [/** @type {string} */ (homePromptsDir())] : []),
+        ...(homePromptsDir() ? [homePromptsDir()] : []),
         PROMPT_TEMPLATES_DIR,
     ];
 }
 
-/**
- * Parse prompt-template markdown metadata.
- *
- * @param {string} filePath
- * @returns {Promise<{ description: string, argumentHint?: string, model?: string, agent?: string, thinkingLevel?: string }>}
- */
-async function parsePromptTemplateMeta(filePath) {
+/** Parse prompt-template markdown metadata. */
+async function parsePromptTemplateMeta(filePath: string): Promise<ParsePromptTemplateMetaResult> {
     const raw = await fsReadFile(filePath, "utf8");
 
-    /** @type {{ description?: string, model?: string, [key: string]: unknown }} */
-    let attrs = {};
+    let attrs: FrontMatterRecord = {};
     let body = raw;
 
     if (hasFrontMatter(raw)) {
@@ -425,23 +743,16 @@ async function parsePromptTemplateMeta(filePath) {
 /**
  * List all known prompt templates across bundled + home + local layers.
  * First name wins, based on priority local > home > bundled.
- *
- * @param {{ cwd?: string, packagePromptResources?: import("../package-resources.ts").ResolvedResource[] }} [options]
- * @returns {Promise<PromptTemplateMeta[]>}
  */
-export async function listPromptTemplates(options = {}) {
-    /** @type {PromptTemplateMeta[]} */
-    const templates = [];
+export async function listPromptTemplates(options: ListPromptTemplatesOptions = {}): Promise<PromptTemplateMeta[]> {
+    const templates: PromptTemplateMeta[] = [];
     promptTemplateModelByName.clear();
     const seen = new Set();
     const cwd = options.cwd;
 
-    /** @type {Array<{dir: string, source: PromptTemplateSource}>} */
-    const layers = [
-        ...(cwd ? [{ dir: join(cwd, ".wld", "prompts"), source: /** @type {PromptTemplateSource} */ ("local") }] : []),
-        ...(homePromptsDir()
-            ? [{ dir: /** @type {string} */ (homePromptsDir()), source: /** @type {PromptTemplateSource} */ ("home") }]
-            : []),
+    const layers: PromptTemplateLayer[] = [
+        ...(cwd ? [{ dir: join(cwd, ".wld", "prompts"), source: "local" } satisfies PromptTemplateLayer] : []),
+        ...(homePromptsDir() ? [{ dir: homePromptsDir(), source: "home" } satisfies PromptTemplateLayer] : []),
         { dir: PROMPT_TEMPLATES_DIR, source: "bundled" },
     ];
 
@@ -520,15 +831,10 @@ export async function listPromptTemplates(options = {}) {
     return templates;
 }
 
-/** @typedef {import('./skill-catalog.ts').SkillRecord} SkillMeta */
+export type SkillMeta = SkillRecord;
 export { listSkills } from "./skill-catalog.ts";
 
-/**
- * @param {string} homeDir
- * @param {{ includeExternal?: boolean }} [options]
- * @returns {string[]}
- */
-export function getGlobalAgentMdPaths(homeDir, options = {}) {
+export function getGlobalAgentMdPaths(homeDir: string, options: GlobalAgentMdOptions = {}): string[] {
     if (!homeDir) return [];
     const includeExternal =
         options.includeExternal ?? getCustomSetting("enableExternalGlobalAgentsMd", "global") ?? true;
@@ -541,12 +847,7 @@ export function getGlobalAgentMdPaths(homeDir, options = {}) {
     ];
 }
 
-/**
- * @param {string} homeDir
- * @param {{ includeExternal?: boolean }} [options]
- * @returns {Promise<string>}
- */
-export async function readGlobalAgentMd(homeDir, options = {}) {
+export async function readGlobalAgentMd(homeDir: string, options: GlobalAgentMdOptions = {}): Promise<string> {
     for (const path of getGlobalAgentMdPaths(homeDir, options)) {
         try {
             await assertPersonalResourcePath(path, "global instruction");
@@ -563,22 +864,16 @@ export async function readGlobalAgentMd(homeDir, options = {}) {
  * Report which instruction files exist in the locations
  * `assembleFinalSystemPrompt` reads from. Used by the boot banner to show
  * the user what context was actually injected into the system prompt.
- *
- * @param {string} [cwd]
- * @returns {Promise<{ path: string, source: "home" | "external" | "local" }[]>}
  */
-export async function listLoadedAgentMdFiles(cwd) {
-    /** @type {{ path: string, source: "home" | "external" | "local" }[]} */
-    const results = [];
+export async function listLoadedAgentMdFiles(cwd?: string): Promise<LoadedAgentInstruction[]> {
+    const results: LoadedAgentInstruction[] = [];
 
     const homeDir = getHomeDir();
     for (const homePath of getGlobalAgentMdPaths(homeDir)) {
         await assertPersonalResourcePath(homePath, "global instruction");
         if (await fileExists(homePath)) {
             const source =
-                homePath === join(personalAgentsRoot() ?? join(homeDir, ".agents"), "AGENTS.md")
-                    ? /** @type {"external"} */ ("external")
-                    : /** @type {"home"} */ ("home");
+                homePath === join(personalAgentsRoot() ?? join(homeDir, ".agents"), "AGENTS.md") ? "external" : "home";
             results.push({ path: homePath, source });
             break;
         }
@@ -601,14 +896,12 @@ export async function listLoadedAgentMdFiles(cwd) {
  * any transient sub-agents. The root AgentSession lives for the entire chat,
  * so its mere existence does NOT mean a run is in flight; gate on isStreaming
  * to avoid reporting "Agent run canceled" when the user presses Esc at idle.
- *
- * @param {import('./hosted-session.ts').HostedSession} [hostedSession]
- * @returns {boolean} true when at least one active session was aborted
+ * true when at least one active session was aborted
  */
-export function abortActiveSession(hostedSession) {
+export function abortActiveSession(hostedSession?: HostedSession): boolean {
     const targetHostedSession = requireHostedSession(hostedSession, "abortActiveSession");
     let aborted = false;
-    const root = /** @type {any} */ (targetHostedSession.getRootAgentSession());
+    const root = targetHostedSession.getRootAgentSession() as SessionRoot | null;
     const rootTarget = root && isExecutionSession(root) ? root.session : root;
     if (rootTarget && rootTarget.isStreaming) {
         try {
@@ -627,9 +920,9 @@ export function abortActiveSession(hostedSession) {
         }
     }
     for (const subSession of targetHostedSession.getSubAgentSessions()) {
-        const sub = /** @type {any} */ (subSession);
+        const sub = subSession as SteeringSession;
         try {
-            sub.abort();
+            sub.abort!();
         } catch (_e) {
             /* ignore */
         }
@@ -641,42 +934,35 @@ export function abortActiveSession(hostedSession) {
 /**
  * Clear pending input from the captured outgoing root. SessionRuntime moves its
  * tracked messages into the active Agent transition before this queue clears.
- *
- * @param {unknown} rootAgentSession
  */
-export function clearAgentSessionQueueForTransition(rootAgentSession) {
-    const root = /** @type {any} */ (rootAgentSession);
+export function clearAgentSessionQueueForTransition(rootAgentSession: DisposableLike | SessionRoot | null | undefined) {
+    const root = rootAgentSession as SessionRoot | null | undefined;
     const target = root && isExecutionSession(root) ? getExecutionSteeringTarget(root) : root;
     if (!target || typeof target.clearQueue !== "function") return;
     target.clearQueue();
 }
 
-/**
- * Steer a concrete AgentSession and return the session that accepted the message.
- *
- * @param {any} session
- * @param {string | import('./image-attachments.ts').ImageAttachment[]} [text]
- * @param {import('./image-attachments.ts').ImageAttachment[]} [images]
- * @returns {Promise<import('@earendil-works/pi-coding-agent').AgentSession | null>}
- */
-export async function steerAgentSessionWithTarget(session, text, images) {
+/** Steer a concrete AgentSession and return the session that accepted the message. */
+export async function steerAgentSessionWithTarget(
+    session: SteeringSession | null | undefined,
+    text?: string | ImageAttachment[],
+    images?: ImageAttachment[],
+): Promise<AgentSession | null> {
     if (!session) return null;
     if (!session.isStreaming) return null;
     if (typeof session.steer !== "function") return null;
     const activeModel = session.model || { input: ["text", "image"] };
-    const projectRoot = /** @type {any} */ (session).runWieldProjectRoot;
+    const projectRoot = session.runWieldProjectRoot;
     const fallback =
         images && images.length > 0 && session.model && !modelSupportsImageInput(session.model)
             ? await resolveVisionFallbackModel(
-                  /** @type {any} */ (session).runWieldModelRegistry ||
-                      /** @type {any} */ (session).modelRegistry ||
-                      getModelRegistry(),
+                  session.runWieldModelRegistry || session.modelRegistry || getModelRegistry(),
                   SYSTEM_MODEL_DISCOVERY_NETWORK,
-                  projectRoot,
+                  projectRoot!,
               )
             : undefined;
     const prepared = prepareImagesForModel({
-        text: /** @type {string} */ (text),
+        text: text as string,
         images,
         activeModel,
         fallbackModelRef: fallback?.modelRef,
@@ -685,64 +971,55 @@ export async function steerAgentSessionWithTarget(session, text, images) {
     return await steerAgentSessionWithPreparedInput(session, prepared.text, prepared.images);
 }
 
-/**
- * Steer a concrete AgentSession after image preparation is complete.
- *
- * @param {any} session
- * @param {string} text
- * @param {PreparedSteeringImage[]} [images]
- * @returns {Promise<import('@earendil-works/pi-coding-agent').AgentSession | null>}
- */
-export async function steerAgentSessionWithPreparedInput(session, text, images) {
+/** Steer a concrete AgentSession after image preparation is complete. */
+export async function steerAgentSessionWithPreparedInput(
+    session: SteeringSession | null | undefined,
+    text: string,
+    images?: PreparedSteeringImage[],
+): Promise<AgentSession | null> {
     if (!session?.isStreaming || typeof session.steer !== "function") return null;
     await session.steer(text, images && images.length > 0 ? images : undefined);
-    return session;
+    return session as AgentSession;
 }
 
 /**
  * Steer the root (user-facing) session with a message injected between tool calls.
  * Foreground sub-agent steering uses steerActiveSessionWithTarget instead.
- *
- * @param {import('./hosted-session.ts').HostedSession | string} hostedSession
- * @param {string | import('./image-attachments.ts').ImageAttachment[]} [text]
- * @param {import('./image-attachments.ts').ImageAttachment[]} [images]
- * @returns {Promise<boolean>} true when the root session was steered
+ * true when the root session was steered
  */
-export async function steerRootSession(hostedSession, text, images) {
+export async function steerRootSession(
+    hostedSession: HostedSession | string,
+    text?: string | ImageAttachment[],
+    images?: ImageAttachment[],
+): Promise<boolean> {
     return Boolean(await steerRootSessionWithTarget(hostedSession, text, images));
 }
 
-/**
- * Steer the root session and return the AgentSession that accepted the message.
- *
- * @param {import('./hosted-session.ts').HostedSession | string} hostedSession
- * @param {string | import('./image-attachments.ts').ImageAttachment[]} [text]
- * @param {import('./image-attachments.ts').ImageAttachment[]} [images]
- * @param {(target: import('@earendil-works/pi-coding-agent').AgentSession) => void} [beforeSteer]
- * @returns {Promise<import('@earendil-works/pi-coding-agent').AgentSession | null>}
- */
-export async function steerRootSessionWithTarget(hostedSession, text, images, beforeSteer) {
+/** Steer the root session and return the AgentSession that accepted the message. */
+export async function steerRootSessionWithTarget(
+    hostedSession: HostedSession | string,
+    text?: string | ImageAttachment[],
+    images?: ImageAttachment[],
+    beforeSteer?: (target: AgentSession) => void,
+): Promise<AgentSession | null> {
     const targetHostedSession = requireHostedSession(hostedSession, "steerRootSessionWithTarget");
-    const root = /** @type {any} */ (targetHostedSession.getRootAgentSession());
+    const root = targetHostedSession.getRootAgentSession() as SessionRoot | null;
     const target = root && isExecutionSession(root) ? getExecutionSteeringTarget(root) : root;
-    if (target?.isStreaming && beforeSteer) beforeSteer(target);
-    return await steerAgentSessionWithTarget(target, text, images);
+    if (target?.isStreaming && beforeSteer) beforeSteer(target as AgentSession);
+    return await steerAgentSessionWithTarget(target as SteeringSession | null, text, images);
 }
 
-/**
- * Steer the current foreground session if it is streaming, otherwise the streaming root session.
- *
- * @param {import('./hosted-session.ts').HostedSession | string} hostedSession
- * @param {string | import('./image-attachments.ts').ImageAttachment[]} [text]
- * @param {import('./image-attachments.ts').ImageAttachment[]} [images]
- * @returns {Promise<import('@earendil-works/pi-coding-agent').AgentSession | null>}
- */
-export async function steerActiveSessionWithTarget(hostedSession, text, images) {
+/** Steer the current foreground session if it is streaming, otherwise the streaming root session. */
+export async function steerActiveSessionWithTarget(
+    hostedSession: HostedSession | string,
+    text?: string | ImageAttachment[],
+    images?: ImageAttachment[],
+): Promise<AgentSession | null> {
     const targetHostedSession = requireHostedSession(hostedSession, "steerActiveSessionWithTarget");
-    const activeSession = /** @type {any} */ (targetHostedSession.getActiveSteeringTargetSession?.());
+    const activeSession = targetHostedSession.getActiveSteeringTargetSession?.() as SteeringSession | null;
     if (activeSession?.isStreaming) return await steerAgentSessionWithTarget(activeSession, text, images);
     return await steerAgentSessionWithTarget(
-        /** @type {any} */ (targetHostedSession.getRootAgentSession()),
+        targetHostedSession.getRootAgentSession() as SteeringSession | null,
         text,
         images,
     );
@@ -755,26 +1032,16 @@ export async function steerActiveSessionWithTarget(hostedSession, text, images) 
  * 1. If `activeModelPreset` is set and names a preset in `modelPresets`,
  *    and that preset has an `agents.<agentName>.model` entry, use that.
  * 2. Otherwise, fall back to `agents.<agentName>.model` from base config.
- *
- * @param {string} agentName
- * @param {string} projectRoot
- * @returns {string | undefined}
  */
-export function getConfiguredAgentModel(agentName, projectRoot) {
+export function getConfiguredAgentModel(agentName: string, projectRoot: string): string | undefined {
     if (!projectRoot) throw new Error("getConfiguredAgentModel: projectRoot is required");
-    const agents = /** @type {Record<string, { model?: string }> | undefined} */ (
-        getMergedCustomSetting("agents", projectRoot)
-    );
+    const agents = getMergedCustomSetting("agents", projectRoot) as
+        Record<string, ModelPresetAgentOverride> | undefined;
 
     // Check active preset first
-    const activeModelPreset = /** @type {string | undefined} */ (
-        getMergedCustomSetting("activeModelPreset", projectRoot)
-    );
+    const activeModelPreset = getMergedCustomSetting("activeModelPreset", projectRoot) as string | undefined;
     if (activeModelPreset) {
-        const modelPresets =
-            /** @type {Record<string, { agents?: Record<string, { model?: string }> }> | undefined} */ (
-                getMergedCustomSetting("modelPresets", projectRoot)
-            );
+        const modelPresets = getMergedCustomSetting("modelPresets", projectRoot) as ModelPresetsMap | undefined;
         const preset = modelPresets?.[activeModelPreset];
         const presetModel = preset?.agents?.[agentName]?.model;
         if (presetModel) return presetModel;
@@ -791,26 +1058,16 @@ export function getConfiguredAgentModel(agentName, projectRoot) {
  * 1. If `activeModelPreset` is set and names a preset in `modelPresets`,
  *    and that preset has an `agents.<agentName>.thinkingLevel` entry, use that.
  * 2. Otherwise, fall back to `agents.<agentName>.thinkingLevel` from base config.
- *
- * @param {string} agentName
- * @param {string} projectRoot
- * @returns {string | undefined}
  */
-export function getConfiguredAgentThinkingLevel(agentName, projectRoot) {
+export function getConfiguredAgentThinkingLevel(agentName: string, projectRoot: string): string | undefined {
     if (!projectRoot) throw new Error("getConfiguredAgentThinkingLevel: projectRoot is required");
-    const agents = /** @type {Record<string, { thinkingLevel?: string }> | undefined} */ (
-        getMergedCustomSetting("agents", projectRoot)
-    );
+    const agents = getMergedCustomSetting("agents", projectRoot) as
+        Record<string, ModelPresetAgentOverride> | undefined;
 
     // Check active preset first
-    const activeModelPreset = /** @type {string | undefined} */ (
-        getMergedCustomSetting("activeModelPreset", projectRoot)
-    );
+    const activeModelPreset = getMergedCustomSetting("activeModelPreset", projectRoot) as string | undefined;
     if (activeModelPreset) {
-        const modelPresets =
-            /** @type {Record<string, { agents?: Record<string, { thinkingLevel?: string }> }> | undefined} */ (
-                getMergedCustomSetting("modelPresets", projectRoot)
-            );
+        const modelPresets = getMergedCustomSetting("modelPresets", projectRoot) as ModelPresetsMap | undefined;
         const preset = modelPresets?.[activeModelPreset];
         const presetLevel = preset?.agents?.[agentName]?.thinkingLevel;
         if (presetLevel) return presetLevel;
@@ -820,49 +1077,29 @@ export function getConfiguredAgentThinkingLevel(agentName, projectRoot) {
     return agents?.[agentName]?.thinkingLevel;
 }
 
-/**
- * @param {unknown} value
- * @returns {number | undefined}
- */
-export function normalizeAgentTemperature(value) {
+export function normalizeAgentTemperature(value: JsonValue | undefined): number | undefined {
     if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
     if (value < 0 || value > 2) return undefined;
     return value;
 }
 
-/**
- * @param {unknown} value
- * @returns {string}
- */
-function getErrorMessage(value) {
+function getErrorMessage(value: unknown): string {
     if (value instanceof Error) return value.message;
     if (value && typeof value === "object" && "errorMessage" in value) {
-        return String(/** @type {{ errorMessage?: unknown }} */ (value).errorMessage ?? "");
+        return String(value.errorMessage ?? "");
     }
     return String(value ?? "");
 }
 
-/**
- * @param {unknown} error
- * @returns {boolean}
- */
-function isUnsupportedTemperatureError(error) {
+function isUnsupportedTemperatureError(error: unknown): boolean {
     return UNSUPPORTED_TEMPERATURE_RE.test(getErrorMessage(error));
 }
 
-/**
- * @param {import('@earendil-works/pi-ai').Model<import('@earendil-works/pi-ai').Api>} model
- * @returns {string}
- */
-function getTemperatureCapabilityModelKey(model) {
+function getTemperatureCapabilityModelKey(model: Model<Api>): string {
     return [model.provider, model.api, model.id].filter(Boolean).join(":");
 }
 
-/**
- * @param {import('@earendil-works/pi-ai').Model<import('@earendil-works/pi-ai').Api>} model
- * @returns {boolean}
- */
-function isKnownNoSamplingModelFamily(model) {
+function isKnownNoSamplingModelFamily(model: Model<Api>): boolean {
     const provider = String(model.provider || "").toLowerCase();
     const api = String(model.api || "").toLowerCase();
     const id = String(model.id || "").toLowerCase();
@@ -875,26 +1112,18 @@ function isKnownNoSamplingModelFamily(model) {
     );
 }
 
-/**
- * @param {import('@earendil-works/pi-ai').Model<import('@earendil-works/pi-ai').Api>} model
- * @returns {boolean}
- */
-function isKimiModelFamily(model) {
+function isKimiModelFamily(model: Model<Api>): boolean {
     const provider = String(model.provider || "").toLowerCase();
     const id = String(model.id || "").toLowerCase();
     return provider.includes("kimi") || id.includes("kimi-code") || id.includes("kimi-coding");
 }
 
-/**
- * @param {import('@earendil-works/pi-ai').Model<import('@earendil-works/pi-ai').Api>} model
- * @returns {import('@earendil-works/pi-ai').Model<import('@earendil-works/pi-ai').Api>}
- */
-function withModelCompatibility(model) {
+function withModelCompatibility(model: RunWieldModel): ResolvedSessionModel {
     if (!isKimiModelFamily(model)) return model;
     const compatibleModel = {
         ...model,
         compat: {
-            .../** @type {Record<string, unknown> | undefined} */ (model.compat),
+            ...model.compat,
             supportsDeveloperRole: false,
             supportsTemperature: false,
         },
@@ -908,12 +1137,9 @@ function withModelCompatibility(model) {
  * The ChatGPT Codex Responses endpoint and some coding-model families reject
  * sampling temperature. Detect known capability signals up front and remember
  * runtime rejections so later calls avoid repeating the failed request.
- *
- * @param {import('@earendil-works/pi-ai').Model<import('@earendil-works/pi-ai').Api>} model
- * @returns {boolean}
  */
-function modelSupportsTemperature(model) {
-    const compat = /** @type {{ supportsTemperature?: unknown } | undefined} */ (model.compat);
+function modelSupportsTemperature(model: Model<Api>): boolean {
+    const compat = model.compat as ModelCompatibility | undefined;
     if (compat?.supportsTemperature === false) return false;
     if (isKnownNoSamplingModelFamily(model)) return false;
     return !modelsWithoutTemperature.has(getTemperatureCapabilityModelKey(model));
@@ -923,18 +1149,16 @@ function modelSupportsTemperature(model) {
  * Some provider/model APIs reject `temperature` even though pi-ai exposes it as
  * a generic stream option. Retry once without temperature when the provider
  * reports that exact incompatibility before emitting assistant content.
- *
- * @param {import('@earendil-works/pi-ai').AssistantMessageEventStream | Promise<import('@earendil-works/pi-ai').AssistantMessageEventStream>} firstSource
- * @param {() => import('@earendil-works/pi-ai').AssistantMessageEventStream | Promise<import('@earendil-works/pi-ai').AssistantMessageEventStream>} retryWithoutTemperature
- * @param {(() => void) | undefined} onUnsupportedTemperature
- * @param {import('@earendil-works/pi-ai').Model<import('@earendil-works/pi-ai').Api>} model
- * @returns {import('@earendil-works/pi-ai').AssistantMessageEventStream}
  */
-function createTemperatureFallbackStream(firstSource, retryWithoutTemperature, onUnsupportedTemperature, model) {
+function createTemperatureFallbackStream(
+    firstSource: AssistantMessageEventStream | Promise<AssistantMessageEventStream>,
+    retryWithoutTemperature: () => AssistantMessageEventStream | Promise<AssistantMessageEventStream>,
+    onUnsupportedTemperature: (() => void) | undefined,
+    model: Model<Api>,
+): AssistantMessageEventStream {
     const output = createAssistantMessageEventStream();
 
-    /** @param {Error | DOMException} error */
-    function finishWithError(error) {
+    function finishWithError(error: Error | DOMException) {
         const aborted = error.name === "AbortError";
         output.push({
             type: "error",
@@ -960,12 +1184,10 @@ function createTemperatureFallbackStream(firstSource, retryWithoutTemperature, o
         });
     }
 
-    /**
-     * @param {import('@earendil-works/pi-ai').AssistantMessageEventStream | Promise<import('@earendil-works/pi-ai').AssistantMessageEventStream>} sourcePromise
-     * @param {boolean} canRetry
-     * @returns {Promise<"retry" | "done">}
-     */
-    async function forward(sourcePromise, canRetry) {
+    async function forward(
+        sourcePromise: AssistantMessageEventStream | Promise<AssistantMessageEventStream>,
+        canRetry: boolean,
+    ): Promise<"retry" | "done"> {
         let source;
         try {
             source = await sourcePromise;
@@ -977,8 +1199,7 @@ function createTemperatureFallbackStream(firstSource, retryWithoutTemperature, o
             throw error;
         }
         let emittedAssistantContent = false;
-        /** @type {import('@earendil-works/pi-ai').AssistantMessageEvent[]} */
-        const pendingLifecycleEvents = [];
+        const pendingLifecycleEvents: AssistantMessageEvent[] = [];
         for await (const event of source) {
             if (
                 event.type === "error" &&
@@ -1027,14 +1248,9 @@ function createTemperatureFallbackStream(firstSource, retryWithoutTemperature, o
     return output;
 }
 
-/**
- * @param {object | undefined} options
- * @returns {object | undefined}
- */
-function omitTemperatureOption(options) {
+function omitTemperatureOption(options: SimpleStreamOptions | undefined): SimpleStreamOptions | undefined {
     if (!options) return undefined;
-    const { temperature: _temperature, ...withoutTemperature } =
-        /** @type {{ temperature?: unknown, [key: string]: unknown }} */ (options);
+    const { temperature: _temperature, ...withoutTemperature } = options;
     return withoutTemperature;
 }
 
@@ -1045,25 +1261,15 @@ function omitTemperatureOption(options) {
  * 1. If `activeModelPreset` is set and names a preset in `modelPresets`,
  *    and that preset has an `agents.<agentName>.temperature` entry, use that.
  * 2. Otherwise, fall back to `agents.<agentName>.temperature` from base config.
- *
- * @param {string} agentName
- * @param {string} projectRoot
- * @returns {number | undefined}
  */
-export function getConfiguredAgentTemperature(agentName, projectRoot) {
+export function getConfiguredAgentTemperature(agentName: string, projectRoot: string): number | undefined {
     if (!projectRoot) throw new Error("getConfiguredAgentTemperature: projectRoot is required");
-    const agents = /** @type {Record<string, { temperature?: unknown }> | undefined} */ (
-        getMergedCustomSetting("agents", projectRoot)
-    );
+    const agents = getMergedCustomSetting("agents", projectRoot) as
+        Record<string, ModelPresetAgentOverride> | undefined;
 
-    const activeModelPreset = /** @type {string | undefined} */ (
-        getMergedCustomSetting("activeModelPreset", projectRoot)
-    );
+    const activeModelPreset = getMergedCustomSetting("activeModelPreset", projectRoot) as string | undefined;
     if (activeModelPreset) {
-        const modelPresets =
-            /** @type {Record<string, { agents?: Record<string, { temperature?: unknown }> }> | undefined} */ (
-                getMergedCustomSetting("modelPresets", projectRoot)
-            );
+        const modelPresets = getMergedCustomSetting("modelPresets", projectRoot) as ModelPresetsMap | undefined;
         const preset = modelPresets?.[activeModelPreset];
         const presetTemperature = normalizeAgentTemperature(preset?.agents?.[agentName]?.temperature);
         if (presetTemperature !== undefined) return presetTemperature;
@@ -1072,22 +1278,13 @@ export function getConfiguredAgentTemperature(agentName, projectRoot) {
     return normalizeAgentTemperature(agents?.[agentName]?.temperature);
 }
 
-/**
- * Apply an agent-level temperature as the default for provider requests in a session.
- *
- * @param {import('@earendil-works/pi-coding-agent').AgentSession} session
- * @param {number | undefined} temperature
- */
-export function applySessionTemperature(session, temperature) {
+/** Apply an agent-level temperature as the default for provider requests in a session. */
+export function applySessionTemperature(session: AgentSession, temperature: number | undefined) {
     if (temperature === undefined) return;
-    const agent = /** @type {any} */ (session.agent);
+    const agent = session.agent as ProviderStreamAgent;
     const streamKey = typeof agent.streamFunction === "function" ? "streamFunction" : "streamFn";
     const originalStreamFunction = agent[streamKey];
-    agent[streamKey] = (
-        /** @type {import('@earendil-works/pi-ai').Model<import('@earendil-works/pi-ai').Api>} */ model,
-        /** @type {import('@earendil-works/pi-ai').TranscriptContext} */ context,
-        /** @type {import('@earendil-works/pi-ai').SimpleStreamOptions | undefined} */ options,
-    ) => {
+    agent[streamKey] = (model: Model<Api>, context: TranscriptContext, options: SimpleStreamOptions | undefined) => {
         if (!modelSupportsTemperature(model)) {
             return originalStreamFunction(model, context, omitTemperatureOption(options));
         }
@@ -1113,16 +1310,14 @@ export function applySessionTemperature(session, temperature) {
     };
 }
 
-/** @type {WeakMap<object, Set<string>>} */
-const emittedAgentModelFallbacks = new WeakMap();
+const emittedAgentModelFallbacks: WeakMap<HostedSession, Set<string>> = new WeakMap();
 
-/**
- * @param {import('./hosted-session.ts').HostedSession | undefined} hostedSession
- * @param {string} agentName
- * @param {string} displayName
- * @param {string} engineerModel
- */
-function emitAgentModelFallback(hostedSession, agentName, displayName, engineerModel) {
+function emitAgentModelFallback(
+    hostedSession: HostedSession | undefined,
+    agentName: string,
+    displayName: string,
+    engineerModel: string,
+) {
     const key = `${agentName}\u0000${engineerModel}`;
     if (hostedSession) {
         let emitted = emittedAgentModelFallbacks.get(hostedSession);
@@ -1147,36 +1342,24 @@ function emitAgentModelFallback(hostedSession, agentName, displayName, engineerM
  * 3) Configured per-agent model from settings (agents / modelPresets)
  * 4) Default model from settings
  * 5) Agent definition model from layered frontmatter
- *
- * @param {string | undefined} modelOverride
- * @param {import('./agents.ts').AgentDefinition} agentDef
- * @param {string} [agentName] - Used to look up settings-based model override.
- * @param {ReturnType<typeof getModelRegistry>} [modelRegistry]
- * @param {import('./hosted-session.ts').HostedSession} [hostedSession]
- * @param {string} [projectRoot]
- * @param {{ ignoreManualModelOverride?: boolean }} [options]
- *
- * @returns {Promise<any>}
  */
 export async function resolveModel(
-    modelOverride,
-    agentDef,
-    agentName,
-    modelRegistry = getModelRegistry(),
-    hostedSession = undefined,
-    projectRoot = hostedSession?.cwd,
-    options = {},
-) {
+    modelOverride: string | undefined,
+    agentDef: AgentDefinition,
+    agentName?: string,
+    modelRegistry: ReturnType<typeof getModelRegistry> = getModelRegistry(),
+    hostedSession: HostedSession | undefined = undefined,
+    projectRoot: string | undefined = hostedSession?.cwd,
+    options: ResolveModelOptions = {},
+): Promise<RunWieldModel> {
     let resolvedModel = null;
     if (!projectRoot) throw new Error("resolveModel: projectRoot is required");
     const metricProjectRoot = projectRoot;
-    /** @param {Parameters<typeof recordWorkflowMetric>[0]} metric */
-    function recordModelMetric(metric) {
+    function recordModelMetric(metric: Parameters<typeof recordWorkflowMetric>[0]) {
         return recordWorkflowMetric(metric, metricProjectRoot);
     }
 
-    /** @type {Array<{ model: string, source: string, strict: boolean }>} */
-    const candidateModels = [];
+    const candidateModels: ModelCandidate[] = [];
 
     // A manual choice is scoped to the current Agent. Build a replacement
     // without borrowing that choice, while retaining it if construction fails.
@@ -1440,19 +1623,11 @@ export async function resolveModel(
     );
 }
 
-/**
- * @param {string} text
- * @returns {string}
- */
-function removePromptPlaceholders(text) {
+function removePromptPlaceholders(text: string): string {
     return String(text || "").replace(/{{[A-Z0-9_]+}}/g, "");
 }
 
-/**
- * @param {SystemPromptContextProjectionOptions} options
- * @returns {string}
- */
-function resolvePromptSessionName(options) {
+function resolvePromptSessionName(options: SystemPromptContextProjectionOptions): string {
     const names = [
         options.sessionName,
         options.hostedSession?.getRootSessionManager?.()?.getSessionName?.(),
@@ -1465,35 +1640,24 @@ function resolvePromptSessionName(options) {
     return "";
 }
 
-/**
- * @param {string[]} tools
- * @param {SystemPromptContextProjectionOptions} options
- * @returns {string}
- */
-function buildSessionNameReminder(tools, options) {
+function buildSessionNameReminder(tools: string[], options: SystemPromptContextProjectionOptions): string {
     if (!tools.includes("set_session_name")) return "";
     if (resolvePromptSessionName(options)) return "";
     return "If this Session is unnamed, call `set_session_name` early with a short descriptive name.";
 }
 
-/**
- * @param {string} label
- * @param {string} text
- * @param {Partial<import('./session-context-report.ts').ContextProjectionItem>} [extra]
- * @returns {import('./session-context-report.ts').ContextProjectionItem | null}
- */
-function createContextProjectionItem(label, text, extra = {}) {
+function createContextProjectionItem(
+    label: string,
+    text: string,
+    extra: Partial<ContextProjectionItem> = {},
+): ContextProjectionItem | null {
     const tokens = estimateContextTextTokens(text);
     if (tokens <= 0) return null;
     return { label, tokens, ...extra };
 }
 
-/**
- * @param {import('@earendil-works/pi-coding-agent').ToolDefinition[]} toolDefinitions
- * @returns {Map<string, import('@earendil-works/pi-coding-agent').ToolDefinition>}
- */
-function mapToolDefinitionsByName(toolDefinitions) {
-    const map = new Map();
+function mapToolDefinitionsByName(toolDefinitions: ToolDefinition[]): Map<string, ToolDefinition> {
+    const map = new Map<string, ToolDefinition>();
     for (const tool of toolDefinitions) {
         if (tool?.name) map.set(tool.name, tool);
     }
@@ -1504,13 +1668,12 @@ function mapToolDefinitionsByName(toolDefinitions) {
  * Estimate the resident provider tool context for one effective ToolDefinition.
  * Keep this text local to attribution only: reports expose token counts and tool names,
  * not schemas or prompt snippets.
- *
- * @param {string} name
- * @param {import('@earendil-works/pi-coding-agent').ToolDefinition | undefined} tool
- * @param {string} fallbackDescription
- * @returns {string}
  */
-function serializeToolContextForProjection(name, tool, fallbackDescription) {
+function serializeToolContextForProjection(
+    name: string,
+    tool: ToolDefinition | undefined,
+    fallbackDescription: string,
+): string {
     const parts = [`Tool: ${name}`];
     const label = typeof tool?.label === "string" && tool.label ? tool.label : "";
     if (label && label !== name) parts.push(`Label: ${label}`);
@@ -1528,11 +1691,7 @@ function serializeToolContextForProjection(name, tool, fallbackDescription) {
     return parts.join("\n");
 }
 
-/**
- * @param {unknown} parameters
- * @returns {string}
- */
-function stringifyToolParameters(parameters) {
+function stringifyToolParameters(parameters: ToolDefinition["parameters"] | undefined): string {
     if (!parameters) return "";
     const seen = new WeakSet();
     try {
@@ -1549,11 +1708,7 @@ function stringifyToolParameters(parameters) {
     }
 }
 
-/**
- * @param {string} cwd
- * @returns {Promise<{ text: string, path: string, source: "local" } | null>}
- */
-async function readProjectInstructionFile(cwd) {
+async function readProjectInstructionFile(cwd: string): Promise<AgentInstruction<"local"> | null> {
     for (const path of [join(cwd, "RUNWIELD.md"), join(cwd, "AGENTS.md")]) {
         try {
             return { text: await fsReadFile(path, "utf8"), path, source: "local" };
@@ -1564,18 +1719,12 @@ async function readProjectInstructionFile(cwd) {
     return null;
 }
 
-/**
- * @param {string} homeDir
- * @returns {Promise<{ text: string, path: string, source: "home" | "external" } | null>}
- */
-async function readGlobalInstructionFile(homeDir) {
+async function readGlobalInstructionFile(homeDir: string): Promise<AgentInstruction<GlobalInstructionSource> | null> {
     for (const path of getGlobalAgentMdPaths(homeDir)) {
         try {
             await assertPersonalResourcePath(path, "global instruction");
             const source =
-                path === join(personalAgentsRoot() ?? join(homeDir, ".agents"), "AGENTS.md")
-                    ? /** @type {"external"} */ ("external")
-                    : /** @type {"home"} */ ("home");
+                path === join(personalAgentsRoot() ?? join(homeDir, ".agents"), "AGENTS.md") ? "external" : "home";
             return { text: await fsReadFile(path, "utf8"), path, source };
         } catch (error) {
             if (error instanceof PersonalResourcePathError) throw error;
@@ -1585,33 +1734,22 @@ async function readGlobalInstructionFile(homeDir) {
     return null;
 }
 
-/**
- * @typedef {Object} SystemPromptContextProjectionOptions
- * @property {string} [homeDir]
- * @property {import('./hosted-session.ts').HostedSession} [hostedSession]
- * @property {import('@earendil-works/pi-coding-agent').SessionManager} [sessionManager]
- * @property {string} [sessionName]
- */
+export interface SystemPromptContextProjectionOptions {
+    homeDir?: string;
+    hostedSession?: HostedSession;
+    sessionManager?: SessionManager;
+    sessionName?: string;
+}
 
-/**
- * Assemble the final system prompt and resident-context projection by resolving placeholders.
- *
- * @param {import('./agents.ts').AgentDefinition} agentDef
- * @param {string[]} tools
- * @param {import('@earendil-works/pi-coding-agent').ToolDefinition[]} finalCustomTools
- * @param {string | undefined} cwd
- * @param {string} [projectStateContext]
- * @param {SystemPromptContextProjectionOptions} [options]
- * @returns {Promise<{ prompt: string, projection: import('./session-context-report.ts').SessionContextProjection, effectiveToolDefinitions: import('@earendil-works/pi-coding-agent').ToolDefinition[] }>}
- */
+/** Assemble the final system prompt and resident-context projection by resolving placeholders. */
 export async function assembleFinalSystemPromptWithContextProjection(
-    agentDef,
-    tools,
-    finalCustomTools,
-    cwd,
-    projectStateContext = "",
-    options = {},
-) {
+    agentDef: AgentDefinition,
+    tools: string[],
+    finalCustomTools: ToolDefinition[],
+    cwd: string | undefined,
+    projectStateContext: string = "",
+    options: SystemPromptContextProjectionOptions = {},
+): Promise<AssembleFinalSystemPromptWithContextProjectionResult> {
     if (!cwd) throw new Error("assembleFinalSystemPrompt: cwd is required");
     const piTools = [
         createBashToolDefinition(cwd),
@@ -1656,8 +1794,12 @@ export async function assembleFinalSystemPromptWithContextProjection(
         buildSessionNameReminder(tools, options),
     );
 
-    const effectiveToolMap = mapToolDefinitionsByName([...piTools, ...extensionTools, ...finalCustomTools]);
-    const customToolMap = new Map();
+    const effectiveToolMap = mapToolDefinitionsByName([
+        ...piTools,
+        ...extensionTools,
+        ...finalCustomTools,
+    ] as ToolDefinition[]);
+    const customToolMap = new Map<string, string>();
     for (const [name, tool] of effectiveToolMap.entries()) {
         customToolMap.set(name, tool.promptSnippet || tool.description);
     }
@@ -1675,8 +1817,7 @@ export async function assembleFinalSystemPromptWithContextProjection(
     const availableToolsStr = toolItems.map((tool) => tool.line).join("\n");
     finalSystemPrompt = finalSystemPrompt?.replace("{{AVAILABLE_TOOLS}}", availableToolsStr);
 
-    /** @type {import('./session-context-report.ts').ContextProjectionItem[]} */
-    const instructionItems = [];
+    const instructionItems: ContextProjectionItem[] = [];
     let globalAgentsMd = "";
     const homeDir = options.homeDir || getHomeDir();
     if (hasGlobalAgentsPlaceholder && homeDir) {
@@ -1740,8 +1881,7 @@ export async function assembleFinalSystemPromptWithContextProjection(
     finalSystemPrompt = finalSystemPrompt.replace("{{MEMORIES}}", memories);
 
     let skillsBlock = "";
-    /** @type {import('./session-context-report.ts').ContextProjectionItem[]} */
-    const skillItems = [];
+    const skillItems: ContextProjectionItem[] = [];
     if (hasSkillsPlaceholder) {
         try {
             const visibleSkills = await listVisibleSkillCatalog(cwd);
@@ -1822,9 +1962,7 @@ export async function assembleFinalSystemPromptWithContextProjection(
             id: "tools",
             label: "Tools",
             tokens: toolItems.reduce((sum, tool) => sum + (tool.item?.tokens || 0), 0),
-            items: /** @type {import('./session-context-report.ts').ContextProjectionItem[]} */ (
-                toolItems.map((tool) => tool.item).filter(Boolean)
-            ),
+            items: toolItems.map((tool) => tool.item).filter(Boolean) as ContextProjectionItem[],
         },
         {
             id: "instruction_files",
@@ -1862,25 +2000,15 @@ export async function assembleFinalSystemPromptWithContextProjection(
     };
 }
 
-/**
- * Assemble the final system prompt by resolving placeholders.
- *
- * @param {import('./agents.ts').AgentDefinition} agentDef
- * @param {string[]} tools
- * @param {import('@earendil-works/pi-coding-agent').ToolDefinition[]} finalCustomTools
- * @param {string} [cwd]
- * @param {string} [projectStateContext]
- * @param {SystemPromptContextProjectionOptions} [options]
- * @returns {Promise<string>}
- */
+/** Assemble the final system prompt by resolving placeholders. */
 export async function assembleFinalSystemPrompt(
-    agentDef,
-    tools,
-    finalCustomTools,
-    cwd,
-    projectStateContext = "",
-    options = {},
-) {
+    agentDef: AgentDefinition,
+    tools: string[],
+    finalCustomTools: ToolDefinition[],
+    cwd?: string,
+    projectStateContext: string = "",
+    options: SystemPromptContextProjectionOptions = {},
+): Promise<string> {
     const result = await assembleFinalSystemPromptWithContextProjection(
         agentDef,
         tools,
@@ -1892,31 +2020,26 @@ export async function assembleFinalSystemPrompt(
     return result.prompt;
 }
 
-/**
- * @typedef {Object} NamedInvocationImageReference
- * @property {string} [ref]
- * @property {string} [path]
- * @property {string} mimeType
- *
- * @typedef {Object} NamedInvocationContextData
- * @property {number} version
- * @property {string} expandedRequest
- * @property {NamedInvocationImageReference[]} imageReferences
- *
- * @typedef {Object} NamedInvocationContextDataInput
- * @property {number} [version]
- * @property {string} [expandedRequest]
- * @property {NamedInvocationImageReference[]} [imageReferences]
- */
+export interface NamedInvocationImageReference {
+    ref?: string;
+    path?: string;
+    mimeType: string;
+}
+export interface NamedInvocationContextData {
+    version: number;
+    expandedRequest: string;
+    imageReferences: NamedInvocationImageReference[];
+}
+export interface NamedInvocationContextDataInput {
+    version?: number;
+    expandedRequest?: string;
+    imageReferences?: NamedInvocationImageReference[];
+}
 
-/**
- * @param {import('@earendil-works/pi-coding-agent').SessionEntry} entry
- * @returns {NamedInvocationContextData | null}
- */
-function readNamedInvocationContextEntry(entry) {
+function readNamedInvocationContextEntry(entry: SessionEntry): NamedInvocationContextData | null {
     if (entry.type !== "custom" || entry.customType !== "runwield.named_invocation") return null;
     if (!entry.data || typeof entry.data !== "object") return null;
-    const data = /** @type {NamedInvocationContextDataInput} */ (entry.data);
+    const data = entry.data as NamedInvocationContextDataInput;
     if (data.version !== 1 || typeof data.expandedRequest !== "string") return null;
     const imageReferences = Array.isArray(data.imageReferences)
         ? data.imageReferences.filter(
@@ -1926,21 +2049,15 @@ function readNamedInvocationContextEntry(entry) {
     return { version: data.version, expandedRequest: data.expandedRequest, imageReferences };
 }
 
-/**
- * @param {NamedInvocationImageReference} image
- * @returns {string}
- */
-function namedInvocationImageMarker(image) {
+function namedInvocationImageMarker(image: NamedInvocationImageReference): string {
     const reference = image.ref || (image.path ? basename(image.path) : "unpersisted-image");
     return `[Image attached: ${reference} ${image.mimeType}]`;
 }
 
-/**
- * @param {import('@earendil-works/pi-ai').UserMessage} message
- * @param {NamedInvocationContextData} namedInvocation
- * @returns {import('@earendil-works/pi-coding-agent').ContextEditableContent}
- */
-function namedInvocationExpandedContent(message, namedInvocation) {
+function namedInvocationExpandedContent(
+    message: UserMessage,
+    namedInvocation: NamedInvocationContextData,
+): ContextEditableContent {
     const content = "content" in message && Array.isArray(message.content) ? message.content : [];
     const nonTextContent = content.filter((block) => block.type !== "text");
     const imageMarkers =
@@ -1956,10 +2073,8 @@ function namedInvocationExpandedContent(message, namedInvocation) {
  * Add canonical context edits for Named Invocations saved before Pi 0.87.
  * The custom metadata is the direct parent of its compact user message. Existing
  * branch-local edits, including omissions, always take precedence.
- *
- * @param {import('@earendil-works/pi-coding-agent').SessionManager} sessionManager
  */
-function repairNamedInvocationContextEdits(sessionManager) {
+function repairNamedInvocationContextEdits(sessionManager: SessionManager) {
     const branch = sessionManager.getBranch();
     const contextEntries = sessionManager.buildContextEntries();
     const retainedIds = new Set(contextEntries.map((entry) => entry.id));
@@ -1996,44 +2111,6 @@ function repairNamedInvocationContextEdits(sessionManager) {
  * Used by:
  *  - runRootTurn's initial root construction (via ensureRootAgentSession in chat-session)
  *  - runIsolatedAgentSession's transient sub-agent path
- *
- * @param {Object} opts
- * @param {import('./hosted-session.ts').HostedSession} [opts.hostedSession]
- * @param {string} opts.agentName
- * @param {string[]} [opts.toolNames]
- * @param {import('../bash-command-policy.ts').BashAllowedCommands} [opts.inheritedBashAllowedCommands]
- * @param {import('@earendil-works/pi-coding-agent').ToolDefinition[]} [opts.customTools]
- * @param {import('@earendil-works/pi-coding-agent').ToolDefinition[]} [opts.mcpRootTools]
- * @param {import('../mcp/integration.ts').McpIntegration} [opts.mcpIntegration]
- * @param {string} [opts.modelOverride]
- * @param {"off"|"minimal"|"low"|"medium"|"high"|"xhigh"|"max"} [opts.thinkingLevelOverride]
- * @param {number} [opts.temperatureOverride]
- * @param {import('@earendil-works/pi-coding-agent').SessionManager} [opts.sessionManager]
- * @param {import('../../tools/plan-written.ts').TriageMeta} [opts.triageMeta]
- * @param {{ id: import('./subagent-definitions.ts').SubAgentDefinitionId, options?: import('./subagent-definitions.ts').LoadSubAgentDefinitionOptions }} [opts.subAgentDefinition]
- * @param {string} [opts.cwd] - Execution cwd for file tools and agent operations. Defaults to primary project root.
- * @param {string} [opts.debugLogPath] - Optional DEBUG log destination for this invocation.
- * @param {string} [opts.projectStateContext] - Optional session-scoped project state note for the system prompt.
- * @param {boolean} [opts.includeEditFallback] - Legacy option name: whether to register the single-replacement edit tool.
- * @param {boolean} [opts.ignoreManualModelOverride] - True when invocation policy must not borrow root /model state.
- * @param {boolean} [opts.updateHostedThinkingLevel] - False when thinking is temporary and must not update root footer state.
- * @param {boolean} [opts.persistModelChange] - False for temporary Claude CLI turns that must not append a root model marker.
- * @param {boolean} [opts.disableAutoCompaction] - True when a temporary turn must fail instead of compacting root context.
- *
- * @returns {Promise<{
- *   session: import('@earendil-works/pi-coding-agent').AgentSession,
- *   agentDef: import('./agents.ts').AgentDefinition,
- *   promptState: { text: string },
- *   tools: string[],
- *   finalCustomTools: import('@earendil-works/pi-coding-agent').ToolDefinition[],
- *   effectiveToolDefinitions: import('@earendil-works/pi-coding-agent').ToolDefinition[],
- *   resolvedModel: any,
- *   resolvedThinkingLevel: string | undefined,
- *   resolvedTemperature: number | undefined,
- *   contextProjection: import('./session-context-report.ts').SessionContextProjection,
- *   imageMode?: string,
- *   visionFallbackModelRef?: string
- * }>}
  */
 export async function buildAgentSession({
     hostedSession,
@@ -2055,7 +2132,7 @@ export async function buildAgentSession({
     includeEditFallback,
     ignoreManualModelOverride,
     updateHostedThinkingLevel,
-}) {
+}: BuildAgentSessionOptions): Promise<BuildAgentSessionResult> {
     const targetHostedSession = hostedSession ? requireHostedSession(hostedSession, "buildAgentSession") : null;
     const sessionCwd = cwd || targetHostedSession?.cwd;
     if (!sessionCwd) throw new Error("buildAgentSession: cwd or hostedSession cwd is required");
@@ -2107,7 +2184,7 @@ export async function buildAgentSession({
             createRunWieldBashToolDefinition(sessionCwd, allowedCommands, {
                 shellPath: settingsManager.getShellPath(),
                 commandPrefix: settingsManager.getShellCommandPrefix(),
-            }),
+            }) as ToolDefinition,
         );
     }
     const effectiveMcpIntegration =
@@ -2202,7 +2279,9 @@ export async function buildAgentSession({
     }
 
     if (tools.includes("user_interview") && !finalCustomTools.find((t) => t.name === "user_interview")) {
-        finalCustomTools.push(createUserInterviewTool({ hostedSession: targetHostedSession || undefined }));
+        finalCustomTools.push(
+            createUserInterviewTool({ hostedSession: targetHostedSession || undefined }) as ToolDefinition,
+        );
     }
 
     const workRecordAccessMode = [AGENTS.GUIDE, AGENTS.RECORDER].includes(agentName) ? "all" : "current";
@@ -2264,17 +2343,17 @@ export async function buildAgentSession({
 
     // Override the built-in read tool to block Git internals and unsafe binary/control-byte output.
     if (!finalCustomTools.find((t) => t.name === "read")) {
-        finalCustomTools.push(createRunWieldReadToolDefinition(sessionCwd));
+        finalCustomTools.push(createRunWieldReadToolDefinition(sessionCwd) as ToolDefinition);
     }
 
     // Adapt the built-in edit tool to the single-replacement schema.
     if (includeEditFallback !== false) {
-        finalCustomTools.push(createSingleEditToolDefinition(sessionCwd));
+        finalCustomTools.push(createSingleEditToolDefinition(sessionCwd) as ToolDefinition);
     }
 
     // Override the built-in grep tool to accept shell-shaped multi-path input.
     if (!finalCustomTools.find((t) => t.name === "grep")) {
-        finalCustomTools.push(createRunWieldGrepToolDefinition(sessionCwd));
+        finalCustomTools.push(createRunWieldGrepToolDefinition(sessionCwd) as ToolDefinition);
     }
 
     if (tools.includes("multi_file_edit") && !finalCustomTools.find((t) => t.name === "multi_file_edit")) {
@@ -2283,11 +2362,11 @@ export async function buildAgentSession({
     }
 
     if (tools.includes("write_docs") && !finalCustomTools.find((t) => t.name === "write_docs")) {
-        finalCustomTools.push(createWriteDocsToolDefinition(sessionCwd));
+        finalCustomTools.push(createWriteDocsToolDefinition(sessionCwd) as ToolDefinition);
     }
 
     if (tools.includes("edit_docs") && !finalCustomTools.find((t) => t.name === "edit_docs")) {
-        finalCustomTools.push(createEditDocsToolDefinition(sessionCwd));
+        finalCustomTools.push(createEditDocsToolDefinition(sessionCwd) as ToolDefinition);
     }
 
     if (
@@ -2368,13 +2447,12 @@ export async function buildAgentSession({
         // Pi persists prompt deltas across Agent switches. Replace the provider's
         // leading instructions each run so a previous Agent's role cannot remain
         // authoritative. Pi keeps the durable history and current tools intact.
-        (/** @type {import('@earendil-works/pi-coding-agent').ExtensionAPI} */ pi) => {
+        (pi: ExtensionAPI) => {
             pi.on("before_agent_start", (event) => ({ systemPrompt: event.systemPrompt }));
         },
         // Re-anchoring is per-agent-session: the agent identity is fixed here, and
         // the Plan pointer is read from live session state at compaction time.
-        (/** @type {import('@earendil-works/pi-coding-agent').ExtensionAPI} */ pi) =>
-            reAnchorExtension(pi, { agentName, hostedSession: targetHostedSession }),
+        (pi: ExtensionAPI) => reAnchorExtension(pi, { agentName, hostedSession: targetHostedSession }),
     ];
     const mcpRootBinding = effectiveMcpIntegration?.bindRoot(tools);
     if (mcpRootBinding) extensionFactories.push(mcpRootBinding.extensionFactory);
@@ -2453,9 +2531,9 @@ export async function buildAgentSession({
             dispose();
         };
     }
-    /** @type {any} */ (session).runWieldModelRegistry = modelRegistry;
-    /** @type {any} */ (session).runWieldProjectRoot = sessionCwd;
-    installEarlySteeringInterruption(/** @type {any} */ (session));
+    (session as SessionModelContext).runWieldModelRegistry = modelRegistry;
+    (session as SessionModelContext).runWieldProjectRoot = sessionCwd;
+    installEarlySteeringInterruption(session as AgentSession & EarlySteeringSession);
     installEngineerAutoCompactionThreshold(session, agentName);
     installTaskCompletedAutoCompactionExclusion(session);
     installPairCheckpointAutoCompactionPreservation(session, targetHostedSession);
@@ -2507,14 +2585,10 @@ export async function buildAgentSession({
         thinkingLevelOverride,
     });
     if (resolvedThinkingLevel) {
-        session.setThinkingLevel(
-            /** @type {import('@earendil-works/pi-agent-core').ThinkingLevel} */ (resolvedThinkingLevel),
-        );
+        session.setThinkingLevel(resolvedThinkingLevel as ThinkingLevel);
         // Keep the HostedSession footer in sync with what the root AgentSession is using.
         if (updateHostedThinkingLevel !== false) {
-            targetHostedSession?.setThinkingLevel(
-                /** @type {"off"|"minimal"|"low"|"medium"|"high"|"xhigh"|"max"|"max"} */ (resolvedThinkingLevel),
-            );
+            targetHostedSession?.setThinkingLevel(resolvedThinkingLevel as ThinkingLevel | "max");
         }
     }
 
@@ -2574,19 +2648,6 @@ export async function buildAgentSession({
  * with plan_written / task_completed / review_complete, instantiated with the
  * same factories Pi uses. Returned in `finalCustomTools` so existing root
  * configuration checks remain valid while Pi wiring stays unchanged.
- *
- * @param {{
- *   agentDef: import('./agents.ts').AgentDefinition,
- *   inheritedBashAllowedCommands?: import('../bash-command-policy.ts').BashAllowedCommands,
- *   agentName: string,
- *   hostedSession: import('./hosted-session.ts').HostedSession | null,
- *   triageMeta: import('../../tools/plan-written.ts').TriageMeta | undefined,
- *   cwd: string,
- *   customTools?: import('@earendil-works/pi-coding-agent').ToolDefinition[],
- *   mcpRootTools?: import('@earendil-works/pi-coding-agent').ToolDefinition[],
- *   sessionManager?: import('@earendil-works/pi-coding-agent').SessionManager,
- * }} opts
- * @returns {Promise<import('@earendil-works/pi-coding-agent').ToolDefinition[]>}
  */
 export async function composeClaudeCliBridgedTools({
     agentDef,
@@ -2598,17 +2659,15 @@ export async function composeClaudeCliBridgedTools({
     customTools = [],
     mcpRootTools,
     sessionManager,
-}) {
-    /** @type {import('@earendil-works/pi-coding-agent').ToolDefinition[]} */
-    const finalCustomTools = [...customTools];
+}: ComposeCliBridgedToolsOptions): Promise<ToolDefinition[]> {
+    const finalCustomTools: ToolDefinition[] = [...customTools];
     const declaredTools = resolveEffectiveSessionToolNames(
         agentDef.tools,
         undefined,
         finalCustomTools.map((tool) => tool.name),
     ).filter((name) => name !== "codemode");
     const declared = new Set(declaredTools);
-    /** @param {string} name */
-    const hasTool = (name) => finalCustomTools.find((tool) => tool.name === name);
+    const hasTool = (name: string) => finalCustomTools.find((tool) => tool.name === name);
 
     if (
         declaredTools.some((name) => ["write", "edit", "multi_file_edit", "create_image"].includes(name)) &&
@@ -2621,7 +2680,7 @@ export async function composeClaudeCliBridgedTools({
 
     const { createClaudeCliCapabilityTools, CLAUDE_CLI_CAPABILITY_TOOL_NAMES } =
         await import("./backends/claude-cli/capability-tools.ts");
-    const capabilityNameSet = new Set(/** @type {readonly string[]} */ (CLAUDE_CLI_CAPABILITY_TOOL_NAMES));
+    const capabilityNameSet = new Set<string>(CLAUDE_CLI_CAPABILITY_TOOL_NAMES);
     for (const tool of createClaudeCliCapabilityTools({ cwd })) {
         if (declared.has(tool.name) && capabilityNameSet.has(tool.name) && !hasTool(tool.name)) {
             finalCustomTools.push(tool);
@@ -2657,7 +2716,7 @@ export async function composeClaudeCliBridgedTools({
         finalCustomTools.push(createSetSessionNameTool({ hostedSession }));
     }
     if (declared.has("user_interview") && hostedSession && !hasTool("user_interview")) {
-        finalCustomTools.push(createUserInterviewTool({ hostedSession }));
+        finalCustomTools.push(createUserInterviewTool({ hostedSession }) as ToolDefinition);
     }
 
     const workRecordAccessMode = [AGENTS.GUIDE, AGENTS.RECORDER].includes(agentName) ? "all" : "current";
@@ -2705,31 +2764,16 @@ export async function composeClaudeCliBridgedTools({
 /**
  * Compose the Agy CLI Bridged Tools through the same policy as Claude CLI.
  * The host-specific backend still owns its command, parser, and setup.
- *
- * @param {{
- *   agentDef: import('./agents.ts').AgentDefinition,
- *   inheritedBashAllowedCommands?: import('../bash-command-policy.ts').BashAllowedCommands,
- *   agentName: string,
- *   hostedSession: import('./hosted-session.ts').HostedSession | null,
- *   triageMeta: import('../../tools/plan-written.ts').TriageMeta | undefined,
- *   cwd: string,
- *   customTools?: import('@earendil-works/pi-coding-agent').ToolDefinition[],
- *   mcpRootTools?: import('@earendil-works/pi-coding-agent').ToolDefinition[],
- *   sessionManager?: import('@earendil-works/pi-coding-agent').SessionManager,
- * }} opts
- * @returns {Promise<import('@earendil-works/pi-coding-agent').ToolDefinition[]>}
  */
-export async function composeAgyCliBridgedTools(opts) {
+export async function composeAgyCliBridgedTools(opts: ComposeCliBridgedToolsOptions): Promise<ToolDefinition[]> {
     return await composeClaudeCliBridgedTools(opts);
 }
 
-/**
- * @typedef {Object} AgyImageInputOptions
- * @property {{ base64: string, mimeType: string }[]} [images]
- */
+export interface AgyImageInputOptions {
+    images?: { base64: string; mimeType: string }[];
+}
 
-/** @param {{ base64: string, mimeType: string }[] | undefined} images */
-function assertAgyCliImageInputSupported(images) {
+function assertAgyCliImageInputSupported(images: { base64: string; mimeType: string }[] | undefined) {
     if (images && images.length > 0) {
         throw new Error("Agy CLI execution backend does not support image attachments in this slice");
     }
@@ -2738,25 +2782,10 @@ function assertAgyCliImageInputSupported(images) {
 /**
  * Build the model-selected execution session for root and HostedSession-backed isolated turns.
  * Pi models continue through buildAgentSession(); Claude CLI models bypass Pi entirely.
- *
- * @param {Parameters<typeof buildAgentSession>[0] & { managedOperationCapability?: import('./managed-operation.ts').ManagedOperationCapability }} opts
- * @returns {Promise<{
- *   executionSession: import('./execution-backend.ts').ExecutionSession,
- *   session: any,
- *   agentDef: import('./agents.ts').AgentDefinition,
- *   promptState: { text: string },
- *   tools: string[],
- *   finalCustomTools: import('@earendil-works/pi-coding-agent').ToolDefinition[],
- *   effectiveToolDefinitions: import('@earendil-works/pi-coding-agent').ToolDefinition[],
- *   resolvedModel: any,
- *   resolvedThinkingLevel: string | undefined,
- *   resolvedTemperature: number | undefined,
- *   contextProjection: import('./session-context-report.ts').SessionContextProjection,
- *   imageMode?: string,
- *   visionFallbackModelRef?: string
- * }>}
  */
-export async function buildExecutionSession(opts) {
+export async function buildExecutionSession(
+    opts: Parameters<typeof buildAgentSession>[0] & BuildExecutionSessionOptions,
+): Promise<BuildExecutionSessionResult> {
     const targetHostedSession = opts.hostedSession
         ? requireHostedSession(opts.hostedSession, "buildExecutionSession")
         : null;
@@ -2784,9 +2813,8 @@ export async function buildExecutionSession(opts) {
         agentDef,
         thinkingLevelOverride: opts.thinkingLevelOverride,
     }).resolvedThinkingLevel;
-    const backend =
-        /** @type {import('../models/model-registry.ts').RunWieldModel} */ (resolvedModel)?.executionBackend || "pi";
-    const imageInputOptions = /** @type {AgyImageInputOptions} */ (opts);
+    const backend = resolvedModel?.executionBackend || "pi";
+    const imageInputOptions = opts;
     if (backend === "agy-cli") assertAgyCliImageInputSupported(imageInputOptions.images);
     if (backend === "pi") {
         const built = await buildAgentSession(opts);
@@ -2921,8 +2949,8 @@ export async function buildExecutionSession(opts) {
     return {
         executionSession:
             backend === "claude-cli"
-                ? createClaudeExecutionSession(/** @type {ClaudeCliExecutionSession} */ (session))
-                : createAgyExecutionSession(/** @type {AgyCliExecutionSession} */ (session)),
+                ? createClaudeExecutionSession(session as ClaudeCliExecutionSession)
+                : createAgyExecutionSession(session as AgyCliExecutionSession),
         session,
         agentDef,
         promptState,
@@ -2940,25 +2968,30 @@ export async function buildExecutionSession(opts) {
 /**
  * Per-session subscriber state. Lives alongside the AgentSession and is reset
  * at the start of each prompt via resetTurn().
- *
- * @typedef {Object} SubscriberState
- * @property {() => void} resetTurn  Clear turn-scoped fields (invokedToolNames, currentMarkdownBlock).
- * @property {() => string[]} drainInvokedToolNames  Snapshot of tools used this turn; clears the list.
- * @property {() => void} endThinking  End any in-progress thinking stream (defensive cleanup).
- * @property {() => void} unsubscribe  Detach the subscription.
  */
+export interface SubscriberState {
+    /** Clear turn-scoped fields (invokedToolNames, currentMarkdownBlock). */
+    resetTurn: () => void;
+    /** Snapshot of tools used this turn; clears the list. */
+    drainInvokedToolNames: () => string[];
+    /** End any in-progress thinking stream (defensive cleanup). */
+    endThinking: () => void;
+    /** Detach the subscription. */
+    unsubscribe: () => void;
+}
 
-/**
- * @typedef {Object} PreparedPromptContent
- * @property {string} text
- * @property {Array<{base64?: string, mimeType?: string, type?: string}>} [images]
- */
+interface PreparedPromptImage {
+    base64?: string;
+    mimeType?: string;
+    type?: string;
+}
 
-/**
- * @param {import('@earendil-works/pi-agent-core').AgentMessage[]} messages
- * @returns {number}
- */
-function estimateAgentMessagesTokens(messages) {
+export interface PreparedPromptContent {
+    text: string;
+    images?: PreparedPromptImage[];
+}
+
+function estimateAgentMessagesTokens(messages: AgentMessage[]): number {
     let tokens = 0;
     for (const message of messages) {
         tokens += estimateTokens(message);
@@ -2966,32 +2999,34 @@ function estimateAgentMessagesTokens(messages) {
     return tokens;
 }
 
-/**
- * @typedef {Object} AssistantToolCallContent
- * @property {string} [type]
- * @property {string} [name]
- */
+export interface AssistantToolCallContent {
+    type?: string;
+    name?: string;
+    input?: JsonValue;
+    arguments?: JsonValue;
+}
 
-/**
- * @typedef {Object} AssistantMessageLike
- * @property {string} [role]
- * @property {unknown} [content]
- */
+export interface AssistantMessageLike {
+    role?: string;
+    content?: AssistantToolCallContent[] | string;
+    stopReason?: string;
+}
 
-/**
- * @typedef {Object} AutoCompactionSessionPatch
- * @property {(assistantMessage: unknown, skipAbortedCheck?: boolean) => Promise<boolean> | boolean} [_checkCompaction]
- * @property {(reason: string, willRetry: boolean) => Promise<boolean>} [_runAutoCompaction]
- * @property {boolean} [__runWieldTaskCompletedAutoCompactionExcluded]
- * @property {boolean} [__runWieldEngineerAutoCompactionInstalled]
- * @property {boolean} [__runWieldPairCheckpointCompactionPreserved]
- */
+export interface AutoCompactionSessionPatch {
+    _checkCompaction?: (
+        assistantMessage: AssistantMessageLike,
+        skipAbortedCheck?: boolean,
+    ) => Promise<boolean> | boolean;
+    _runAutoCompaction?: (reason: string, willRetry: boolean) => Promise<boolean>;
+    __runWieldTaskCompletedAutoCompactionExcluded?: boolean;
+    __runWieldEngineerAutoCompactionInstalled?: boolean;
+    __runWieldPairCheckpointCompactionPreserved?: boolean;
+}
 
-/**
- * @typedef {Object} EngineerCompactionState
- * @property {boolean} armed
- * @property {number | null} postCompactionBaselineTokens
- */
+export interface EngineerCompactionState {
+    armed: boolean;
+    postCompactionBaselineTokens: number | null;
+}
 
 const ENGINEER_COMPACTION_CONTEXT_RATIO = 0.6;
 const ENGINEER_COMPACTION_MAX_TOKENS = 120_000;
@@ -3004,39 +3039,28 @@ const ENGINEER_AGENT_NAMES = new Set([
     AGENTS.REVIEWER_FEEDBACK_ENGINEER,
 ]);
 
-/**
- * @typedef {import('@earendil-works/pi-coding-agent').AgentSession} PiAgentSession
- */
+export type PiAgentSession = AgentSession;
 
-/**
- * @typedef {Object} EngineerCompactionContext
- * @property {Pick<NonNullable<PiAgentSession["model"]>, "contextWindow"> | undefined} model
- * @property {Pick<PiAgentSession["settingsManager"], "getCompactionSettings">} settingsManager
- */
+export interface EngineerCompactionContext {
+    model: Pick<NonNullable<PiAgentSession["model"]>, "contextWindow"> | undefined;
+    settingsManager: Pick<PiAgentSession["settingsManager"], "getCompactionSettings">;
+}
 
-/** @typedef {EngineerCompactionContext & Pick<PiAgentSession, "subscribe" | "getContextUsage">} EngineerCompactionSession */
+export type EngineerCompactionSession = EngineerCompactionContext &
+    Pick<PiAgentSession, "subscribe" | "getContextUsage">;
 
-/** @type {WeakMap<EngineerCompactionSession, EngineerCompactionState>} */
-const engineerCompactionStates = new WeakMap();
+const engineerCompactionStates: WeakMap<EngineerCompactionSession, EngineerCompactionState> = new WeakMap();
 
 /**
  * Return the early compaction threshold for an Engineer execution session.
  * Other agents use Pi's configured reserve-token threshold.
- *
- * @param {string} agentName
- * @param {number} contextWindow
- * @returns {number | null}
  */
-export function getEngineerCompactionThreshold(agentName, contextWindow) {
+export function getEngineerCompactionThreshold(agentName: string, contextWindow: number): number | null {
     if (!ENGINEER_AGENT_NAMES.has(agentName) || !Number.isFinite(contextWindow) || contextWindow <= 0) return null;
     return Math.min(Math.floor(contextWindow * ENGINEER_COMPACTION_CONTEXT_RATIO), ENGINEER_COMPACTION_MAX_TOKENS);
 }
 
-/**
- * @param {EngineerCompactionSession} session
- * @returns {EngineerCompactionState}
- */
-function getEngineerCompactionState(session) {
+function getEngineerCompactionState(session: EngineerCompactionSession): EngineerCompactionState {
     let state = engineerCompactionStates.get(session);
     if (!state) {
         state = { armed: true, postCompactionBaselineTokens: null };
@@ -3049,15 +3073,14 @@ function getEngineerCompactionState(session) {
  * Prevent repeated compaction when a summary itself remains above the early
  * threshold. Re-arm immediately below the threshold. Above it, require new
  * context equal to 5% of the window, capped at 8K tokens.
- *
- * @param {EngineerCompactionSession} session
- * @param {number} currentTokens
- * @param {number} totalTokens
- * @param {number} threshold
- * @param {number} contextWindow
- * @returns {boolean}
  */
-function shouldRunEngineerCompaction(session, currentTokens, totalTokens, threshold, contextWindow) {
+function shouldRunEngineerCompaction(
+    session: EngineerCompactionSession,
+    currentTokens: number,
+    totalTokens: number,
+    threshold: number,
+    contextWindow: number,
+): boolean {
     const state = getEngineerCompactionState(session);
     if (!state.armed) {
         if (currentTokens < threshold) {
@@ -3079,10 +3102,7 @@ function shouldRunEngineerCompaction(session, currentTokens, totalTokens, thresh
     return totalTokens >= threshold;
 }
 
-/**
- * @param {EngineerCompactionSession} session
- */
-function markEngineerCompactionComplete(session) {
+function markEngineerCompactionComplete(session: EngineerCompactionSession) {
     const state = getEngineerCompactionState(session);
     state.armed = false;
     state.postCompactionBaselineTokens = null;
@@ -3091,14 +3111,11 @@ function markEngineerCompactionComplete(session) {
 /**
  * Add the Engineer threshold to Pi's normal post-response compaction check.
  * Pi runs first so overflow recovery and its configured threshold stay intact.
- *
- * @param {EngineerCompactionSession} session
- * @param {string} agentName
  */
-export function installEngineerAutoCompactionThreshold(session, agentName) {
+export function installEngineerAutoCompactionThreshold(session: EngineerCompactionSession, agentName: string) {
     if (!ENGINEER_AGENT_NAMES.has(agentName)) return;
 
-    const target = /** @type {AutoCompactionSessionPatch} */ (/** @type {unknown} */ (session));
+    const target = session as unknown as AutoCompactionSessionPatch;
     if (target.__runWieldEngineerAutoCompactionInstalled || typeof target._checkCompaction !== "function") return;
 
     session.subscribe((event) => {
@@ -3112,7 +3129,7 @@ export function installEngineerAutoCompactionThreshold(session, agentName) {
         const shouldContinue = await originalCheckCompaction.call(this, assistantMessage, skipAbortedCheck);
         if (shouldContinue) return true;
 
-        const message = /** @type {{ stopReason?: string }} */ (assistantMessage);
+        const message = assistantMessage;
         if (skipAbortedCheck && message.stopReason === "aborted") return false;
         if (!session.settingsManager?.getCompactionSettings?.()?.enabled) return false;
 
@@ -3132,16 +3149,12 @@ export function installEngineerAutoCompactionThreshold(session, agentName) {
     target.__runWieldEngineerAutoCompactionInstalled = true;
 }
 
-/**
- * @param {unknown} message
- * @returns {boolean}
- */
-export function shouldBypassAutoCompactionForAssistantMessage(message) {
-    const typedMessage = /** @type {AssistantMessageLike} */ (message);
+export function shouldBypassAutoCompactionForAssistantMessage(message: AssistantMessageLike): boolean {
+    const typedMessage = message;
     if (typedMessage.role !== "assistant" || !Array.isArray(typedMessage.content)) return false;
 
     return typedMessage.content.some((block) => {
-        const typedBlock = /** @type {AssistantToolCallContent} */ (block);
+        const typedBlock = block;
         return (
             (typedBlock.type === "tool_use" || typedBlock.type === "toolCall") && typedBlock.name === "task_completed"
         );
@@ -3154,11 +3167,9 @@ export function shouldBypassAutoCompactionForAssistantMessage(message) {
  * a terminal workflow signal, so compacting immediately before the session ends
  * burns an extra model call without preserving useful future context. Other
  * tool calls keep Pi's normal auto-compaction behavior.
- *
- * @param {import('@earendil-works/pi-coding-agent').AgentSession} session
  */
-function installTaskCompletedAutoCompactionExclusion(session) {
-    const target = /** @type {AutoCompactionSessionPatch} */ (/** @type {unknown} */ (session));
+function installTaskCompletedAutoCompactionExclusion(session: AgentSession) {
+    const target = session as unknown as AutoCompactionSessionPatch;
     if (target.__runWieldTaskCompletedAutoCompactionExcluded || typeof target._checkCompaction !== "function") return;
 
     const originalCheckCompaction = target._checkCompaction;
@@ -3172,20 +3183,18 @@ function installTaskCompletedAutoCompactionExclusion(session) {
 /**
  * Keep hidden Pair authority and an active user-turn attempt on the live branch
  * when Pi compacts before or after a prompt.
- *
- * @param {import('@earendil-works/pi-coding-agent').AgentSession} session
- * @param {import('./hosted-session.ts').HostedSession | null} hostedSession
  */
-export function installPairCheckpointAutoCompactionPreservation(session, hostedSession) {
+export function installPairCheckpointAutoCompactionPreservation(
+    session: AgentSession,
+    hostedSession: HostedSession | null,
+) {
     if (!hostedSession) return;
-    const target = /** @type {AutoCompactionSessionPatch} */ (/** @type {unknown} */ (session));
+    const target = session as unknown as AutoCompactionSessionPatch;
     if (target.__runWieldPairCheckpointCompactionPreserved || typeof target._runAutoCompaction !== "function") return;
 
     const originalRunAutoCompaction = target._runAutoCompaction;
     target._runAutoCompaction = async function (reason, willRetry) {
-        const sessionManager = /** @type {import('@earendil-works/pi-coding-agent').SessionManager | null} */ (
-            hostedSession.getRootSessionManager?.() || null
-        );
+        const sessionManager = (hostedSession.getRootSessionManager?.() || null) as SessionManager | null;
         const checkpoint = readCurrentPairCheckpoint(hostedSession);
         const requestAttempt = sessionManager ? readRequestAttemptEntries(sessionManager).at(-1) : null;
         const unsubscribe = session.subscribe((event) => {
@@ -3213,24 +3222,17 @@ export function installPairCheckpointAutoCompactionPreservation(session, hostedS
  * compact. RunWield performs a pre-prompt threshold check that includes the
  * prepared user message, then delegates to Pi's auto-compaction path so normal
  * compaction events and extension hooks still fire with reason "threshold".
- *
- * @param {PreparedPromptContent} prepared
- * @returns {number}
  */
-function estimatePendingPromptTokens(prepared) {
+function estimatePendingPromptTokens(prepared: PreparedPromptContent): number {
     const pendingUserMessage = {
         role: "user",
         content: [{ type: "text", text: prepared.text }, ...(prepared.images || [])],
         timestamp: Date.now(),
     };
-    return estimateTokens(/** @type {any} */ (pendingUserMessage));
+    return estimateTokens(pendingUserMessage as UserMessage);
 }
 
-/**
- * @param {import('@earendil-works/pi-coding-agent').AgentSession} session
- * @returns {number}
- */
-function estimateCurrentContextTokens(session) {
+function estimateCurrentContextTokens(session: AgentSession): number {
     const usage = session.getContextUsage?.();
     // Pi includes trailing messages and skips aborted usage. Do not override its
     // count with accumulated instructions that the provider does not receive.
@@ -3246,12 +3248,11 @@ function estimateCurrentContextTokens(session) {
     return systemTokens + estimateAgentMessagesTokens(messages.filter((message) => message.role !== "system"));
 }
 
-/**
- * @param {import('@earendil-works/pi-coding-agent').AgentSession} session
- * @param {PreparedPromptContent} prepared
- * @param {import('../models/model-registry.ts').RunWieldModel | undefined} model
- */
-function assertPreparedPromptFitsContext(session, prepared, model) {
+function assertPreparedPromptFitsContext(
+    session: AgentSession,
+    prepared: PreparedPromptContent,
+    model: RunWieldModel | undefined,
+) {
     const contextWindow = model?.contextWindow ?? session.model?.contextWindow ?? 0;
     if (typeof contextWindow !== "number" || contextWindow <= 0) return;
     const totalTokens = estimateCurrentContextTokens(session) + estimatePendingPromptTokens(prepared);
@@ -3259,13 +3260,11 @@ function assertPreparedPromptFitsContext(session, prepared, model) {
     throw new Error(contextCapacityGuidance(model || session.model, totalTokens, contextWindow));
 }
 
-/**
- * @param {import('@earendil-works/pi-coding-agent').AgentSession} session
- * @param {PreparedPromptContent} prepared
- * @param {string} agentName
- * @returns {Promise<void>}
- */
-async function compactBeforePromptIfNeeded(session, prepared, agentName) {
+async function compactBeforePromptIfNeeded(
+    session: AgentSession,
+    prepared: PreparedPromptContent,
+    agentName: string,
+): Promise<void> {
     const settings = session.settingsManager?.getCompactionSettings?.();
     if (!settings?.enabled) return;
     if (session.isStreaming || session.isCompacting) return;
@@ -3282,59 +3281,47 @@ async function compactBeforePromptIfNeeded(session, prepared, agentName) {
             : shouldRunEngineerCompaction(session, currentTokens, totalTokens, engineerThreshold, contextWindow);
     if (!needsCompaction) return;
 
-    const runAutoCompaction =
-        /** @type {{ _runAutoCompaction?: (reason: string, willRetry: boolean) => Promise<boolean> }} */
-        (/** @type {unknown} */ (session))._runAutoCompaction;
+    const runAutoCompaction = (session as unknown as AutoCompactionSessionPatch)._runAutoCompaction;
     if (typeof runAutoCompaction !== "function") return;
     await runAutoCompaction.call(session, "threshold", false);
 }
 
 // Execution observation belongs to the Agent Session, not its foreground display subscriber.
-/** @type {WeakMap<object, Promise<void>>} */
-const pendingManualCompactionMetrics = new WeakMap();
+const pendingManualCompactionMetrics: WeakMap<DisposableLike, Promise<void>> = new WeakMap();
 
-/** @param {object} session */
-export async function drainSessionCompactionMetrics(session) {
+export async function drainSessionCompactionMetrics(session: DisposableLike) {
     await pendingManualCompactionMetrics.get(session);
     pendingManualCompactionMetrics.delete(session);
 }
 
-/**
- * @param {import('@earendil-works/pi-coding-agent').AgentSession} session
- * @param {import('./hosted-session.ts').HostedSession} hostedSession
- * @param {import('./session-context-report.ts').SessionContextProjection | undefined} projection
- */
-function attachSessionMetricsObserver(session, hostedSession, projection) {
-    const toolStartedAt = new Map();
-    const toolArgs = new Map();
-    /** @type {Set<string>} */
-    let turnPriorEntryIds = new Set();
-    /**
-     * @typedef {Object} ManualCompactionMeasurement
-     * @property {SessionContextMetricsRecorder} recorder
-     * @property {Set<string>} priorIds
-     * @property {number | null} retryAttempt
-     * @property {Promise<void> | null} completion
-     */
-    /** @type {AsyncLocalStorage<ManualCompactionMeasurement>} */
-    const manualCompactions = new AsyncLocalStorage();
-    /** @type {SessionContextMetricsRecorder | null} */
-    let branchSummaryRetries = null;
-    /** @type {number | null} */
-    let summarizationRetryAttempt = null;
-    /** @param {ExecutionMetricsRecorder} recorder
-     * @param {"turn_start" | "turn_end" | "before_compaction"} point */
-    const snapshot = (recorder, point) => recordPiExecutionContext(recorder, session, projection, point);
+function attachSessionMetricsObserver(
+    session: AgentSession,
+    hostedSession: HostedSession,
+    projection: SessionContextProjection | undefined,
+) {
+    const toolStartedAt = new Map<string, number>();
+    const toolArgs = new Map<string, ToolArguments>();
+    let turnPriorEntryIds: Set<string> = new Set();
+    interface ManualCompactionMeasurement {
+        recorder: SessionContextMetricsRecorder;
+        priorIds: Set<string>;
+        retryAttempt: number | null;
+        completion: Promise<void> | null;
+    }
+    const manualCompactions: AsyncLocalStorage<ManualCompactionMeasurement> = new AsyncLocalStorage();
+    let branchSummaryRetries: SessionContextMetricsRecorder | null = null;
+    let summarizationRetryAttempt: number | null = null;
+    const snapshot = (recorder: ExecutionMetricsRecorder, point: "turn_start" | "turn_end" | "before_compaction") =>
+        recordPiExecutionContext(recorder, session, projection, point);
     // Pi subscriptions are synchronous: returning a promise does not delay model work.
     // Await the measurement start at the public manual-compaction boundary instead.
     const originalCompact = session.compact;
-    /**
-     * @param {ManualCompactionMeasurement} measurement
-     * @param {"success" | "error" | "canceled"} outcome
-     * @param {number | null} [before]
-     * @param {number | null} [after]
-     */
-    function finishManualCompaction(measurement, outcome, before = null, after = null) {
+    function finishManualCompaction(
+        measurement: ManualCompactionMeasurement,
+        outcome: "success" | "error" | "canceled",
+        before: number | null = null,
+        after: number | null = null,
+    ) {
         if (measurement.completion) return measurement.completion;
         if (measurement.retryAttempt !== null) {
             void measurement.recorder.retryFinish(
@@ -3487,8 +3474,8 @@ function attachSessionMetricsObserver(session, hostedSession, projection) {
                     attempt: event.attempt,
                     outcome:
                         event.success ||
-                        /** @type {any} */ (event).outcome === "success" ||
-                        /** @type {any} */ (event).outcome === "succeeded"
+                        (event as LegacyCompactionOutcome).outcome === "success" ||
+                        (event as LegacyCompactionOutcome).outcome === "succeeded"
                             ? "success"
                             : event.finalError === "Retry cancelled"
                               ? "canceled"
@@ -3511,7 +3498,7 @@ function attachSessionMetricsObserver(session, hostedSession, projection) {
                     isError: Boolean(event.isError),
                     result: event.result,
                     args: toolArgs.get(callId),
-                    durationMs: toolStartedAt.has(callId) ? Date.now() - toolStartedAt.get(callId) : null,
+                    durationMs: toolStartedAt.has(callId) ? Date.now() - toolStartedAt.get(callId)! : null,
                 });
                 toolStartedAt.delete(callId);
                 toolArgs.delete(callId);
@@ -3568,48 +3555,29 @@ function attachSessionMetricsObserver(session, hostedSession, projection) {
  * Attach semantic event subscribers to an AgentSession. Called once per AgentSession lifetime
  * (whether root or transient). Returns lifecycle handles for the caller to reset turn-scoped
  * state between prompts.
- *
- * @param {import('@earendil-works/pi-coding-agent').AgentSession} session
- * @param {import('./agents.ts').AgentDefinition} agentDef
- * @param {string} [debugLogPath]
- * @param {import('./hosted-session.ts').HostedSession} [hostedSession]
- * @param {AbortSignal} [cancellationSignal] Explicit cancellation is not an API failure.
- *
- * @returns {SubscriberState}
  */
 export function attachSessionEventSubscribers(
-    session,
-    agentDef,
-    debugLogPath = undefined,
-    hostedSession = undefined,
-    cancellationSignal = undefined,
-) {
-    /** @type {string[]} */
-    let invokedToolNames = [];
+    session: AgentSession,
+    agentDef: AgentDefinition,
+    debugLogPath: string | undefined = undefined,
+    hostedSession: HostedSession | undefined = undefined,
+    cancellationSignal: AbortSignal | undefined = undefined,
+): SubscriberState {
+    let invokedToolNames: string[] = [];
     let thinkingActive = false;
-    let currentRuntimeTurnId = crypto.randomUUID();
+    let currentRuntimeTurnId: string = crypto.randomUUID();
     let assistantMessageSequence = 0;
     let thinkingMessageSequence = 0;
-    /** @type {string | null} */
-    let currentAssistantMessageId = null;
-    /** @type {string | null} */
-    let currentThinkingMessageId = null;
-    /** @type {Map<string, number>} */
-    const toolStartedAt = new Map();
-    /** @type {Map<string, unknown>} */
-    /** @type {Map<string, ReturnType<typeof describeRuntimeTool>>} */
-    const runtimeTools = new Map();
+    let currentAssistantMessageId: string | null = null;
+    let currentThinkingMessageId: string | null = null;
+    const toolStartedAt: Map<string, number> = new Map();
+    const runtimeTools: Map<string, ReturnType<typeof describeRuntimeTool>> = new Map();
     const runtimeAgentName = agentDef.displayName || agentDef.name;
 
-    /** @returns {string} */
     const nextAssistantMessageId = () => `${currentRuntimeTurnId}:assistant:${++assistantMessageSequence}`;
-    /** @returns {string} */
     const nextThinkingMessageId = () => `${currentRuntimeTurnId}:thinking:${++thinkingMessageSequence}`;
 
-    /**
-     * @param {Partial<import('./session-runtime-events.ts').SessionRuntimeEvent> & { type: string }} runtimeEvent
-     */
-    const emitRuntimeEvent = (runtimeEvent) => {
+    const emitRuntimeEvent = (runtimeEvent: Partial<SessionRuntimeEvent> & SessionEventType) => {
         const eventWithTurnId = runtimeEvent.turnId ? runtimeEvent : { turnId: currentRuntimeTurnId, ...runtimeEvent };
         return emitHostedSessionRuntimeEvent(hostedSession, eventWithTurnId);
     };
@@ -3640,7 +3608,7 @@ export function attachSessionEventSubscribers(
                 }
                 if (event.message.role === "assistant") {
                     endThinking();
-                    currentAssistantMessageId = /** @type {any} */ (event.message).id || nextAssistantMessageId();
+                    currentAssistantMessageId = (event.message as LegacyMessageId).id || nextAssistantMessageId();
                     currentThinkingMessageId = null;
                 }
                 break;
@@ -3708,10 +3676,7 @@ export function attachSessionEventSubscribers(
             }
             case "message_end": {
                 if (shouldWriteDebugLog(debugLogPath) && debugLogPath) {
-                    const message =
-                        /** @type {import('@earendil-works/pi-agent-core').AgentMessage & { stopReason?: string, errorMessage?: string, usage?: unknown }} */ (
-                            event.message
-                        );
+                    const message = event.message as AgentMessage & LegacyAssistantDiagnostics;
                     appendDebugLog(
                         debugLogPath,
                         [
@@ -3730,7 +3695,7 @@ export function attachSessionEventSubscribers(
                     endThinking();
                 }
 
-                const endedMessage = /** @type {any} */ (event.message);
+                const endedMessage = event.message as LegacyUsageMessage;
                 if (endedMessage?.usage) {
                     const norm = normalizeRuntimeUsage(endedMessage.usage);
                     emitRuntimeEvent({
@@ -3796,7 +3761,7 @@ export function attachSessionEventSubscribers(
                 // Pi reports summary progress without a success/failure outcome here.
                 break;
             case "tool_execution_start": {
-                const callId = event.toolCallId || /** @type {any} */ (event).callId;
+                const callId = event.toolCallId || (event as typeof event & LegacyCallId).callId;
                 invokedToolNames.push(event.toolName);
                 toolStartedAt.set(callId, Date.now());
                 const runtimeTool = describeRuntimeTool(event.toolName, event.args);
@@ -3873,9 +3838,9 @@ export function attachSessionEventSubscribers(
                 break;
             }
             case "tool_execution_end": {
-                const callId = event.toolCallId || /** @type {any} */ (event).callId;
+                const callId = event.toolCallId || (event as typeof event & LegacyCallId).callId;
                 const durationMs = toolStartedAt.has(callId)
-                    ? Date.now() - /** @type {number} */ (toolStartedAt.get(callId))
+                    ? Date.now() - (toolStartedAt.get(callId) as number)
                     : null;
                 if (hostedSession?.cwd) {
                     void recordToolCallFinished(
@@ -3915,7 +3880,7 @@ export function attachSessionEventSubscribers(
                 break;
             }
             case "turn_start": {
-                currentRuntimeTurnId = /** @type {any} */ (event).turnId || crypto.randomUUID();
+                currentRuntimeTurnId = (event as LegacyTurnId).turnId || crypto.randomUUID();
                 assistantMessageSequence = 0;
                 thinkingMessageSequence = 0;
                 currentAssistantMessageId = null;
@@ -3989,19 +3954,17 @@ export function attachSessionEventSubscribers(
     };
 }
 
-/**
- * @typedef {Object} AgentTransitionSteeringEntry
- * @property {string} text
- * @property {import('./image-attachments.ts').ImageAttachment[]} images
- * @property {import('./session-runtime-events.ts').RuntimeQueuedMessage} [message]
- */
+export interface AgentTransitionSteeringEntry {
+    text: string;
+    images: ImageAttachment[];
+    message?: RuntimeQueuedMessage;
+}
 
-/**
- * @param {string} userRequest
- * @param {import('./image-attachments.ts').ImageAttachment[]} images
- * @param {AgentTransitionSteeringEntry[]} steering
- */
-function buildAgentTransitionPrompt(userRequest, images, steering) {
+function buildAgentTransitionPrompt(
+    userRequest: string,
+    images: ImageAttachment[],
+    steering: AgentTransitionSteeringEntry[],
+) {
     const steeringText = steering
         .map((entry) => entry.text.trim())
         .filter(Boolean)
@@ -4014,8 +3977,7 @@ function buildAgentTransitionPrompt(userRequest, images, steering) {
     };
 }
 
-/** @param {AgentTransitionSteeringEntry[]} steering */
-function agentTransitionSteeringSignature(steering) {
+function agentTransitionSteeringSignature(steering: AgentTransitionSteeringEntry[]) {
     return JSON.stringify(
         steering.map((entry) => ({
             id: entry.message?.id,
@@ -4028,27 +3990,6 @@ function agentTransitionSteeringSignature(steering) {
 /**
  * Run a single prompt() on an already-constructed AgentSession with attached subscribers.
  * Handles debug logging, defensive stream cleanup, and per-turn state reset.
- *
- * @param {Object} opts
- * @param {import('@earendil-works/pi-coding-agent').AgentSession} opts.session
- * @param {import('./agents.ts').AgentDefinition} opts.agentDef
- * @param {string} opts.agentName
- * @param {string} opts.userRequest
- * @param {string} opts.finalSystemPrompt  Used only for debug log.
- * @param {Array<{base64: string, mimeType: string}>} [opts.images]
- * @param {SubscriberState} opts.subscriberState
- * @param {any} [opts.resolvedModel]
- * @param {string} [opts.resolvedThinkingLevel]
- * @param {string} [opts.cwd]
- * @param {string} [opts.debugLogPath]
- * @param {AbortSignal} [opts.signal]
- * @param {boolean} [opts.disableAutoCompaction]
- * @param {import('./hosted-session.ts').HostedSession} [opts.hostedSession]
- * @param {AgentTransitionSteeringEntry[]} [opts.transitionSteering]
- * @param {() => void} [opts.onTransitionSteeringConsumed]
- * @param {string} [opts.requestId]
- *
- * @returns {Promise<import('@earendil-works/pi-agent-core').AgentMessage[]>}
  */
 export async function runPrompt({
     session,
@@ -4068,10 +4009,10 @@ export async function runPrompt({
     transitionSteering = [],
     onTransitionSteeringConsumed,
     requestId = `prompt:${crypto.randomUUID()}`,
-}) {
+}: RunPromptOptions): Promise<AgentMessage[]> {
     subscriberState.resetTurn();
 
-    const projectRoot = cwd || /** @type {any} */ (session).runWieldProjectRoot;
+    const projectRoot = cwd || (session as SessionModelContext).runWieldProjectRoot;
     const baseImages = images || [];
     let transitionPrompt = buildAgentTransitionPrompt(userRequest, baseImages, transitionSteering);
     let rawText = transitionPrompt.text;
@@ -4079,11 +4020,11 @@ export async function runPrompt({
     let fallback =
         rawImages.length > 0 && !modelSupportsImageInput(session.model)
             ? await resolveVisionFallbackModel(
-                  /** @type {any} */ (session).runWieldModelRegistry ||
-                      /** @type {any} */ (session).modelRegistry ||
+                  (session as SessionModelContext).runWieldModelRegistry ||
+                      (session as SessionModelContext).modelRegistry ||
                       getModelRegistry(),
                   SYSTEM_MODEL_DISCOVERY_NETWORK,
-                  projectRoot,
+                  projectRoot!,
               )
             : undefined;
     let preparedImages = prepareImagesForModel({
@@ -4094,7 +4035,7 @@ export async function runPrompt({
     });
     if (!preparedImages.ok) throw new Error(preparedImages.message);
 
-    const requestOptions = {};
+    const requestOptions: PromptOptions = {};
     if (preparedImages.images && preparedImages.images.length > 0) {
         requestOptions.images = preparedImages.images;
     }
@@ -4123,8 +4064,7 @@ export async function runPrompt({
         appendDebugLog(debugLogPath, logEntry);
     }
 
-    /** @type {Error | null} */
-    let promptError = null;
+    let promptError: Error | null = null;
     const abortPrompt = () => {
         try {
             session.abort();
@@ -4150,11 +4090,11 @@ export async function runPrompt({
                 rawImages = transitionPrompt.images;
                 if (rawImages.length > 0 && !modelSupportsImageInput(session.model) && !fallback) {
                     fallback = await resolveVisionFallbackModel(
-                        /** @type {any} */ (session).runWieldModelRegistry ||
-                            /** @type {any} */ (session).modelRegistry ||
+                        (session as SessionModelContext).runWieldModelRegistry ||
+                            (session as SessionModelContext).modelRegistry ||
                             getModelRegistry(),
                         SYSTEM_MODEL_DISCOVERY_NETWORK,
-                        projectRoot,
+                        projectRoot!,
                     );
                 }
                 preparedImages = prepareImagesForModel({
@@ -4263,48 +4203,53 @@ export async function runPrompt({
     return session.agent.state.messages;
 }
 
-/** @type {WeakMap<import('@earendil-works/pi-coding-agent').AgentSession, ExecutionMetricsRecorder>} */
-const executionMetricsForSession = new WeakMap();
+const executionMetricsForSession: WeakMap<AgentSession, ExecutionMetricsRecorder> = new WeakMap();
 
-/** @type {WeakMap<import('@earendil-works/pi-coding-agent').AgentSession, { agentDef: import('./agents.ts').AgentDefinition, subAgentDefinition?: { id: import('./subagent-definitions.ts').SubAgentDefinitionId, options?: import('./subagent-definitions.ts').LoadSubAgentDefinitionOptions }, promptState: { text: string }, subscriberState: SubscriberState, unsubscribeMetrics: () => void, agentName: string, tools: string[], finalCustomTools: import('@earendil-works/pi-coding-agent').ToolDefinition[], callerCustomTools?: import('@earendil-works/pi-coding-agent').ToolDefinition[], effectiveToolDefinitions: import('@earendil-works/pi-coding-agent').ToolDefinition[], mcpToolNames?: string[], projectStateContext: string, cwd: string, model?: string, resolvedModel?: import('../models/model-registry.ts').RunWieldModel, contextProjection?: import('./session-context-report.ts').SessionContextProjection, imageMode?: string, visionFallbackModelRef?: string, steeringTargetId?: string }>} */
-const rootSessionMetadata = new WeakMap();
+interface RootSessionMetadata {
+    agentDef: AgentDefinition;
+    subAgentDefinition?: SessionSubAgentDefinition;
+    promptState: SessionPromptState;
+    subscriberState: SubscriberState;
+    unsubscribeMetrics: () => void;
+    agentName: string;
+    tools: string[];
+    finalCustomTools: ToolDefinition[];
+    callerCustomTools?: ToolDefinition[];
+    effectiveToolDefinitions: ToolDefinition[];
+    mcpToolNames?: string[];
+    projectStateContext: string;
+    cwd: string;
+    model?: string;
+    resolvedModel?: RunWieldModel;
+    contextProjection?: SessionContextProjection;
+    imageMode?: string;
+    visionFallbackModelRef?: string;
+    steeringTargetId?: string;
+}
 
-/** @type {WeakMap<import('./hosted-session.ts').HostedSession, { agentName: string, debugLogPath?: string }>} */
-const pendingAgentSwitchLogs = new WeakMap();
+const rootSessionMetadata = new WeakMap<DisposableLike, RootSessionMetadata>();
 
-/**
- * @param {import('./hosted-session.ts').HostedSession} hostedSession
- * @param {{ agentName: string, debugLogPath?: string }} state
- */
-export function markRootAgentSwitch(hostedSession, state) {
+const pendingAgentSwitchLogs: WeakMap<HostedSession, MarkRootAgentSwitchOptions> = new WeakMap();
+
+export function markRootAgentSwitch(hostedSession: HostedSession, state: MarkRootAgentSwitchOptions) {
     pendingAgentSwitchLogs.set(hostedSession, state);
 }
 
-/**
- * @param {import('./hosted-session.ts').HostedSession} hostedSession
- * @returns {{ agentName: string, debugLogPath?: string } | undefined}
- */
-function consumePendingAgentSwitchLog(hostedSession) {
+function consumePendingAgentSwitchLog(hostedSession: HostedSession): MarkRootAgentSwitchOptions | undefined {
     const state = pendingAgentSwitchLogs.get(hostedSession);
     pendingAgentSwitchLogs.delete(hostedSession);
     return state;
 }
 
-/**
- * Test-only access to root session metadata.
- * @param {import('@earendil-works/pi-coding-agent').AgentSession} session
- * @returns {any}
- */
-export function __getRootSessionMetadataForTests(session) {
+/** Test-only access to root session metadata. */
+export function __getRootSessionMetadataForTests(session: SessionRoot): RootSessionMetadata | undefined {
     return rootSessionMetadata.get(session);
 }
 
-/**
- * @param {import('./hosted-session.ts').HostedSession} hostedSession
- * @returns {{ agentName: string, model?: string, cwd?: string } | null}
- */
-export function getRootSessionSwitchState(hostedSession) {
-    const session = /** @type {any} */ (hostedSession?.getRootAgentSession?.());
+export function getRootSessionSwitchState(
+    hostedSession: HostedSession,
+): { agentName: string; model?: string; cwd?: string } | null {
+    const session = hostedSession?.getRootAgentSession?.();
     if (!session) return null;
     const meta = rootSessionMetadata.get(session);
     if (!meta) return null;
@@ -4315,12 +4260,8 @@ export function getRootSessionSwitchState(hostedSession) {
     };
 }
 
-/**
- * @param {import('./hosted-session.ts').HostedSession} hostedSession
- * @returns {Partial<import('./agent-switching.ts').AgentSwitchOptions>}
- */
-export function getRootSessionRebuildOptions(hostedSession) {
-    const session = /** @type {any} */ (hostedSession?.getRootAgentSession?.());
+export function getRootSessionRebuildOptions(hostedSession: HostedSession): Partial<AgentSwitchOptions> {
+    const session = hostedSession?.getRootAgentSession?.() as SessionRoot | null | undefined;
     if (!session) return {};
     const meta = rootSessionMetadata.get(session);
     if (!meta) return {};
@@ -4334,20 +4275,24 @@ export function getRootSessionRebuildOptions(hostedSession) {
     };
 }
 
-/**
- * @param {import('./hosted-session.ts').HostedSession} hostedSession
- * @returns {{ projection: import('./session-context-report.ts').SessionContextProjection, activeMessageTokens: number, agentName: string, agentDisplayName: string, model?: string } | null}
- */
-export function getRootSessionContextProjection(hostedSession) {
-    const session = /** @type {any} */ (hostedSession?.getRootAgentSession?.());
+export function getRootSessionContextProjection(hostedSession: HostedSession): {
+    projection: SessionContextProjection;
+    activeMessageTokens: number;
+    agentName: string;
+    agentDisplayName: string;
+    model?: string;
+} | null {
+    const session = hostedSession?.getRootAgentSession?.();
     if (!session) return null;
     const meta = rootSessionMetadata.get(session);
     if (!meta?.contextProjection) return null;
-    const contextMessages = session.sessionManager?.buildSessionContext?.().messages;
-    const messages = Array.isArray(contextMessages) ? contextMessages : getRootExecutionMessages(session);
+    const contextMessages = (session as SessionManagerCarrier).sessionManager?.buildSessionContext?.().messages;
+    const messages = Array.isArray(contextMessages)
+        ? contextMessages
+        : getRootExecutionMessages(session as SessionRoot);
     return {
         projection: meta.contextProjection,
-        activeMessageTokens: estimateAgentMessagesTokens(/** @type {any} */ (messages)),
+        activeMessageTokens: estimateAgentMessagesTokens(messages),
         agentName: meta.agentName,
         agentDisplayName: meta.agentDef.displayName,
         model: meta.model,
@@ -4358,12 +4303,9 @@ export function getRootSessionContextProjection(hostedSession) {
  * Return the stable prompt/setup portion of the root Agent Session context
  * without rebuilding or estimating its conversation messages. This is safe to
  * use from lightweight Runtime snapshots read frequently by consumers.
- *
- * @param {import('./hosted-session.ts').HostedSession} hostedSession
- * @returns {number | null}
  */
-export function getRootSessionStaticContextTokens(hostedSession) {
-    const session = /** @type {any} */ (hostedSession?.getRootAgentSession?.());
+export function getRootSessionStaticContextTokens(hostedSession: HostedSession): number | null {
+    const session = hostedSession?.getRootAgentSession?.();
     if (!session) return null;
     const projection = rootSessionMetadata.get(session)?.contextProjection;
     return projection ? Math.max(0, Number(projection.staticTokens) || 0) : null;
@@ -4374,12 +4316,10 @@ export function getRootSessionStaticContextTokens(hostedSession) {
  * boundary. This is intentionally separate from ensureRootAgentSession() so
  * agent switches, model switches, and reloads cannot accidentally kill root
  * context. /new is the only production caller.
- *
- * @param {import('./hosted-session.ts').HostedSession} hostedSession
  */
-export function disposeRootAgentSessionForNewSession(hostedSession) {
+export function disposeRootAgentSessionForNewSession(hostedSession: HostedSession) {
     const targetHostedSession = requireHostedSession(hostedSession, "disposeRootAgentSessionForNewSession");
-    const existing = /** @type {any} */ (targetHostedSession.getRootAgentSession());
+    const existing = targetHostedSession.getRootAgentSession() as SessionRoot | null;
     if (existing) {
         const meta = rootSessionMetadata.get(existing);
         try {
@@ -4411,37 +4351,18 @@ export function disposeRootAgentSessionForNewSession(hostedSession) {
  * the replacement is ready. Do not dispose the old root here: agent switches,
  * model switches, and reloads must not kill root sessions. Explicit fresh
  * sessions (for example /new) own any intentional disposal/reset behavior.
- *
- * @param {Object} opts
- * @param {import('./hosted-session.ts').HostedSession} [opts.hostedSession]
- * @param {string} opts.agentName  Internal name (matches agent definition filename).
- * @param {string[]} [opts.toolNames]
- * @param {import('@earendil-works/pi-coding-agent').ToolDefinition[]} [opts.customTools]
- * @param {import('@earendil-works/pi-coding-agent').ToolDefinition[]} [opts.mcpRootTools]
- * @param {import('../mcp/integration.ts').McpIntegration} [opts.mcpIntegration]
- * @param {string} [opts.modelOverride]
- * @param {"off"|"minimal"|"low"|"medium"|"high"|"xhigh"|"max"} [opts.thinkingLevelOverride]
- * @param {import('@earendil-works/pi-coding-agent').SessionManager} [opts.sessionManager]
- * @param {{ id: import('./subagent-definitions.ts').SubAgentDefinitionId, options?: import('./subagent-definitions.ts').LoadSubAgentDefinitionOptions }} [opts.subAgentDefinition]
- * @param {string} [opts.cwd]
- * @param {string} [opts.projectStateContext]
- * @param {boolean} [opts.includeEditFallback]
- * @param {import('./agent-handler.ts').AgentMessageHandler} [opts.activeHandler]
- * @param {string} [opts.debugLogPath]
- * @param {import('./managed-operation.ts').ManagedOperationCapability} [opts.managedOperationCapability]
- *
- * @returns {Promise<import('@earendil-works/pi-coding-agent').AgentSession>}
  */
-export async function ensureRootAgentSession(opts) {
+export async function ensureRootAgentSession(opts: EnsureRootAgentSessionOptions): Promise<SessionRoot> {
     const hostedSession = requireHostedSession(opts.hostedSession, "ensureRootAgentSession");
-    const existing = /** @type {any} */ (hostedSession.getRootAgentSession());
+    const existing = hostedSession.getRootAgentSession() as SessionRoot | null;
     const existingMeta = existing ? rootSessionMetadata.get(existing) : undefined;
     const rootProjectStateContext = opts.projectStateContext ?? hostedSession.getProjectStateContext();
     const built = await buildExecutionSession({
         ...opts,
         hostedSession,
         cwd: opts.cwd || hostedSession.cwd,
-        sessionManager: /** @type {any} */ (opts.sessionManager || hostedSession.getRootSessionManager() || undefined),
+        sessionManager: (opts.sessionManager || hostedSession.getRootSessionManager() || undefined) as
+            SessionManager | undefined,
         projectStateContext: rootProjectStateContext,
     });
     const {
@@ -4457,7 +4378,8 @@ export async function ensureRootAgentSession(opts) {
         visionFallbackModelRef,
     } = built;
     const executionSession = built.executionSession || null;
-    const rootSession = executionSession && executionSession.kind !== "pi" ? executionSession : session;
+    const rootSession =
+        executionSession && executionSession.kind !== "pi" ? executionSession : (session as AgentSession);
 
     try {
         hostedSession.assertActive();
@@ -4474,7 +4396,7 @@ export async function ensureRootAgentSession(opts) {
     const unsubscribeMetrics =
         executionSession && executionSession.kind !== "pi"
             ? () => {}
-            : attachSessionMetricsObserver(session, hostedSession, contextProjection);
+            : attachSessionMetricsObserver(session as AgentSession, hostedSession, contextProjection);
     const subscriberState =
         executionSession && executionSession.kind !== "pi"
             ? {
@@ -4483,7 +4405,7 @@ export async function ensureRootAgentSession(opts) {
                   endThinking: () => {},
                   unsubscribe: () => {},
               }
-            : attachSessionEventSubscribers(session, agentDef, opts.debugLogPath, hostedSession);
+            : attachSessionEventSubscribers(session as AgentSession, agentDef, opts.debugLogPath, hostedSession);
 
     if (existing) {
         try {
@@ -4521,12 +4443,9 @@ export async function ensureRootAgentSession(opts) {
     );
     hostedSession.setRootAgentName(opts.agentName, opts.managedOperationCapability || null);
     if (opts.activeHandler) hostedSession.setActiveOnMessage(opts.activeHandler);
-    const activeSessionManager = /** @type {import('@earendil-works/pi-coding-agent').SessionManager | undefined} */ (
-        opts.sessionManager ||
-            hostedSession.getRootSessionManager?.() ||
-            /** @type {{ sessionManager?: import('@earendil-works/pi-coding-agent').SessionManager }} */ (session)
-                .sessionManager
-    );
+    const activeSessionManager = (opts.sessionManager ||
+        hostedSession.getRootSessionManager?.() ||
+        session.sessionManager) as SessionManager | undefined;
     // Pi writes the initial model, but does not write model changes when a
     // replacement root shares an existing transcript. Always save the selected
     // model, including preset reloads of the same Agent. Hydration selects the
@@ -4541,7 +4460,7 @@ export async function ensureRootAgentSession(opts) {
             activeSessionManager.appendModelChange(resolvedModel.provider, resolvedModel.id);
         }
     }
-    recordActiveAgent(/** @type {any} */ (activeSessionManager), opts.agentName, agentDef.displayName);
+    recordActiveAgent(activeSessionManager, opts.agentName, agentDef.displayName);
     rootSessionMetadata.set(rootSession, {
         agentDef,
         subAgentDefinition: opts.subAgentDefinition,
@@ -4567,11 +4486,10 @@ export async function ensureRootAgentSession(opts) {
     return rootSession;
 }
 
-/**
- * @param {import('./hosted-session.ts').HostedSession} hostedSession
- * @param {AgentTransitionSteeringEntry[]} transitionSteering
- */
-function publishTransitionSteeringConsumption(hostedSession, transitionSteering) {
+function publishTransitionSteeringConsumption(
+    hostedSession: HostedSession,
+    transitionSteering: AgentTransitionSteeringEntry[],
+) {
     for (const entry of transitionSteering) {
         if (!entry.message) continue;
         emitHostedSessionRuntimeEvent(hostedSession, {
@@ -4588,11 +4506,10 @@ function publishTransitionSteeringConsumption(hostedSession, transitionSteering)
     }
 }
 
-/**
- * @param {import('./hosted-session.ts').HostedSession} hostedSession
- * @param {AgentTransitionSteeringEntry[]} transitionSteering
- */
-function publishTransitionSteeringCancellation(hostedSession, transitionSteering) {
+function publishTransitionSteeringCancellation(
+    hostedSession: HostedSession,
+    transitionSteering: AgentTransitionSteeringEntry[],
+) {
     for (const entry of transitionSteering) {
         if (!entry.message) continue;
         emitHostedSessionRuntimeEvent(hostedSession, {
@@ -4604,13 +4521,11 @@ function publishTransitionSteeringCancellation(hostedSession, transitionSteering
     }
 }
 
-/**
- * @param {string[]} toolNames
- * @param {import('@earendil-works/pi-coding-agent').ToolDefinition[]} definitions
- * @param {import('./session-context-report.ts').SessionContextProjection | undefined} projection
- * @returns {Array<{ name: string, description?: string, parameters?: unknown, residentTokens?: number }>}
- */
-function assembleToolExposureDefinitions(toolNames, definitions, projection) {
+function assembleToolExposureDefinitions(
+    toolNames: string[],
+    definitions: ToolDefinition[],
+    projection: SessionContextProjection | undefined,
+): Array<AssembleToolExposureDefinitionsResult> {
     const byName = new Map(definitions.map((tool) => [tool.name, tool]));
     const projected = new Map(
         projection?.categories
@@ -4628,14 +4543,12 @@ function assembleToolExposureDefinitions(toolNames, definitions, projection) {
     });
 }
 
-/**
- * Record actual projection and current-context state without retaining prompt text.
- * @param {import('@earendil-works/pi-coding-agent').AgentSession} session
- * @param {import('./session-context-report.ts').SessionContextProjection | undefined} projection
- * @param {import('../workflow/execution-metrics.ts').ContextSnapshotObservation['samplingPoint']} samplingPoint
- * @returns {import('../workflow/execution-metrics.ts').ContextSnapshotObservation}
- */
-function piContextSnapshot(session, projection, samplingPoint) {
+/** Record actual projection and current-context state without retaining prompt text. */
+function piContextSnapshot(
+    session: AgentSession,
+    projection: SessionContextProjection | undefined,
+    samplingPoint: ContextSnapshotObservation["samplingPoint"],
+): ContextSnapshotObservation {
     const categories = projection?.categories || [];
     const toolTokens = categories.find((category) => category.id === "tools")?.tokens ?? 0;
     const staticTokens = projection?.staticTokens ?? 0;
@@ -4658,33 +4571,18 @@ function piContextSnapshot(session, projection, samplingPoint) {
     };
 }
 
-/** @param {ExecutionMetricsRecorder} recorder
- * @param {import('@earendil-works/pi-coding-agent').AgentSession} session
- * @param {import('./session-context-report.ts').SessionContextProjection | undefined} projection
- * @param {import('../workflow/execution-metrics.ts').ContextSnapshotObservation['samplingPoint']} samplingPoint */
-function recordPiExecutionContext(recorder, session, projection, samplingPoint) {
+function recordPiExecutionContext(
+    recorder: ExecutionMetricsRecorder,
+    session: AgentSession,
+    projection: SessionContextProjection | undefined,
+    samplingPoint: ContextSnapshotObservation["samplingPoint"],
+) {
     return recorder.recordContextSnapshot(piContextSnapshot(session, projection, samplingPoint));
 }
 
 /**
  * Run a turn on the existing root AgentSession. The root must already be built
  * (via ensureRootAgentSession) and must match the requested agentName.
- *
- * @param {Object} opts
- * @param {import('./hosted-session.ts').HostedSession} [opts.hostedSession]
- * @param {string} opts.agentName  Internal name used to verify the root matches.
- * @param {string} opts.userRequest
- * @param {Array<{base64: string, mimeType: string}>} [opts.images]
- * @param {import('@earendil-works/pi-coding-agent').ToolDefinition[]} [opts.customTools]
- * @param {import('@earendil-works/pi-coding-agent').ToolDefinition[]} [opts.mcpRootTools]
- * @param {import('../mcp/integration.ts').McpIntegration} [opts.mcpIntegration]
- * @param {AbortSignal} [opts.signal]
- * @param {import('./request-dispatch.ts').RequestDispatchKind} [opts.dispatchKind]
- * @param {boolean} [opts.resumePreviousRequest] Explicitly continue the preceding unfinished request.
- * @param {string} [opts.taskId] Stable identity for the controller-owned task being continued.
- * @param {boolean} [opts.disableAutoCompaction]
- * @param {import('./managed-operation.ts').ManagedOperationCapability} [opts.managedOperationCapability]
- * @returns {Promise<import('@earendil-works/pi-agent-core').AgentMessage[]>}
  */
 export async function runRootTurn({
     hostedSession,
@@ -4697,9 +4595,9 @@ export async function runRootTurn({
     resumePreviousRequest = false,
     taskId,
     disableAutoCompaction = false,
-}) {
+}: RunRootTurnOptions): Promise<AgentMessage[]> {
     const targetHostedSession = requireHostedSession(hostedSession, "runRootTurn");
-    const session = /** @type {any} */ (targetHostedSession.getRootAgentSession());
+    const session = targetHostedSession.getRootAgentSession() as SessionRoot | null;
     if (!session) {
         throw new Error(`runRootTurn: no root AgentSession (expected agent "${agentName}")`);
     }
@@ -4831,13 +4729,9 @@ export async function runRootTurn({
             );
             await recorder.recordToolExposure(exposureTools);
             await recordPiExecutionContext(recorder, piSession, meta.contextProjection, "execution_start");
-            const priorEntryIds = new Set(
-                sessionManager
-                    .getEntries()
-                    .map((/** @type {import('@earendil-works/pi-coding-agent').SessionEntry} */ entry) => entry.id),
-            );
+            const priorEntryIds = new Set(sessionManager.getEntries().map((entry: SessionEntry) => entry.id));
             executionMetricsForSession.set(piSession, recorder);
-            let piOutcome = "succeeded";
+            let piOutcome: ExecutionOutcome = "succeeded";
             let piReason = "completed";
             try {
                 messages = await runPrompt({
@@ -4875,10 +4769,7 @@ export async function runRootTurn({
                 executionMetricsForSession.delete(piSession);
                 await recorder.reconcilePiEntries(sessionManager.getEntries(), priorEntryIds);
                 await recordPiExecutionContext(recorder, piSession, meta.contextProjection, "execution_end");
-                await recorder.settleExecution(
-                    /** @type {import('../workflow/execution-metrics.ts').ExecutionOutcome} */ (piOutcome),
-                    piReason,
-                );
+                await recorder.settleExecution(piOutcome, piReason);
                 hostedSession?.forgetExecutionToolCalls(recorder.executionId);
             }
         }
@@ -4907,15 +4798,10 @@ export async function runRootTurn({
     }
 }
 
-/**
- * @param {Record<string, unknown>} opts
- * @param {string | null} rootAgentName
- * @returns {boolean}
- */
-export function shouldReuseExistingRootSession(opts, rootAgentName) {
+export function shouldReuseExistingRootSession(opts: BuildAgentSessionOptions, rootAgentName: string | null): boolean {
     if (!rootAgentName || rootAgentName !== opts.agentName) return false;
 
-    const rootChangingKeys = [
+    const rootChangingKeys: Array<keyof BuildAgentSessionOptions> = [
         "toolNames",
         "customTools",
         "modelOverride",
@@ -4929,18 +4815,7 @@ export function shouldReuseExistingRootSession(opts, rootAgentName) {
     return !rootChangingKeys.some((key) => Object.hasOwn(opts, key) && opts[key] !== undefined);
 }
 
-/**
- * Run one disposable non-interactive Agent prompt without a HostedSession.
- * @param {Object} opts
- * @param {string} opts.cwd
- * @param {string} opts.agentName
- * @param {string} opts.userRequest
- * @param {string} [opts.modelOverride]
- * @param {"off"|"minimal"|"low"|"medium"|"high"|"xhigh"|"max"} [opts.thinkingLevelOverride]
- * @param {string} [opts.debugLogPath]
- * @param {string} [opts.projectStateContext]
- * @returns {Promise<import('@earendil-works/pi-agent-core').AgentMessage[]>}
- */
+/** Run one disposable non-interactive Agent prompt without a HostedSession. */
 export async function runNonInteractiveAgentPrompt({
     cwd,
     agentName,
@@ -4949,7 +4824,7 @@ export async function runNonInteractiveAgentPrompt({
     thinkingLevelOverride,
     debugLogPath,
     projectStateContext,
-}) {
+}: RunNonInteractiveAgentPromptOptions): Promise<AgentMessage[]> {
     const { session } = await buildAgentSession({
         cwd,
         agentName,
@@ -4975,50 +4850,8 @@ export async function runNonInteractiveAgentPrompt({
 /**
  * Run a disposable isolated Agent invocation. Interactive root Agents must be
  * activated through switchActiveAgent/runActiveAgentTurn instead.
- *
- * @callback ExecutionSessionBuiltCallback
- * @param {Awaited<ReturnType<typeof buildExecutionSession>>} built
- * @returns {void}
- *
- * @param {Object} opts
- * @param {import('./hosted-session.ts').HostedSession} [opts.hostedSession]
- * @param {string} opts.agentName
- * @param {string[]} [opts.toolNames] - Optional explicit tool override; defaults to agent frontmatter tools.
- * @param {import('../bash-command-policy.ts').BashAllowedCommands} [opts.inheritedBashAllowedCommands]
- * @param {import('@earendil-works/pi-coding-agent').ToolDefinition[]} [opts.customTools]
- * @param {import('@earendil-works/pi-coding-agent').ToolDefinition[]} [opts.mcpRootTools]
- * @param {import('../mcp/integration.ts').McpIntegration} [opts.mcpIntegration]
- * @param {string} [opts.modelOverride] - Optional explicit model override in provider/id format.
- * @param {"off"|"minimal"|"low"|"medium"|"high"|"xhigh"|"max"} [opts.thinkingLevelOverride]
- * @param {number} [opts.temperatureOverride]
- * @param {string} opts.userRequest - The user-facing request/instruction to send to the agent
- * @param {Array<{base64: string, mimeType: string}>} [opts.images]
- * @param {import('../../tools/plan-written.ts').TriageMeta} [opts.triageMeta] - Optional triage metadata threaded into auto-wired plan_written.
- * @param {{ id: import('./subagent-definitions.ts').SubAgentDefinitionId, options?: import('./subagent-definitions.ts').LoadSubAgentDefinitionOptions }} [opts.subAgentDefinition] - Select a definition from RunWield's canonical hidden-subagent registry.
- * @param {import('@earendil-works/pi-coding-agent').SessionManager} [opts.sessionManager] - Optional manager to carry
- *   context across successive isolated invocations (e.g. nudging a Reviewer that omitted its terminal tool call).
- *   Defaults to a fresh in-memory manager, which keeps the invocation isolated from the workflow transcript.
- * @param {string} [opts.cwd] - Execution cwd for file tools and agent operations.
- * @param {string} [opts.debugLogPath] - Optional DEBUG log destination for this invocation.
- * @param {string} [opts.projectStateContext] - Optional session-scoped project state note for the system prompt.
- * @param {boolean} [opts.includeEditFallback] - Legacy option name: whether to register the single-replacement edit tool.
- * @param {boolean} [opts.ignoreManualModelOverride] - True when invocation policy must not borrow root /model state.
- * @param {boolean} [opts.updateHostedThinkingLevel] - False when thinking is temporary and must not update root footer state.
- * @param {boolean} [opts.persistModelChange] - False for temporary Claude CLI turns that must not append a root model marker.
- * @param {boolean} [opts.disableAutoCompaction] - True when a temporary turn must fail instead of compacting root context.
- * @param {AbortSignal} [opts.signal] - Optional cancellation signal for transient delegated sessions.
- * @param {boolean} [opts.background] - Independent read-only child without foreground ownership.
- * @param {import('./request-dispatch.ts').RequestDispatchKind} [opts.dispatchKind]
- * @param {boolean} [opts.resumePreviousRequest] Explicitly continue this isolated request's prior failed attempt.
- * @param {string} [opts.controllerRequestId] Request identity owned by a controller that runs several attempts as one unfinished unit of work.
- * @param {import('./managed-operation.ts').ManagedOperationCapability} [opts.managedOperationCapability]
- * @param {ExecutionSessionBuiltCallback} [opts.onExecutionSessionBuilt]
- * @param {string} [opts.parentExecutionId]
- * @param {string} [opts.parentToolCallId]
- * @param {string} [opts.taskId]
- * @returns {Promise<import('@earendil-works/pi-agent-core').AgentMessage[]>}
  */
-export async function runIsolatedAgentSession(opts) {
+export async function runIsolatedAgentSession(opts: RunIsolatedAgentSessionOptions): Promise<AgentMessage[]> {
     const { withWorkflowToolEventSource, WorkflowStepCompleted } = await import("../workflow/workflow-tool-events.ts");
     const hostedSession = requireHostedSession(opts.hostedSession, "runIsolatedAgentSession");
     const managedOperationCapability = opts.background
@@ -5047,8 +4880,7 @@ export async function runIsolatedAgentSession(opts) {
     const executionSession = built.executionSession || null;
     const executionRoot = executionSession || session;
     const steeringTarget = executionSession ? getExecutionSteeringTarget(executionSession) : session;
-    /** @type {SubscriberState | undefined} */
-    let subscriberState;
+    let subscriberState: SubscriberState | undefined;
     let unsubscribeMetrics = () => {};
     let agentInfoId = "";
     let steeringTargetId = "";
@@ -5066,7 +4898,7 @@ export async function runIsolatedAgentSession(opts) {
         unsubscribeMetrics =
             executionSession && executionSession.kind !== "pi"
                 ? () => {}
-                : attachSessionMetricsObserver(session, hostedSession, contextProjection);
+                : attachSessionMetricsObserver(session as AgentSession, hostedSession, contextProjection);
         subscriberState =
             executionSession && executionSession.kind !== "pi"
                 ? {
@@ -5076,7 +4908,7 @@ export async function runIsolatedAgentSession(opts) {
                       unsubscribe: () => {},
                   }
                 : attachSessionEventSubscribers(
-                      session,
+                      session as AgentSession,
                       agentDef,
                       opts.debugLogPath,
                       opts.background ? undefined : hostedSession,
@@ -5113,7 +4945,7 @@ export async function runIsolatedAgentSession(opts) {
             if (executionSession?.kind === "claude-cli" || executionSession?.kind === "agy-cli") {
                 if (opts.disableAutoCompaction === true) {
                     assertPreparedPromptFitsContext(
-                        session,
+                        session as AgentSession,
                         {
                             text: dispatch.userRequest,
                             images: opts.images || [],
@@ -5165,19 +4997,17 @@ export async function runIsolatedAgentSession(opts) {
                     contextProjection,
                 );
                 await recorder.recordToolExposure(exposureTools);
-                await recordPiExecutionContext(recorder, session, contextProjection, "execution_start");
+                await recordPiExecutionContext(recorder, session as AgentSession, contextProjection, "execution_start");
                 const priorEntryIds = new Set(
-                    session.sessionManager
-                        .getEntries()
-                        .map((/** @type {import('@earendil-works/pi-coding-agent').SessionEntry} */ entry) => entry.id),
+                    session.sessionManager.getEntries().map((entry: SessionEntry) => entry.id),
                 );
-                executionMetricsForSession.set(session, recorder);
-                let piOutcome = "succeeded";
+                executionMetricsForSession.set(session as AgentSession, recorder);
+                let piOutcome: ExecutionOutcome = "succeeded";
                 let piReason = "completed";
                 try {
                     messages = await withWorkflowToolEventSource(hostedSession, steeringTarget, () =>
                         runPrompt({
-                            session,
+                            session: session as AgentSession,
                             agentDef,
                             agentName: opts.agentName,
                             userRequest: dispatch.userRequest,
@@ -5208,13 +5038,15 @@ export async function runIsolatedAgentSession(opts) {
                               : piOutcome;
                     throw err;
                 } finally {
-                    executionMetricsForSession.delete(session);
+                    executionMetricsForSession.delete(session as AgentSession);
                     await recorder.reconcilePiEntries(session.sessionManager.getEntries(), priorEntryIds);
-                    await recordPiExecutionContext(recorder, session, contextProjection, "execution_end");
-                    await recorder.settleExecution(
-                        /** @type {import('../workflow/execution-metrics.ts').ExecutionOutcome} */ (piOutcome),
-                        piReason,
+                    await recordPiExecutionContext(
+                        recorder,
+                        session as AgentSession,
+                        contextProjection,
+                        "execution_end",
                     );
+                    await recorder.settleExecution(piOutcome, piReason);
                     hostedSession?.forgetExecutionToolCalls(recorder.executionId);
                 }
             }
@@ -5273,24 +5105,21 @@ export async function runIsolatedAgentSession(opts) {
 /**
  * Expand a /skill:{name} command into an XML <skill> block.
  * Modeled after Pi's _expandSkillCommand() in agent-session.ts.
- *
- * @param {string} skillName
- * @param {string} [additionalInstructions]
- * @param {string} [cwd]
- * @returns {Promise<string>} Formatted skill block string
+ * Formatted skill block string
  */
-export async function expandSkillCommand(skillName, additionalInstructions, cwd) {
+export async function expandSkillCommand(
+    skillName: string,
+    additionalInstructions?: string,
+    cwd?: string,
+): Promise<string> {
     return await expandSkill(skillName, additionalInstructions, { cwd });
 }
 
 /**
  * Expand a prompt template file into a final user request string.
- *
- * @param {string} templatePath
- * @param {string} [additionalInstructions]
- * @returns {Promise<string>} Formatted prompt template string
+ * Formatted prompt template string
  */
-export async function expandPromptTemplate(templatePath, additionalInstructions) {
+export async function expandPromptTemplate(templatePath: string, additionalInstructions?: string): Promise<string> {
     try {
         await assertPersonalResourcePath(templatePath, "prompt template");
         const raw = await fsReadFile(templatePath, "utf8");
@@ -5313,11 +5142,7 @@ export async function expandPromptTemplate(templatePath, additionalInstructions)
     }
 }
 
-/**
- * @param {import('@earendil-works/pi-agent-core').AgentMessage[]} messages
- * @returns {string}
- */
-function extractAssistantSummary(messages) {
+function extractAssistantSummary(messages: AgentMessage[]): string {
     for (let i = messages.length - 1; i >= 0; i--) {
         const message = messages[i];
         if (!message || message.role !== "assistant" || !Array.isArray(message.content)) continue;
@@ -5325,7 +5150,7 @@ function extractAssistantSummary(messages) {
         const text = message.content
             .map((contentBlock) => {
                 if (!contentBlock || typeof contentBlock !== "object") return "";
-                const block = /** @type {{ text?: string }} */ (contentBlock);
+                const block = contentBlock as LegacyTextBlock;
                 return typeof block.text === "string" ? block.text : "";
             })
             .join(" ")

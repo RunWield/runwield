@@ -31,7 +31,7 @@ import { probeGitRepository } from "../git.ts";
 import { hasNonGitExecutionConsent, rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
 import { resolvePlanExecutionRuntimeAgent } from "./execution-agent.ts";
 import { switchActiveAgent } from "../session/agent-switching.ts";
-import { runRootTurn } from "../session/session.js";
+import { runRootTurn } from "../session/session.ts";
 import { getAgentDisplayName } from "../session/agents.ts";
 import { sanitizeSessionName } from "../session-name.ts";
 import { normalizeTriageOutcome, type TriageOutcome, type TriageOutcomeInput } from "./triage-outcome.ts";

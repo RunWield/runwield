@@ -45,7 +45,7 @@ Source:
 
 - [`model-registry.ts`](../../src/shared/models/model-registry.ts): `ExecutionBackend`, `RunWieldCredentialStore`,
   `createRunWieldModelRuntime`, `getApiKeyAndHeaders`.
-- [`session.js`](../../src/shared/session/session.js): `buildAgentSession`, resource loading, and `createAgentSession`.
+- [`session.ts`](../../src/shared/session/session.ts): `buildAgentSession`, resource loading, and `createAgentSession`.
 - [`Claude command`](../../src/shared/session/backends/claude-cli/command.ts): `prepareClaudeCliCommand` explicitly
   enables native project tools and passes `--no-session-persistence`.
 - [`Claude process`](../../src/shared/session/backends/claude-cli/process.ts) and
@@ -70,13 +70,13 @@ Official provider documentation confirms that remote browser login is not the sa
 
 - Settings, Agents, skills, and project tools currently share a filesystem context. Skills can contain absolute local
   paths. Copying settings alone does not make those resources or their executable dependencies available remotely.
-  Sources: [`settings.js`](../../src/shared/settings.ts), [`session.js`](../../src/shared/session/session.js),
+  Sources: [`settings.js`](../../src/shared/settings.ts), [`session.ts`](../../src/shared/session/session.ts),
   [customization documentation](../user-documentation/customization.md).
 - Project Memory currently uses the primary repository directory name, with a current-directory name fallback. Unrelated
   same-name folders can select the same collection. Core Memory injection and `/sleep` use additional selection paths.
   Remote support must not infer shared project knowledge from a folder name alone. Sources:
   [`resolveProjectCollectionName`](../../src/extensions/mnemoteca/tools.ts),
-  [`session.js`](../../src/shared/session/session.js), [`sleep`](../../src/cmd/sleep/index.ts).
+  [`session.ts`](../../src/shared/session/session.ts), [`sleep`](../../src/cmd/sleep/index.ts).
 - MCP servers and helper binaries currently execute against one `cwd`. Some need local credentials; others need remote
   project files. An arbitrary personal integration cannot be assumed portable. Sources:
   [`MCP integration`](../../src/shared/mcp/integration.ts),

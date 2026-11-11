@@ -9,7 +9,7 @@ import {
     getConfiguredAgentModel,
     getRootSessionRebuildOptions,
     runIsolatedAgentSession,
-} from ".././session.js";
+} from ".././session.ts";
 import { emitSystemStatus, RuntimeEventTypes } from ".././session-runtime-events.ts";
 import { assertModelExecutionBackendSupported } from "../../models/model-execution.ts";
 import { getModelRegistry } from "../../models/model-registry.ts";

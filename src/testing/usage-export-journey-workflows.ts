@@ -9,7 +9,7 @@ import { createGitPort } from "../shared/git-port.ts";
 import { git } from "../shared/git-test-fixture.ts";
 import { setExactProjectCustomSetting } from "../shared/settings.ts";
 import { HostedSession } from "../shared/session/hosted-session.ts";
-import { ensureRootAgentSession } from "../shared/session/session.js";
+import { ensureRootAgentSession } from "../shared/session/session.ts";
 import type { SessionRuntime } from "../shared/session/session-runtime.ts";
 import { findById } from "../shared/worktree-registry.ts";
 import { createTestWorktreeAttempt } from "../shared/worktree-test-helpers.ts";

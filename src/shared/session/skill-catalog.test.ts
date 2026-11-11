@@ -8,7 +8,7 @@ import { fauxAssistantMessage, fauxText, getCurrentSystemPrompt, type Transcript
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { setCustomSetting } from "../settings.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
-import { buildAgentSession, expandSkillCommand, listSkills } from "./session.js";
+import { buildAgentSession, expandSkillCommand, listSkills } from "./session.ts";
 import { listVisibleSkillCatalog } from "./skill-catalog.ts";
 import { resolveNamedInvocation } from "./named-invocation.ts";
 import { extractYaml } from "../front-matter.ts";

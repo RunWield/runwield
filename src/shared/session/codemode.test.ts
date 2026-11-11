@@ -7,7 +7,7 @@ import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager, defineTool, type AgentSession } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { withRuntimeCommandFixture, type RuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { buildAgentSession } from "./session.js";
+import { buildAgentSession } from "./session.ts";
 import { setCustomSetting } from "../settings.ts";
 import { startMcpIntegration } from "../mcp/integration.ts";
 

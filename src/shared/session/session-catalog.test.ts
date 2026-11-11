@@ -10,7 +10,7 @@ import {
     listPromptTemplates,
     listSkills,
     readGlobalAgentMd,
-} from "./session.js";
+} from "./session.ts";
 
 import { getAgentDisplayName, listAvailableAgents } from "./agents.ts";
 import { getCustomSetting } from "../settings.ts";

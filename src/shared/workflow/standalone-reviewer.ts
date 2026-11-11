@@ -7,7 +7,7 @@ import {
     getConfiguredAgentTemperature,
     resolveExecutionThinkingLevel,
     resolveModel,
-} from "../session/session.js";
+} from "../session/session.ts";
 import { setExactProjectCustomSetting } from "../settings.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
 import { createLedger } from "./review-ledger.ts";

@@ -6,7 +6,7 @@ import { makeManagedSessionFixture } from "../../testing/managed-session-fixture
 import { McpIntegration } from "../mcp/integration.ts";
 import { HostedSession } from "./hosted-session.ts";
 import { SessionHost } from "./session-host.ts";
-import { buildAgentSession } from "./session.js";
+import { buildAgentSession } from "./session.ts";
 
 // Pi is an external SDK. Keep RunWield's MCP integration and cleanup real while
 // making the SDK report a failed shutdown and observing its disposal boundary.

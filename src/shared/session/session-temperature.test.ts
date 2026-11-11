@@ -7,7 +7,7 @@ import {
     getCurrentTools,
     normalizeContext,
 } from "@earendil-works/pi-ai";
-import { applySessionTemperature } from "./session.js";
+import { applySessionTemperature } from "./session.ts";
 import type {
     Api,
     AssistantMessage,

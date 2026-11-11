@@ -485,7 +485,7 @@
     "src/shared/session/session-resume-list.test.ts",
     "src/shared/session/session-runtime-events.test.ts",
     "src/shared/session/session-runtime-usage.test.ts",
-    "src/shared/session/session-runtime.test.js",
+    "src/shared/session/session-runtime.test.ts",
     "src/shared/session/session-sidebar.test.ts",
     "src/shared/session/session-subscribers.test.ts",
     "src/shared/session/session-temperature.test.ts",

@@ -1,7 +1,7 @@
 import { AGENTS } from "../../../constants.ts";
 import { readPersistedManualModelState, resolveResumeAgentName } from ".././active-agent-session.ts";
 import { loadAgentDef } from ".././agents.ts";
-import { resolveModel } from ".././session.js";
+import { resolveModel } from ".././session.ts";
 import { resolvePromptTemplateSettings } from "../prompt-template-settings.ts";
 import { resolveNamedInvocation } from ".././named-invocation.ts";
 import { isPathInside, openPersistedRootSession } from ".././root-session.ts";
@@ -21,7 +21,10 @@ import type { ManagedOperationFailure, PromptSessionOptions } from "./types.ts";
 import type { RuntimeServices } from "./base.ts";
 import type { RuntimeManagedOperations } from "./managed-operations.ts";
 
-type RuntimeImageModel = Awaited<ReturnType<typeof resolveModel>>;
+type ResolvedModel = Awaited<ReturnType<typeof resolveModel>>;
+interface RuntimeImageModel extends Partial<Pick<ResolvedModel, "provider" | "id" | "input" | "executionBackend">> {
+    model?: string;
+}
 type PersistedSessionImage = Awaited<ReturnType<typeof persistImageAttachment>> & {
     ok?: true;
     error?: undefined;

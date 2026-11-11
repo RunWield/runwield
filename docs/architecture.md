@@ -101,7 +101,7 @@ structured agent outcomes, calls Plan and execution services, and decides which 
 | Session application runtime | Create/load/close sessions, serialize turns, switch agents, cancel work, emit semantic events, broker interactions   | `src/shared/session/session-runtime.ts`                                                                                                                  |
 | Per-session ownership       | Project root, root and sub-agent sessions, active agent/model/thinking state, workflow state, active interactions    | `src/shared/session/hosted-session.ts`                                                                                                                   |
 | Multi-session registry      | Adopt, find, list, and dispose hosted sessions                                                                       | `src/shared/session/session-host.ts`                                                                                                                     |
-| Pi integration              | Build configured `AgentSession` objects, assemble prompts, wire tools, translate Pi events, run prompts, reuse roots | `src/shared/session/session.js`                                                                                                                          |
+| Pi integration              | Build configured `AgentSession` objects, assemble prompts, wire tools, translate Pi events, run prompts, reuse roots | `src/shared/session/session.ts`                                                                                                                          |
 | Workflow application logic  | Interpret tool outcomes, route requests, choose post-planning and post-execution actions                             | `src/shared/session/agent-handler.ts`, `src/shared/workflow/orchestrator.js`, `src/shared/workflow/decisions.ts`                                         |
 | Plan domain                 | Canonical Markdown persistence, identities, hierarchy, lifecycle state machine, collaboration write lock             | `src/plan-store.ts`, `src/shared/workflow/plan-lifecycle.ts`                                                                                             |
 | Execution domain            | Worktree preparation, Engineer completion gate, local validation, repair, merge-back, recovery metadata              | `src/shared/workflow/workflow.ts`, `src/shared/workflow/validation.ts`, `src/shared/worktree.ts`                                                         |
@@ -234,7 +234,7 @@ sequenceDiagram
     Runtime-->>Consumer: one normalized SessionRuntimeEvent
 ```
 
-The Pi subscriber bridge is `attachSessionEventSubscribers()` in `src/shared/session/session.js`. It translates Pi
+The Pi subscriber bridge is `attachSessionEventSubscribers()` in `src/shared/session/session.ts`. It translates Pi
 events into the shared vocabulary. `SessionRuntime` installs the hosted-session sink and privately adds identity,
 timestamp, and turn context before fanout. No core producer receives a consumer presentation object.
 
@@ -337,7 +337,7 @@ flowchart LR
     Adapter --> Second["TUI render #2"]
 ```
 
-The former `attachUiSubscribers()` implementation in `src/shared/session/session.js` subscribed directly to Pi and
+The former `attachUiSubscribers()` implementation in `src/shared/session/session.ts` subscribed directly to Pi and
 called presentation methods such as `appendThinkingStart()`, `appendAgentMessageStart()`, and `startToolExecution()`. At
 the same time it emitted semantic Runtime events. The TUI had also attached `runtime-adapter.ts`, so that adapter
 rendered the same semantic update again.
@@ -1041,15 +1041,15 @@ dependency guard are what prevent this seam from silently returning.
 | Invariant                                              | Principal coverage                                                                  |
 | ------------------------------------------------------ | ----------------------------------------------------------------------------------- |
 | Core knows no consumers; consumers use only Runtime    | `src/shared/session/architecture-boundary.test.ts`                                  |
-| Opaque IDs and private internals                       | `src/shared/session/session-runtime.test.js`                                        |
-| One ordered turn lifecycle and error settlement        | `src/shared/session/session-runtime.test.js`                                        |
+| Opaque IDs and private internals                       | `src/shared/session/session-runtime.test.ts`                                        |
+| One ordered turn lifecycle and error settlement        | `src/shared/session/session-runtime.test.ts`                                        |
 | One Pi text/thinking/tool translation                  | `src/shared/session/session-subscribers.test.ts`                                    |
 | Consumer-ready event identity, usage, and tool data    | `src/shared/session/session-runtime-events.test.js`                                 |
 | One shared tool title and semantic-kind implementation | `src/shared/session/tool-event-title.test.ts`                                       |
 | TUI and ACP consume the same transcript                | `src/ui/tui/runtime-adapter.test.ts`, `src/acp/event-mapper.test.js`                |
 | Duplicate TUI adapter attachment fails until disposal  | `src/ui/tui/runtime-adapter.test.ts`                                                |
-| Local shell is Runtime-owned                           | `src/shared/session/session-runtime.test.js`, `src/ui/tui/bash-interceptor.test.js` |
-| Semantic interactions and cancellation                 | `src/shared/session/session-runtime.test.js`, adapter interaction tests             |
+| Local shell is Runtime-owned                           | `src/shared/session/session-runtime.test.ts`, `src/ui/tui/bash-interceptor.test.js` |
+| Semantic interactions and cancellation                 | `src/shared/session/session-runtime.test.ts`, adapter interaction tests             |
 | Workflow tools emit messages/events without UI ports   | tool tests under `src/tools/__tests__/`                                             |
 | CI, system status, errors, reviews, repair, merge      | `src/shared/workflow/validation.test.js`                                            |
 | Routing, planning, slicing, execution                  | `src/shared/workflow/orchestrator.test.js`, `src/shared/workflow/workflow.test.ts`  |
@@ -1063,7 +1063,7 @@ Git behavior.
 | Core area                    | Principal test suites                                                                                                                 | Existing emphasis                                                                               |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | Hosted state and registry    | `hosted-session.test.ts`, `session-host.test.ts`                                                                                      | Ownership, isolation, disposal, active turn and interaction state                               |
-| Runtime lifecycle            | `session-runtime.test.js`, `root-session.test.ts`, `active-agent-session.test.js`, `workflow-context-session.test.js`                 | Create/load/replay, prompt serialization, handoffs, close/cancel, persisted markers             |
+| Runtime lifecycle            | `session-runtime.test.ts`, `root-session.test.ts`, `active-agent-session.test.js`, `workflow-context-session.test.js`                 | Create/load/replay, prompt serialization, handoffs, close/cancel, persisted markers             |
 | Agent/Pi bridge              | `session-prompt.test.ts`, `session-subscribers.test.ts`, `agent-switching.test.ts`, `session-catalog.test.js`                         | Root reuse/rebuild, event translation, prompt assembly, project-root catalog isolation          |
 | Agent workflow handler       | `agent-handler.test.js`, `orchestrator.test.js`, `decisions.test.js`, `workflow-results` coverage inside workflow tests               | Current-turn outcome extraction, routing, dispatch, completion gates, semantic decisions        |
 | Plan persistence and state   | `plan-store.test.ts`, `plan-lifecycle.test.ts`, `src/ui/review/plan-review.test.js`, `src/tools/__tests__/plan-written.test.ts`       | Front matter, hierarchy, identity, locks, transition matrix, readiness and submission outcomes  |
@@ -1091,7 +1091,7 @@ The highest-value cross-boundary paths for later confidence analysis are visible
 | Session registry                          | `src/shared/session/session-host.ts`                                          |
 | Runtime event contract                    | `src/shared/session/session-runtime-events.ts`                                |
 | Interaction contract                      | `src/shared/session/session-runtime-interactions.ts`                          |
-| Pi session construction and prompt bridge | `src/shared/session/session.js`                                               |
+| Pi session construction and prompt bridge | `src/shared/session/session.ts`                                               |
 | Agent definition layering                 | `src/shared/session/agents.ts`                                                |
 | Agent switching                           | `src/shared/session/agent-switching.ts`                                       |
 | Workflow-aware turn handling              | `src/shared/session/agent-handler.ts`                                         |

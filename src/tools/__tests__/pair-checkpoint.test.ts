@@ -6,7 +6,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { HostedSession } from "../../shared/session/hosted-session.ts";
 import { readCurrentPairCheckpoint, restorePairExecutionState } from "../../shared/session/pair-checkpoint-session.ts";
 import { createPairCheckpointTool } from "../pair-checkpoint.ts";
-import { attachSessionEventSubscribers, buildAgentSession, runPrompt } from "../../shared/session/session.js";
+import { attachSessionEventSubscribers, buildAgentSession, runPrompt } from "../../shared/session/session.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { readFile, writeFile } from "node:fs/promises";
 import { readExecutionWorkflowSnapshot } from "../../shared/session/execution-workflow-session.ts";

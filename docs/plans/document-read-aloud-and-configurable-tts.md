@@ -4,7 +4,7 @@ workKind: "FEATURE"
 complexity: "MEDIUM"
 affectedPaths:
     - "src/shared/settings.ts"
-    - "src/shared/session/session.js"
+    - "src/shared/session/session.ts"
     - "src/tools/registry.ts"
     - "src/ui/review/review-launcher.ts"
     - "src/ui/workspace/server.ts"
@@ -193,7 +193,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - New `src/shared/speech/` modules — typed settings, Markdown preparation, asset cache, and endpoint synthesis.
 - `src/shared/settings.ts` and `docs/user-documentation/settings.md` — integrate personal settings without bypassing
   existing locking or losing other custom keys; document enablement, voices, first-use storage, and endpoint setup.
-- New `src/tools/read-aloud.ts`, `src/tools/registry.ts`, `src/shared/session/session.js`, and shared Agent guidance —
+- New `src/tools/read-aloud.ts`, `src/tools/registry.ts`, `src/shared/session/session.ts`, and shared Agent guidance —
   expose the capability in native and bridged root turns, with correct lifetime and result reporting.
 - `src/ui/review/review-launcher.ts`, `src/ui/workspace/server.ts`, relevant owner/review routes, and
   `src/ui/workspace/server/review-host.ts` — deliver authorized speech requests, assets, settings, and acknowledgements
@@ -211,7 +211,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `reviewHost`, `startArtifactReadSurface`, and `BrowserPort` — browser serving/opening and graceful URL fallback.
 - `readSessionArtifact` and existing contained-file readers — real-path containment principles; do not require a
   registered artifact merely to read a newly produced project Markdown file.
-- `create_image` composition in `session.js` — configured capability exposure and bridged-tool wiring patterns.
+- `create_image` composition in `session.ts` — configured capability exposure and bridged-tool wiring patterns.
 - Existing Markdown tokens, design-system controls, `WorkspaceHeaderActionsPortal`, and loading indicators — avoid
   duplicated parsing and separate toolbar designs.
 

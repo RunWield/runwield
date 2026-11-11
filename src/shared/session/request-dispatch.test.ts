@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { HostedSession } from "./hosted-session.ts";
-import { ensureRootAgentSession, runRootTurn } from "./session.js";
+import { ensureRootAgentSession, runRootTurn } from "./session.ts";
 import { RunawayLoopGuardStoppedError } from "./runaway-loop-guard.ts";
 import { createValidationSessionPort } from "../workflow/validation-session-adapter.ts";
 import {
