@@ -175,7 +175,8 @@ test("ArtifactReadSurface keeps the React read surface to Contents, notices, doc
     assertStringIncludes(pageSource, '<ArtifactReadSurface payload={payload} client:only="react">');
     assertStringIncludes(surfaceSource, "data-artifact-kind={artifactKind}");
     assertStringIncludes(surfaceSource, "aria-label={`${artifactLabel} notices`}");
-    assertStringIncludes(surfaceSource, "{notices.map((notice) => <p key={notice}>{notice}</p>)}");
+    assertStringIncludes(surfaceSource, "notices.map((notice) =>");
+    assertStringIncludes(surfaceSource, "<p key={notice}>{notice}</p>");
     const componentsCssSource = await fsReadFile(new URL("../design-system/components.css", import.meta.url), "utf8");
 
     assertStringIncludes(surfaceSource, 'className="rw-artifact-close-button rw-review-action-button"');

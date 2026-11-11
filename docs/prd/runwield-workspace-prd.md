@@ -182,7 +182,10 @@ Record browsing read the canonical personal record, including when repository de
 Passive views do not import Plans. Public default admission remains the legacy path; activation is still target scope.
 
 **Acceptance:** Edit a document from a second surface, reject the first revision's save or review decision, refresh,
-and review the current input. A different registered Project must not inherit the first Project's package authority.
+and review the current input. Restoring the rejected draft retains its original revision and cannot overwrite the newer
+content. Nested Plan links, evidence-document fragments and repository-relative links resolve from the displayed
+Plan; repository reads retain containment checks. Package document selection retains Sequence child tabs and grouped
+decisions; evidence links use the same authorized document context as the review. A different registered Project must not inherit the first Project's package authority.
 
 **Scope and maturity:** Current local browser baseline.
 

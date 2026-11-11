@@ -9,9 +9,12 @@ import { withPackageWorkflow } from "../../shared/workflow/package-workflow.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { writeWorkRecord, listWorkRecords } from "../../shared/work-records/store.ts";
 import { recordAttrs, recordBody } from "../../shared/work-records/test-fixtures/package-records.ts";
+import { prepareSequenceReview, validateSequenceReviewDecision } from "../../shared/workflow/sequence-review.ts";
+import { startPlanReviewSurface } from "../review/review-launcher.ts";
 import { submitPlanForReview } from "../review/plan-review.ts";
 import { startWorkspaceServer } from "./server.js";
 
+const sequence = process.argv.includes("--sequence");
 const directory = process.argv[2];
 if (!directory) throw new Error("Supply a disposable evidence directory.");
 await fs.mkdir(directory, { recursive: true });
@@ -24,11 +27,39 @@ try {
     const fixture = await packageFixture();
     root = fixture.root;
     await create(fixture.identity, {
-        definition: { classification: "PLANNED_CHANGE", workKind: "FEATURE", complexity: "MEDIUM", status: "draft" },
+        definition: {
+            classification: sequence ? "PROJECT" : "PLANNED_CHANGE",
+            ...(sequence ? { type: "sequence" } : {}),
+            workKind: "FEATURE",
+            complexity: "MEDIUM",
+            status: "draft",
+        },
         documents: {
-            "context.md": "# Canonical home Plan\n\nRevision one: home authority.\n\n[Validation](validation.md)\n",
-            "validation.md": "# Validation\n\nVerify the canonical home Plan.\n",
+            "context.md":
+                "# Canonical home Plan\n\nRevision one: home authority.\n\n[Validation](validation.md#checks)\n\n[Child Plan](nested/child.md)\n\n[Repository README](../../README.md)\n",
+            "validation.md":
+                "# Validation\n\n## Checks\n\nVerify the canonical home Plan.\n\n[Context](context.md)\n\n[Child Plan](nested/child.md)\n\n[Repository README](../../README.md)\n\n[Outside Project](../../../outside.md)\n",
             "manual-qa.md": "# Manual QA\n\nCheck keyboard and phone navigation.\n",
+        },
+    });
+    await create(fixture.identity, {
+        planId: "nested-child",
+        name: "nested/child",
+        ...(sequence
+            ? {
+                  parentPlanId: "plan-one",
+                  definition: {
+                      classification: "PLANNED_CHANGE",
+                      status: "draft",
+                      order: 1,
+                      executionAgent: "engineer",
+                      collaborationRecommendation: "autonomous",
+                  },
+              }
+            : {}),
+        documents: {
+            "context.md": "# Child home Plan\n\n[Parent Plan](../one.md)\n",
+            "validation.md": "# Child validation\n",
         },
     });
     await fs.mkdir(join(root, "docs/plans"), { recursive: true });
@@ -63,7 +94,7 @@ const pairing = store.createPairingRequest();
 store.approvePairingRequest(pairing.code);
 const device = store.claimPairingRequest(pairing.proof);
 await fs.writeFile(join(directory, "browser-auth.json"), JSON.stringify(device), { mode: 0o600 });
-const port = 5189;
+const port = sequence ? 5191 : 5189;
 await withPackageWorkflow(
     root,
     {
@@ -75,7 +106,22 @@ await withPackageWorkflow(
         if (!(await listWorkRecords(root, { createDir: false })).length)
             await writeWorkRecord(root, recordAttrs(), recordBody);
         startWorkspaceServer({ mode: "owner", host: "127.0.0.1", port, store });
-        if (process.argv.includes("--review")) {
+        if (sequence) {
+            const documents = await prepareSequenceReview(root, plan.metadata.name);
+            const surface = await startPlanReviewSurface({
+                cwd: root,
+                plan: documents[0].plan,
+                planPath: documents[0].planPath,
+                sequenceDocuments: documents,
+                browser: { open: () => Promise.resolve(false) },
+                onDecision: (decision) => validateSequenceReviewDecision(root, documents, decision),
+            });
+            await fs.writeFile(join(directory, "review-url.txt"), surface.url);
+            console.log(`Sequence review: ${surface.url}`);
+            void surface
+                .waitForDecision()
+                .then((result) => fs.writeFile(join(directory, "review-result.json"), JSON.stringify(result)));
+        } else if (process.argv.includes("--review")) {
             void submitPlanForReview({
                 cwd: root,
                 planName: plan.metadata.name,

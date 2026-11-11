@@ -43,3 +43,93 @@ test("Plan Review has no front matter control when the Plan has none", async () 
         assertStringIncludes(container.textContent, "Body without metadata.");
     }, "# Review display\n\nBody without metadata.\n");
 });
+
+const packagePayload = {
+    documentRevision: "package-revision",
+    planId: "overview",
+    planName: "sequence",
+    linkedFiles: {
+        "context.md": "# Canonical overview\n\nHome context prose.\n",
+        "validation.md": "# Validation\n\n[Context](context.md)\n",
+    },
+};
+
+test("package review preserves Sequence tabs and grouped decisions after reading evidence", async () => {
+    await withReview(
+        async ({ browser, container, button, submitted }) => {
+            const tab = () =>
+                container.querySelector('[role="tab"][data-value="child"]') ||
+                [...container.querySelectorAll('[role="tab"]')].find((node) => node.textContent.includes("Child Plan"));
+            assertEquals(Boolean(tab()), true);
+            await act(() => tab().focus());
+            assertStringIncludes(container.querySelector('[role="tabpanel"]:not([hidden])').textContent, "Child body");
+            assertStringIncludes(container.textContent, "Sequence and 1 Plans");
+            const select = container.querySelector("#review-document");
+            await act(() => {
+                select.value = "validation.md";
+                select.dispatchEvent(new browser.Event("change", { bubbles: true }));
+            });
+            await act(() => {
+                select.value = "context.md";
+                select.dispatchEvent(new browser.Event("change", { bubbles: true }));
+            });
+            assertEquals(tab().getAttribute("aria-selected"), "true");
+            assertEquals(Boolean(button("Approve & Execute")), true);
+            await act(() => button("Approve & Execute").click());
+            assertEquals(
+                submitted[0].documents.map((document) => document.planId),
+                ["overview", "child"],
+            );
+        },
+        packagePayload.linkedFiles["context.md"],
+        {
+            ...packagePayload,
+            sequenceDocuments: [
+                {
+                    planId: "overview",
+                    planName: "sequence",
+                    plan: packagePayload.linkedFiles["context.md"],
+                    frontmatter: { classification: "PROJECT" },
+                },
+                {
+                    planId: "child",
+                    planName: "sequence/child",
+                    plan: "# Child Plan\n\nChild body\n",
+                    frontmatter: { classification: "PLANNED_CHANGE" },
+                },
+            ],
+        },
+    );
+});
+
+test("package evidence links open canonical context in the shared reader without navigation", async () => {
+    const nativeFetch = globalThis.fetch;
+    await withReview(
+        async ({ browser, container }) => {
+            const select = container.querySelector("#review-document");
+            await act(() => {
+                select.value = "validation.md";
+                select.dispatchEvent(new browser.Event("change", { bubbles: true }));
+            });
+            const fallbackFetch = globalThis.fetch;
+            globalThis.fetch = (url, options) =>
+                String(url).startsWith("data:") ? nativeFetch(url, options) : fallbackFetch(url, options);
+            const link = [...container.querySelectorAll("a")].find(
+                (node) => !node.closest("[hidden]") && node.textContent === "Context",
+            );
+            await act(async () => {
+                link.click();
+                await new Promise((resolve) => setTimeout(resolve, 50));
+            });
+            assertStringIncludes(
+                [...browser.document.querySelectorAll("diffs-container")]
+                    .map((node) => node.shadowRoot?.textContent || "")
+                    .join(""),
+                "Home context prose.",
+            );
+            assertEquals(browser.location.pathname, "/review");
+        },
+        packagePayload.linkedFiles["context.md"],
+        packagePayload,
+    );
+});

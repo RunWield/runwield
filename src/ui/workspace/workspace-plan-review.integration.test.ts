@@ -105,7 +105,10 @@ test("owner requests retain admitted document identity and reject stale saves wi
         equal(parent.status, 200);
         assert((await parent.json()).contents.includes("Edited in another tab"));
 
-        equal((await handler(new Request(`${links}../../outside.md`, { headers }))).status, 404);
+        const repositoryReadme = await handler(new Request(`${links}../../README.md&base=docs/plans`, { headers }));
+        equal(repositoryReadme.status, 200);
+        assert((await repositoryReadme.json()).contents.includes("package fixture"));
+        equal((await handler(new Request(`${links}../../../outside.md&base=docs/plans`, { headers }))).status, 403);
         const page = await handler(new Request(`${origin}/projects/${project.projectId}/plans/plan-one`, { headers }));
         equal(page.status, 200);
         assert((await page.text()).includes("Edited in another tab"));
@@ -135,6 +138,60 @@ test("owner requests retain admitted document identity and reject stale saves wi
     } finally {
         await app?.close();
         store.close();
+        await f.cleanup();
+    }
+});
+
+test("document reads keep the revision paired with the displayed bytes during external edits", async () => {
+    const { packageFixture, create } = await import("../../shared/testing/plan-package-fixture.ts");
+    const { withPackageWorkflow } = await import("../../shared/workflow/package-workflow.ts");
+    const { readPlanDocuments, savePlanDocument } = await import("../../shared/workflow/plan-documents.ts");
+    const { writeFile, rename } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    const { equal } = await import("node:assert/strict");
+    const f = await packageFixture();
+    try {
+        const plan = await create(f.identity);
+        await withPackageWorkflow(
+            f.root,
+            { identity: f.identity, planId: "plan-one", expectedRevision: 1 },
+            async () => {
+                const first = await readPlanDocuments("plan-one");
+                const second = await savePlanDocument(
+                    "plan-one",
+                    "context.md",
+                    first.revision,
+                    "# External revision\n",
+                );
+                const revisions = new Map([
+                    [first.body, first.revision],
+                    [second.body, second.revision],
+                ]);
+                let running = true;
+                const writer = (async () => {
+                    while (running) {
+                        for (const body of revisions.keys()) {
+                            await writeFile(join(plan.path, "editor-save.tmp"), body);
+                            await rename(join(plan.path, "editor-save.tmp"), join(plan.path, "context.md"));
+                        }
+                    }
+                })();
+                try {
+                    for (let index = 0; index < 30; index++) {
+                        const current = await readPlanDocuments("plan-one");
+                        equal(
+                            current.revision,
+                            revisions.get(current.body),
+                            "Revision must describe the returned bytes",
+                        );
+                    }
+                } finally {
+                    running = false;
+                    await writer;
+                }
+            },
+        );
+    } finally {
         await f.cleanup();
     }
 });

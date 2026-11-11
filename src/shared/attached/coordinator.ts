@@ -1,3 +1,6 @@
+import { readPlanDocuments } from "../workflow/plan-documents.ts";
+import { readWorkRecordById, searchWorkRecords, formatWorkRecordReadResult } from "../work-records/search.ts";
+import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
 import { currentPackageSelection } from "../workflow/package-workflow.ts";
 /**
  * @module shared/attached/coordinator
@@ -247,7 +250,7 @@ async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNe
                 ? {
                       planRevision: packagePlan.revision,
                       documentAccess:
-                          "This Plan is stored outside the checkout. Use an existing host-authorized root grant. If the host denies access, request permission for the displayed Plan directory and stop this action until granted; do not copy or link it into the repository.",
+                          "Read the canonical Plan with read_plan using this workflowId and actionId. Core supplies its text and revision without host filesystem access. Follow every page; do not create a repository copy or link.",
                   }
                 : {}),
             executionCwd,
@@ -1949,7 +1952,8 @@ export async function readAttachedAction(envelope: AttachedActionReadEnvelope) {
     if (isBlockingCompatibility(compatibility)) {
         return { ok: false as const, rejection: rejection(compatibility.status, compatibility.message) };
     }
-    const current = await readStatus(envelope);
+    const documentRead = ["read_plan", "work_record_read", "work_record_search"].includes(envelope.content);
+    const current = await readStatus(documentRead ? { ...envelope, inspectOnly: true } : envelope);
     if (!current.ok) return { ok: false as const, rejection: current.rejection };
     const workflow = current.workflow;
     const action = workflow.nextAction;
@@ -1967,6 +1971,74 @@ export async function readAttachedAction(envelope: AttachedActionReadEnvelope) {
         };
     }
     const identity = { workflowId: workflow.workflowId, revision: workflow.revision, actionId: envelope.actionId };
+    if (documentRead) {
+        try {
+            const cwd = workflow.execution?.executionCwd || envelope.projectRoot;
+            const accessMode = roleForAction(action) === "recorder" ? "all" : "current";
+            let text: string;
+            let planRevision: string | undefined;
+            let canonicalMarkdown: string | undefined;
+            if (envelope.content === "read_plan") {
+                if (!workflow.plan) throw new Error("This action has no selected Plan.");
+                if (currentPackageSelection()) {
+                    const document = await readPlanDocuments(workflow.plan.planId, envelope.resource);
+                    text = document.body;
+                    planRevision = document.revision;
+                } else {
+                    if (envelope.resource && envelope.resource !== "context.md")
+                        throw new Error("This Plan has no separate document.");
+                    const plan = await loadPlan(cwd, workflow.plan.planName);
+                    if (!plan || plan.attrs.planId !== workflow.plan.planId)
+                        throw new Error("The selected Plan is unavailable.");
+                    text = plan.body;
+                    planRevision = plan.revision;
+                }
+            } else if (envelope.content === "work_record_read") {
+                const record = await readWorkRecordById(cwd, envelope.recordId!, { accessMode });
+                text = formatWorkRecordReadResult(record);
+                canonicalMarkdown = record.markdown;
+            } else {
+                const result = await searchWorkRecords(cwd, envelope.query!, {
+                    accessMode,
+                    mnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
+                });
+                text = JSON.stringify({
+                    accessMode,
+                    records: result.records,
+                    staleRecordIds: result.staleRecordIds,
+                });
+            }
+            const documentRevision = createHash("sha256")
+                .update(
+                    JSON.stringify({
+                        content: envelope.content,
+                        resource: envelope.resource || "context.md",
+                        planRevision,
+                        canonicalMarkdown,
+                        text,
+                    }),
+                )
+                .digest("hex");
+            if (envelope.documentRevision && envelope.documentRevision !== documentRevision)
+                return {
+                    ok: false as const,
+                    rejection: rejection("revision_conflict", "The document changed. Restart the read at offset zero."),
+                };
+            return {
+                ok: true as const,
+                ...identity,
+                documentRevision,
+                ...(planRevision && { planRevision, planId: workflow.plan?.planId }),
+                accessMode,
+                ...readTextPage(text, envelope),
+            };
+        } catch (error) {
+            return {
+                ok: false as const,
+                rejection: rejection("invalid_input", error instanceof Error ? error.message : String(error)),
+            };
+        }
+    }
     if (["prompt", "execution_report", "repair_report"].includes(envelope.content)) {
         if (
             (envelope.offsetBytes !== undefined &&

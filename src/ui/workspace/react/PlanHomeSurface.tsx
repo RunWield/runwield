@@ -1,4 +1,5 @@
 // @ts-nocheck: Workspace React islands compile TSX, but this module uses JSDoc-style JavaScript only.
+import { CodeFilePopout } from "@plannotator/ui/components/CodeFilePopout.tsx";
 import { PlanBodyEditor } from "../islands/PlanBodyEditor.jsx";
 import { submitWorkflowAction } from "../browser/workflow-action.ts";
 
@@ -72,6 +73,8 @@ function buildPresentation(payload, progress) {
 
 export function PlanHomeSurface({ payload, presentation = "standalone" }) {
     const [document, setDocument] = useState(payload.packageDocument || null);
+    const [fragment, setFragment] = useState("");
+    const [linkedFile, setLinkedFile] = useState(null);
     const [documentError, setDocumentError] = useState("");
     const [documentLoading, setDocumentLoading] = useState(false);
     async function selectDocument(name) {
@@ -79,6 +82,40 @@ export function PlanHomeSurface({ payload, presentation = "standalone" }) {
         setDocumentError("");
         try {
             setDocument(await ownerFetch(`${payload.documentUrl}/${encodeURIComponent(name)}`));
+        } catch (error) {
+            setDocumentError(error.message);
+        } finally {
+            setDocumentLoading(false);
+        }
+    }
+    useEffect(() => {
+        const url = new URL(globalThis.location.href);
+        const resource = url.searchParams.get("document");
+        if (payload.documentUrl && resource) void selectDocument(resource);
+        setFragment(url.hash.slice(1));
+    }, [payload.documentUrl]);
+    async function openDocumentLink(target) {
+        setDocumentError("");
+        setDocumentLoading(true);
+        try {
+            const base = `docs/plans/${document.planName}.md`.replace(/\/[^/]+$/, "");
+            const params = new URLSearchParams({ planId: document.planId, path: target, base });
+            const projectUrl = payload.documentUrl.slice(0, payload.documentUrl.lastIndexOf("/plans/"));
+            const result = await ownerFetch(`${projectUrl}/files/content?${params}`);
+            const hash = target.includes("#") ? target.slice(target.indexOf("#") + 1) : "";
+            if (result.planDocument) {
+                if (result.planDocument.planId !== document.planId) {
+                    const home = projectUrl.replace(/^\/api\/owner/, "");
+                    globalThis.location.assign(
+                        `${home}/plans/${encodeURIComponent(result.planDocument.planId)}?document=${encodeURIComponent(result.planDocument.resource)}${hash ? `#${hash}` : ""}`,
+                    );
+                } else {
+                    setDocument(result.planDocument);
+                    setFragment(hash);
+                }
+            } else {
+                setLinkedFile(result);
+            }
         } catch (error) {
             setDocumentError(error.message);
         } finally {
@@ -175,12 +212,11 @@ export function PlanHomeSurface({ payload, presentation = "standalone" }) {
                         className="rw-plan-documents"
                         aria-label="Plan documents"
                         onClick={(event) => {
-                            const anchor = event.target.closest?.("a");
-                            const target = anchor?.getAttribute("href");
-                            if (document.documents.some((entry) => entry.name === target)) {
-                                event.preventDefault();
-                                void selectDocument(target);
-                            }
+                            if (event.defaultPrevented) return;
+                            const target = event.target.closest?.("a")?.getAttribute("href");
+                            if (!target || /^(?:#|\/\/|[a-z][a-z0-9+.-]*:)/i.test(target)) return;
+                            event.preventDefault();
+                            void openDocumentLink(target);
                         }}
                     >
                         <div className="rw-plan-document-controls">
@@ -210,6 +246,14 @@ export function PlanHomeSurface({ payload, presentation = "standalone" }) {
                             {documentLoading ? "Loading document…" : `Revision ${document.revision.slice(0, 12)}`}
                         </p>
                         {documentError && <p role="alert">{documentError}</p>}
+                        {linkedFile && (
+                            <CodeFilePopout
+                                open
+                                onClose={() => setLinkedFile(null)}
+                                filepath={linkedFile.filepath}
+                                contents={linkedFile.contents}
+                            />
+                        )}
                         <PlanBodyEditor
                             key={`${document.resource}:${document.revision}`}
                             plan={{
@@ -221,6 +265,11 @@ export function PlanHomeSurface({ payload, presentation = "standalone" }) {
                                 capabilities: { bodyEditing: document.writable },
                                 documentUrl: `${payload.documentUrl}/${encodeURIComponent(document.resource)}`,
                                 onSaved: setDocument,
+                                resolveLocalLink: (target) => ({
+                                    kind: "open",
+                                    open: () => void openDocumentLink(target),
+                                }),
+                                fragment,
                             }}
                         />
                     </section>

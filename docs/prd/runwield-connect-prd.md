@@ -316,14 +316,23 @@ extend the [Codex qualification evidence](#codex-acceptance) or claim an unobser
 
 ### Shared Plan and verification outcomes
 
-**Internally admitted package path:** Connect submits and reads the same home Plan identity through Core. Implementation
-context reports the authoritative document path and revision. A restricted host must use an existing authorized root;
-if it denies access and offers no authorized document route, the action stops with a request for that directory's
-permission. Core does not grant host roots or create repository links or copies. The host owns enforcement of its
-filesystem permissions. Public default package admission remains target scope.
+**Internally admitted package path:** Connect reads the same home Plan identity through Core's `read_plan` tool.
+Workers receive explicit instructions to read the current action's Plan before acting, including validation workers.
+`work_record_search` and `work_record_read` reuse Core's canonical Work Record retrieval and role-based current/all
+policy. A stable record ID identifies a Work Record within the workflow's Project; a filesystem path never authorizes
+access. Search hydrates canonical records and reports stale index candidates and status/supersession notices.
 
-**Acceptance:** Submit an internally admitted home Plan without creating repository Plan Markdown, then read the same
-identity in a fresh admitted call. A host permission failure must not be reported as successful Plan access.
+**Requirement: Deliver canonical documents without host home access.** Current action identity scopes each read.
+Bounded UTF-8 pages include a document revision; continuation requires that revision and rejects changed input. Reads
+and rejected requests do not advance workflow or modify canonical documents. The external host authorizes the MCP
+call; Core supplies the text from its own authorized store. If the host denies tools and no authorized route remains,
+the worker stops dependent work. Core does not grant host roots or create repository copies or links. Public default
+package admission remains target scope.
+
+**Acceptance:** A restricted host unable to read canonical home files can read the selected Plan and searchable Work
+Records through the real Core MCP carrier. Invalid paths, stale action identities, unavailable record IDs and stale
+page revisions return no content and preserve documents and workflow state. Current-only roles cannot read archived
+or superseded records; Recorder retains all-status access. Reconnect reads the same edited canonical content.
 
 **Scope and maturity:** The Claude FEATURE Preview delivers Plan review, Feedback, approval, and readiness through
 Plannotator and Core. Review decisions are durable before browser acknowledgment. Claude retrieves Feedback and image

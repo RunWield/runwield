@@ -428,7 +428,13 @@ export async function ownerProjectFileContentApi(ctx) {
         const planId = url.searchParams.get("planId");
         if (planId) {
             const document = await readPlanDocumentLink(planId, url.searchParams.get("path") || "");
-            if (document) return ownerJson({ codeFile: true, contents: document.body, filepath: document.resource });
+            if (document)
+                return ownerJson({
+                    codeFile: true,
+                    contents: document.body,
+                    filepath: document.resource,
+                    planDocument: document,
+                });
         }
         return await reviewFileContentApi(ctx.req, { cwd: root });
     } catch (error) {

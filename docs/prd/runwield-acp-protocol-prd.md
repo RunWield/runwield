@@ -311,11 +311,14 @@ requirement.
 
 **Internally admitted package path:** The existing ACP Session workflow reads the same Core home Plan as Workspace and
 the terminal workflow. Protocol `session/new` and `session/prompt` with `/load-plan` expose the current document after a
-Core edit. Existing capability negotiation and client permission contracts remain unchanged. No client-root grant is
-inferred from package presence. Public default admission remains the legacy path until activation.
+Core edit. ACP keeps reasoning and canonical reads inside Core; it does not require the client to read home Plan files.
+Connect MCP document tools are a separate carrier, not new ACP methods. Existing capability negotiation and client
+permission contracts remain unchanged. No client-root grant is inferred from package presence. Public default admission remains the legacy path until activation.
 
 **Acceptance:** Load an admitted Plan through the ACP protocol and view its details after another Core surface edits
-it; the displayed text must be current and no repository Plan mirror may become authoritative.
+it with client filesystem capabilities disabled; the displayed text must be current without a client filesystem or
+permission request. An invalid Session request returns no Plan content and leaves canonical bytes unchanged. No
+repository Plan mirror may become authoritative.
 
 **Scope and maturity:** Working end-to-end personal workflows through OpenAB with Discord and its other supported chat
 platforms, confirmed by the owner on 2026-10-06. The Telegram journey below is a representative channel scenario, not a

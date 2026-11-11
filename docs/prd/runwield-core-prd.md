@@ -497,6 +497,15 @@ conditions for reconsideration. Routine choices receive brief treatment; individ
   direction would involve. A proposed experiment states its observable result, its effect on the recommendation, and
   whether its code is disposable.
 
+### Canonical document delivery to external hosts
+
+Core's Connect document operations reuse the Plan and Work Record owners rather than granting hosts direct home
+filesystem access. Plan reads select the workflow's Plan; Work Record search/read select stable record IDs within its
+Project and preserve current/all role policy, status and supersession notices. Action identity and document revision
+bind paged reads. Rejected requests disclose no document content and leave canonical bytes and workflow state intact.
+Search may refresh its derived index without becoming canonical authority. See
+[Connect outcomes](runwield-connect-prd.md#shared-plan-and-verification-outcomes) for host acceptance scenarios.
+
 ### Plan lifecycle
 
 **Scope and maturity:** Current baseline. A status is not evidence that every validation journey succeeds. The

@@ -30,7 +30,7 @@ dependencies:
     - "external-plan-store/move-work-records-with-delivery-copies"
 targetBranch: "epic/external-plan-store"
 userVerifiedAt: null
-status: "implemented"
+status: "reviewed"
 ---
 
 # Expose Home Plans across User Surfaces

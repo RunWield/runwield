@@ -152,6 +152,9 @@ test("the CLI and MCP return equal lifecycle results for the same mutation input
                 "get_instructions",
                 "get_artifact",
                 "get_pending_chat",
+                "read_plan",
+                "work_record_read",
+                "work_record_search",
             ],
         );
         for (const tool of tools.tools) {

@@ -86,6 +86,9 @@ test("fresh MCP status restores the same pending round and transport close stops
                     "get_instructions",
                     "get_artifact",
                     "get_pending_chat",
+                    "read_plan",
+                    "work_record_read",
+                    "work_record_search",
                 ],
             );
             assertEquals(tools.tools.find(({ name }) => name === "status")?.inputSchema.required, []);

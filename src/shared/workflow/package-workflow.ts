@@ -362,6 +362,16 @@ export async function packageController(plan: LoadedPlanPackage): Promise<Workfl
     const evidence = ref ? await readPackageControllerEvidence(currentPackageSelection()!.identity, ref) : {};
     return { ...evidence, ...plan.metadata.controller };
 }
+/** The revision and displayed document bytes must come from the same package input. */
+export function packageWorkflowRevision(plan: LoadedPlanPackage): string {
+    return hash(
+        JSON.stringify({
+            revision: plan.metadata.revision,
+            documents: plan.documents.map(({ name, hash }) => ({ name, hash })),
+        }),
+    );
+}
+
 export async function loadPackageWorkflowPlan(planName: PackageWorkflowTarget) {
     const plan = await selectedPackage(planName);
 
@@ -417,12 +427,7 @@ export async function loadPackageWorkflowPlan(planName: PackageWorkflowTarget) {
         body: markdown,
         attrs,
         controllerRevision: plan.metadata.revision,
-        revision: hash(
-            JSON.stringify({
-                revision: plan.metadata.revision,
-                documents: plan.documents.map(({ name, hash }) => ({ name, hash })),
-            }),
-        ),
+        revision: packageWorkflowRevision(plan),
         hasFrontMatter: false,
         frontMatterRevision: undefined,
         readAvailability: undefined,
@@ -557,8 +562,8 @@ export async function reservePackageExecution(
 /** Retain an explicit admission across requests; resolve fresh revisions under its verified owner. */
 export function capturePackageWorkflowAccess() {
     const admitted = currentPackageSelection();
-    return async function access<T>(cwd: string, run: () => Promise<T>): Promise<T> {
-        if (!admitted) return await sources.exit(() => withoutWorkRecordOwner(run));
+    return async function access<T>(cwd: string | undefined, run: () => Promise<T>): Promise<T> {
+        if (!admitted || !cwd) return await sources.exit(() => withoutWorkRecordOwner(run));
         const inspected = inspectProjectIdentity(cwd);
         if (
             inspected.kind !== "existing" ||

@@ -192,6 +192,15 @@ test("ordinary Core browser review rejects a concurrent package edit and reloads
         const surface = await ready;
         const page = await fetch(surface.url);
         equal(page.status, 200);
+        const fileUrl = new URL(surface.url);
+        fileUrl.pathname = "/api/file-content";
+        fileUrl.searchParams.set("path", "../../README.md");
+        fileUrl.searchParams.set("base", "docs/plans");
+        const repositoryReadme = await fetch(fileUrl);
+        equal(repositoryReadme.status, 200);
+        assert((await repositoryReadme.json()).contents.includes("package fixture"));
+        fileUrl.searchParams.set("path", "../../../outside.md");
+        equal((await fetch(fileUrl)).status, 403);
         const first = await withPackageWorkflow(
             f.root,
             { identity: f.identity, planId: "plan-one", expectedRevision: 1 },

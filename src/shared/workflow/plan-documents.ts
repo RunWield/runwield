@@ -2,7 +2,8 @@ import { posix } from "node:path";
 import {
     currentPackageSelection,
     selectedPackage,
-    loadPackageWorkflowPlan,
+    packageWorkflowRevision,
+    packageController,
     packageWorkflowLocks,
 } from "./package-workflow.ts";
 import { savePlanPackageDocument, listPlanPackages } from "../plan-package-store.ts";
@@ -14,15 +15,15 @@ export async function readPlanDocuments(planId: string, name: string = "context.
     const plan = await selectedPackage({ planId });
     const document = plan.documents.find((entry) => entry.name === name);
     if (!document) throw new Error("Plan document not found.");
-    const view = await loadPackageWorkflowPlan({ planId });
+    const controller = await packageController(plan);
     return {
         planId: plan.metadata.planId,
         planName: plan.metadata.name,
         resource: document.name,
-        revision: view.revision,
+        revision: packageWorkflowRevision(plan),
         metadataRevision: plan.metadata.revision,
         body: new TextDecoder().decode(document.bytes),
-        writable: !isSharedPlanLocked(view.attrs),
+        writable: !isSharedPlanLocked(controller),
         documents: plan.documents.map((entry) => ({ name: entry.name, role: entry.role })),
     };
 }
@@ -31,12 +32,12 @@ export async function savePlanDocument(planId: string, name: string, revision: s
     return await packageWorkflowLocks([{ planId }], async () => {
         const selection = currentPackageSelection();
         if (!selection) throw new Error("Plan document access requires Project admission.");
-        const current = await readPlanDocuments(planId, name);
-        const view = await loadPackageWorkflowPlan({ planId });
-        assertSharedPlanWriteAllowed(view.attrs);
-        if (current.revision !== revision) throw new StalePlanWriteError(revision, current.revision);
         const plan = await selectedPackage({ planId });
-        const document = plan.documents.find((entry) => entry.name === name)!;
+        const document = plan.documents.find((entry) => entry.name === name);
+        if (!document) throw new Error("Plan document not found.");
+        assertSharedPlanWriteAllowed(await packageController(plan));
+        const currentRevision = packageWorkflowRevision(plan);
+        if (currentRevision !== revision) throw new StalePlanWriteError(revision, currentRevision);
         await savePlanPackageDocument(selection.identity, planId, document.name, document.hash, body);
         return await readPlanDocuments(planId, name);
     });
@@ -50,7 +51,7 @@ export async function readPlanDocumentLink(planId: string, target: string) {
     if (name.startsWith("/") || name.includes("\\") || /^[a-z]+:/i.test(name))
         throw new Error("Document link is outside this Project.");
     const resolved = posix.normalize(posix.join(posix.dirname(plan.metadata.name), name));
-    if (resolved === ".." || resolved.startsWith("../")) throw new Error("Document link is outside this Project.");
+    if (resolved === ".." || resolved.startsWith("../")) return null;
     const selection = currentPackageSelection()!;
     const catalog = await listPlanPackages(selection.identity);
     const linked = catalog.packages.find((entry) => `${entry.metadata.name}.md` === resolved);

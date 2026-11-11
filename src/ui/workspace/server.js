@@ -297,9 +297,10 @@ export function createOwnerWorkspaceApp(options) {
             }
             const projectRoute = /^\/(?:api\/owner\/)?projects\/([^/]+)(?:\/|$)/.exec(path);
             const responseRoot = projectRoute
-                ? requireOwnerProjectRoot(store, decodeURIComponent(projectRoute[1]))
+                ? store.getProjectById(decodeURIComponent(projectRoute[1]))?.currentRoot
                 : admissionRoot;
-            let response = responseRoot ? await packageAccess(responseRoot, () => ctx.next()) : await ctx.next();
+            // Handlers enforce availability; settings and recovery actions must work without a usable root.
+            let response = await packageAccess(responseRoot, () => ctx.next());
             if (
                 ctx.state.ownerDevice &&
                 ctx.req.method === "GET" &&

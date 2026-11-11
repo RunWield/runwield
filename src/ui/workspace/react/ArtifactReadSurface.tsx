@@ -39,6 +39,7 @@ export function ArtifactReadSurface({
     payload,
     workflowSidebar = null,
     documentContent = null,
+    onOpenLinkedDoc = undefined,
     showLogo = true,
     contentsInitiallyOpen = true,
     embedded = false,
@@ -323,6 +324,8 @@ export function ArtifactReadSurface({
                                                     gridEnabled={gridEnabled}
                                                     maxWidth={planMaxWidth}
                                                     imageBaseDir={initialPayload.imageBaseDir}
+                                                    onOpenLinkedDoc={onOpenLinkedDoc}
+                                                    onOpenCodeFile={onOpenLinkedDoc}
                                                     readOnly
                                                 />
                                             )}

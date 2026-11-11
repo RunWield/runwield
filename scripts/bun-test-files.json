@@ -226,6 +226,7 @@
     "src/plan-store.test.js",
     "src/shared/agent-browser-session.test.ts",
     "src/shared/attached/action-content.test.ts",
+    "src/shared/attached/document-content.test.ts",
     "src/shared/attached/code-review-chat.test.ts",
     "src/shared/attached/codex-dispatch.test.ts",
     "src/shared/attached/codex-role-settings.test.ts",

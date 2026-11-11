@@ -254,6 +254,17 @@ test("ACP protocol load-plan reads the same admitted home Plan after a document 
             try {
                 await sendMessage(server, {
                     jsonrpc: "2.0",
+                    id: "package-initialize",
+                    method: "initialize",
+                    params: {
+                        protocolVersion: 1,
+                        clientCapabilities: { fs: { readTextFile: false, writeTextFile: false } },
+                    },
+                });
+                const initialized = await readThroughResponse(server, "package-initialize");
+                assert(initialized.response.result, JSON.stringify(initialized));
+                await sendMessage(server, {
+                    jsonrpc: "2.0",
                     id: "package-new",
                     method: "session/new",
                     params: { cwd: projectRoot, mcpServers: [] },
@@ -278,6 +289,23 @@ test("ACP protocol load-plan reads the same admitted home Plan after a document 
                     JSON.stringify(details.messages).includes("Edited shared home revision"),
                     JSON.stringify(details),
                 );
+                assert(
+                    ![...loaded.messages, ...details.messages].some(
+                        (message) =>
+                            typeof message.method === "string" &&
+                            (message.method.startsWith("fs/") || message.method === "session/request_permission"),
+                    ),
+                    "Core document delivery must not ask the client to read home or grant roots",
+                );
+                await sendMessage(server, {
+                    jsonrpc: "2.0",
+                    id: "denied-session",
+                    method: "session/prompt",
+                    params: { sessionId: "not-authorized", prompt: [{ type: "text", text: "/load-plan one" }] },
+                });
+                const denied = await readThroughResponse(server, "denied-session");
+                assert(denied.response.error, JSON.stringify(denied));
+                assert(!JSON.stringify(denied).includes("Edited shared home revision"));
                 await prompt("Cancel");
                 await withPackageWorkflow(projectRoot, selection, async () => {
                     assertEquals((await loadPackageWorkflowPlan({ planId: "plan-one" })).revision, revision.revision);

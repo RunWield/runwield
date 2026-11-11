@@ -58,3 +58,16 @@ between replies. A process restart restores pending turns, not a permanent trans
 
 Stay in Claude Code and the browser. Use no RunWield CLI or TUI commands. RunWield owns durable review decisions; Claude
 Code owns every model call.
+
+## Canonical document access
+
+When the workflow has a selected Plan, workers read it with `read_plan({ workflowId, actionId })` before acting. Use `resource` for a separate
+Plan document. Search canonical Work Records with `work_record_search({ workflowId, actionId, query })`, then read a
+result with `work_record_read({ workflowId, actionId, recordId })`. Core scopes these tools to the workflow Project
+and current action; Recorder can read all statuses, while other roles read current usable records.
+
+These tools supply content through Core without host filesystem access to home. Continue `nextOffsetBytes` until
+`truncated` is false, carrying `documentRevision` on every continuation page. Restart from zero after
+`revision_conflict`; do not combine pages from different revisions. Search pages contain JSON; parse only after all
+pages arrive. Host denial of these tools is still denial: stop dependent work if no authorized route remains. Do not
+create a repository copy or symlink, request broad home access, or treat a path as a grant.

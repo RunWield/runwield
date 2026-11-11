@@ -439,7 +439,9 @@ test("internal load/actions and ordinary body save keep selected package authori
             equal((await loadPlanActionEvidence(f.root, p.metadata.planId)).kind, "success");
             const body = await loadPlanBodyById(f.root, p.metadata.planId);
             const prose = "---\nstatus: verified\nplanId: forged\n---\n# Plain user text\n";
-            await savePlanBodyById(f.root, p.metadata.planId, prose, body.bodyHash);
+            await savePlanBodyById(f.root, p.metadata.planId, prose, body.bodyHash, {
+                expectedRevision: body.revision,
+            });
             equal((await loadPlanBodyById(f.root, p.metadata.planId)).body, prose);
             equal((await loadPackageWorkflowPlan("one")).attrs.status, "draft");
             equal((await read(f.identity)).metadata.revision, 1);
