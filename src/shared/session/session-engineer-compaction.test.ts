@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { createAssistantMessageEventStream, fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { estimateTokens, SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { attachSessionEventSubscribers, buildAgentSession, runPrompt } from "./session.js";
+import { attachSessionEventSubscribers, buildAgentSession, runPrompt } from "./session.ts";
 
 function answer(tokens: number) {
     const message = fauxAssistantMessage(fauxText("Answer"));

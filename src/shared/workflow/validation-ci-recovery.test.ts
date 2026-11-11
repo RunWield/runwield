@@ -7,7 +7,7 @@ import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { type PlanFrontMatterInput, loadPlan, savePlan } from "../../plan-store.ts";
 import { HostedSession } from "../session/hosted-session.ts";
-import { ensureRootAgentSession } from "../session/session.js";
+import { ensureRootAgentSession } from "../session/session.ts";
 import { recordPlanEvent } from "./plan-lifecycle.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import {

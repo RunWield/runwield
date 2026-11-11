@@ -21,7 +21,7 @@ loading.
 
 RunWield builds its own Agent tool set and resource loader. It does not wire the new codemode and tool-search built-ins.
 Its TUI, Workspace, and ACP surfaces do not automatically inherit Pi's own interface changes. Sources:
-[Session construction](../../src/shared/session/session.js), [Core PRD](../prd/runwield-core-prd.md),
+[Session construction](../../src/shared/session/session.ts), [Core PRD](../prd/runwield-core-prd.md),
 [Pi MCP SDK documentation](https://pi.dev/docs/latest/mcp#sdk).
 
 ### 1. Support the new OpenAI subscription route without disrupting Codex
@@ -61,7 +61,7 @@ machinery is not evidence of a supported user-extension workflow.
 Pi now returns `handled` or `queued` from `steer()` and `followUp()`. RunWield discards that return value and reconciles
 queue contents separately. This is an API difference, not proof of a user-visible defect.
 
-Sources: [Session steering](../../src/shared/session/session.js),
+Sources: [Session steering](../../src/shared/session/session.ts),
 [queue owner](../../src/shared/session/runtime/queues.ts), installed `pi-coding-agent/dist/core/agent-session.d.ts`,
 [release notes](https://pi.dev/changelog/releases/0.99.0).
 
@@ -77,7 +77,7 @@ RunWield adds every configured root MCP tool to the active tool set. It also gen
 and context estimate. Pi provides deferred tools and `tool_search`, which can declare matching tools on a later model
 request.
 
-Sources: [tool composition and prompt generation](../../src/shared/session/session.js),
+Sources: [tool composition and prompt generation](../../src/shared/session/session.ts),
 [Pi tool exposure](https://pi.dev/docs/latest/extensions#tool-exposure),
 [Pi MCP exposure](https://pi.dev/docs/latest/mcp#exposure).
 
@@ -175,7 +175,7 @@ the stream.
 
 Sources: [Pi provider stream event](https://pi.dev/docs/latest/extensions#provider_stream_event),
 [RunWield provider errors](../../src/shared/session/provider-errors.ts),
-[Session stream setup](../../src/shared/session/session.js).
+[Session stream setup](../../src/shared/session/session.ts).
 
 **Recommendation:** Consider opt-in, bounded, redacted diagnostics. Keep ordinary user notices concise. This is not an
 automatic retry policy or a reason to retain raw prompts indefinitely.

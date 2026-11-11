@@ -40,7 +40,7 @@ import { createReplayEvents } from "./session-transcript-projection.ts";
 import { runActiveAgentTurn } from "./agent-switching.ts";
 import { listPendingWorkflowToolEvents } from "../workflow/workflow-tool-events.ts";
 import { createValidationSessionPort } from "../workflow/validation-session-adapter.ts";
-import { abortActiveSession, ensureRootAgentSession, runIsolatedAgentSession, runRootTurn } from "./session.js";
+import { abortActiveSession, ensureRootAgentSession, runIsolatedAgentSession, runRootTurn } from "./session.ts";
 
 interface AgyFixtureCall {
     args: string[];

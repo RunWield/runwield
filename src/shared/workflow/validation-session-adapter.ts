@@ -2,7 +2,7 @@ import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { type AgentMessage } from "@earendil-works/pi-agent-core";
 import { type HostedSession } from "../session/hosted-session.ts";
-import { runIsolatedAgentSession } from "../session/session.js";
+import { runIsolatedAgentSession } from "../session/session.ts";
 import { readRequestAttemptEntries } from "../session/request-dispatch.ts";
 import { emitAssistantMessage, type RuntimeValidationProgress } from "../session/session-runtime-events.ts";
 import { requestHostedSessionInteraction } from "../session/session-runtime-interactions.ts";
@@ -66,7 +66,7 @@ import process from "node:process";
  * The options shape the pre-existing isolated-session boundary takes.
  *
  * Kept structurally identical to the shape `runIsolatedAgentSession` in
- * `session.js` consumes, so injected `semanticReviewPort` fixtures and the system
+ * `session.ts` consumes, so injected `semanticReviewPort` fixtures and the system
  * implementation both see exactly what they saw before the split.
  */
 export type IsolatedAgentSessionOptions = {

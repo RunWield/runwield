@@ -1,4 +1,4 @@
-import { steerAgentSessionWithPreparedInput, steerAgentSessionWithTarget } from ".././session.js";
+import { steerAgentSessionWithPreparedInput, steerAgentSessionWithTarget } from ".././session.ts";
 import { getRuntimeErrorMessage, RuntimeEventTypes } from ".././session-runtime-events.ts";
 
 import { getRuntimeRootAgentSession, isRuntimeAgentSession, toRuntimeQueuedMessage } from "./support.ts";

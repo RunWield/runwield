@@ -14,7 +14,7 @@ import {
     markRootAgentSwitch,
     runRootTurn,
     shouldReuseExistingRootSession,
-} from "./session.js";
+} from "./session.ts";
 import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "./session-runtime-events.ts";
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";

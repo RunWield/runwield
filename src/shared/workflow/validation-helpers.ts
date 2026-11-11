@@ -14,7 +14,7 @@ import { loadPlan } from "../../plan-store.ts";
 
 import { getAgentDisplayName } from "../session/agents.ts";
 
-import { runIsolatedAgentSession } from "../session/session.js";
+import { runIsolatedAgentSession } from "../session/session.ts";
 import { type LocalCIPort, runLocalCI } from "./validation-local-ci.ts";
 import { verifyPostMergeCandidatePublished } from "./validation-merge-verification.ts";
 import { buildValidationUserMessage } from "./validation-user-messages.ts";

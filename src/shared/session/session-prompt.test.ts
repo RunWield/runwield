@@ -1,3 +1,4 @@
+import { ok as assert } from "node:assert/strict";
 import { getCwd } from "../../constants.ts";
 import process from "node:process";
 import { Type } from "typebox";
@@ -40,7 +41,7 @@ import {
     runPrompt,
     runRootTurn,
     shouldBypassAutoCompactionForAssistantMessage,
-} from "./session.js";
+} from "./session.ts";
 import { HostedSession } from "./hosted-session.ts";
 import type { RequestAttemptEntry } from "./request-dispatch.ts";
 import type { ImageAttachment } from "./image-attachments.ts";
@@ -742,8 +743,8 @@ test("ensureRootAgentSession scopes real roots and transcripts to each HostedSes
         assertEquals(hostedB.getRootAgentSession(), rootB);
         assertEquals(hostedA.getRootAgentName(), "guide");
         assertEquals(hostedB.getRootAgentName(), "operator");
-        assertEquals(__getRootSessionMetadataForTests(rootA).projectStateContext, "context-a");
-        assertEquals(__getRootSessionMetadataForTests(rootB).projectStateContext, "context-b");
+        assertEquals(__getRootSessionMetadataForTests(rootA)!.projectStateContext, "context-a");
+        assertEquals(__getRootSessionMetadataForTests(rootB)!.projectStateContext, "context-b");
         assertEquals(hostedA.getAgentInfoStack()[0].displayName, "Guide");
         assertEquals(hostedB.getAgentInfoStack()[0].displayName, "Operator");
         assertEquals(rootA === rootB, false);
@@ -826,6 +827,7 @@ test("a runaway root turn is recorded as failed and a new instruction gets a fre
         });
 
         try {
+            assert("agent" in root);
             await assertRejects(
                 () =>
                     runRootTurn({

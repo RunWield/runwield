@@ -3,7 +3,7 @@ export {
     getConfiguredAgentThinkingLevel,
     listPromptTemplates,
     listSkills,
-} from "./session.js";
+} from "./session.ts";
 export { resolveSessionContinuation } from "./session-continuation.ts";
 export type { DeferredPlanExecution } from "./runtime/workflow-options.ts";
 export { generateInMemoryGuide } from "./runtime/guided-review.ts";

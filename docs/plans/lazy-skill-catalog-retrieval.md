@@ -4,7 +4,7 @@ classification: "PLANNED_CHANGE"
 complexity: "MEDIUM"
 summary: "Keep skill names and mandatory triggers resident while retrieving relevant descriptions and bodies through a deterministic skill catalog."
 affectedPaths:
-    - "src/shared/session/session.js"
+    - "src/shared/session/session.ts"
     - "src/shared/session/SYSTEM_PROMPT_TEMPLATE.md"
     - "src/shared/session/session-context-report.js"
     - "src/tools/registry.js"

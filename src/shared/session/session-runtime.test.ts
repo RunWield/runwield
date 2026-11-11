@@ -1,3 +1,34 @@
+import type {
+    RuntimeBusyChangedEvent,
+    RuntimeToolEndEvent,
+    RuntimeToolStartEvent,
+    RuntimeAssistantTextDeltaEvent,
+    RuntimeAssistantThinkingDeltaEvent,
+    RuntimeAssistantThinkingEndEvent,
+} from "./session-runtime-events.ts";
+import type { RunWieldModel } from "../models/model-registry.ts";
+import type { ExecutionSession } from "./execution-backend.ts";
+import type { DisposableLike } from "./hosted-session.ts";
+interface QueueFixtureEvent {
+    type: "queue_update";
+    steering: string[];
+    followUp: string[];
+}
+interface MutableTestSessionManager {
+    _rewriteFile?: () => void;
+    dispose?: () => void | Promise<void>;
+}
+import type { FauxResponseFactory, Context } from "@earendil-works/pi-ai";
+import type { AgentMessageHandler, AgentHandler } from "./agent-handler.ts";
+import type {
+    SessionRuntimeEvent,
+    RuntimeCommandCatalogChangedEvent,
+    RuntimeUserMessageEvent,
+    RuntimeQueuedMessageEvent,
+    RuntimeAttentionRequestedEvent,
+} from "./session-runtime-events.ts";
+import type { ActiveExecutionWorkflow } from "./execution-workflow-session.ts";
+import type { LastPlanReviewReference } from "./file-session-store-types.ts";
 import { getRuntimeRootAgentSession } from "./runtime/support.ts";
 import { delimiter } from "node:path";
 import {
@@ -39,7 +70,7 @@ import { switchActiveAgent } from "./agent-switching.ts";
 import { RuntimeEventTypes } from "./session-runtime-events.ts";
 import { RuntimeInteractionTypes } from "./session-runtime-interactions.ts";
 import { createSessionRuntime, SessionRuntime, SessionTurnInProgressError } from "./session-runtime.ts";
-import { buildAgentSession, getRootSessionRebuildOptions } from "./session.js";
+import { buildAgentSession, getRootSessionRebuildOptions } from "./session.ts";
 import { createRootSessionManager, getRunWieldSessionDir, resolveCreatedRootSessionPath } from "./root-session.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
 import { sessionDirForRoot } from "./file-session-storage.ts";
@@ -53,6 +84,15 @@ import { buildSemanticRepairSegmentContinuation } from "../workflow/execution-se
 import { WORKFLOW_TOOL_EVENT_CUSTOM_TYPE } from "../workflow/workflow-tool-events.ts";
 import { getHomeDir, SUBAGENTS } from "../../constants.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
+
+interface DeferredVoidResult {
+    promise: Promise<void>;
+    resolve: () => void;
+}
+
+interface ConstructorOptions {
+    key: string;
+}
 
 let helperRoot = "";
 let priorHelperPath = "";
@@ -82,8 +122,7 @@ const RUNTIME_TEST_API = "session-runtime-faux";
 const RUNTIME_TEST_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 const RUNTIME_REPAIR_GIT_FIXTURE = defineCommittedGitFixture({ "README.md": "# Runtime repair fixture\n" });
 
-/** @type {ReturnType<typeof registerFauxProvider> | null} */
-let runtimeFauxProvider = null;
+let runtimeFauxProvider: ReturnType<typeof registerFauxProvider> | null = null;
 
 function runtimeProjectRoot() {
     const sandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
@@ -159,8 +198,7 @@ function ensureRuntimeModelFixture() {
     __resetSettingsForTests();
 }
 
-/** @param {ReturnType<typeof fauxAssistantMessage>[]} messages */
-function setRuntimeModelMessages(messages) {
+function setRuntimeModelMessages(messages: ReturnType<typeof fauxAssistantMessage>[]) {
     ensureRuntimeModelFixture();
     runtimeFauxProvider?.setResponses([
         ...messages.map((message) => () => message),
@@ -168,8 +206,7 @@ function setRuntimeModelMessages(messages) {
     ]);
 }
 
-/** @param {import('@earendil-works/pi-ai').FauxResponseFactory[]} factories */
-function setRuntimeModelResponseFactories(factories) {
+function setRuntimeModelResponseFactories(factories: FauxResponseFactory[]) {
     ensureRuntimeModelFixture();
     runtimeFauxProvider?.setResponses([
         ...factories,
@@ -177,16 +214,12 @@ function setRuntimeModelResponseFactories(factories) {
     ]);
 }
 
-/** @param {number} ms */
-function delay(ms) {
+function delay(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/**
- * True while the OS still has a process with this pid.
- * @param {number} pid
- */
-function processAlive(pid) {
+/** True while the OS still has a process with this pid. */
+function processAlive(pid: number) {
     try {
         process.kill(pid, "SIGCONT");
         return true;
@@ -200,11 +233,8 @@ function processAlive(pid) {
  * shell's exit settles before its SIGKILLed descendants are reaped, so a
  * single immediate probe can still observe them — and under CI load the
  * window is wide enough to fail a one-shot check.
- *
- * @param {number} pid
- * @param {number} [timeoutMs]
  */
-async function waitForProcessDeath(pid, timeoutMs = 5000) {
+async function waitForProcessDeath(pid: number, timeoutMs: number = 5000) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
         if (!processAlive(pid)) return true;
@@ -217,10 +247,8 @@ async function waitForProcessDeath(pid, timeoutMs = 5000) {
  * macOS can briefly report recursive temp cleanup as ENOTEMPTY/EBUSY while
  * filesystem metadata settles after a test's last writes. Retry boundedly so
  * cleanup flakiness does not fail an otherwise successful test.
- *
- * @param {string} path
  */
-async function removeTempDir(path) {
+async function removeTempDir(path: string) {
     for (let attempt = 0; attempt < 5; attempt += 1) {
         try {
             await fsRm(path, { recursive: true });
@@ -236,38 +264,32 @@ async function removeTempDir(path) {
     }
 }
 
-/**
- * @typedef {Object} RuntimePreparationBusySample
- * @property {string} message
- * @property {boolean | undefined} busy
- */
+export interface RuntimePreparationBusySample {
+    message: string;
+    busy: boolean | undefined;
+}
 
-/**
- * @typedef {Object} HandoffProviderRequest
- * @property {string} agentName
- * @property {string} messages
- * @property {number} imageCount
- */
+export interface HandoffProviderRequest {
+    agentName: string;
+    messages: string;
+    imageCount: number;
+}
 
-/** @typedef {Awaited<ReturnType<SessionRuntime["steerSession"]>>} SteeringResult */
+export type SteeringResult = Awaited<ReturnType<SessionRuntime["steerSession"]>>;
 
-/** @returns {{ promise: Promise<void>, resolve: () => void }} */
-function deferredVoid() {
-    /** @type {() => void} */
-    let resolve = () => {};
-    const promise = new Promise((done) => {
+function deferredVoid(): DeferredVoidResult {
+    let resolve: () => void = () => {};
+    const promise = new Promise<void>((done) => {
         resolve = () => done(undefined);
     });
     return { promise, resolve };
 }
 
-/**
- * @typedef {Object} RuntimeFixtureOptions
- * @property {SessionHost} [sessionHost]
- */
+export interface RuntimeFixtureOptions {
+    sessionHost?: SessionHost;
+}
 
-/** @param {RuntimeFixtureOptions} [options] */
-function makeRuntime(options = {}) {
+function makeRuntime(options: RuntimeFixtureOptions = {}) {
     ensureRuntimeModelFixture();
     return new SessionRuntime({
         sessionHost: options.sessionHost ?? new SessionHost(),
@@ -281,17 +303,12 @@ function makeRuntime(options = {}) {
  * Attach a Pi-facing AgentSession test double to a real Runtime-created persisted
  * session. These doubles stand in only for the external Pi session object; all
  * RunWield creation, queueing, cancellation, and event machinery stays real.
- *
- * @param {SessionRuntime} _runtime
- * @param {SessionHost} sessionHost
- * @param {ReturnType<typeof makeSteeringAgentSession> | Record<string, any>} agentSession
- * @param {import('./agent-handler.ts').AgentMessageHandler} [handler]
  */
 function attachExternalAgentSession(
-    _runtime,
-    sessionHost,
-    agentSession,
-    handler = () => Promise.resolve({ kind: "complete" }),
+    _runtime: SessionRuntime,
+    sessionHost: SessionHost,
+    agentSession: DisposableLike,
+    handler: AgentMessageHandler = () => Promise.resolve({ kind: "complete" }),
 ) {
     const hostedSession = sessionHost.createSession({
         id: crypto.randomUUID(),
@@ -307,15 +324,13 @@ function attachExternalAgentSession(
 test("SessionRuntime commits a Claude CLI model reconfiguration only after root rebuild succeeds", async () => {
     const sessionHost = new SessionHost();
     const session = sessionHost.createSession({ id: "claude-model-commit", cwd: runtimeProjectRoot() });
-    /** @type {import("./agent-handler.ts").AgentHandler} */
-    const previousHandler = () => Promise.resolve({ kind: "complete" });
+    const previousHandler: AgentHandler = () => Promise.resolve({ kind: "complete" });
     const previousAgentSession = { dispose() {} };
     session.setRootAgentName("engineer");
     session.setRootAgentSession(previousAgentSession);
     session.setActiveOnMessage(previousHandler);
     const runtime = makeRuntime({ sessionHost });
-    /** @type {import('./session-runtime-events.ts').SessionRuntimeEvent[]} */
-    const events = [];
+    const events: SessionRuntimeEvent[] = [];
     runtime.subscribeSessionEvents("claude-model-commit", (event) => {
         events.push(event);
     });
@@ -324,7 +339,7 @@ test("SessionRuntime commits a Claude CLI model reconfiguration only after root 
 
     assertEquals(session.getActiveModelState(), { model: "sonnet", provider: "claude-cli" });
     assertEquals(events.filter((event) => event.type === RuntimeEventTypes.MODEL_CHANGED).length, 1);
-    const rebuiltRoot = /** @type {any} */ (session.getRootAgentSession());
+    const rebuiltRoot = session.getRootAgentSession() as ExecutionSession | null;
     assertEquals(rebuiltRoot?.kind, "claude-cli");
     rebuiltRoot?.session?.dispose?.();
 });
@@ -332,16 +347,14 @@ test("SessionRuntime commits a Claude CLI model reconfiguration only after root 
 test("SessionRuntime restores the previous user model override when active root rebuild fails", async () => {
     const sessionHost = new SessionHost();
     const session = sessionHost.createSession({ id: "model-rollback", cwd: runtimeProjectRoot() });
-    /** @type {import("./agent-handler.ts").AgentHandler} */
-    const previousHandler = () => Promise.resolve({ kind: "complete" });
+    const previousHandler: AgentHandler = () => Promise.resolve({ kind: "complete" });
     const previousAgentSession = { dispose() {} };
     session.setRootAgentName("engineer");
     session.setRootAgentSession(previousAgentSession);
     session.setActiveOnMessage(previousHandler);
     session.setActiveModelState("sonnet", "anthropic", true);
     const runtime = makeRuntime({ sessionHost });
-    /** @type {import('./session-runtime-events.ts').SessionRuntimeEvent[]} */
-    const events = [];
+    const events: SessionRuntimeEvent[] = [];
     runtime.subscribeSessionEvents("model-rollback", (event) => {
         events.push(event);
     });
@@ -361,27 +374,62 @@ test("SessionRuntime restores the previous user model override when active root 
     );
 });
 
+type FixtureModel = Partial<Pick<RunWieldModel, "provider" | "input" | "executionBackend" | "contextWindow">>;
+interface ReplayFixtureResult {
+    sessionManagerId: Awaited<ReturnType<SessionRuntime["loadSession"]>>["sessionManagerId"];
+    replayEvents: SessionRuntimeEvent[];
+}
+type PersistedFixtureMessage = Parameters<SessionManager["appendMessage"]>[0];
+interface FixtureMessage {
+    role: string;
+}
+interface FixtureAgentState {
+    messages: FixtureMessage[];
+}
+interface FixtureAgent {
+    state: FixtureAgentState;
+}
+interface FixtureCompactionResult {
+    ok: boolean;
+}
+interface SteeringFixture extends DisposableLike {
+    isStreaming: boolean;
+    model: FixtureModel;
+    subscribe(listener: (event: QueueFixtureEvent) => void): () => boolean;
+    steer(text: string): Promise<void>;
+    followUp(text: string): Promise<void>;
+    clearQueue(): QueueFixtureContents;
+    abort(): void;
+    getSteeringMessages(): string[];
+    emitQueueUpdate(): void;
+    consumeNextSteering(): void;
+    consumeNextSteeringSilently(): void;
+    agent?: FixtureAgent;
+    compact?: () => Promise<FixtureCompactionResult>;
+    isCompacting?: boolean;
+    abortCompaction?: () => void;
+}
+interface QueueFixtureContents {
+    steering: string[];
+    followUp: string[];
+}
+
 function makeSteeringAgentSession() {
-    /** @type {Set<(event: any) => void>} */
-    const listeners = new Set();
-    /** @type {string[]} */
-    let steering = [];
-    const session = /** @type {any} */ ({
+    const listeners: Set<(event: QueueFixtureEvent) => void> = new Set();
+    let steering: string[] = [];
+    const session: SteeringFixture = {
         isStreaming: true,
         model: { input: ["text", "image"] },
-        /** @param {(event: any) => void} listener */
-        subscribe(listener) {
+        subscribe(listener: (event: QueueFixtureEvent) => void) {
             listeners.add(listener);
             return () => listeners.delete(listener);
         },
-        /** @param {string} text */
-        steer(text) {
+        steer(text: string) {
             steering.push(text);
             session.emitQueueUpdate();
             return Promise.resolve();
         },
-        /** @param {string} text */
-        followUp(text) {
+        followUp(text: string) {
             steering.push(text);
             session.emitQueueUpdate();
             return Promise.resolve();
@@ -409,7 +457,7 @@ function makeSteeringAgentSession() {
             steering.shift();
         },
         dispose() {},
-    });
+    };
     return session;
 }
 
@@ -424,7 +472,7 @@ test("SessionRuntime exposes opaque ids and snapshots, never HostedSession objec
     assertEquals(Object.hasOwn(runtime, "sessionHost"), false);
     assertEquals(runtime.getSessionSnapshot(created.sessionId)?.sessionStats, null);
     assertEquals(runtime.listSessions(), [runtime.getSessionSnapshot(created.sessionId)]);
-    assertEquals("getActiveOnMessage" in /** @type {any} */ (runtime.listSessions()[0]), false);
+    assertEquals("getActiveOnMessage" in runtime.listSessions()[0], false);
 });
 
 test("SessionRuntime snapshots keep Session names current with transcript changes", () => {
@@ -481,10 +529,10 @@ test("SessionRuntime snapshot exposes active context capacity without exposing A
     });
     assertEquals(runtime.getSessionSnapshot(sessionId)?.autoCompactionEnabled, true);
 
-    const transientSession = /** @type {any} */ ({
+    const transientSession = {
         getContextUsage: () => ({ tokens: 4_000, contextWindow: 64_000, percent: 6.25 }),
         settingsManager: { getCompactionSettings: () => ({ enabled: false }) },
-    });
+    };
     hostedSession.addSubAgentSession(transientSession);
     assertEquals(runtime.getSessionSnapshot(sessionId)?.contextUsage, {
         tokens: 4_000,
@@ -494,7 +542,7 @@ test("SessionRuntime snapshot exposes active context capacity without exposing A
     assertEquals(runtime.getSessionSnapshot(sessionId)?.autoCompactionEnabled, false);
 
     const snapshot = runtime.getSessionSnapshot(sessionId);
-    assertEquals("agentSession" in /** @type {Record<string, unknown>} */ (snapshot || {}), false);
+    assertEquals("agentSession" in (snapshot || {}), false);
 });
 
 test("SessionRuntime snapshots tolerate a streaming assistant message without usage", () => {
@@ -555,8 +603,7 @@ test("SessionRuntime uses the model selected by image preflight for submission",
     await withRuntimeCommandFixture(
         "runtime-image-model-agreement-",
         async ({ projectRoot, settingsPath, setModelResponseFactory }) => {
-            /** @type {string[]} */
-            const requestedModels = [];
+            const requestedModels: string[] = [];
             setModelResponseFactory((_context, _options, _state, model) => {
                 requestedModels.push(model.id);
                 return fauxAssistantMessage(fauxText("SessionRuntime fixture response."));
@@ -617,8 +664,7 @@ test("SessionRuntime keeps a prepared image model through Prompt Template prefli
                 join(promptDir, "vision-note.md"),
                 ["---", "agent: operator", "---", "Describe this image: {{input}}"].join("\n"),
             );
-            /** @type {string[]} */
-            const requestedModels = [];
+            const requestedModels: string[] = [];
             setModelResponseFactory((_context, _options, _state, model) => {
                 requestedModels.push(model.id);
                 return fauxAssistantMessage(fauxText("Template image response."));
@@ -790,8 +836,7 @@ test("SessionRuntime persists a newly managed Pi transcript before cataloging it
     });
 });
 
-/** @param {boolean} disconnect */
-async function exerciseRepairCompactionFollowUp(disconnect) {
+async function exerciseRepairCompactionFollowUp(disconnect: boolean) {
     await withProcessGlobalTestLock(async () => {
         const previousHome = getHomeDir();
         const home = await fsMkdtemp(join(tmpdir(), "runwield-runtime-worktree-header-"));
@@ -814,8 +859,7 @@ async function exerciseRepairCompactionFollowUp(disconnect) {
             const actionEvidence = await loadPlanActionEvidence(worktreeRoot, planId);
             if (actionEvidence.kind !== "success") throw new Error(actionEvidence.message);
             const approvedRevision = await getPlanRevisionForText(planBody);
-            /** @type {import('./execution-workflow-session.ts').ActiveExecutionWorkflow} */
-            const activeWorkflow = {
+            const activeWorkflow: ActiveExecutionWorkflow = {
                 planName: "repair-follow-up",
                 projectRoot: worktreeRoot,
                 executionCwd: worktreeRoot,
@@ -839,7 +883,7 @@ async function exerciseRepairCompactionFollowUp(disconnect) {
             });
             const transcriptPath = manager.getSessionFile?.();
             if (!transcriptPath) throw new Error("Expected a persisted transcript path");
-            const writableManager = /** @type {any} */ (manager);
+            const writableManager = manager as unknown as MutableTestSessionManager;
             if (typeof writableManager._rewriteFile === "function") writableManager._rewriteFile();
 
             const acquired = await store.ensureSessionCatalogRecordAndAcquire({
@@ -926,8 +970,7 @@ async function exerciseRepairCompactionFollowUp(disconnect) {
                     },
                     () => fauxAssistantMessage(fauxText(`Compacted repair context keeps: ${blockerNeedle}`)),
                 ]);
-                /** @type {string[]} */
-                const repairUserMessages = [];
+                const repairUserMessages: string[] = [];
                 const unsubscribeRepair = runtime.subscribeSessionEvents(adopted.sessionId, (event) => {
                     if (event.type === "user_message") repairUserMessages.push(event.text);
                 });
@@ -1024,7 +1067,7 @@ async function exerciseRepairCompactionFollowUp(disconnect) {
                 await reloadedRuntime.closeAllSessionsWhenIdle?.();
             }
         } finally {
-            await Promise.resolve(/** @type {any} */ (manager)?.dispose?.());
+            await Promise.resolve((manager as unknown as MutableTestSessionManager)?.dispose?.());
             store.close();
             process.env["HOME"] = previousHome;
             await removeTempDir(home);
@@ -1159,7 +1202,7 @@ test("SessionRuntime automatically recovers append-only output written before ge
                 timestamp: Date.now(),
                 content: [{ type: "text", text: "preserved output" }],
             });
-            await Promise.resolve(/** @type {{ dispose?: () => void | Promise<void> }} */ (manager).dispose?.());
+            await Promise.resolve((manager as { dispose?: () => void | Promise<void> }).dispose?.());
             interruptedStore.close();
 
             const resumedStore = openFileSessionStore();
@@ -1278,8 +1321,7 @@ test("SessionRuntime does not emit unchanged current managed sync state on idle 
                     resumeSessionId: runwieldSessionId,
                 });
                 await observerRuntime.synchronizeManagedSession(resumed.sessionId);
-                /** @type {string[]} */
-                const events = [];
+                const events: string[] = [];
                 observerRuntime.subscribeSessionEvents(resumed.sessionId, (event) => {
                     if (event.type === RuntimeEventTypes.MANAGED_SYNC_STATE_CHANGED) events.push(event.status);
                 });
@@ -1512,8 +1554,7 @@ test("SessionRuntime does not apply dormant local mutations when Session evidenc
         ownerProcessKind: "test",
         ownerInstanceId: crypto.randomUUID(),
     });
-    /** @type {string[]} */
-    const changedAgents = [];
+    const changedAgents: string[] = [];
     runtime.subscribeSessionEvents(session.id, (event) => {
         if (event.type === RuntimeEventTypes.AGENT_CHANGED) changedAgents.push(event.agentName);
     });
@@ -1633,7 +1674,7 @@ test("SessionRuntime reload preserves the canonical hidden-agent selection", asy
         parameters: { type: "object", properties: {} },
         execute: () =>
             Promise.resolve({
-                content: [{ type: /** @type {const} */ ("text"), text: "ok" }],
+                content: [{ type: "text" as const, text: "ok" }],
                 details: null,
             }),
     };
@@ -1642,7 +1683,7 @@ test("SessionRuntime reload preserves the canonical hidden-agent selection", asy
         subAgentDefinition: { id: SUBAGENTS.SLICER },
         customTools: [customTool],
         toolNames: ["slicer_finalize"],
-        sessionManager: /** @type {any} */ (session.getRootSessionManager()),
+        sessionManager: session.getRootSessionManager() as SessionManager,
     });
 
     assertEquals(await runtime.reloadSession(session.id), { ok: true });
@@ -1663,8 +1704,7 @@ test("SessionRuntime emits the first user message before busy and persistence", 
         mode: "new",
         deferManagedActivationUntilAgentReady: true,
     });
-    /** @type {string[]} */
-    const events = [];
+    const events: string[] = [];
     let userEventCount = 0;
     let presentationTurnRanBeforePersistence = false;
     let resolvePresentationTurn = () => {};
@@ -1827,12 +1867,11 @@ test("SessionRuntime prompt-ready metadata is limited to unpersisted new-session
     }
 });
 
-/**
- * @typedef {Object} ManagedModelTurnSample
- * @property {string | null | undefined} agent
- * @property {string} prompt
- * @property {string} model
- */
+export interface ManagedModelTurnSample {
+    agent: string | null | undefined;
+    prompt: string;
+    model: string;
+}
 
 test("SessionRuntime releases managed activation after a completed TUI turn", async () => {
     await withRuntimeCommandFixture(
@@ -1887,8 +1926,7 @@ test("SessionRuntime managed operation prefers persisted active agent over stale
                 const managed = hosted.getManagedMetadata();
                 assert(managed);
                 hosted.setManagedMetadata({ ...managed, activeAgent: "router", model: "stale-router-model" });
-                /** @type {ManagedModelTurnSample[]} */
-                const turns = [];
+                const turns: ManagedModelTurnSample[] = [];
                 setModelResponseFactory((context, _options, _state, model) => {
                     turns.push({
                         agent: runtime.getSessionSnapshot(sessionId)?.activeAgent,
@@ -1911,12 +1949,11 @@ test("SessionRuntime managed operation prefers persisted active agent over stale
     );
 });
 
-/**
- * @typedef {Object} ManagedActivationSample
- * @property {string | undefined} state
- * @property {string | null | undefined} phase
- * @property {boolean} writable
- */
+export interface ManagedActivationSample {
+    state: string | undefined;
+    phase: string | null | undefined;
+    writable: boolean;
+}
 
 test("SessionRuntime managed workflow operations hold activation during model execution and publish afterward", async () => {
     await withRuntimeCommandFixture(
@@ -1934,8 +1971,7 @@ test("SessionRuntime managed workflow operations hold activation during model ex
                 const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "guide" });
                 const managed = sessionHost.getSession(sessionId)?.getManagedMetadata();
                 assert(managed);
-                /** @type {ManagedActivationSample[]} */
-                const samples = [];
+                const samples: ManagedActivationSample[] = [];
                 setModelResponseFactory(() => {
                     const activation = store.inspectSessionActivation(managed.runwieldSessionId).activation;
                     samples.push({
@@ -2040,8 +2076,7 @@ test("SessionRuntime uses one segmented user-turn submission path", async () => 
     setRuntimeModelMessages([fauxAssistantMessage(fauxText("Normalized request received."))]);
     const runtime = makeRuntime();
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot(), agentName: "router" });
-    /** @type {string[]} */
-    const userMessages = [];
+    const userMessages: string[] = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
         if (event.type === RuntimeEventTypes.USER_MESSAGE) userMessages.push(event.text);
     });
@@ -2074,8 +2109,7 @@ test("SessionRuntime routes execution continuation input to the resolved Plan ow
         executionCwd: runtimeProjectRoot(),
         validationContinuation: true,
     });
-    /** @type {string[]} */
-    const changedAgents = [];
+    const changedAgents: string[] = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
         if (event.type === RuntimeEventTypes.AGENT_CHANGED) changedAgents.push(event.agentName);
     });
@@ -2168,7 +2202,7 @@ test("SessionRuntime owns managed submission blocking messages", () => {
     );
 
     session.setManagedMetadata({
-        .../** @type {NonNullable<ReturnType<typeof session.getManagedMetadata>>} */ (session.getManagedMetadata()),
+        ...(session.getManagedMetadata() as NonNullable<ReturnType<typeof session.getManagedMetadata>>),
         syncState: {
             type: RuntimeEventTypes.MANAGED_SYNC_STATE_CHANGED,
             status: "degraded",
@@ -2211,8 +2245,7 @@ test("SessionRuntime uses one activation transaction for initial readiness and l
     assertEquals(runtime.getSessionSnapshot(sessionId)?.activeAgent, "router");
     assertEquals(hostedSession.getRootSessionManager(), null);
 
-    /** @type {string[]} */
-    const changedAgents = [];
+    const changedAgents: string[] = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
         if (event.type === RuntimeEventTypes.AGENT_CHANGED) changedAgents.push(event.agentName);
     });
@@ -2233,10 +2266,8 @@ test("SessionRuntime snapshots and events keep workflow footer context separate 
         sessionManager: null,
     });
     const sessionId = hostedSession.id;
-    /** @type {any[]} */
-    const events = [];
-    /** @param {import('./session-runtime-events.ts').SessionRuntimeEvent} event */
-    const captureEvent = (event) => events.push(event);
+    const events: SessionRuntimeEvent[] = [];
+    const captureEvent = (event: SessionRuntimeEvent) => events.push(event);
     hostedSession.setEventSink({ emit: captureEvent });
 
     hostedSession.setWorkflowTriageContext({ routingIntent: "PLANNED_CHANGE", complexity: "MEDIUM" });
@@ -2272,7 +2303,7 @@ test("SessionRuntime snapshots and events keep workflow footer context separate 
         executionCwd: runtimeProjectRoot(),
     });
     assertEquals(snapshot?.activeExecutionWorkflow === hostedSession.getActiveExecutionWorkflow(), false);
-    assertEquals("workflow" in /** @type {Record<string, unknown>} */ (snapshot || {}), false);
+    assertEquals("workflow" in (snapshot || {}), false);
     assertEquals(
         events
             .filter((event) => event.type === RuntimeEventTypes.WORKFLOW_CONTEXT_CHANGED)
@@ -2291,8 +2322,7 @@ test("SessionRuntime snapshots and events keep workflow footer context separate 
 test("SessionRuntime emits one keyboard-help event for the requested session", async () => {
     const runtime = makeRuntime();
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
-    /** @type {any[]} */
-    const events = [];
+    const events: SessionRuntimeEvent[] = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
         events.push(event);
     });
@@ -2303,7 +2333,7 @@ test("SessionRuntime emits one keyboard-help event for the requested session", a
     assertEquals(result, { ok: true });
     assertEquals(missing, { ok: false, error: "not_found" });
     assertEquals(events.length, 1);
-    assertEquals(events[0].type, RuntimeEventTypes.KEYBOARD_HELP);
+    assert(events[0].type === RuntimeEventTypes.KEYBOARD_HELP);
     assertEquals(events[0].sessionId, sessionId);
     assertEquals(typeof events[0].timestamp, "string");
     assertEquals(events[0].title, "Keyboard shortcuts");
@@ -2312,13 +2342,17 @@ test("SessionRuntime emits one keyboard-help event for the requested session", a
     // A consumer can edit its payload without changing help delivered on a later request.
     events[0].title = "consumer title";
     events[0].items[0].key = "consumer key";
-    events[0].items.push({ key: "consumer shortcut", description: "consumer description" });
+    events[0].items.push({
+        key: "consumer shortcut",
+        description: "consumer description",
+    });
     assertEquals(runtime.requestSessionHelp(sessionId), { ok: true });
     assertEquals(events.length, 2);
+    assert(events[1].type === RuntimeEventTypes.KEYBOARD_HELP);
     assertEquals(events[1].title, "Keyboard shortcuts");
     assertEquals(events[1].items[0], { key: "esc", description: "to interrupt" });
     assertEquals(
-        events[1].items.some((/** @type {{key: string}} */ item) => item.key === "consumer shortcut"),
+        events[1].items.some((item: ConstructorOptions) => item.key === "consumer shortcut"),
         false,
     );
 });
@@ -2326,8 +2360,7 @@ test("SessionRuntime emits one keyboard-help event for the requested session", a
 test("SessionRuntime emits one ordered lifecycle for one prompt", async () => {
     const runtime = makeRuntime();
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
-    /** @type {any[]} */
-    const events = [];
+    const events: SessionRuntimeEvent[] = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
         events.push(event);
     });
@@ -2342,7 +2375,7 @@ test("SessionRuntime emits one ordered lifecycle for one prompt", async () => {
         RuntimeEventTypes.TURN_START,
     ]);
     assertEquals(eventTypes.at(-1), RuntimeEventTypes.BUSY_CHANGED);
-    assertEquals(events.at(-1)?.busy, false);
+    assertEquals((events.at(-1) as RuntimeBusyChangedEvent | undefined)?.busy, false);
     assertEquals(eventTypes.filter((type) => type === RuntimeEventTypes.TURN_START).length, 2);
     assertEquals(eventTypes.filter((type) => type === RuntimeEventTypes.TURN_END).length, 2);
     assertEquals(eventTypes.filter((type) => type === RuntimeEventTypes.USAGE).length, 1);
@@ -2358,10 +2391,9 @@ test("SessionRuntime emits one ordered lifecycle for one prompt", async () => {
 test("SessionRuntime keeps executePlan workflow operations busy while preparation runs", async () => {
     await withRuntimeCommandFixture("runtime-execute-busy-", async ({ projectRoot: cwd, setModelResponseFactory }) => {
         const runtime = createSessionRuntime();
-        /** @type {() => void} */
-        let releaseEngineerTurn = () => {};
+        let releaseEngineerTurn: () => void = () => {};
         const engineerTurnReleased = new Promise((resolve) => {
-            releaseEngineerTurn = /** @type {() => void} */ (resolve);
+            releaseEngineerTurn = resolve as () => void;
         });
         setModelResponseFactory(async () => {
             await engineerTurnReleased;
@@ -2382,14 +2414,11 @@ test("SessionRuntime keeps executePlan workflow operations busy while preparatio
         const approvalEvidence = await loadPlanActionEvidence(cwd, "execute-busy-plan-id");
         if (approvalEvidence.kind !== "success") throw new Error(approvalEvidence.message);
         const sessionId = await runtime.createPromptReadySession({ cwd });
-        /** @type {boolean[]} */
-        const busyStates = [];
-        /** @type {RuntimePreparationBusySample[]} */
-        const preparationMessages = [];
-        /** @type {() => void} */
-        let resolveLaunchSeen = () => {};
+        const busyStates: boolean[] = [];
+        const preparationMessages: RuntimePreparationBusySample[] = [];
+        let resolveLaunchSeen: () => void = () => {};
         const launchSeen = new Promise((resolve) => {
-            resolveLaunchSeen = /** @type {() => void} */ (resolve);
+            resolveLaunchSeen = resolve as () => void;
         });
         runtime.subscribeSessionEvents(sessionId, (event) => {
             if (event.type === RuntimeEventTypes.BUSY_CHANGED) busyStates.push(event.busy);
@@ -2453,16 +2482,14 @@ test("SessionRuntime keeps executePlan workflow operations busy while preparatio
 test("SessionRuntime keeps direct model operations busy until the outermost operation settles", async () => {
     const sessionHost = new SessionHost();
     const agentSession = makeSteeringAgentSession();
-    /** @type {Array<() => void>} */
-    const releases = [];
+    const releases: Array<() => void> = [];
     agentSession.compact = () =>
         new Promise((resolve) => {
             releases.push(() => resolve({ ok: true }));
         });
     const runtime = makeRuntime({ sessionHost });
     const sessionId = await attachExternalAgentSession(runtime, sessionHost, agentSession);
-    /** @type {boolean[]} */
-    const busyStates = [];
+    const busyStates: boolean[] = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
         if (event.type === RuntimeEventTypes.BUSY_CHANGED) busyStates.push(event.busy);
     });
@@ -2498,8 +2525,7 @@ test("SessionRuntime cycles through max thinking level", async () => {
 test("SessionRuntime event subscriptions unsubscribe deterministically", async () => {
     const runtime = makeRuntime();
     const { sessionId } = await runtime.createInteractiveSession({ cwd: runtimeProjectRoot() });
-    /** @type {any[]} */
-    const events = [];
+    const events: SessionRuntimeEvent[] = [];
     const unsubscribe = runtime.subscribeSessionEvents(sessionId, (event) => {
         events.push(event);
     });
@@ -2519,8 +2545,7 @@ test("SessionRuntime event subscriptions unsubscribe deterministically", async (
 test("SessionRuntime owns the complete local shell tool lifecycle", async () => {
     const runtime = makeRuntime();
     const { sessionId } = await runtime.createInteractiveSession({ cwd: runtimeProjectRoot() });
-    /** @type {any[]} */
-    const events = [];
+    const events: SessionRuntimeEvent[] = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
         events.push(event);
     });
@@ -2635,8 +2660,7 @@ test("SessionRuntime publishes handler errors and releases the turn", async () =
     ]);
     const runtime = makeRuntime();
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
-    /** @type {string[]} */
-    const types = [];
+    const types: string[] = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
         types.push(event.type);
     });
@@ -2650,13 +2674,11 @@ test("SessionRuntime publishes handler errors and releases the turn", async () =
 });
 
 test("SessionRuntime rejects overlapping turns for one id", async () => {
-    /** @type {() => void} */
-    let release = () => {};
+    let release: () => void = () => {};
     const released = new Promise((resolve) => {
         release = () => resolve(undefined);
     });
-    /** @type {() => void} */
-    let markStarted = () => {};
+    let markStarted: () => void = () => {};
     const started = new Promise((resolve) => {
         markStarted = () => resolve(undefined);
     });
@@ -2671,8 +2693,7 @@ test("SessionRuntime rejects overlapping turns for one id", async () => {
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
 
     const first = runtime.promptSession(sessionId, { initialRequest: "first", initialImages: [] });
-    /** @type {ReturnType<typeof setTimeout> | undefined} */
-    let timeoutId;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
         await Promise.race([
             started,
@@ -2696,13 +2717,11 @@ test("SessionRuntime rejects overlapping turns for one id", async () => {
 });
 
 test("SessionRuntime allows independent session ids to run concurrently", async () => {
-    /** @type {() => void} */
-    let releaseResponses = () => {};
+    let releaseResponses: () => void = () => {};
     const released = new Promise((resolve) => {
         releaseResponses = () => resolve(undefined);
     });
-    /** @type {() => void} */
-    let markBothStarted = () => {};
+    let markBothStarted: () => void = () => {};
     const bothStarted = new Promise((resolve) => {
         markBothStarted = () => resolve(undefined);
     });
@@ -2723,8 +2742,7 @@ test("SessionRuntime allows independent session ids to run concurrently", async 
         runtime.promptSession(alpha, { initialRequest: "alpha", initialImages: [] }),
         runtime.promptSession(beta, { initialRequest: "beta", initialImages: [] }),
     ];
-    /** @type {ReturnType<typeof setTimeout> | undefined} */
-    let timeoutId;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
         await Promise.race([
             bothStarted,
@@ -2768,16 +2786,14 @@ test("SessionRuntime /reload publishes replacement Prompt Template and Skill cat
             join(removedSkillDir, "SKILL.md"),
             ["---", 'name: "removed-fixture"', 'description: "remove me"', "---", "removed skill body"].join("\n"),
         );
-        /** @type {string[]} */
-        const modelRequests = [];
+        const modelRequests: string[] = [];
         setModelResponseFactory((context) => {
             modelRequests.push(JSON.stringify(context.messages));
             return fauxAssistantMessage(fauxText("Ready."));
         });
         const runtime = createSessionRuntime();
         const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
-        /** @type {Array<import('./session-runtime-events.ts').SessionRuntimeEvent>} */
-        const catalogEvents = [];
+        const catalogEvents: Array<SessionRuntimeEvent> = [];
         runtime.subscribeSessionEvents(created.sessionId, (event) => {
             if (event.type === RuntimeEventTypes.COMMAND_CATALOG_CHANGED) catalogEvents.push(event);
         });
@@ -2798,9 +2814,7 @@ test("SessionRuntime /reload publishes replacement Prompt Template and Skill cat
 
         assertEquals(await runtime.reloadSession(created.sessionId), { ok: true });
         assertEquals(catalogEvents.length, 1);
-        const catalogEvent = /** @type {import('./session-runtime-events.ts').RuntimeCommandCatalogChangedEvent} */ (
-            catalogEvents[0]
-        );
+        const catalogEvent = catalogEvents[0] as RuntimeCommandCatalogChangedEvent;
         assertEquals(
             catalogEvent.promptTemplates.find((template) => template.name === "reload-prompt")?.description,
             "after reload",
@@ -2845,7 +2859,7 @@ test("SessionRuntime ignores synthetic switch-requesting tool results", async ()
         parameters: { type: "object", properties: {} },
         execute: () =>
             Promise.resolve({
-                content: [{ type: /** @type {const} */ ("text"), text: "Switch to Router now." }],
+                content: [{ type: "text" as const, text: "Switch to Router now." }],
                 details: { outcome: "switch_agent", agentName: "router" },
             }),
     };
@@ -2854,10 +2868,8 @@ test("SessionRuntime ignores synthetic switch-requesting tool results", async ()
         customTools: [syntheticSwitchTool],
         toolNames: ["synthetic_switch_request"],
     });
-    /** @type {string[]} */
-    const submittedMessages = [];
-    /** @type {string[]} */
-    const changedAgents = [];
+    const submittedMessages: string[] = [];
+    const changedAgents: string[] = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
         if (event.type === RuntimeEventTypes.USER_MESSAGE) submittedMessages.push(event.text);
         if (event.type === RuntimeEventTypes.AGENT_CHANGED) changedAgents.push(event.agentName);
@@ -2879,10 +2891,8 @@ test("SessionRuntime ignores synthetic switch-requesting tool results", async ()
 test("SessionRuntime delivers steering submitted from the Triage report to Planner once", async () => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
-    /** @type {HandoffProviderRequest[]} */
-    const providerRequests = [];
-    /** @param {import('@earendil-works/pi-ai').Context} context */
-    const response = (context) => {
+    const providerRequests: HandoffProviderRequest[] = [];
+    const response = (context: Context) => {
         const tools = getCurrentTools(context.messages).map((tool) => tool.name);
         const messages = JSON.stringify(context.messages);
         const imageCount = context.messages.reduce(
@@ -2912,12 +2922,9 @@ test("SessionRuntime delivers steering submitted from the Triage report to Plann
     };
     setRuntimeModelResponseFactories(Array.from({ length: 6 }, () => response));
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot(), agentName: "router" });
-    /** @type {import('./session-runtime-events.ts').SessionRuntimeEvent[]} */
-    const runtimeEvents = [];
-    /** @type {Promise<SteeringResult> | null} */
-    let steeringSubmission = null;
-    /** @type {Promise<SteeringResult> | null} */
-    let plannerSteeringSubmission = null;
+    const runtimeEvents: SessionRuntimeEvent[] = [];
+    let steeringSubmission: Promise<SteeringResult> | null = null;
+    let plannerSteeringSubmission: Promise<SteeringResult> | null = null;
     runtime.subscribeSessionEvents(sessionId, (event) => {
         runtimeEvents.push(event);
         if (!steeringSubmission && event.type === RuntimeEventTypes.SYSTEM_STATUS && event.header === "Triage") {
@@ -2948,8 +2955,8 @@ test("SessionRuntime delivers steering submitted from the Triage report to Plann
     });
     assertExists(steeringSubmission);
     assertExists(plannerSteeringSubmission);
-    const steered = await /** @type {Promise<SteeringResult>} */ (steeringSubmission);
-    const plannerSteered = await /** @type {Promise<SteeringResult>} */ (plannerSteeringSubmission);
+    const steered = await (steeringSubmission as Promise<SteeringResult>);
+    const plannerSteered = await (plannerSteeringSubmission as Promise<SteeringResult>);
 
     assertEquals(result.ok, true);
     assertEquals(steered.queued, true);
@@ -2992,20 +2999,15 @@ test("SessionRuntime delivers steering submitted from the Triage report to Plann
         ).length,
         1,
     );
-    const deliveredSteering = /** @type {import('./session-runtime-events.ts').RuntimeUserMessageEvent[]} */ (
-        runtimeEvents.filter(
-            (event) =>
-                event.type === RuntimeEventTypes.USER_MESSAGE &&
-                [steered.message?.id, plannerSteered.message?.id].includes(event.messageId),
-        )
-    );
+    const deliveredSteering = runtimeEvents.filter(
+        (event) =>
+            event.type === RuntimeEventTypes.USER_MESSAGE &&
+            [steered.message?.id, plannerSteered.message?.id].includes(event.messageId),
+    ) as RuntimeUserMessageEvent[];
     assertEquals(deliveredSteering.length, 2);
     const imageSteeringEvent = deliveredSteering.find((event) => event.messageId === steered.message?.id);
     assertExists(imageSteeringEvent);
-    assertEquals(
-        /** @type {import('./session-runtime-events.ts').RuntimeUserMessageEvent} */ (imageSteeringEvent).images.length,
-        1,
-    );
+    assertEquals((imageSteeringEvent as RuntimeUserMessageEvent).images.length, 1);
     assertEquals(runtime.getQueuedMessages(sessionId), []);
     await runtime.closeAllSessionsWhenIdle();
 });
@@ -3015,10 +3017,8 @@ test("SessionRuntime transfers pending Router steering to Planner in submission 
     const runtime = makeRuntime({ sessionHost });
     const routerResponseStarted = deferredVoid();
     const releaseRouterResponse = deferredVoid();
-    /** @type {HandoffProviderRequest[]} */
-    const providerRequests = [];
-    /** @param {import('@earendil-works/pi-ai').Context} context */
-    const response = async (context) => {
+    const providerRequests: HandoffProviderRequest[] = [];
+    const response = async (context: Context) => {
         const tools = getCurrentTools(context.messages).map((tool) => tool.name);
         const messages = JSON.stringify(context.messages);
         const imageCount = context.messages.reduce(
@@ -3078,10 +3078,8 @@ test("SessionRuntime waits for steering submitted during replacement prompt prep
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
     const plannerActivated = deferredVoid();
-    /** @type {HandoffProviderRequest[]} */
-    const providerRequests = [];
-    /** @param {import('@earendil-works/pi-ai').Context} context */
-    const response = (context) => {
+    const providerRequests: HandoffProviderRequest[] = [];
+    const response = (context: Context) => {
         const tools = getCurrentTools(context.messages).map((tool) => tool.name);
         const agentName = tools.includes("triage_report") ? "router" : "planner";
         providerRequests.push({
@@ -3104,8 +3102,7 @@ test("SessionRuntime waits for steering submitted during replacement prompt prep
     };
     setRuntimeModelResponseFactories(Array.from({ length: 4 }, () => response));
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot(), agentName: "router" });
-    /** @type {Promise<SteeringResult> | null} */
-    let steeringSubmission = null;
+    let steeringSubmission: Promise<SteeringResult> | null = null;
     runtime.subscribeSessionEvents(sessionId, (event) => {
         if (event.type !== RuntimeEventTypes.AGENT_CHANGED || event.agentName !== "planner") return;
         const hostedSession = sessionHost.requireSession(sessionId);
@@ -3125,7 +3122,7 @@ test("SessionRuntime waits for steering submitted during replacement prompt prep
         ["router"],
     );
     assertExists(steeringSubmission);
-    const steered = await /** @type {Promise<SteeringResult>} */ (steeringSubmission);
+    const steered = await (steeringSubmission as Promise<SteeringResult>);
     assertEquals(steered.queued, true);
     sessionHost.requireSession(sessionId).completeAgentSteeringPreparation("hold-replacement-prompt");
 
@@ -3140,11 +3137,9 @@ test("SessionRuntime waits for steering submitted during replacement prompt prep
 test("SessionRuntime does not replay handoff steering after a replacement provider error", async () => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
-    /** @type {string[]} */
-    const plannerRequests = [];
+    const plannerRequests: string[] = [];
     let plannerAttempts = 0;
-    /** @param {import('@earendil-works/pi-ai').Context} context */
-    const response = (context) => {
+    const response = (context: Context) => {
         const tools = getCurrentTools(context.messages).map((tool) => tool.name);
         if (tools.includes("triage_report")) {
             return fauxAssistantMessage(
@@ -3164,10 +3159,8 @@ test("SessionRuntime does not replay handoff steering after a replacement provid
     };
     setRuntimeModelResponseFactories(Array.from({ length: 6 }, () => response));
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot(), agentName: "router" });
-    /** @type {Promise<SteeringResult> | null} */
-    let steeringSubmission = null;
-    /** @type {string[]} */
-    const statuses = [];
+    let steeringSubmission: Promise<SteeringResult> | null = null;
+    const statuses: string[] = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
         if (!steeringSubmission && event.type === RuntimeEventTypes.SYSTEM_STATUS && event.header === "Triage") {
             steeringSubmission = runtime.steerSession(sessionId, "Keep this steering exactly once.", [], "tui");
@@ -3180,7 +3173,7 @@ test("SessionRuntime does not replay handoff steering after a replacement provid
         initialImages: [],
     });
     assertExists(steeringSubmission);
-    const steered = await /** @type {Promise<SteeringResult>} */ (steeringSubmission);
+    const steered = await (steeringSubmission as Promise<SteeringResult>);
 
     assertEquals(initial.ok, true);
     assertEquals(steered.queued, true);
@@ -3203,10 +3196,8 @@ test("SessionRuntime does not replay handoff steering after a replacement provid
 test("SessionRuntime cancellation after Triage acceptance does not start the replacement Agent", async () => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
-    /** @type {string[]} */
-    const providerAgents = [];
-    /** @param {import('@earendil-works/pi-ai').Context} context */
-    const response = (context) => {
+    const providerAgents: string[] = [];
+    const response = (context: Context) => {
         const tools = getCurrentTools(context.messages).map((tool) => tool.name);
         const agentName = tools.includes("triage_report") ? "router" : "replacement";
         providerAgents.push(agentName);
@@ -3225,8 +3216,7 @@ test("SessionRuntime cancellation after Triage acceptance does not start the rep
     };
     setRuntimeModelResponseFactories(Array.from({ length: 4 }, () => response));
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot(), agentName: "router" });
-    /** @type {ReturnType<typeof runtime.cancelSession> | undefined} */
-    let cancellation;
+    let cancellation: ReturnType<typeof runtime.cancelSession> | undefined;
     runtime.subscribeSessionEvents(sessionId, (event) => {
         if (!cancellation && event.type === RuntimeEventTypes.SYSTEM_STATUS && event.header === "Triage") {
             cancellation = runtime.cancelSession(sessionId);
@@ -3249,10 +3239,8 @@ test("SessionRuntime cancellation after Triage acceptance does not start the rep
 test("SessionRuntime cancellation during Planner activation prevents replacement provider work", async () => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
-    /** @type {string[]} */
-    const providerAgents = [];
-    /** @param {import('@earendil-works/pi-ai').Context} context */
-    const response = (context) => {
+    const providerAgents: string[] = [];
+    const response = (context: Context) => {
         const tools = getCurrentTools(context.messages).map((tool) => tool.name);
         const agentName = tools.includes("triage_report") ? "router" : "planner";
         providerAgents.push(agentName);
@@ -3271,8 +3259,7 @@ test("SessionRuntime cancellation during Planner activation prevents replacement
     };
     setRuntimeModelResponseFactories(Array.from({ length: 4 }, () => response));
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot(), agentName: "router" });
-    /** @type {ReturnType<typeof runtime.cancelSession> | undefined} */
-    let cancellation;
+    let cancellation: ReturnType<typeof runtime.cancelSession> | undefined;
     runtime.subscribeSessionEvents(sessionId, (event) => {
         if (!cancellation && event.type === RuntimeEventTypes.AGENT_CHANGED && event.agentName === "planner") {
             cancellation = runtime.cancelSession(sessionId);
@@ -3316,8 +3303,7 @@ test("SessionRuntime steers active foreground sub-agent before streaming root an
     const hostedSession = sessionHost.requireSession(sessionId);
     hostedSession.addSubAgentSession(foregroundSession);
     const targetId = hostedSession.pushSteeringTargetSession(foregroundSession);
-    /** @type {Array<{ status: string, text: string }>} */
-    const queueEvents = [];
+    const queueEvents: Array<{ status: string; text: string }> = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
         if (event.type === RuntimeEventTypes.QUEUED_MESSAGE_CHANGED) {
             queueEvents.push({ status: event.status, text: event.message.text });
@@ -3364,8 +3350,7 @@ test("SessionRuntime buffers identifiable steering for the replacement Agent and
     const sessionId = await attachExternalAgentSession(runtime, sessionHost, rootSession);
     const hostedSession = sessionHost.requireSession(sessionId);
     const transitionId = hostedSession.beginAgentTransition();
-    /** @type {import('./session-runtime-events.ts').RuntimeQueuedMessageEvent[]} */
-    const events = [];
+    const events: RuntimeQueuedMessageEvent[] = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
         if (event.type === RuntimeEventTypes.QUEUED_MESSAGE_CHANGED) events.push(event);
     });
@@ -3409,8 +3394,7 @@ test("SessionRuntime transfers old Agent steering without claiming consumption",
     const runtime = makeRuntime({ sessionHost });
     const sessionId = await attachExternalAgentSession(runtime, sessionHost, rootSession);
     const hostedSession = sessionHost.requireSession(sessionId);
-    /** @type {string[]} */
-    const statuses = [];
+    const statuses: string[] = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
         if (event.type === RuntimeEventTypes.QUEUED_MESSAGE_CHANGED) statuses.push(event.status);
     });
@@ -3449,8 +3433,7 @@ test("SessionRuntime keeps queue subscriptions for multiple steering source sess
     const runtime = makeRuntime({ sessionHost });
     const sessionId = await attachExternalAgentSession(runtime, sessionHost, rootSession);
     const hostedSession = sessionHost.requireSession(sessionId);
-    /** @type {string[]} */
-    const consumedTexts = [];
+    const consumedTexts: string[] = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
         if (event.type === RuntimeEventTypes.QUEUED_MESSAGE_CHANGED && event.status === "consumed") {
             consumedTexts.push(event.message.text);
@@ -3524,8 +3507,7 @@ test("SessionRuntime recalls steering while asynchronous preparation is pending"
     const agentSession = makeSteeringAgentSession();
     const runtime = makeRuntime({ sessionHost });
     const sessionId = await attachExternalAgentSession(runtime, sessionHost, agentSession);
-    /** @type {string[]} */
-    const statuses = [];
+    const statuses: string[] = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
         if (event.type === RuntimeEventTypes.QUEUED_MESSAGE_CHANGED) statuses.push(event.status);
     });
@@ -3692,8 +3674,7 @@ test("SessionRuntime cancellation emits cancellation and dequeues pending messag
     const sessionId = await attachExternalAgentSession(runtime, sessionHost, agentSession);
     const hostedSession = sessionHost.requireSession(sessionId);
     hostedSession.beginAgentTransition();
-    /** @type {any[]} */
-    const events = [];
+    const events: SessionRuntimeEvent[] = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
         events.push(event);
     });
@@ -3770,8 +3751,7 @@ test("SessionRuntime cancellation owns active compaction and publishes one opera
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
     const sessionId = await attachExternalAgentSession(runtime, sessionHost, agentSession);
-    /** @type {any[]} */
-    const events = [];
+    const events: SessionRuntimeEvent[] = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
         events.push(event);
     });
@@ -3784,7 +3764,7 @@ test("SessionRuntime cancellation owns active compaction and publishes one opera
     assertEquals(cancellation, {
         type: RuntimeEventTypes.CANCELLATION,
         sessionId,
-        timestamp: events.at(-1).timestamp,
+        timestamp: events.at(-1)!.timestamp,
         aborted: true,
         reason: "session_cancel",
         scope: "operation",
@@ -3801,10 +3781,8 @@ test("SessionRuntime interaction adapter resolves through semantic lifecycle eve
         sessionManager: null,
     });
     const sessionId = session.id;
-    /** @type {string[]} */
-    const types = [];
-    /** @param {import('./session-runtime-events.ts').SessionRuntimeEvent} event */
-    const captureEvent = (event) => types.push(event.type);
+    const types: string[] = [];
+    const captureEvent = (event: SessionRuntimeEvent) => types.push(event.type);
     session.setEventSink({ emit: captureEvent });
     runtime.setInteractionAdapter(sessionId, {
         requestInteraction: (request) => ({
@@ -3833,10 +3811,8 @@ test("SessionRuntime emits canceled lifecycle for an already-aborted interaction
         sessionManager: null,
     });
     const sessionId = session.id;
-    /** @type {string[]} */
-    const types = [];
-    /** @param {import('./session-runtime-events.ts').SessionRuntimeEvent} event */
-    const captureEvent = (event) => types.push(event.type);
+    const types: string[] = [];
+    const captureEvent = (event: SessionRuntimeEvent) => types.push(event.type);
     session.setEventSink({ emit: captureEvent });
     runtime.setInteractionAdapter(sessionId, {
         requestInteraction: () => new Promise(() => {}),
@@ -3865,26 +3841,24 @@ test("SessionRuntime automatically catalogs and segments legacy transcripts when
             await fsMkdir(sessionDir, { recursive: true });
             const manager = SessionManager.create(cwd, sessionDir, { id: piSessionId });
             manager.appendCustomEntry("runwield.active_agent", { agentName: "planner" });
-            manager.appendMessage(
-                /** @type {any} */ ({
-                    role: "user",
-                    timestamp: Date.now(),
-                    content: [{ type: "text", text: "resume cataloged fixture" }],
-                }),
-            );
-            manager.appendMessage(
-                /** @type {any} */ ({
-                    role: "assistant",
-                    timestamp: Date.now(),
-                    api: RUNTIME_TEST_API,
-                    provider: RUNTIME_TEST_PROVIDER,
-                    model: RUNTIME_TEST_MODEL,
-                    usage: {},
-                    cost: {},
-                    stopReason: "end_turn",
-                    content: [{ type: "text", text: "cataloged fixture response" }],
-                }),
-            );
+            manager.appendMessage({
+                role: "user",
+                timestamp: Date.now(),
+                content: [{ type: "text", text: "resume cataloged fixture" }],
+            });
+            manager.appendMessage({
+                role: "assistant",
+                timestamp: Date.now(),
+                api: RUNTIME_TEST_API,
+                provider: RUNTIME_TEST_PROVIDER,
+                model: RUNTIME_TEST_MODEL,
+                // @ts-expect-error Historical transcripts may omit usage counters.
+                usage: {},
+                cost: {},
+                // @ts-expect-error Preserve the historical provider stop reason.
+                stopReason: "end_turn",
+                content: [{ type: "text", text: "cataloged fixture response" }],
+            });
             const transcriptPath = manager.getSessionFile();
             if (!transcriptPath) throw new Error("fixture transcript was not persisted");
             const runtime = createSessionRuntime({
@@ -3986,7 +3960,7 @@ test("SessionRuntime loadSession returns opaque metadata and preserves recorded 
         id: "persisted-1",
     });
     for (const entry of branch) {
-        if (entry.type === "message") manager.appendMessage(/** @type {any} */ (entry.message));
+        if (entry.type === "message") manager.appendMessage(entry.message as PersistedFixtureMessage);
         else if (entry.type === "custom") manager.appendCustomEntry(String(entry.customType), entry.data);
         else if (entry.type === "model_change") {
             manager.appendModelChange(String(entry.provider), String(entry.modelId));
@@ -3998,7 +3972,11 @@ test("SessionRuntime loadSession returns opaque metadata and preserves recorded 
     if (!sessionPath) throw new Error("fixture transcript was not persisted");
     const runtime = createSessionRuntime();
 
-    const result = await runtime.loadSession({ cwd: runtimeProjectRoot(), sessionId: "persisted-1", sessionPath });
+    const result: ReplayFixtureResult = await runtime.loadSession({
+        cwd: runtimeProjectRoot(),
+        sessionId: "persisted-1",
+        sessionPath,
+    });
 
     assertEquals("hostedSession" in result, false);
     assertEquals("sessionManager" in result, false);
@@ -4025,13 +4003,13 @@ test("SessionRuntime loadSession returns opaque metadata and preserves recorded 
         result.replayEvents.flatMap((event) => (event.type === RuntimeEventTypes.SYSTEM_STATUS ? [event.message] : [])),
         ["Model changed: test/later", "Thinking level changed: medium"],
     );
-    const modernToolEnd = /** @type {any} */ (
-        result.replayEvents.find((event) => event.type === RuntimeEventTypes.TOOL_END && event.toolCallId === "tool-2")
+    const modernToolEnd = result.replayEvents.find(
+        (event): event is RuntimeToolEndEvent =>
+            event.type === RuntimeEventTypes.TOOL_END && event.toolCallId === "tool-2",
     );
-    const modernToolStart = /** @type {any} */ (
-        result.replayEvents.find(
-            (event) => event.type === RuntimeEventTypes.TOOL_START && event.toolCallId === "tool-2",
-        )
+    const modernToolStart = result.replayEvents.find(
+        (event): event is RuntimeToolStartEvent =>
+            event.type === RuntimeEventTypes.TOOL_START && event.toolCallId === "tool-2",
     );
     assertEquals(modernToolStart?.title, "read README.md");
     assertEquals(modernToolStart?.kind, "read");
@@ -4039,18 +4017,18 @@ test("SessionRuntime loadSession returns opaque metadata and preserves recorded 
     assertEquals(modernToolEnd?.content, [{ type: "text", text: "actual tool output" }]);
     assertEquals(modernToolEnd?.details, { fullOutputPath: "/tmp/read-output" });
     assertEquals(typeof modernToolEnd?.durationMs, "number");
-    assertEquals(modernToolEnd?.durationMs >= 0, true);
-    const assistantMessage = /** @type {any} */ (
-        result.replayEvents.find((event) => event.type === RuntimeEventTypes.ASSISTANT_TEXT_DELTA)
+    assertEquals(modernToolEnd?.durationMs! >= 0, true);
+    const assistantMessage = result.replayEvents.find(
+        (event): event is RuntimeAssistantTextDeltaEvent => event.type === RuntimeEventTypes.ASSISTANT_TEXT_DELTA,
     );
     assertEquals(assistantMessage?.agentName, "Planner");
     const replayThinkingEvents = result.replayEvents.filter(
-        (event) =>
+        (event): event is RuntimeAssistantThinkingDeltaEvent | RuntimeAssistantThinkingEndEvent =>
             event.type === RuntimeEventTypes.ASSISTANT_THINKING_DELTA ||
             event.type === RuntimeEventTypes.ASSISTANT_THINKING_END,
     );
     assertEquals(
-        replayThinkingEvents.map((event) => /** @type {any} */ (event).agentName),
+        replayThinkingEvents.map((event) => event.agentName),
         ["Planner", "Planner"],
     );
     const legacyToolEnd = result.replayEvents.find(
@@ -4101,30 +4079,29 @@ test("SessionRuntime replays persisted task_completed summaries and manual QA ch
     });
     manager.appendCustomEntry("runwield.active_agent", { agentName: "engineer" });
     for (const entry of branch) {
-        if (entry.type === "message") manager.appendMessage(/** @type {any} */ (entry.message));
+        if (entry.type === "message") manager.appendMessage(entry.message as PersistedFixtureMessage);
         else manager.appendCustomEntry(String(entry.customType), entry.data);
     }
     const sessionPath = manager.getSessionFile();
     if (!sessionPath) throw new Error("fixture transcript was not persisted");
     const runtime = createSessionRuntime();
 
-    const result = await runtime.loadSession({
+    const result: ReplayFixtureResult = await runtime.loadSession({
         cwd: runtimeProjectRoot(),
         sessionId: "persisted-workflow",
         sessionPath,
     });
     const workflowMessages = result.replayEvents.filter(
-        (event) =>
-            event.type === RuntimeEventTypes.ASSISTANT_TEXT_DELTA &&
-            /** @type {any} */ (event).messageKind === "workflow",
+        (event): event is RuntimeAssistantTextDeltaEvent =>
+            event.type === RuntimeEventTypes.ASSISTANT_TEXT_DELTA && event.messageKind === "workflow",
     );
 
     assertEquals(
-        workflowMessages.map((event) => /** @type {any} */ (event).workflowMessage),
+        workflowMessages.map((event) => event.workflowMessage),
         ["task_completed", "manual_qa_checklist"],
     );
-    assertEquals(/** @type {any} */ (workflowMessages[0]).delta, "**Task completed.**\n\n- Implemented the fix.");
-    assertEquals(/** @type {any} */ (workflowMessages[1]).delta, "Manual verification steps for fix\n- Check resume.");
+    assertEquals(workflowMessages[0].delta, "**Task completed.**\n\n- Implemented the fix.");
+    assertEquals(workflowMessages[1].delta, "Manual verification steps for fix\n- Check resume.");
 });
 
 test("SessionRuntime close operations dispose sessions by id", async () => {
@@ -4144,8 +4121,7 @@ test("SessionRuntime close settles cleanup when MCP pool close fails", async () 
     const runtime = makeRuntime({ sessionHost });
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
     const hostedSession = sessionHost.requireSession(sessionId);
-    /** @type {string[]} */
-    const events = [];
+    const events: string[] = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
         events.push(event.type);
     });
@@ -4231,8 +4207,7 @@ test("user-authorized agent switch releases active workflows", async () => {
         projectRoot: runtimeProjectRoot(),
         executionCwd: runtimeProjectRoot(),
     });
-    /** @type {string[]} */
-    const notices = [];
+    const notices: string[] = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
         if (event.type === RuntimeEventTypes.SYSTEM_STATUS) notices.push(event.message || "");
     });
@@ -4252,8 +4227,7 @@ test("user-authorized agent switch releases active workflows", async () => {
 test("SessionRuntime rejects image user turns before submission events", async () => {
     const runtime = makeRuntime();
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
-    /** @type {string[]} */
-    const events = [];
+    const events: string[] = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
         events.push(event.type);
     });
@@ -4306,8 +4280,7 @@ test("Workspace gets a stop alert even when the handler suppresses its normal at
                 hosted.suppressNextAgentStoppedAttention();
                 return fauxAssistantMessage(fauxText("Finished."));
             });
-            /** @type {import('./session-runtime-events.ts').RuntimeAttentionRequestedEvent[]} */
-            const attention = [];
+            const attention: RuntimeAttentionRequestedEvent[] = [];
             runtime.subscribeSessionEvents(sessionId, (event) => {
                 if (event.type === RuntimeEventTypes.ATTENTION_REQUESTED) attention.push(event);
             });
@@ -4334,8 +4307,7 @@ test("managed Plan review requests persist the container before the adapter star
             const managed = runtime.getSessionSnapshot(sessionId)?.managed;
             assert(managed);
             assertEquals(fileStore.getLastPlanReview(managed.runwieldSessionId, managed.projectId), null);
-            /** @type {Array<import('./file-session-store-types.ts').LastPlanReviewReference | null>} */
-            const seenAtLaunch = [];
+            const seenAtLaunch: Array<LastPlanReviewReference | null> = [];
             runtime.setInteractionAdapter(sessionId, {
                 requestInteraction: () => {
                     seenAtLaunch.push(fileStore.getLastPlanReview(managed.runwieldSessionId, managed.projectId));
@@ -4343,8 +4315,7 @@ test("managed Plan review requests persist the container before the adapter star
                 },
             });
             const onSurfaceReady = () => {};
-            /** @param {string} planId @param {string} planName @param {Record<string, string>} [extra] */
-            const request = (planId, planName, extra = {}) =>
+            const request = (planId: string, planName: string, extra: Record<string, string> = {}) =>
                 runtime.requestInteraction(sessionId, {
                     type: RuntimeInteractionTypes.PLAN_REVIEW,
                     prompt: `Review ${planName}`,
@@ -4390,8 +4361,7 @@ test("managed image paste acquires dormant ownership and pending prompt images s
         const runtime = createSessionRuntime();
         const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
         const image = { base64: RUNTIME_TEST_PNG, mimeType: "image/png" };
-        /** @type {import('./session-runtime-events.ts').SessionRuntimeEvent[]} */
-        const events = [];
+        const events: SessionRuntimeEvent[] = [];
         runtime.subscribeSessionEvents(created.sessionId, (event) => {
             events.push(event);
         });
@@ -4441,8 +4411,7 @@ test("managed turn reconciles steering when the external SDK omits queue notific
         });
         const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
         await runtime.switchAgent(created.sessionId, { agentName: "guide" });
-        /** @type {import('./session-runtime-events.ts').SessionRuntimeEvent[]} */
-        const events = [];
+        const events: SessionRuntimeEvent[] = [];
         runtime.subscribeSessionEvents(created.sessionId, (event) => {
             events.push(event);
         });

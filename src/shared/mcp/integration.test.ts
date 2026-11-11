@@ -19,7 +19,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { openFileSessionStore } from "../session/file-session-store.ts";
 import { SessionHost } from "../session/session-host.ts";
 import { HostedSession } from "../session/hosted-session.ts";
-import { buildAgentSession, runIsolatedAgentSession } from "../session/session.js";
+import { buildAgentSession, runIsolatedAgentSession } from "../session/session.ts";
 import { SessionRuntime, createSessionRuntime } from "../session/session-runtime.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { startMcpIntegration } from "./integration.ts";
@@ -626,8 +626,9 @@ test("an initially empty MCP inventory updates its root while isolated calls sta
                         built.tools.some((name) => name.startsWith("mcp__")),
                         false,
                     );
+                    assert("getAllTools" in built.session);
                     assertEquals(
-                        built.session?.getAllTools().some((tool: ToolDefinition) => tool.name.startsWith("mcp__")),
+                        built.session?.getAllTools().some((tool) => tool.name.startsWith("mcp__")),
                         false,
                     );
                 },

@@ -7,7 +7,7 @@ import { test } from "node:test";
  * only streaming roots and transient sub-agents owned by the target HostedSession.
  */
 
-import { abortActiveSession } from "./session.js";
+import { abortActiveSession } from "./session.ts";
 import { HostedSession, type DisposableLike } from "./hosted-session.ts";
 
 interface FakeSessionOptions {

@@ -1,5 +1,5 @@
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { buildAgentSession } from "../session.js";
+import { buildAgentSession } from "../session.ts";
 import { normalizeRuntimeUsage } from "../session-runtime-events.ts";
 
 interface InMemoryGuideOptions {

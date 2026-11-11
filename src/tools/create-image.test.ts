@@ -35,7 +35,7 @@ import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { __resetSettingsForTests } from "../shared/settings.ts";
 import { createImage } from "../shared/image-generation.ts";
 import { persistImageAttachment } from "../shared/session/image-attachments.ts";
-import { buildAgentSession, composeClaudeCliBridgedTools } from "../shared/session/session.js";
+import { buildAgentSession, composeClaudeCliBridgedTools } from "../shared/session/session.ts";
 import { CLAUDE_CLI_MCP_PROVENANCE, startRunWieldMcpBridge } from "../shared/session/backends/claude-cli/mcp-bridge.ts";
 import { resolveImageGenerationSettings } from "../shared/image-generation-settings.ts";
 import type { ImageGenerationSettings } from "../shared/image-generation-settings.ts";

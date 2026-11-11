@@ -3,7 +3,7 @@ import { readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { HostedSession } from "./hosted-session.ts";
-import { attachSessionEventSubscribers } from "./session.js";
+import { attachSessionEventSubscribers } from "./session.ts";
 import { createSessionRuntimeEvent } from "./session-runtime-events.ts";
 import { getCwd } from "../../constants.ts";
 

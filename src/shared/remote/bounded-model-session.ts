@@ -14,7 +14,7 @@ import {
     getConfiguredAgentTemperature,
     getPromptTemplatePaths,
     resolveModel,
-} from "../session/session.js";
+} from "../session/session.ts";
 import { loadAgentDef } from "../session/agents.ts";
 import { assertModelExecutionBackendSupported } from "../models/model-execution.ts";
 import { parseProviderModel } from "../models/model-validation.ts";

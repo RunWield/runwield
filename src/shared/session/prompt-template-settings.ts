@@ -6,7 +6,7 @@ import {
     assertThinkingLevelSupportedForInvocation,
     resolveExecutionThinkingLevel,
     resolveModel,
-} from "./session.js";
+} from "./session.ts";
 import { getModelRegistry } from "../models/model-registry.ts";
 import { formatProviderModelReference } from "../models/model-validation.ts";
 import { resolveActiveWorkflowRuntimeAgent } from "../workflow/execution-agent.ts";

@@ -1,5 +1,5 @@
 import { AgyCliBackendError } from ".././backends/agy-cli/failure.ts";
-import { listPromptTemplates, listSkills } from ".././session.js";
+import { listPromptTemplates, listSkills } from ".././session.ts";
 import { createSessionRuntimeEvent, RuntimeEventTypes } from ".././session-runtime-events.ts";
 import { appendLiveSessionEvent } from ".././live-session-events.ts";
 import type { SessionRuntimeEventListener } from "./types.ts";

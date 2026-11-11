@@ -7,7 +7,7 @@ import {
     listLoadedAgentMdFiles,
     listPromptTemplates,
     listSkills,
-} from ".././session.js";
+} from ".././session.ts";
 import { buildActiveConversationSubmissionMessage } from ".././session-user-messages.ts";
 import {
     classifyRootSessionLocator,

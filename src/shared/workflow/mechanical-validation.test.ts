@@ -1,18 +1,19 @@
+import { ok as assert } from "node:assert/strict";
 import process from "node:process";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { type AgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { HostedSession } from "../session/hosted-session.ts";
-import { ensureRootAgentSession } from "../session/session.js";
+import { ensureRootAgentSession } from "../session/session.ts";
 import { attachRecorder, makeUi, type ValidationUiRecorder } from "./validation-test-helpers.ts";
 import type { LocalCIPort, LocalCIResult } from "./validation-local-ci.ts";
 import { runLocalCI, runMechanicalValidation } from "./validation.ts";
 
 interface MechanicalFixture {
     hostedSession: HostedSession;
-    rootAgentSession: Awaited<ReturnType<typeof ensureRootAgentSession>>;
+    rootAgentSession: AgentSession;
     sessionManager: SessionManager;
     ui: ValidationUiRecorder;
 }
@@ -56,6 +57,7 @@ async function activateMechanicalFixture(projectRoot: string): Promise<Mechanica
         agentName: "engineer",
         sessionManager,
     });
+    assert("agent" in rootAgentSession);
     return { hostedSession, rootAgentSession, sessionManager, ui };
 }
 

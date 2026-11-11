@@ -5,7 +5,7 @@ import { fauxAssistantMessage, fauxText, fauxToolCall, type FauxResponseFactory 
 import { SessionManager, type AgentSession } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { HostedSession } from "./hosted-session.ts";
-import { ensureRootAgentSession, runRootTurn } from "./session.js";
+import { ensureRootAgentSession, runRootTurn } from "./session.ts";
 
 function makeWarmingEligible(session: AgentSession) {
     const model = session.model;
@@ -51,6 +51,7 @@ test("RunWield cache policy prevents an otherwise eligible Pi warming request", 
             setModelResponseFactory(respond);
 
             const session = await ensureRootAgentSession({ hostedSession: hosted, agentName: "operator" });
+            assert("agent" in session);
             makeWarmingEligible(session);
             const getCacheWarmingMode = session.settingsManager.getCacheWarmingMode;
             if (enablePositiveControl) session.settingsManager.getCacheWarmingMode = () => "streaming";

@@ -16,7 +16,7 @@ import {
     ensureRootAgentSession,
     runIsolatedAgentSession,
     runRootTurn,
-} from "./session.js";
+} from "./session.ts";
 
 async function readMetrics(projectRoot: string) {
     await drainWorkflowMetrics();
@@ -329,6 +329,7 @@ test("manual compaction outside a model turn links context and auxiliary usage t
             });
             try {
                 const root = await ensureRootAgentSession({ hostedSession: hosted, agentName: "guide" });
+                assert("agent" in root);
                 await runRootTurn({ hostedSession: hosted, agentName: "guide", userRequest: "Say something useful." });
                 await runRootTurn({
                     hostedSession: hosted,
@@ -425,6 +426,7 @@ test("manual compaction cancellation saves a canceled result with no invented ex
         });
         try {
             const root = await ensureRootAgentSession({ hostedSession: hosted, agentName: "guide" });
+            assert("agent" in root);
             await runRootTurn({ hostedSession: hosted, agentName: "guide", userRequest: "First turn." });
             await runRootTurn({ hostedSession: hosted, agentName: "guide", userRequest: "Second turn." });
             hosted.activeCommandInvocationId = "cmd_cancel";
@@ -504,6 +506,7 @@ test("overlapping manual compactions keep call ownership and leave no orphan sta
         });
         try {
             const root = await ensureRootAgentSession({ hostedSession: hosted, agentName: "guide" });
+            assert("agent" in root);
             await runRootTurn({ hostedSession: hosted, agentName: "guide", userRequest: "First turn." });
             await runRootTurn({ hostedSession: hosted, agentName: "guide", userRequest: "Second turn." });
             hosted.activeCommandInvocationId = "compact-a";
