@@ -9,13 +9,11 @@ When choosing words, choose simpler terms where possible, when the writing is te
 
 ## Local Type Style
 
-JSDoc: prefer `@typedef` for object shapes over inline annotations or `@type`
-casts. Define the type once and reference it. Type function parameters in the
-`@param` block, not with `@type` declarations in the function body.
-
-TypeScript: do not use `any`, `unknown`, or `object`. Define a type with named
-properties, or let TypeScript infer the type. Do not define complex inline
-types.
+Use TypeScript (`.ts` or `.tsx`) for source and tests. Do not use `any`,
+`unknown`, or `object`. Define named types with specific properties, or let
+TypeScript infer the type. Export reusable types from the module that owns them
+and import them through its public surface. Avoid complex inline types and
+standalone shared-type modules. Use real source extensions in imports.
 
 ## Running Tests
 

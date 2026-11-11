@@ -1,4 +1,4 @@
-// @ts-nocheck: server module uses the repository's JSDoc JavaScript style while keeping the TypeScript production extension.
+// @ts-nocheck: Callback parameters and result shapes are implicit.
 /** @module ui/workspace/server/workspace-search */
 
 import { mkdirSync, renameSync } from "node:fs";

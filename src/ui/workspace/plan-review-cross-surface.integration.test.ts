@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-// @ts-nocheck: The live session and owner service expose JavaScript records.
+// @ts-nocheck: Owner-service result records have implicit types.
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { spawnNativeProcess } from "../../shared/foreground-process.ts";

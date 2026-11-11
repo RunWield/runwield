@@ -1,4 +1,4 @@
-// @ts-nocheck: shared from JS command code; JSDoc documents the public shape.
+// @ts-nocheck: Callback parameters and result shapes are implicit.
 import { AGENTS } from "../../constants.ts";
 import { getModelRegistry } from "../models/model-registry.ts";
 import { parseProviderModel } from "../models/model-validation.ts";

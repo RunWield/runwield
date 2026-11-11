@@ -1,4 +1,4 @@
-// @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
+// @ts-nocheck: Callback parameters and result shapes are implicit.
 import { prepareWorktreeRegistry } from "../worktree-registry.ts";
 import { preparePlanWorkflow } from "./plan-preparation.ts";
 import {

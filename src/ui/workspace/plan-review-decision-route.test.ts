@@ -1,4 +1,4 @@
-// @ts-nocheck: owner Workspace routes and the fixture expose JavaScript records.
+// @ts-nocheck: Owner-service result records have implicit types.
 import { writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";

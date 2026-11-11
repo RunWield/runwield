@@ -285,7 +285,8 @@ image transfer or predecessor lookup. `src/tools/see-image.ts:94–98` supplies 
 access, and isolation between two Sessions. Include working-directory changes because execution can move into a
 worktree.
 
-**Boundary:** Keep the file-authoritative Session model in ADR-015 and the focused handoffs in ADR-012. Do not solve
+**Boundary:** Keep the [file-authoritative Session model](../adr/014-file-authoritative-session-bundles.md) and
+[focused handoffs](../adr/011-segment-session-transcripts-at-execution-handoff.md). Do not solve
 this by copying all previous conversation into repair. Future Session deletion is not a current missing deletion
 feature.
 

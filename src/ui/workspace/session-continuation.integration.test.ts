@@ -5,8 +5,8 @@ import { createServer as createSocketServer } from "node:net";
 import { setImmediate as nextEventLoop } from "node:timers/promises";
 import { install as installClock } from "@sinonjs/fake-timers";
 import { openNativeFileLock } from "../../shared/native-file-lock.ts";
-// @ts-nocheck: Workspace service is JavaScript and returns projected event records.
-// @ts-nocheck: Workspace service is JavaScript and returns projected event records.
+// @ts-nocheck: Owner-service result records have implicit types.
+// @ts-nocheck: Owner-service result records have implicit types.
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { spawnNativeProcess } from "../../shared/foreground-process.ts";

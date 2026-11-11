@@ -24,7 +24,6 @@ export type PlanExecutionPolicyAgent = "engineer" | "frontend-engineer";
 /** The Agent identity the runtime activates. This is never written down. */
 export type PlanExecutionRuntimeAgent = "plan-engineer" | "frontend-engineer";
 
-// `AGENTS` comes from a JSDoc-typed module, so its values widen to `string`.
 // Naming the two runtime identities here keeps the resolver's return type exact.
 const PLAN_ENGINEER: PlanExecutionRuntimeAgent = "plan-engineer";
 const FRONTEND_ENGINEER: PlanExecutionRuntimeAgent = "frontend-engineer";

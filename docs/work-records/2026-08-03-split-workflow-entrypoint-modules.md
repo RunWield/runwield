@@ -16,7 +16,7 @@ provenance:
 
 ## Summary
 
-The public workflow entry point is a thin compatibility facade over cohesive TypeScript modules. Existing imports and JSDoc type consumers retain their public contract. Architecture-boundary checks cover the extracted implementation.
+The public workflow entry point is a thin compatibility facade over cohesive TypeScript modules. Existing imports and type consumers retain their public contract. Architecture-boundary checks cover the extracted implementation.
 
 ## Future Planning Notes
 

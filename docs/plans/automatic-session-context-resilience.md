@@ -13,13 +13,13 @@ affectedPaths:
     - "src/shared/session/session-subscribers.test.ts"
     - "src/shared/session/hosted-session.ts"
     - "src/shared/session/hosted-session.test.ts"
-    - "src/shared/session/abort-active-session.test.js"
+    - "src/shared/session/abort-active-session.test.ts"
     - "src/shared/session/runtime/turns.ts"
     - "src/shared/session/runtime/agent-settings.ts"
     - "src/shared/session/runtime/managed-operations.ts"
     - "src/shared/session/session-runtime.test.ts"
     - "src/shared/session/session-runtime-events.ts"
-    - "src/shared/session/session-runtime-events.test.js"
+    - "src/shared/session/session-runtime-events.test.ts"
     - "src/shared/session/agent-handler.ts"
     - "src/shared/session/agent-handler.test.ts"
     - "src/shared/session/root-workflow-turn.ts"
@@ -28,7 +28,7 @@ affectedPaths:
     - "src/tools/delegate-agent.ts"
     - "src/tools/__tests__/delegate-agent.test.ts"
     - "src/cmd/compact/index.ts"
-    - "src/cmd/compact/index.test.js"
+    - "src/cmd/compact/index.test.ts"
     - "src/ui/tui/runtime-adapter.ts"
     - "src/ui/tui/runtime-adapter.test.ts"
     - "src/acp/event-mapper.ts"
@@ -296,8 +296,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   contract. The current baseline is 0.87.1, not 0.80.x.
 - `deno.lock` — lock the verified Pi release family; do not execute unrelated dependency upgrades.
 - `src/shared/session/session-context-resilience.ts` — own the Engineer-only early trigger, standard safety policy,
-  shared arbiter, useful recovery, early disarm, failure pause, and public Pi continuation. New production code is
-  TypeScript under ADR-013; do not add a JavaScript baseline exception.
+  shared arbiter, useful recovery, early disarm, failure pause, and public Pi continuation.
 - `src/shared/session/session-context-resilience.test.js` — characterize the released public Pi contract and cover the
   policy, state machine, long autonomous run, compaction serialization, queue ordering, continuation, pause, and re-arm.
 - `src/shared/session/session.ts` — replace private compaction calls and Engineer wrappers with one public-policy path
@@ -311,7 +310,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   disposal, plus isolated-child health and cancellation. All compaction shares one arbiter per Hosted Session.
 - `src/shared/session/hosted-session.test.ts` — cover arbiter exclusivity, active-turn cancellation/settlement,
   disposal, and isolation between Hosted Sessions.
-- `src/shared/session/abort-active-session.test.js` — verify the shared abort path handles streaming and compaction for
+- `src/shared/session/abort-active-session.test.ts` — verify the shared abort path handles streaming and compaction for
   root and every registered transient Agent Session without duplicate aborts.
 - `src/shared/session/runtime/turns.ts`, `runtime/agent-settings.ts`, and `runtime/managed-operations.ts` — integrate
   pause/cancellation settlement, fail-fast manual compaction, and health retention across ordinary dehydration. Keep
@@ -320,7 +319,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   continuity, root/transient parity, and independent Hosted Session progress.
 - `src/shared/session/session-runtime-events.ts` — add one canonical `context_resilience` event with validated status,
   reason, message, and content-free pressure/recovery fields.
-- `src/shared/session/session-runtime-events.test.js` — enforce the new event's exact required fields/enums and producer
+- `src/shared/session/session-runtime-events.test.ts` — enforce the new event's exact required fields/enums and producer
   payload allowlist.
 - `src/shared/session/agent-handler.ts` — add a `context_paused` Agent turn result so recoverable pressure is distinguishable
   from normal completion and handoff without becoming a provider/runtime error.
@@ -328,7 +327,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   a consume-once accepted Workflow Tool Event. Do not restore the retired transcript-outcome scanner.
 - `src/shared/session/request-dispatch.ts` and its tests — record paused attempts without marking backend failure or
   generating a second request. Preserve legacy attempt records and genuine backend-failure continuation.
-- `src/shared/session/segment-rollover.test.js` and execution/repair handoff tests — verify predecessor suppression and
+- `src/shared/session/segment-rollover.test.ts` and execution/repair handoff tests — verify predecessor suppression and
   clean successor health through real workflow boundaries.
 - `src/tools/delegate-agent.ts`, `src/shared/session/background-tasks.ts`, and background task tests — map foreground
   and background pause outcomes through their different existing settlement paths. Do not present partial output as
@@ -337,7 +336,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   settlement, report `context_resilience_paused` deterministically, and respect Hosted Session compaction serialization.
 - `src/cmd/compact/index.ts` — handle Runtime's `compaction_in_progress` result without reading success-only compaction
   fields and display one concise retry-later message.
-- `src/cmd/compact/index.test.js` — cover shared-arbiter acquisition, immediate `compaction_in_progress` behavior,
+- `src/cmd/compact/index.test.ts` — cover shared-arbiter acquisition, immediate `compaction_in_progress` behavior,
   manual-compaction re-arm, and non-duplicated manual/automatic status.
 - `src/ui/tui/runtime-adapter.ts` — render canonical context-resilience messages without implementing policy or
   normalization in the TUI.
@@ -355,7 +354,8 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   requirements/scenarios into the owning Core capability when implemented, retain unmet scope as target/deferred, and
   retire the transient proposal only after its unique intent is preserved.
 - `docs/adr/010-session-runtime-sibling-adapters-and-acp.md` — record shared policy ownership, the public-Pi constraint,
-  and health retention across disposable Pi Sessions. Preserve ADR-012 rollover precedence and ADR-015 file authority;
+  and health retention across disposable Pi Sessions. Preserve [rollover precedence](../adr/011-segment-session-transcripts-at-execution-handoff.md) and
+  [file authority](../adr/014-file-authoritative-session-bundles.md);
   update their references only if needed. No new domain concept or glossary alias is proposed.
 
 ## Reuse Opportunities
@@ -371,7 +371,7 @@ Existing functions, modules, or patterns to reuse:
   sibling consumers of one semantic contract.
 - `src/shared/session/hosted-session.ts` — reuse per-Session turn ownership and transient Agent registration to scope
   the arbiter and cancellation.
-- `src/shared/session/session-context-report.js` — reuse existing context-window/usage normalization where applicable;
+- `src/shared/session/session-context-report.ts` — reuse existing context-window/usage normalization where applicable;
   adapters must not inspect Agent Session internals.
 
 ## Implementation Steps
@@ -456,12 +456,12 @@ unless the complete public AgentSession contract has been verified; a partial ga
 - Automated focused tests: run
   `bun scripts/run-tests.ts src/shared/session/session-context-resilience.test.js
 src/shared/session/session-prompt.test.ts src/shared/session/session-subscribers.test.ts
-src/shared/session/hosted-session.test.ts src/shared/session/abort-active-session.test.js
-src/shared/session/session-runtime-events.test.js src/shared/session/session-runtime.test.ts
+src/shared/session/hosted-session.test.ts src/shared/session/abort-active-session.test.ts
+src/shared/session/session-runtime-events.test.ts src/shared/session/session-runtime.test.ts
 src/shared/session/agent-handler.test.ts src/shared/session/request-dispatch.test.ts
 src/shared/session/background-tasks.test.ts src/shared/session/background-tasks-extra.test.ts
-src/shared/session/segment-rollover.test.js src/shared/session/session-transcript-projection.test.ts
-src/tools/__tests__/delegate-agent.test.ts src/cmd/compact/index.test.js
+src/shared/session/segment-rollover.test.ts src/shared/session/session-transcript-projection.test.ts
+src/tools/__tests__/delegate-agent.test.ts src/cmd/compact/index.test.ts
 src/ui/tui/runtime-adapter.test.ts src/acp/server.test.ts src/ui/workspace/workspace-session-ux.test.tsx`.
   Include new focused integration suites through the same runner. Never use direct `deno test`.
 - Existing coverage: preserve manual/resume compaction, automatic-disabled behavior, image and Named Invocation context,

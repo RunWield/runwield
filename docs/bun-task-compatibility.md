@@ -1,7 +1,7 @@
 # Public task compatibility audit
 
-Baseline: all **49** `deno.json` tasks at `9d4bb0374`, the phase-2 starting point. Every name exists in `package.json`.
-There are **no intentional task-name exceptions**. Use `bun run <original-name> [arguments]`.
+The retained public tasks from `deno.json` at `9d4bb0374` are available in `package.json`.
+Use `bun run <original-name> [arguments]`.
 `docs-site/deno.json` contained no tasks. The root and docs Deno manifests/locks are now retired.
 
 The independent task inventory in `scripts/task-compatibility.test.ts` prevents silent renames. Its real Bun shell
@@ -15,7 +15,6 @@ compiler, isolated-runner and release tests separately cover the product behavio
 | `submodules:check`             | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
 | `submodules:check:remote`      | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
 | `snip:check`                   | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
-| `language-policy:check`        | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
 | `seams:check`                  | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
 | `doc-links:check`              | Same script/action, fixed subcommand/options, and caller arguments; execution uses Bun where applicable.                                                                                                            |
 | `docs:stage`                   | Same staging entrypoint and arguments.                                                                                                                                                                              |

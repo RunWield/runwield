@@ -1,4 +1,4 @@
-// @ts-nocheck: browser question bridge keeps JS Runtime interaction types at the boundary.
+// @ts-nocheck: Browser question interaction metadata has implicit types.
 /**
  * @module shared/session/browser-question
  * Starts the compiled Workspace question page for Runtime interactions.

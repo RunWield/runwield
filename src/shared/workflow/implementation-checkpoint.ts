@@ -1,4 +1,4 @@
-// @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
+// @ts-nocheck: Callback parameters and result shapes are implicit.
 import { getPlanRevisionForText, loadPlan } from "../../plan-store.ts";
 import { checkpointExecutionWorktree } from "../worktree.ts";
 import { acknowledgeTaskCompletion, claimPendingTaskCompletion } from "../session/task-completion-session.ts";

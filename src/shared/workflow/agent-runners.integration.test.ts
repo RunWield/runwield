@@ -39,7 +39,7 @@ function createAgentSession(
         },
     });
     // Pi's concrete SessionManager satisfies HostedSession's deliberately small
-    // runtime contract, but the legacy JSDoc signature is wider.
+    // runtime contract, while the manager interface accepts a wider signature.
     hostedSession.setRootSessionManager(sessionManager);
     return { hostedSession, sessionManager };
 }

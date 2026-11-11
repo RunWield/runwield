@@ -91,7 +91,7 @@ without importing the runtime implementation.
 
 ## Consequences
 
-- ACP must not import or call `src/ui/tui/chat-session.js` TUI internals to
+- ACP must not import or call `src/ui/tui/chat-session.ts` TUI internals to
   submit prompts.
 - TUI-specific orchestration that is actually session behavior should move into
   `SessionRuntime` or lower-level shared modules.
