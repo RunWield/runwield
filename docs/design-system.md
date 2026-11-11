@@ -167,7 +167,7 @@ RunWield owns its browser UI components. Shared design-system CSS and primitives
 `src/ui/design-system/` so Workspace, Plannotator, and future browser surfaces can consume the same visual language. For
 Workspace under `src/ui/workspace/`, the supported endpoint is Astro SSR, React islands, and Tailwind 4. Fresh, Preact,
 and UnoCSS runtime code is retired for Workspace; remaining Preact/Zag components under
-`src/ui/design-system/components/*.jsx` are legacy non-Workspace primitives until a dedicated design-system migration
+`src/ui/design-system/components/*.tsx` are legacy non-Workspace primitives until a dedicated design-system migration
 replaces them.
 
 Workspace surfaces must use RunWield semantic tokens for color, radius, spacing, and status intent. Tailwind utilities
@@ -1066,9 +1066,8 @@ automated score does not establish visual acceptance.
 
 ## Plannotator component reuse exception
 
-Workspace may temporarily host imported upstream Plannotator React/TypeScript components while RunWield validates deeper
-collaboration with the Plannotator ecosystem. This exception is scoped to `src/ui/workspace/` and does not by itself
-change the rest of RunWield's JS/JSDoc convention.
+Workspace may host imported upstream Plannotator React/TypeScript components under `src/ui/workspace/` while RunWield
+validates deeper collaboration with the Plannotator ecosystem. RunWield source uses TypeScript throughout.
 
 When imported Plannotator components are used:
 

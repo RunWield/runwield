@@ -1,4 +1,4 @@
-// @ts-nocheck: Owner Workspace routes and projected operations are JavaScript.
+// @ts-nocheck: Owner-service result records have implicit types.
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";

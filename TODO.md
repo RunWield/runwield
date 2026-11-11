@@ -132,7 +132,6 @@ Check that these work records are accurate and summarize actual delivered work
 2026-07-24-fail-closed-plan-verification-delivered.md
 2026-07-24-parallel-test-runs-enabled-with-shared-state-isolation.md
 2026-08-02-native-terminal-osc-notifications.md
-2026-08-03-migrated-direct-custom-tools-to-typescript.md
 2026-08-11-isolated-runwield-runtime-state-from-worktree-merges.md
 2026-08-16-archived-plan-retention-and-prune.md
 2026-08-16-lost-worktree-user-verification-recovery-added.md

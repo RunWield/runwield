@@ -8,13 +8,13 @@ import { captureScriptProcess } from "./script-process.ts";
 
 // Public tasks from the final Deno toolchain at 9d4bb0374. Keep this inventory
 // independent of the active package manifest so accidental renames fail CI.
+// Intentionally retired tasks are removed from this inventory.
 const LEGACY_TASKS = [
     "ci",
     "cli",
     "submodules:check",
     "submodules:check:remote",
     "snip:check",
-    "language-policy:check",
     "seams:check",
     "doc-links:check",
     "docs:stage",
@@ -77,7 +77,7 @@ async function packageConfig(): Promise<PackageConfig> {
     return JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 }
 
-test("all 49 public Deno tasks remain available under their original Bun script names", async () => {
+test("retained public tasks remain available under their original Bun script names", async () => {
     const { scripts } = await packageConfig();
     for (const task of LEGACY_TASKS) {
         ok(scripts[task], `Missing original task: ${task}`);

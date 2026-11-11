@@ -211,7 +211,7 @@ built next.
 
 RunWield is built on [Pi](https://pi.dev) and ships as a single compiled binary.
 
-- **CLI + TUI** — Bun 1.4.3, TypeScript and JavaScript with JSDoc typing.
+- **CLI + TUI** — Bun 1.4.3, TypeScript.
 - **Plan review** — a browser UI powered by [Plannotator](https://plannotator.ai).
 - **Code intelligence** — [Cymbal](https://github.com/1broseidon/cymbal).
 - **Memory** — [Mnemoteca](https://github.com/gandazgul/mnemoteca) for project and global memory.

@@ -21,8 +21,6 @@ test("Manual QA runs the bundled isolated Operator and persists its visible chec
             });
             const sessionManager = SessionManager.inMemory(projectRoot);
             const hostedSession = new HostedSession({ id: "manual-qa-persist", cwd: projectRoot });
-            // HostedSession's legacy minimal-manager JSDoc widens appendMessage beyond
-            // Pi's real SessionManager signature; the concrete manager is the runtime object.
             hostedSession.setRootSessionManager(sessionManager);
 
             const messages = await runManualQaChecklistPrompt({

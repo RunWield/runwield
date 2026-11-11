@@ -54,8 +54,7 @@ The zero result does not yet prove ownership. The detector automatically accepts
 ends in `Port`, and it treats local all-required `Port`, `Ports`, or `Deps` objects as the desired replacement shape. A
 required parameter removes a silent fallback, but it can still let a test replace behavior that RunWield owns.
 
-A current audit found 23 TypeScript production port declarations, plus JavaScript JSDoc port shapes and port-like
-classes. The draft originally named only execution start, Plan recovery, interactive-session startup, package settings,
+The audit found 23 TypeScript production port declarations, documented port shapes, and port-like classes. The draft originally named only execution start, Plan recovery, interactive-session startup, package settings,
 and Workflow Validation. The user chose a complete production-port audit with no temporary ownership exceptions. The
 change must therefore classify every required behavioral collaborator that the strengthened detector finds, preserve
 genuine external capabilities, and remove or reshape every mixed or internal one.
@@ -85,7 +84,7 @@ Make ownership, not required-parameter syntax, decide what production behavior t
 
 - keep the injection-seam baseline at zero with no temporary ownership exceptions;
 - declare each genuine external capability by exact source declaration and member set;
-- reject imported, local, JSDoc, and constructor-injected behavioral collaborators that are undeclared, stale, mixed, or
+- reject imported, local, documented, and constructor-injected behavioral collaborators that are undeclared, stale, mixed, or
   expose RunWield-owned machinery;
 - remove every current mixed or internal production port found by the complete audit;
 - replace `ValidationSessionPort` with narrow Agent and user-interaction capabilities plus a non-replaceable RunWield
@@ -107,7 +106,7 @@ An injection seam is a public claim that a behavior can vary independently of Ru
 ### Exact external-capability declarations
 
 Add `scripts/external-capability-ports.json` as a repository-private ownership manifest. Each entry identifies one
-source module and named TypeScript interface/type, JSDoc typedef, or other injected contract; records the external
+source module and named TypeScript interface/type or other injected contract; records the external
 owner; and lists the exact callable members. Imported declarations are resolved to their source. A changed, missing,
 duplicate, or extra member makes the manifest stale and fails the check.
 
@@ -231,7 +230,7 @@ compatibility constraint, not a document to revise.
 - `scripts/external-capability-ports.json` has a validated, deterministic schema keyed by source declaration; every
   entry has one external owner and an exact non-empty member set, and duplicate, missing, stale, or
   implementation-valued entries fail `seams:check`.
-- `scripts/check-injection-seams.ts` resolves local, imported, and JSDoc required behavioral types and constructor
+- `scripts/check-injection-seams.ts` resolves local, imported, and documented required behavioral types and constructor
   arguments without a suffix exemption. Undeclared behavioral collaborators and mixed-owner aggregates fail while
   ordinary data objects pass.
 - The complete current production-port inventory is accounted for: each genuine external contract is in the manifest,
@@ -324,7 +323,7 @@ session-independent validation extraction rather than replacing their historical
 
 - A required parameter is not automatically a valid external capability. Required syntax removes fallback ambiguity; it
   does not prove ownership.
-- The checker must cover JavaScript JSDoc contracts and imported aliases as well as local TypeScript declarations. A
+- The checker must cover documented contracts and imported aliases as well as local TypeScript declarations. A
   rename, re-export, or constructor wrapper must not create an escape hatch.
 - A port aggregate is valid only when all members belong to one external capability. A mixed `ports`, `deps`, `context`,
   or options object remains a dependency bag under a different name. One generic method with an opaque operation code is

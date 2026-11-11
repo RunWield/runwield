@@ -1,5 +1,5 @@
 import { assertEquals } from "../../testing/assertions.ts";
-// @ts-nocheck: owner Workspace app and managed fixture expose JavaScript records.
+// @ts-nocheck: Owner-service result records have implicit types.
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { ensurePlanIdentity, savePlan } from "../../plan-store.ts";

@@ -7,7 +7,7 @@ import process from "node:process";
  *
  * A seam — an entry in a module's `__deps`/`__testDeps` bag — is a public claim that
  * something is not ours. That makes it an architectural statement, not a testing
- * convenience, and it needs the same guard rails as the JS-to-TS baseline: freeze
+ * convenience, and it needs guard rails: freeze
  * where we are, refuse to slide back, tighten as each module is refactored.
  *
  * Three rules, in descending strictness:

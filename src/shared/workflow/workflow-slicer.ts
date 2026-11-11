@@ -1,4 +1,4 @@
-// @ts-nocheck: structural TypeScript migration; public shapes are tightened below while legacy tool schemas retain inference.
+// @ts-nocheck: Callback parameters and result shapes are implicit.
 import { readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 /**
  * @module shared/workflow/workflow-slicer

@@ -48,10 +48,6 @@
                 "code": 0
             },
             {
-                "name": "language-policy:check",
-                "code": 0
-            },
-            {
                 "name": "submodules:check",
                 "code": 0
             },

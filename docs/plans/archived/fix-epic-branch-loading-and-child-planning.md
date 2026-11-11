@@ -311,7 +311,7 @@ deno task ci
 ```
 
 Never run `deno test` directly. Use `getHomeDir()`/`getCwd()` and `withProcessGlobalTestLock` where tests change process
-state. Follow the repository's named JSDoc/TypeScript type rules; do not add a test-only injection seam.
+state. Follow the repository's named TypeScript type rules; do not add a test-only injection seam.
 
 ### Protected and retired behavior
 

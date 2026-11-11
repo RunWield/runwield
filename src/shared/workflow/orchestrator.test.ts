@@ -46,8 +46,6 @@ function createSessionFixture(projectRoot: string, interaction?: InteractionHand
                 interaction?.(request) ?? { outcome: "canceled", message: "Fixture supplied no interaction answer." },
         },
     });
-    // HostedSession's legacy minimal-manager JSDoc is wider than Pi's concrete
-    // manager signature; this is the real runtime manager used in production.
     hostedSession.setRootSessionManager(sessionManager);
     const events: SessionRuntimeEvent[] = [];
     hostedSession.setEventSink((event: SessionRuntimeEvent) => events.push(event));

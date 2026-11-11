@@ -14,10 +14,9 @@ Operate on the entire codebase, start on the entry point, and walk your way thro
 2. **Pragmatic DRY:** Identify repeated logic blocks.
     - Refactor only if the logic is repeated 3+ times OR if the logic is complex enough that a single source of truth is
       safer.
-3. **Types** In JS projects add JSDoc where it's missing, expand types that are currently any, or Object if more
-   specific types are possible.
-    - In Python projects add type hints to all functions.
-    - For Typescrypt expand types that are currently any, or Object if more specific types are possible.
+3. **Types** Use named TypeScript types with specific properties and reuse types exported by the owning module.
+    - Replace broad types with specific types where the contract supports them.
+    - In Python projects add type hints to functions.
 4. **Documentation:** -
     - Insert inline comments for complex math: e.g., $A = \pi r^2$ or specific heuristic weights.
     - Explain _why_ a specific assumption was made (e.g., // Assuming the API returns UTC).

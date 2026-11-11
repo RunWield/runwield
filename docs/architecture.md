@@ -102,11 +102,11 @@ structured agent outcomes, calls Plan and execution services, and decides which 
 | Per-session ownership       | Project root, root and sub-agent sessions, active agent/model/thinking state, workflow state, active interactions    | `src/shared/session/hosted-session.ts`                                                                                                                   |
 | Multi-session registry      | Adopt, find, list, and dispose hosted sessions                                                                       | `src/shared/session/session-host.ts`                                                                                                                     |
 | Pi integration              | Build configured `AgentSession` objects, assemble prompts, wire tools, translate Pi events, run prompts, reuse roots | `src/shared/session/session.ts`                                                                                                                          |
-| Workflow application logic  | Interpret tool outcomes, route requests, choose post-planning and post-execution actions                             | `src/shared/session/agent-handler.ts`, `src/shared/workflow/orchestrator.js`, `src/shared/workflow/decisions.ts`                                         |
+| Workflow application logic  | Interpret tool outcomes, route requests, choose post-planning and post-execution actions                             | `src/shared/session/agent-handler.ts`, `src/shared/workflow/orchestrator.ts`, `src/shared/workflow/decisions.ts`                                         |
 | Plan domain                 | Canonical Markdown persistence, identities, hierarchy, lifecycle state machine, collaboration write lock             | `src/plan-store.ts`, `src/shared/workflow/plan-lifecycle.ts`                                                                                             |
 | Execution domain            | Worktree preparation, Engineer completion gate, local validation, repair, merge-back, recovery metadata              | `src/shared/workflow/workflow.ts`, `src/shared/workflow/validation.ts`, `src/shared/worktree.ts`                                                         |
 | Configuration and policy    | Layered agent definitions, settings, model resolution, protected tools, skills/prompts/extensions                    | `src/shared/session/agents.ts`, `src/shared/settings.ts`, `src/shared/models/`, `src/tools/registry.ts`                                                  |
-| Local platform services     | Git probing, worktree registry, metrics, collaboration crypto/protocol/secrets, binary preflight                     | `src/shared/git.ts`, `src/shared/worktree-registry.ts`, `src/shared/workflow/metrics.ts`, `src/shared/collaboration/`, `src/shared/runtime-preflight.js` |
+| Local platform services     | Git probing, worktree registry, metrics, collaboration crypto/protocol/secrets, binary preflight                     | `src/shared/git.ts`, `src/shared/worktree-registry.ts`, `src/shared/workflow/metrics.ts`, `src/shared/collaboration/`, `src/shared/runtime-preflight.ts` |
 
 Presentation details, terminal widgets, ACP wire types, HTTP routes, Astro/React components, and browser review
 rendering are outside this boundary. They may call core services, subscribe to core events, or implement interaction
@@ -1044,7 +1044,7 @@ dependency guard are what prevent this seam from silently returning.
 | Opaque IDs and private internals                       | `src/shared/session/session-runtime.test.ts`                                        |
 | One ordered turn lifecycle and error settlement        | `src/shared/session/session-runtime.test.ts`                                        |
 | One Pi text/thinking/tool translation                  | `src/shared/session/session-subscribers.test.ts`                                    |
-| Consumer-ready event identity, usage, and tool data    | `src/shared/session/session-runtime-events.test.js`                                 |
+| Consumer-ready event identity, usage, and tool data    | `src/shared/session/session-runtime-events.test.ts`                                 |
 | One shared tool title and semantic-kind implementation | `src/shared/session/tool-event-title.test.ts`                                       |
 | TUI and ACP consume the same transcript                | `src/ui/tui/runtime-adapter.test.ts`, `src/acp/event-mapper.test.js`                |
 | Duplicate TUI adapter attachment fails until disposal  | `src/ui/tui/runtime-adapter.test.ts`                                                |
@@ -1052,7 +1052,7 @@ dependency guard are what prevent this seam from silently returning.
 | Semantic interactions and cancellation                 | `src/shared/session/session-runtime.test.ts`, adapter interaction tests             |
 | Workflow tools emit messages/events without UI ports   | tool tests under `src/tools/__tests__/`                                             |
 | CI, system status, errors, reviews, repair, merge      | `src/shared/workflow/validation.test.js`                                            |
-| Routing, planning, slicing, execution                  | `src/shared/workflow/orchestrator.test.js`, `src/shared/workflow/workflow.test.ts`  |
+| Routing, planning, slicing, execution                  | `src/shared/workflow/orchestrator.test.ts`, `src/shared/workflow/workflow.test.ts`  |
 
 ## Current automated-test map
 
@@ -1063,13 +1063,13 @@ Git behavior.
 | Core area                    | Principal test suites                                                                                                                 | Existing emphasis                                                                               |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | Hosted state and registry    | `hosted-session.test.ts`, `session-host.test.ts`                                                                                      | Ownership, isolation, disposal, active turn and interaction state                               |
-| Runtime lifecycle            | `session-runtime.test.ts`, `root-session.test.ts`, `active-agent-session.test.js`, `workflow-context-session.test.js`                 | Create/load/replay, prompt serialization, handoffs, close/cancel, persisted markers             |
-| Agent/Pi bridge              | `session-prompt.test.ts`, `session-subscribers.test.ts`, `agent-switching.test.ts`, `session-catalog.test.js`                         | Root reuse/rebuild, event translation, prompt assembly, project-root catalog isolation          |
-| Agent workflow handler       | `agent-handler.test.js`, `orchestrator.test.js`, `decisions.test.js`, `workflow-results` coverage inside workflow tests               | Current-turn outcome extraction, routing, dispatch, completion gates, semantic decisions        |
-| Plan persistence and state   | `plan-store.test.ts`, `plan-lifecycle.test.ts`, `src/ui/review/plan-review.test.js`, `src/tools/__tests__/plan-written.test.ts`       | Front matter, hierarchy, identity, locks, transition matrix, readiness and submission outcomes  |
+| Runtime lifecycle            | `session-runtime.test.ts`, `root-session.test.ts`, `active-agent-session.test.ts`, `workflow-context-session.test.ts`                 | Create/load/replay, prompt serialization, handoffs, close/cancel, persisted markers             |
+| Agent/Pi bridge              | `session-prompt.test.ts`, `session-subscribers.test.ts`, `agent-switching.test.ts`, `session-catalog.test.ts`                         | Root reuse/rebuild, event translation, prompt assembly, project-root catalog isolation          |
+| Agent workflow handler       | `agent-handler.test.ts`, `orchestrator.test.ts`, `decisions.test.ts`, `workflow-results` coverage inside workflow tests               | Current-turn outcome extraction, routing, dispatch, completion gates, semantic decisions        |
+| Plan persistence and state   | `plan-store.test.ts`, `plan-lifecycle.test.ts`, `src/ui/review/plan-review.test.ts`, `src/tools/__tests__/plan-written.test.ts`       | Front matter, hierarchy, identity, locks, transition matrix, readiness and submission outcomes  |
 | Execution and validation     | `workflow.test.ts`, `validation.test.js`, `git-snapshot.test.ts`                                                                      | Worktree setup, completion gate, CI/review/repair/merge paths, lifecycle evidence               |
-| Git worktrees                | `worktree.test.js`, `worktree-registry.test.ts`, `git.test.js`                                                                        | Real/temp Git operations, branch targets, merge safety, recovery metadata, non-Git behavior     |
-| Configuration and policy     | `settings.test.ts`, `model-registry.test.ts`, `model-validation.test.js`, `runtime-preflight.test.js`, `session-tools-policy.test.ts` | Layering, migration, locking, model discovery, protected-tool and binary policy                 |
+| Git worktrees                | `worktree.test.js`, `worktree-registry.test.ts`, `git.test.ts`                                                                        | Real/temp Git operations, branch targets, merge safety, recovery metadata, non-Git behavior     |
+| Configuration and policy     | `settings.test.ts`, `model-registry.test.ts`, `model-validation.test.ts`, `runtime-preflight.test.ts`, `session-tools-policy.test.ts` | Layering, migration, locking, model discovery, protected-tool and binary policy                 |
 | Collaboration primitives     | Tests under `src/shared/collaboration/`                                                                                               | Crypto, capabilities, protocol normalization, locks, secrets, client behavior                   |
 | Adapter/boundary conformance | `src/shared/session/architecture-boundary.test.ts`, ACP tests, TUI runtime-adapter tests, Workspace tests                             | Dependency direction, protocol mapping, single event consumption, interactions, Plan projection |
 
@@ -1095,7 +1095,7 @@ The highest-value cross-boundary paths for later confidence analysis are visible
 | Agent definition layering                 | `src/shared/session/agents.ts`                                                |
 | Agent switching                           | `src/shared/session/agent-switching.ts`                                       |
 | Workflow-aware turn handling              | `src/shared/session/agent-handler.ts`                                         |
-| Routing orchestration                     | `src/shared/workflow/orchestrator.js`                                         |
+| Routing orchestration                     | `src/shared/workflow/orchestrator.ts`                                         |
 | Workflow decisions and outcome parsing    | `src/shared/workflow/decisions.ts`, `src/shared/workflow/workflow-results.ts` |
 | Plan execution facade                     | `src/shared/workflow/workflow.ts`                                             |
 | Validation and repair                     | `src/shared/workflow/validation.ts`                                           |
@@ -1104,9 +1104,9 @@ The highest-value cross-boundary paths for later confidence analysis are visible
 | Worktree operations and registry          | `src/shared/worktree.ts`, `src/shared/worktree-registry.ts`                   |
 | Settings and models                       | `src/shared/settings.ts`, `src/shared/models/`                                |
 | Tool policy                               | `src/tools/registry.ts`, agent front matter in `src/agent-definitions/`       |
-| TUI adapter                               | `src/ui/tui/chat-session.js`, `src/ui/tui/runtime-adapter.ts`                 |
+| TUI adapter                               | `src/ui/tui/chat-session.ts`, `src/ui/tui/runtime-adapter.ts`                 |
 | ACP adapter                               | `src/acp/server.ts`, `src/acp/session-map.ts`, mapper modules in `src/acp/`   |
 | Workspace Plan adapter                    | `src/ui/workspace/server/plan-adapter.ts`                                     |
-| Review consumer surface                   | `src/ui/review/review-launcher.js`, `src/review-workspace-server.ts`          |
+| Review consumer surface                   | `src/ui/review/review-launcher.ts`, `src/review-workspace-server.ts`          |
 
 [Mnemoteca]: https://github.com/gandazgul/mnemoteca
