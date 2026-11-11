@@ -1,3 +1,4 @@
+import { createInitialSessionManifest } from "./file-session-catalog-manifest.ts";
 import { requireLocalSessionWriter } from "../remote/personal-resources.ts";
 import { openNativeFileLock } from "../native-file-lock.ts";
 import { readFileSync, statSync } from "node:fs";
@@ -16,7 +17,6 @@ import {
     catalogLockPath,
     ensurePrivateDir,
     ensureProject,
-    FILE_SESSION_STORE_VERSION,
     FileSessionManifestCache,
     findProject,
     isoNow,
@@ -27,9 +27,11 @@ import {
     readJson,
     recoveryDescriptorPath,
     rootEvidence,
+    relatedSessionProjects,
+    sessionProjectMatches,
     sessionDirForManifestPath,
     sessionDirForProject,
-    sessionDirForRoot,
+    sessionDirForCheckout,
 } from "./file-session-storage.ts";
 import type {
     CatalogedTranscriptLocator,
@@ -89,60 +91,8 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
                     if (!lineageManifest) throw new Error("Session lineage exists without a recoverable manifest");
                     session = catalogedSession(lineageManifest.manifest);
                 } else {
-                    const timestamp = isoNow(locator.now || options.now);
-                    const runwieldSessionId = locator.idFactory ? locator.idFactory() : crypto.randomUUID();
-                    const segmentId = `${runwieldSessionId}-segment-0`;
-                    const segment: SessionTranscriptSegment = {
-                        segmentId,
-                        runwieldSessionId,
-                        projectId: project.projectId,
-                        piSessionId: safe.piSessionId,
-                        transcriptPath: safe.sessionPath,
-                        transcriptCwd: safe.headerCwd,
-                        ordinal: 0,
-                        kind: "planning",
-                        sealedAt: null,
-                        headerVersion: safe.headerVersion,
-                        headerTimestamp: safe.headerTimestamp,
-                        firstCatalogedAt: timestamp,
-                        lastCatalogedAt: timestamp,
-                        lineageParentSegmentId: null,
-                        lineageParentPiSessionId: null,
-                        lineageGroupKey: null,
-                        lineageRecordedAt: null,
-                        sealedByteLength: null,
-                        sealedDigestHex: null,
-                        sealedTerminalEntryId: null,
-                    };
-                    const manifest: FileSessionManifest = {
-                        version: FILE_SESSION_STORE_VERSION,
-                        runwieldSessionId,
-                        projectId: project.projectId,
-                        transcriptCwd: safe.headerCwd,
-                        displayName: null,
-                        source: locator.source || "catalog",
-                        createdAt: timestamp,
-                        updatedAt: timestamp,
-                        currentSegmentId: segmentId,
-                        fence: 0,
-                        activation: {
-                            state: "uninitialized",
-                            phase: null,
-                            ownerInstanceId: null,
-                            ownerProcessKind: null,
-                            operationId: null,
-                            expectedGeneration: null,
-                            expectedCurrentSegmentId: null,
-                            acquiredAt: null,
-                            blockedReason: null,
-                            baselineByteLength: null,
-                            baselineDigestHex: null,
-                        },
-                        generation: null,
-                        segments: [segment],
-                        artifacts: [],
-                    };
-                    manifests.write(manifest, manifestPath(sessionDir, runwieldSessionId));
+                    const manifest = createInitialSessionManifest(project.projectId, safe, locator, options.now);
+                    manifests.write(manifest, manifestPath(sessionDir, manifest.runwieldSessionId));
                     session = catalogedSession(manifest);
                 }
             }
@@ -161,6 +111,159 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
             catalogLock.unlockSync();
             catalogLock.close();
         }
+    }
+
+    async function listStoredProjectSessions(
+        projectId: string,
+        sessionOptions: import("./file-session-store-types.ts").ListSessionOptions = {},
+    ) {
+        const project = store.getProjectById(projectId);
+        if (!project) {
+            return {
+                sessions: [],
+                diagnostics: [],
+                page: 0,
+                pageSize: 30,
+                total: 0,
+                hasNext: false,
+                hasPrevious: false,
+            };
+        }
+        const sessionDir = sessionDirForProject(baseDir, project);
+        const diagnostics: Array<{ sessionPath: string; code: string; message: string }> = [];
+        if (sessionOptions.catalog !== false) {
+            const { locators, diagnostics: locatorDiagnostics } = await listCatalogSafeRootSessionLocators(
+                project.registeredRoot,
+                { sessionDir },
+            );
+            diagnostics.push(...locatorDiagnostics);
+
+            const lineageGroups = new Map<string, LocatedSegmentLineage[]>();
+            const locatorsByPiSessionId = new Map<string, CatalogedTranscriptLocator>();
+            for (const locator of locators) locatorsByPiSessionId.set(locator.piSessionId, locator);
+            const malformedLineagePaths = new Set<string>();
+            for (const locator of locators) {
+                const lineageResult = readLineage(locator.sessionPath);
+                if (lineageResult.kind === "malformed") {
+                    malformedLineagePaths.add(locator.sessionPath);
+                    diagnostics.push({
+                        sessionPath: locator.sessionPath,
+                        code: "lineage_recovery_blocked",
+                        message: lineageResult.reason,
+                    });
+                    continue;
+                }
+                if (lineageResult.kind === "absent") continue;
+                const lineage = lineageResult.lineage;
+                const group = lineageGroups.get(lineage.runwieldSessionId) || [];
+                group.push({ locator, lineage });
+                lineageGroups.set(lineage.runwieldSessionId, group);
+            }
+            for (const [runwieldSessionId, group] of lineageGroups) {
+                if (manifests.resolve(runwieldSessionId, projectId)) continue;
+                const representedPiIds = new Set(group.map((item) => item.locator.piSessionId));
+                for (const item of [...group]) {
+                    const parentPiSessionId = item.lineage.parentPiSessionId;
+                    const parentSegmentId = item.lineage.parentSegmentId;
+                    if (!parentPiSessionId || !parentSegmentId || representedPiIds.has(parentPiSessionId)) continue;
+                    const parentLocator = locatorsByPiSessionId.get(parentPiSessionId);
+                    if (!parentLocator) continue;
+                    const parentLineage = readLineage(parentLocator.sessionPath);
+                    if (parentLineage.kind === "malformed") {
+                        malformedLineagePaths.add(parentLocator.sessionPath);
+                        continue;
+                    }
+                    if (parentLineage.kind === "valid") continue;
+                    group.push({
+                        locator: parentLocator,
+                        lineage: {
+                            runwieldSessionId,
+                            segmentId: parentSegmentId,
+                            parentSegmentId: null,
+                            parentPiSessionId: null,
+                            lineageGroupKey: item.lineage.lineageGroupKey,
+                            kind: "planning",
+                        },
+                    });
+                    representedPiIds.add(parentPiSessionId);
+                }
+                const recovered = reconstructManifestFromLineage(project, group, sessionOptions.now || options.now);
+                if (recovered) {
+                    manifests.write(recovered, manifestPath(sessionDir, runwieldSessionId));
+                } else {
+                    for (const item of group) {
+                        diagnostics.push({
+                            sessionPath: item.locator.sessionPath,
+                            code: "lineage_recovery_blocked",
+                            message: "This Session's transcript segments could not be ordered safely.",
+                        });
+                    }
+                }
+            }
+            for (const locator of locators) {
+                if (malformedLineagePaths.has(locator.sessionPath)) continue;
+                const lineageResult = readLineage(locator.sessionPath);
+                if (lineageResult.kind === "malformed") continue;
+                if (
+                    lineageResult.kind === "valid" &&
+                    !manifests.resolve(lineageResult.lineage.runwieldSessionId, projectId)
+                )
+                    continue;
+                try {
+                    await store.ensureSessionCatalogRecord({
+                        projectId,
+                        piSessionId: locator.piSessionId,
+                        transcriptPath: locator.sessionPath,
+                        transcriptCwd: locator.headerCwd,
+                        headerVersion: locator.headerVersion,
+                        headerTimestamp: locator.headerTimestamp,
+                        source: "catalog",
+                        idFactory: sessionOptions.idFactory,
+                        now: sessionOptions.now,
+                    });
+                } catch (error) {
+                    diagnostics.push({
+                        sessionPath: locator.sessionPath,
+                        code: "catalog_failed",
+                        message: error instanceof Error ? error.message : String(error),
+                    });
+                }
+            }
+        }
+        const requestedPage = sessionOptions.page;
+        const page: number =
+            typeof requestedPage === "number" && Number.isInteger(requestedPage) && requestedPage >= 0
+                ? requestedPage
+                : 0;
+        const requestedPageSize = sessionOptions.pageSize;
+        const pageSize: number =
+            typeof requestedPageSize === "number" && Number.isInteger(requestedPageSize) && requestedPageSize > 0
+                ? Math.min(requestedPageSize, 100)
+                : 30;
+        const listedManifests = listManifests(sessionDir).filter((item) => item.manifest.projectId === projectId);
+        for (const item of listedManifests) manifests.remember(item.path, item.manifest);
+        const sessions = listedManifests
+            .map((item) => catalogedSession(item.manifest))
+            .filter(
+                (session) =>
+                    sessionOptions.archiveState === "all" ||
+                    (sessionOptions.archiveState === "archived" ? Boolean(session.archivedAt) : !session.archivedAt),
+            )
+            .sort(
+                (left, right) =>
+                    Date.parse(right.headerTimestamp || "") - Date.parse(left.headerTimestamp || "") ||
+                    right.runwieldSessionId.localeCompare(left.runwieldSessionId),
+            );
+        const start = page * pageSize;
+        return {
+            sessions: sessionOptions.all ? sessions : sessions.slice(start, start + pageSize),
+            diagnostics,
+            page,
+            pageSize,
+            total: sessions.length,
+            hasNext: start + pageSize < sessions.length,
+            hasPrevious: page > 0 && start < sessions.length,
+        };
     }
 
     const store: LocalFileSessionStore = {
@@ -206,9 +309,10 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
         requireSessionProjectRoot(projectId) {
             const project = store.getProjectById(projectId);
             if (!project) throw new Error("Session project is unavailable");
-            const stat = statSync(project.registeredRoot);
+            const root = rootEvidence(project)[0]?.enteredRoot ?? project.registeredRoot;
+            const stat = statSync(root);
             if (!stat.isDirectory()) throw new Error("Session project root is unavailable");
-            return project.registeredRoot;
+            return root;
         },
         findSessionByLocator(locator) {
             if (locator.transcriptPath) {
@@ -218,15 +322,20 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
                     (candidate) => resolve(candidate.transcriptPath) === resolve(String(locator.transcriptPath)),
                 );
                 if (!segment) return null;
-                if (locator.projectId && found.manifest.projectId !== locator.projectId) return null;
+                if (locator.projectId && !sessionProjectMatches(baseDir, found.manifest.projectId, locator.projectId))
+                    return null;
                 if (locator.piSessionId && segment.piSessionId !== locator.piSessionId) return null;
                 return catalogedSession(found.manifest);
             }
             const projects = store
                 .listSessionProjects()
-                .filter((project) => !locator.projectId || project.projectId === locator.projectId);
+                .filter(
+                    (project) =>
+                        !locator.projectId || sessionProjectMatches(baseDir, project.projectId, locator.projectId),
+                );
             for (const project of projects) {
                 for (const item of listManifests(sessionDirForProject(baseDir, project))) {
+                    if (item.manifest.projectId !== project.projectId) continue;
                     manifests.rememberProject(project);
                     manifests.remember(item.path, item.manifest);
                     const segment = item.manifest.segments.find(
@@ -246,7 +355,10 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
             if (!project) return null;
             // Read only the atomic primary manifest. Export must not restore descriptors or recover writers.
             const found = manifests.readPath(manifestPath(sessionDirForProject(baseDir, project), runwieldSessionId));
-            if (found?.manifest.runwieldSessionId !== runwieldSessionId || found.manifest.projectId !== projectId)
+            if (
+                found?.manifest.runwieldSessionId !== runwieldSessionId ||
+                found.manifest.projectId !== project.projectId
+            )
                 return null;
             return found.manifest;
         },
@@ -259,145 +371,34 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
             return { session: result.session, segment: result.segment, proof: result.proof };
         },
         async listProjectSessions(projectId, sessionOptions = {}) {
-            const project = store.getProjectById(projectId);
-            if (!project) {
-                return {
-                    sessions: [],
-                    diagnostics: [],
-                    page: 0,
-                    pageSize: 30,
-                    total: 0,
-                    hasNext: false,
-                    hasPrevious: false,
-                };
+            const projects = relatedSessionProjects(baseDir, projectId);
+            if (projects.length <= 1)
+                return listStoredProjectSessions(projects[0]?.projectId ?? projectId, sessionOptions);
+            const listed = await Promise.all(
+                projects.map((project) =>
+                    listStoredProjectSessions(project.projectId, { ...sessionOptions, all: true }),
+                ),
+            );
+            const diagnostics = listed.flatMap((result) => result.diagnostics);
+            const byId = new Map<string, import("./file-session-store-types.ts").CatalogedSession>();
+            const conflicts = new Set<string>();
+            for (const session of listed.flatMap((result) => result.sessions)) {
+                const prior = byId.get(session.runwieldSessionId);
+                if (prior && (prior.projectId !== session.projectId || prior.transcriptPath !== session.transcriptPath))
+                    conflicts.add(session.runwieldSessionId);
+                else byId.set(session.runwieldSessionId, session);
             }
-            const sessionDir = sessionDirForProject(baseDir, project);
-            const diagnostics: Array<{ sessionPath: string; code: string; message: string }> = [];
-            if (sessionOptions.catalog !== false) {
-                const { locators, diagnostics: locatorDiagnostics } = await listCatalogSafeRootSessionLocators(
-                    project.registeredRoot,
-                    { sessionDir },
-                );
-                diagnostics.push(...locatorDiagnostics);
-
-                const lineageGroups = new Map<string, LocatedSegmentLineage[]>();
-                const locatorsByPiSessionId = new Map<string, CatalogedTranscriptLocator>();
-                for (const locator of locators) locatorsByPiSessionId.set(locator.piSessionId, locator);
-                const malformedLineagePaths = new Set<string>();
-                for (const locator of locators) {
-                    const lineageResult = readLineage(locator.sessionPath);
-                    if (lineageResult.kind === "malformed") {
-                        malformedLineagePaths.add(locator.sessionPath);
-                        diagnostics.push({
-                            sessionPath: locator.sessionPath,
-                            code: "lineage_recovery_blocked",
-                            message: lineageResult.reason,
-                        });
-                        continue;
-                    }
-                    if (lineageResult.kind === "absent") continue;
-                    const lineage = lineageResult.lineage;
-                    const group = lineageGroups.get(lineage.runwieldSessionId) || [];
-                    group.push({ locator, lineage });
-                    lineageGroups.set(lineage.runwieldSessionId, group);
-                }
-                for (const [runwieldSessionId, group] of lineageGroups) {
-                    if (manifests.resolve(runwieldSessionId, projectId)) continue;
-                    const representedPiIds = new Set(group.map((item) => item.locator.piSessionId));
-                    for (const item of [...group]) {
-                        const parentPiSessionId = item.lineage.parentPiSessionId;
-                        const parentSegmentId = item.lineage.parentSegmentId;
-                        if (!parentPiSessionId || !parentSegmentId || representedPiIds.has(parentPiSessionId)) continue;
-                        const parentLocator = locatorsByPiSessionId.get(parentPiSessionId);
-                        if (!parentLocator) continue;
-                        const parentLineage = readLineage(parentLocator.sessionPath);
-                        if (parentLineage.kind === "malformed") {
-                            malformedLineagePaths.add(parentLocator.sessionPath);
-                            continue;
-                        }
-                        if (parentLineage.kind === "valid") continue;
-                        group.push({
-                            locator: parentLocator,
-                            lineage: {
-                                runwieldSessionId,
-                                segmentId: parentSegmentId,
-                                parentSegmentId: null,
-                                parentPiSessionId: null,
-                                lineageGroupKey: item.lineage.lineageGroupKey,
-                                kind: "planning",
-                            },
-                        });
-                        representedPiIds.add(parentPiSessionId);
-                    }
-                    const recovered = reconstructManifestFromLineage(project, group, sessionOptions.now || options.now);
-                    if (recovered) {
-                        manifests.write(recovered, manifestPath(sessionDir, runwieldSessionId));
-                    } else {
-                        for (const item of group) {
-                            diagnostics.push({
-                                sessionPath: item.locator.sessionPath,
-                                code: "lineage_recovery_blocked",
-                                message: "This Session's transcript segments could not be ordered safely.",
-                            });
-                        }
-                    }
-                }
-                for (const locator of locators) {
-                    if (malformedLineagePaths.has(locator.sessionPath)) continue;
-                    const lineageResult = readLineage(locator.sessionPath);
-                    if (lineageResult.kind === "malformed") continue;
-                    if (
-                        lineageResult.kind === "valid" &&
-                        !manifests.resolve(lineageResult.lineage.runwieldSessionId, projectId)
-                    )
-                        continue;
-                    try {
-                        await store.ensureSessionCatalogRecord({
-                            projectId,
-                            piSessionId: locator.piSessionId,
-                            transcriptPath: locator.sessionPath,
-                            transcriptCwd: locator.headerCwd,
-                            headerVersion: locator.headerVersion,
-                            headerTimestamp: locator.headerTimestamp,
-                            source: "catalog",
-                            idFactory: sessionOptions.idFactory,
-                            now: sessionOptions.now,
-                        });
-                    } catch (error) {
-                        diagnostics.push({
-                            sessionPath: locator.sessionPath,
-                            code: "catalog_failed",
-                            message: error instanceof Error ? error.message : String(error),
-                        });
-                    }
-                }
+            for (const id of conflicts) {
+                diagnostics.push({
+                    code: "locator_conflict",
+                    sessionPath: byId.get(id)!.transcriptPath,
+                    message: "Conflicting Session identity claims",
+                });
+                byId.delete(id);
             }
-            const requestedPage = sessionOptions.page;
-            const page: number =
-                typeof requestedPage === "number" && Number.isInteger(requestedPage) && requestedPage >= 0
-                    ? requestedPage
-                    : 0;
-            const requestedPageSize = sessionOptions.pageSize;
-            const pageSize: number =
-                typeof requestedPageSize === "number" && Number.isInteger(requestedPageSize) && requestedPageSize > 0
-                    ? Math.min(requestedPageSize, 100)
-                    : 30;
-            const listedManifests = listManifests(sessionDir);
-            for (const item of listedManifests) manifests.remember(item.path, item.manifest);
-            const sessions = listedManifests
-                .map((item) => catalogedSession(item.manifest))
-                .filter(
-                    (session) =>
-                        sessionOptions.archiveState === "all" ||
-                        (sessionOptions.archiveState === "archived"
-                            ? Boolean(session.archivedAt)
-                            : !session.archivedAt),
-                )
-                .sort(
-                    (left, right) =>
-                        Date.parse(right.headerTimestamp || "") - Date.parse(left.headerTimestamp || "") ||
-                        right.runwieldSessionId.localeCompare(left.runwieldSessionId),
-                );
+            const sessions = [...byId.values()].sort((a, b) => b.lastCatalogedAt.localeCompare(a.lastCatalogedAt));
+            const page = Math.max(0, sessionOptions.page ?? 0);
+            const pageSize = Math.min(100, Math.max(1, sessionOptions.pageSize ?? 30));
             const start = page * pageSize;
             return {
                 sessions: sessionOptions.all ? sessions : sessions.slice(start, start + pageSize),
@@ -636,7 +637,7 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
                 cwd: locator.transcriptCwd,
                 sessionDir: project.remote
                     ? sessionDirForProject(baseDir, project)
-                    : sessionDirForRoot(baseDir, locator.transcriptCwd),
+                    : sessionDirForCheckout(baseDir, locator.transcriptCwd),
                 sessionPath: locator.transcriptPath,
             });
         },

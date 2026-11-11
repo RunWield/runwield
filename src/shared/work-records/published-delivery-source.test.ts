@@ -113,6 +113,7 @@ test("delivery receipts use the primary runtime from an execution worktree", asy
     const worktree = `${root}-execution`;
     try {
         await git(root, ["worktree", "add", "-b", "execution", worktree]);
+        await enterProjectRuntime(worktree);
         assertEquals(
             resolveProjectRuntimeLayout(worktree).primary.deliveryEvidenceRoot,
             resolveProjectRuntimeLayout(root).primary.deliveryEvidenceRoot,

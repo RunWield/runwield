@@ -28,7 +28,7 @@ import { runPlansDoctor, runPlansDoctorCommand } from "./doctor.ts";
 import { runPlansCommand } from "./index.ts";
 import { defineGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
+import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
 import { getLockHostname } from "../../shared/process-liveness.ts";
 import { inspectTargetBranchPlansByParent } from "../../shared/workflow/planning-worktree.ts";
 import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
@@ -1097,7 +1097,7 @@ test("plans doctor clears a recently abandoned Plan lock", async () => {
     try {
         await enterProjectRuntime(cwd);
         const resolvedCwd = fsRealpathSync(cwd);
-        const lockDir = join(getRunWieldRuntimeDir(resolvedCwd), PROJECT_INTERNAL_RUNTIME_DIR_NAME, "plan-locks");
+        const lockDir = resolveProjectRuntimeLayout(cwd).selected.planLocksDir;
         const lockPath = join(lockDir, "demo.lock");
         const legacyLockPath = join(getRunWieldRuntimeDir(resolvedCwd), "plan-locks", "demo.lock");
         await fsMkdir(lockDir, { recursive: true });

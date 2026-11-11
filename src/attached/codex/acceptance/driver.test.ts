@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { deepStrictEqual as equal, throws, rejects } from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { cp, mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +10,21 @@ import { runLiveAcceptance } from "./live.ts";
 import { AcceptanceWorld } from "./world.ts";
 import { resolveValidationCommand } from "../../../shared/workflow/validation-local-ci.ts";
 import type { Snapshot } from "../../claude/acceptance/evidence.ts";
+import { defineGitFixture, git } from "../../../shared/git-test-fixture.ts";
+
+// Authentication qualification owns its source inputs; concurrent builds must not alter its baseline.
+const authenticationSource = defineGitFixture(async (root) => {
+    await mkdir(join(root, "src/attached/codex"), { recursive: true });
+    await cp(new URL("../plugin", import.meta.url), join(root, "src/attached/codex/plugin"), { recursive: true });
+    await mkdir(join(root, ".agents/plugins"), { recursive: true });
+    await cp(
+        new URL("../../../../.agents/plugins/marketplace.json", import.meta.url),
+        join(root, ".agents/plugins/marketplace.json"),
+    );
+    await writeFile(join(root, "src/runtime.ts"), "export const runtime = 1;\n");
+    await git(root, ["add", "."]);
+    await git(root, ["commit", "-m", "Authentication source fixture"]);
+});
 
 test("acceptance CLI admits only explicit executable, output, and retention options", () => {
     equal(parseCodexAcceptanceArgs(["--codex", "/test/codex", "--out", "/test/evidence", "--keep"]), {
@@ -121,19 +136,29 @@ test("nonempty output directories are never overwritten", async () => {
         await rm(root, { recursive: true, force: true });
     }
 });
-for (const missing of [true, false]) {
-    test(`live ${missing ? "absent" : "rejected"} host authentication is blocked and unproven without private error text`, async () => {
+for (const scenario of ["absent", "rejected", "source changes"]) {
+    const missing = scenario !== "rejected";
+    const changedSource = scenario === "source changes";
+    const name = changedSource
+        ? "live missing authentication cannot hide changed source evidence"
+        : `live ${scenario} host authentication is blocked and unproven without private error text`;
+    test(name, async () => {
         const parent = await mkdtemp(join(tmpdir(), "codex-auth-test-"));
+        const checkout = await authenticationSource.checkout();
         const executable = join(parent, "codex");
         const root = join(parent, "evidence");
         try {
             await writeFile(
                 executable,
                 `#!${process.execPath}
+import {writeFileSync} from "node:fs";
 if(process.argv.includes("--version")){console.log("codex-cli 0.164.0-alpha.11.1");process.exit(0);}
 let buffer="";process.stdin.on("data",bytes=>{buffer+=bytes;let n;while((n=buffer.indexOf("\\n"))>=0){const q=JSON.parse(buffer.slice(0,n));buffer=buffer.slice(n+1);if(!q.id)continue;
 if(q.method==="initialize")console.log(JSON.stringify({id:q.id,result:{}}));
-else if(q.method==="account/read")console.log(JSON.stringify({id:q.id,${missing ? "result:{requiresOpenaiAuth:true,account:null}" : 'error:{code:401,message:"PRIVATE-CREDENTIAL"}'}}));
+else if(q.method==="account/read"){
+${changedSource ? `writeFileSync(${JSON.stringify(join(checkout, "src/runtime.ts"))},"export const runtime = 2;\\n");` : ""}
+console.log(JSON.stringify({id:q.id,${missing ? "result:{requiresOpenaiAuth:true,account:null}" : 'error:{code:401,message:"PRIVATE-CREDENTIAL"}'}}));
+}
 else process.exit(1);
 }});
 `,
@@ -142,18 +167,23 @@ else process.exit(1);
             const result = await runLiveAcceptance({
                 root,
                 codex: executable,
-                checkout: fileURLToPath(new URL("../../../../", import.meta.url)),
+                checkout,
                 keep: true,
             });
-            equal(result.outcome, "blocked");
+            equal(result.outcome, changedSource ? "fail" : "blocked", JSON.stringify(result));
             equal(result.blockedPrerequisite, "codex-host-authentication");
-            equal(result.checks.at(-1)?.outcome, "unproven");
+            equal(result.checks.find((check) => check.id === "live-journey")?.outcome, "unproven");
+            equal(
+                result.checks.find((check) => check.id === "source-stability")?.outcome,
+                changedSource ? "fail" : undefined,
+            );
             equal(result.proposedMatrixEntry, null);
             const saved = await readFile(join(root, "summary.json"), "utf8");
             equal(JSON.parse(saved), result);
             equal(saved.includes("PRIVATE-"), false);
         } finally {
             await rm(parent, { recursive: true, force: true });
+            await rm(checkout, { recursive: true, force: true });
         }
     });
 }

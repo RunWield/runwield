@@ -89,14 +89,21 @@ export async function withPausedRollover(
     const pending = new Map<number, (message: InspectorMessage) => void>();
     let paused = (_message: InspectorMessage) => {};
     const pause = new Promise<InspectorMessage>((resolve) => (paused = resolve));
-    let controlScriptId = "";
-    let lockScriptId = "";
-    socket.onmessage = (event) => {
+    let controlScriptParsed = (_id: string) => {};
+    const controlScript = new Promise<string>((resolve) => (controlScriptParsed = resolve));
+    let lockScriptParsed = (_id: string) => {};
+    const lockScript = new Promise<string>((resolve) => (lockScriptParsed = resolve));
+    // Exercise the adverse ordering: stdout admission precedes inspector script notifications.
+    // They are independent channels, so admission alone must never authorize breakpoint setup.
+    let admitScriptEvents = () => {};
+    const scriptEventAdmission = new Promise<void>((resolve) => (admitScriptEvents = resolve));
+    socket.onmessage = async (event) => {
         const message: InspectorMessage = JSON.parse(String(event.data));
+        if (message.method === "Debugger.scriptParsed") await scriptEventAdmission;
         if (message.method === "Debugger.scriptParsed" && message.params?.url?.endsWith("/file-session-control.ts"))
-            controlScriptId = message.params.scriptId || "";
+            controlScriptParsed(message.params.scriptId || "");
         if (message.method === "Debugger.scriptParsed" && message.params?.url?.endsWith("/native-file-lock.ts"))
-            lockScriptId = message.params.scriptId || "";
+            lockScriptParsed(message.params.scriptId || "");
         if (message.id) {
             pending.get(message.id)?.(message);
             pending.delete(message.id);
@@ -141,7 +148,10 @@ export async function withPausedRollover(
         await send(JSON.stringify({ target, sessionId: id }));
         const admitted = await within(stdout.read());
         if (admitted.done) throw new Error("Laptop owner exited before admission");
+        admitScriptEvents();
+        const [controlScriptId, lockScriptId] = await within(Promise.all([controlScript, lockScript]));
         if (!controlScriptId) throw new Error("Rollover source was not loaded by the laptop process");
+        if (!lockScriptId) throw new Error("Native lock source was not loaded by the laptop process");
         const source = await command("Debugger.getScriptSource", { scriptId: controlScriptId });
         const lineNumber = source?.scriptSource
             ?.split("\n")

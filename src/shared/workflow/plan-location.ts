@@ -1,3 +1,10 @@
+import {
+    currentPackageSelection,
+    selectedPackage,
+    withPackageWorkflow,
+    loadPackageWorkflowPlan,
+    type PackageWorkflowSelection,
+} from "./package-workflow.ts";
 import { effectiveDeliveryBranch } from "./plan-branch.ts";
 /** Locate the editable document independently from the shared controller files. */
 import { canonicalizeStoredPlanName, isCompletedPlanStatus, loadPlan } from "../../plan-store.js";
@@ -23,6 +30,7 @@ export { recoverMissingExecutionWorktreesForPlanLoading } from "./execution-work
 export type { MissingExecutionWorktreeRecovery } from "./execution-worktree-rescue.ts";
 
 interface ResolveWorkflowPlanLocationOptions {
+    packageSelection?: PackageWorkflowSelection;
     /** Explicit child loading reads the published family, not sibling copies in the parent's planning checkout. */
     loadFromTarget?: boolean;
     /** Return an unstarted Plan snapshot instead of requiring a writable document root. Lookups never prepare worktrees. */
@@ -60,6 +68,13 @@ export async function resolveWorkflowPlanLocation(
     planName: string,
     options: ResolveWorkflowPlanLocationOptions = {},
 ) {
+    if (options.packageSelection)
+        return await withPackageWorkflow(
+            cwd,
+            options.packageSelection,
+            () => resolveWorkflowPlanLocationInScope(cwd, planName, { ...options, packageSelection: undefined }),
+            planName,
+        );
     return await withProjectRuntimeReadScope(() => resolveWorkflowPlanLocationInScope(cwd, planName, options));
 }
 
@@ -68,6 +83,18 @@ async function resolveWorkflowPlanLocationInScope(
     planName: string,
     options: ResolveWorkflowPlanLocationOptions,
 ) {
+    if (currentPackageSelection()) {
+        const plan = await loadPackageWorkflowPlan(planName);
+        return {
+            registryRoot: currentPackageSelection()!.identity.checkoutRoot,
+            documentRoot: cwd,
+            plan,
+            packageSelection: currentPackageSelection(),
+            resumeInterruptedPreparation: Boolean(
+                plan.attrs.worktreeId || (await selectedPackage(planName)).metadata.workflow?.attempt,
+            ),
+        };
+    }
     planName = canonicalizeStoredPlanName(planName).name;
     const registryRoot = resolvePrimaryCheckoutRoot(cwd);
     if (options.readOnly && (await inspectProjectRuntimeReadAccess(cwd)).kind === "pending") {

@@ -1,3 +1,4 @@
+import { currentPackageSelection } from "./package-workflow.ts";
 import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { readFile as fsReadFile } from "node:fs/promises";
@@ -8,6 +9,7 @@ import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { listControllerDocumentWorktrees } from "./controller-registry.ts";
 
 export async function findCompletionSiblings(cwd: string, parentPlan: string) {
+    if (currentPackageSelection()) return await findPlansByParent(cwd, parentPlan);
     const primaryRoot = resolvePrimaryCheckoutRoot(cwd);
     const primary = await findPlansByParent(primaryRoot, parentPlan);
     if (primaryRoot === cwd) return primary;

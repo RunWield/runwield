@@ -7,7 +7,7 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { ProjectRuntimeEntryRefusedError, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
@@ -138,7 +138,10 @@ test("publication machine persists one compare-and-swap attempt in the worktree 
             targetHeadAtSeal: "a".repeat(40),
         });
         assertEquals(started.publicationRoot, publicationRootForAttempt(projectRoot, "attempt-1"));
-        assertStringIncludes(started.publicationRoot, join(".wld", "internal", "plan-staging", "attempt-1"));
+        assertEquals(
+            started.publicationRoot,
+            join(resolveProjectRuntimeLayout(projectRoot).primary.publicationStagingRoot, "attempt-1"),
+        );
         const artifacts = await advanceStoredPublication(projectRoot, started, "artifacts_committed", {
             artifactCommit: "c".repeat(40),
             planPaths: ["docs/plans/demo.md"],

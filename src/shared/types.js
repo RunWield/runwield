@@ -6,6 +6,8 @@
 /**
  * @typedef {Object} ActiveExecutionWorkflow
  * @property {string} planName
+ * @property {import("./workflow/package-workflow.ts").PackageWorkflowSelection} [packageSelection]
+ * @property {import("./plan-package-store.ts").PackageWorkflowInput} [packageInput]
  * @property {import('../tools/plan-written.ts').TriageMeta} triageMeta
  * @property {"engineer"|"frontend-engineer"} executionAgent
  * @property {boolean} [executionStarted]

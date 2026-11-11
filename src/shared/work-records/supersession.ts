@@ -1,3 +1,4 @@
+import { currentWorkRecordOwner, withWorkRecordMutation } from "./owner.ts";
 import { platform } from "node:process";
 import { clearInterval, setInterval } from "node:timers";
 import { type NativeFileLock, openNativeFileLock } from "../native-file-lock.ts";
@@ -181,6 +182,7 @@ export async function acquireRecoveryLock(cwd: string): Promise<() => Promise<vo
 }
 
 export async function acquireSupersessionLock(cwd: string): Promise<() => Promise<void>> {
+    if (currentWorkRecordOwner()) return async () => {};
     const lockPath = (await enterProjectRuntime(cwd)).selected.workRecordSupersessionLockPath;
     await fsMkdir(dirname(lockPath), { recursive: true });
     const deadline = Date.now() + LOCK_WAIT_TIMEOUT_MS;
@@ -397,6 +399,10 @@ async function applyLocked(
 }
 
 export async function applyWorkRecordSupersession(cwd: string, options: WorkRecordSupersessionOptions) {
+    return await withWorkRecordMutation(() => applyWorkRecordSupersessionLocked(cwd, options));
+}
+
+async function applyWorkRecordSupersessionLocked(cwd: string, options: WorkRecordSupersessionOptions) {
     const release = await acquireSupersessionLock(cwd);
     let records: WorkRecordResource[];
     try {
@@ -427,6 +433,10 @@ export async function listWorkRecordSupersessionProposals(cwd: string): Promise<
 }
 
 export async function confirmWorkRecordSupersession(cwd: string, options: WorkRecordSupersessionOptions) {
+    return await withWorkRecordMutation(() => confirmWorkRecordSupersessionLocked(cwd, options));
+}
+
+async function confirmWorkRecordSupersessionLocked(cwd: string, options: WorkRecordSupersessionOptions) {
     const release = await acquireSupersessionLock(cwd);
     let records: WorkRecordResource[];
     try {
@@ -446,6 +456,10 @@ export async function confirmWorkRecordSupersession(cwd: string, options: WorkRe
 }
 
 export async function rejectWorkRecordSupersession(cwd: string, options: WorkRecordSupersessionOptions) {
+    return await withWorkRecordMutation(() => rejectWorkRecordSupersessionLocked(cwd, options));
+}
+
+async function rejectWorkRecordSupersessionLocked(cwd: string, options: WorkRecordSupersessionOptions) {
     const release = await acquireSupersessionLock(cwd);
     let successor: WorkRecordResource;
     try {

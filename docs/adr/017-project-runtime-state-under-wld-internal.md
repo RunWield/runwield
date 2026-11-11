@@ -2,233 +2,107 @@
 status: accepted
 ---
 
-# ADR-017: Project Runtime State Lives Under `.wld/internal/`
+# ADR-017: Home-Owned Project Runtime State
 
-## Context
+## Context and Constraints
 
-Project `.wld/` contains two different kinds of data. Users can commit project settings, Agent definitions, Skills, and
-prompt templates. RunWield also stores controller records, locks, lifecycle journals, publication staging, worktree
-registry data, recovery reports, debug data, and project-local collaboration secrets there.
+Project settings, Agent definitions, Skills, and prompts belong to the user's repository. Controller records, locks,
+lifecycle journals, publication staging, registries, recovery files, indexes, diagnostics, and collaboration secrets
+are machine-owned runtime. The owner requires ordinary execution to keep that runtime in account home storage and
+leave project `.wld/` for configuration and overrides.
 
-The runtime files currently use many separate `.gitignore` entries. This makes RunWield changes noisy and makes it easy
-for a new runtime file to miss Git protection. It also hides the intended boundary between project configuration and
-machine-owned state.
+Stable Project identity is separate from repository and checkout identity. Linked worktrees share repository-owned
+resources; explicitly linked clones share Project identity while retaining separate Git refs and execution attempts.
+Legacy Plan Markdown and front matter remain authoritative for ordinary public selection and unfinished imported
+attempts. Explicit internal package selection uses the separate personal Plan authority described below.
 
-The runtime paths do not all use the same checkout. The worktree registry and controller records are shared through the
-primary checkout. Plan document locks and some transition journals belong to the selected document checkout. Publication
-staging, registry migration reports, and project collaboration secrets require explicit primary ownership. Publication
-records can also name an unfinished checkout by absolute path. These ownership rules and corrections must survive a
-storage-layout change.
+Passive inspection must not admit identity, migrate files, probe writer locks, or reconcile old data. Deliberate
+entry owns those effects. An interrupted transfer must preserve unfinished Git work and the publication proof defined
+by [ADR-016](016-proof-bearing-publication-state-machine.md).
 
-Plan listing, browsing, indexing, and progress inspection must not prepare their sources. The owner accepts pending
-workflow details when safe authority is not yet available. Automatic migration and recovery remain the responsibility
-of deliberate actions and active workflows, not permission implied by a read.
+## Decision and Rationale
 
-## Decision
+### Ordinary runtime ownership
 
-### One reserved runtime root
+Local execution and manual SSH execution use the executing account's home Project tree:
 
-RunWield Core 0.11.0 reserves `.wld/internal/` in each applicable project checkout for machine-owned project runtime
-state. The project `.gitignore` managed block contains one runtime entry:
-
-```gitignore
-# BEGIN RunWield owned runtime state
-.wld/internal/
-# END RunWield owned runtime state
+```text
+~/.wld/projects/<projectId>/
+  internal/<owner>/                         project secrets and Work Record index
+  internal/legacy/<repositoryId>/<owner>/  legacy controllers, receipts and recovery
+  execution/<repositoryId>/<owner>/        registry, staging, delivery evidence and relocated worktrees
+    checkouts/<checkoutId>/                checkout journals, backups, locks and diagnostics
+  execution-locks/<repositoryId>/<owner>/  native repository coordination
 ```
 
-User-derived project files remain outside this directory. This includes `.wld/settings.json`, `.wld/agents/`,
-`.wld/skills/`, and `.wld/prompts/`. RunWield does not classify these paths as runtime state.
+The owner segment is a fixed-length digest of explicit owner identity. Paths do not infer ownership from SSH variables,
+a mount name, or the current directory. An explicit managed-remote launch retains its versioned checkout runtime under
+[ADR-018](018-remote-ssh-local-personal-authority.md); ordinary adoption cannot claim its laptop-owned state. The broader
+managed transport and Plan Store proposal remains in
+[ADR-0020](0020-home-project-state-and-launch-mode-ownership.md).
 
-The location does not change authority:
+The shared layout owner resolves these paths from stable identity. Resolving a path grants no read or write authority.
+Registry, controller, sharing, indexing, transition, and diagnostic callers use the shared boundary. Canonical Plans
+retain repository locations for legacy selection; Work Records retain their existing locations. Normal worktrees already under `~/.wld/worktrees/` keep
+their locations. Missing home access is an actionable prerequisite; it never creates a checkout fallback.
 
-- Primary-checkout runtime state includes controller records, the worktree registry and its lock, publication staging,
-  registry migration reports, the project collaboration secret store, and project-wide migration metadata.
-- Selected-checkout runtime state includes Plan document locks, transition journals, and the Work Record supersession
-  and supersession-recovery locks that protect a document or checkout-local operation.
-- Home-directory state under `~/.wld/` is not part of this decision. Normal execution worktrees remain under
-  `~/.wld/worktrees/`. Only the existing no-home project fallback moves under the project internal root.
+### Explicit package lifecycle authority
 
-A shared path module defines the internal root and named paths. Runtime owners use those definitions instead of
-constructing `.wld` runtime paths independently.
+An admitted ordinary personal package keeps its live documents and scalar definition/controller metadata in
+`plans/<name>/`, keyed by Plan ID. Immutable complex controller records and retained input manifests live under
+`internal/plan-packages/`; metadata holds their typed references. A live checkout projection would reintroduce the
+competing authorities this boundary removes, so code worktrees do not receive package Plan files.
 
-### One-way 0.11.0 migration
+The personal package owns the one unfinished-attempt binding across linked clones. Its repository ID and exact attempt
+ID identify the registry that owns Git state; a caller's cwd cannot relocate that ownership. Plan-only transition
+journals stay with the personal store, while Git-effect journals stay with the bound execution repository. Admission
+precedes catalog, sorted Plan-ID, repository/attempt and registry locks. Native ownership, rather than a timed lease,
+protects live writers. Recovery reuses recorded inputs and compensates owned metadata without replacing editor work.
+Unfinished imported legacy attempts retain their original controller and publication owner through settlement.
+Public activation, package delivery copies and package publication are separate boundaries.
 
-The first 0.11.0 action-owned project entry performs one serialized, durable, idempotent migration of eligible 0.10
-project state before mutation locks or writes. Migration preflight can read legacy registry, lock, publication, and Git
-evidence. Submitted TUI and Agent Client Protocol work, headless workflows, Init, selected Plan loads, deliberate saves,
-and collaboration mutations use this operation. Passive Plan commands, help, and version do not migrate. A new empty
-TUI remains in memory until the first submitted message.
+### Recoverable transfer
 
-Doctor check-only inspection uses the passive boundary below, without locks, lock probes, or writes. Inspection reports
-blocked, pending, or adopted facts; pending inspection is not adoption. Repair still enters through guarded migration
-and repeats preflight.
+Deliberate entry serializes adoption with native locks and quiesces legacy writers. It inventories regular and hidden
+files, records source digests and destinations in a durable home journal, copies and verifies bytes and permissions,
+publishes ownership and path mappings, and only then retires unchanged recorded sources. This supports distinct source
+and destination filesystems. Native lock ownership is acquired afresh; copying lock bytes cannot transfer it.
 
-The migration adopts inactive legacy runtime data, writes a versioned layout marker, and then reconciles `.gitignore`.
-The primary marker records the selected checkout roots included in the completed adoption. Registered execution
-checkouts are adopted before the marker commits. A selected checkout first seen later is adopted and added to that
-manifest under the same project migration lock before mutation uses its runtime stores. An interrupted migration has a
-durable phase record and resumes from verified source and destination facts; a partial destination is not treated as an
-independent authority.
+Unknown files receive recorded home recovery destinations. Incomplete and already-applied old journals are validated
+as migration evidence. Escaped paths, changed lock proof, conflicting bytes, symlinks at runtime authorities, newer
+formats, and unreadable evidence preserve source work and produce precise refusals. No runtime marker, alias, or
+replacement internal directory remains in the checkout after ordinary adoption.
 
-The migration resolves primary-shared state to the primary checkout and preserves selected-checkout ownership for
-document-local state. Before a completed adoption marker, it does not infer ownership between independently populated
-authorities. After that marker, the internal controller owns workflow decisions. Recreated legacy controller, journal,
-backup, and lock directories are recovery input, not a second authority and not grounds to reject ordinary Plan access.
+Registered fallback worktrees are copied with their index, working files, and untracked contents; Git registration is
+repaired before mutation resumes. Standalone publication repair clones retain their Git data. The same mapping updates
+registry paths and publication execution, staging, repair, and revalidation references without advancing phases,
+revisions, commits, or delivery proof. Normal publication remains the only authority for delivery.
 
-Action-owned recovery runs under the migration journal and lock. It saves content-addressed original copies before changing any
-record, imports missing files, and fills an absent completion report without replacing current controller decisions,
-execution identity, validation counters, or publication evidence. It does not infer validation success from an old
-report. Conflicting old records remain in the recovery archive; timestamps and revision numbers from independent writers
-are not sufficient reasons to overwrite the adopted controller. Replaying interrupted recovery is idempotent. Controller
-inode locks remain stable while their data files are retired, so an older waiter cannot acquire a different lock inode.
-Empty legacy directories and dormant controller lock files do not block entry.
+Current controller decisions remain authoritative when old input returns. Recovery archives originals, imports missing
+records, and can fill an absent completion report without reverting reviews or validation state. Distinct conflicting
+attempts remain recoverable. SQLite index writers are quiesced before their projection moves; Work Records themselves
+are not imported by runtime adoption.
 
-This ownership rule also covers recreated registry files, migration reports, and debug data. An empty or stale legacy
-registry cannot replace current attempts or reset publication progress. Distinct legacy attempts are imported only after
-checkout and identity checks; ambiguous attempts keep both copies intact. Registry recovery holds both registry locks,
-archives originals, and journals retirement. Normal registry operations enter the runtime before taking their lock and
-retain that checked layout for the operation, avoiding migration re-entry while holding a lock recovery needs.
+### Passive inspection and Git protection
 
-RunWield 0.11.0 does not support downgrade or concurrent use with an older RunWield process after migration. Current
-processes use one migration lock. The legacy registry lock is held from publication preflight through durable marker
-commit and retirement of legacy authoritative data; it is released before its own obsolete lock file is retired. Each
-other legacy lock is tested during action admission with its real protocol: a persistent controller lock file is not
-evidence of a live writer,
-while registry, Plan, and Work Record locks retain their existing ownership and stale recovery rules. A proven live
-writer causes a safe stop. Readers reject a layout marker newer than they understand.
+Passive list, read, and Doctor operations distinguish fresh, pending, ready, and blocked authority. Fresh Projects need
+no identity or runtime files. In-flight migration is pending; an adopted store remains readable when legacy recovery
+input returns. Every action checks authority anew. Bounded reads may share inspection, and Git answers may be reused
+only while their repository metadata evidence is unchanged.
 
-Unfinished publication and merge-repair records migrate with the registry without changing their recorded checkout
-paths. Existing publication copies remain where they are, including uncommitted repairs. Loading a Plan can therefore
-resume publication after upgrading; migration neither publishes nor cleans up those copies. New attempts use the
-internal staging root. Unclaimed legacy staging files are preserved, not treated as a reason to block project entry.
-Retained copies are payload, not a second registry authority.
+The managed `.gitignore` block retains `.wld/internal/` as a legacy safety boundary. The runtime classifier also
+recognizes earlier flat paths. Tracked or staged runtime and collaboration secrets remain protected even after their
+normal writers move home. `.wld/settings.json`, Agents, Skills, prompts, and overrides retain their exact bytes and
+remain normal repository content; `.wld/` is never exempted wholesale.
 
-Project collaboration secrets move only after Git tracking, symlink, source, and destination conflicts are checked.
-Migration discovers the old project-local store in the primary and selected checkouts and moves one source to the
-primary internal store. It refuses multiple populated sources instead of choosing or merging them. The migration does
-not follow a symlink at the internal root or a runtime authority path; it stops before reading or writing outside the
-applicable checkout. Repository payload symlinks inside a real publication checkout remain normal Git content and are
-not traversed during runtime inspection. If Git tracks any legacy or current runtime authority, migration stops and
-requires explicit repository cleanup; `.gitignore` cannot untrack it. A tracked secret also requires a security warning
-and capability rotation guidance. The new internal directory and secret file retain restrictive permissions where the
-platform supports them. The migration never keeps two writable secret stores.
+## Alternatives and Implications
 
-### Git behavior during and after migration
+Keeping checkout runtime, retaining a compatibility symlink, and using rename-only migration violate the home-storage
+and cross-filesystem requirements. Blind directory copying cannot establish Git registration, native lock ownership,
+or delivery proof. Combining linked-clone registries would mix independent refs and unfinished attempts. These
+alternatives are excluded by the owner's requirements.
 
-The current runtime classifier owns `.wld/internal/` and all descendants. Git staging, dirty-path checks, publication,
-and cleanup use that boundary.
-
-A separate legacy-safety classifier continues to recognize known 0.10 runtime paths. It exists only to migrate old
-state, preserve and recover returning old writes, and prevent accidental commits. Normal runtime stores use the internal
-root; publication alone can resume an existing checkout at the absolute path in its migrated receipt.
-
-Gitignore reconciliation replaces managed legacy blocks, removes exact obsolete RunWield runtime lines and duplicates,
-and emits the canonical block. While a legacy runtime directory remains, the block also ignores that path so retained
-repositories and old-writer lock files cannot be accidentally staged. It preserves unrelated user content. A broad user
-rule such as `.wld/` is not removed automatically because RunWield cannot know the user's intent; RunWield reports that
-the rule also hides trackable project configuration.
-
-Tracked legacy runtime files require explicit repository cleanup. RunWield does not silently rewrite repository history
-or claim that `.gitignore` can untrack files. Secrets already committed to Git cause a security warning and require
-credential or capability rotation as applicable.
-
-### Passive inspection and action preparation
-
-Path resolution is not safe-access proof. `inspectProjectRuntimeReadAccess` checks local authority without entering
-migration, probing writer locks, or recovering legacy input:
-
-- A fresh Project exposes local documents and empty runtime facts without creating storage or a marker.
-- Safe adopted state exposes current controller, registry, and registered document-worktree authority. Returning legacy
-  recovery input does not replace that authority or cause read-time recovery.
-- Unmigrated or interrupted state leaves workflow details pending. Inspection does not combine partly moved stores,
-  infer journal completion, or restore files.
-- Unsafe or unreadable authority retains its specific diagnostic, including symlink escapes, newer markers, tracked
-  runtime state, identity conflicts, and unreadable registry data. It is not an authoritative empty catalog.
-
-Registry list/find and controller inspection are pure projections. Named action preparation owns registry schema and
-identity migration, controller import, and obsolete recovery-hint cleanup. Saves, selected Plan loads, lifecycle
-actions, execution, recovery, and publication prepare before relying on workflow authority. Preparation retains existing
-locks and revision checks; a pending projection cannot authorize a write.
-
-Target discovery and body hydration use locally available Git refs and objects, without temporary document files,
-fetch, or clone. Missing local target evidence is unavailable, not proof of no children. Fresh remote publication proof
-belongs to actions under [ADR-016](016-proof-bearing-publication-state-machine.md). Passive inspection does not change
-sources, reconcile ignore rules, assign identities, clean journals, change refs/worktrees, or queue those effects.
-In-memory reuse and the search service's own derived index/status writes are allowed.
-
-Plan read availability (`ready` or `pending`) is transport metadata, separate from Front Matter and lifecycle status.
-Safe local documents remain browseable, including ID-less drafts by name. Pending information neither adopts a Plan
-nor permits execution. Search skips ID-less Plans and withholds uncertain Plan facts while retaining healthy results.
-No complete legacy reader, read-triggered repair service, or mandatory Doctor step is required.
-
-### Repeated inspection and entry
-
-Each operation checks authority again because older writers, users, and Git can change runtime evidence. Nested passive
-reads share inspection only within one bounded operation; the scope expires at settlement, including for surviving async
-descendants. Plan content and workflow facts are not cached across requests. Inspection results never satisfy action
-admission. `enterProjectRuntime` repeats mutation preflight and invalidates surrounding inspection reuse before and after
-entry, even in the same async chain.
-
-Preflight's two Git questions, attached worktrees and tracked runtime paths, are answered only from repository metadata.
-An earlier Git answer can be reused while a stat fingerprint of that metadata is unchanged: `.git`, the index, `HEAD`,
-config, and each linked worktree's administrative files. A result is not reused when its metadata changed within the
-timestamp-resolution window or while Git ran, when Git location is overridden through the environment, or when the
-metadata cannot be located or names a symlink instead of a regular metadata file. This Git-evidence reuse does not cache
-runtime admission. RunWield-owned marker, journal, legacy-path, and symlink checks remain operation-scoped; real lock
-admission remains action-owned.
-
-## Consequences
-
-- A new project runtime capability can stay Git-safe by storing its data under one reserved root.
-- Users can commit project settings, Agents, Skills, and prompts without maintaining an exception list.
-- Runtime owners retain their current primary-checkout or selected-checkout semantics.
-- Upgrade is automatic for inactive projects, including unfinished publication and repair. It safely stops for live
-  older writers, malformed evidence, or conflicting authorities.
-- Downgrade after adoption is unsupported. Recreated legacy directories recover automatically on action entry rather
-  than stranding Plans; passive reads keep adopted authority without recovery. This is not concurrent-version support:
-  live older writers still require their real locks during action admission, and conflicting
-  worktree registries or secrets cannot be resolved by blindly choosing the newest file.
-- A populated project-local fallback worktree directory is preserved and blocks adoption. RunWield does not move its Git
-  worktrees or rewrite their recorded paths. An absent or empty fallback directory does not block adoption.
-- Documentation and recovery messages must use the new paths while explaining the one-way 0.11.0 boundary.
-- Passive reads can expose pending details instead of repairing them. A deliberate action prepares automatically, and
-  the next read rechecks availability. No new lifecycle state or browser pattern is needed.
-- Repeated checks avoid Git processes while repository metadata is unchanged. A Git change that rewrites the index,
-  `HEAD`, config, or worktree metadata is seen on the next operation.
-
-## Options Not Taken
-
-### Keep the enumerated legacy paths
-
-This avoids migration but keeps the noisy `.gitignore` contract and requires every new runtime capability to update
-several Git-safety mechanisms. It does not establish a clear ownership boundary.
-
-### Ignore all of `.wld/`
-
-This gives one ignore entry but also hides user-derived settings, Agents, Skills, and prompts. It conflicts with the
-intended repository configuration model.
-
-### Move active publication recovery automatically
-
-A migration could move a saved publication clone and rewrite its absolute registry paths. A process stop between those
-effects could separate validated work from its recovery authority. The rare upgrade interruption does not justify this
-risk.
-
-### Support old and new versions concurrently
-
-This requires both legacy ignore entries and two compatible lock namespaces. It permits old processes to recreate old
-authorities after migration and defeats the single-root result. Version 0.11.0 is an explicit breaking boundary instead.
-
-### Prepare runtime state during every read
-
-This would hide initialization, migration, lock probes, and recovery inside browsing and search. It conflicts with the
-owner's no-source-effects constraint. Document-only parsing everywhere was also rejected because it loses registered
-worktree authority and current controller decisions. Checked inspection with pending availability preserves both rules;
-a complete reader for mixed legacy/interrupted migration state is outside the chosen boundary.
-
-### Retain verified entry for the process lifetime
-
-Long-lived TUI and Workspace processes would stop noticing recreated legacy files, planted symlinks, newer layout
-markers, newly tracked runtime paths, and newly attached worktrees. Fingerprinting only Git's metadata keeps the Git
-process savings while leaving every RunWield-owned check live.
+Adoption is one-way. Older writers must settle before cutover; mixed-version writing is not supported. A valid
+copy is not permission to delete a changed source. Failures remain recoverable intermediate conditions, and retry
+continues the same transfer. Native file locks, verified copies, and durable journals cost more work than changing a
+path constant, but preserve the user's unfinished work and permit restart without manual storage repair.

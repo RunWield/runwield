@@ -1,3 +1,5 @@
+import { currentPackageSelection, selectedPackage } from "../workflow/package-workflow.ts";
+import { currentWorkRecordOwner } from "./owner.ts";
 /**
  * @module shared/work-records/generation
  * Generate canonical internal Work Records from completed Plans.
@@ -38,6 +40,8 @@ const USER_VERIFIED_TEXT = "The user attested verification; RunWield Workflow Va
 
 /**
  * @typedef {Object} WorkRecordSource
+ * @property {string} [recordingAttemptId] - Retained package delivery attempt
+ * @property {string} [preparedRecordId] - Stable identity of an admitted recording attempt
  * @property {boolean} [pendingPublication] - Explicit artifact preparation, never ordinary backfill eligibility
  * @property {"active"|"archived"} sourceKind
  * @property {string} name
@@ -257,6 +261,7 @@ function findLinkableExistingRecord(source, existingByPlanId) {
     const candidates = source.planId ? existingByPlanId.get(source.planId) || [] : [];
     return candidates.find(
         (record) =>
+            (!source.preparedRecordId || record.attrs.recordId === source.preparedRecordId) &&
             (record.attrs.status === "approved" ||
                 (source.pendingPublication && record.attrs.status === "pending_verification")) &&
             record.attrs.origin === "internal" &&
@@ -273,7 +278,7 @@ function findLinkableExistingRecord(source, existingByPlanId) {
  * @returns {WorkRecordSource}
  */
 export function evaluateWorkRecordSource(source, existingByPlanId = new Map()) {
-    if (source.attrs.workRecord && source.attrs.workRecord.status !== "failed") {
+    if (!source.preparedRecordId && source.attrs.workRecord && source.attrs.workRecord.status !== "failed") {
         return { ...source, skipReason: "existing_backlink" };
     }
     if (isChildFeaturePlan(source)) return { ...source, skipReason: "child_feature" };
@@ -310,6 +315,8 @@ export async function discoverWorkRecordSources(cwd) {
         if (!loaded) continue;
         sources.push(buildActiveWorkRecordSource(entry.name, loaded));
     }
+    // Repository archives retain their legacy owner; admitted retries use package sources only.
+    if (currentPackageSelection()) return sources;
     for (const entry of await listArchivedPlans(cwd)) {
         const loaded = await loadArchivedPlan(cwd, entry.name);
         if (!loaded) continue;
@@ -387,6 +394,12 @@ export async function previewWorkRecordBackfill(cwd) {
  * @param {Partial<import('../../plan-store.js').PlanFrontMatter>} updates
  */
 async function updateSourceFrontMatter(cwd, source, updates) {
+    if (source.recordingAttemptId && currentPackageSelection()) {
+        const live = await selectedPackage({ planId: source.planId });
+        const attempt = live.metadata.workflow?.attempt;
+        if (attempt && attempt.attemptId !== source.recordingAttemptId) return source.attrs;
+    }
+
     if (source.sourceKind === "archived") return await updateArchivedPlanFrontMatter(cwd, source.name, updates);
     // A Work Record backlink is post-settlement bookkeeping, so it gets an ordinary
     // Plan transaction. Plan Recovery is deliberately not used here: recovery
@@ -711,7 +724,7 @@ async function linkSourceToRecord(cwd, source, record, now) {
         workRecord: {
             status: "generated",
             recordId: record.attrs.recordId,
-            path: record.relativePath,
+            path: currentWorkRecordOwner() ? record.path : record.relativePath,
             lastAttemptAt: iso(now),
         },
     });
@@ -800,15 +813,15 @@ export async function generateWorkRecordForSource(cwd, inputSource, options) {
                 source,
                 status: "linked",
                 recordId: record.attrs.recordId,
-                path: record.relativePath,
+                path: currentWorkRecordOwner() ? record.path : record.relativePath,
                 ...(supersessionProposals.length ? { supersessionProposals } : {}),
                 ...(indexWarning ? { indexWarning } : {}),
             };
         }
 
         const recordId =
-            source.attrs.validationCheckpoint?.hostRecorder?.recordId ||
-            (options.idGenerator ? options.idGenerator() : crypto.randomUUID());
+            (options.idGenerator ? options.idGenerator() : source.attrs.validationCheckpoint?.hostRecorder?.recordId) ||
+            crypto.randomUUID();
         declaredIds = await validateDeclaredSupersession(cwd, recordId, declaredIds);
         const sections = await generateRecorderSections(cwd, source, options, recordId, declaredIds);
         const declaredIdentities = new Set(declaredIds.map((id) => id.toLowerCase()));
@@ -837,7 +850,9 @@ export async function generateWorkRecordForSource(cwd, inputSource, options) {
         };
         const body = buildBody(source, sections);
         const title = body.match(/^#\s+(.+)$/m)?.[1] || attrs.recordId;
-        const record = await writeWorkRecord(cwd, attrs, body, { fileName: buildWorkRecordFileName(title, now) });
+        const record = await writeWorkRecord(cwd, attrs, body, {
+            fileName: buildWorkRecordFileName(source.preparedRecordId || title, now),
+        });
         let settledRecord = record;
         let indexWarning = "";
         if (source.pendingPublication) {
@@ -874,7 +889,7 @@ export async function generateWorkRecordForSource(cwd, inputSource, options) {
             source,
             status: "generated",
             recordId: settledRecord.attrs.recordId,
-            path: settledRecord.relativePath,
+            path: currentWorkRecordOwner() ? settledRecord.path : settledRecord.relativePath,
             ...(pending.length ? { supersessionProposals: pending } : {}),
             ...(indexWarning ? { indexWarning } : {}),
         };
@@ -895,6 +910,17 @@ export async function runWorkRecordBackfill(cwd, options) {
     /** @type {BackfillResult["outcomes"]} */
     const outcomes = [];
     for (const source of preview.eligible) {
+        if (currentPackageSelection() && source.sourceKind === "active") {
+            const { retryWorkRecordForPlan } = await import("./auto-generation.ts");
+            const result = await retryWorkRecordForPlan({ cwd, planName: source.name, ...options });
+            outcomes.push({
+                ...result,
+                source,
+                status: result.status === "generated" || result.status === "linked" ? result.status : "failed",
+                ...(result.status === "skipped" ? { error: result.reason || "Source is not eligible." } : {}),
+            });
+            continue;
+        }
         outcomes.push(
             /** @type {BackfillResult["outcomes"][number]} */ (await generateWorkRecordForSource(cwd, source, options)),
         );

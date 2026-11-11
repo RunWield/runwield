@@ -46,8 +46,7 @@ function planStatus(result: GoldenScenarioResult, name: string): string {
 
 function recoveryOptionValues(result: GoldenScenarioResult, index = 0): Set<string | undefined> {
     const interactions = result.state.scriptedInteractions as
-        | Array<{ request?: { options?: Array<{ value?: string }> } }>
-        | undefined;
+        Array<{ request?: { options?: Array<{ value?: string }> } }> | undefined;
     return new Set((interactions?.[index]?.request?.options || []).map((option) => option.value));
 }
 
@@ -61,8 +60,7 @@ export const loadPlanActionsScenario = {
     initialProjectFiles: [
         {
             path: "docs/plans/load-hold.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Hold through load-plan\naffectedPaths: []\nstatus: ready_for_work\n---\n# Hold\n",
+            text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Hold through load-plan\naffectedPaths: []\nstatus: ready_for_work\n---\n# Hold\n",
         },
     ],
     scriptedInteractions: [
@@ -121,29 +119,28 @@ export const loadPlanResetReviewArchiveScenario = {
             phase: "plan_review",
             ordinal: 1,
             requiredTools: ["plan_written"],
-            toolCalls: [{
-                name: "plan_written",
-                arguments: {
-                    planName: "re-review",
+            toolCalls: [
+                {
+                    name: "plan_written",
+                    arguments: {
+                        planName: "re-review",
+                    },
                 },
-            }],
+            ],
         },
     ],
     initialProjectFiles: [
         {
             path: "docs/plans/reset-held.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Reset held\naffectedPaths: []\nstatus: on_hold\nheldFromStatus: ready_for_work\n---\n# Reset held\n",
+            text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Reset held\naffectedPaths: []\nstatus: on_hold\nheldFromStatus: ready_for_work\n---\n# Reset held\n",
         },
         {
             path: "docs/plans/re-review.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Re-review\naffectedPaths: []\nstatus: ready_for_work\n---\n# Re-review\n",
+            text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Re-review\naffectedPaths: []\nstatus: ready_for_work\n---\n# Re-review\n",
         },
         {
             path: "docs/plans/archive-me.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Archive me\naffectedPaths: []\nstatus: verified\n---\n# Archive me\n",
+            text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Archive me\naffectedPaths: []\nstatus: verified\n---\n# Archive me\n",
         },
     ],
     scriptedInteractions: [
@@ -192,9 +189,10 @@ export const loadPlanResetReviewArchiveScenario = {
             );
             assert(
                 planStatus(result, "re-review") === "ready_for_work",
-                `Expected /load-plan planner re-review to leave durable ready_for_work Front Matter; got ${
-                    planStatus(result, "re-review")
-                }`,
+                `Expected /load-plan planner re-review to leave durable ready_for_work Front Matter; got ${planStatus(
+                    result,
+                    "re-review",
+                )}`,
             );
             const archived = projectState(result).plans?.find((entry) => entry.name === "archive-me");
             assert(
@@ -233,20 +231,21 @@ export const loadPlanCanceledExecutionThenPlannerReviewScenario = {
             phase: "plan_review",
             ordinal: 1,
             requiredTools: ["plan_written"],
-            toolCalls: [{
-                name: "plan_written",
-                arguments: {
-                    planName: "stale-then-review",
+            toolCalls: [
+                {
+                    name: "plan_written",
+                    arguments: {
+                        planName: "stale-then-review",
+                    },
                 },
-            }],
+            ],
         },
     ],
     committedProjectFiles: [
         { path: "app.ts", text: "export const changedAfterPlanning = true;\n" },
         {
             path: "docs/plans/stale-then-review.md",
-            text:
-                '---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Cancel stale execution then review\naffectedPaths:\n  - app.ts\nupdatedAt: "2020-01-01T00:00:00.000Z"\nstatus: ready_for_work\n---\n# Cancel stale execution then review\n',
+            text: '---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Cancel stale execution then review\naffectedPaths:\n  - app.ts\nupdatedAt: "2020-01-01T00:00:00.000Z"\nstatus: ready_for_work\n---\n# Cancel stale execution then review\n',
         },
     ],
     scriptedInteractions: [
@@ -296,9 +295,10 @@ export const loadPlanCanceledExecutionThenPlannerReviewScenario = {
         assertsGoldenCoverage("durable:plan-lifecycle", (result: GoldenScenarioResult) => {
             assert(
                 planStatus(result, "stale-then-review") === "ready_for_work",
-                `Expected the re-reviewed Plan to remain ready_for_work; got ${
-                    planStatus(result, "stale-then-review")
-                }`,
+                `Expected the re-reviewed Plan to remain ready_for_work; got ${planStatus(
+                    result,
+                    "stale-then-review",
+                )}`,
             );
         }),
     ],
@@ -310,20 +310,15 @@ export const loadPlanInterruptedRecoveryScenario = {
     initialAgentName: "guide",
     terminal: { columns: 100, rows: 30 },
     timeoutMs: 90000,
-    coverage: [
-        "recovery:interrupted-execution",
-        "recovery:load-plan-worktree",
-    ],
+    coverage: ["recovery:interrupted-execution", "recovery:load-plan-worktree"],
     initialProjectFiles: [
         {
             path: "docs/plans/epic.md",
-            text:
-                "---\nclassification: PROJECT\ncomplexity: MEDIUM\nsummary: Interrupted Epic\naffectedPaths: []\nstatus: ready_for_decomposition\n---\n# Epic\n",
+            text: "---\nclassification: PROJECT\ncomplexity: MEDIUM\nsummary: Interrupted Epic\naffectedPaths: []\nstatus: ready_for_decomposition\n---\n# Epic\n",
         },
         {
             path: "docs/plans/epic/01-child.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Interrupted child\naffectedPaths: []\nstatus: ready_for_work\nparentPlan: epic\norder: 1\n---\n# Child\n",
+            text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Interrupted child\naffectedPaths: []\nstatus: ready_for_work\nparentPlan: epic\norder: 1\n---\n# Child\n",
         },
     ],
     script: [
@@ -376,14 +371,21 @@ export const loadPlanInterruptedRecoveryScenario = {
             const childOptions = recoveryOptionValues(result, 1);
             assert(childOptions.has("pick_child"), `Expected active child choice; got ${[...childOptions].join(", ")}`);
             const planRecoveryOptions = recoveryOptionValues(result, 4);
-            for (
-                const expected of ["inspect", "continue", "reset", "abandon", "review", "user_verify", "hold", "cancel"]
-            ) {
+            for (const expected of [
+                "inspect",
+                "continue",
+                "reset",
+                "abandon",
+                "review",
+                "user_verify",
+                "hold",
+                "cancel",
+            ]) {
                 assert(
                     planRecoveryOptions.has(expected),
-                    `Expected interrupted child Plan Recovery option ${expected}; got ${
-                        [...planRecoveryOptions].join(", ")
-                    }`,
+                    `Expected interrupted child Plan Recovery option ${expected}; got ${[...planRecoveryOptions].join(
+                        ", ",
+                    )}`,
                 );
             }
             assert(
@@ -405,11 +407,12 @@ export const loadPlanWorktreeInspectResetScenario = {
     committedProjectFiles: [
         { path: ".wld/settings.json", text: `${JSON.stringify({ verification_command: "true" }, null, 4)}\n` },
     ],
-    initialProjectFiles: [{
-        path: "docs/plans/recover-reset.md",
-        text:
-            "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Reset recovery\naffectedPaths: []\nstatus: ready_for_work\nplanId: recover-reset-plan\n---\n# Recover reset\n",
-    }],
+    initialProjectFiles: [
+        {
+            path: "docs/plans/recover-reset.md",
+            text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Reset recovery\naffectedPaths: []\nstatus: ready_for_work\nplanId: recover-reset-plan\n---\n# Recover reset\n",
+        },
+    ],
     script: [
         {
             id: "engineer-completes-recover-reset-after-recreate",
@@ -459,6 +462,8 @@ export const loadPlanWorktreeInspectResetScenario = {
         { type: "enter" },
         { type: "enter" },
         { type: "waitForEvent", event: "runtime:tool:start:task_completed", timeoutMs: 60000 },
+        // Completion starts CI and AI review; publication gets its own wait after their handoff.
+        { type: "waitForEvent", event: "runtime:tool:end:review_complete", timeoutMs: 60000 },
         {
             type: "waitForPlanStatus",
             planName: "recover-reset",
@@ -483,9 +488,9 @@ export const loadPlanWorktreeInspectResetScenario = {
             );
             assert(
                 (projectState(result).nonTerminalRegistryEntries || []).length === 0,
-                `Expected recovery reset completion to drain live registry entries; got ${
-                    JSON.stringify(projectState(result).nonTerminalRegistryEntries || [])
-                }`,
+                `Expected recovery reset completion to drain live registry entries; got ${JSON.stringify(
+                    projectState(result).nonTerminalRegistryEntries || [],
+                )}`,
             );
         }),
     ],
@@ -498,11 +503,12 @@ export const loadPlanAbandonProgressScenario = {
     terminal: { columns: 100, rows: 30 },
     timeoutMs: 120000,
     coverage: ["block:abandon-progress", "recovery:load-plan-worktree"],
-    initialProjectFiles: [{
-        path: "docs/plans/recover-abandon.md",
-        text:
-            "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Abandon recovery\naffectedPaths: []\nstatus: ready_for_work\nplanId: recover-abandon-plan\n---\n# Recover abandon\n",
-    }],
+    initialProjectFiles: [
+        {
+            path: "docs/plans/recover-abandon.md",
+            text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Abandon recovery\naffectedPaths: []\nstatus: ready_for_work\nplanId: recover-abandon-plan\n---\n# Recover abandon\n",
+        },
+    ],
     scriptedInteractions: [
         { type: "select", promptIncludes: "Plan recovery (in_progress)", value: "abandon" },
         { type: "select", promptIncludes: "Delete/abandon worktree", value: "confirm" },
@@ -547,8 +553,7 @@ export const loadPlanImplementedFollowUpRepaintsScenario = {
         { path: ".wld/settings.json", text: `${JSON.stringify({ verification_command: "true" }, null, 4)}\n` },
         {
             path: "docs/plans/follow-up-repaint.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Follow up repaint\naffectedPaths: []\nstatus: ready_for_work\nplanId: follow-up-repaint-plan\nhumanReviewMode: none\nhumanReviewDecision: not_required\n---\n# Follow up repaint\n",
+            text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Follow up repaint\naffectedPaths: []\nstatus: ready_for_work\nplanId: follow-up-repaint-plan\nhumanReviewMode: none\nhumanReviewDecision: not_required\n---\n# Follow up repaint\n",
         },
     ],
     script: [
@@ -626,8 +631,8 @@ export const loadPlanImplementedFollowUpRepaintsScenario = {
         assertsGoldenCoverage("durable:session-replaced", (result: GoldenScenarioResult) => {
             const replacementState = result.state.afterFollowUpReplacement as CapturedProjectState | undefined;
             const snapshot = replacementState?.runtimeSnapshot;
-            const entry = replacementState?.registryEntries?.find((candidate) =>
-                candidate.planName === "follow-up-repaint"
+            const entry = replacementState?.registryEntries?.find(
+                (candidate) => candidate.planName === "follow-up-repaint",
             );
             assert(entry?.path, "Expected the seeded worktree registry entry to record its path.");
             assertEquals(snapshot?.cwd, entry.path);
@@ -655,8 +660,7 @@ export const loadPlanContinueUsesExecutionPlanAuthorityScenario = {
         { path: ".wld/settings.json", text: `${JSON.stringify({ verification_command: "true" }, null, 4)}\n` },
         {
             path: "docs/plans/continue-authority.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Continue from the execution Plan\naffectedPaths: []\nstatus: ready_for_work\nplanId: continue-authority-plan\n---\n# Continue authority\n",
+            text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Continue from the execution Plan\naffectedPaths: []\nstatus: ready_for_work\nplanId: continue-authority-plan\n---\n# Continue authority\n",
         },
     ],
     script: [
@@ -716,8 +720,7 @@ export const loadPlanContinueUsesExecutionPlanAuthorityScenario = {
         {
             type: "writeProjectFile",
             path: "docs/plans/continue-authority.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Main checkout edit\naffectedPaths: []\nstatus: draft\nplanId: continue-authority-plan\n---\n# Main checkout edit\n\nKeep this local text.\n",
+            text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Main checkout edit\naffectedPaths: []\nstatus: draft\nplanId: continue-authority-plan\n---\n# Main checkout edit\n\nKeep this local text.\n",
         },
         { type: "type", text: "/load-plan continue-authority" },
         { type: "enter" },
@@ -768,11 +771,12 @@ export const loadPlanMalformedFrontMatterScenario = {
     terminal: { columns: 100, rows: 30 },
     timeoutMs: 20000,
     coverage: ["recovery:malformed-plan-front-matter"],
-    initialProjectFiles: [{
-        path: "docs/plans/broken.md",
-        text:
-            "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Broken\naffectedPaths: []\nstatus: draft\n---\n# Broken\n",
-    }],
+    initialProjectFiles: [
+        {
+            path: "docs/plans/broken.md",
+            text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Broken\naffectedPaths: []\nstatus: draft\n---\n# Broken\n",
+        },
+    ],
     actions: [
         { type: "type", text: "/load-plan broken" },
         {
@@ -827,8 +831,7 @@ export const loadPlanValidateWithoutCustomChecksScenario = {
         { path: ".wld/settings.json", text: `${JSON.stringify({ verification_command: "true" }, null, 4)}\n` },
         {
             path: "docs/plans/no-custom-checks.md",
-            text:
-                "---\nplanId: no-custom-checks-plan\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Validation without custom checks\naffectedPaths: []\nstatus: draft\n---\n# Validate without custom checks\n",
+            text: "---\nplanId: no-custom-checks-plan\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Validation without custom checks\naffectedPaths: []\nstatus: draft\n---\n# Validate without custom checks\n",
         },
     ],
     scriptedInteractions: [{ type: "select", promptIncludes: "Plan recovery", value: "validate" }],
@@ -878,13 +881,10 @@ export const loadPlanDirectReviewScenario = {
     initialProjectFiles: [
         {
             path: "docs/plans/direct-review.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Direct review\naffectedPaths: []\nstatus: draft\n---\n# Direct review\n",
+            text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Direct review\naffectedPaths: []\nstatus: draft\n---\n# Direct review\n",
         },
     ],
-    scriptedInteractions: [
-        { type: "select", promptIncludes: "What would you like to do", value: "review" },
-    ],
+    scriptedInteractions: [{ type: "select", promptIncludes: "What would you like to do", value: "review" }],
     actions: [
         { type: "type", text: "/load-plan direct-review" },
         { type: "enter" },
@@ -922,13 +922,10 @@ export const loadPlanDirectReviewRunScenario = {
     initialProjectFiles: [
         {
             path: "docs/plans/direct-review-run.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Direct review run\naffectedPaths: []\nstatus: draft\n---\n# Direct review run\n",
+            text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Direct review run\naffectedPaths: []\nstatus: draft\n---\n# Direct review run\n",
         },
     ],
-    scriptedInteractions: [
-        { type: "select", promptIncludes: "What would you like to do", value: "review" },
-    ],
+    scriptedInteractions: [{ type: "select", promptIncludes: "What would you like to do", value: "review" }],
     script: [
         {
             id: "direct-review-run-engineer-completes",
