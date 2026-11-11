@@ -37,7 +37,7 @@ dependencies:
     - "external-plan-store/expose-home-plans-across-user-surfaces"
 targetBranch: "epic/external-plan-store"
 userVerifiedAt: null
-status: "in_progress"
+status: "implemented"
 ---
 
 # Activate the Local Home Store

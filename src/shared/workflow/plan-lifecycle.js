@@ -1,3 +1,4 @@
+import { selectLocalPlanWorkflow } from "../local-home-store.ts";
 import {
     currentPackageSelection,
     selectedPackage,
@@ -1040,6 +1041,8 @@ export async function recordPlanEvent({
     expectedRevision,
     packageSelection,
 }) {
+    if (!packageSelection && !currentPackageSelection())
+        packageSelection = await selectLocalPlanWorkflow(cwd, planName);
     if (packageSelection)
         return await withPackageWorkflow(
             cwd,

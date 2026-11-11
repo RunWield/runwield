@@ -1,3 +1,4 @@
+import { readLocalHomeStore, withLocalProjectAction } from "../../shared/local-home-store.ts";
 import { importWorkRecords } from "../../shared/work-records/import.ts";
 /**
  * @module cmd/wr
@@ -131,6 +132,14 @@ function formatRebuildResult(result: Awaited<ReturnType<typeof rebuildWorkRecord
 }
 
 export async function runWorkRecordsCommand(argv: string[], options: WorkRecordCommandOptions): Promise<void> {
+    const execute = () => runWorkRecordsCommandInOwner(argv, options);
+    if (["import", "index", "rebuild", "backfill", "retry", "supersede"].includes(argv[0]))
+        return await withLocalProjectAction(getCwd(), execute);
+    return await readLocalHomeStore(getCwd(), execute, () =>
+        console.log("[RunWield] No Work Records found. Use wld wr import <path> to import existing records."),
+    );
+}
+async function runWorkRecordsCommandInOwner(argv: string[], options: WorkRecordCommandOptions): Promise<void> {
     const mnemotecaPort = options.mnemotecaPort;
     const subcommand = argv[0] && !argv[0].startsWith("-") ? argv[0] : "list";
     const rest = subcommand === "list" ? (argv[0] === "list" ? argv.slice(1) : argv) : argv.slice(1);

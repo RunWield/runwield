@@ -1,3 +1,4 @@
+import { importLocalPlanReference, inspectLocalHomeStore } from "../../shared/local-home-store.ts";
 import {
     currentPackageSelection,
     withPackageWorkflow,
@@ -142,6 +143,11 @@ export async function resolvePlanWithPrimaryRecovery(
     planArg: string,
     packageSelection?: PackageWorkflowSelection,
 ): Promise<LoadPlanResolution> {
+    if (!packageSelection && !currentPackageSelection()) {
+        await prepareWorktreeRegistry(projectRoot);
+        const local = await importLocalPlanReference(projectRoot, planArg);
+        if (local) return await resolvePlanWithPrimaryRecovery(projectRoot, local.name, local.selection);
+    }
     if (packageSelection) {
         try {
             return await withPackageWorkflow(
@@ -201,7 +207,7 @@ export interface PlanDocumentTarget {
 
 /** Select document authority without recovery, status repair, or activation. */
 export async function discoverPlanDocumentRoot(projectRoot: string, planArg: string): Promise<PlanDocumentTarget> {
-    if (currentPackageSelection()) return { path: projectRoot };
+    if (currentPackageSelection() || inspectLocalHomeStore(projectRoot).kind === "local") return { path: projectRoot };
     // Directory consent precedes authority validation or repair. This is only a
     // guard target: resolving the workflow below must still reject foreign trees.
     const normalized = await normalizePlanArgument(projectRoot, planArg);

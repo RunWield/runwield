@@ -350,6 +350,7 @@ test("Slicer restores earlier child writes when a later reserved child fails", a
 test("Slicer rolls back an updated legacy draft when a later child fails", async () => {
     await withRuntimeCommandFixture("slicer-legacy-rollback-", async ({ projectRoot }) => {
         await saveEpic(projectRoot);
+        await savePlan(projectRoot, "earlier", "# Earlier dependency\n");
         await savePlan(projectRoot, "epic-a/99-working", "# Original body\n", {
             parentPlan: "epic-a",
             order: 99,

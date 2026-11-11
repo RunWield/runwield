@@ -1,3 +1,8 @@
+import { rememberNonGitExecutionConsent } from "../../non-git-execution-consent.ts";
+import { withLocalPlanWorkflow } from "../../local-home-store.ts";
+import { startActiveExecutionWorkflow, createExecutionStartPorts } from "../execution-start.ts";
+import { recordPlanEvent } from "../plan-lifecycle.js";
+import { finalizePlanImplementation } from "../implementation-checkpoint.ts";
 import { runtimeSourceArgs } from "../../../testing/runtime-source-args.ts";
 import { tmpdir } from "node:os";
 import {
@@ -18,8 +23,7 @@ import { assertEquals, assertExists } from "../../../testing/assertions.ts";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { defineGitFixture, git } from "../../git-test-fixture.ts";
 import { loadPlan, savePlan, updatePlanFrontMatter } from "../../../plan-store.js";
-import { controllerRecordPath } from "../controller-registry.ts";
-import { addEntry } from "../../worktree-registry.js";
+import { selectedPackage, packageController } from "../package-workflow.ts";
 import { setCustomSetting, setExactProjectCustomSetting } from "../../settings.js";
 import { parseDiffFiles } from "../review-diff.ts";
 import {
@@ -30,7 +34,6 @@ import {
 import { continueHostTurnValidation } from "../validation-host-turn.ts";
 import { readDeliveryEvidence } from "../delivery-evidence.ts";
 import { getWorkflowMetricsFilePath } from "../metrics.js";
-import { makeValidationProjectRoot } from "../validation-test-helpers.js";
 
 import process from "node:process";
 
@@ -61,14 +64,12 @@ export async function hostFixture(options: HostFixtureOptions = {}) {
         ...options.attrs,
     };
     const root = await fsRealpath(
-        options.nonGit
-            ? await makeValidationProjectRoot("p", { ...attrs, executionMode: "non_git_in_place" })
-            : await base.checkout(),
+        options.nonGit ? await fsMkdtemp(join(tmpdir(), "host-validation-non-git-")) : await base.checkout(),
     );
     const parent = await fsRealpath(await fsMkdtemp(join(tmpdir(), "host-validation-worktree-")));
     let cwd = root;
-    const id = options.nonGit ? "in-place" : "wt-host";
-    if (!options.nonGit) {
+    let id = options.nonGit ? "in-place" : "wt-host";
+    {
         if (attrs.parentPlan) {
             await savePlan(
                 root,
@@ -87,53 +88,41 @@ export async function hostFixture(options: HostFixtureOptions = {}) {
             setExactProjectCustomSetting("verification_command", options.command || "sh verify.sh", root);
         }
         await setCustomSetting("workflowMetrics", true, "project", root);
-        await savePlan(root, "p", "# Approved Plan\n\nImplement the value.\n", attrs);
-        await git(root, ["add", "docs/plans", ".wld/settings.json"]);
-        await git(root, ["commit", "-m", "approved plan"]);
-        const baseCommit = await git(root, ["rev-parse", "HEAD"]);
-        const baseTree = await git(root, ["rev-parse", "HEAD^{tree}"]);
-        cwd = join(parent, "execution");
-        const branch = "runwield/worktree/p-wt-host";
-        await git(root, ["worktree", "add", "-b", branch, cwd, "HEAD"]);
-        await addEntry(root, {
-            id,
-            planName: "p",
-            planId: attrs.planId,
-            baseBranch: "main",
-            baseRef: "refs/heads/main",
-            baseCommit,
-            baseTree,
-            executionBaselineTree: baseTree,
-            branch,
-            path: cwd,
-            status: "completed",
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+        await savePlan(root, "p", "# Approved Plan\n\nImplement the value.\n", { ...attrs, status: "draft" });
+        if (!options.nonGit) {
+            await git(root, ["add", ".wld/settings.json"]);
+            await git(root, ["commit", "-m", "verification settings"]);
+        }
+        if (options.nonGit) await rememberNonGitExecutionConsent("featurePlan", root);
+        await withLocalPlanWorkflow(root, "p", async () => {
+            await recordPlanEvent({ cwd: root, planName: "p", event: "review_approved", currentStatus: "draft" });
+            await recordPlanEvent({ cwd: root, planName: "p", event: "readiness_passed", currentStatus: "approved" });
+            const ready = await loadPlan(root, "p");
+            assertExists(ready);
+            const execution = await startActiveExecutionWorkflow({
+                cwd: root,
+                planName: "p",
+                currentStatus: "ready_for_work",
+                triageMeta: ready.attrs,
+                ports: createExecutionStartPorts(),
+            });
+            assert(execution.executionCwd && (options.nonGit || execution.worktreeId), JSON.stringify(execution));
+            cwd = await fsRealpath(execution.executionCwd);
+            id = execution.worktreeId || "in-place";
+            if (options.planOnly) {
+                const plan = await loadPlan(root, "p");
+                assertExists(plan);
+                await savePlan(root, "p", plan.markdown + "\nPlan change.\n", attrs, {
+                    expectedRevision: plan.revision,
+                });
+            } else await fsWriteFile(join(cwd, "implementation.ts"), "export const value = 1; // implemented\n");
+            await finalizePlanImplementation({ projectRoot: root, planName: "p", executionContext: execution });
+            const implemented = await loadPlan(root, "p");
+            assertExists(implemented);
+            await updatePlanFrontMatter(root, "p", { humanReviewMode: attrs.humanReviewMode }, implemented.attrs, {
+                expectedRevision: implemented.revision,
+            });
         });
-        const plan = await loadPlan(cwd, "p");
-        assertExists(plan);
-        await updatePlanFrontMatter(
-            cwd,
-            "p",
-            {
-                ...attrs,
-                executionMode: "worktree",
-                executionBaselineTree: baseTree,
-                worktreeId: id,
-                worktreePath: cwd,
-                worktreeBranch: branch,
-                worktreeBaseBranch: "main",
-                worktreeStatus: "completed",
-            },
-            plan.attrs,
-            { expectedRevision: plan.revision, expectedControllerRevision: plan.controllerRevision },
-        );
-        if (options.planOnly) {
-            await fsWriteFile(
-                join(cwd, "docs/plans/p.md"),
-                (await fsReadFile(join(cwd, "docs/plans/p.md"), "utf8")) + "\nPlan change.\n",
-            );
-        } else await fsWriteFile(join(cwd, "implementation.ts"), "export const value = 1; // implemented\n");
     }
     if (options.nonGit) {
         await fsWriteFile(join(cwd, "verify.sh"), "#!/bin/sh\nprintf ci\\n >> ci-count\ntest -f marker\n");
@@ -187,14 +176,14 @@ export async function hostFixture(options: HostFixtureOptions = {}) {
             return result;
         },
         async plan() {
-            const plan = await loadPlan(cwd, "p");
+            const plan = await loadPlan(root, "p");
             assertExists(plan);
             return plan;
         },
         async checkpointBytes() {
-            const plan = await loadPlan(cwd, "p");
-            assertExists(plan);
-            return await fsReadFile(controllerRecordPath(cwd, { planName: "p", planId: plan.attrs.planId }), "utf8");
+            return await withLocalPlanWorkflow(root, "p", async () =>
+                JSON.stringify(await packageController(await selectedPackage("p"))),
+            );
         },
         async evidence() {
             return (await readDeliveryEvidence(root, "p", id)).entries;

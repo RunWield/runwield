@@ -1,3 +1,4 @@
+import { inspectLocalHomeStore, withLocalPlanWorkflow } from "../local-home-store.ts";
 import {
     currentPackageSelection,
     selectedPackage,
@@ -152,6 +153,8 @@ export async function prepareSequenceReview(
     planName: string,
     inputs?: SequenceChildInput[],
 ): Promise<SequenceReviewDocument[]> {
+    if (!currentPackageSelection() && inspectLocalHomeStore(cwd).kind === "local")
+        return await withLocalPlanWorkflow(cwd, planName, () => prepareSequenceReview(cwd, planName, inputs));
     const members = await sequenceMembers(cwd, planName);
     if (inputs) {
         if (inputs.length !== members.length - 1) throw new Error("Submit every child of the Sequence exactly once.");
@@ -188,6 +191,8 @@ export async function prepareSequenceReview(
 }
 
 export async function snapshotSequenceReview(cwd: string, planName: string): Promise<SequenceReviewDocument[]> {
+    if (!currentPackageSelection() && inspectLocalHomeStore(cwd).kind === "local")
+        return await withLocalPlanWorkflow(cwd, planName, () => snapshotSequenceReview(cwd, planName));
     return await withProjectRuntimeReadScope(async () => {
         const members = await sequenceMembers(cwd, planName);
         const documents: SequenceReviewDocument[] = [];
@@ -225,6 +230,10 @@ export async function validateSequenceReviewDecision(
     documents: SequenceReviewDocument[],
     decision: SequenceReviewDecision,
 ): Promise<void> {
+    if (!currentPackageSelection() && inspectLocalHomeStore(cwd).kind === "local")
+        return await withLocalPlanWorkflow(cwd, documents[0].planName, () =>
+            validateSequenceReviewDecision(cwd, documents, decision),
+        );
     const current = await snapshotSequenceReview(cwd, documents[0].planName);
     if (current.length !== documents.length || current.some((doc, index) => doc.planId !== documents[index].planId)) {
         throw new Error("Sequence membership or order changed. Refresh the complete review.");
@@ -306,6 +315,10 @@ export async function applySequenceReviewDecision({
     hostedSession,
     toolCallId,
 }: ApplySequenceReviewOptions): Promise<SequenceReviewResult> {
+    if (documents[0] && !currentPackageSelection() && inspectLocalHomeStore(cwd).kind === "local")
+        return await withLocalPlanWorkflow(cwd, documents[0].planName, () =>
+            applySequenceReviewDecision({ cwd, documents, decision, hostedSession, toolCallId }),
+        );
     if (decision.conversationTurn && decision.approved) decision = { ...decision, approved: false };
     const parent = documents[0];
     if (!parent || !isSequencePlan(parent.frontmatter)) throw new Error("Sequence review has no canonical container.");

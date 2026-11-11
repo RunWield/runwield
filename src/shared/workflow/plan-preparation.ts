@@ -1,3 +1,4 @@
+import { selectLocalPlanWorkflow } from "../local-home-store.ts";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { healSettledTransitionRecords } from "./transition-recovery.ts";
 import {
@@ -59,6 +60,8 @@ export async function preparePlanWorkflow(
     planName: string,
     packageSelection?: PackageWorkflowSelection,
 ) {
+    if (!packageSelection && !currentPackageSelection())
+        packageSelection = await selectLocalPlanWorkflow(projectRoot, planName);
     if (packageSelection) {
         try {
             return await withPackageWorkflow(

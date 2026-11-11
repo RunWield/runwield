@@ -174,12 +174,12 @@ components, without restyling each surface. See the [RunWield Design System](../
 
 ### Local Plan management
 
-**Internally admitted package path:** A registered Project can display Core-owned home Plans and separate context,
+**Local package authority:** A registered Project can display Core-owned home Plans and separate context,
 validation, manual-QA and integration-report documents. Document saves compare the complete Core revision, preserve
 controller metadata, and retain rejected local drafts. The built owner server and ordinary Core browser review use the
 same admitted authority across requests; healthy packages remain visible beside catalog diagnostics. Search and Work
 Record browsing read the canonical personal record, including when repository delivery copies are stale or absent.
-Passive views do not import Plans. Public default admission remains the legacy path; activation is still target scope.
+Passive views do not import Plans. Ordinary local requests reconstruct Project authority independently of a selected Plan. An empty personal store remains empty even when checkout copies exist; managed-remote activation remains deferred.
 
 **Acceptance:** Edit a document from a second surface, reject the first revision's save or review decision, refresh,
 and review the current input. Restoring the rejected draft retains its original revision and cannot overwrite the newer
@@ -235,7 +235,7 @@ and an empty column shows one consistent empty message. Drag-and-drop feedback a
 
 ### Shared Plan collaboration
 
-**Internally admitted package path:** Existing share, pull and push transport keeps remote revision authority and
+**Local package authority:** Existing share, pull and push transport keeps remote revision authority and
 capability-owned secrets. The local home package remains read-only while shared, and synchronization preserves local
 controller metadata. A stale remote revision refuses push without changing local content or metadata. This internal
 adaptation does not activate home-store admission for public entrypoints.
@@ -817,6 +817,8 @@ Callout authoring is owned by [Core Plan authoring](runwield-core-prd.md#plan-au
   invented answer.
 
 ### Browser Plan review and workflow
+
+**Home-store acceptance:** Ordinary local review reads and edits the same canonical documents as CLI and Connect. Each request revalidates ownership and revision; body saves preserve Core metadata and stale saves retain the user’s draft. An unrelated Project cannot inherit a previous request’s authority.
 
 **Scope and maturity:** Current. Shared rules come from [Core Plan review](runwield-core-prd.md#plan-review),
 [Plan lifecycle](runwield-core-prd.md#plan-lifecycle), and

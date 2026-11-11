@@ -1,3 +1,6 @@
+import { currentPackageProject } from "./package-workflow.ts";
+import { readLocalHomeStore } from "../local-home-store.ts";
+import { listPlans } from "../../plan-store.js";
 import { readdir as fsReaddir, readFile as fsReadFile } from "node:fs/promises";
 /** Read-only identity evidence for repairing a registry that cannot route normal reads. */
 import { join } from "node:path";
@@ -26,7 +29,7 @@ async function readDocuments(root: string, prefix: string[] = []): Promise<PlanI
         for await (const entry of await fsReaddir(directory, { withFileTypes: true })) {
             if (entry.isDirectory() && !entry.name.endsWith(".md")) {
                 if (prefix.length === 0 && entry.name === "archived") continue;
-                documents.push(...await readDocuments(root, [...prefix, entry.name]));
+                documents.push(...(await readDocuments(root, [...prefix, entry.name])));
             } else if (entry.isFile() && entry.name.endsWith(".md")) {
                 const name = [...prefix, entry.name.slice(0, -3)].join("/");
                 if (isEpicArtifactPlanName(name)) continue;
@@ -50,12 +53,26 @@ async function readDocuments(root: string, prefix: string[] = []): Promise<PlanI
  * Known attempts can only obtain identity evidence from their execution directory.
  * Legacy rows without a stable ID may still use explicit on-disk recovery hints.
  */
-export async function inspectPlanIdentityDocuments(projectRoot: string, attempts: DiagnosticAttempt[]) {
+export async function inspectPlanIdentityDocuments(
+    projectRoot: string,
+    attempts: DiagnosticAttempt[],
+): Promise<PlanIdentityDocument[]> {
+    return await readLocalHomeStore(
+        projectRoot,
+        () => inspectDocumentsInProject(projectRoot, attempts),
+        () => [],
+    );
+}
+async function inspectDocumentsInProject(
+    projectRoot: string,
+    attempts: DiagnosticAttempt[],
+): Promise<PlanIdentityDocument[]> {
+    if (currentPackageProject()) return await listPlans(projectRoot);
     const primary = await readDocuments(projectRoot);
     const primaryPaths = new Set(primary.map((plan) => plan.path));
     const selected = attempts.filter((attempt) => attempt.status !== "abandoned" || attempt.documentSelected);
-    const documents = primary.filter((plan) =>
-        !selected.some((attempt) => attempt.planId && attempt.planId === plan.attrs.planId)
+    const documents = primary.filter(
+        (plan) => !selected.some((attempt) => attempt.planId && attempt.planId === plan.attrs.planId),
     );
     for (const attempt of selected) {
         for (const plan of await readDocuments(attempt.path)) {
@@ -63,9 +80,11 @@ export async function inspectPlanIdentityDocuments(projectRoot: string, attempts
                 ? plan.attrs.planId === attempt.planId
                 : plan.attrs.worktreeId === attempt.id || plan.name === attempt.planName;
             if (!matches) continue;
-            const duplicate = documents.findIndex((candidate) =>
-                primaryPaths.has(candidate.path) &&
-                candidate.name === plan.name && candidate.attrs.planId === plan.attrs.planId
+            const duplicate = documents.findIndex(
+                (candidate) =>
+                    primaryPaths.has(candidate.path) &&
+                    candidate.name === plan.name &&
+                    candidate.attrs.planId === plan.attrs.planId,
             );
             if (duplicate >= 0) documents.splice(duplicate, 1);
             documents.push(plan);

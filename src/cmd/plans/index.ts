@@ -1,3 +1,5 @@
+import { readLocalHomeStore } from "../../shared/local-home-store.ts";
+import { runPlansImportCommand } from "./import.ts";
 /**
  * @module cmd/plans
  * List and manage saved Plans.
@@ -80,7 +82,18 @@ function printChildPlan(child: PlanEntry): void {
 }
 
 export async function runPlansCommand(argv: string[]): Promise<void> {
+    return await readLocalHomeStore(
+        getCwd(),
+        () => runPlansCommandInStore(argv),
+        () => runPlansCommandInStore(argv),
+    );
+}
+async function runPlansCommandInStore(argv: string[]): Promise<void> {
     const [subcommand] = argv;
+    if (subcommand === "import") {
+        await runPlansImportCommand(argv.slice(1));
+        return;
+    }
     if (subcommand === "ui") {
         await runPlansUiCommand(argv.slice(1), { browser: SYSTEM_BROWSER_PORT });
         return;
@@ -135,7 +148,7 @@ export async function runPlansCommand(argv: string[]): Promise<void> {
 
     const plans = await listPlans(getCwd());
     if (plans.length === 0) {
-        console.log("[RunWield] No saved plans found.");
+        console.log("[RunWield] No saved plans found. Use wld plans import <file-or-folder> to import existing Plans.");
         return;
     }
 

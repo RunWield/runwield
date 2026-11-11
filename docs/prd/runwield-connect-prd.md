@@ -316,6 +316,15 @@ extend the [Codex qualification evidence](#codex-acceptance) or claim an unobser
 
 ### Shared Plan and verification outcomes
 
+**Local canonical access:** Ordinary local/manual-SSH entry uses Core’s personal Project store, including an empty
+store. New authoring submits Markdown prose and typed definition facts; hosts do not write protected metadata or rely
+on checkout Plan copies. Read and review operations revalidate their own Project/action/revision authority. Restricted
+hosts continue through authorized Plan and Work Record operations without requiring arbitrary home-directory access.
+Managed-remote ownership activation remains deferred; its current admitted contract is preserved.
+
+**Acceptance:** A Plan imported or authored through one local surface is the same ID and current revision when read
+from another. Unimported checkout documents remain invisible and stale action evidence cannot authorize a save.
+
 **Internally admitted package path:** Connect reads the same home Plan identity through Core's `read_plan` tool.
 Workers receive explicit instructions to read the current action's Plan before acting, including validation workers.
 `work_record_search` and `work_record_read` reuse Core's canonical Work Record retrieval and role-based current/all
@@ -327,7 +336,7 @@ Bounded UTF-8 pages include a document revision; continuation requires that revi
 and rejected requests do not advance workflow or modify canonical documents. The external host authorizes the MCP
 call; Core supplies the text from its own authorized store. If the host denies tools and no authorized route remains,
 the worker stops dependent work. Core does not grant host roots or create repository copies or links. Public default
-package admission remains target scope.
+package admission is current for ordinary local and manual-SSH launches; managed-remote ownership activation remains target scope.
 
 **Acceptance:** A restricted host unable to read canonical home files can read the selected Plan and searchable Work
 Records through the real Core MCP carrier. Invalid paths, stale action identities, unavailable record IDs and stale

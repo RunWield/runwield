@@ -1,5 +1,5 @@
 // @ts-nocheck: server module uses the repository's JSDoc JavaScript style while keeping the TypeScript production extension.
-import { currentPackageSelection, selectedPackage } from "../../../shared/workflow/package-workflow.ts";
+import { currentPackageProject, selectedPackage } from "../../../shared/workflow/package-workflow.ts";
 import { workRecordOwnerLayout, assertWorkRecordPath } from "../../../shared/work-records/owner.ts";
 import { readFile as fsReadFile, realpath as fsRealpath } from "node:fs/promises";
 /** @module ui/workspace/server/project-artifacts */
@@ -37,6 +37,12 @@ export async function assertContainedProjectPath(root, path) {
 
 /** @param {string} root @param {string} path @param {string} planName */
 export async function assertAuthorizedPlanPath(root, path, planName) {
+    if (currentPackageProject()) {
+        const selected = await selectedPackage(planName);
+        if (!selected.documents.some((document) => join(selected.path, document.name) === path))
+            throw new Error("Plan path is not an admitted package document.");
+        return path;
+    }
     const access = await inspectProjectRuntimeReadAccess(root);
     if (access.kind === "blocked") throw new ProjectRuntimeEntryRefusedError(access);
     const attempts =
@@ -65,9 +71,9 @@ export async function assertAuthorizedPlanPath(root, path, planName) {
  * @param {{ path: string, planName: string }} resource
  */
 export async function assertReadablePlanResource(root, resource) {
-    const selection = currentPackageSelection();
+    const selection = currentPackageProject();
     if (selection) {
-        if (resolve(root) !== resolve(selection.identity.checkoutRoot))
+        if ((await fsRealpath(root)) !== (await fsRealpath(selection.checkoutRoot)))
             throw new Error("Plan resource belongs to another Project.");
         const plan = await selectedPackage({ planId: resource.planId });
         if (!plan.documents.some((document) => join(plan.path, document.name) === resource.path))

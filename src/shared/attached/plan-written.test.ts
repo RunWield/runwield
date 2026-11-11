@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.js";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { RUNWIELD_GITIGNORE_BLOCK } from "../runwield-owned-paths.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
@@ -38,10 +38,7 @@ import process from "node:process";
 const PLAN_MARKDOWN = "# Dark mode toggle\n\n## Implementation Steps\n\n1. Add the toggle.\n";
 
 async function writePlan(projectRoot: string, planName = "dark-mode-toggle", markdown = PLAN_MARKDOWN) {
-    const path = join(projectRoot, "docs", "plans", `${planName}.md`);
-    await fsMkdir(join(path, ".."), { recursive: true });
-    await fsWriteFile(path, markdown);
-    return path;
+    return await savePlan(projectRoot, planName, markdown);
 }
 
 async function exists(path: string): Promise<boolean> {
@@ -174,7 +171,6 @@ const REJECTIONS: RejectionCase[] = [
         name: "a reserved Epic artifact name",
         code: "invalid_outcome",
         arrange: async (root, planning) => {
-            await writePlan(root, "epic/manual-qa");
             return { ...planning, planName: "epic/manual-qa" };
         },
     },
@@ -182,7 +178,6 @@ const REJECTIONS: RejectionCase[] = [
         name: "an archived Plan name",
         code: "invalid_outcome",
         arrange: async (root, planning) => {
-            await writePlan(root, "archived/dark-mode-toggle");
             return { ...planning, planName: "archived/dark-mode-toggle" };
         },
     },
@@ -190,8 +185,8 @@ const REJECTIONS: RejectionCase[] = [
         name: "an invalid execution policy",
         code: "invalid_outcome",
         arrange: async (root, planning) => {
-            await writePlan(root, "dark-mode-toggle", `---\nexecutionAgent: wizard\n---\n\n${PLAN_MARKDOWN}`);
-            return planning;
+            await writePlan(root);
+            return { ...planning, executionAgent: "wizard" };
         },
     },
     {
@@ -217,7 +212,9 @@ for (const rejectionCase of REJECTIONS) {
         await withProject(async (projectRoot) => {
             const { planning } = await reachPlanning(projectRoot);
             const options = await rejectionCase.arrange(projectRoot, planning);
-            const planPath = join(projectRoot, "docs", "plans", `${options.planName ?? "dark-mode-toggle"}.md`);
+            const planPath =
+                (await loadPlan(projectRoot, options.planName ?? "dark-mode-toggle"))?.path ||
+                join(projectRoot, "docs", "plans", `${options.planName ?? "dark-mode-toggle"}.md`);
             const planBefore = await fsReadFile(planPath, "utf8").catch(() => null);
             const recordBefore = await readRecordBytes(projectRoot, planning.workflowId);
 
@@ -282,7 +279,8 @@ test("concurrent Plan submissions change only the winning Plan", async () => {
         assertEquals(rejectionCode(results[loser]), "revision_conflict");
         assertEquals(await fsReadFile(paths[loser], "utf8"), PLAN_MARKDOWN);
         const winner = results.findIndex((result) => result.ok);
-        assertStringIncludes(await fsReadFile(paths[winner], "utf8"), "planId:");
+        assertEquals(await fsReadFile(paths[winner], "utf8"), PLAN_MARKDOWN);
+        assert(Boolean((await loadPlan(projectRoot, names[winner]))?.attrs.planId));
         const replay = await submit(projectRoot, {
             ...planning,
             planName: names[winner],

@@ -2,6 +2,7 @@
 import {
     capturePackageWorkflowAccess,
     currentPackageSelection,
+    currentPackageProject,
     loadPackageWorkflowPlan,
     selectedPackage,
 } from "../../shared/workflow/package-workflow.ts";
@@ -245,7 +246,7 @@ export function createRemoteWorkspaceApp(options = { mode: "remote" }) {
 
 /** @param {OwnerWorkspaceAppOptions} options */
 export function createOwnerWorkspaceApp(options) {
-    const admissionRoot = currentPackageSelection()?.identity.checkoutRoot;
+    const admissionRoot = currentPackageProject()?.checkoutRoot;
     const packageAccess = capturePackageWorkflowAccess();
     const app = createWorkspaceRouter();
     const store = options.store;
@@ -443,6 +444,7 @@ export function createOwnerWorkspaceApp(options) {
 
 /** @param {LocalWorkspaceAppOptions} options */
 function createLocalWorkspaceApp({ cwd, token, skipTokenCheck = false, mnemotecaPort }) {
+    const packageAccess = capturePackageWorkflowAccess();
     return {
         handler() {
             /** @param {Request} request */
@@ -452,7 +454,7 @@ function createLocalWorkspaceApp({ cwd, token, skipTokenCheck = false, mnemoteca
                 if (!skipTokenCheck && !hasWorkspaceToken(request, token)) {
                     return new Response("Workspace token required.", { status: 401 });
                 }
-                return await handleLocalWorkspaceRequest(request, { cwd, mnemotecaPort });
+                return await packageAccess(cwd, () => handleLocalWorkspaceRequest(request, { cwd, mnemotecaPort }));
             };
         },
     };
@@ -630,12 +632,16 @@ export function createReviewWorkspaceApp(options) {
                         if (!hasReviewAssetToken(request, token)) {
                             return new Response("Review token required.", { status: 401 });
                         }
-                        if (currentPackageSelection() && typeof reviewPayload.planId === "string") {
+                        if (currentPackageProject() && typeof reviewPayload.planId === "string") {
                             try {
-                                const document = await readPlanDocumentLink(
+                                const planId = url.searchParams.get("planId") || reviewPayload.planId;
+                                const allowedIds = new Set([
                                     reviewPayload.planId,
-                                    url.searchParams.get("path") || "",
-                                );
+                                    ...(reviewPayload.sequenceDocuments || []).map((document) => document.planId),
+                                ]);
+                                if (!allowedIds.has(planId))
+                                    return Response.json({ error: "Plan is outside this review." }, { status: 403 });
+                                const document = await readPlanDocumentLink(planId, url.searchParams.get("path") || "");
                                 if (document)
                                     return Response.json({
                                         codeFile: true,
@@ -798,7 +804,7 @@ export function createReviewWorkspaceApp(options) {
  * @param {{ cwd: string, reviewPayload: Record<string, unknown>, reviewType: "plan" | "code", token: string }} options
  */
 async function currentReviewPagePayload({ cwd, reviewPayload, reviewType, token }) {
-    if (reviewType === "plan" && currentPackageSelection()) {
+    if (reviewType === "plan" && currentPackageProject() && typeof reviewPayload.planId === "string") {
         const plan = await loadPackageWorkflowPlan({ planId: String(reviewPayload.planId) });
         const selected = await selectedPackage({ planId: String(reviewPayload.planId) });
         Object.assign(reviewPayload, {

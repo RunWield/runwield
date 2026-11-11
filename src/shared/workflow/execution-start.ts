@@ -1,4 +1,5 @@
 // @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
+import { selectLocalPlanWorkflow } from "../local-home-store.ts";
 import {
     currentPackageSelection,
     releaseSettledPackageAttempt,
@@ -320,6 +321,10 @@ export async function startActiveExecutionWorkflow(
 ): Promise<import("../session/hosted-session.js").ActiveExecutionWorkflow> {
     const cwd = options.cwd || options.hostedSession?.cwd;
     if (!cwd) throw new Error("Execution requires its launch directory.");
+    if (!options.packageSelection && !currentPackageSelection()) {
+        const selection = await selectLocalPlanWorkflow(cwd, options.planName);
+        if (selection) return await startActiveExecutionWorkflow({ ...options, packageSelection: selection });
+    }
     if (options.packageSelection)
         return await withPackageWorkflow(
             cwd,

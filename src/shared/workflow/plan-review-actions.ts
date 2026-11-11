@@ -1,3 +1,4 @@
+import { selectLocalPlanWorkflow } from "../local-home-store.ts";
 import {
     currentPackageSelection,
     selectedPackage,
@@ -182,6 +183,10 @@ async function validateReviewEvidence(
 export async function applySharedPlanReviewDecision(
     options: SharedPlanReviewActionOptions,
 ): Promise<SharedPlanReviewActionResult> {
+    if (!options.packageSelection && !currentPackageSelection()) {
+        const selection = await selectLocalPlanWorkflow(options.cwd, options.planName);
+        if (selection) return await applySharedPlanReviewDecision({ ...options, packageSelection: selection });
+    }
     if (options.packageSelection)
         return await withPackageWorkflow(
             options.cwd,

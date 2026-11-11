@@ -6,7 +6,7 @@ status: proposed
 
 ## Context and Constraints
 
-Live Plans currently follow checkout/branch ownership. Ordinary runtime and Sessions live in home storage;
+Local and manual-SSH Plans, ordinary runtime and Sessions live in personal home storage;
 explicit managed-remote runtime retains its admitted checkout layout until its transport cutover. This splits a Project's
 workflow across paths that change as work moves between planning, execution, publication, and recovery.
 
@@ -19,8 +19,7 @@ The owner confirmed these target constraints on 2026-11-01:
   execution on the remote machine.
 - `wld remote <host>` keeps Plans on the initiating laptop, while code execution stays remote.
 
-This ADR proposes the mechanisms that implement those constraints. It is not accepted guidance or evidence of shipped
-behavior. [ADR-015](015-file-authoritative-session-bundles.md),
+This ADR records accepted local/manual-SSH mechanisms alongside the still-proposed managed-remote, history and retention work. Only the explicitly accepted scope below is current guidance. [ADR-015](015-file-authoritative-session-bundles.md),
 [ADR-016](016-proof-bearing-publication-state-machine.md),
 [ADR-017](017-project-runtime-state-under-wld-internal.md), and
 [ADR-018](018-remote-ssh-local-personal-authority.md) remain the existing decisions until reconciled with an accepted
@@ -83,6 +82,27 @@ can be rebuilt from canonical records after a move or clone link. General Memory
 Recorder preparation supplies the existing single-commit publisher and keeps pending copy confidence distinct from
 proof-approved canonical confidence. These bounded choices are qualified in ADR-016; they do not activate the broader
 public or managed-remote proposal.
+
+## Accepted Local and Manual-SSH Activation
+
+Ordinary local and manual-SSH entry now selects one personal home Project format for Plans and Work Records.
+Project-level authority is independent of selected workflow authority: passive catalogs can inspect an empty Project,
+while selected actions still check Plan ID, metadata revision, repository and personal owner. Request boundaries
+reconstruct that authority rather than inheriting another request’s selection. A missing or denied home store cannot
+fall back to checkout documents. Import and recorded legacy-attempt continuation are the only checkout parsing scopes.
+
+Explicit file/folder import preserves source bytes and IDs. New authoring separates Markdown from typed Core-owned
+metadata. Archive and restore change package metadata without moving prose into repository history. Independent delivery
+copy settings keep Plans off by default and Work Records on; a repository-folder import may record a one-time Plan-copy
+choice. Settings and overrides stay in their existing checkout locations.
+
+An unfinished imported attempt retains its original execution and validation owner. The existing recovery/publication
+proof must settle it before a durable package settlement releases the old binding. Publication cleanup must complete;
+abandonment must be deliberate. This avoids both duplicate execution and indefinite dependence on the old checkout
+once settlement succeeds. Managed-remote ownership activation is explicitly not accepted by this local cutover.
+
+The preceding implementation history describes the incremental prerequisites. Its internal-only/public-activation
+limits are superseded for local/manual-SSH use by this section; managed transport and retention limits remain.
 
 ## Decision and Rationale
 

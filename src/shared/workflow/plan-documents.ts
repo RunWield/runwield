@@ -1,6 +1,6 @@
 import { posix } from "node:path";
 import {
-    currentPackageSelection,
+    currentPackageProject,
     selectedPackage,
     packageWorkflowRevision,
     packageController,
@@ -30,7 +30,7 @@ export async function readPlanDocuments(planId: string, name: string = "context.
 
 export async function savePlanDocument(planId: string, name: string, revision: string, body: string) {
     return await packageWorkflowLocks([{ planId }], async () => {
-        const selection = currentPackageSelection();
+        const selection = currentPackageProject();
         if (!selection) throw new Error("Plan document access requires Project admission.");
         const plan = await selectedPackage({ planId });
         const document = plan.documents.find((entry) => entry.name === name);
@@ -38,7 +38,7 @@ export async function savePlanDocument(planId: string, name: string, revision: s
         assertSharedPlanWriteAllowed(await packageController(plan));
         const currentRevision = packageWorkflowRevision(plan);
         if (currentRevision !== revision) throw new StalePlanWriteError(revision, currentRevision);
-        await savePlanPackageDocument(selection.identity, planId, document.name, document.hash, body);
+        await savePlanPackageDocument(selection, planId, document.name, document.hash, body);
         return await readPlanDocuments(planId, name);
     });
 }
@@ -52,8 +52,8 @@ export async function readPlanDocumentLink(planId: string, target: string) {
         throw new Error("Document link is outside this Project.");
     const resolved = posix.normalize(posix.join(posix.dirname(plan.metadata.name), name));
     if (resolved === ".." || resolved.startsWith("../")) return null;
-    const selection = currentPackageSelection()!;
-    const catalog = await listPlanPackages(selection.identity);
+    const selection = currentPackageProject()!;
+    const catalog = await listPlanPackages(selection);
     const linked = catalog.packages.find((entry) => `${entry.metadata.name}.md` === resolved);
     return linked ? await readPlanDocuments(linked.metadata.planId) : null;
 }

@@ -664,6 +664,7 @@ async function runLockedPublicationPhase(
             );
             if (publicationAttempt.phase === "cleanup_complete") {
                 args.session.assertLive();
+                await args.session.handoffVerifiedPublication(context.projectRoot);
                 const cleanup = await cleanupStoredPublication(
                     context.projectRoot,
                     publicationAttempt,

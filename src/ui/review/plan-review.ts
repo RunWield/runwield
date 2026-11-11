@@ -1,3 +1,4 @@
+import { withLocalPlanWorkflow } from "../../shared/local-home-store.ts";
 import {
     currentPackageSelection,
     loadPackageWorkflowPlan,
@@ -157,7 +158,10 @@ export async function preparePlanReviewPayload(planPath: string, triageMeta?: Pa
 /**
  * Submit a plan for interactive review via the browser review surface.
  */
-export async function submitPlanForReview({
+export async function submitPlanForReview(options: SubmitPlanForReviewOptions): Promise<PlanReviewResult> {
+    return await withLocalPlanWorkflow(options.cwd, options.planName, () => submitPlanForReviewInScope(options));
+}
+async function submitPlanForReviewInScope({
     cwd,
     sequenceDocuments,
     planName,

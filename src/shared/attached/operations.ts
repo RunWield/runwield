@@ -1,3 +1,4 @@
+import type { PlanAuthoringDefinition } from "../local-home-store.ts";
 /**
  * @module shared/attached/operations
  * The bounded operation contract between an External Agent Host carrier and the
@@ -131,6 +132,10 @@ export interface TriageReportPayload {
 
 /** The Core `plan_written` arguments. Values are checked by the Plan execution policy, not here. */
 export interface PlanWrittenPayload {
+    definition?: PlanAuthoringDefinition;
+    contextMarkdown?: string;
+    validationMarkdown?: string;
+    expectedRevision?: string;
     actionId: string;
     planName: string;
     executionAgent?: string;
@@ -548,12 +553,78 @@ export function parseTriageReportInput(projectRoot: string, input: AttachedJsonV
     );
 }
 
+function readAuthoringDefinition(value: AttachedJsonValue | undefined): PlanAuthoringDefinition | undefined {
+    if (value === undefined) return undefined;
+    const input = readObject(value, "payload.definition", [
+        "summary",
+        "affectedPaths",
+        "targetBranch",
+        "frontend",
+        "devServerCommand",
+        "devServerUrl",
+        "devServerHmr",
+    ]);
+    const paths = input.affectedPaths;
+    if (paths !== undefined && (!Array.isArray(paths) || paths.some((path) => typeof path !== "string")))
+        reject("invalid_input", "payload.definition.affectedPaths", "affectedPaths must be strings.");
+    const frontend = input.frontend;
+    const hmr = input.devServerHmr;
+    if (frontend !== undefined && typeof frontend !== "boolean")
+        reject("invalid_input", "payload.definition.frontend", "frontend must be boolean.");
+    if (hmr !== undefined && typeof hmr !== "boolean")
+        reject("invalid_input", "payload.definition.devServerHmr", "devServerHmr must be boolean.");
+    return {
+        summary: readOptionalText(input, "summary", "payload.definition.summary", MAX_SHORT_TEXT_LENGTH),
+        targetBranch: readOptionalText(input, "targetBranch", "payload.definition.targetBranch", MAX_SHORT_TEXT_LENGTH),
+        devServerCommand: readOptionalText(
+            input,
+            "devServerCommand",
+            "payload.definition.devServerCommand",
+            MAX_SHORT_TEXT_LENGTH,
+        ),
+        devServerUrl: readOptionalText(input, "devServerUrl", "payload.definition.devServerUrl", MAX_SHORT_TEXT_LENGTH),
+        affectedPaths: Array.isArray(paths)
+            ? paths.filter((path): path is string => typeof path === "string")
+            : undefined,
+        frontend,
+        devServerHmr: hmr,
+    };
+}
+
 export function parsePlanWrittenInput(projectRoot: string, input: AttachedJsonValue | undefined) {
-    const keys = ["actionId", "planName", "executionAgent", "collaborationRecommendation"];
+    const keys = [
+        "actionId",
+        "planName",
+        "executionAgent",
+        "collaborationRecommendation",
+        "contextMarkdown",
+        "definition",
+        "validationMarkdown",
+        "expectedRevision",
+    ];
     return parse(input, (): PlanWrittenEnvelope =>
         readWorkflowEnvelope(projectRoot, input, keys, (payload) => ({
             actionId: readIdentifier(payload, "actionId", "payload.actionId"),
             planName: readText(payload, "planName", "payload.planName", MAX_SHORT_TEXT_LENGTH),
+            definition: readAuthoringDefinition(payload.definition),
+            contextMarkdown: readOptionalText(
+                payload,
+                "contextMarkdown",
+                "payload.contextMarkdown",
+                MAX_ATTACHED_INPUT_BYTES,
+            ),
+            validationMarkdown: readOptionalText(
+                payload,
+                "validationMarkdown",
+                "payload.validationMarkdown",
+                MAX_ATTACHED_INPUT_BYTES,
+            ),
+            expectedRevision: readOptionalText(
+                payload,
+                "expectedRevision",
+                "payload.expectedRevision",
+                MAX_SHORT_TEXT_LENGTH,
+            ),
             executionAgent: readOptionalText(
                 payload,
                 "executionAgent",
@@ -849,6 +920,28 @@ export const ATTACHED_OPERATIONS: AttachedOperationDescriptor[] = [
             "Submit the Plan written in docs/plans/ for the pending Planner action. RunWield gives it a Plan ID and " +
             "Triage Front Matter, and sets up the project runtime. Repeating an accepted operationId returns the saved result.",
         inputSchema: workflowOperationSchema(["actionId", "planName"], {
+            definition: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                    summary: { type: "string" },
+                    affectedPaths: { type: "array", items: { type: "string" } },
+                    targetBranch: { type: "string" },
+                    frontend: { type: "boolean" },
+                    devServerCommand: { type: "string" },
+                    devServerUrl: { type: "string" },
+                    devServerHmr: { type: "boolean" },
+                },
+            },
+            contextMarkdown: {
+                type: "string",
+                description: "Canonical Plan Markdown without front matter; creates the Plan in an empty store.",
+            },
+            validationMarkdown: { type: "string", description: "Verification Markdown without front matter." },
+            expectedRevision: {
+                type: "string",
+                description: "Required current Plan revision when replacing existing prose.",
+            },
             actionId: IDENTIFIER_SCHEMA,
             planName: {
                 type: "string",

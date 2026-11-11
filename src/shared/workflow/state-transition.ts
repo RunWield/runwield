@@ -1,5 +1,7 @@
+import { inspectLocalHomeStore } from "../local-home-store.ts";
 import {
     currentPackageSelection,
+    currentPackageProject,
     packageWorkflowLocks,
     selectedPackage,
     packageExecutionJournalOwner,
@@ -214,7 +216,7 @@ export async function withOrderedTransitionResources<T>(
     resources: TransitionResource[],
     fn: () => Promise<T>,
 ): Promise<T> {
-    if (currentPackageSelection()) {
+    if (currentPackageProject()) {
         const names = resources.filter((resource) => resource.kind === "plan").map((resource) => resource.id!);
         const repositoryResources = resources.filter(
             (resource) => resource.kind !== "catalog" && resource.kind !== "plan",
@@ -252,11 +254,12 @@ function withTrackedPlanLock<T>(projectRoot: string, planName: string, run: () =
 }
 
 export function getTransitionJournalDir(projectRoot: string): string {
-    const selection = currentPackageSelection();
-    if (selection)
+    const store = inspectLocalHomeStore(projectRoot);
+    const identity = currentPackageProject() || (store.kind === "local" ? store.identity : undefined);
+    if (identity)
         return packageExecutionJournalOwner()
             ? resolveProjectRuntimeLayout(packageExecutionJournalOwner()!).selected.transitionJournalsDir
-            : planPackageJournalDirectory(selection.identity);
+            : planPackageJournalDirectory(identity);
     return resolveProjectRuntimeLayout(projectRoot).selected.transitionJournalsDir;
 }
 
@@ -265,8 +268,9 @@ export function getTransitionJournalPath(projectRoot: string, transitionId: stri
 }
 
 async function enteredTransitionJournalDir(projectRoot: string): Promise<string> {
-    if (currentPackageSelection()) return getTransitionJournalDir(projectRoot);
-    return (await enterProjectRuntime(projectRoot)).selected.transitionJournalsDir;
+    if (currentPackageProject()) return getTransitionJournalDir(projectRoot);
+    await enterProjectRuntime(projectRoot);
+    return getTransitionJournalDir(projectRoot);
 }
 
 async function enteredTransitionJournalPath(projectRoot: string, transitionId: string): Promise<string> {
@@ -276,8 +280,8 @@ async function enteredTransitionJournalPath(projectRoot: string, transitionId: s
 async function writeJournal(projectRoot: string, transitionId: string, record: Record<string, unknown>) {
     const path = await enteredTransitionJournalPath(projectRoot, transitionId);
     await fsMkdir(dirname(path), { recursive: true });
-    if (currentPackageSelection()) {
-        const selection = currentPackageSelection()!;
+    if (currentPackageProject()) {
+        const identity = currentPackageProject()!;
         const previous = await fsReadFile(path, "utf8")
             .then((text) => JSON.parse(text))
             .catch((error) => {
@@ -288,13 +292,13 @@ async function writeJournal(projectRoot: string, transitionId: string, record: R
         record = {
             ...record,
             packageSource: previous?.packageSource || {
-                expectedRevision: current?.metadata.revision || selection.expectedRevision,
+                expectedRevision: current?.metadata.revision,
                 input: current?.metadata.workflow?.readiness,
                 attempt: current?.metadata.workflow?.attempt,
-                projectId: selection.identity.projectId,
-                repositoryId: selection.identity.repositoryId,
-                personalOwner: selection.identity.personalOwner,
-                planId: selection.planId,
+                projectId: identity.projectId,
+                repositoryId: identity.repositoryId,
+                personalOwner: identity.personalOwner,
+                planId: current?.metadata.planId,
             },
             ...(previous?.packageWrites && !record.packageWrites ? { packageWrites: previous.packageWrites } : {}),
         };
@@ -343,7 +347,7 @@ async function restoreOwnPlanWrite({
     currentRevision?: string;
 }): Promise<string | null> {
     if (!currentRevision) return null;
-    if (currentPackageSelection()) return null;
+    if (currentPackageProject()) return null;
     if (
         !(await restoreOwnControllerWrite(projectRoot, { planName, planId: beforePlan.attrs.planId }, beforePlan.attrs))
     )
@@ -926,6 +930,51 @@ async function runSemanticTransition<T>({
                             });
                         }
                     }
+                    let packageMetadataCompensated = false;
+                    if (currentPackageSelection() && operation.startsWith("sequence_review_")) {
+                        try {
+                            const record = JSON.parse(
+                                await fsReadFile(await enteredTransitionJournalPath(projectRoot, transitionId), "utf8"),
+                            );
+                            const writes = record.packageWrites as PackageMetadataWrite[] | undefined;
+                            for (const id of new Set((writes || []).map((write) => write.planId))) {
+                                const owned = writes!.filter((write) => write.planId === id);
+                                const before = owned[0].beforeMetadata;
+                                const current = await selectedPackage(before.name);
+                                if (
+                                    !owned.some(
+                                        (write) =>
+                                            current.metadata.revision === write.afterRevision &&
+                                            createHash("sha256")
+                                                .update(JSON.stringify(current.metadata))
+                                                .digest("hex") === write.metadataHash,
+                                    )
+                                )
+                                    throw new Error(`New metadata in ${before.name}; preserve it for recovery.`);
+                                await updatePlanPackageMetadata(
+                                    currentPackageSelection()!.identity,
+                                    id,
+                                    current.metadata.revision,
+                                    {
+                                        definition: before.definition,
+                                        controller: before.controller,
+                                        references: before.references,
+                                        workflow: before.workflow,
+                                        parentPlanId: before.parentPlanId,
+                                        dependencyPlanIds: before.dependencyPlanIds,
+                                    },
+                                );
+                            }
+                            packageMetadataCompensated = true;
+                            rollbackResults.push({ label: "Restore owned Sequence metadata", status: "rolled_back" });
+                        } catch (rollbackError) {
+                            rollbackResults.push({
+                                label: "Restore owned Sequence metadata",
+                                status: "failed",
+                                error: compactError(rollbackError),
+                            });
+                        }
+                    }
                     const currentPlan = await loadPlan(projectRoot, planName).catch(() => null);
                     const currentPlanRevision = currentPlan?.revision;
                     const classify = (planSettled: boolean) =>
@@ -935,7 +984,9 @@ async function runSemanticTransition<T>({
                             rollbackResults,
                             irreversibleEffects,
                         });
-                    let outcome = classify(planEffectsAreSettled(beforePlan, currentPlan));
+                    let outcome = classify(
+                        packageMetadataCompensated || planEffectsAreSettled(beforePlan, currentPlan),
+                    );
                     // Registered compensations already ran above; the Plan write is
                     // the one effect they cannot cover, so undo it here when this
                     // transaction can prove it was the writer. Only worth trying when

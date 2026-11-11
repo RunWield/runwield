@@ -23,6 +23,8 @@ import { emitSystemStatus } from "../session/session-runtime-events.js";
 import { runActiveAgentTurn, switchActiveAgent } from "../session/agent-switching.js";
 import { SUBAGENT_DEFINITIONS } from "../session/subagent-definitions.ts";
 import { buildSlicerRequest } from "./workflow-prompts.ts";
+import { inspectLocalHomeStore, withLocalProjectAction } from "../local-home-store.ts";
+import { authorPackageChildren } from "./package-authoring.ts";
 import { recordPlanEvent } from "./plan-lifecycle.js";
 import { isEpicPlan } from "../project-plan.ts";
 import { runEpicDecompositionFinalizeTransition } from "./state-transition.ts";
@@ -397,31 +399,58 @@ export function createSlicerFinalizeTool({ planName, cwd }) {
                         throw error;
                     }
                 };
-                const result = /** @type {any} */ await withPlanCatalogLock(cwd, async () => {
-                    const childDescriptors =
-                        /** @type {import('../../plan-store.js').ChildFeaturePlanDescriptor[]} */
-                        params.children || [];
-                    const plannedChildNames = await resolveChildPlanNames(cwd, planName, childDescriptors);
-                    const existingChildNames = (await findPlansByParent(cwd, planName)).map((child) => child.name);
-                    const transition = await runEpicDecompositionFinalizeTransition({
-                        projectRoot: cwd,
-                        planName,
-                        resources: [
-                            { kind: "catalog" },
-                            { kind: "plan", id: planName },
-                            ...existingChildNames.map((name) => ({
-                                kind: /** @type {const} */ "plan",
-                                id: name,
-                            })),
-                            ...plannedChildNames.map((name) => ({ kind: /** @type {const} */ "plan", id: name })),
-                        ],
-                        finalize: async () => await runFinalizeBody(),
-                    });
-                    if (transition.status !== "committed") {
-                        throw new Error(transition.message || `Epic decomposition transaction failed for ${planName}.`);
-                    }
-                    return transition.value;
-                });
+                const localOwner = inspectLocalHomeStore(cwd);
+                const canonicalFinalize = async () => {
+                    const before = await loadPlan(cwd, planName);
+                    const writeResults = await authorPackageChildren(cwd, planName, params.children || [], {}, true);
+                    const children = await findPlansByParent(cwd, planName);
+                    const updated = await loadPlan(cwd, planName);
+                    return {
+                        updated: updated.attrs,
+                        children,
+                        childNames: children.map((child) => child.name),
+                        writeResults,
+                        writeSummary: writeResults.length
+                            ? writeResults.map((result) => `${result.action}: ${result.name}`).join("\n")
+                            : "No child planned change drafts were written.",
+                        alreadyReady: before?.attrs.status === "ready_for_work",
+                    };
+                };
+                const result =
+                    /** @type {any} */ localOwner.kind === "local" || localOwner.kind === "empty"
+                        ? await withLocalProjectAction(cwd, canonicalFinalize)
+                        : await withPlanCatalogLock(cwd, async () => {
+                              const childDescriptors =
+                                  /** @type {import('../../plan-store.js').ChildFeaturePlanDescriptor[]} */
+                                  params.children || [];
+                              const plannedChildNames = await resolveChildPlanNames(cwd, planName, childDescriptors);
+                              const existingChildNames = (await findPlansByParent(cwd, planName)).map(
+                                  (child) => child.name,
+                              );
+                              const transition = await runEpicDecompositionFinalizeTransition({
+                                  projectRoot: cwd,
+                                  planName,
+                                  resources: [
+                                      { kind: "catalog" },
+                                      { kind: "plan", id: planName },
+                                      ...existingChildNames.map((name) => ({
+                                          kind: /** @type {const} */ "plan",
+                                          id: name,
+                                      })),
+                                      ...plannedChildNames.map((name) => ({
+                                          kind: /** @type {const} */ "plan",
+                                          id: name,
+                                      })),
+                                  ],
+                                  finalize: async () => await runFinalizeBody(),
+                              });
+                              if (transition.status !== "committed") {
+                                  throw new Error(
+                                      transition.message || `Epic decomposition transaction failed for ${planName}.`,
+                                  );
+                              }
+                              return transition.value;
+                          });
                 const branchSummary = await prepareEpicBranchSummary(cwd, planName);
                 if (result.alreadyReady) {
                     return {

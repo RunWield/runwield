@@ -1,3 +1,10 @@
+import { authorLocalPlan, withLocalPlanWorkflow, inspectLocalHomeStore } from "../local-home-store.ts";
+import {
+    currentPackageProject,
+    withPackageProject,
+    capturePackageWorkflowInput,
+} from "../workflow/package-workflow.ts";
+import type { PackageWorkflowInput } from "../plan-package-store.ts";
 import { readPlanDocuments } from "../workflow/plan-documents.ts";
 import { readWorkRecordById, searchWorkRecords, formatWorkRecordReadResult } from "../work-records/search.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
@@ -240,7 +247,7 @@ async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNe
     }
     if (record.state === "implementing" && record.execution && record.plan && pending) {
         const executionCwd = record.execution.executionCwd || currentAttachedProjectRoot(record);
-        const packagePlan = currentPackageSelection() ? await loadPlan(executionCwd, record.plan.planName) : null;
+        const packagePlan = await loadPlan(executionCwd, record.plan.planName);
         return {
             kind: "implementation",
             ...pending,
@@ -761,6 +768,29 @@ async function submitPlanDocument(
         planName = canonicalizeStoredPlanName(payload.planName).name;
         assertNotReservedEpicArtifactPlanName(planName);
         if (isHiddenPlanName(planName)) throw new Error(`Plan is archived or hidden: ${planName}`);
+        if (payload.contextMarkdown !== undefined) {
+            const policy = resolvePlanExecutionPolicy({
+                ...triage,
+                executionAgent: payload.executionAgent,
+                collaborationRecommendation: payload.collaborationRecommendation,
+            });
+            if (!policy.ok) throw new Error(policy.error);
+            await authorLocalPlan(projectRoot, {
+                planName,
+                contextMarkdown: payload.contextMarkdown,
+                validationMarkdown: payload.validationMarkdown,
+                expectedRevision: payload.expectedRevision,
+                definition: {
+                    classification: "PLANNED_CHANGE",
+                    summary: triage.summary,
+                    workKind: triage.workKind,
+                    complexity: triage.complexity,
+                    ...payload.definition,
+                    executionAgent: policy.policy.executionAgent,
+                    collaborationRecommendation: policy.policy.collaborationRecommendation,
+                },
+            });
+        }
         location = await resolveWorkflowPlanLocation(projectRoot, planName, { readOnly: true });
     } catch (error) {
         return { ok: false, message: error instanceof Error ? error.message : String(error) };
@@ -1140,6 +1170,7 @@ export async function taskCompleted(
 
 /** The reviewed document and durable round identity a carrier must present together. */
 export interface AttachedReviewPayloadBasis {
+    packageInput?: PackageWorkflowInput;
     review: NonNullable<AttachedWorkflowRecord["review"]>;
     planName: string;
     planPath: string;
@@ -1194,6 +1225,12 @@ export async function openAttachedReviewRound(
                     kind: "opened",
                     basis: {
                         review,
+                        packageInput:
+                            inspectLocalHomeStore(projectRoot).kind === "local"
+                                ? await withLocalPlanWorkflow(projectRoot, current.plan.planName, () =>
+                                      capturePackageWorkflowInput(current.plan!.planName),
+                                  )
+                                : undefined,
                         planName: current.plan.planName,
                         planPath: plan.path,
                         documentRoot,
@@ -1221,6 +1258,10 @@ export async function applyAttachedReviewDecision(
     round: AttachedReviewPayloadBasis,
     decision: ReviewDecision,
 ): Promise<AttachedReviewOutcome | { kind: "chat" }> {
+    if (!currentPackageSelection() && inspectLocalHomeStore(projectRoot).kind === "local")
+        return await withLocalPlanWorkflow(projectRoot, round.planName, () =>
+            applyAttachedReviewDecision(projectRoot, workflowId, round, decision),
+        );
     if (decision.conversationTurn) {
         await saveAttachedReviewChat(
             projectRoot,
@@ -1276,6 +1317,7 @@ export async function applyAttachedReviewDecision(
                     [{ kind: "catalog" }, { kind: "plan", id: round.planName }],
                     async (): Promise<AttachedReviewOutcome> => {
                         const applied = await applySharedPlanReviewDecision({
+                            packageInput: round.packageInput,
                             cwd: round.documentRoot,
                             planName: round.planName,
                             planPath: round.planPath,
@@ -1908,6 +1950,13 @@ export async function runAttachedOperation(
     inputText: string,
     options: AttachedOperationOptions = {},
 ): Promise<AttachedCarrierResult> {
+    if (!currentPackageProject()) {
+        const store = inspectLocalHomeStore(projectRoot);
+        if (store.kind === "local")
+            return await withPackageProject(projectRoot, store.identity, () =>
+                runAttachedOperation(name, projectRoot, inputText, options),
+            );
+    }
     if (!getHomeDir())
         return {
             ok: false,
@@ -1980,7 +2029,7 @@ export async function readAttachedAction(envelope: AttachedActionReadEnvelope) {
             let canonicalMarkdown: string | undefined;
             if (envelope.content === "read_plan") {
                 if (!workflow.plan) throw new Error("This action has no selected Plan.");
-                if (currentPackageSelection()) {
+                if (currentPackageProject()) {
                     const document = await readPlanDocuments(workflow.plan.planId, envelope.resource);
                     text = document.body;
                     planRevision = document.revision;
@@ -2460,13 +2509,17 @@ async function validateAttachedReviewerCandidate(
     resume: Extract<import("../workflow/validation-host-contract.ts").ValidationHostResume, { kind: "reviewer" }>,
 ): Promise<void> {
     if (!record.plan) throw new Error("The Plan is missing.");
+    if (!currentPackageSelection() && inspectLocalHomeStore(currentAttachedProjectRoot(record)).kind === "local")
+        return await withLocalPlanWorkflow(currentAttachedProjectRoot(record), record.plan.planName, () =>
+            validateAttachedReviewerCandidate(record, resume),
+        );
     const source = await resolveWorkflowPlanLocation(currentAttachedProjectRoot(record), record.plan.planName, {
         readOnly: true,
     });
     if (!source.plan?.attrs.validationCheckpoint) throw new Error("The validation checkpoint is missing.");
     const entry = await findActiveByPlanName(currentAttachedProjectRoot(record), record.plan.planName);
     await assertHostReviewerCandidate({
-        cwd: source.documentRoot,
+        cwd: source.plan.attrs.worktreePath || source.documentRoot,
         baseBranch: source.plan.attrs.worktreeBaseBranch || "",
         baseRef: entry?.baseRef,
         checkpoint: source.plan.attrs.validationCheckpoint,

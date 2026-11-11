@@ -277,13 +277,13 @@ Approval leads to a readiness check; a Plan that needs repair explains what bloc
 review keep the decision valid. Changes to Plan meaning, code, execution policy, or workflow evidence require review of
 the current Plan.
 
-**Requirement: Internal package review proves the complete input.** Explicitly selected canonical packages use the
+**Requirement: Package review proves the complete input.** Ordinary local and manual-SSH canonical packages use the
 same approval/readiness rules over every required document and parent context. Changes to resource membership,
 validation content or execution policy require current review. Formatting-only review captures the new exact bytes;
 controller timestamps and unrelated sibling edits do not invalidate unchanged required input. Reply-only review keeps
 status unchanged. Single-Plan and Sequence decisions recheck the complete input after saving reviewed edits and before
 acceptance. A refused stale review preserves editor bytes and permits a fresh review after restart without manual
-journal repair. Ordinary public review source selection remains the legacy baseline.
+journal repair. Managed-remote workflows retain their existing admitted source contract.
 
 **Requirement: Reply or revise in Plan review.** Planner or Architect replies in chat to explain, clarify, or ask back.
 It revises the Plan and calls `plan_written` when the answer changes scope, behavior, a decision, or verification; when
@@ -366,8 +366,7 @@ owns the lifecycle metadata and keeps the user's current body intact through met
 rollback. A document save retains its assigned Plan identity and durable workflow decisions. Saving content protects edits made since that content was opened. Changes to the intended work follow normal
 Plan review.
 
-**Requirement: Explicit canonical packages keep metadata beside editable documents.** Internal package operations
-for an established ordinary personal Project persist one ID-addressed package in home storage, with versioned
+**Requirement: Canonical packages keep metadata beside editable documents.** Local and manual-SSH Project operations persist one ID-addressed package in home storage, with versioned
 `plan.wld.json`, required `context.md` and `validation.md`, and optional QA and integration resources. Document hashes
 and metadata revisions are independent: changing either cannot overwrite or unnecessarily stale the other. Markdown,
 including YAML-looking prose, cannot assign identity or workflow state. Rename preserves identity, references and
@@ -376,11 +375,19 @@ damaged, unsafe and pending packages while keeping healthy packages available.
 Creation and rename reject a destination whose existing directory spelling differs from the requested name on the
 store's filesystem, preserving readable packages and the existing namespace.
 
-This is a preparatory persistence capability. Public discovery, adoption, lifecycle and Epic workflows still use their
-admitted repository Plans. Package operations create no checkout copy or `.wld/plans` alias. Public import and activation,
-managed-remote transport, lifecycle input binding, delivery copies, history and retention remain targets in the
-[Plan Store proposal](plan-store-prd.md#plan-store). Explicit managed-remote ownership cannot fall back to an execution
-account's local package store.
+Local and manual-SSH discovery and selected workflows use this personal home store. Checkout Plans are explicit
+import sources or optional delivery copies; absence, damage or denial of home storage never selects a checkout copy.
+`wld plans import <file-or-folder>` and explicit Markdown path loading preserve source bytes and import selected
+artifacts. Name lookup never adopts a checkout document. New planning uses Markdown documents and typed definition
+fields through `plan_written`; Core owns protected metadata. Managed-remote ownership activation, history and retention
+remain targets in the [Plan Store proposal](plan-store-prd.md#plan-store). Explicit managed-remote launches retain their
+existing admitted owner and cannot fall back to an execution account's local package store.
+
+**Acceptance: Empty store and explicit upgrade.** Given a checkout containing old Plans but no imported packages,
+passive catalog/read/help shows an empty store without writes or an import question. Importing one selected file makes
+that package visible across local surfaces, leaves unselected files invisible and preserves source bytes. A first
+`plan_written` submission with Markdown prose creates a canonical draft without a planning-only checkout. A sibling
+edit becomes visible on its next load without Git publication.
 
 **Requirement: Explicit internal import preserves selected Plans and continuation evidence.** An established ordinary
 Project can import a selected Markdown file or folder as one recoverable package batch. It preserves original files,
@@ -400,33 +407,29 @@ produce a conflict. Reimporting an existing ID preserves current package edits a
 ambiguous relationships and unavailable evidence publish no selected member. Explicitly selecting a target-only child
 may use its local target snapshot; import does not expand the selection to unrelated siblings or fetch remote refs.
 Original repository-relative paths remain available for later pruning; this operation performs no pruning or delivery
-copy setup. Public commands, path-loading activation and store-only discovery remain target behavior.
+copy setup inside the import transaction. Public local commands expose explicit import and store-only discovery; the
+separate post-import folder choice controls delivery copies.
 
-**Requirement: External Markdown Plans are first-class.** A plain Markdown file in `docs/plans/` is a valid draft.
-Listing, browsing, and inspecting it leave its bytes as they are. Deliberate `/load-plan` adoption adds identity and
-defaults and keeps the body and the file's original age. Loading an adopted Plan again keeps its lifecycle and
-decisions. Deliberate review, validation, and lifecycle actions prepare identity and controller state before capturing
-review revisions, claiming checkpoints, or checking completion. Validation repairs provable execution identity before
-selecting the actionable document.
+**Requirement: External Markdown Plans are first-class.** An external Markdown file becomes a canonical draft through
+explicit `wld plans import <file-or-folder>` or pathname `/load-plan`. Import preserves the source bytes and records its
+identity and original age. A name lookup never discovers or adopts checkout files. Reimport preserves current package
+edits and lifecycle state; conflicting source identities retain both sides for resolution.
 
-**Requirement: Inspect Plans without preparing them.** Listing, indexing, browsing, body reads, and passive progress
-reads inspect existing local evidence. They do not change Plan or runtime files, reconcile ignore rules, assign IDs,
-fetch or clone Git data, change refs or worktrees, take writer locks, or schedule repair. Fresh Projects expose local
-documents without creating runtime storage. Ready reads retain registered document-worktree authority and locally
-available target snapshots; they do not replace current workflow facts with a stale primary copy. A registered
-document must belong to an attached Git worktree of the same Project before its bytes can supply authority.
+**Requirement: Inspect Plans without preparing them.** Listing, indexing, browsing, body reads and passive progress
+reads inspect only admitted personal storage. They do not import checkout documents, change Plan or runtime files,
+reconcile ignore rules, assign IDs, fetch Git data, change refs or worktrees, take writer locks, or schedule repair.
+Fresh Projects and empty stores expose no saved Plans. Missing home authority has no checkout fallback. Unsafe or
+unreadable authority retains a specific diagnostic rather than appearing as an authoritative empty result.
 
-When adoption, controller preparation, or required local target evidence is missing, safe documents remain browseable
-with workflow details pending. Read availability is separate from Plan status and Front Matter. Unsafe or unreadable
-authority retains its specific diagnostic, not an authoritative empty result. Explicit save, selected or named
-`/load-plan`, and workflow actions perform required preparation and recheck authority before making decisions. See
-[Work protection](#work-protection) and [automatic recovery](#execution-validation-and-recovery).
+Recorded pre-cutover attempts retain their original document, registry, checkpoint and publication owners until proven
+settlement. Their continuation rechecks that evidence before consequential actions. Managed-remote launch retains its
+existing admitted contract. See [Work protection](#work-protection) and [automatic recovery](#execution-validation-and-recovery).
 
 **Requirement: Generated Plans are easy to read.** Planner starts each section with its main point, keeps one idea per
 short paragraph, and uses lists for separate points. Implementation Steps and the Verification Plan stay exact. Planner
 can mark the few points a reader must not miss with a WARNING, NOTE, or TIP callout. Callouts are optional authoring
 guidance; Plans in any style stay valid. New Plan filenames and headings are descriptive, without ordinal prefixes.
-Child sequence belongs in Front Matter `order`. Reordering keeps filenames, Plan IDs, and dependency references stable;
+Child sequence belongs in typed Plan definition `order`. Reordering keeps filenames, Plan IDs, and dependency references stable;
 existing numbered filenames remain valid. Top-level menus keep status/type priority. Child menus and child-filtered
 completions use numeric `order`, independent of filenames and status. Display fallbacks for missing or equal orders do
 not authorize automatic execution.
@@ -764,6 +767,10 @@ siblings active. Listings show held work separately from active and finished wor
 
 ### Execution, validation, and recovery
 
+**Local home-store continuity:** Selected actions revalidate Project, repository, personal owner, Plan ID and revision. An imported unfinished attempt continues its recorded execution owner and checkpoint. Only proven publication with completed cleanup or deliberate abandonment records settlement; later canonical work no longer depends on the old checkout document. Changed or missing evidence cannot start a replacement attempt.
+
+**Acceptance:** A terminal registry label without target publication proof remains recoverable. After proven settlement, deleting legacy documents does not prevent canonical loading or later work.
+
 **Scope and maturity:** Current execution and validation baseline, with the owner's completion and automatic recovery
 requirements. These requirements are the target for every failure path; they do not certify that every current path
 already meets them. QUICK_FIX keeps its lighter behavior: Engineer implements without a Plan and RunWield runs
@@ -812,7 +819,7 @@ hashes, Plan identity and metadata revision before returning a reference. Detect
 produce no usable reference. Retained bytes survive later live edits. Capture assigns no approval, execution or delivery
 status; explicitly admitted lifecycle consumers separately bind and revalidate those inputs.
 
-**Requirement: One package attempt survives clone races and interruption.** Explicit internal package execution reserves
+**Requirement: One package attempt survives clone races and interruption.** Ordinary local and manual-SSH package execution reserves
 one unfinished attempt across the personal owner's linked clones. The binding identifies the repository that owns its
 physical Git work. Retry reuses that attempt after interruption; another clone receives its recorded continuation.
 Code remains isolated in a worktree without a package Plan copy. Implementation dispatch uses retained complete input,
@@ -823,8 +830,8 @@ validation and publication using an immutable personal-store input. That input f
 copy policy and destinations. No payload or an unchanged proven prior payload creates no artifacts commit; changed
 Plan copies and prepared Work Record payloads share one artifacts-only commit. A later delivery replaces only its own
 prior copies, proven by the retained receipt, repository/path association, published ancestry and exact prior bytes.
-Externally edited or unrelated destinations remain untouched. These internal copies are delivery documents, never live authority. Public
-package selection and copy settings remain deferred.
+Externally edited or unrelated destinations remain untouched. These copies are delivery documents, never live authority.
+Ordinary local and manual-SSH package selection and independent copy settings are current behavior.
 
 **Requirement: Package delivery settles from applicable proof before cleanup.** The existing publication record owns
 all intermediate phases. Fresh target proof binds the reviewed candidate, exact copy bytes, owner, repository, Plan,
@@ -886,7 +893,7 @@ point. Commands are copy-ready with real values. Waiting for the user's action s
 **Acceptance scenarios:**
 
 - Given an explicitly selected package and a poisoned checkout Plan, review/readiness and execution use only the home
-  documents and metadata; ordinary public selection remains unchanged.
+  documents and metadata across ordinary public entry points.
 - Given a reviewed package, changing required resource membership, parent context or policy rejects old readiness;
   formatting-only review preserves the decision and retains the new bytes, while reply-only leaves status unchanged.
 - Given an editor changes a required document during single-Plan or Sequence approval, the decision is refused;
@@ -895,7 +902,7 @@ point. Commands are copy-ready with real values. Waiting for the user's action s
   registry reservation or Git creation reuses it and preserves editor changes; a held native lock is waited on.
 - Given an imported dirty unfinished legacy attempt, internal selection returns its original owner and checkpoint;
   changed or missing binding evidence cannot start a second attempt.
-- Given an internally executed package, Engineer receives retained child/parent resources and writes isolated code.
+- Given a locally executed package, Engineer receives retained child/parent resources and writes isolated code.
   Implementation checkpoints persist, and real validation/review publishes code with no repository Plan required.
   Copies disabled produce no artifacts commit; enabled copies contain only frozen Markdown, not personal metadata.
 - Given a sealed package, later editor changes, rename, settings changes and target advancement preserve its frozen
@@ -1750,6 +1757,8 @@ theme activates only its theme content. See the [theme reference](../user-docume
 
 ### Project context and initialization
 
+**Local storage admission:** Project-level storage authority is independent of selecting a Plan. Local CLI/TUI, Workspace, Connect and ACP reconstruct the same owner at their request boundaries, including empty Projects. Manual SSH uses the account running `wld`. Passive reads never register, repair or import. Settings and user overrides remain in the checkout; personal Plans and runtime state do not.
+
 **Scope and maturity:** Current baseline; compressed Project Brief and further code-intelligence improvements are target
 scope. Remote workflows keep Project Runtime State in the remote project and Session records on the laptop. See
 [Remote connection](#remote-connection) for location handling, the qualified matrix, and remote workflow placement.
@@ -2085,9 +2094,12 @@ or Session. Failures, text-only output, malformed bytes, cancellation, and timeo
 
 ### Work records
 
-**Scope and maturity:** Current generation and retrieval baseline, plus explicit internal personal-store admission for
-packages and Work Record import. Ordinary public commands retain their repository owner until activation. Richer
-authorship and retention remain follow-up scope.
+**Local canonical retrieval:** Ordinary local/manual-SSH Work Record import, list, read, search and index operations use personal Project storage without requiring a selected Plan. Repository copies are publication outputs and are never ingested by ordinary reads. `wld wr import <path>` is explicit. Work Record delivery copies default on independently of Plan copies, which default off until selected.
+
+**Acceptance:** With stale repository copies and a current personal record, read/search returns the personal record. An empty canonical store does not discover repository records.
+
+**Scope and maturity:** Current local/manual-SSH personal-store generation, retrieval and explicit import. Managed-remote
+ownership activation, richer authorship and retention remain follow-up scope.
 
 **Requirement: Preserve outcomes with truthful completion confidence.** Work Records are concise Markdown accounts of permanent facts: the delivered outcome, recorded Plan Deviations, out-of-scope facts, and durable
 lessons. They keep source Plan and Ticket links, not validation receipts, delivery status, run events, to-dos, or known
@@ -2132,15 +2144,15 @@ confidence. Importing that copy cannot approve it. No eligible source, disabled 
 no fabricated record. A late recording retry never republishes code or adds a copies commit. Older sealed manifests
 retain their original policy.
 
-**Requirement: Import and locate records without a second authority.** Under explicit internal owner admission,
+**Requirement: Import and locate records without a second authority.** Under ordinary local/manual-SSH owner admission,
 `wld wr import <path>` accepts a file or directory, preserves exact Markdown and status, and resumes identical imports.
 Conflicting same-ID content refuses without overwriting either source. Core retains source/copy paths and digests by
 record ID independently of the derived index. External origins remain provenance, never repository-delete authority.
 Admitted retrieval hydrates canonical files by ID, uses stable Project/personal-owner index identity, and returns home
-paths. Linked clones share records while retaining distinct repository destinations. Public activation, managed-remote
-transport and pruning remain target.
+paths. Linked clones share records while retaining distinct repository destinations. Managed-remote ownership activation
+and pruning remain target.
 
-**Internal store acceptance scenarios:**
+**Personal store acceptance scenarios:**
 
 - Given default copy settings, validation prepares one pending record, publishes its frozen copy, and approves only the
   canonical record after matching proof. With both copies off, the canonical record remains retrievable.

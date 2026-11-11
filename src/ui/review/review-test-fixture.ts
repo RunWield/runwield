@@ -62,7 +62,7 @@ export function createScriptedReviewBrowser(
                 const html = await page.text();
                 const embedded = html.match(/<script[^>]*data-(?:code-)?review-payload[^>]*>([\s\S]*?)<\/script>/)?.[1];
                 if (!embedded) throw new Error("Review page did not contain a payload.");
-                const { reviewRevision } = JSON.parse(embedded);
+                const { reviewRevision, documentRevision } = JSON.parse(embedded);
                 const response = await fetch(
                     new URL(`/api/review/${route}?token=${encodeURIComponent(token)}`, reviewUrl.origin),
                     {
@@ -71,7 +71,7 @@ export function createScriptedReviewBrowser(
                             "content-type": "application/json",
                             "x-runwield-review-token": token,
                         },
-                        body: JSON.stringify({ reviewRevision, ...body }),
+                        body: JSON.stringify({ reviewRevision, documentRevision, ...body }),
                     },
                 );
                 if (!response.ok) {

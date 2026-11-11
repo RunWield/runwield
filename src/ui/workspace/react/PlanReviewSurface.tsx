@@ -94,8 +94,8 @@ function usePlanDocumentLinks(payload) {
                 ? projectPath.slice(0, projectPath.lastIndexOf("/"))
                 : "docs/plans";
             const params = new URLSearchParams({ path: requestedPath, base });
+            if (payload.documentRevision) params.set("planId", payload.planId);
             if (payload.mode === "workspace" && payload.projectId) {
-                if (payload.documentRevision) params.set("planId", payload.planId);
                 return `/api/owner/projects/${encodeURIComponent(payload.projectId)}/files/content?${params}`;
             }
             params.set("token", payload.token);

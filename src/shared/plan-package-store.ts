@@ -136,7 +136,16 @@ export interface PackageControllerReference {
     revisionId: string;
     planId: string;
 }
+export interface LegacyPackageSettlement {
+    outcome: "published" | "abandoned";
+    attemptId: string;
+    importRecordId: string;
+    settledAt: string;
+    targetBranch?: string;
+    commit?: string;
+}
 export interface PackageWorkflowEvidence {
+    legacySettlement?: LegacyPackageSettlement;
     workRecord?: import("../plan-store.js").PlanFrontMatter["workRecord"];
     review?: PackageWorkflowInput;
     readiness?: PackageWorkflowInput;
@@ -304,6 +313,7 @@ interface ImportBatch {
     phase: "pending" | "committed";
     members: PackageSelector[];
     record?: ImportRecord;
+    authoring?: PlanPackageBatchWrite[];
 }
 interface PackageIntent {
     version: 1;
@@ -634,6 +644,7 @@ function metadataFrom(value: PlanPackageMetadata): PlanPackageMetadata {
     }
     if (data.workflow !== undefined) {
         const workflow = fields(data.workflow, [
+            "legacySettlement",
             "review",
             "readiness",
             "attempt",
@@ -644,6 +655,26 @@ function metadataFrom(value: PlanPackageMetadata): PlanPackageMetadata {
             "delivery",
             "workRecord",
         ]);
+        if (workflow.legacySettlement !== undefined) {
+            const settlement = fields(workflow.legacySettlement, [
+                "outcome",
+                "attemptId",
+                "importRecordId",
+                "settledAt",
+                "targetBranch",
+                "commit",
+            ]);
+            if (
+                !["published", "abandoned"].includes(String(settlement.outcome)) ||
+                ["attemptId", "importRecordId", "settledAt"].some(
+                    (key) => typeof settlement[key] !== "string" || !settlement[key],
+                ) ||
+                ["targetBranch", "commit"].some(
+                    (key) => key in settlement && (typeof settlement[key] !== "string" || !settlement[key]),
+                )
+            )
+                fail("malformed_metadata", "Invalid retained execution settlement.");
+        }
         if (workflow.workRecord !== undefined) validateRecordingOutcome(workflow.workRecord);
         if (workflow.recordingPreparation !== undefined)
             assertPackagePublicationReference(JSON.parse(JSON.stringify(workflow.recordingPreparation)));
@@ -1170,6 +1201,24 @@ async function assertDestination(paths: PackageLayout, name: string): Promise<vo
         if (await stat(join(destination, resource))) fail("collision", "Package destination already exists.");
     }
 }
+/** Resolve a typed relationship only within the admitted canonical catalog. */
+export function resolvePlanPackageReference(
+    packages: LoadedPlanPackage[],
+    reference: string,
+    parentName?: string,
+): string {
+    const matches = packages.filter(
+        (plan) =>
+            (!plan.metadata.archive || plan.metadata.archive.restoredAt) &&
+            (plan.metadata.planId === reference ||
+                plan.metadata.name === reference ||
+                (parentName && plan.metadata.name === `${parentName}/${reference}`)),
+    );
+    if (matches.length !== 1)
+        throw new Error(`No canonical Plan named ${reference} is uniquely available; import or create it first.`);
+    return matches[0].metadata.planId;
+}
+
 export async function createPlanPackage(
     identity: ProjectIdentity,
     input: CreatePlanPackage,
@@ -1308,7 +1357,7 @@ export async function archivePlanPackage(
         const metadata = {
             ...current.metadata,
             revision: revision + 1,
-            archive: { archivedAt: new Date().toISOString(), reason },
+            archive: { archivedAt: new Date().toISOString(), reason, fromStatus: current.metadata.definition.status },
         };
         metadataFrom(metadata);
         writeJsonAtomically(join(current.path, "plan.wld.json"), metadata);
@@ -1493,6 +1542,7 @@ async function readAllocations(paths: PackageLayout): Promise<ImportAllocation[]
 async function recoverImportBatch(paths: PackageLayout): Promise<void> {
     const batch = await readBatch(paths);
     if (!batch || batch.phase === "committed") return;
+    if (batch.authoring) return await recoverAuthoringBatch(paths, batch);
     // The intent is also the durable ID reservation. It retains every byte needed after source deletion.
     const record = validateImportRecord(batch.record!);
     if (
@@ -1576,6 +1626,131 @@ async function recoverImportBatch(paths: PackageLayout): Promise<void> {
         phase: "committed",
         members: batch.members,
     } satisfies ImportBatch);
+}
+
+/** A complete package generation; existing documents carry their exact observed hashes. */
+export interface PlanPackageBatchWrite {
+    metadata: PlanPackageMetadata;
+    documents: PackageDocuments;
+    before: { metadata: PlanPackageMetadata; documents: PackageDocuments } | null;
+}
+function batchBytes(metadata: PlanPackageMetadata, documents: PackageDocuments): Record<string, string> {
+    return { ...documents, "plan.wld.json": JSON.stringify(metadata, null, 2) + "\n" };
+}
+async function recoverAuthoringBatch(paths: PackageLayout, batch: ImportBatch): Promise<void> {
+    const writes = batch.authoring!;
+    if (
+        !writes.length ||
+        JSON.stringify(batch.members) !==
+            JSON.stringify(writes.map((write) => ({ planId: write.metadata.planId, name: write.metadata.name })))
+    )
+        fail("pending_recovery", "Authoring batch membership changed.");
+    // Verify the whole generation before replacing any remaining resource. Outside edits are never rollback fodder.
+    for (const write of writes) {
+        metadataFrom(write.metadata);
+        if (write.before) metadataFrom(write.before.metadata);
+        const after = batchBytes(write.metadata, write.documents);
+        const before = write.before ? batchBytes(write.before.metadata, write.before.documents) : {};
+        for (const name of resources) {
+            if (!(name in after) && (await file(paths.home, join(paths.plans, write.metadata.name, name))))
+                fail(
+                    "pending_recovery",
+                    "An unexpected package resource appeared during authoring; preserving both generations.",
+                );
+        }
+        for (const name of Object.keys(after)) {
+            if (name !== "plan.wld.json" && !resources.includes(name as PackageResource))
+                fail("pending_recovery", "Invalid batch resource.");
+            const path = join(paths.plans, write.metadata.name, name);
+            const bytes = await file(paths.home, path);
+            const current = bytes ? new TextDecoder().decode(bytes) : undefined;
+            if (current !== before[name] && current !== after[name])
+                fail("pending_recovery", "A package changed during authoring; preserving both generations.");
+        }
+    }
+    for (const write of writes) {
+        const destination = join(paths.plans, write.metadata.name);
+        await directory(paths, destination);
+        for (const [name, text] of Object.entries(batchBytes(write.metadata, write.documents)))
+            writeTextAtomically(join(destination, name), text);
+    }
+    writeJsonAtomically(paths.batch, { ...batch, phase: "committed" } satisfies ImportBatch);
+}
+
+/** Commit an authored family as one visible generation, with crash recovery and exact preconditions. */
+export async function commitPlanPackageBatch(
+    identity: ProjectIdentity,
+    writes: PlanPackageBatchWrite[],
+): Promise<void> {
+    if (!writes.length) return;
+    await mutate(
+        identity,
+        writes.map((write) => write.metadata.planId),
+        async (paths) => {
+            const catalog = await scan(paths);
+            if (catalog.issues.length) fail(catalog.issues[0].kind, catalog.issues[0].message);
+            const ids = new Set(writes.map((write) => write.metadata.planId));
+            const names = new Set(writes.map((write) => write.metadata.name));
+            if (ids.size !== writes.length || names.size !== writes.length)
+                fail("collision", "Duplicate authored Plan identity or name.");
+            for (const write of writes) {
+                metadataFrom(write.metadata);
+                if (
+                    typeof write.documents["context.md"] !== "string" ||
+                    typeof write.documents["validation.md"] !== "string"
+                )
+                    fail("missing_document", "Authored packages require context and validation Markdown.");
+                if (
+                    Object.keys(write.documents).some((name) => !resources.includes(name as PackageResource)) ||
+                    Object.values(write.documents).some((value) => typeof value !== "string")
+                )
+                    fail("missing_document", "Invalid authored package document.");
+                if (
+                    write.before &&
+                    Object.keys(write.before.documents).some(
+                        (name) => write.documents[name as PackageResource] === undefined,
+                    )
+                )
+                    fail("changed_input", "Authoring cannot remove existing package resources.");
+                const current = catalog.packages.find((plan) => plan.metadata.planId === write.metadata.planId);
+                if (write.before) {
+                    if (
+                        !current ||
+                        current.metadata.name !== write.metadata.name ||
+                        JSON.stringify(current.metadata) !== JSON.stringify(write.before.metadata)
+                    )
+                        fail("changed_input", "An authored Plan's metadata changed.");
+                    if (write.metadata.revision !== current.metadata.revision + 1)
+                        fail("changed_input", "An authored Plan requires the next metadata revision.");
+                    const observed = Object.fromEntries(
+                        current.documents.map((doc) => [doc.name, new TextDecoder().decode(doc.bytes)]),
+                    );
+                    if (
+                        Object.keys(observed).length !== Object.keys(write.before.documents).length ||
+                        current.documents.some((doc) => observed[doc.name] !== write.before!.documents[doc.name])
+                    )
+                        fail("changed_input", "An authored Plan's documents changed.");
+                } else {
+                    if (current || write.metadata.revision !== 1) fail("collision", "An authored Plan already exists.");
+                    await assertDestination(paths, write.metadata.name);
+                }
+                for (const related of [write.metadata.parentPlanId, ...write.metadata.dependencyPlanIds].filter(
+                    Boolean,
+                ))
+                    if (!ids.has(related!) && !catalog.packages.some((plan) => plan.metadata.planId === related))
+                        fail("missing", "An authored Plan relation is unavailable.");
+            }
+            const batch: ImportBatch = {
+                version: 1,
+                recordId: randomUUID(),
+                phase: "pending",
+                members: writes.map((write) => ({ planId: write.metadata.planId, name: write.metadata.name })),
+                authoring: writes,
+            };
+            writeJsonAtomically(paths.batch, batch);
+            await recoverAuthoringBatch(paths, batch);
+        },
+    );
 }
 
 /** Explicit internal import; ordinary load/save/discovery never calls this operation. */

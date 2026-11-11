@@ -1,3 +1,4 @@
+import { hasRetainedCheckoutSource, withRetainedCheckoutSource } from "./legacy-plan-source.ts";
 /** Legacy document inventory and evidence capture. Persistence belongs to plan-package-store. */
 import fs from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
@@ -244,6 +245,10 @@ export async function preparePlanPackageImport(
     catalog: LoadedPlanPackage[],
     createdAt: string,
 ): Promise<PreparedPlanImport> {
+    if (!hasRetainedCheckoutSource(identity.checkoutRoot))
+        return await withRetainedCheckoutSource(identity, () =>
+            preparePlanPackageImport(identity, selection, allocations, catalog, createdAt),
+        );
     if (!isAbsolute(selection) || selection.split(/[\\/]/).includes(".."))
         throw new PlanPackageError("unsafe_path", "Select an absolute path without traversal.");
     selection = resolve(selection);
@@ -370,8 +375,13 @@ export async function preparePlanPackageImport(
                         : null;
                 if ((!located.plan && !archivedPath) || located.missingExecutionCheckout)
                     pending(`The authoritative Plan document is unavailable: ${name}`);
-                if (located.plan?.readAvailability?.kind === "pending")
-                    pending(`Workflow evidence is pending: ${name}`);
+                if (located.plan?.readAvailability?.kind === "pending") {
+                    const idlessDraft = !selected.attrs.planId && !attempts.length && located.plan.path === source.path;
+                    const view = idlessDraft
+                        ? await inspectControllerView(identity.checkoutRoot, { planName: name }, selected.attrs)
+                        : null;
+                    if (!view || view.pendingRepairs.length) pending(`Workflow evidence is pending: ${name}`);
+                }
                 if (
                     (located.plan?.attrs.planId && located.plan.attrs.planId !== id) ||
                     (archivedPath &&

@@ -1,3 +1,4 @@
+import { withRetainedCheckoutSource } from "./shared/legacy-plan-source.ts";
 import { test } from "node:test";
 import { deepEqual, equal, ok } from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -402,7 +403,9 @@ for (const foreignId of [false, true])
                 "active",
                 markdown("# Completed execution\n").replace("status: implemented", "status: verified"),
             );
-            const archived = await archivePlan(f.root, "active", { now: "2026-01-01", reason: "complete" });
+            const archived = await withRetainedCheckoutSource(f.identity, () =>
+                archivePlan(f.root, "active", { now: "2026-01-01", reason: "complete" }),
+            );
             const controller = await writeControllerState(
                 f.root,
                 { planId: "active-plan", planName: "active" },

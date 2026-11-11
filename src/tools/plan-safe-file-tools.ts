@@ -1,3 +1,7 @@
+import { inspectLocalHomeStore } from "../shared/local-home-store.ts";
+import { readPlanPackage } from "../shared/plan-package-store.ts";
+import { withPackageProject, packageWorkflowRevision } from "../shared/workflow/package-workflow.ts";
+import { savePlanDocument } from "../shared/workflow/plan-documents.ts";
 import { mkdir as fsMkdir, readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
 /**
  * @module tools/plan-safe-file-tools
@@ -92,6 +96,73 @@ export function wrapPlanSafeFileTool<T extends { execute: unknown }>(
             ctx?: unknown,
         ) {
             const path = stringValue(params?.path ?? params?.file_path);
+            const store = inspectLocalHomeStore(cwd);
+            if (path && store.kind === "empty" && isCanonicalPlanMarkdownPath(cwd, path))
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: "Create a canonical Plan with plan_written contextMarkdown; checkout Plan documents are import sources only.",
+                        },
+                    ],
+                    isError: true,
+                };
+            if (path && store.kind === "local") {
+                const absolute = isAbsolute(path) ? path : join(cwd, path);
+                const root = join(
+                    store.identity.executionAccountHome,
+                    ".wld",
+                    "projects",
+                    store.identity.projectId,
+                    "plans",
+                );
+                const rel = relative(root, absolute).replaceAll("\\", "/");
+                if (rel && rel !== ".." && !rel.startsWith("../") && !isAbsolute(rel)) {
+                    try {
+                        const resource = rel.split("/").at(-1)!;
+                        if (
+                            !["context.md", "validation.md", "manual-qa.md", "integration-report.md"].includes(resource)
+                        )
+                            throw new Error("Core owns Plan metadata. Edit an exposed Markdown document instead.");
+                        const name = rel.slice(0, -(resource.length + 1));
+                        const plan = await readPlanPackage(store.identity, { name });
+                        if (plan.kind !== "loaded")
+                            throw new Error("Create the Plan with plan_written contextMarkdown first.");
+                        if (mode === "write")
+                            throw new Error("Re-read the Plan and use exact-text edit to preserve concurrent changes.");
+                        const document = plan.documents.find((entry) => entry.name === resource);
+                        if (!document) throw new Error("Plan document not found.");
+                        const body = new TextDecoder().decode(document.bytes);
+                        const edited = applySingleExactEdit(
+                            body,
+                            stringValue(params.oldText),
+                            String(params.newText ?? ""),
+                            path,
+                        );
+                        if (/^\ufeff?---\s*\r?\n/.test(edited))
+                            throw new Error("Live Plan documents must not contain YAML front matter.");
+                        await withPackageProject(cwd, store.identity, () =>
+                            savePlanDocument(plan.metadata.planId, resource, packageWorkflowRevision(plan), edited),
+                        );
+                        return { content: [{ type: "text", text: `Updated ${resource}.` }] };
+                    } catch (error) {
+                        return {
+                            content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
+                            isError: true,
+                        };
+                    }
+                }
+                if (isCanonicalPlanMarkdownPath(cwd, path))
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: "Repository Plan documents are import sources or delivery copies. Create canonical Plans with plan_written contextMarkdown.",
+                            },
+                        ],
+                        isError: true,
+                    };
+            }
             if (path && isCanonicalPlanMarkdownPath(cwd, path)) {
                 const absolute = isAbsolute(path) ? path : join(cwd, path);
                 if (mode === "write") {
@@ -99,22 +170,24 @@ export function wrapPlanSafeFileTool<T extends { execute: unknown }>(
                         const stat = await fsStat(absolute);
                         if (stat.isFile()) {
                             return {
-                                content: [{
-                                    type: "text",
-                                    text:
-                                        "Refusing to overwrite an existing Plan with the write tool. Re-read the Plan and use exact-text edit or multi_file_edit so RunWield can preserve concurrent Plan changes.",
-                                }],
+                                content: [
+                                    {
+                                        type: "text",
+                                        text: "Refusing to overwrite an existing Plan with the write tool. Re-read the Plan and use exact-text edit or multi_file_edit so RunWield can preserve concurrent Plan changes.",
+                                    },
+                                ],
                                 isError: true,
                             };
                         }
                     } catch (error) {
                         if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
                     }
-                    const content = typeof params?.content === "string"
-                        ? params.content
-                        : typeof params?.text === "string"
-                        ? params.text
-                        : undefined;
+                    const content =
+                        typeof params?.content === "string"
+                            ? params.content
+                            : typeof params?.text === "string"
+                              ? params.text
+                              : undefined;
                     if (content === undefined) {
                         return {
                             content: [{ type: "text", text: "Plan creation requires string content." }],

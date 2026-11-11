@@ -1,3 +1,5 @@
+import { inspectProjectIdentity } from "../project-identity.ts";
+import { planPackageControllerDirectory } from "../plan-package-store.ts";
 import type { HostValidationMetric } from "./testing/validation-host-fixture.ts";
 import {
     realpath as fsRealpath,
@@ -62,7 +64,10 @@ test("fresh network-denied host turns validate real work without a Session or hi
             { expectedRevision: plan.revision, expectedControllerRevision: plan.controllerRevision },
         );
         const layout = resolveProjectRuntimeLayout(fixture.root);
-        const originalControllers = await files(layout.primary.controllerPlansDir);
+        const identity = inspectProjectIdentity(fixture.root);
+        assert(identity.kind === "existing");
+        const controllerEvidenceRoot = await canonicalPath(planPackageControllerDirectory(identity.identity));
+        const metadataPath = await canonicalPath(join(dirname(plan.path), "plan.wld.json"));
         const metricsPath = await canonicalPath(getWorkflowMetricsFilePath(fixture.root));
         const metricsFiles = new Set([
             metricsPath,
@@ -94,7 +99,8 @@ test("fresh network-denied host turns validate real work without a Session or hi
                     !(
                         path.startsWith(canonicalCwd + "/") ||
                         path.startsWith(deliveryEvidenceRoot + "/") ||
-                        originalControllers.has(path) ||
+                        path === metadataPath ||
+                        path.startsWith(controllerEvidenceRoot + "/") ||
                         metricsFiles.has(path) ||
                         path === settingsPath ||
                         path === searchRefreshMarker

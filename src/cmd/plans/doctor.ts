@@ -1,3 +1,7 @@
+import { currentPackageProject } from "../../shared/workflow/package-workflow.ts";
+import { readLocalHomeStore, withLocalProjectAction } from "../../shared/local-home-store.ts";
+import { listPlanPackages, recoverPlanPackages } from "../../shared/plan-package-store.ts";
+import { listArchivedPlans } from "../../plan-store.js";
 import { admitProjectWithIdentityChoice } from "../../ui/tui/project-identity-entry.ts";
 import { inspectControllerDocumentWorktrees } from "../../shared/workflow/controller-registry.ts";
 import { hasApplicablePublicationReceipt } from "../../shared/workflow/publication-receipt.ts";
@@ -777,8 +781,15 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
     }
 
     const discoveredPlanIds = new Map<string, string>();
-    await collectPlanIssues(projectRoot, getPlansDir(projectRoot), [], issues, discoveredPlanIds);
-    const archivedPlans = await collectArchivedPlanParseIssues(projectRoot, issues, discoveredPlanIds);
+    const owner = currentPackageProject();
+    if (owner) {
+        if (repair) await recoverPlanPackages(owner);
+        const catalog = await listPlanPackages(owner, true);
+        for (const issue of catalog.issues) issues.push({ kind: "package_integrity_error", message: issue.message });
+    } else await collectPlanIssues(projectRoot, getPlansDir(projectRoot), [], issues, discoveredPlanIds);
+    const archivedPlans = owner
+        ? await listArchivedPlans(projectRoot)
+        : await collectArchivedPlanParseIssues(projectRoot, issues, discoveredPlanIds);
 
     // Read the registry without enforcing invariants first. A violated invariant
     // must not blind the report: the per-entry facts below are what the user needs
@@ -896,7 +907,7 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
     const identityDocuments = (await inspectPlanIdentityDocuments(projectRoot, diagnosticEntries)).sort((left, right) =>
         left.name.localeCompare(right.name),
     );
-    for (const parent of [...identityDocuments]) {
+    for (const parent of currentPackageProject() ? [] : [...identityDocuments]) {
         const targetBranch = typeof parent.attrs.targetBranch === "string" ? parent.attrs.targetBranch.trim() : "";
         if (!targetBranch || !isProjectPlan(parent.attrs)) continue;
         let children: Awaited<ReturnType<typeof inspectTargetBranchPlansByParent>>;
@@ -942,7 +953,7 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
         }
     }
     if (repair) {
-        for (const plan of identityDocuments) {
+        for (const plan of currentPackageProject() ? [] : identityDocuments) {
             const exists = await fsStat(plan.path)
                 .then((stat) => stat.isFile())
                 .catch(() => false);
@@ -970,6 +981,7 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
     }
     const inspectedIdentityDocuments = await Promise.all(
         identityDocuments.map(async (plan) => {
+            if (currentPackageProject()) return { ...plan, pendingControllerRepairs: [] };
             const inspected = await inspectPlanFileStrict(plan.path);
             return inspected.kind === "loaded" && "attrs" in inspected
                 ? { ...plan, attrs: inspected.attrs, pendingControllerRepairs: inspected.pendingControllerRepairs }
@@ -1213,7 +1225,10 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
     }
 
     for (const archived of archivedPlans) {
-        const status = archived.recordedWorktreeStatus || archived.attrs.worktreeStatus || "";
+        const status =
+            ("recordedWorktreeStatus" in archived ? archived.recordedWorktreeStatus : undefined) ||
+            archived.attrs.worktreeStatus ||
+            "";
         if (status && !["none", "merged", "abandoned"].includes(status)) {
             issues.push({
                 kind: "archived_plan_with_recoverable_attempt",
@@ -1236,7 +1251,25 @@ async function isCommittedArchive(projectRoot: string, planName: string, path: s
     return result.success && new TextDecoder().decode(result.stdout) === (await fsReadFile(path, "utf8"));
 }
 
-export async function runPlansDoctor(projectRoot: string, repair = true) {
+export async function runPlansDoctor(
+    projectRoot: string,
+    repair = true,
+): Promise<{ issues: DoctorIssue[]; repaired: number }> {
+    if (!currentPackageProject()) {
+        if (repair)
+            return await withLocalProjectAction(projectRoot, () => runPlansDoctorInProject(projectRoot, repair));
+        return await readLocalHomeStore(
+            projectRoot,
+            () => runPlansDoctorInProject(projectRoot, repair),
+            () => ({ issues: [], repaired: 0 }),
+        );
+    }
+    return await runPlansDoctorInProject(projectRoot, repair);
+}
+async function runPlansDoctorInProject(
+    projectRoot: string,
+    repair: boolean,
+): Promise<{ issues: DoctorIssue[]; repaired: number }> {
     const inspected = await inspectProjectRuntimeLayout(projectRoot);
     if (inspected.kind === "blocked") return { issues: [migrationBlockedIssue(inspected)], repaired: 0 };
     if (inspected.kind === "pending" && !repair) {

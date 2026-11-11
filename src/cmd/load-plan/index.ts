@@ -1,3 +1,5 @@
+import { selectLocalPlanWorkflow } from "../../shared/local-home-store.ts";
+import { currentPackageSelection, withPackageWorkflow } from "../../shared/workflow/package-workflow.ts";
 import { admitProjectWithIdentityChoice } from "../../ui/tui/project-identity-entry.ts";
 import { prepareWorktreeRegistry } from "../../shared/worktree-registry.js";
 import process from "node:process";
@@ -188,6 +190,13 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
         )
             return;
         const startupResolved = await resolvePlanWithPrimaryRecovery(startupProjectRoot, planArg);
+        if (!currentPackageSelection()) {
+            const selection = await selectLocalPlanWorkflow(startupProjectRoot, startupResolved.plan.planName);
+            if (selection)
+                return await withPackageWorkflow(startupProjectRoot, selection, () =>
+                    runLoadPlanCommand([startupResolved.plan.planName], options),
+                );
+        }
         if (!discovered.missingExecutionCheckout && !(await confirmProjectDirectory(discovered.path))) return;
         let startupPlan = startupResolved.plan;
         if (!startupPlan.attrs.planId) {
@@ -286,6 +295,15 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
         )
             return;
         const resolved = await resolvePlanWithPrimaryRecovery(projectRoot, planArg);
+        if (currentPackageSelection()?.planId !== resolved.plan.attrs.planId) {
+            const selection = await selectLocalPlanWorkflow(projectRoot, resolved.plan.planName);
+            if (selection) {
+                skipRouterRestore = true;
+                return await withPackageWorkflow(projectRoot, selection, () =>
+                    runLoadPlanCommand([resolved.plan.planName], options),
+                );
+            }
+        }
         if (discovered && !discovered.missingExecutionCheckout && !(await confirmProjectDirectory(discovered.path)))
             return;
         const plan = resolved.plan;

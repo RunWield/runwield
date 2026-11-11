@@ -1,3 +1,4 @@
+import { currentPackageProject, loadPackageWorkflowPlan } from "./package-workflow.ts";
 /**
  * @module shared/workflow/validation-semantic
  * The Semantic Review phase: reviewer rounds with ledger convergence, repair
@@ -663,7 +664,11 @@ export async function runReviewerRound(
             args.planContent,
             inspection,
             epicContext?.section || "",
-            args.hostTurn ? `docs/plans/${args.planName}.md` : undefined,
+            args.hostTurn
+                ? currentPackageProject()
+                    ? (await loadPackageWorkflowPlan(args.planName)).path
+                    : `docs/plans/${args.planName}.md`
+                : undefined,
         );
         const correction = nudgeReason;
         nudgeReason = undefined;
@@ -1173,7 +1178,9 @@ export function buildSemanticReviewAttempt(
         "### Approved Plan",
         "",
         ...(planPath
-            ? [`Read the complete approved Plan at ${planPath}. Use the file read tools; the Plan is not inlined here.`]
+            ? [
+                  `Read the complete approved Plan at ${planPath}. Attached hosts can use MCP read_plan with their workflow and action IDs; otherwise use the authorized file read tools. Read every page; the Plan is not inlined here.`,
+              ]
             : [projectEngineerPlanBody(planContent)]),
     );
     return {

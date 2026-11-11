@@ -1,5 +1,21 @@
-import { listPlanPackages, savePlanPackageDocument } from "./shared/plan-package-store.ts";
 import {
+    readLocalHomeStore,
+    missingHomePlan,
+    saveLocalHomePlan,
+    withLocalPlanWorkflow,
+    inspectLocalHomeStore,
+    withLocalProjectAction,
+} from "./shared/local-home-store.ts";
+import {
+    archivePlanPackage,
+    restorePlanPackage,
+    renamePlanPackage,
+    listPlanPackages,
+    readPlanPackage,
+    savePlanPackageDocument,
+} from "./shared/plan-package-store.ts";
+import {
+    currentPackageProject,
     currentPackageSelection,
     selectedPackage,
     loadPackageWorkflowPlan,
@@ -52,7 +68,7 @@ export {
 import { extractYaml, test as hasFrontMatter } from "./shared/front-matter.ts";
 import { readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "./shared/lock-file-snapshot.ts";
 import { getLockHostname, isLockHolderGone } from "./shared/process-liveness.ts";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
     CLI_BIN,
@@ -1368,6 +1384,12 @@ function planControllerLocation(filePath) {
 
 /** Directory that owns the selected document and its lock. @param {string} filePath */
 export function getPlanDocumentRoot(filePath) {
+    const owner = currentPackageProject();
+    if (owner) {
+        const root = join(owner.executionAccountHome, ".wld", "projects", owner.projectId, "plans");
+        const child = relative(root, resolve(filePath));
+        if (child && !child.startsWith("../") && child !== ".." && !isAbsolute(child)) return owner.checkoutRoot;
+    }
     if (/^[^:]+:docs\/plans\//.test(filePath)) {
         throw new Error(`Published Plan snapshot is not a writable document path: ${filePath}`);
     }
@@ -1921,7 +1943,7 @@ async function withProcessAwarePlanLock(key, lockPath, fn) {
  * @returns {Promise<T>}
  */
 export async function withPlanLock(cwd, planName, fn) {
-    if (currentPackageSelection() && !planName.startsWith("__")) return await packageWorkflowLocks([planName], fn);
+    if (currentPackageProject() && !planName.startsWith("__")) return await packageWorkflowLocks([planName], fn);
     const layout = await enterProjectRuntime(cwd);
     const key = `${resolve(cwd)}:${lockSafeSegment(planName)}`;
     return await withProcessAwarePlanLock(
@@ -1938,7 +1960,7 @@ export async function withPlanLock(cwd, planName, fn) {
  * @returns {Promise<T>}
  */
 export async function withPlanCatalogLock(cwd, fn) {
-    if (currentPackageSelection()) return await packageWorkflowLocks([], fn);
+    if (currentPackageProject()) return await packageWorkflowLocks([], fn);
     const layout = await enterProjectRuntime(cwd);
     const key = `${resolve(cwd)}:catalog`;
     return await withProcessAwarePlanLock(key, layout.selected.planCatalogLockPath, fn);
@@ -2031,6 +2053,12 @@ export async function inspectPlanTextStrict(markdown, filePath, controllerPath =
  * @returns {Promise<PlanTextLoaded | PlanTextMalformed | { kind: "not_found", path: string } | { kind: "not_file", path: string, message: string } | { kind: "unreadable", path: string, error: Error }>}
  */
 export async function loadPlanFileStrict(filePath, documentOnly = false) {
+    const owner = currentPackageProject();
+    if (owner) {
+        const catalog = await listPlanPackages(owner, true);
+        const selected = catalog.packages.find((plan) => resolve(join(plan.path, "context.md")) === resolve(filePath));
+        if (selected) return await loadPackageWorkflowPlan({ planId: selected.metadata.planId });
+    }
     let stat;
     try {
         stat = await fsLstat(filePath);
@@ -2109,7 +2137,30 @@ export function getKnownFrontMatterRevision(revision) {
  * @returns {Promise<Awaited<ReturnType<typeof loadPlanFileStrict>>>}
  */
 export async function loadPlanStrict(cwd, planName) {
-    if (currentPackageSelection()) return await loadPackageWorkflowPlan(planName);
+    return await readLocalHomeStore(
+        cwd,
+        () => loadPlanStrictInProject(cwd, planName),
+        () => missingHomePlan(getStoredPlanPath(cwd, planName)),
+    );
+}
+
+/**
+ * @param {string} cwd
+ * @param {string} planName
+ * @returns {ReturnType<typeof loadPlanStrict>}
+ */
+async function loadPlanStrictInProject(cwd, planName) {
+    const project = currentPackageProject();
+    if (project) {
+        const plan = await readPlanPackage(project, { name: planName });
+        if (
+            plan.kind === "missing" ||
+            (plan.kind === "loaded" && plan.metadata.archive && !plan.metadata.archive.restoredAt)
+        )
+            return missingHomePlan(plan.path);
+        if (plan.kind !== "loaded") throw new Error(plan.message);
+        return await loadPackageWorkflowPlan({ planId: plan.metadata.planId });
+    }
     const { name, filePath } = getStoredPlanLocation(cwd, planName);
     if (isEpicArtifactPlanName(name)) return { kind: "not_found", path: filePath };
     return await loadPlanFileStrict(filePath);
@@ -2120,7 +2171,30 @@ export async function loadPlanStrict(cwd, planName) {
  * @param {string} planName
  */
 export async function inspectPlanStrict(cwd, planName) {
-    if (currentPackageSelection()) return await loadPackageWorkflowPlan(planName);
+    return await readLocalHomeStore(
+        cwd,
+        () => inspectPlanStrictInProject(cwd, planName),
+        () => missingHomePlan(getStoredPlanPath(cwd, planName)),
+    );
+}
+
+/**
+ * @param {string} cwd
+ * @param {string} planName
+ * @returns {ReturnType<typeof loadPlanStrict>}
+ */
+async function inspectPlanStrictInProject(cwd, planName) {
+    const project = currentPackageProject();
+    if (project) {
+        const plan = await readPlanPackage(project, { name: planName });
+        if (
+            plan.kind === "missing" ||
+            (plan.kind === "loaded" && plan.metadata.archive && !plan.metadata.archive.restoredAt)
+        )
+            return missingHomePlan(plan.path);
+        if (plan.kind !== "loaded") throw new Error(plan.message);
+        return await loadPackageWorkflowPlan({ planId: plan.metadata.planId });
+    }
     const { name, filePath } = getStoredPlanLocation(cwd, planName);
     if (isEpicArtifactPlanName(name)) return { kind: "not_found", path: filePath };
     return await inspectPlanFileStrict(filePath);
@@ -2407,6 +2481,15 @@ export async function resolveChildPlanNames(cwd, epicPlanName, children) {
  * @returns {Promise<SavedChildFeaturePlan[]>}
  */
 export async function saveChildFeaturePlans(cwd, epicPlanName, children, options = {}) {
+    if (!currentPackageProject()) {
+        const owner = await inspectLocalHomeStore(cwd);
+        if (owner.kind === "local" || owner.kind === "empty")
+            return await withLocalProjectAction(cwd, () => saveChildFeaturePlans(cwd, epicPlanName, children, options));
+    }
+    if (currentPackageProject()) {
+        const { authorPackageChildren } = await import("./shared/workflow/package-authoring.ts");
+        return await authorPackageChildren(cwd, epicPlanName, children, options);
+    }
     await prepareWorktreeRegistry(cwd);
     const { name: parentPlanName, segments: parentSegments } = canonicalizeStoredPlanName(epicPlanName);
     if (parentSegments.length !== 1) {
@@ -2441,7 +2524,9 @@ export async function saveChildFeaturePlans(cwd, epicPlanName, children, options
         let action = /** @type {"created" | "updated"} */ ("created");
         /** @type {string | undefined} */
         let childExpectedRevision = options.expectedRevisions?.[name] || options.expectedRevision;
-        const existingChild = await preparePlanFileStrict(filePath);
+        const existingChild = currentPackageProject()
+            ? await loadPlanStrict(cwd, name)
+            : await preparePlanFileStrict(filePath);
         if (existingChild.kind === "loaded") {
             assertSharedPlanWriteAllowed(existingChild.attrs, options);
             if (existingChild.attrs.status !== "draft") {
@@ -2529,8 +2614,10 @@ export async function saveChildFeaturePlans(cwd, epicPlanName, children, options
             metadata.tickets = normalizeTicketReferences(child.tickets);
         } else if (action === "updated") {
             try {
-                const existing = parsePlanFrontMatter(await fsReadFile(filePath, "utf8")).attrs;
-                const tickets = normalizeTicketReferences(existing.tickets);
+                const existing = currentPackageProject()
+                    ? (await loadPlan(cwd, name))?.attrs
+                    : parsePlanFrontMatter(await fsReadFile(filePath, "utf8")).attrs;
+                const tickets = normalizeTicketReferences(existing?.tickets);
                 if (tickets) metadata.tickets = tickets;
             } catch {
                 // Best-effort preservation; savePlan will surface unreadable-file errors.
@@ -2567,6 +2654,8 @@ export async function saveChildFeaturePlans(cwd, epicPlanName, children, options
  * @returns {Promise<string>} The full path where the plan was saved
  */
 export async function savePlan(cwd, planName, content, fmOverrides = {}, options = {}) {
+    const localPath = await saveLocalHomePlan(cwd, planName, content, fmOverrides, options);
+    if (localPath !== null) return localPath;
     assertNotReservedEpicArtifactPlanName(planName);
     await prepareWorktreeRegistry(cwd);
     return await withPlanCatalogLock(
@@ -2754,7 +2843,11 @@ export async function updatePlanStatus(cwd, planName, status, recoveryAttrs = {}
  * @returns {Promise<PlanFrontMatter>}
  */
 export async function updatePlanFrontMatter(cwd, planName, updates, recoveryAttrs = {}, options = {}) {
-    if (currentPackageSelection())
+    if (!currentPackageSelection() && inspectLocalHomeStore(cwd).kind === "local")
+        return await withLocalPlanWorkflow(cwd, planName, () =>
+            updatePlanFrontMatter(cwd, planName, updates, recoveryAttrs, options),
+        );
+    if (currentPackageProject())
         return await updatePackageWorkflowMetadata(planName, updates, options.expectedRevision);
     return await withPlanLock(cwd, planName, async () => {
         const result = await preparePlanFileStrict(getStoredPlanPath(cwd, planName));
@@ -2827,7 +2920,7 @@ export async function updatePlanFrontMatter(cwd, planName, updates, recoveryAttr
  * @returns {Promise<PlanFrontMatter>}
  */
 export async function updatePlanCollaborationMetadata(cwd, planName, updates, collaborationLockBypass, options = {}) {
-    const selection = currentPackageSelection();
+    const selection = currentPackageProject();
     if (selection)
         return await packageWorkflowLocks([planName], async () => {
             const plan = await selectedPackage(planName);
@@ -2839,7 +2932,7 @@ export async function updatePlanCollaborationMetadata(cwd, planName, updates, co
                 const document = plan.documents.find((entry) => entry.name === "context.md");
                 if (!document) throw new Error("Plan context is unavailable.");
                 await savePlanPackageDocument(
-                    selection.identity,
+                    selection,
                     plan.metadata.planId,
                     "context.md",
                     document.hash,
@@ -3086,9 +3179,21 @@ export function comparePlansForList(a, b) {
  * @returns {Promise<Array<{ name: string, path: string, attrs: PlanFrontMatter, readAvailability?: PlanReadAvailability }>>}
  */
 export async function listPlans(cwd) {
-    const packageSelection = currentPackageSelection();
+    return await readLocalHomeStore(
+        cwd,
+        () => listPlansInProject(cwd),
+        () => [],
+    );
+}
+
+/**
+ * @param {string} cwd
+ * @returns {ReturnType<typeof listPlans>}
+ */
+async function listPlansInProject(cwd) {
+    const packageSelection = currentPackageProject();
     if (packageSelection) {
-        const catalog = await listPlanPackages(packageSelection.identity);
+        const catalog = await listPlanPackages(packageSelection);
         if (catalog.issues.length) throw new Error(catalog.issues[0].message);
         return await Promise.all(
             catalog.packages.map(async (p) => ({
@@ -3277,7 +3382,19 @@ async function readPlansWithTargetChildren(cwd, onlyEpic, display) {
  * @returns {Promise<Array<{ name: string, path: string, attrs: PlanFrontMatter, readAvailability?: PlanReadAvailability }>>}
  */
 export async function listPlanDocuments(cwd) {
-    if (currentPackageSelection()) return await listPlans(cwd);
+    return await readLocalHomeStore(
+        cwd,
+        () => listPlanDocumentsInProject(cwd),
+        () => [],
+    );
+}
+
+/**
+ * @param {string} cwd
+ * @returns {ReturnType<typeof listPlanDocuments>}
+ */
+async function listPlanDocumentsInProject(cwd) {
+    if (currentPackageProject()) return await listPlans(cwd);
     /** @type {Array<{ name: string, path: string, attrs: PlanFrontMatter, readAvailability?: PlanReadAvailability }>} */
     const plans = [];
     /** @type {PlanParseIssue[]} */
@@ -3447,6 +3564,32 @@ async function resolveArchivedPlanNameOrId(cwd, archivedPlanNameOrId) {
  * @returns {Promise<{ name: string, fromPath: string, toPath: string, relativePath: string, attrs: PlanFrontMatter, artifacts?: Array<{ fileName: string, relativePath: string }> }>}
  */
 export async function archivePlan(cwd, planNameOrId, options = {}) {
+    if (!currentPackageProject() && (await inspectLocalHomeStore(cwd)).kind === "local")
+        return await withLocalPlanWorkflow(cwd, planNameOrId, () => archivePlan(cwd, planNameOrId, options));
+    const owner = currentPackageProject();
+    if (owner)
+        return await packageWorkflowLocks([planNameOrId], async () => {
+            const selected = await selectedPackage(planNameOrId);
+            const source = await loadPackageWorkflowPlan({ planId: selected.metadata.planId });
+            const worktreeStatus = options.abandonedWorktree ? "abandoned" : source.attrs.worktreeStatus;
+            if (isRecoverableWorktreeStatus(worktreeStatus))
+                throw new Error(
+                    `Cannot archive ${selected.metadata.name}: worktreeStatus ${worktreeStatus} is recoverable.`,
+                );
+            if (!isTerminalArchivableStatus(source.attrs.status) && !options.force)
+                throw new Error(
+                    `Cannot archive ${selected.metadata.name} with status ${source.attrs.status} without --force.`,
+                );
+            await archivePlanPackage(owner, selected.metadata.planId, selected.metadata.revision, options.reason || "");
+            return {
+                name: selected.metadata.name,
+                fromPath: source.path,
+                toPath: source.path,
+                relativePath: projectRelativePath(cwd, source.path),
+                attrs: source.attrs,
+                artifacts: [],
+            };
+        });
     const source = await resolveActivePlanNameOrId(cwd, planNameOrId);
     cwd = getPlanDocumentRoot(source.path);
     if (source.name.split("/")[0] === ARCHIVED_DIR_NAME) {
@@ -3644,6 +3787,36 @@ export async function archivePlansByStatus(cwd, status, options = {}) {
  * @returns {Promise<ArchivedPlanEntry[]>}
  */
 export async function listArchivedPlans(cwd) {
+    return await readLocalHomeStore(
+        cwd,
+        () => listArchivedPlansInProject(cwd),
+        () => [],
+    );
+}
+/** @param {string} cwd @returns {Promise<ArchivedPlanEntry[]>} */
+async function listArchivedPlansInProject(cwd) {
+    const owner = currentPackageProject();
+    if (owner) {
+        const catalog = await listPlanPackages(owner, true);
+        if (catalog.issues.length) throw new Error(catalog.issues[0].message);
+        return await Promise.all(
+            catalog.packages
+                .filter((p) => p.metadata.archive && !p.metadata.archive.restoredAt)
+                .map(async (p) => {
+                    const plan = await loadPackageWorkflowPlan({ planId: p.metadata.planId });
+                    return {
+                        name: p.metadata.name,
+                        planName: p.metadata.name,
+                        path: plan.path,
+                        relativePath: projectRelativePath(cwd, plan.path),
+                        attrs: plan.attrs,
+                        status: plan.attrs.status,
+                        summary: plan.attrs.summary || "",
+                        planId: p.metadata.planId,
+                    };
+                }),
+        );
+    }
     const dir = getArchivedPlansDir(cwd);
     /** @type {Array<{ name: string, path: string, attrs: PlanFrontMatter, readAvailability?: PlanReadAvailability }>} */
     const results = [];
@@ -3710,6 +3883,9 @@ export async function listArchivedPlans(cwd) {
  * @returns {Promise<string[]>}
  */
 export async function deleteArchivedPlanUnit(cwd, archivedPlanName) {
+    const owner = inspectLocalHomeStore(cwd);
+    if (owner.kind === "local" || owner.kind === "empty")
+        throw new Error("Personal Plan history retention is not enabled; archived home packages remain available.");
     const location = getArchivedPlanLocation(cwd, archivedPlanName);
     if (location.segments.length !== 1) {
         throw new Error(`Archived Plan prune target must be top-level: ${archivedPlanName}`);
@@ -3821,6 +3997,27 @@ async function loadArchivedPlanByName(cwd, archivedPlanName) {
  * @returns {Promise<ArchivedPlanDocument | null>}
  */
 export async function loadArchivedPlan(cwd, archivedPlanNameOrId) {
+    return await readLocalHomeStore(
+        cwd,
+        () => loadArchivedPlanInProject(cwd, archivedPlanNameOrId),
+        () => null,
+    );
+}
+/** @param {string} cwd @param {string} archivedPlanNameOrId @returns {Promise<ArchivedPlanDocument | null>} */
+async function loadArchivedPlanInProject(cwd, archivedPlanNameOrId) {
+    const owner = currentPackageProject();
+    if (owner) {
+        const catalog = await listPlanPackages(owner, true);
+        if (catalog.issues.length) throw new Error(catalog.issues[0].message);
+        const selected = catalog.packages.find(
+            (p) => p.metadata.name === archivedPlanNameOrId || p.metadata.planId === archivedPlanNameOrId,
+        );
+        if (!selected?.metadata.archive || selected.metadata.archive.restoredAt) return null;
+        return {
+            ...(await loadPackageWorkflowPlan({ planId: selected.metadata.planId })),
+            name: selected.metadata.name,
+        };
+    }
     const name = getArchivedPlanLocation(cwd, archivedPlanNameOrId).name;
     let attempts;
     try {
@@ -3856,6 +4053,16 @@ export async function loadArchivedPlan(cwd, archivedPlanNameOrId) {
  * @returns {Promise<PlanFrontMatter>}
  */
 export async function updateArchivedPlanFrontMatter(cwd, archivedPlanNameOrId, updates) {
+    if (!currentPackageProject() && inspectLocalHomeStore(cwd).kind === "local")
+        return await withLocalProjectAction(cwd, () =>
+            updateArchivedPlanFrontMatter(cwd, archivedPlanNameOrId, updates),
+        );
+    if (currentPackageProject()) {
+        const archived = await loadArchivedPlan(cwd, archivedPlanNameOrId);
+        if (!archived) throw new Error(`Archived Plan not found: ${archivedPlanNameOrId}`);
+        const current = await loadPackageWorkflowPlan(archived.name);
+        return await updatePackageWorkflowMetadata(archived.name, updates, current.revision);
+    }
     await prepareWorktreeRegistry(cwd);
     const plan = await loadArchivedPlan(cwd, archivedPlanNameOrId);
     if (!plan) throw new Error(`Archived Plan not found: ${archivedPlanNameOrId}`);
@@ -3874,6 +4081,30 @@ export async function updateArchivedPlanFrontMatter(cwd, archivedPlanNameOrId, u
  * @returns {Promise<{ name: string, fromPath: string, toPath: string, relativePath: string, attrs: PlanFrontMatter, artifacts?: Array<{ fileName: string, relativePath: string }> }>}
  */
 export async function restoreArchivedPlan(cwd, archivedPlanNameOrId, options = {}) {
+    if (!currentPackageProject() && (await inspectLocalHomeStore(cwd)).kind === "local")
+        return await withLocalProjectAction(cwd, () => restoreArchivedPlan(cwd, archivedPlanNameOrId, options));
+    const owner = currentPackageProject();
+    if (owner) {
+        const archived = await loadArchivedPlan(cwd, archivedPlanNameOrId);
+        if (!archived) throw new Error(`Archived Plan not found: ${archivedPlanNameOrId}`);
+        return await packageWorkflowLocks([archived.name], async () => {
+            let selected = await selectedPackage(archived.name);
+            if (options.to && options.to !== archived.name) {
+                await renamePlanPackage(owner, selected.metadata.planId, selected.metadata.revision, options.to);
+                selected = await selectedPackage({ planId: selected.metadata.planId });
+            }
+            await restorePlanPackage(owner, selected.metadata.planId, selected.metadata.revision);
+            const restored = await loadPackageWorkflowPlan({ planId: selected.metadata.planId });
+            return {
+                name: selected.metadata.name,
+                fromPath: archived.path,
+                toPath: restored.path,
+                relativePath: projectRelativePath(cwd, restored.path),
+                attrs: restored.attrs,
+                artifacts: [],
+            };
+        });
+    }
     await prepareWorktreeRegistry(cwd);
     const archived = await resolveArchivedPlanNameOrId(cwd, archivedPlanNameOrId);
     cwd = getPlanDocumentRoot(archived.path);
@@ -4165,7 +4396,9 @@ async function ensurePlanIdentityLocked(cwd, planName, options = {}) {
  * @returns {Promise<PlanResource>}
  */
 export async function ensurePlanIdentity(cwd, planName, options = {}) {
-    if (currentPackageSelection())
+    if (!currentPackageSelection() && inspectLocalHomeStore(cwd).kind === "local")
+        return await withLocalPlanWorkflow(cwd, planName, () => ensurePlanIdentity(cwd, planName, options));
+    if (currentPackageProject())
         return await findPlanEvidenceById(cwd, (await selectedPackage(planName)).metadata.planId);
     return await withPlanCatalogLock(cwd, async () => await ensurePlanIdentityLocked(cwd, planName, options));
 }
@@ -4193,7 +4426,9 @@ export async function ensurePlanIdentity(cwd, planName, options = {}) {
  * @returns {Promise<{ resource: PlanResource, onboarded: boolean }>}
  */
 export async function onboardExternalPlan(cwd, planName, options = {}) {
-    if (currentPackageSelection()) return { resource: await ensurePlanIdentity(cwd, planName), onboarded: false };
+    if (!currentPackageSelection() && inspectLocalHomeStore(cwd).kind === "local")
+        return await withLocalPlanWorkflow(cwd, planName, () => onboardExternalPlan(cwd, planName, options));
+    if (currentPackageProject()) return { resource: await ensurePlanIdentity(cwd, planName), onboarded: false };
     const { name } = canonicalizeStoredPlanName(planName);
     const existing = await loadPlan(cwd, name);
     if (!existing) throw new Error(`Plan not found: ${planName}`);
@@ -4248,7 +4483,19 @@ export async function onboardExternalPlan(cwd, planName, options = {}) {
  * @returns {Promise<PlanResource[]>}
  */
 export async function listPlanResources(cwd) {
-    if (currentPackageSelection()) return (await readPlanResourceCatalog(cwd)).resources;
+    return await readLocalHomeStore(
+        cwd,
+        () => listPlanResourcesInProject(cwd),
+        () => [],
+    );
+}
+
+/**
+ * @param {string} cwd
+ * @returns {ReturnType<typeof listPlanResources>}
+ */
+async function listPlanResourcesInProject(cwd) {
+    if (currentPackageProject()) return (await readPlanResourceCatalog(cwd)).resources;
     return (await readPlanResources(cwd, false)).resources;
 }
 
@@ -4258,9 +4505,21 @@ export async function listPlanResources(cwd) {
  * @returns {Promise<{ resources: PlanResource[], diagnostics: PlanDocumentDiagnostic[] }>}
  */
 export async function readPlanResourceCatalog(cwd) {
-    const selection = currentPackageSelection();
+    return await readLocalHomeStore(
+        cwd,
+        () => readPlanResourceCatalogInProject(cwd),
+        () => ({ resources: [], diagnostics: [] }),
+    );
+}
+
+/**
+ * @param {string} cwd
+ * @returns {ReturnType<typeof readPlanResourceCatalog>}
+ */
+async function readPlanResourceCatalogInProject(cwd) {
+    const selection = currentPackageProject();
     if (selection) {
-        const catalog = await listPlanPackages(selection.identity);
+        const catalog = await listPlanPackages(selection);
         const resources = await Promise.all(
             catalog.packages.map(async (entry) => {
                 const loaded = await loadPackageWorkflowPlan({ planId: entry.metadata.planId });
@@ -4404,7 +4663,17 @@ export async function findPlanById(cwd, planId) {
  * @returns {Promise<PlanResource>}
  */
 export async function findPlanEvidenceById(cwd, planId) {
-    if (currentPackageSelection()) {
+    return await readLocalHomeStore(
+        cwd,
+        () => findPlanEvidenceByIdInProject(cwd, planId),
+        () => {
+            throw new PlanNotFoundError(planId);
+        },
+    );
+}
+/** @param {string} cwd @param {string} planId @returns {Promise<PlanResource>} */
+async function findPlanEvidenceByIdInProject(cwd, planId) {
+    if (currentPackageProject()) {
         const plan = await loadPackageWorkflowPlan({ planId });
         const entry = await selectedPackage({ planId });
         return {
@@ -4465,13 +4734,23 @@ export async function findPlanEvidenceById(cwd, planId) {
  * @returns {Promise<PlanBodyResource>}
  */
 export async function loadPlanBodyById(cwd, planId) {
+    return await readLocalHomeStore(
+        cwd,
+        () => loadPlanBodyByIdInProject(cwd, planId),
+        () => {
+            throw new PlanNotFoundError(planId);
+        },
+    );
+}
+/** @param {string} cwd @param {string} planId @returns {Promise<PlanBodyResource>} */
+async function loadPlanBodyByIdInProject(cwd, planId) {
     const resource = await findPlanById(cwd, planId);
-    if (isProjectPlan(resource.attrs)) {
+    if (!currentPackageProject() && isProjectPlan(resource.attrs)) {
         throw new Error("Epic Plan bodies are not editable in the workspace body editor.");
     }
     const markdown = resource.markdown;
-    if (!currentPackageSelection()) parsePlanFrontMatter(markdown);
-    const body = currentPackageSelection() ? markdown : splitPlanMarkdownBody(markdown).body;
+    if (!currentPackageProject()) parsePlanFrontMatter(markdown);
+    const body = currentPackageProject() ? markdown : splitPlanMarkdownBody(markdown).body;
     return {
         ...resource,
         body,
@@ -4490,7 +4769,11 @@ export async function loadPlanBodyById(cwd, planId) {
  * @returns {Promise<PlanBodyResource>}
  */
 export async function savePlanBodyById(cwd, planId, newBody, expectedBodyHash, options = {}) {
-    const selection = currentPackageSelection();
+    if (!currentPackageProject() && inspectLocalHomeStore(cwd).kind === "local")
+        return await withLocalProjectAction(cwd, () =>
+            savePlanBodyById(cwd, planId, newBody, expectedBodyHash, options),
+        );
+    const selection = currentPackageProject();
     if (selection) {
         return await packageWorkflowLocks([{ planId }], async () => {
             const resource = await findPlanEvidenceById(cwd, planId);
@@ -4499,7 +4782,7 @@ export async function savePlanBodyById(cwd, planId, newBody, expectedBodyHash, o
                 throw new StalePlanWriteError(options.expectedRevision || "required", resource.revision);
             const actual = await hashPlanBody(resource.body);
             if (actual !== expectedBodyHash) throw new StalePlanBodyError(expectedBodyHash, actual);
-            await savePlanPackageDocument(selection.identity, planId, "context.md", actual, newBody);
+            await savePlanPackageDocument(selection, planId, "context.md", actual, newBody);
             return { ...(await findPlanEvidenceById(cwd, planId)), bodyHash: await hashPlanBody(newBody) };
         });
     }
@@ -4557,10 +4840,23 @@ export async function savePlanBodyById(cwd, planId, newBody, expectedBodyHash, o
  * @returns {Promise<Array<{ name: string, path: string, attrs: PlanFrontMatter, readAvailability?: PlanReadAvailability }>>}
  */
 export async function findPlansByParent(cwd, parentPlan) {
-    const packageSelection = currentPackageSelection();
+    return await readLocalHomeStore(
+        cwd,
+        () => findPlansByParentInProject(cwd, parentPlan),
+        () => [],
+    );
+}
+
+/**
+ * @param {string} cwd
+ * @param {string} parentPlan
+ * @returns {ReturnType<typeof findPlansByParent>}
+ */
+async function findPlansByParentInProject(cwd, parentPlan) {
+    const packageSelection = currentPackageProject();
     if (packageSelection) {
         const parent = await selectedPackage(parentPlan);
-        const catalog = await listPlanPackages(packageSelection.identity);
+        const catalog = await listPlanPackages(packageSelection);
         if (catalog.issues.length) throw new Error(catalog.issues[0].message);
         return (
             await Promise.all(
@@ -4764,7 +5060,17 @@ export function countChildPlanProgress(children) {
  * @returns {Promise<{ path: string, markdown: string, attrs: PlanFrontMatter, body: string, revision: string, planName: string, hasFrontMatter?: boolean, readAvailability?: PlanReadAvailability }>}
  */
 export async function resolvePlan(cwd, arg) {
-    if (currentPackageSelection()) return { ...(await loadPackageWorkflowPlan(arg)), planName: arg };
+    return await readLocalHomeStore(
+        cwd,
+        () => resolvePlanInProject(cwd, arg),
+        () => {
+            throw new Error(`Plan not found: ${arg}. Import an external Plan explicitly first.`);
+        },
+    );
+}
+/** @param {string} cwd @param {string} arg */
+async function resolvePlanInProject(cwd, arg) {
+    if (currentPackageProject()) return { ...(await loadPackageWorkflowPlan(arg)), planName: arg };
     try {
         const plan = await loadPlan(cwd, arg);
         if (plan) {

@@ -1,3 +1,9 @@
+import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";
+import { applySharedPlanReviewDecision } from "../shared/workflow/plan-review-actions.ts";
+import { capturePackageWorkflowInput } from "../shared/workflow/package-workflow.ts";
+import { admitProjectIdentity } from "../shared/project-identity.ts";
+import { withRetainedCheckoutSource } from "../shared/legacy-plan-source.ts";
+import { importPlanPackages } from "../shared/plan-package-store.ts";
 import process from "node:process";
 import {
     mkdir as fsMkdir,
@@ -26,17 +32,45 @@ const LINKED_REVIEW_GIT = defineCommittedGitFixture();
 
 const EXTENSION_CONTEXT = {} as ExtensionToolContext;
 
-test("plan_written recovers old controller files and opens review after migration", async () => {
+async function acceptCurrentReview(cwd: string, planName: string) {
+    const plan = await loadPlan(cwd, planName);
+    if (!plan) throw new Error("Plan unavailable");
+    const evidence = await loadPlanActionEvidence(cwd, plan.attrs.planId!);
+    if (evidence.kind !== "success") throw new Error(evidence.message);
+    return await applySharedPlanReviewDecision({
+        cwd,
+        planName,
+        planPath: plan.path,
+        planWithFrontMatter: plan.markdown,
+        planRevision: plan.revision,
+        originalAttrs: plan.attrs,
+        trustedClassification: plan.attrs.classification,
+        reviewEvidence: evidence.evidence,
+        packageInput: await capturePackageWorkflowInput(planName),
+        decision: {
+            approved: true,
+            approvalAction: "later",
+            executionAgent: "engineer",
+            collaborationRecommendation: "autonomous",
+        },
+    });
+}
+
+test("plan_written reviews an explicitly imported legacy Plan after controller migration", async () => {
     await withRuntimeCommandFixture("plan-written-old-runtime-", async ({ projectRoot }) => {
         const sandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
         delete process.env["WLD_TEST_SANDBOX_HOME"];
         const hostedSession = new HostedSession({ id: "plan-written-recovery", cwd: projectRoot });
         try {
-            await savePlan(projectRoot, "demo", "# Demo\n\nKeep the implementation.", {
-                planId: "demo",
-                classification: "PLANNED_CHANGE",
-                status: "approved",
-            });
+            const admitted = await admitProjectIdentity(projectRoot);
+            if (admitted.kind !== "existing") throw new Error("Project admission failed");
+            await withRetainedCheckoutSource(admitted.identity, () =>
+                savePlan(projectRoot, "demo", "# Demo\n\nKeep the implementation.", {
+                    planId: "demo",
+                    classification: "PLANNED_CHANGE",
+                    status: "approved",
+                }),
+            );
             await enterProjectRuntime(projectRoot);
             const layout = resolveProjectRuntimeLayout(projectRoot);
             const current = await fsReadFile(join(layout.primary.controllerPlansDir, "demo.json"), "utf8");
@@ -45,6 +79,8 @@ test("plan_written recovers old controller files and opens review after migratio
             await fsWriteFile(join(legacyDirectory, "demo.json"), current);
             await fsWriteFile(join(projectRoot, ".wld", "worktrees.json"), '{"version":2,"entries":[]}');
             await fsMkdir(join(projectRoot, ".wld", "plan-locks"), { recursive: true });
+            const imported = await importPlanPackages(admitted.identity, join(projectRoot, "docs/plans/demo.md"));
+            assertEquals(imported.kind, "committed");
             let reviews = 0;
             hostedSession.setInteractionAdapter({
                 requestInteraction: async (request) => {
@@ -53,7 +89,7 @@ test("plan_written recovers old controller files and opens review after migratio
                     const plan = await loadPlan(projectRoot, "demo");
                     return {
                         outcome: "accepted",
-                        _meta: { approved: true, approvalAction: "later", revision: plan?.revision },
+                        _meta: { ...(await acceptCurrentReview(projectRoot, "demo")) },
                     };
                 },
             });
@@ -221,7 +257,7 @@ test("plan_written returns a conversation outcome and the reply-or-revise rule w
     });
 });
 
-test("plan_written reviews a Plan that exists only in an unregistered linked checkout", async () => {
+test("plan_written reviews a canonical Plan from an unregistered linked checkout", async () => {
     await withRuntimeCommandFixture("plan-written-linked-", async ({ homeDir, alternateRoot }) => {
         const primary = await LINKED_REVIEW_GIT.checkout();
         const linked = join(alternateRoot, "linked");
@@ -245,7 +281,7 @@ test("plan_written reviews a Plan that exists only in an unregistered linked che
             const primaryStatus = await git(primary, ["status", "--porcelain"]);
             let reviewed = false;
             handle.runtime.setInteractionAdapter(handle.adoptedSessionId, {
-                requestInteraction: (request) => {
+                requestInteraction: async (request) => {
                     if (request.type !== "plan_review") return { outcome: "canceled" };
                     assertEquals(request._meta?.planId, "linked-only-id");
                     assertEquals(request._meta?.planPath, plan.path);
@@ -261,7 +297,7 @@ test("plan_written reviews a Plan that exists only in an unregistered linked che
                     reviewed = true;
                     return {
                         outcome: "accepted",
-                        _meta: { approved: true, approvalAction: "later", revision: plan.revision },
+                        _meta: { ...(await acceptCurrentReview(linked, "linked-only")) },
                     };
                 },
             });
@@ -301,8 +337,6 @@ test("plan_written reviews a Plan that exists only in an unregistered linked che
 
 test("submitting plain Plan text assigns identity before review", async () => {
     await withRuntimeCommandFixture("plain-plan-review-", async ({ projectRoot }) => {
-        await fsMkdir(join(projectRoot, "docs/plans"), { recursive: true });
-        await fsWriteFile(join(projectRoot, "docs/plans/plain.md"), "# Plain Plan\n\nImplement the change.\n");
         const session = new HostedSession({ id: "plain-plan-review", cwd: projectRoot });
         let reviewed = false;
         session.setInteractionAdapter({
@@ -317,7 +351,7 @@ test("submitting plain Plan text assigns identity before review", async () => {
         try {
             await createPlanWrittenTool({ hostedSession: session }).execute(
                 "submit-plain",
-                { planName: "plain" },
+                { planName: "plain", contextMarkdown: "# Plain Plan\n\nImplement the change.\n" },
                 undefined,
                 undefined,
                 EXTENSION_CONTEXT,

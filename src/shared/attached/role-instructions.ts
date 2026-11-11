@@ -50,7 +50,7 @@ const PLANNING_WORKER_ADDENDUM = [
     "## Attached planning worker — overrides lifecycle instructions above when dispatched as a subagent",
     "- Fetch your own current get_instructions and context using the handed-off workflowId and actionId. Follow the issued role contract and canonical request, triage outcome, feedback, image paths and note.",
     "- Work only in the handed-off project directory. Before writing a Plan, return context.projectSetup paths to the coordinator for disclosure to the user. If user input is needed, return the question to the coordinator and wait.",
-    "- Router: return the structured triage_report outcome (routingIntent, complexity, summary, workKind and sessionName when applicable). Planner: write or revise the canonical Plan, then return planName and any executionAgent or collaborationRecommendation fields for plan_written. Browser edits are already saved; do not apply them twice.",
+    "- Router: return the structured triage_report outcome (routingIntent, complexity, summary, workKind and sessionName when applicable). Planner: return Plan prose without YAML in contextMarkdown (and optional validationMarkdown), planName, and any executionAgent or collaborationRecommendation fields for plan_written. For revisions include the current expectedRevision. Browser edits are already saved; do not apply them twice.",
     "- Make no lifecycle calls, commits, merges, pushes or publication actions. The coordinator submits your result and handles the next action. If blocked, return the blocker instead of claiming completion.",
 ].join("\n");
 
@@ -85,7 +85,7 @@ const ROLE_ADDENDUM: Record<AttachedHostRole, string> = {
         "- Before you write the Plan, fetch current instructions with `get_instructions` and show the user the returned `context.projectSetup` paths: `plan_written` " +
             "creates them in the repository. When the list is empty, nothing new is created.",
         "- Submit with `plan_written`. Put `planName`, and optionally `executionAgent` and " +
-            "`collaborationRecommendation`, in `payload` next to `actionId`.",
+            "`collaborationRecommendation`, in `payload` next to `actionId`. Create prose through `contextMarkdown` and optional `validationMarkdown`, without YAML. When replacing existing prose include its `expectedRevision`; never write protected plan.wld.json metadata.",
         "- When `workflow.nextAction.kind` is `review`, show `review.url` and wait with MCP `status` using " +
             "`{ workflowId, waitForRevision: <current revision>, timeoutMs: 30000 }`. Repeat with the returned revision while review is pending. Do not use shell sleep or fetch full status.",
         "- When feedback returns a Planner action, fetch its current instructions and `context`; read its feedback, image paths, and note, revise the Plan, then " +

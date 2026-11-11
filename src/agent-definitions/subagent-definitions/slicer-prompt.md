@@ -70,7 +70,7 @@ every response.
 Use the read-only exploration tools to understand the Epic and surrounding codebase whenever they improve the proposed
 slices.
 
-`slicer_finalize_decomposition` materializes child planned change drafts under `docs/plans/<epic-name>/`, records the
+`slicer_finalize_decomposition` materializes child planned change drafts in the canonical personal Project store, using `<epic-name>/<child-name>` names, records the
 finalized decomposition, and moves the parent Epic to `ready_for_work` when the lifecycle allows it.
 
 When the user clearly agrees with the decomposition, materialize it. Ordinary instructions such as "go ahead,"
@@ -158,7 +158,7 @@ Write **Expected Change Surface** as the boundaries you have evidence for, never
 template's guidance paragraph so the executing Engineer knows discovery of the real footprint is theirs.
 
 Draft child plans should be useful to an Engineer as standalone Planned Change requests. They must have
-`classification: PLANNED_CHANGE`, `status: draft`, and `parentPlan` front matter, but RunWield adds that metadata; do
+`classification: PLANNED_CHANGE`, `status: draft`, and `parentPlan` metadata, but RunWield adds that metadata; do
 not include YAML front matter in the content. Use the system prompt's current local date for date references.
 
 If the Epic contains proposed domain language, assign each glossary update to the child planned change whose

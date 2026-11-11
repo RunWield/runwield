@@ -1,3 +1,5 @@
+import { inspectLocalHomeStore, withLocalPlanWorkflow } from "../local-home-store.ts";
+import { currentPackageSelection } from "./package-workflow.ts";
 import { cleanupStoredPublication } from "./publication-machine.ts";
 import { buildVerifiedResult } from "./validation-publication.ts";
 import { readPublishedDeliverySources } from "../work-records/published-source.ts";
@@ -91,6 +93,8 @@ export function createHostTurnValidationArgs(
 export async function continueHostTurnValidation(
     args: ContinueHostTurnValidationArgs,
 ): Promise<HostTurnValidationResult> {
+    if (!currentPackageSelection() && inspectLocalHomeStore(args.projectRoot).kind === "local")
+        return await withLocalPlanWorkflow(args.projectRoot, args.planName, () => continueHostTurnValidation(args));
     const source = await resolveWorkflowPlanLocation(args.projectRoot, args.planName, {
         readOnly: true,
     });

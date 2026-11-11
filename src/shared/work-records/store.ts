@@ -1,3 +1,5 @@
+import { readLocalHomeStore, withLocalProjectAction, inspectLocalHomeStore } from "../local-home-store.ts";
+import { currentWorkRecordOwner } from "./owner.ts";
 import { assertWorkRecordPath, workRecordOwnerLayout, withWorkRecordMutation } from "./owner.ts";
 import { recoverWindowsRename } from "../native-file-replace-windows.ts";
 import fs from "node:fs/promises";
@@ -74,6 +76,17 @@ function relativeWorkRecordPath(cwd: string, filePath: string) {
 }
 
 export async function readWorkRecord(cwd: string, fileName: string): Promise<WorkRecordResource> {
+    if (!currentWorkRecordOwner())
+        return await readLocalHomeStore(
+            cwd,
+            () => readWorkRecordInOwner(cwd, fileName),
+            () => {
+                throw new Error(`Work Record not found: ${fileName}`);
+            },
+        );
+    return await readWorkRecordInOwner(cwd, fileName);
+}
+async function readWorkRecordInOwner(cwd: string, fileName: string): Promise<WorkRecordResource> {
     const filePath = resolveWorkRecordPath(cwd, fileName);
     const markdown = await fsReadFile(filePath, "utf8");
     try {
@@ -93,6 +106,15 @@ export async function listWorkRecords(
     cwd: string,
     options: ListWorkRecordsOptions = {},
 ): Promise<WorkRecordResource[]> {
+    if (!currentWorkRecordOwner())
+        return await readLocalHomeStore(
+            cwd,
+            () => listWorkRecordsInOwner(cwd, { ...options, createDir: false }),
+            () => [],
+        );
+    return await listWorkRecordsInOwner(cwd, options);
+}
+async function listWorkRecordsInOwner(cwd: string, options: ListWorkRecordsOptions): Promise<WorkRecordResource[]> {
     const dir = options.createDir === false ? getWorkRecordsDir(cwd) : await ensureWorkRecordsDir(cwd);
     if (options.createDir === false) {
         try {
@@ -147,6 +169,9 @@ export async function writeWorkRecord(
     body: string,
     options: WriteWorkRecordOptions = {},
 ): Promise<WorkRecordResource> {
+    const source = inspectLocalHomeStore(cwd);
+    if (!currentWorkRecordOwner() && (source.kind === "local" || source.kind === "empty"))
+        return await withLocalProjectAction(cwd, () => writeWorkRecord(cwd, attrs, body, options));
     return await withWorkRecordMutation(() => writeWorkRecordUnlocked(cwd, attrs, body, options));
 }
 
@@ -214,7 +239,10 @@ async function syncDirectory(directory: string) {
 /**
  * Delete one canonical Work Record only when its path and identity still match.
  */
-export async function deleteWorkRecord(cwd: string, currentRecord: WorkRecordResource) {
+export async function deleteWorkRecord(cwd: string, currentRecord: WorkRecordResource): Promise<void> {
+    const source = inspectLocalHomeStore(cwd);
+    if (!currentWorkRecordOwner() && (source.kind === "local" || source.kind === "empty"))
+        return await withLocalProjectAction(cwd, () => deleteWorkRecord(cwd, currentRecord));
     return await withWorkRecordMutation(() => deleteWorkRecordUnlocked(cwd, currentRecord));
 }
 
@@ -250,6 +278,9 @@ export async function replaceWorkRecord(
     currentRecord: WorkRecordResource,
     markdown: string,
 ): Promise<WorkRecordResource> {
+    const source = inspectLocalHomeStore(cwd);
+    if (!currentWorkRecordOwner() && (source.kind === "local" || source.kind === "empty"))
+        return await withLocalProjectAction(cwd, () => replaceWorkRecord(cwd, currentRecord, markdown));
     return await withWorkRecordMutation(() => replaceWorkRecordUnlocked(cwd, currentRecord, markdown));
 }
 

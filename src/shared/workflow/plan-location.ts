@@ -1,5 +1,8 @@
+import { inspectLocalHomeStore, selectLocalPlanWorkflow } from "../local-home-store.ts";
 import {
     currentPackageSelection,
+    currentPackageProject,
+    withPackageProject,
     selectedPackage,
     withPackageWorkflow,
     loadPackageWorkflowPlan,
@@ -41,6 +44,7 @@ type PlanningAttributes = NonNullable<Awaited<ReturnType<typeof loadPlan>>>["att
 
 /** A target-backed unfinished Plan starts or refreshes its isolated document at session start. */
 export function needsSessionPlanningWorktree(attrs: PlanningAttributes): boolean {
+    if (currentPackageProject()) return false;
     return Boolean(
         effectiveDeliveryBranch(attrs) &&
         (attrs.parentPlan || attrs.deliveryBranch) &&
@@ -67,7 +71,24 @@ export async function resolveWorkflowPlanLocation(
     cwd: string,
     planName: string,
     options: ResolveWorkflowPlanLocationOptions = {},
-) {
+): Promise<Awaited<ReturnType<typeof resolveWorkflowPlanLocationInScope>>> {
+    if (!options.packageSelection && !currentPackageSelection()) {
+        const store = inspectLocalHomeStore(cwd);
+        if (store.kind === "empty") return { registryRoot: cwd, documentRoot: cwd, plan: null };
+        if (store.kind === "local") {
+            const selection = await selectLocalPlanWorkflow(cwd, planName);
+            return await withPackageProject(cwd, store.identity, async () => {
+                const plan = await loadPackageWorkflowPlan({ planId: selection!.planId });
+                return {
+                    registryRoot: store.identity.checkoutRoot,
+                    documentRoot: cwd,
+                    plan,
+                    packageSelection: selection,
+                    resumeInterruptedPreparation: Boolean(plan.attrs.worktreeId),
+                };
+            });
+        }
+    }
     if (options.packageSelection)
         return await withPackageWorkflow(
             cwd,

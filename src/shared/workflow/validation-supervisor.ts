@@ -1,3 +1,4 @@
+import { inspectLocalHomeStore, withLocalPlanWorkflow } from "../local-home-store.ts";
 import { recoverPackageRecordingPreparation } from "./package-publication.ts";
 import { currentPackageSelection, selectedPackage, assertPackageWorkflowInput } from "./package-workflow.ts";
 import { preparePlanController } from "./plan-preparation.ts";
@@ -186,6 +187,11 @@ async function settleValidation(
     result: WorkflowValidationResult,
     planCwd: string,
 ): Promise<void> {
+    // Publication can remove the execution checkout before controller settlement.
+    // Canonical controller state remains owned by the admitted Project.
+    const packageOwner = currentPackageSelection();
+    if (packageOwner) planCwd = packageOwner.identity.checkoutRoot;
+    else if (result.kind === "verified") planCwd = args.projectRoot;
     for (let attempt = 0; attempt < 3; attempt += 1) {
         const plan = await loadPlan(planCwd, args.planName);
         if (!plan) return;
@@ -444,6 +450,8 @@ function pausedResult(
 
 /** Reconcile canonical Plan state, claim one owner, run, and durably settle. */
 export async function runValidationAttempt(args: RunValidationAttemptArgs): Promise<WorkflowValidationResult> {
+    if (!currentPackageSelection() && inspectLocalHomeStore(args.projectRoot).kind === "local")
+        return await withLocalPlanWorkflow(args.projectRoot, args.planName, () => runValidationAttempt(args));
     if (currentPackageSelection()) {
         const plan = await selectedPackage(args.planName);
         const binding = plan.metadata.workflow?.attempt;

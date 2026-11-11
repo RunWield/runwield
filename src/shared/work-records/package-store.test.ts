@@ -1,3 +1,4 @@
+import { withRetainedCheckoutSource } from "../legacy-plan-source.ts";
 import { test } from "node:test";
 import { equal, ok, rejects } from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -101,12 +102,15 @@ Untrusted archive prose.
             },
         );
         equal(await fs.readFile(archivePath, "utf8"), archive);
-        const legacy = await runWorkRecordBackfill(f.root, options);
-        equal(legacy.outcomes.length, 1);
-        equal(legacy.outcomes[0].status, "generated", JSON.stringify(legacy.outcomes));
-        const record = (await listWorkRecords(f.root))[0];
-        ok(record.path.startsWith(join(f.root, "docs/work-records/")));
-        equal((await loadArchivedPlan(f.root, "legacy"))?.attrs.workRecord?.recordId, record.attrs.recordId);
+        equal((await runWorkRecordBackfill(f.root, options)).outcomes.length, 0);
+        await withRetainedCheckoutSource(f.identity, async () => {
+            const legacy = await runWorkRecordBackfill(f.root, options);
+            equal(legacy.outcomes.length, 1);
+            equal(legacy.outcomes[0].status, "generated", JSON.stringify(legacy.outcomes));
+            const record = (await listWorkRecords(f.root))[0];
+            ok(record.path.startsWith(join(f.root, "docs/work-records/")));
+            equal((await loadArchivedPlan(f.root, "legacy"))?.attrs.workRecord?.recordId, record.attrs.recordId);
+        });
         await withWorkRecordOwner(f.root, f.identity, async () => {
             equal((await listWorkRecords(f.root, { createDir: false })).length, 0);
         });
@@ -115,10 +119,12 @@ Untrusted archive prose.
     }
 });
 
-test("admitted canonical mutations ignore repository copies and ordinary calls remain legacy", async () => {
+test("ordinary canonical mutations ignore retained repository copies", async () => {
     const f = await packageFixture();
     try {
-        const legacy = await writeWorkRecord(f.root, recordAttrs(), recordBody);
+        const legacy = await withRetainedCheckoutSource(f.identity, () =>
+            writeWorkRecord(f.root, recordAttrs(), recordBody),
+        );
         await withWorkRecordOwner(f.root, f.identity, async () => {
             equal((await listWorkRecords(f.root, { createDir: false })).length, 0);
             const record = await writeWorkRecord(f.root, recordAttrs(), recordBody);

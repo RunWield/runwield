@@ -8,7 +8,14 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { loadArchivedPlan, loadPlan, savePlan } from "../../plan-store.js";
+import { loadArchivedPlan, loadPlan, savePlan, archivePlan } from "../../plan-store.js";
+import { withLocalPlanWorkflow } from "../../shared/local-home-store.ts";
+import {
+    capturePackageWorkflowInput,
+    currentPackageProject,
+    selectedPackage,
+} from "../../shared/workflow/package-workflow.ts";
+import { updatePlanPackageMetadata } from "../../shared/plan-package-store.ts";
 import { runPlansCommand } from "./index.ts";
 import { addEntry } from "../../shared/worktree-registry.js";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
@@ -161,8 +168,6 @@ plansTest("plans renders real Epic child progress and worktree metadata", async 
             },
         ]);
 
-        await git(projectRoot, ["add", "docs"]);
-        await git(projectRoot, ["commit", "-m", "Epic and children"]);
         await git(projectRoot, ["worktree", "add", "-b", "feature/first", `${projectRoot}/delivered-tree`]);
         await addEntry(projectRoot, {
             id: "first-attempt",
@@ -178,6 +183,22 @@ plansTest("plans renders real Epic child progress and worktree metadata", async 
             updatedAt: "2026-08-25T00:00:00Z",
         });
 
+        await withLocalPlanWorkflow(projectRoot, "big-project/01-first", async () => {
+            const identity = currentPackageProject()!;
+            const plan = await selectedPackage("big-project/01-first");
+            const input = await capturePackageWorkflowInput("big-project/01-first");
+            await updatePlanPackageMetadata(identity, plan.metadata.planId, plan.metadata.revision, {
+                workflow: {
+                    attempt: {
+                        personalOwner: identity.personalOwner.identity,
+                        repositoryId: identity.repositoryId,
+                        repositoryRoot: identity.checkoutRoot,
+                        attemptId: "first-attempt",
+                        input,
+                    },
+                },
+            });
+        });
         const output = (await captureOutput(() => runPlansCommand([]))).join("\n");
         assertStringIncludes(output, "Epics:");
         assertStringIncludes(output, "Progress: 1/2 Planned Changes verified");
@@ -189,7 +210,8 @@ plansTest("plans renders real Epic child progress and worktree metadata", async 
     }
 });
 
-plansTest("plans keeps done-enough and orphaned fixture state visible", async ({ projectRoot }) => {
+plansTest("plans keeps done-enough and archived-parent child state visible", async ({ projectRoot }) => {
+    await savePlan(projectRoot, "missing-parent", "# Archived parent\n", { classification: "PROJECT" });
     await seedPlans(projectRoot, [
         {
             name: "done-enough-epic",
@@ -229,6 +251,7 @@ plansTest("plans keeps done-enough and orphaned fixture state visible", async ({
         },
     ]);
 
+    await archivePlan(projectRoot, "missing-parent", { force: true });
     const output = (await captureOutput(() => runPlansCommand([]))).join("\n");
     assertStringIncludes(output, "done enough for now");
     assertStringIncludes(output, "Done enough: One slice delivered.");
@@ -376,29 +399,25 @@ plansTest("plans help uses the registered command help", async () => {
     assertStringIncludes(output.join("\n"), "wld plans archive");
 });
 
-plansTest(
-    "Plans list and read dispatch preserve pending sources and show the workflow notice",
-    async ({ projectRoot }) => {
-        await fsMkdir(join(projectRoot, "docs/plans"), { recursive: true });
-        const planPath = join(projectRoot, "docs/plans/pending.md");
-        const markdown = "---\nclassification: PLANNED_CHANGE\nstatus: draft\n---\n# Pending source\n";
-        await fsWriteFile(planPath, markdown);
-        await fsWriteFile(join(projectRoot, ".gitignore"), "user-owned-rule\n");
-        const legacy = join(getRunWieldRuntimeDir(projectRoot), "debug");
-        await fsMkdir(legacy, { recursive: true });
-        await fsWriteFile(join(legacy, "source.txt"), "Legacy input\n");
-        const output = (await captureOutput(() => runPlansCommand([]))).join("\n");
-        assertStringIncludes(output, "pending");
-        assertStringIncludes(output, "Workflow details pending. Load this Plan to prepare its workflow.");
-        assertStringIncludes(await runReadAndClose(["read", "--no-open", "pending"]), "Pending source");
-        assertEquals(await fsReadFile(planPath, "utf8"), markdown);
-        assertEquals(await fsReadFile(join(projectRoot, ".gitignore"), "utf8"), "user-owned-rule\n");
-        assertEquals(await fsReadFile(join(legacy, "source.txt"), "utf8"), "Legacy input\n");
-        assertEquals(
-            await fsStat(resolveProjectRuntimeLayout(projectRoot).primary.layoutMarkerPath)
-                .then(() => true)
-                .catch(() => false),
-            false,
-        );
-    },
-);
+plansTest("Plans list and read preserve unimported sources without live discovery", async ({ projectRoot }) => {
+    await fsMkdir(join(projectRoot, "docs/plans"), { recursive: true });
+    const planPath = join(projectRoot, "docs/plans/pending.md");
+    const markdown = "---\nclassification: PLANNED_CHANGE\nstatus: draft\n---\n# Pending source\n";
+    await fsWriteFile(planPath, markdown);
+    await fsWriteFile(join(projectRoot, ".gitignore"), "user-owned-rule\n");
+    const legacy = join(getRunWieldRuntimeDir(projectRoot), "debug");
+    await fsMkdir(legacy, { recursive: true });
+    await fsWriteFile(join(legacy, "source.txt"), "Legacy input\n");
+    const output = (await captureOutput(() => runPlansCommand([]))).join("\n");
+    assertEquals(output.includes("Pending source"), false);
+    assertEquals(await loadPlan(projectRoot, "pending"), null);
+    assertEquals(await fsReadFile(planPath, "utf8"), markdown);
+    assertEquals(await fsReadFile(join(projectRoot, ".gitignore"), "utf8"), "user-owned-rule\n");
+    assertEquals(await fsReadFile(join(legacy, "source.txt"), "utf8"), "Legacy input\n");
+    assertEquals(
+        await fsStat(resolveProjectRuntimeLayout(projectRoot).primary.layoutMarkerPath)
+            .then(() => true)
+            .catch(() => false),
+        false,
+    );
+});
