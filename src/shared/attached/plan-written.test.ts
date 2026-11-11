@@ -291,3 +291,43 @@ test("concurrent Plan submissions change only the winning Plan", async () => {
         assertEquals(replay, results[winner]);
     });
 });
+
+test("Connect plan_written uses the explicitly admitted home Plan and preserves identity across fresh calls", async () => {
+    const { packageFixture, create, read } = await import("../testing/plan-package-fixture.ts");
+    const { withPackageWorkflow, loadPackageWorkflowPlan } = await import("../workflow/package-workflow.ts");
+    const f = await packageFixture();
+    try {
+        await create(f.identity, {
+            name: "dark-mode-toggle",
+            documents: { "context.md": PLAN_MARKDOWN, "validation.md": "# Validation\n" },
+        });
+        const { planning } = await reachPlanning(f.root);
+        const result = await withPackageWorkflow(
+            f.root,
+            { identity: f.identity, planId: "plan-one", expectedRevision: 1 },
+            () =>
+                submit(f.root, {
+                    ...planning,
+                    executionAgent: "engineer",
+                    collaborationRecommendation: "pair",
+                }),
+        );
+        assert(result.ok, JSON.stringify(result));
+        assertEquals(result.workflow.plan?.planId, "plan-one");
+        const current = await read(f.identity);
+        await withPackageWorkflow(
+            f.root,
+            { identity: f.identity, planId: "plan-one", expectedRevision: current.metadata.revision },
+            async () => {
+                const core = await loadPackageWorkflowPlan({ planId: "plan-one" });
+                assertEquals(core.body, PLAN_MARKDOWN);
+                assertEquals(core.attrs.planId, result.workflow.plan?.planId);
+                const stored = await loadPlan(f.root, "dark-mode-toggle");
+                assertEquals(stored?.revision, core.revision);
+            },
+        );
+        assertEquals(await exists(join(f.root, "docs/plans/dark-mode-toggle.md")), false);
+    } finally {
+        await f.cleanup();
+    }
+});

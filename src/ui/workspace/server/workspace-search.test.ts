@@ -885,3 +885,54 @@ test("Workspace search uses current authoritative Plan evidence", async () => {
         await fixture.close();
     }
 });
+
+test("admitted search reads home Plans and Work Records while isolating another registered Project", async () => {
+    const { packageFixture, create, tree } = await import("../../../shared/testing/plan-package-fixture.ts");
+    const { withPackageWorkflow } = await import("../../../shared/workflow/package-workflow.ts");
+    const { recordAttrs, recordBody } = await import("../../../shared/work-records/test-fixtures/package-records.ts");
+    const f = await packageFixture();
+    const other = await packageFixture();
+    const store = openOwnerCoordinationStore({ dbPath: ":memory:" });
+    let search;
+    try {
+        await create(f.identity);
+        await create(other.identity, {
+            documents: { "context.md": "# Other private home Plan\n", "validation.md": "# Validation\n" },
+        });
+        const project = store.registerProject({ root: f.root });
+        const unrelated = store.registerProject({ root: other.root });
+        let record;
+        search = await withPackageWorkflow(
+            f.root,
+            { identity: f.identity, planId: "plan-one", expectedRevision: 1 },
+            async () => {
+                record = await writeWorkRecord(f.root, recordAttrs(), recordBody);
+                return createWorkspaceSearchService({ store, dbPath: ":memory:" });
+            },
+        );
+        const before = await tree(f.root);
+        await search.refresh();
+        const found = await search.search({ query: "Canonical evidence", projectId: project.projectId });
+        assertEquals(found.results.length, 1);
+        assertEquals(found.results[0].contentType, "work-record");
+        assertEquals((await search.search({ query: "Prose", projectId: project.projectId })).results.length, 1);
+        assertEquals(
+            (await search.search({ query: "Other private home Plan", projectId: unrelated.projectId })).results.length,
+            0,
+        );
+        await withPackageWorkflow(
+            f.root,
+            { identity: f.identity, planId: "plan-one", expectedRevision: 1 },
+            async () => {
+                const artifact = await readProjectArtifact(f.root, "work-record", record.attrs.recordId);
+                assertStringIncludes(artifact.markdown, "Canonical evidence");
+            },
+        );
+        assertEquals(await tree(f.root), before);
+    } finally {
+        await search?.close();
+        store.close();
+        await f.cleanup();
+        await other.cleanup();
+    }
+});

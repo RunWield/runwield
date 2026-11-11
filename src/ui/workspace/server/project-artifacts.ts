@@ -1,4 +1,6 @@
 // @ts-nocheck: server module uses the repository's JSDoc JavaScript style while keeping the TypeScript production extension.
+import { currentPackageSelection, selectedPackage } from "../../../shared/workflow/package-workflow.ts";
+import { workRecordOwnerLayout, assertWorkRecordPath } from "../../../shared/work-records/owner.ts";
 import { readFile as fsReadFile, realpath as fsRealpath } from "node:fs/promises";
 /** @module ui/workspace/server/project-artifacts */
 
@@ -63,6 +65,16 @@ export async function assertAuthorizedPlanPath(root, path, planName) {
  * @param {{ path: string, planName: string }} resource
  */
 export async function assertReadablePlanResource(root, resource) {
+    const selection = currentPackageSelection();
+    if (selection) {
+        if (resolve(root) !== resolve(selection.identity.checkoutRoot))
+            throw new Error("Plan resource belongs to another Project.");
+        const plan = await selectedPackage({ planId: resource.planId });
+        if (!plan.documents.some((document) => join(plan.path, document.name) === resource.path))
+            throw new Error("Plan resource is not an admitted document.");
+        return resource.path;
+    }
+
     const snapshot = resource.path.match(/^([a-f0-9]{40,64}):(.+)$/);
     if (!snapshot) return await assertAuthorizedPlanPath(root, resource.path, resource.planName);
     const access = await inspectProjectRuntimeReadAccess(root);
@@ -121,16 +133,26 @@ function acceptedDocumentationPath(type, sourceId) {
     return false;
 }
 
+/** @param {string} root @param {string} path */
+export async function assertReadableWorkRecordPath(root, path) {
+    const owner = workRecordOwnerLayout();
+    if (!owner) return await assertContainedProjectPath(root, path);
+    if (resolve(root) !== resolve(owner.identity.checkoutRoot))
+        throw new Error("Work Record belongs to another Project.");
+    assertWorkRecordPath(path);
+    return await assertContainedProjectPath(owner.records, path);
+}
+
 /** @param {string} root */
 async function currentWorkRecords(root) {
     try {
-        await assertContainedProjectPath(root, getWorkRecordsDir(root));
+        await assertReadableWorkRecordPath(root, getWorkRecordsDir(root));
     } catch (error) {
         if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
         throw error;
     }
     const records = await listWorkRecords(root, { createDir: false });
-    for (const record of records) await assertContainedProjectPath(root, record.path);
+    for (const record of records) await assertReadableWorkRecordPath(root, record.path);
     return records;
 }
 

@@ -28,6 +28,9 @@ function compactAction(action: AttachedNextAction, workflow: AttachedWorkflowVie
             ...summary,
             planName: action.planName,
             planPath: action.planPath,
+            ...(action.planRevision
+                ? { planRevision: action.planRevision, documentAccess: action.documentAccess }
+                : {}),
             executionCwd: action.executionCwd,
             executionMode: action.executionMode,
             worktreeBranch: action.worktreeBranch,

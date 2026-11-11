@@ -1,3 +1,8 @@
+import {
+    currentPackageSelection,
+    loadPackageWorkflowPlan,
+    capturePackageWorkflowInput,
+} from "../../shared/workflow/package-workflow.ts";
 import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
 import {
     type LoadedReviewImage,
@@ -112,7 +117,10 @@ interface SubmitPlanForReviewOptions {
 
 /** Compose the same document-only payload for Core and Attached review hosts. */
 export async function preparePlanReviewPayload(planPath: string, triageMeta?: Partial<PlanFrontMatter>) {
-    const plan = await loadPlanFileStrict(planPath);
+    const selection = currentPackageSelection();
+    const plan = selection
+        ? await loadPackageWorkflowPlan({ planId: selection.planId })
+        : await loadPlanFileStrict(planPath);
     if (plan.kind !== "loaded") {
         if (plan.kind === "malformed") throw plan.error;
         throw new Error("The Plan could not be opened for review. Your files have not been changed.");
@@ -139,7 +147,7 @@ export async function preparePlanReviewPayload(planPath: string, triageMeta?: Pa
 
     const trustedClassification = fmOverrides.classification;
     const trustedWorkKind = fmOverrides.workKind;
-    const planWithFm = planDocumentMarkdown(injectFrontMatter(body, fmOverrides));
+    const planWithFm = selection ? body : planDocumentMarkdown(injectFrontMatter(body, fmOverrides));
 
     return { attrs, planRevision, planWithFm, trustedClassification, trustedWorkKind };
 }
@@ -165,10 +173,13 @@ export async function submitPlanForReview({
     browser,
 }: SubmitPlanForReviewOptions): Promise<PlanReviewResult> {
     await preparePlanWorkflow(cwd, planName);
-    const { attrs, planRevision, planWithFm, trustedClassification, trustedWorkKind } = await preparePlanReviewPayload(
+    let { attrs, planRevision, planWithFm, trustedClassification, trustedWorkKind } = await preparePlanReviewPayload(
         planPath,
         triageMeta,
     );
+
+    let packageSelection = currentPackageSelection();
+    let packageInput = packageSelection ? await capturePackageWorkflowInput(planName) : undefined;
 
     // 4. Start the real review surface; only browser opening crosses the port.
     const server = await startPlanReviewSurface<PlanReviewDecision>({
@@ -183,6 +194,14 @@ export async function submitPlanForReview({
         browser,
         onOutput,
         onSurfaceReady,
+        onReviewOpen: packageSelection
+            ? async () => {
+                  ({ attrs, planRevision, planWithFm, trustedClassification, trustedWorkKind } =
+                      await preparePlanReviewPayload(planPath, triageMeta));
+                  packageSelection = currentPackageSelection();
+                  packageInput = await capturePackageWorkflowInput(planName);
+              }
+            : undefined,
     });
 
     let keepSurfaceOpen = false;
@@ -236,6 +255,8 @@ export async function submitPlanForReview({
             };
         }
         const actionResult = await applySharedPlanReviewDecision({
+            packageSelection,
+            packageInput,
             cwd,
             planName,
             planPath,

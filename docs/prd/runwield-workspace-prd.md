@@ -174,6 +174,19 @@ components, without restyling each surface. See the [RunWield Design System](../
 
 ### Local Plan management
 
+**Internally admitted package path:** A registered Project can display Core-owned home Plans and separate context,
+validation, manual-QA and integration-report documents. Document saves compare the complete Core revision, preserve
+controller metadata, and retain rejected local drafts. The built owner server and ordinary Core browser review use the
+same admitted authority across requests; healthy packages remain visible beside catalog diagnostics. Search and Work
+Record browsing read the canonical personal record, including when repository delivery copies are stale or absent.
+Passive views do not import Plans. Public default admission remains the legacy path; activation is still target scope.
+
+**Acceptance:** Edit a document from a second surface, reject the first revision's save or review decision, refresh,
+and review the current input. Restoring the rejected draft retains its original revision and cannot overwrite the newer
+content. Nested Plan links, evidence-document fragments and repository-relative links resolve from the displayed
+Plan; repository reads retain containment checks. Package document selection retains Sequence child tabs and grouped
+decisions; evidence links use the same authorized document context as the review. A different registered Project must not inherit the first Project's package authority.
+
 **Scope and maturity:** Current local browser baseline.
 
 **Requirement: Edit and navigate Plans safely.** `wld plans ui` opens a local browser board for the current checkout.
@@ -221,6 +234,14 @@ and an empty column shows one consistent empty message. Drag-and-drop feedback a
   deliberate selected load prepares the Plan; refresh clears the notice when evidence is ready.
 
 ### Shared Plan collaboration
+
+**Internally admitted package path:** Existing share, pull and push transport keeps remote revision authority and
+capability-owned secrets. The local home package remains read-only while shared, and synchronization preserves local
+controller metadata. A stale remote revision refuses push without changing local content or metadata. This internal
+adaptation does not activate home-store admission for public entrypoints.
+
+**Acceptance:** Share a home Plan, reject an independent local document edit, push and pull an authorized maintainer
+revision, then reject push after another remote revision while retaining local controller evidence.
 
 **Scope and maturity:** Current self-hosted collaboration protocol. The container definitions are for testing; runtime
 isolation for production hosting is deferred.

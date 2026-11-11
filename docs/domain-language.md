@@ -576,6 +576,11 @@ generates a Guided Review for a human code review. _Avoid_: Diff size setting, g
 **Guided Review Widget**: A sandboxed interactive visual aid used when prose, diagrams, and live diffs cannot adequately
 explain a Guided Review. _Avoid_: Default review block, arbitrary app extension, generated production UI
 
+**Proposed home-store wording (activation pending):** Plan Board browses Core Plan resources; Plan Editor changes
+writable document content with revision checks; the shared reader presents the current Plan and its separate evidence
+documents. These terms describe the internally admitted package path. The definitions below retain the public legacy
+baseline until default activation.
+
 **Plan Board**: A browser surface for inspecting and editing Plans while repository Plan files remain canonical.
 _Avoid_: Remote plan database, hosted board, task board
 
