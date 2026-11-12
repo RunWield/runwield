@@ -1756,8 +1756,8 @@ function createRunWieldAcpServer(context) {
         const record = sessionMap.getRecord(request.sessionId);
         if (!record) throwUnknownSession(request.sessionId);
         operations.get(request.sessionId)?.cancel();
-        operations.get(request.sessionId)?.stop();
         const result = await closeMappedSession(runtime, sessionMap, request.sessionId);
+        operations.get(request.sessionId)?.stop();
         operations.delete(request.sessionId);
         if (!result.ok) throwUnknownSession(request.sessionId);
         return { _meta: { runwield: { sessionId: request.sessionId, closed: result.closed } } };
