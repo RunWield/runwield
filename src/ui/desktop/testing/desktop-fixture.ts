@@ -10,7 +10,7 @@ import {
 import type { makeSessionProcessFixture } from "../../../acp/client/testing/session-process-fixture.ts";
 
 type SessionFixture = Awaited<ReturnType<typeof makeSessionProcessFixture>>;
-export async function launchDesktop(fixture: SessionFixture) {
+export async function launchDesktop(fixture: SessionFixture, options: { entry?: boolean } = {}) {
     await requireDesktopArtifacts();
     const env: Record<string, string> = {};
     for (const [key, value] of Object.entries({
@@ -24,8 +24,7 @@ export async function launchDesktop(fixture: SessionFixture) {
         args: [
             `--user-data-dir=${join(fixture.home, "electron-profile")}`,
             join(desktopBuild, "main.mjs"),
-            "--project",
-            fixture.project,
+            ...(options.entry ? [] : ["--project", fixture.project]),
             "--bun",
             fixture.bunExecutable,
             "--cli",
@@ -86,7 +85,16 @@ export async function launchDesktop(fixture: SessionFixture) {
         page.on("console", (message) => {
             if (message.type() === "error") errors.push(message.text());
         });
-        await page.getByText("No Session open", { exact: true }).waitFor({ timeout: 20000 });
+        await page.getByRole("button", { name: "Open Project", exact: true }).waitFor({ timeout: 20000 });
+        await page.getByRole("button", { name: "Open Project", exact: true }).waitFor({ state: "visible" });
+        await page.waitForFunction(
+            () => !document.querySelector<HTMLButtonElement>(".project-entry header button")?.disabled,
+        );
+        if (!options.entry) {
+            await page.getByRole("button", { name: "Link Project", exact: true }).click();
+            await page.getByRole("button", { name: "Open", exact: true }).click();
+            await page.getByText("No Session open", { exact: true }).waitFor();
+        }
         const [runtimePid] = sourceChildren();
         if (!runtimePid)
             throw new Error(`No source ACP child of Electron PID ${application.process().pid}. ${diagnostics}`);

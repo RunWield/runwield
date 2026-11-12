@@ -81,7 +81,7 @@ Stage labels below are delivery scope, not new lifecycle states or claims of shi
 
 - [ACP Session access](#acp-session-access)
 - [Protocol negotiation and interactions](#protocol-negotiation-and-interactions)
-- [Workspace client access](#workspace-client-access) — development desktop Session slice; full workbench target
+- [Workspace client access](#workspace-client-access) — development Project/Session slices; full workbench target
 - [Chat workflow access](#telegram-workflow-access)
 - [Interrupted-work recovery](#interrupted-work-recovery)
 - [Reference-client portability](#reference-client-portability)
@@ -313,8 +313,9 @@ requirement.
 
 **Scope and maturity:** The source-development desktop Session client controls a separate source `wld acp` subprocess
 through a persistent SDK 1.4.0 / ACP v1 connection. Create, known-ID load, text prompts, streamed updates, form
-elicitation, Stop, and close are implemented for one launch-bound Project. Discovery and full-workbench parity remain
-targets; no Workspace extension is added by this slice. See
+elicitation, Stop, and close use an explicit Core-admitted Project binding. The version 1 Workspace Project group
+implements list, open, register, relink, enable/disable, remove, and rescan on that same connection. Session discovery,
+provider-independent history, and full-workbench parity remain targets. See
 [Desktop Workspace](runwield-workspace-prd.md#desktop-workspace), accepted
 [ADR-020](../adr/020-electron-workspace-acp-client.md), and the
 [protocol baseline and capability inventory](../desktop-workbench-contract.md).
@@ -336,6 +337,14 @@ explicitly advertised, versioned extensions. Missing required capabilities are e
 Extensions that anticipate ACP v2 follow its semantics where practical while v1 interoperability remains supported;
 draft alignment is not a v2 conformance claim. No client must understand Workspace extensions for ordinary ACP work.
 
+Workspace opt-in fixes admission policy for the connection. Core issues its identity and checks connection,
+registration, and canonical-root agreement on Session operations, plus saved-Session membership on load. Missing or
+stale metadata cannot fall back to ordinary cwd access. Disabled, removed, relinked, or unavailable roots refuse new
+effects; owned Stop/close can still settle work with its original binding. Project management uses registration IDs,
+so unavailable roots remain manageable. A picker or launch argument is only a candidate. Ordinary external ACP
+clients retain registration-free cwd behavior. Exact payloads and structured refusals are in the
+[Project protocol contract](../desktop-workbench-contract.md#workspace-project-protocol-version-1).
+
 **Requirement: Recover observations without repeating effects.** A client can rebuild a current view after a dropped
 subscription or process interruption. Stable runtime/Project/Session identity and authoritative revisions prevent
 cross-host aliasing, stale decisions, and duplicate effects. Transport reconnect never independently grants permission
@@ -344,9 +353,23 @@ to replay a prompt or workflow action. File and review resources stay scoped to 
 **Requirement: Distinguish authentication domains.** Core model-provider configuration is independent of a future
 Workspace account and of remote-host trust. Local ACP use does not require hosted Workspace identity. Runtime network
 transport, authentication, and disconnect semantics are separately specified before claiming remote support.
+Current desktop model work reads existing Core credentials and global/Project/linked-worktree defaults in place.
+Missing setup directs users to external `wld login`, then restart; no credentials enter renderer views or storage.
+In-app setup belongs to [child 10](../plans/local-workspace-desktop/configure-model-providers-in-desktop-settings.md).
+Provider-independent history and Archived Sessions belong to
+[child 3](../plans/local-workspace-desktop/continue-saved-sessions-in-desktop.md), not a model-dependent load workaround.
 
 **Acceptance scenarios:**
 
+- **Current development slice:** List Projects without a model or registration. Register/relink requires bound consent
+  for protected directories before writes. Manage missing/disabled roots by ID; removal preserves files and history.
+- **Current development slice:** A raw opted-in ACP request with missing, foreign, stale, disabled, or mismatched
+  Project context fails before effects. Load rejects another Project's saved Session; owned Stop/close still settles
+  after access withdrawal. A separate ordinary ACP connection continues without registration.
+- **Current development slice:** Unsupported Workspace versions fail before mutation and cannot fall back. ACP/shared
+  runtime code has no executable import path into Workspace server modules; browser adapters use shared Core owners.
+- **Current development slice:** Existing Core defaults and credentials drive model work without rewritten settings.
+  Missing defaults explain external setup and leave Project management usable, not gated by Workspace identity.
 - **Current development slice:** A native desktop client streams a real source-runtime turn, returns an exact choice
   and optional Other text through the pending form request, stops a held stream or question, then accepts another turn.
   Main launches the checkout runtime, not a global CLI; neither main nor shared UI constructs `SessionRuntime`.

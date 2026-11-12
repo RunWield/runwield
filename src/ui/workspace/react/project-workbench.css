@@ -1,0 +1,114 @@
+.project-workbench {
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    font-size: 0.875rem;
+}
+.project-workbench nav {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem var(--rw-space-panel);
+    border-bottom: 1px solid var(--rw-border);
+}
+.project-workbench nav strong {
+    color: var(--rw-brand);
+    margin-right: 1rem;
+}
+.project-entry {
+    padding: var(--rw-space-panel);
+    width: 100%;
+    max-width: 64rem;
+    margin: 0 auto;
+    overflow: auto;
+}
+.project-entry header,
+.project-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+.project-entry h1 {
+    font-size: 1.25rem;
+    margin: 0;
+}
+.project-entry h2 {
+    font-size: 1rem;
+}
+.project-entry p {
+    color: var(--rw-text-muted);
+    overflow-wrap: anywhere;
+}
+.project-entry [role="alert"] {
+    color: var(--rw-error);
+}
+.project-list {
+    list-style: none;
+    padding: 0;
+}
+.project-list li {
+    border-bottom: 1px solid var(--rw-border);
+    padding: 1rem 0;
+}
+.project-list h2,
+.project-list p {
+    margin: 0.25rem 0;
+}
+.project-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+.project-link {
+    margin-top: 1.5rem;
+    padding: 1rem;
+    background: var(--rw-surface);
+    border: 1px solid var(--rw-border);
+    border-radius: 6px;
+}
+.project-entry .owner-form {
+    display: flex;
+    align-items: end;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+.project-entry label {
+    display: flex;
+    flex: 1 1 15rem;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.project-entry input {
+    width: 100%;
+    min-width: 0;
+    min-height: var(--rw-control-height);
+    background: var(--rw-page-bg);
+    color: var(--rw-text);
+    border: 1px solid var(--rw-border);
+    border-radius: var(--rw-radius-control);
+    padding: var(--rw-space-control-y) var(--rw-space-control-x);
+    font: inherit;
+    caret-color: var(--rw-accent);
+}
+.project-entry input::placeholder {
+    color: var(--rw-text-dim);
+}
+.project-entry input:focus-visible {
+    outline: 2px solid var(--rw-accent);
+    outline-offset: 2px;
+}
+.project-entry input:disabled {
+    opacity: 0.6;
+}
+.project-session {
+    flex: 1;
+    min-height: 0;
+}
+.project-session .session-client {
+    height: 100%;
+}
+.project-workbench [hidden] {
+    display: none;
+}

@@ -2,7 +2,7 @@ import process from "node:process";
 import { generateGuidedReview } from "../../cmd/guided-review/index.ts";
 import { RuntimeUsageTotals } from "../session/runtime-usage-totals.ts";
 import type { GuidedReviewUsage } from "../../cmd/guided-review/protocol.ts";
-import { runWldJobCommand } from "../../ui/workspace/routes/api/review-agent-handlers.js";
+import { runWldJobCommand } from "../browser-host/review-agent-handlers.ts";
 
 export interface GuideProgress {
     onUsage?: (usage: GuidedReviewUsage) => void;

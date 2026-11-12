@@ -4,6 +4,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { makeSessionProcessFixture } from "../../acp/client/testing/session-process-fixture.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
+import type { DesktopProjectClient } from "../workspace/client/project-client.ts";
 import type { SessionClientView, WorkspaceSessionClient } from "../workspace/client/session-client.ts";
 import { launchDesktop } from "./testing/desktop-fixture.ts";
 
@@ -11,6 +12,7 @@ type Desktop = Awaited<ReturnType<typeof launchDesktop>>;
 type DesktopWindow = typeof globalThis & DesktopGlobals;
 interface DesktopGlobals {
     runwieldSession: WorkspaceSessionClient;
+    runwieldProjects: DesktopProjectClient;
     runwieldLinks: { open(href: string): Promise<void> };
     injectionRan?: boolean;
 }
@@ -110,7 +112,7 @@ test("main refuses a real IPC request from another WebContents", { timeout: 4000
         const preload = join(fixture.home, "untrusted-probe.cjs");
         await writeFile(
             preload,
-            `const {contextBridge,ipcRenderer}=require("electron");contextBridge.exposeInMainWorld("probe",{create:(payload)=>ipcRenderer.invoke("desktop:session:create",payload)});`,
+            `const {contextBridge,ipcRenderer}=require("electron");contextBridge.exposeInMainWorld("probe",{invoke:(channel,payload)=>ipcRenderer.invoke(channel,payload)});`,
         );
         const result = await desktop.application.evaluate(
             async ({ BrowserWindow }, { preload, view }) => {
@@ -120,16 +122,36 @@ test("main refuses a real IPC request from another WebContents", { timeout: 4000
                 });
                 try {
                     await untrusted.loadURL("data:text/html,<title>Untrusted caller</title>");
-                    return await untrusted.webContents.executeJavaScript(
-                        `globalThis.probe.create(${JSON.stringify(view)}).then(()=>"ACCEPTED",error=>error.message)`,
-                    );
+                    const channels = [
+                        "desktop:session:create",
+                        ...[
+                            "list",
+                            "open",
+                            "register",
+                            "relink",
+                            "setEnabled",
+                            "remove",
+                            "rescan",
+                            "pick",
+                            "candidate",
+                        ].map((name) => `desktop:project:${name}`),
+                    ];
+                    const results: string[] = [];
+                    for (const channel of channels)
+                        results.push(
+                            await untrusted.webContents.executeJavaScript(
+                                `globalThis.probe.invoke(${JSON.stringify(channel)},${JSON.stringify(view)}).then(()=>"ACCEPTED",error=>error.message)`,
+                            ),
+                        );
+                    return results;
                 } finally {
                     untrusted.destroy();
                 }
             },
             { preload, view: { connectionId: view.connectionId, project: view.project, sessionId: view.sessionId } },
         );
-        match(result, /Untrusted desktop sender/);
+        equal(result.length, 10);
+        ok(result.every((message) => /Untrusted desktop sender/.test(message)));
         equal(fixture.provider.requests.length, 0);
         equal((await readView(desktop)).sessionId, "");
         const store = openFileSessionStore({ baseDir: join(fixture.home, ".wld", "sessions") });

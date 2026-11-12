@@ -1,5 +1,6 @@
 import { createRoot } from "react-dom/client";
-import { SessionClientSurface } from "../../workspace/react/SessionClientSurface.tsx";
+import { ProjectWorkbench } from "../../workspace/react/ProjectWorkbench.tsx";
+import type { DesktopProjectClient } from "../../workspace/client/project-client.ts";
 import type { WorkspaceSessionClient } from "../../workspace/client/session-client.ts";
 import "virtual:runwield-theme.css";
 import "../../design-system/fonts.css";
@@ -8,13 +9,14 @@ import "../../design-system/components.css";
 import "../../workspace/static/workspace-styles/session-timeline.css";
 
 interface DesktopGlobals {
+    runwieldProjects: DesktopProjectClient;
     runwieldSession: WorkspaceSessionClient;
     runwieldLinks: { open(href: string): Promise<void> };
 }
 const desktop = globalThis as typeof globalThis & DesktopGlobals;
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing application root.");
-createRoot(root).render(<SessionClientSurface client={desktop.runwieldSession} />);
+createRoot(root).render(<ProjectWorkbench sessions={desktop.runwieldSession} projects={desktop.runwieldProjects} />);
 document.addEventListener("click", (event) => {
     const target = event.target instanceof Element ? event.target.closest("a") : null;
     if (!target) return;

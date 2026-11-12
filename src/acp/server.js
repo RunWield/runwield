@@ -4,6 +4,8 @@
  */
 
 import { agent, methods, ndJsonStream, PROTOCOL_VERSION, RequestError } from "@agentclientprotocol/sdk";
+import { WorkspaceProjectConnection, parseWorkspaceRequest } from "./workspace-projects.ts";
+import { WORKSPACE_EXTENSION, WORKSPACE_PROJECT_PREFIX, WORKSPACE_PROJECT_OPERATIONS } from "./workspace-contract.ts";
 import { isAbsolute } from "node:path";
 import { VERSION } from "../shared/version.js";
 import { openFileSessionStore } from "../shared/session/file-session-store.ts";
@@ -60,11 +62,15 @@ function supportsTerminalAuth(clientCapabilities) {
 
 /** @param {string} cwd */
 function throwAuthenticationRequired(cwd) {
+    const prerequisite = getSelectedDefaultModelAvailability(cwd).error || "Provider configuration is required.";
     throw new RequestError(
         ACP_AUTH_REQUIRED,
-        "RunWield login and default model setup are required before starting ACP.",
+        `${prerequisite} Run wld login outside the app to configure a provider and default model, then restart desktop.`,
         {
             cwd,
+            code: prerequisite === "No default model is selected." ? "default_model_required" : "provider_prerequisite",
+            prerequisite,
+            guidance: "Run wld login outside the app, then restart desktop.",
         },
     );
 }
@@ -601,7 +607,7 @@ function createAcpCommandUiAPI(options) {
 }
 
 /**
- * @param {{ context: any, runtime: SessionRuntime, sessionMap: AcpSessionMap, acpSessionId: string, runtimeSessionId: string, clientCapabilities: unknown, commandName: string, args: string[], requestId?: string, releasePromptAfterResponse?: (requestId: string, release: () => void) => void, onOperation: (operation: ReturnType<typeof createLiveOperation>) => void }} options
+ * @param {{ context: any, runtime: SessionRuntime, sessionMap: AcpSessionMap, acpSessionId: string, runtimeSessionId: string, clientCapabilities: unknown, workspace: WorkspaceProjectConnection, commandName: string, args: string[], requestId?: string, releasePromptAfterResponse?: (requestId: string, release: () => void) => void, onOperation: (operation: ReturnType<typeof createLiveOperation>) => void }} options
  * @returns {Promise<import('@agentclientprotocol/sdk').PromptResponse>}
  */
 async function dispatchAcpBuiltinCommand(options) {
@@ -898,7 +904,7 @@ async function replaySetupEvents(context, runtime, sessionMap, runtimeSessionId,
 /**
  * One live Runtime turn may serve several ACP prompt requests. Only the request's
  * response owns activePrompt; the operation owns its adapter and event subscription.
- * @param {{ runtime: SessionRuntime, sessionMap: AcpSessionMap, acpSessionId: string, runtimeSessionId: string, clientCapabilities: unknown, releasePromptAfterResponse?: (id: string, release: () => void) => void }} options
+ * @param {{ runtime: SessionRuntime, sessionMap: AcpSessionMap, acpSessionId: string, runtimeSessionId: string, clientCapabilities: unknown, workspace: WorkspaceProjectConnection, releasePromptAfterResponse?: (id: string, release: () => void) => void }} options
  */
 function createLiveOperation(options) {
     const { runtime, sessionMap, acpSessionId, clientCapabilities, releasePromptAfterResponse } = options;
@@ -971,37 +977,53 @@ function createLiveOperation(options) {
     }
     /** @param {AcpNotificationContext} context */
     function installAdapter(context) {
-        runtime.setInteractionAdapter(
-            runtimeSessionId,
-            createAcpInteractionAdapter({
-                context,
-                acpSessionId,
-                clientCapabilities,
-                presentChatQuestion: (interaction, signal) => {
-                    if (cancelled || signal?.aborted) {
-                        return Promise.resolve({
-                            outcome: RuntimeInteractionOutcomes.CANCELED,
-                            message: "Interaction canceled.",
-                        });
+        const adapter = createAcpInteractionAdapter({
+            context,
+            acpSessionId,
+            clientCapabilities,
+            presentChatQuestion: (interaction, signal) => {
+                if (cancelled || signal?.aborted) {
+                    return Promise.resolve({
+                        outcome: RuntimeInteractionOutcomes.CANCELED,
+                        message: "Interaction canceled.",
+                    });
+                }
+                /** @type {PromiseWithResolvers<import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionResponse>} */
+                const answered = Promise.withResolvers();
+                const current = { interaction, delivered: false, queued: false };
+                question = current;
+                const abort = () => {
+                    if (question === current) question = null;
+                    answered.resolve({
+                        outcome: RuntimeInteractionOutcomes.CANCELED,
+                        message: "Interaction canceled.",
+                    });
+                };
+                if (signal?.aborted) abort();
+                else signal?.addEventListener("abort", abort, { once: true });
+                deliverQuestion();
+                return answered.promise.finally(() => signal?.removeEventListener("abort", abort));
+            },
+        });
+        runtime.setInteractionAdapter(runtimeSessionId, {
+            ...adapter,
+            async requestInteraction(interaction, signal) {
+                const response = await adapter.requestInteraction(interaction, signal);
+                if (
+                    response.outcome !== RuntimeInteractionOutcomes.CANCELED &&
+                    response.outcome !== RuntimeInteractionOutcomes.UNSUPPORTED
+                ) {
+                    try {
+                        options.workspace.checkInteraction(acpSessionId);
+                    } catch (error) {
+                        // Abort the live turn before the rejected answer can resume tools.
+                        runtime.cancelSession(runtimeSessionId);
+                        throw error;
                     }
-                    /** @type {PromiseWithResolvers<import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionResponse>} */
-                    const answered = Promise.withResolvers();
-                    const current = { interaction, delivered: false, queued: false };
-                    question = current;
-                    const abort = () => {
-                        if (question === current) question = null;
-                        answered.resolve({
-                            outcome: RuntimeInteractionOutcomes.CANCELED,
-                            message: "Interaction canceled.",
-                        });
-                    };
-                    if (signal?.aborted) abort();
-                    else signal?.addEventListener("abort", abort, { once: true });
-                    deliverQuestion();
-                    return answered.promise.finally(() => signal?.removeEventListener("abort", abort));
-                },
-            }),
-        );
+                }
+                return response;
+            },
+        });
     }
     // Answers are sent to the broker's existing callback, not to the adapter's
     // presentation Promise. Its abort listener dismisses the losing surface.
@@ -1318,15 +1340,22 @@ function createRunWieldAcpServer(context) {
     /** @type {unknown} */
     let clientCapabilities = null;
 
+    const workspace = new WorkspaceProjectConnection();
     app.onRequest(methods.agent.initialize, (context) => {
         clientCapabilities = context.params?.clientCapabilities || null;
-        return createInitializeResponse(context.params);
+        const capability = workspace.initialize(
+            parseWorkspaceRequest(JSON.stringify(context.params?.clientCapabilities || {})),
+        );
+        const response = createInitializeResponse(context.params);
+        if (capability) response._meta = { ...response._meta, [WORKSPACE_EXTENSION]: capability };
+        return response;
     });
 
     // The SDK's default parser silently drops malformed MCP definitions. Validate
     // the original request so a client never receives a Session missing its tools.
     app.onRequest(methods.agent.session.new, validateNewSessionParams, async (context) => {
         const request = context.params;
+        const admission = workspace.active ? workspace.admit(parseWorkspaceRequest(JSON.stringify(request))) : null;
         const readiness = getSelectedDefaultModelAvailability(request.cwd);
         if (!readiness.available) throwAuthenticationRequired(request.cwd);
         let runtimeSessionId;
@@ -1346,6 +1375,7 @@ function createRunWieldAcpServer(context) {
             { sessionId: runtimeSessionId, cwd: snapshot.cwd },
             { persistedSessionId },
         );
+        workspace.bind(record.acpSessionId, admission);
         await replaySetupEvents(context, runtime, sessionMap, runtimeSessionId, record.acpSessionId);
         const configOptions = await buildAcpModelOptions(runtime, runtimeSessionId);
         queueMicrotask(() => {
@@ -1366,7 +1396,10 @@ function createRunWieldAcpServer(context) {
 
     app.onRequest(methods.agent.session.load, validateLoadSessionParams, async (context) => {
         const request = context.params;
+        const admission = workspace.active ? workspace.admit(parseWorkspaceRequest(JSON.stringify(request))) : null;
         const persistedSessionId = normalizeAcpSessionIdForLoad(request.sessionId);
+        if (workspace.active)
+            workspace.checkLoad(parseWorkspaceRequest(JSON.stringify(request)), admission, persistedSessionId);
         if (
             sessionMap
                 .listRecords()
@@ -1395,6 +1428,7 @@ function createRunWieldAcpServer(context) {
                     sessionPath: result.sessionPath,
                 },
             );
+            workspace.bind(record.acpSessionId, admission);
             const notifications = result.replayEvents
                 .map((event) =>
                     mapEventWithSessionCost(
@@ -1438,6 +1472,7 @@ function createRunWieldAcpServer(context) {
     });
 
     app.onRequest(methods.agent.session.setConfigOption, async (context) => {
+        if (workspace.active) workspace.checkMutation(parseWorkspaceRequest(JSON.stringify(context.params)));
         const { sessionId, configId, value } = context.params;
         if (typeof sessionId !== "string" || !sessionId) {
             throwInvalidParams("session/set_config_option requires sessionId");
@@ -1505,6 +1540,7 @@ function createRunWieldAcpServer(context) {
     });
 
     app.onRequest("_session/steering", validateSteeringParams, async (context) => {
+        if (workspace.active) workspace.checkMutation(parseWorkspaceRequest(JSON.stringify(context.params)));
         const request = context.params;
         const runtimeSessionId = sessionMap.getRuntimeSessionId(request.sessionId);
         if (!runtimeSessionId) throwUnknownSession(request.sessionId);
@@ -1526,6 +1562,7 @@ function createRunWieldAcpServer(context) {
     });
 
     app.onRequest(methods.agent.session.prompt, async (context) => {
+        if (workspace.active) workspace.checkMutation(parseWorkspaceRequest(JSON.stringify(context.params)));
         const request = /** @type {import('@agentclientprotocol/sdk').PromptRequest} */ (context.params || {});
         const acpSessionId = request.sessionId;
         if (!acpSessionId || typeof acpSessionId !== "string") {
@@ -1653,6 +1690,7 @@ function createRunWieldAcpServer(context) {
                     acpSessionId,
                     runtimeSessionId,
                     clientCapabilities,
+                    workspace,
                     onOperation: (next) => {
                         operation?.stop();
                         operations.set(acpSessionId, next);
@@ -1687,6 +1725,7 @@ function createRunWieldAcpServer(context) {
             acpSessionId,
             runtimeSessionId,
             clientCapabilities,
+            workspace,
             releasePromptAfterResponse,
         });
         const runtimePrompt = runtime.promptUserTurn(runtimeSessionId, {
@@ -1710,6 +1749,7 @@ function createRunWieldAcpServer(context) {
     });
 
     app.onRequest(methods.agent.session.delete, async (requestContext) => {
+        if (workspace.active) workspace.checkMutation(parseWorkspaceRequest(JSON.stringify(requestContext.params)));
         const sessionId = requestContext.params?.sessionId;
         if (typeof sessionId !== "string" || !sessionId) {
             throwInvalidParams("session/delete requires sessionId");
@@ -1752,6 +1792,7 @@ function createRunWieldAcpServer(context) {
     });
 
     app.onRequest(methods.agent.session.close, async (context) => {
+        if (workspace.active) workspace.checkMutation(parseWorkspaceRequest(JSON.stringify(context.params)), true);
         const request = validateCloseSessionParams(context.params);
         const record = sessionMap.getRecord(request.sessionId);
         if (!record) throwUnknownSession(request.sessionId);
@@ -1764,6 +1805,7 @@ function createRunWieldAcpServer(context) {
     });
 
     app.onNotification(methods.agent.session.cancel, (context) => {
+        if (workspace.active) workspace.checkMutation(parseWorkspaceRequest(JSON.stringify(context.params)), true);
         const sessionId = context.params?.sessionId;
         if (!sessionId || typeof sessionId !== "string") return;
         const runtimeSessionId = sessionMap.getRuntimeSessionId(sessionId);
@@ -1785,6 +1827,16 @@ function createRunWieldAcpServer(context) {
     registerUnimplementedRequest(app, methods.agent.nes.start);
     registerUnimplementedRequest(app, methods.agent.nes.suggest);
     registerUnimplementedRequest(app, methods.agent.nes.close);
+
+    // Keep standard handlers first: SDK dispatch awaits every nonmatching handler.
+    // Inserting extension handlers before them can change prompt/response settlement ordering.
+    for (const operation of WORKSPACE_PROJECT_OPERATIONS) {
+        app.onRequest(
+            WORKSPACE_PROJECT_PREFIX + operation,
+            (params) => params,
+            (context) => workspace.project(operation, parseWorkspaceRequest(JSON.stringify(context.params))),
+        );
+    }
 
     return app;
 }

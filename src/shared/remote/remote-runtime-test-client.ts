@@ -38,8 +38,8 @@ import { continueWorkflowValidation } from "../workflow/validation.ts";
 import { createGitPort } from "../git-port.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
 import { loadPlanActionEvidence } from "../workflow/plan-actions.ts";
-import { configureRemoteReviewHost } from "../../ui/workspace/server/review-host.ts";
-import { configureGuideRunner } from "../../ui/workspace/routes/api/review-agent-handlers.js";
+import { configureRemoteReviewHost } from "../browser-host/review-host.ts";
+import { configureGuideRunner } from "../browser-host/review-agent-handlers.ts";
 import { runRemoteGuideCommand } from "./guide-runner.ts";
 import { createRemoteBrowserPort } from "./browser-bridge.ts";
 

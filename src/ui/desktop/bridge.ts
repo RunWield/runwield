@@ -54,3 +54,51 @@ export function validateDesktopRequest(
             throw new Error("Invalid question answer.");
     }
 }
+
+export const PROJECT_CHANNEL = "desktop:project:";
+export type DesktopProjectOperation =
+    "list" | "open" | "register" | "relink" | "setEnabled" | "remove" | "rescan" | "pick" | "candidate";
+export interface DesktopProjectRequest {
+    connectionId: string;
+    projectId?: string;
+    root?: string;
+    newRoot?: string;
+    displayName?: string;
+    directoryConfirmation?: string;
+    enabled?: boolean;
+}
+export function validateProjectRequest(
+    operation: DesktopProjectOperation,
+    payload: DesktopProjectRequest,
+    connectionId: string,
+): void {
+    if (!payload || typeof payload !== "object" || Array.isArray(payload) || payload.connectionId !== connectionId)
+        throw new Error("Invalid Project connection.");
+    const keys: Record<DesktopProjectOperation, string[]> = {
+        list: [],
+        open: ["projectId"],
+        register: ["root", "displayName", "directoryConfirmation"],
+        relink: ["projectId", "newRoot", "displayName", "directoryConfirmation"],
+        setEnabled: ["projectId", "enabled"],
+        remove: ["projectId"],
+        rescan: ["projectId"],
+        pick: [],
+        candidate: [],
+    };
+    if (Object.keys(payload).some((key) => key !== "connectionId" && !keys[operation].includes(key)))
+        throw new Error("Unexpected Project field.");
+    for (const key of ["projectId", "root", "newRoot", "displayName", "directoryConfirmation"] as const) {
+        const value = payload[key];
+        const limit = key === "root" || key === "newRoot" ? 4096 : key === "displayName" ? 200 : 128;
+        if (
+            value !== undefined &&
+            (typeof value !== "string" || !value.trim() || value.length > limit || value.includes("\0"))
+        )
+            throw new Error("Invalid Project field.");
+    }
+    if (["open", "relink", "setEnabled", "remove", "rescan"].includes(operation) && !payload.projectId)
+        throw new Error("Project identity is required.");
+    if ((operation === "register" && !payload.root) || (operation === "relink" && !payload.newRoot))
+        throw new Error("Project directory is required.");
+    if (operation === "setEnabled" && typeof payload.enabled !== "boolean") throw new Error("Enabled must be boolean.");
+}

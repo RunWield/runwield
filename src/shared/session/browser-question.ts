@@ -4,7 +4,7 @@
  * Starts the compiled Workspace question page for Runtime interactions.
  */
 
-import { startSessionQuestionWorkspaceServer } from "../../ui/workspace/server.js";
+import { startSessionQuestionWorkspaceServer } from "../browser-host/standalone.ts";
 
 /**
  * @typedef {Object} BrowserQuestionServer

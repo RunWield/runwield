@@ -231,6 +231,12 @@ async function main(): Promise<void> {
         return;
     }
 
+    if (firstPositional === "workspace") {
+        const { runWorkspaceCommand } = await import("./cmd/workspace/index.ts");
+        await runWorkspaceCommand(normalizedArgs.slice(1));
+        return;
+    }
+
     const positionalCommand = getCommandDefinition(firstPositional);
     if (positionalCommand) {
         if (!hasCommandSurface(positionalCommand, "cli")) {

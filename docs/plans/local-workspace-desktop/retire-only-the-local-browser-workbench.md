@@ -1,33 +1,34 @@
 ---
+planId: "cefff7c1-95dd-4509-bc0f-a85d239ef92d"
 classification: "PLANNED_CHANGE"
 workKind: "REFACTOR"
 complexity: "MEDIUM"
 affectedPaths:
-  - "src/cmd/workspace/"
-  - "src/cmd/plans/ui.ts"
-  - "src/ui/workspace/server.js"
-  - "src/ui/workspace/"
-  - "src/ui/review/"
-  - "scripts/build-workspace-runtime.ts"
-  - "scripts/build-plan-server-runtime.ts"
-  - "scripts/compile-bun.ts"
-  - "package.json"
-  - "docs/domain-language.md"
-  - "PRODUCT.md"
-  - "docs/prd/runwield-workspace-prd.md"
-  - "docs/prd/runwield-acp-protocol-prd.md"
-  - "docs/prd/runwield.md"
-  - "docs/user-documentation/"
+    - "src/cmd/workspace/"
+    - "src/cmd/plans/ui.ts"
+    - "src/ui/workspace/server.js"
+    - "src/ui/workspace/"
+    - "src/ui/review/"
+    - "scripts/build-workspace-runtime.ts"
+    - "scripts/build-plan-server-runtime.ts"
+    - "scripts/compile-bun.ts"
+    - "package.json"
+    - "docs/domain-language.md"
+    - "PRODUCT.md"
+    - "docs/prd/runwield-workspace-prd.md"
+    - "docs/prd/runwield-acp-protocol-prd.md"
+    - "docs/prd/runwield.md"
+    - "docs/user-documentation/"
 executionAgent: "engineer"
 createdAt: "2026-11-06T04:04:38.811Z"
 status: "draft"
 origin: "internal"
 parentPlan: "local-workspace-desktop"
-order: 11
+order: 12
 dependencies:
-  - "install-and-update-the-bundled-application"
+    - "install-and-update-the-bundled-application"
+userVerifiedAt: null
 targetBranch: "epic/local-workspace-desktop"
-planId: "cefff7c1-95dd-4509-bc0f-a85d239ef92d"
 ---
 
 # Retire Only the Local Browser Workbench

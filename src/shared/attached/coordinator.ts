@@ -52,7 +52,7 @@ import { withOrderedTransitionResources } from "../workflow/state-transition.ts"
 import { isAnsweredPlanReview } from "../workflow/plan-review-recovery.js";
 import { applySharedPlanReviewDecision } from "../workflow/plan-review-actions.ts";
 import { loadReviewFeedbackImagePaths } from "../workflow/review-feedback-images.ts";
-import { type ReviewDecision } from "../../ui/workspace/routes/api/review-handlers.ts";
+import { type ReviewDecision } from "../browser-host/review-handlers.ts";
 import { resolveWorkflowPlanLocation } from "../workflow/plan-location.ts";
 import { normalizeTriageOutcome, type TriageOutcome } from "../workflow/triage-outcome.ts";
 import {

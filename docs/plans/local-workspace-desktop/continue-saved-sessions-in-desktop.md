@@ -1,15 +1,16 @@
 ---
+planId: "0bd5524a-7424-482c-ad59-a7dd0ec851b2"
 classification: "PLANNED_CHANGE"
 workKind: "FEATURE"
 complexity: "MEDIUM"
 affectedPaths:
-  - "src/acp/"
-  - "src/shared/session/"
-  - "src/shared/owner-coordination/"
-  - "src/ui/workspace/server/session-continuation.js"
-  - "src/ui/workspace/islands/SessionSurface.jsx"
-  - "src/ui/workspace/components/SessionTimeline.jsx"
-  - "src/ui/desktop/"
+    - "src/acp/"
+    - "src/shared/session/"
+    - "src/shared/owner-coordination/"
+    - "src/ui/workspace/server/session-continuation.js"
+    - "src/ui/workspace/islands/SessionSurface.jsx"
+    - "src/ui/workspace/components/SessionTimeline.jsx"
+    - "src/ui/desktop/"
 executionAgent: "frontend-engineer"
 collaborationRecommendation: "pair"
 createdAt: "2026-11-06T04:04:33.658Z"
@@ -18,9 +19,9 @@ origin: "internal"
 parentPlan: "local-workspace-desktop"
 order: 3
 dependencies:
-  - "open-projects-and-configure-providers"
+    - "open-projects-and-configure-providers"
+userVerifiedAt: null
 targetBranch: "epic/local-workspace-desktop"
-planId: "0bd5524a-7424-482c-ad59-a7dd0ec851b2"
 ---
 
 # Continue Saved Sessions in Desktop
@@ -30,6 +31,12 @@ planId: "0bd5524a-7424-482c-ad59-a7dd0ec851b2"
 `WorkspaceSessionContinuationService` currently constructs `SessionRuntime` and owns live operations, retained Sessions, listeners, and background work. Moving rendering alone would preserve the wrong ownership boundary.
 
 This child implements Session parity under [Workspace client access](../../prd/runwield-acp-protocol-prd.md#workspace-client-access) and [Desktop Workspace](../../prd/runwield-workspace-prd.md#desktop-workspace). [Core Session continuity](../../prd/runwield-core-prd.md#session-continuity) remains authoritative.
+
+### Epic Scope Changes
+
+Child 2 assigns this child the Archived Sessions tab in Project settings: paged names, open without implicit Unarchive, and explicit Unarchive retaining the same Session ID, transcript, and Plan Associations. This keeps archive UI with this child's existing Session discovery and archive authority work. Child 2 delivers General settings and full Session rescan.
+
+This child also proves saved-history browsing without provider credentials or a runnable default model. Child 2 keeps Project listing/settings independent of provider access; provider configuration belongs to the later [Settings child](configure-model-providers-in-desktop-settings.md). Current `session/load` can require model access, so disabling the composer alone does not meet the saved-history requirement.
 
 ## Objective
 
@@ -59,8 +66,8 @@ The boundaries this change is expected to touch. This list is guidance, not an a
 
 ## Implementation Steps
 
-1. Discovery uses the supported standard Session-list capability rather than a redundant private method. Existing history is bounded and retains stable persisted Session IDs, ordering, and actual committed configuration.
-2. Creation/resumption, Agent/model/thinking configuration, questions/approvals, queued input, steering, cancellation, archive/unarchive, and background-result continuation work through the negotiated runtime boundary.
+1. Discovery uses the supported standard Session-list capability rather than a redundant private method. Existing history is bounded and retains stable persisted Session IDs, ordering, and actual committed configuration. Listing and reading saved history do not require provider credentials or a runnable default model. Passive reads use canonical history without activating a model-dependent Session; continuation explains the actual prerequisite.
+2. Creation/resumption, Agent/model/thinking configuration, questions/approvals, queued input, steering, cancellation, archive/unarchive, and background-result continuation work through the negotiated runtime boundary. Project settings adds the Archived Sessions tab with paged names, conversation links that do not implicitly unarchive, and explicit Unarchive. Unarchive preserves the same Session ID, transcript, and Plan Associations; wrong-Project requests cannot change archive state.
 3. Runtime services own Project checks, request identity, durable receipts, generation checks, single-writer admission, retained/background operations, and layered settings. Neither main nor shared UI imports their implementations.
 4. Images from selection, clipboard, and drag/drop use validated bounded transfers, preview, and existing limits. Resource references stay scoped to the runtime; renderer filesystem access is not a shortcut.
 5. Shared Session composition and subscriptions have no Astro data loaders or HTTP-owner assumptions. Snapshot/generation reconciliation is bounded and does not duplicate transcript entries when observations are refreshed.
@@ -71,6 +78,7 @@ The boundaries this change is expected to touch. This list is guidance, not an a
 
 - Use Bun 1.4.3 and `bun run install:locked`. Run `bun scripts/run-tests.js src/acp/server.test.js src/acp/managed-session.integration.test.ts src/ui/workspace/workspace-session-ux.test.tsx src/ui/workspace/session-continuation.integration.test.ts src/ui/workspace/background-continuation.integration.test.ts` and `bun run seams:check`.
 - Planner assigns exact new real-process Session parity tests. Prove wrong-Project, duplicate request, stale generation, oversized image, busy writer, unknown capability, and archived/unarchived outcomes against real Core stores and locks.
+- Seed committed active and archived Sessions, remove provider credentials/default configuration, and open both histories in the real desktop. Verify names, committed content, paging, and unchanged archive state. Provider failure must block model work, not reads. Explicit Unarchive preserves the same ID/transcript/Plan Associations and rejects a foreign Project.
 - Existing tests may change transport/import location, but committed history, writer exclusion, configuration hydration, background delivery, and interaction semantics remain protected.
 - Headed verification uses desktop Session discovery/detail and new-Session flows. Discover and record the normal desktop dev command and URL/origin. Exercise long history, keyboard interaction, image preview, a question, steering, cancellation, and a background result after the original prompt returns.
 - Continue the same persisted Session from desktop and an idle TUI, then reverse direction. Confirm exact identity, no duplicated input/output, and current settings rather than cached projections.

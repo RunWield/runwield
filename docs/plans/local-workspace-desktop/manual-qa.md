@@ -15,3 +15,17 @@ Manual verification steps for local-workspace-desktop/run-a-real-session-in-elec
 - [ ] Repeat a simple turn with a separately configured real provider. Check keyboard and focus access, and confirm that controls are not clipped at 1440×900 and a narrower window.
 
 <!-- runwield:manual-qa:end child="local-workspace-desktop/run-a-real-session-in-electron" -->
+
+<!-- runwield:manual-qa:start child="local-workspace-desktop/open-projects-and-configure-providers" -->
+
+## Open Projects and Reuse Provider Configuration
+
+Manual verification steps for local-workspace-desktop/open-projects-and-configure-providers
+
+- [ ] Launch the desktop app with no Project argument. Cancel the native folder picker and confirm that no Project is added. Select an ordinary directory, confirm its path, and link it.
+- [ ] Open Project settings. Disable and re-enable the Project, run a full Session rescan, then remove and re-add it. Confirm that the Project disappears when removed and that its files and saved Sessions remain intact.
+- [ ] Make a registered directory unavailable. Confirm that its settings remain accessible, relink it, and confirm that the Project opens again.
+- [ ] With provider settings already configured through `wld`, open a registered Project and complete a model turn. Confirm that the app uses the configured provider and default model.
+- [ ] With no usable provider default, try to start a Session. Confirm that the app shows guidance to configure `wld` and restart, while Project listing and settings remain available.
+
+<!-- runwield:manual-qa:end child="local-workspace-desktop/open-projects-and-configure-providers" -->

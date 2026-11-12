@@ -15,7 +15,9 @@ The first delivery is free local desktop work without a Workspace account. Later
 to a `wld` process on another network machine and optionally sign in to hosted Workspace for identity and cloud
 features. Mobile applications are deferred. Approval of the
 [first Session Plan](../plans/local-workspace-desktop/run-a-real-session-in-electron.md) accepts the separate-process
-and semantic-client architecture below. Acceptance records the decision, not delivery. Packaging tooling, remote
+and semantic-client architecture below. The
+[Project-entry Plan](../plans/local-workspace-desktop/open-projects-and-configure-providers.md) adds the explicit
+Project-context boundary on the same connection. Acceptance records the decision, not delivery. Packaging tooling, remote
 transport and trust, an always-on service, and hosted identity remain unresolved or separately planned.
 
 Workspace currently combines browser presentation, HTTP handlers, Session orchestration, and direct Core/store calls.
@@ -74,7 +76,9 @@ RunWield-only list method. Preserve existing generic interactions and the negoti
 Expose remaining workbench capabilities through explicitly advertised, versioned ACP extensions: Project admission and
 discovery, richer history/observation, Plan and artifact reads, revision-checked saves and workflow decisions, search,
 usage, and relevant configuration. Group them by capability. Proposed names use `_dev.runwield/workspace/...` methods
-and `dev.runwield/workspace` capability metadata; exact schemas belong to implementation planning. Do not publish
+and `dev.runwield/workspace` capability metadata; implemented Project schemas are in the
+[engineering contract](../desktop-workbench-contract.md#workspace-project-protocol-version-1); future schemas belong
+to their implementation planning. Do not publish
 unimplemented methods or reinterpret a standard method to carry incompatible semantics.
 
 Map extensions to existing Core owners. Move reusable domain orchestration out of `src/ui/workspace/server/` when the
@@ -83,11 +87,19 @@ receipts, expected generations/revisions, access checks, and cancellation settle
 Transport request IDs alone do not provide durable mutation deduplication.
 
 The development Session client uses the persistent SDK 1.4.0 root client and ACP v1 over stdio. It implements
-new/load/prompt/cancel/close and form elicitation, not discovery or full-workbench extensions. The
+new/load/prompt/cancel/close, form elicitation, and the negotiated version 1 Project group, not Session discovery or
+full-workbench parity. The
 [engineering contract](../desktop-workbench-contract.md#protocol-baseline) compares that baseline with current v1 and
 v2 drafts and assigns later capabilities to their owners. Where an extension fills an upcoming standard capability,
 use compatible concepts and retain a small translation boundary. A draft does not justify advertising v2 conformance. Older external clients retain their
 working behavior. Required desktop capability mismatches produce an actionable compatibility result before mutation.
+
+Workspace negotiation fixes Project admission for the connection. Core issues a connection identity and validates
+registration/root agreement and saved-Session membership before effects. Session bindings survive UI navigation;
+missing metadata cannot bypass Workspace admission. Stop/close can settle owned work after access withdrawal.
+Ordinary ACP clients keep their cwd-based behavior. Management by registration ID keeps missing-root settings usable.
+Shared Project policy belongs to Core; retained standalone browser hosting belongs to `src/shared/browser-host/`, not
+an executable path from ACP back through Workspace server modules.
 
 Review content and decisions are structured data rendered with the shared review components. Large files and images
 use bounded transfers/resource references tied to the selected runtime, not renderer-side arbitrary filesystem access.
@@ -97,7 +109,8 @@ reachable from the user's browser. No general-purpose shell or filesystem RPC is
 ### Local process and distribution
 
 The current source-development launcher passes its explicit Bun executable and checkout `src/cli.ts acp` to main.
-Main launches that subprocess for one absolute Project; no global CLI is selected. Builds use Vite for the renderer
+Main launches one subprocess without requiring a Project argument; no global CLI is selected. Native selection and
+the optional development Project argument supply candidates, never admission authority. Builds use Vite for the renderer
 and separate Node-target bundles for main and sandbox-compatible preload. This is not an installer or release.
 The [engineering contract](../desktop-workbench-contract.md) holds setup commands and scoped evidence.
 
@@ -134,6 +147,11 @@ These are separate dimensions:
 | Runtime connection    | Managed local `wld` over stdio            | Authenticated connection to another machine's `wld`      |
 | Model-provider access | Existing Core credentials and model setup | Provider choices supported by that runtime               |
 | Workspace identity    | No account required                       | Optional hosted Workspace account and cloud entitlements |
+
+The clean-install target includes in-app provider configuration without a separately installed CLI. The
+[provider Settings child](../plans/local-workspace-desktop/configure-model-providers-in-desktop-settings.md) owns
+that journey. The Project-entry source slice temporarily reuses external `wld login` setup and permits a restart;
+it introduces no second credential store or authentication authority. This does not replace the distribution target.
 
 The existing `wld login` provider setup is not Workspace account sign-in. Local browsing and setup remain usable when a
 provider is unavailable; model-dependent work explains its actual prerequisite. Free application use does not promise

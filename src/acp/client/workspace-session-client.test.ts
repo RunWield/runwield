@@ -21,7 +21,7 @@ function supported(): InitializeResponse {
 }
 
 /** Only adverse peer behavior is simulated. No successful Core journey is claimed. */
-async function adversePeer(initialization: InitializeResponse) {
+async function adversePeer(initialization: InitializeResponse, workspaceAdmission = false) {
     const project = await mkdtemp(join(tmpdir(), "workspace-acp-rejection-"));
     const outbound = new TransformStream<Uint8Array, Uint8Array>();
     const inbound = new TransformStream<Uint8Array, Uint8Array>();
@@ -48,6 +48,7 @@ async function adversePeer(initialization: InitializeResponse) {
     const client = new AcpWorkspaceSessionClient({
         connectionId: "desktop",
         project,
+        workspaceAdmission,
         input: inbound.readable,
         output: outbound.writable,
     });
@@ -214,3 +215,26 @@ test(
         }
     },
 );
+
+for (const [index, extension] of [
+    undefined,
+    { version: 2, connectionId: "runtime", projects: { version: 1 } },
+    { version: 1, connectionId: "runtime", projects: { version: 2 } },
+    { version: 1, connectionId: "", projects: { version: 1 } },
+].entries()) {
+    test(`Workspace opt-in refuses unsupported Project negotiation ${index + 1} without ordinary ACP fallback`, async () => {
+        const fixture = await adversePeer(
+            { ...supported(), ...(extension ? { _meta: { "dev.runwield/workspace": extension } } : {}) },
+            true,
+        );
+        try {
+            await assert.rejects(fixture.client.create(), /Project admission version 1/);
+            await assert.rejects(fixture.client.load("wire-session"), /Project admission version 1/);
+            await assert.rejects(fixture.client.listProjects(), /Project admission version 1/);
+            assert.deepEqual(fixture.frames, ["initialize"]);
+            assert.equal(fixture.views.at(-1)?.connection, "incompatible");
+        } finally {
+            await fixture.cleanup();
+        }
+    });
+}

@@ -1,3 +1,19 @@
+import {
+    WORKSPACE_EXTENSION,
+    type WorkspaceCapability,
+    type WorkspaceProjectContext,
+    type WorkspaceListProjectsResult,
+    type WorkspaceOpenProjectResult,
+    type WorkspaceProjectRequest,
+    type WorkspaceRegisterProjectRequest,
+    type WorkspaceRelinkProjectRequest,
+    type WorkspaceSetProjectEnabledRequest,
+    type WorkspaceProjectWriteResult,
+    type WorkspaceProjectResult,
+    type WorkspaceRemoveProjectResult,
+    type WorkspaceRescanProjectResult,
+} from "../workspace-contract.ts";
+import type { WorkspaceProjectClient } from "../../ui/workspace/client/project-client.ts";
 import { client, ndJsonStream, PROTOCOL_VERSION } from "@agentclientprotocol/sdk";
 import { isAbsolute } from "node:path";
 import type {
@@ -20,6 +36,7 @@ import type {
 export interface AcpWorkspaceSessionOptions {
     connectionId: string;
     project: string;
+    workspaceAdmission?: boolean;
     input: ReadableStream<Uint8Array>;
     output: WritableStream<Uint8Array>;
 }
@@ -110,7 +127,7 @@ function questionView(params: CreateElicitationRequest, requestId: string): Sess
 }
 
 /** A persistent ACP v1 connection. The host supplies stdio, never Core runtime objects. */
-export class AcpWorkspaceSessionClient implements WorkspaceSessionClient {
+export class AcpWorkspaceSessionClient implements WorkspaceSessionClient, WorkspaceProjectClient {
     private readonly connection: ClientConnection;
     private readonly initialized: Promise<void>;
     private readonly listeners = new Set<(view: SessionClientView) => void>();
@@ -119,10 +136,14 @@ export class AcpWorkspaceSessionClient implements WorkspaceSessionClient {
     private turn: Promise<void> | null = null;
     private sequence = 0;
     private disposed = false;
+    private readonly workspaceAdmission: boolean;
+    private context: WorkspaceProjectContext | null = null;
+    private selecting = false;
 
     constructor(options: AcpWorkspaceSessionOptions) {
-        if (!isAbsolute(options.project) || !options.connectionId)
+        if ((!options.workspaceAdmission && !isAbsolute(options.project)) || !options.connectionId)
             throw new Error("An absolute Project and connection identity are required.");
+        this.workspaceAdmission = options.workspaceAdmission === true;
         this.view = {
             connectionId: options.connectionId,
             project: options.project,
@@ -184,8 +205,23 @@ export class AcpWorkspaceSessionClient implements WorkspaceSessionClient {
             const result = await this.connection.agent.request("initialize", {
                 protocolVersion: PROTOCOL_VERSION,
                 clientInfo: { name: "RunWield Workspace", version: "1" },
-                clientCapabilities: { elicitation: { form: {} } },
+                clientCapabilities: {
+                    elicitation: { form: {} },
+                    ...(this.workspaceAdmission ? { _meta: { [WORKSPACE_EXTENSION]: { version: 1 } } } : {}),
+                },
             });
+            if (this.workspaceAdmission) {
+                const workspace = result._meta?.[WORKSPACE_EXTENSION] as WorkspaceCapability | undefined;
+                if (
+                    workspace?.version !== 1 ||
+                    workspace.projects?.version !== 1 ||
+                    typeof workspace.connectionId !== "string" ||
+                    !workspace.connectionId ||
+                    workspace.connectionId.length > 128
+                )
+                    throw new Error("The runtime does not support Workspace Project admission version 1.");
+                this.view.connectionId = workspace.connectionId;
+            }
             const capabilities = result.agentCapabilities;
             const meta = capabilities?.sessionCapabilities?._meta?.runwield as RunWieldMetadata | undefined;
             if (
@@ -203,6 +239,73 @@ export class AcpWorkspaceSessionClient implements WorkspaceSessionClient {
             this.view.error = error instanceof Error ? error.message : "Runtime initialization failed.";
         }
         this.emit();
+    }
+
+    private metadata() {
+        return this.workspaceAdmission ? { _meta: { [WORKSPACE_EXTENSION]: { ...this.context! } } } : {};
+    }
+    async listProjects(): Promise<WorkspaceListProjectsResult> {
+        await this.ready();
+        return this.connection.agent.request<WorkspaceListProjectsResult>("_dev.runwield/workspace/projects/list", {});
+    }
+    async openProject(request: WorkspaceProjectRequest): Promise<WorkspaceOpenProjectResult> {
+        await this.ready();
+        if (this.view.sessionId || this.view.phase === "loading" || this.selecting)
+            throw new Error("Close the current Session before selecting another Project.");
+        this.selecting = true;
+        try {
+            const result = await this.connection.agent.request<WorkspaceOpenProjectResult>(
+                "_dev.runwield/workspace/projects/open",
+                request,
+            );
+            if (
+                result.context.connectionId !== this.view.connectionId ||
+                result.context.projectId !== request.projectId ||
+                !isAbsolute(result.context.canonicalRoot)
+            )
+                throw new Error("Stale Project context.");
+            this.context = result.context;
+            this.view.project = result.context.canonicalRoot;
+            this.emit();
+            return result;
+        } finally {
+            this.selecting = false;
+        }
+    }
+    async registerProject(request: WorkspaceRegisterProjectRequest): Promise<WorkspaceProjectWriteResult> {
+        await this.ready();
+        return this.connection.agent.request<WorkspaceProjectWriteResult>(
+            "_dev.runwield/workspace/projects/register",
+            request,
+        );
+    }
+    async relinkProject(request: WorkspaceRelinkProjectRequest): Promise<WorkspaceProjectWriteResult> {
+        await this.ready();
+        return this.connection.agent.request<WorkspaceProjectWriteResult>(
+            "_dev.runwield/workspace/projects/relink",
+            request,
+        );
+    }
+    async setProjectEnabled(request: WorkspaceSetProjectEnabledRequest): Promise<WorkspaceProjectResult> {
+        await this.ready();
+        return this.connection.agent.request<WorkspaceProjectResult>(
+            "_dev.runwield/workspace/projects/setEnabled",
+            request,
+        );
+    }
+    async removeProject(request: WorkspaceProjectRequest): Promise<WorkspaceRemoveProjectResult> {
+        await this.ready();
+        return this.connection.agent.request<WorkspaceRemoveProjectResult>(
+            "_dev.runwield/workspace/projects/remove",
+            request,
+        );
+    }
+    async rescanProject(request: WorkspaceProjectRequest): Promise<WorkspaceRescanProjectResult> {
+        await this.ready();
+        return this.connection.agent.request<WorkspaceRescanProjectResult>(
+            "_dev.runwield/workspace/projects/rescan",
+            request,
+        );
     }
 
     observe(listener: (view: SessionClientView) => void): () => void {
@@ -234,6 +337,8 @@ export class AcpWorkspaceSessionClient implements WorkspaceSessionClient {
 
     private async open(sessionId?: string): Promise<void> {
         await this.ready();
+        if (this.selecting) throw new Error("Wait for Project selection to settle.");
+        if (this.workspaceAdmission && !this.context) throw new Error("Open a registered Project first.");
         if (this.view.sessionId || this.view.phase === "loading") throw new Error("Close the current Session first.");
         if (sessionId !== undefined && (!sessionId.trim() || sessionId.length > 512))
             throw new Error("Enter a saved Session ID.");
@@ -244,7 +349,7 @@ export class AcpWorkspaceSessionClient implements WorkspaceSessionClient {
         this.view.sessionId = sessionId || "";
         this.emit();
         try {
-            const request: NewSessionRequest = { cwd: this.view.project, mcpServers: [] };
+            const request: NewSessionRequest = { cwd: this.view.project, mcpServers: [], ...this.metadata() };
             let result: LoadSessionResponse;
             if (sessionId) {
                 result = await this.connection.agent.request("session/load", { ...request, sessionId });
@@ -290,6 +395,7 @@ export class AcpWorkspaceSessionClient implements WorkspaceSessionClient {
         this.emit();
         const turn = this.connection.agent
             .request("session/prompt", {
+                ...this.metadata(),
                 sessionId: binding.sessionId,
                 prompt: [{ type: "text", text }],
             })
@@ -360,7 +466,7 @@ export class AcpWorkspaceSessionClient implements WorkspaceSessionClient {
         this.view.question = null;
         this.emit();
         // Send cancellation before releasing the form so it cannot start another provider turn.
-        await this.connection.agent.notify("session/cancel", { sessionId: binding.sessionId });
+        await this.connection.agent.notify("session/cancel", { sessionId: binding.sessionId, ...this.metadata() });
         this.dismissQuestion();
         await turn;
     }
@@ -373,7 +479,7 @@ export class AcpWorkspaceSessionClient implements WorkspaceSessionClient {
         this.view.phase = "loading";
         this.emit();
         try {
-            await this.connection.agent.request("session/close", { sessionId: binding.sessionId });
+            await this.connection.agent.request("session/close", { sessionId: binding.sessionId, ...this.metadata() });
         } catch (error) {
             this.view.phase = this.view.connection === "ready" ? "idle" : "interrupted";
             this.emit();

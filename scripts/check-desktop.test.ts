@@ -99,3 +99,41 @@ test("sandbox preload refuses Node builtins even though main can use them", asyn
     );
     await fixture("main", 'export * from "./innocent.ts";', 'export { readFile } from "node:fs/promises";');
 });
+
+for (const [name, source] of [
+    ["direct", `export * from ${JSON.stringify(join(desktopRoot, "src/ui/workspace/server/owner-projects.ts"))};`],
+    [
+        "dynamic",
+        `export const load = () => import(${JSON.stringify(join(desktopRoot, "src/ui/workspace/server/owner-projects.ts"))});`,
+    ],
+    ["barrel", 'export * from "./innocent.ts";'],
+]) {
+    test(`Core refuses Workspace server ${name} dependencies`, async () => {
+        await assert.rejects(
+            fixture(
+                "core",
+                source,
+                `export * from ${JSON.stringify(join(desktopRoot, "src/ui/workspace/server/owner-projects.ts"))};`,
+            ),
+            /Desktop core runtime dependency refused:/,
+        );
+    });
+}
+
+for (const dependency of ["src/ui/workspace/server.js", "src/ui/workspace/routes/api/review-handlers.ts"]) {
+    for (const [name, barrel] of [
+        [
+            "import",
+            `import * as host from ${JSON.stringify(join(desktopRoot, dependency))}; export const label = host;`,
+        ],
+        ["re-export", `export * from ${JSON.stringify(join(desktopRoot, dependency))};`],
+        ["dynamic import", `export const load = () => import(${JSON.stringify(join(desktopRoot, dependency))});`],
+    ]) {
+        test(`Core refuses retained browser host ${dependency} ${name} through a barrel`, async () => {
+            await assert.rejects(
+                fixture("core", 'export * from "./innocent.ts";', barrel),
+                /Desktop core runtime dependency refused:/,
+            );
+        });
+    }
+}
