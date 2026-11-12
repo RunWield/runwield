@@ -1,7 +1,7 @@
 import { EVIDENCE } from "./attached-test-fixture.ts";
 import { test } from "node:test";
 import { ok as assert, strictEqual as equal, deepStrictEqual } from "node:assert/strict";
-import { appendFile, readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { readAttachedAction } from "./coordinator.ts";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
@@ -63,10 +63,12 @@ test("a missing command exposes the exact durable question and runs nothing unti
 });
 
 test("an explicit Plan command can answer Core's question and remains the exact saved command", async () => {
-    const fixture = await attachedValidationFixture({ command: null });
     const command = "printf plan > chosen-command; sh verify.sh";
+    const fixture = await attachedValidationFixture({
+        command: null,
+        planMarkdown: `# Approved Plan\n\nImplement the value.\n\n## Verification Plan\n\nRun \`${command}\`.\n`,
+    });
     try {
-        await appendFile(join(fixture.cwd, "docs/plans/p.md"), `\n## Verification Plan\n\nRun \`${command}\`.\n`);
         await writeFile(join(fixture.cwd, "marker"), "pass");
         const started = await fixture.call("start_validation", await fixture.status());
         assert(started.ok && started.workflow.nextAction.kind === "validation");

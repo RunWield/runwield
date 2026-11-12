@@ -49,6 +49,7 @@ interface JourneyResult {
  * Model responses are the external boundary; they do not call workflow helpers.
  */
 export const validationPublicationJourneyScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     // This scenario isolates automated delivery; human policy gates have dedicated journeys.
     globalSettings: { defaultProvider: "golden", defaultModel: "faux", codereview: "none" },
     name: planName,
@@ -102,33 +103,41 @@ Replace the original feature with the implemented feature.
             agent: "reviewer",
             phase: "semantic_review",
             ordinal: 2,
-            toolCalls: [{
-                name: "review_complete",
-                arguments: { approved: true, feedback: "Implementation matches." },
-            }],
+            toolCalls: [
+                {
+                    name: "review_complete",
+                    arguments: { approved: true, feedback: "Implementation matches." },
+                },
+            ],
         },
         {
             id: "engineer-stages-conflict-resolution",
             agent: "engineer",
             phase: "engineer",
             ordinal: 1,
-            toolCalls: [{
-                name: "bash",
-                arguments: {
-                    command:
-                        "git rev-parse --verify MERGE_HEAD && git diff --name-only --diff-filter=U | grep -Fx feature.txt && printf 'implemented\\n' > feature.txt && git add feature.txt && sh verify.sh",
+            toolCalls: [
+                {
+                    name: "bash",
+                    arguments: {
+                        command:
+                            "git rev-parse --verify MERGE_HEAD && git diff --name-only --diff-filter=U | grep -Fx feature.txt && printf 'implemented\\n' > feature.txt && git add feature.txt && sh verify.sh",
+                    },
                 },
-            }],
+            ],
         },
         {
             id: "engineer-reports-staged-repair",
             agent: "engineer",
             phase: "engineer",
             ordinal: 2,
-            toolCalls: [{
-                name: "task_completed",
-                arguments: { message: "Resolved and staged feature.txt; verification passed. Merge not committed." },
-            }],
+            toolCalls: [
+                {
+                    name: "task_completed",
+                    arguments: {
+                        message: "Resolved and staged feature.txt; verification passed. Merge not committed.",
+                    },
+                },
+            ],
         },
     ],
     actions: [
@@ -209,12 +218,10 @@ Replace the original feature with the implemented feature.
             assert(ci >= 0 && ci < review && review < repair && repair < publishedEvent);
             // Default model responses still invoke real QA/record tools. Exactly
             // one call each: silently repeating ancillary LLM calls is not success.
-            for (
-                const event of [
-                    "model:faux-provider:manual-qa:manual_qa",
-                    "model:faux-provider:recorder:work_record",
-                ]
-            ) {
+            for (const event of [
+                "model:faux-provider:manual-qa:manual_qa",
+                "model:faux-provider:recorder:work_record",
+            ]) {
                 assertEquals(result.events.filter((candidate) => candidate === event).length, 1, event);
             }
             const visible = `${result.scrollbackText}\n${result.screenText}`;

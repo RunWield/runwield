@@ -10,7 +10,7 @@ import {
     recoverPlanPackages,
     updatePlanPackageMetadata,
     readPlanImportEvidence,
-} from "./plan-store.js";
+} from "./plan-store/packages.ts";
 import { git } from "./shared/git-test-fixture.ts";
 import { admitProjectIdentity } from "./shared/project-identity.ts";
 

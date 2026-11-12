@@ -1,8 +1,8 @@
 import { AGENTS } from "../../constants.js";
-import { resolvePlanExecutionPolicy } from "../../plan-store.js";
+import { resolvePlanExecutionPolicy } from "../../plan-format.ts";
 import { decidePostExecution } from "../../shared/workflow/decisions.ts";
 import { validatePostExecutionDecision } from "./plan-execution.ts";
-import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";
 import type { LastPlanReviewReference } from "../../shared/session/file-session-store-types.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
@@ -52,15 +52,16 @@ export async function startReopenedPlanExecution(
     });
 }
 
-/** Review the current saved document under the runtime's managed operation. */
-export async function reopenSavedPlanReview(
-    runtime: SessionRuntime,
-    sessionId: string,
+interface SavedPlanReviewLocation {
+    kind: "found";
+    location: Awaited<ReturnType<typeof resolveWorkflowPlanLocation>>;
+}
+
+/** Check the saved identity before preparing a planning checkout or reopening its review. */
+export async function resolveSavedPlanReview(
+    projectRoot: string,
     reference: LastPlanReviewReference,
-    notify: (message: string, isError?: boolean) => void,
-): Promise<ReopenPlanReviewResult> {
-    const projectRoot = runtime.getSessionProjectRoot(sessionId);
-    if (!projectRoot) return { kind: "missing_plan", message: "This Session's project is unavailable." };
+): Promise<SavedPlanReviewLocation | ReopenPlanReviewResult> {
     let location: Awaited<ReturnType<typeof resolveWorkflowPlanLocation>>;
     try {
         location = await resolveWorkflowPlanLocation(projectRoot, reference.planName, { readOnly: true });
@@ -78,6 +79,21 @@ export async function reopenSavedPlanReview(
             message: `Plan ${reference.planName} no longer has the reviewed identity.`,
         };
     }
+    return { kind: "found", location };
+}
+
+/** Review the current saved document under the runtime's managed operation. */
+export async function reopenSavedPlanReview(
+    runtime: SessionRuntime,
+    sessionId: string,
+    reference: LastPlanReviewReference,
+    notify: (message: string, isError?: boolean) => void,
+): Promise<ReopenPlanReviewResult> {
+    const projectRoot = runtime.getSessionProjectRoot(sessionId);
+    if (!projectRoot) return { kind: "missing_plan", message: "This Session's project is unavailable." };
+    const resolved = await resolveSavedPlanReview(projectRoot, reference);
+    if (resolved.kind !== "found") return resolved;
+    const saved = resolved.location.plan!;
     const eligibility = getDirectPlanReviewEligibility(saved);
     if (!eligibility.eligible) {
         return {

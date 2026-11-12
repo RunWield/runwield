@@ -1,3 +1,4 @@
+import { seedPlanState, seedPlan } from "../testing/plan-state-fixture.ts";
 import { readFile as fsReadFile, stat as fsStat, utimes as fsUtimes, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
@@ -7,7 +8,8 @@ import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts"
 import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 
-import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { HostedSession } from "../session/hosted-session.js";
 import { TASK_COMPLETION_CUSTOM_TYPE } from "../session/task-completion-session.ts";
 import { setExactProjectCustomSetting } from "../settings.js";
@@ -122,7 +124,7 @@ async function runValidation(args: {
 async function saveRunningMechanicalCheckpoint(projectRoot: string, attrs: Record<string, unknown> = {}) {
     const plan = await loadPlan(projectRoot, "p");
     assertExists(plan);
-    await savePlan(
+    await seedPlan(
         projectRoot,
         "p",
         plan.body,
@@ -456,7 +458,7 @@ for (const oldOwner of [false, true]) {
             ownerPid: process.pid,
         });
         if (oldOwner) checkpoint.updatedAt = new Date(Date.now() - (process.uptime() + 60) * 1000).toISOString();
-        await updatePlanFrontMatter(projectRoot, "p", { validationCheckpoint: checkpoint }, plan.attrs, {
+        await seedPlanState(projectRoot, "p", { validationCheckpoint: checkpoint }, plan.attrs, {
             expectedRevision: plan.revision,
             expectedControllerRevision: plan.controllerRevision,
         });

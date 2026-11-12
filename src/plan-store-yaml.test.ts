@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "./testing/assertions.ts";
-import { injectFrontMatter, parsePlanFrontMatter } from "./plan-store.js";
+import { injectFrontMatter, parsePlanFrontMatter } from "./plan-format.ts";
 
 test("Plan Front Matter safely round-trips ANSI control characters", () => {
     const failureReason = `CI failed: \u001b[31mFAILED\u001b[0m`;

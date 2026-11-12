@@ -1,10 +1,5 @@
-import {
-    mkdir as fsMkdir,
-    mkdtemp as fsMkdtemp,
-    readFile as fsReadFile,
-    rm as fsRm,
-    writeFile as fsWriteFile,
-} from "node:fs/promises";
+import { seedPlanState, seedPlan } from "../../shared/testing/plan-state-fixture.ts";
+import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -12,7 +7,9 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { loadPlanBodyById, savePlan } from "../../plan-store.js";
+
+import { loadPlanBodyById, loadPlan, archivePlan } from "../../plan-store/index.ts";
+
 import { PLAN_UI_TOKEN_HEADER } from "../../constants.js";
 import { loadBoard, loadWorkspaceDetail, workspaceMetadata as _workspaceMetadata } from "./server/plan-adapter.js";
 import { PlanBoard } from "./components/Board.tsx";
@@ -27,7 +24,7 @@ import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts"
 test("Workspace wrapper protects page routes and serves public assets without token", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await savePlan(cwd, "workspace-card", "# Workspace Card\n\n## Context\n\nSSR card", {
+        await seedPlan(cwd, "workspace-card", "# Workspace Card\n\n## Context\n\nSSR card", {
             planId: "workspace-card-id",
             status: "draft",
             classification: "FEATURE",
@@ -77,7 +74,7 @@ test("Workspace wrapper protects page routes and serves public assets without to
 test("PlanBoard SSR renders status column board cards", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await savePlan(cwd, "workspace-card", "# Workspace Card\n\n## Context\n\nSSR card\n\nBody", {
+        await seedPlan(cwd, "workspace-card", "# Workspace Card\n\n## Context\n\nSSR card\n\nBody", {
             planId: "workspace-card-id",
             status: "draft",
             classification: "FEATURE",
@@ -125,18 +122,23 @@ test("PlanBoard SSR renders status column board cards", async () => {
 test("Workspace page routes require Astro handler instead of static React fallback", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await savePlan(cwd, "one", "# One\n", {
+        await seedPlan(cwd, "one", "# One\n", {
             planId: "duplicate-id",
             status: "draft",
             classification: "FEATURE",
             summary: "One",
         });
-        await savePlan(cwd, "two", "# Two\n", {
-            planId: "duplicate-id",
+        await seedPlan(cwd, "two", "# Two\n", {
+            planId: "second-id",
             status: "draft",
             classification: "FEATURE",
             summary: "Two",
         });
+        const second = await loadPlan(cwd, "two");
+        const metadataPath = second!.path.replace(/context\.md$/, "plan.wld.json");
+        const metadata = JSON.parse(await fsReadFile(metadataPath, "utf8"));
+        metadata.planId = "duplicate-id";
+        await fsWriteFile(metadataPath, JSON.stringify(metadata));
         const app = createWorkspaceApp({
             cwd,
             token: "secret",
@@ -148,8 +150,8 @@ test("Workspace page routes require Astro handler instead of static React fallba
             assertStringIncludes(body, "Workspace Astro build unavailable");
             assertEquals(body.includes("Duplicate planId"), false);
         } else {
-            assertEquals(response.status, 409);
-            assertStringIncludes(body, "Duplicate planId");
+            assertEquals(response.status, 200);
+            assertStringIncludes(body, "Duplicate");
         }
     } finally {
         await fsRm(cwd, { recursive: true });
@@ -160,7 +162,8 @@ test("Workspace API and detail route return readable editable Plan body metadata
     await withProcessGlobalTestLock(async () => {
         const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
         try {
-            await savePlan(cwd, "detail", "# Detail\n\nReadable body with [RunWield](https://runwield.dev)", {
+            await seedPlan(cwd, "sibling-plan", "# Dependency\n");
+            await seedPlan(cwd, "detail", "# Detail\n\nReadable body with [RunWield](https://runwield.dev)", {
                 planId: "detail-id",
                 status: "implemented",
                 classification: "FEATURE",
@@ -180,8 +183,16 @@ test("Workspace API and detail route return readable editable Plan body metadata
                 humanReviewedAt: "2026-06-30T11:00:00.000Z",
                 customPriority: "urgent",
             });
+            await seedPlanState(cwd, "detail", {
+                implementedAt: "2026-06-30T10:00:00.000Z",
+                executionBaselineTree: "tree-detail",
+                worktreeBranch: "runwield/worktree/detail",
+                humanReviewMode: "ask",
+                humanReviewDecision: "approved",
+                humanReviewedAt: "2026-06-30T11:00:00.000Z",
+            });
             const board = await loadBoard(cwd);
-            assertEquals(board.plans.length, 1);
+            assertEquals(board.plans.length, 2);
 
             const app = createWorkspaceApp({
                 cwd,
@@ -246,9 +257,9 @@ test("Workspace API and detail route return readable editable Plan body metadata
             assertEquals(html.includes("{&quot;url&quot;"), false);
             assertStringIncludes(html, "Hierarchy &amp; dependencies");
             assertStringIncludes(html, "Lifecycle");
-            assertStringIncludes(html, "Execution worktree");
+            assertEquals(html.includes("Execution worktree"), false);
             assertStringIncludes(html, "Review");
-            assertStringIncludes(html, "Additional metadata");
+            assertEquals(html.includes("Additional metadata"), false);
             assertStringIncludes(html, "Plan ID");
             assertStringIncludes(html, "detail-id");
             assertStringIncludes(html, "Affected paths");
@@ -257,14 +268,11 @@ test("Workspace API and detail route return readable editable Plan body metadata
             assertStringIncludes(html, "sibling-plan");
             assertStringIncludes(html, "Implemented at");
             assertStringIncludes(html, "2026-06-30T10:00:00.000Z");
-            assertStringIncludes(html, "Execution baseline tree");
-            assertStringIncludes(html, "tree-detail");
-            assertStringIncludes(html, "Worktree branch");
-            assertStringIncludes(html, "runwield/worktree/detail");
+            assertEquals(html.includes("Execution baseline tree"), false);
+            assertEquals(html.includes("runwield/worktree/detail"), false);
             assertStringIncludes(html, "Code review decision");
             assertStringIncludes(html, "approved");
-            assertStringIncludes(html, "Custom Priority");
-            assertStringIncludes(html, "urgent");
+            assertEquals(html.includes("Custom Priority"), false);
             assertEquals(html.includes("/tmp/secret-worktree-path"), false);
         } finally {
             await fsRm(cwd, { recursive: true });
@@ -301,7 +309,7 @@ test("PlanDetail derives Epic UI from classification rather than legacy subtype 
 test("Workspace detail SSR fallback renders visible empty Plan body state", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await savePlan(cwd, "empty-detail", "", {
+        await seedPlan(cwd, "empty-detail", "", {
             planId: "empty-detail-id",
             status: "draft",
             classification: "FEATURE",
@@ -325,13 +333,15 @@ test("Workspace detail SSR fallback renders visible empty Plan body state", asyn
     }
 });
 
-test("Workspace body-save API preserves front matter rejects stale writes and requires token", async () => {
+test("Workspace body-save API preserves canonical metadata rejects stale writes and requires token", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await fsMkdir(`${cwd}/docs/plans`, { recursive: true });
-        const frontMatter =
-            "---\nplanId: api-id\n# comment remains\nclassification: FEATURE\nstatus: draft\nunknown: kept\n---\n";
-        await fsWriteFile(`${cwd}/docs/plans/api.md`, `${frontMatter}# Original\n`);
+        const canonicalPath = await seedPlan(cwd, "api", "# Original\n", {
+            planId: "api-id",
+            summary: "Preserved definition",
+        });
+        const metadataPath = canonicalPath.replace(/context\.md$/, "plan.wld.json");
+        const beforeMetadata = await fsReadFile(metadataPath, "utf8");
         const loaded = await loadPlanBodyById(cwd, "api-id");
         const app = createWorkspaceApp({
             cwd,
@@ -365,7 +375,8 @@ test("Workspace body-save API preserves front matter rejects stale writes and re
         assertEquals(saved.status, 200);
         const savedBody = await saved.json();
         assertEquals(typeof savedBody.bodyHash, "string");
-        assertEquals(await fsReadFile(`${cwd}/docs/plans/api.md`, "utf8"), `${frontMatter}# Saved\n`);
+        assertEquals(await fsReadFile(canonicalPath, "utf8"), "# Saved\n");
+        assertEquals(await fsReadFile(metadataPath, "utf8"), beforeMetadata);
 
         const stale = await app(
             new Request("http://localhost/api/plans/api-id/body", {
@@ -381,7 +392,7 @@ test("Workspace body-save API preserves front matter rejects stale writes and re
         assertEquals(stale.status, 409);
         assertStringIncludes((await stale.json()).error, "changed on disk");
 
-        await savePlan(cwd, "epic", "# Epic\n", {
+        await seedPlan(cwd, "epic", "# Epic\n", {
             planId: "epic-id",
             classification: "PROJECT",
             status: "draft",
@@ -393,13 +404,14 @@ test("Workspace body-save API preserves front matter rejects stale writes and re
                 headers: { [PLAN_UI_TOKEN_HEADER]: "secret", "content-type": "application/json" },
                 body: JSON.stringify({
                     body: "# Edited Epic\n",
-                    expectedBodyHash: "hash",
+                    expectedBodyHash: epic.bodyHash,
                     expectedRevision: epic.revision,
                 }),
             }),
         );
-        assertEquals(epicRejected.status, 409);
-        assertStringIncludes((await epicRejected.json()).error, "Epic Plan bodies are not editable");
+        assertEquals(epicRejected.status, 200);
+        assertEquals((await loadPlan(cwd, "epic"))?.markdown, "# Edited Epic\n");
+        assertEquals((await loadPlan(cwd, "epic"))?.attrs.status, "draft");
     } finally {
         await fsRm(cwd, { recursive: true });
     }
@@ -408,7 +420,7 @@ test("Workspace body-save API preserves front matter rejects stale writes and re
 test("Workspace Epic detail SSR-renders child FEATURE Plans by status", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await savePlan(cwd, "epic", "# Epic\n\n## Context\n\nEpic summary\n\nEpic body", {
+        await seedPlan(cwd, "epic", "# Epic\n\n## Context\n\nEpic summary\n\nEpic body", {
             planId: "epic-id",
             status: "draft",
             classification: "PROJECT",
@@ -418,14 +430,15 @@ test("Workspace Epic detail SSR-renders child FEATURE Plans by status", async ()
             epicDoneEnoughSummary: "Shipped enough",
             customRisk: false,
         });
-        await savePlan(cwd, "epic/done", "# Done\n\n## Context\n\nDone summary", {
+        await seedPlan(cwd, "epic/done", "# Done\n\n## Context\n\nDone summary", {
             planId: "done-id",
             status: "verified",
             classification: "FEATURE",
             parentPlan: "epic",
             summary: "Done summary",
         });
-        await savePlan(cwd, "epic/child", "# Child\n\n## Context\n\nChild summary\n\nChild body", {
+        await seedPlan(cwd, "epic/missing-child", "# Archived dependency\n", { parentPlan: "epic" });
+        await seedPlan(cwd, "epic/child", "# Child\n\n## Context\n\nChild summary\n\nChild body", {
             planId: "child-id",
             status: "in_progress",
             classification: "FEATURE",
@@ -433,7 +446,7 @@ test("Workspace Epic detail SSR-renders child FEATURE Plans by status", async ()
             summary: "Child summary",
             dependencies: ["done", "missing-child"],
         });
-        await savePlan(cwd, "epic/held", "# Held\n\n## Context\n\nHeld summary", {
+        await seedPlan(cwd, "epic/held", "# Held\n\n## Context\n\nHeld summary", {
             planId: "held-id",
             status: "on_hold",
             classification: "FEATURE",
@@ -443,21 +456,24 @@ test("Workspace Epic detail SSR-renders child FEATURE Plans by status", async ()
             heldAt: "2026-01-04T00:00:00.000Z",
             holdReason: "child capacity pause",
         });
-        await savePlan(cwd, "epic/failed", "# Failed\n\n## Context\n\nFailed summary", {
+        await seedPlan(cwd, "epic/failed", "# Failed\n\n## Context\n\nFailed summary", {
             planId: "failed-id",
             status: "failed",
             classification: "FEATURE",
             parentPlan: "epic",
             summary: "Failed summary",
         });
-        await savePlan(cwd, "missing/orphan", "# Orphan\n\n## Context\n\nOrphan summary", {
+        await archivePlan(cwd, "epic/missing-child", { force: true });
+        await seedPlan(cwd, "missing", "# Archived parent\n", { classification: "PROJECT" });
+        await seedPlan(cwd, "missing/orphan", "# Orphan\n\n## Context\n\nOrphan summary", {
             planId: "orphan-id",
             status: "draft",
             classification: "FEATURE",
             parentPlan: "missing",
             summary: "Orphan summary",
         });
-        await savePlan(cwd, "held-epic", "# Held Epic\n\n## Context\n\nHeld Epic summary", {
+        await archivePlan(cwd, "missing", { force: true });
+        await seedPlan(cwd, "held-epic", "# Held Epic\n\n## Context\n\nHeld Epic summary", {
             planId: "held-epic-id",
             status: "on_hold",
             classification: "PROJECT",
@@ -527,9 +543,8 @@ test("Workspace Epic detail SSR-renders child FEATURE Plans by status", async ()
         assertStringIncludes(detailHtml, "done_enough");
         assertStringIncludes(detailHtml, "Epic done enough at");
         assertStringIncludes(detailHtml, "2026-06-30T12:00:00.000Z");
-        assertStringIncludes(detailHtml, "Additional metadata");
-        assertStringIncludes(detailHtml, "Custom Risk");
-        assertStringIncludes(detailHtml, "false");
+        assertEquals(detailHtml.includes("Additional metadata"), false);
+        assertEquals(detailHtml.includes("Custom Risk"), false);
 
         const heldDetailPlan = await loadWorkspaceDetail(cwd, "held-epic-id");
         const heldDetailHtml = renderToStaticMarkup(

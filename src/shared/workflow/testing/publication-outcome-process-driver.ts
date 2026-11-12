@@ -1,8 +1,9 @@
+import { planFixtureControllerPath } from "../../testing/plan-state-fixture.ts";
 import type { spawn } from "bun";
 import fsPromises from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { mock } from "bun:test";
-import { controllerRecordPath } from "../controller-registry.ts";
+
 import { getWorkflowMetricsFilePath } from "../metrics.js";
 import type { PublicationAttempt } from "../publication-attempt.ts";
 import process from "node:process";
@@ -57,7 +58,7 @@ runtime.spawn = (options) => {
 let coverageFaults = 0;
 let coverageReadBlocked = false;
 const nativeReadFile = fsPromises.readFile;
-const controllerPath = controllerRecordPath(projectRoot, { planId: attempt.planId, planName: attempt.planName });
+const controllerPath = planFixtureControllerPath(projectRoot, { planId: attempt.planId, planName: attempt.planName });
 const readFileWithFault = async (...args: Parameters<typeof nativeReadFile>) => {
     if (args[0] === controllerPath && boundary.startsWith("coverage-")) {
         let recorded = false;

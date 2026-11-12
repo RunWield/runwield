@@ -1,4 +1,7 @@
-import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
+import { legacyPlanFixturePath } from "../../shared/testing/plan-state-fixture.ts";
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
+import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { fileURLToPath } from "node:url";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
 import { getCwd } from "../../constants.js";
@@ -9,14 +12,17 @@ import process from "node:process";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { startReviewWorkspaceServer } from "../workspace/server.js";
 import { join } from "node:path";
-import { getStoredPlanPath, loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.js";
-import type { PlanFrontMatter } from "../../plan-store.js";
+
+import { parsePlanFrontMatter } from "../../plan-format.ts";
+import { loadPlan } from "../../plan-store/index.ts";
+
+import type { PlanFrontMatter } from "../../plan-format.ts";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 import { submitPlanForReview } from "./plan-review.ts";
 import { createScriptedReviewBrowser, type ReviewDecisionBody } from "./review-test-fixture.ts";
 import { addEntry as addRegistryEntry, findById as findRegistryEntryById } from "../../shared/worktree-registry.js";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
-import { prepareSequenceReview } from "../../shared/workflow/sequence-review.ts";
+import { prepareSequenceReview } from "../../plan-store/index.ts";
 
 interface PlanReviewFixture {
     dir: string;
@@ -30,9 +36,20 @@ interface ExecutedPlanReviewFixture extends PlanReviewFixture {
 
 const gitFixture = defineCommittedGitFixture({ ".gitignore": ".wld/\nwt-prior/\n" });
 
-async function makePlanFile(): Promise<PlanReviewFixture> {
-    const dir = await fsMkdtemp(join(tmpdir(), "runwield-plan-review-"));
-    await savePlan(dir, "plan", "# Plan\n\nDo the thing.\n", {
+function retainedReviewTest(name: string, run: (root: string) => Promise<void>): void {
+    test(name, async () => {
+        const root = await gitFixture.checkout();
+        try {
+            await withRetainedPlanFixture(root, () => run(root));
+        } finally {
+            await fsRm(root, { recursive: true, force: true });
+        }
+    });
+}
+
+async function makePlanFile(root?: string): Promise<PlanReviewFixture> {
+    const dir = root ?? (await fsMkdtemp(join(tmpdir(), "runwield-plan-review-")));
+    await seedPlan(dir, "plan", "# Plan\n\nDo the thing.\n", {
         planId: "review-plan",
         classification: "PLANNED_CHANGE",
         status: "draft",
@@ -40,7 +57,7 @@ async function makePlanFile(): Promise<PlanReviewFixture> {
         affectedPaths: [],
     });
     await preparePlanWorkflow(dir, "plan");
-    return { dir, planPath: getStoredPlanPath(dir, "plan") };
+    return { dir, planPath: (await loadPlan(dir, "plan"))!.path };
 }
 
 async function planStatus(dir: string): Promise<string | undefined> {
@@ -61,6 +78,11 @@ function approvedDecision(overrides: ReviewDecisionBody = {}): ReviewDecisionBod
 function decisionBrowserAfter(beforeDecision: () => Promise<void>, body: ReviewDecisionBody): BrowserPort {
     return {
         async open(url: string): Promise<boolean> {
+            const page = await fetch(url);
+            const html = await page.text();
+            const embedded = html.match(/<script[^>]*data-(?:code-)?review-payload[^>]*>([\s\S]*?)<\/script>/)?.[1];
+            if (!embedded) throw new Error("Review page did not contain a payload.");
+            const { reviewRevision, documentRevision } = JSON.parse(embedded);
             await beforeDecision();
             const reviewUrl = new URL(url);
             const token = reviewUrl.searchParams.get("token");
@@ -73,10 +95,10 @@ function decisionBrowserAfter(beforeDecision: () => Promise<void>, body: ReviewD
                         "content-type": "application/json",
                         "x-runwield-review-token": token,
                     },
-                    body: JSON.stringify(body),
+                    body: JSON.stringify({ reviewRevision, documentRevision, ...body }),
                 },
             );
-            if (!response.ok) throw new Error(`Review decision failed: ${response.status}`);
+            if (!response.ok) throw new Error(`Review decision failed: ${response.status}: ${await response.text()}`);
             return true;
         },
     };
@@ -85,13 +107,13 @@ function decisionBrowserAfter(beforeDecision: () => Promise<void>, body: ReviewD
 test("grouped Sequence chat preserves intermediate-round intent with its decision", async () => {
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-sequence-chat-"));
     try {
-        await savePlan(dir, "sequence", "# Sequence\n", {
+        await seedPlan(dir, "sequence", "# Sequence\n", {
             planId: "review-sequence",
             classification: "PROJECT",
             type: "sequence",
             status: "draft",
         });
-        await savePlan(dir, "sequence/child", "# Child\n", {
+        await seedPlan(dir, "sequence/child", "# Child\n", {
             planId: "review-sequence-child",
             classification: "PLANNED_CHANGE",
             status: "draft",
@@ -108,7 +130,7 @@ test("grouped Sequence chat preserves intermediate-round intent with its decisio
         const result = await submitPlanForReview({
             cwd: dir,
             planName: "sequence",
-            planPath: getStoredPlanPath(dir, "sequence"),
+            planPath: (await loadPlan(dir, "sequence"))!.path,
             sequenceDocuments: documents,
             browser: scripted.browser,
         });
@@ -152,8 +174,8 @@ test("submitPlanForReview serves a real review and records approval metadata", a
     }
 });
 
-test("submitPlanForReview accepts approval after a formatting-only Plan rewrite", async () => {
-    const { dir, planPath } = await makePlanFile();
+retainedReviewTest("submitPlanForReview accepts approval after a formatting-only Plan rewrite", async (root) => {
+    const { dir, planPath } = await makePlanFile(root);
     const browser = decisionBrowserAfter(async () => {
         const before = await fsReadFile(planPath, "utf8");
         const reformatted = before.replace('status: "draft"', "status: draft");
@@ -171,8 +193,8 @@ test("submitPlanForReview accepts approval after a formatting-only Plan rewrite"
     }
 });
 
-test("submitPlanForReview accepts approval after Markdown body formatting", async () => {
-    const { dir, planPath } = await makePlanFile();
+retainedReviewTest("submitPlanForReview accepts approval after Markdown body formatting", async (root) => {
+    const { dir, planPath } = await makePlanFile(root);
     const before = (await fsReadFile(planPath, "utf8")).replace(
         "Do the thing.",
         "Load every dashboard card independently while retaining verified rows and showing clear loading states.\n\n" +
@@ -211,8 +233,8 @@ test("submitPlanForReview accepts approval after Markdown body formatting", asyn
     }
 });
 
-test("submitPlanForReview still rejects a substantive Plan edit made during review", async () => {
-    const { dir, planPath } = await makePlanFile();
+retainedReviewTest("submitPlanForReview still rejects a substantive Plan edit made during review", async (root) => {
+    const { dir, planPath } = await makePlanFile(root);
     const browser = decisionBrowserAfter(async () => {
         const before = await fsReadFile(planPath, "utf8");
         await fsWriteFile(planPath, before.replace("Do the thing.", "Do a different thing."));
@@ -229,38 +251,41 @@ test("submitPlanForReview still rejects a substantive Plan edit made during revi
     }
 });
 
-test("submitPlanForReview persists approved execution policy and preserves custom front matter", async () => {
-    const { dir, planPath } = await makePlanFile();
-    await fsWriteFile(
-        planPath,
-        `---
+retainedReviewTest(
+    "submitPlanForReview persists approved execution policy and preserves custom front matter",
+    async (root) => {
+        const { dir, planPath } = await makePlanFile(root);
+        await fsWriteFile(
+            planPath,
+            `---
 classification: FEATURE
 frontend: true
 customField: keep-me
 ---
 # Plan
 `,
-    );
-    const scriptedBrowser = createScriptedReviewBrowser("decision", approvedDecision({ approvalAction: "later" }));
-    try {
-        const result = await submitPlanForReview({
-            cwd: dir,
-            planName: "plan",
-            planPath,
-            browser: scriptedBrowser.browser,
-        });
-        const markdown = await fsReadFile(planPath, "utf8");
-        const parsed = parsePlanFrontMatter(markdown);
+        );
+        const scriptedBrowser = createScriptedReviewBrowser("decision", approvedDecision({ approvalAction: "later" }));
+        try {
+            const result = await submitPlanForReview({
+                cwd: dir,
+                planName: "plan",
+                planPath,
+                browser: scriptedBrowser.browser,
+            });
+            const markdown = await fsReadFile(planPath, "utf8");
+            const parsed = parsePlanFrontMatter(markdown);
 
-        assertEquals(parsed.attrs.executionAgent, "engineer");
-        assertEquals(parsed.attrs.collaborationRecommendation, "autonomous");
-        assertEquals(parsed.attrs.frontend, undefined);
-        assertStringIncludes(markdown, 'customField: "keep-me"');
-        assertEquals(result.approvalAction, "later");
-    } finally {
-        await fsRm(dir, { recursive: true });
-    }
-});
+            assertEquals(parsed.attrs.executionAgent, "engineer");
+            assertEquals(parsed.attrs.collaborationRecommendation, "autonomous");
+            assertEquals(parsed.attrs.frontend, undefined);
+            assertStringIncludes(markdown, 'customField: "keep-me"');
+            assertEquals(result.approvalAction, "later");
+        } finally {
+            await fsRm(dir, { recursive: true });
+        }
+    },
+);
 
 test("submitPlanForReview restores trusted PROJECT policy boundaries", async () => {
     const { dir, planPath } = await makePlanFile();
@@ -327,35 +352,38 @@ classification: PROJECT
     }
 });
 
-test("submitPlanForReview feedback writes the edited Plan without applying approval policy", async () => {
-    const { dir, planPath } = await makePlanFile();
-    const scriptedBrowser = createScriptedReviewBrowser("deny", {
-        feedback: "revise",
-        plan: `---
+retainedReviewTest(
+    "submitPlanForReview feedback writes the edited Plan without applying approval policy",
+    async (root) => {
+        const { dir, planPath } = await makePlanFile(root);
+        const scriptedBrowser = createScriptedReviewBrowser("deny", {
+            feedback: "revise",
+            plan: `---
 classification: FEATURE
 executionAgent: frontend-engineer
 collaborationRecommendation: pair
 ---
 # Plan
 `,
-    });
-    try {
-        const result = await submitPlanForReview({
-            cwd: dir,
-            planName: "plan",
-            planPath,
-            browser: scriptedBrowser.browser,
         });
-        const attrs = (await loadPlan(dir, "plan"))?.attrs;
+        try {
+            const result = await submitPlanForReview({
+                cwd: dir,
+                planName: "plan",
+                planPath,
+                browser: scriptedBrowser.browser,
+            });
+            const attrs = (await loadPlan(dir, "plan"))?.attrs;
 
-        assertEquals(result.approved, false);
-        assertEquals(attrs?.executionAgent, "frontend-engineer");
-        assertEquals(attrs?.collaborationRecommendation, "pair");
-        assertEquals(attrs?.status, "draft");
-    } finally {
-        await fsRm(dir, { recursive: true });
-    }
-});
+            assertEquals(result.approved, false);
+            assertEquals(attrs?.executionAgent, "frontend-engineer");
+            assertEquals(attrs?.collaborationRecommendation, "pair");
+            assertEquals(attrs?.status, "draft");
+        } finally {
+            await fsRm(dir, { recursive: true });
+        }
+    },
+);
 
 test("submitPlanForReview rejects malformed empty feedback without writing the Plan", async () => {
     const { dir, planPath } = await makePlanFile();
@@ -475,9 +503,11 @@ test("submitPlanForReview cancellation revokes the real review registration with
  * Build a Plan that already ran, together with the registry entry recording the
  * execution generation it owns.
  */
-async function makeExecutedPlanWithWorktree(status: PlanFrontMatter["status"]): Promise<ExecutedPlanReviewFixture> {
-    const dir = await gitFixture.checkout();
-    await savePlan(dir, "plan", "# Plan\n\nDo the thing.\n", {
+async function makeExecutedPlanWithWorktree(
+    dir: string,
+    status: PlanFrontMatter["status"],
+): Promise<ExecutedPlanReviewFixture> {
+    await seedPlan(dir, "plan", "# Plan\n\nDo the thing.\n", {
         classification: "PLANNED_CHANGE",
         status,
         summary: "Do the thing",
@@ -505,13 +535,13 @@ async function makeExecutedPlanWithWorktree(status: PlanFrontMatter["status"]): 
     return {
         dir,
         executionDir,
-        planPath: getStoredPlanPath(executionDir, "plan"),
-        primaryMarkdown: await fsReadFile(getStoredPlanPath(dir, "plan"), "utf8"),
+        planPath: legacyPlanFixturePath(executionDir, "plan"),
+        primaryMarkdown: await fsReadFile(legacyPlanFixturePath(dir, "plan"), "utf8"),
     };
 }
 
-test("submitPlanForReview approval preserves the prior execution attempt", async () => {
-    const { dir, executionDir, planPath, primaryMarkdown } = await makeExecutedPlanWithWorktree("ready_for_work");
+retainedReviewTest("submitPlanForReview approval preserves the prior execution attempt", async (root) => {
+    const { dir, executionDir, planPath, primaryMarkdown } = await makeExecutedPlanWithWorktree(root, "ready_for_work");
     const scriptedBrowser = createScriptedReviewBrowser("decision", approvedDecision());
     try {
         const result = await submitPlanForReview({
@@ -527,25 +557,28 @@ test("submitPlanForReview approval preserves the prior execution attempt", async
         assertEquals(savedPlan?.attrs.worktreeId, "wt-prior", "review must retain the implementation attempt");
         assertEquals(savedPlan?.attrs.worktreeStatus, "active");
         assertEquals((await findRegistryEntryById(dir, "wt-prior"))?.status, "active");
-        assertEquals(await fsReadFile(getStoredPlanPath(dir, "plan"), "utf8"), primaryMarkdown);
+        assertEquals(await fsReadFile(legacyPlanFixturePath(dir, "plan"), "utf8"), primaryMarkdown);
     } finally {
         await fsRm(dir, { recursive: true });
     }
 });
 
-test("submitPlanForReview leaves the execution generation alone when no reopen is needed", async () => {
-    const { dir, executionDir, planPath, primaryMarkdown } = await makeExecutedPlanWithWorktree("draft");
-    const scriptedBrowser = createScriptedReviewBrowser("decision", approvedDecision());
-    try {
-        await submitPlanForReview({ cwd: dir, planName: "plan", planPath, browser: scriptedBrowser.browser });
+retainedReviewTest(
+    "submitPlanForReview leaves the execution generation alone when no reopen is needed",
+    async (root) => {
+        const { dir, executionDir, planPath, primaryMarkdown } = await makeExecutedPlanWithWorktree(root, "draft");
+        const scriptedBrowser = createScriptedReviewBrowser("decision", approvedDecision());
+        try {
+            await submitPlanForReview({ cwd: dir, planName: "plan", planPath, browser: scriptedBrowser.browser });
 
-        // A draft is reviewable as-is, so there is no generation to detach and the
-        // registry entry must be left exactly as it was.
-        assertEquals(await planStatus(executionDir), "approved");
-        assertEquals((await findRegistryEntryById(dir, "wt-prior"))?.status, "active");
-        assertEquals((await loadPlan(executionDir, "plan"))?.attrs.worktreeId, "wt-prior");
-        assertEquals(await fsReadFile(getStoredPlanPath(dir, "plan"), "utf8"), primaryMarkdown);
-    } finally {
-        await fsRm(dir, { recursive: true });
-    }
-});
+            // A draft is reviewable as-is, so there is no generation to detach and the
+            // registry entry must be left exactly as it was.
+            assertEquals(await planStatus(executionDir), "approved");
+            assertEquals((await findRegistryEntryById(dir, "wt-prior"))?.status, "active");
+            assertEquals((await loadPlan(executionDir, "plan"))?.attrs.worktreeId, "wt-prior");
+            assertEquals(await fsReadFile(legacyPlanFixturePath(dir, "plan"), "utf8"), primaryMarkdown);
+        } finally {
+            await fsRm(dir, { recursive: true });
+        }
+    },
+);

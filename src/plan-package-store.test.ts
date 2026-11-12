@@ -1,8 +1,11 @@
+import { seedPlan } from "./shared/testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "./shared/testing/retained-plan-fixture.ts";
 import { test } from "node:test";
 import { deepEqual, equal, ok, rejects } from "node:assert/strict";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { create, read, driver, packageFixture, tree, documents } from "./shared/testing/plan-package-fixture.ts";
+import { getPlansDir } from "./plan-store.js";
 import {
     readPlanPackage,
     listPlanPackages,
@@ -11,12 +14,8 @@ import {
     renamePlanPackage,
     archivePlanPackage,
     restorePlanPackage,
-    getPlansDir,
-    savePlan,
-    loadPlan,
-    listPlans,
-    StalePlanWriteError,
-} from "./plan-store.js";
+} from "./plan-store/packages.ts";
+import { loadPlan, listPlans, StalePlanWriteError } from "./plan-store/index.ts";
 
 test("packages persist plain documents and separate versioned metadata across processes", async () => {
     const f = await packageFixture();
@@ -274,17 +273,20 @@ test("traversal, reserved resource names, and symbolic links cannot escape or ov
     }
 });
 
-test("explicit packages do not join legacy discovery or controller routing", async () => {
+test("explicit retained checkout discovery excludes canonical packages", async () => {
     const f = await packageFixture();
     try {
-        await savePlan(f.root, "legacy", "# Legacy body\n");
-        const before = await tree(getPlansDir(f.root));
-        await create(f.identity);
-        deepEqual(await tree(getPlansDir(f.root)), before);
-        ok(await loadPlan(f.root, "legacy"));
-        equal(await loadPlan(f.root, "one"), null);
-        ok((await listPlans(f.root)).every((p) => p.name !== "one"));
-        await rejects(() => fs.lstat(join(f.root, ".wld", "plans")), { code: "ENOENT" });
+        await withRetainedPlanFixture(f.root, async () => {
+            await seedPlan(f.root, "legacy", "# Legacy body\n");
+            const before = await tree(getPlansDir(f.root));
+            await create(f.identity);
+            deepEqual(await tree(getPlansDir(f.root)), before);
+            ok(await loadPlan(f.root, "legacy"));
+            equal(await loadPlan(f.root, "one"), null);
+            ok((await listPlans(f.root)).every((p) => p.name !== "one"));
+            await rejects(() => fs.lstat(join(f.root, ".wld", "plans")), { code: "ENOENT" });
+        });
+        ok(await loadPlan(f.root, "one"), "Normal local discovery selects the canonical package");
     } finally {
         await f.cleanup();
     }

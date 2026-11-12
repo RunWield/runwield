@@ -1,3 +1,5 @@
+import { enterProjectRuntime } from "./project-runtime-layout.ts";
+import { withRetainedPlanFixture } from "./testing/retained-plan-fixture.ts";
 import { test } from "node:test";
 import {
     chmod as fsChmod,
@@ -14,7 +16,7 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { mergeFrontMatterText } from "../plan-store.js";
+import { mergeFrontMatterText } from "../plan-format.ts";
 import { normalizePublicationFailure } from "./workflow/validation-merge-repair.ts";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
@@ -31,57 +33,60 @@ import { RUNWIELD_GITIGNORE_BLOCK } from "./runwield-owned-paths.ts";
 for (const change of ["formatting", "definition", "body", "staged", "committed"]) {
     test(`publication retry recovers only unstaged formatting: ${change}`, async () => {
         const projectRoot = await makeRepo();
-        const worktreeRoot = await fsMkdtemp(join(tmpdir(), "publication-plan-format-"));
-        const worktree = await createTestWorktreeAttempt({ projectRoot, planName: "p", worktreeRoot });
-        try {
-            const path = "docs/plans/p.md";
-            const sealed =
-                '---\nplanId: "p"\nclassification: "PLANNED_CHANGE"\nstatus: "validated"\naffectedPaths:\n    - "src/a.ts"\ntargetBranch: "main"\n---\n# Validated\n';
-            await fsMkdir(`${worktree.path}/docs/plans`, { recursive: true });
-            await fsWriteFile(`${worktree.path}/${path}`, sealed);
-            await git(worktree.path, ["add", path]);
-            await git(worktree.path, ["commit", "-m", "Seal formatted Plan"]);
-            const sealedCommit = await git(worktree.path, ["rev-parse", "HEAD"]);
-            const current =
-                change === "definition"
-                    ? sealed.replace("src/a.ts", "src/b.ts")
-                    : change === "body"
-                      ? sealed.replace("# Validated", "# Changed intent")
-                      : sealed.replace("    -", "  -");
-            await fsWriteFile(`${worktree.path}/${path}`, current);
-            if (change === "staged" || change === "committed") await git(worktree.path, ["add", path]);
-            if (change === "committed") await git(worktree.path, ["commit", "-m", "User Plan edit"]);
-            const headBefore = await git(worktree.path, ["rev-parse", "HEAD"]);
-            const indexBefore = await git(worktree.path, ["write-tree"]);
-            const publish = () =>
-                publishExecutionWorktreeIsolated({
-                    projectRoot,
-                    executionCwd: worktree.path,
-                    executionBranch: worktree.branch,
-                    targetBranch: "main",
-                    planName: "p",
-                    sealedExecutionCommit: sealedCommit,
-                    allowedPlanPaths: [path],
-                });
-            if (change !== "formatting") {
-                await assertRejects(publish, Error, "changed after the validated candidate was sealed");
-                assertEquals(await fsReadFile(`${worktree.path}/${path}`, "utf8"), current);
-                assertEquals(await git(worktree.path, ["rev-parse", "HEAD"]), headBefore);
-                assertEquals(await git(worktree.path, ["write-tree"]), indexBefore);
-            } else {
-                await publish();
-                assertEquals(
-                    await git(projectRoot, ["show", `main:${path}`]),
-                    mergeFrontMatterText(sealed, { status: "verified" }).trim(),
-                );
-                assertEquals(await fsReadFile(`${worktree.path}/${path}`, "utf8"), sealed);
-                assertEquals(await git(worktree.path, ["status", "--porcelain"]), "");
+        return await withRetainedPlanFixture(projectRoot, async () => {
+            const worktreeRoot = await fsMkdtemp(join(tmpdir(), "publication-plan-format-"));
+            const worktree = await createTestWorktreeAttempt({ projectRoot, planName: "p", worktreeRoot });
+            try {
+                await enterProjectRuntime(worktree.path);
+                const path = "docs/plans/p.md";
+                const sealed =
+                    '---\nplanId: "p"\nclassification: "PLANNED_CHANGE"\nstatus: "validated"\naffectedPaths:\n    - "src/a.ts"\ntargetBranch: "main"\n---\n# Validated\n';
+                await fsMkdir(`${worktree.path}/docs/plans`, { recursive: true });
+                await fsWriteFile(`${worktree.path}/${path}`, sealed);
+                await git(worktree.path, ["add", path, ".gitignore"]);
+                await git(worktree.path, ["commit", "-m", "Seal formatted Plan"]);
+                const sealedCommit = await git(worktree.path, ["rev-parse", "HEAD"]);
+                const current =
+                    change === "definition"
+                        ? sealed.replace("src/a.ts", "src/b.ts")
+                        : change === "body"
+                          ? sealed.replace("# Validated", "# Changed intent")
+                          : sealed.replace("    -", "  -");
+                await fsWriteFile(`${worktree.path}/${path}`, current);
+                if (change === "staged" || change === "committed") await git(worktree.path, ["add", path]);
+                if (change === "committed") await git(worktree.path, ["commit", "-m", "User Plan edit"]);
+                const headBefore = await git(worktree.path, ["rev-parse", "HEAD"]);
+                const indexBefore = await git(worktree.path, ["write-tree"]);
+                const publish = () =>
+                    publishExecutionWorktreeIsolated({
+                        projectRoot,
+                        executionCwd: worktree.path,
+                        executionBranch: worktree.branch,
+                        targetBranch: "main",
+                        planName: "p",
+                        sealedExecutionCommit: sealedCommit,
+                        allowedPlanPaths: [path],
+                    });
+                if (change !== "formatting") {
+                    await assertRejects(publish, Error, "changed after the validated candidate was sealed");
+                    assertEquals(await fsReadFile(`${worktree.path}/${path}`, "utf8"), current);
+                    assertEquals(await git(worktree.path, ["rev-parse", "HEAD"]), headBefore);
+                    assertEquals(await git(worktree.path, ["write-tree"]), indexBefore);
+                } else {
+                    await publish();
+                    assertEquals(
+                        await git(projectRoot, ["show", `main:${path}`]),
+                        mergeFrontMatterText(sealed, { status: "verified" }).trim(),
+                    );
+                    assertEquals(await fsReadFile(`${worktree.path}/${path}`, "utf8"), sealed);
+                    assertEquals(await git(worktree.path, ["status", "--porcelain"]), "");
+                }
+            } finally {
+                await removeWorktreeGitArtifacts({ projectRoot, path: worktree.path, force: true });
+                await fsRm(projectRoot, { recursive: true });
+                await fsRm(worktreeRoot, { recursive: true });
             }
-        } finally {
-            await removeWorktreeGitArtifacts({ projectRoot, path: worktree.path, force: true });
-            await fsRm(projectRoot, { recursive: true });
-            await fsRm(worktreeRoot, { recursive: true });
-        }
+        });
     });
 }
 

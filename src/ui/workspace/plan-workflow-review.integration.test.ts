@@ -1,13 +1,17 @@
+import { holdPlanFixtureCatalogLock } from "../../shared/testing/plan-state-fixture.ts";
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import type { FileSessionGeneration } from "../../shared/session/file-session-store-types.ts";
 import type { RuntimeInteractionRequest } from "../../shared/session/session-runtime-interactions.js";
 import { readFile as fsReadFile, rm as fsRm, stat as fsStat } from "node:fs/promises";
 import { test } from "node:test";
 import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
-import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan, withPlanCatalogLock } from "../../plan-store.js";
+
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
@@ -71,7 +75,7 @@ for (const resumeStatus of ["in_progress", "failed"]) {
                 const runtime = createSessionRuntime({ sessionStore: store });
                 const service = new WorkspaceSessionContinuationService({ store });
                 try {
-                    await savePlan(root, "saved-plan", "# Saved Plan\n\nImplement the requested change.\n", {
+                    await seedPlan(root, "saved-plan", "# Saved Plan\n\nImplement the requested change.\n", {
                         planId: "saved-plan-id",
                         classification: "PLANNED_CHANGE",
                         workKind: "FEATURE",
@@ -135,7 +139,7 @@ for (const resumeStatus of ["in_progress", "failed"]) {
                         // A live review must not wait for board/catalog work elsewhere in the process.
                         const locked = Promise.withResolvers<void>();
                         const release = Promise.withResolvers<void>();
-                        const holdCatalog = withPlanCatalogLock(root, async () => {
+                        const holdCatalog = holdPlanFixtureCatalogLock(root, async () => {
                             locked.resolve();
                             await release.promise;
                         });

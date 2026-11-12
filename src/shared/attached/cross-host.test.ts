@@ -1,3 +1,5 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
+
 import { test } from "node:test";
 import { ok as assert, strictEqual as equal } from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -167,7 +169,9 @@ for (const [origin, caller] of [
             equal(await readRecordBytes(root, triage.workflowId), before);
 
             await mkdir(join(root, "docs/plans"), { recursive: true });
-            await writeFile(join(root, "docs/plans/dark-mode-toggle.md"), "# Toggle\n\nAdd a toggle.\n");
+            await seedPlan(root, "dark-mode-toggle", "# Toggle\n\nAdd a toggle.\n", {
+                classification: "PLANNED_CHANGE",
+            });
             const submitted = await runOperation("plan_written", root, {
                 ...planWrittenInput({
                     workflowId: triage.workflowId,

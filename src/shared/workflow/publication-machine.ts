@@ -1,6 +1,11 @@
+import {
+    retainPublicationCompletion,
+    recordPublicationObservation,
+    type RetainedPublicationCompletion,
+} from "../../plan-store/index.ts";
 import { settlePreparedPackageRecord } from "../work-records/package-recording.ts";
-import { retainPublishedWorkRecordSource } from "../work-records/published-source.ts";
-import { currentPackageSelection } from "./package-workflow.ts";
+import { retainPublishedWorkRecordSource } from "../../plan-store/index.ts";
+import { capturePlanAccess } from "../../plan-store/index.ts";
 import {
     sealPackagePublication,
     packageArtifactEvidence,
@@ -8,7 +13,7 @@ import {
     settlePackagePublication,
     packageTargetEvidence,
     assertPackagePublicationOwner,
-} from "./package-publication.ts";
+} from "../../plan-store/index.ts";
 import { resolvePublicationUpstream as resolveRemoteTarget } from "../publication-target.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
@@ -25,7 +30,7 @@ import { rm as fsRm, stat as fsStat } from "node:fs/promises";
 import { join } from "node:path";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT, type WorkRecordMnemotecaPort } from "../work-records/mnemoteca-port.ts";
 import { hasFinalizedPublicationLifecycle, indexPublishedWorkRecords } from "../publication-lifecycle.ts";
-import { canonicalizeStoredPlanName, isChildFeaturePlan, parsePlanFrontMatter } from "../../plan-store.js";
+import { canonicalizeStoredPlanName, isChildFeaturePlan, parsePlanFrontMatter } from "../../plan-format.ts";
 import { isTerminalWorkRecordParent } from "../work-records/auto-generation.ts";
 import { enterProjectRuntime, resolveProjectRoot, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { findById, pruneEntry, updatePublication } from "../worktree-registry.js";
@@ -35,10 +40,10 @@ import {
     deleteRemotelyPublishedWorktreeBranch,
     removeWorktreeGitArtifacts,
 } from "../worktree.js";
-import { getWorkflowMetricsFilePath } from "./metrics.js";
-import { type JournalResult, resolveCollectionEpoch } from "./metrics-journal.ts";
-import { recordWorkflowOutcome, workflowOutcomeEventId } from "./outcome-observations.ts";
-import { type ControllerRecord, readControllerRecord, writeControllerState } from "./controller-registry.ts";
+
+import { type JournalResult } from "./metrics-journal.ts";
+import { recordWorkflowOutcome } from "./outcome-observations.ts";
+
 import {
     advancePublicationAttempt,
     assertPublicationAttempt,
@@ -349,7 +354,7 @@ export async function startPublicationAttempt(args: {
         validatedCommit: args.validatedCommit,
         targetHeadAtSeal: args.targetHeadAtSeal,
     });
-    if (currentPackageSelection())
+    if (capturePlanAccess())
         publication.packageInput = await sealPackagePublication(
             args.planName,
             args.attemptId,
@@ -476,54 +481,6 @@ export type PublicationCleanupResult = {
     preservedFiles?: string;
 };
 
-type RetainedPublicationCompletion = {
-    record: ControllerRecord;
-    shouldObserve: boolean;
-};
-
-async function retainPublicationCompletion(
-    projectRoot: string,
-    attempt: PublicationAttempt,
-): Promise<RetainedPublicationCompletion | null> {
-    if (!attempt.verifiedAt) return null;
-    const identity = { planId: attempt.planId, planName: attempt.planName };
-    const previous = await readControllerRecord(projectRoot, identity);
-    const observed = previous?.state.publicationObservation;
-    let historyEpoch = observed?.attemptId === attempt.attemptId ? observed.historyEpoch : undefined;
-    if (!historyEpoch) {
-        try {
-            historyEpoch = resolveCollectionEpoch(getWorkflowMetricsFilePath(projectRoot)).historyEpoch;
-        } catch {
-            historyEpoch = "unavailable";
-        }
-    }
-    const record = await writeControllerState(projectRoot, identity, {
-        verifiedAt: attempt.verifiedAt,
-        publicationReceipt: attempt.publishedCommit
-            ? {
-                  validatedCommit: attempt.validatedCommit,
-                  publishedCommit: attempt.publishedCommit,
-                  targetBranch: attempt.targetBranch,
-              }
-            : null,
-        updatedAt: attempt.verifiedAt,
-        publicationObservation:
-            observed?.attemptId === attempt.attemptId && observed.coverage !== "unverified"
-                ? observed
-                : {
-                      attemptId: attempt.attemptId,
-                      eventId: workflowOutcomeEventId("publication_confirmed", attempt.attemptId),
-                      historyEpoch,
-                      // Write the safe fallback before recording. An exception,
-                      // deadline, or process death must not leave an apparently
-                      // unattempted observation that restart could backfill.
-                      coverage: "incomplete",
-                      reason: "recording_unconfirmed",
-                  },
-    });
-    return { record, shouldObserve: observed?.attemptId !== attempt.attemptId };
-}
-
 /** Keep exact delivery bytes readable after staging cleanup and later target changes. */
 async function retainDeliveryCommit(
     projectRoot: string,
@@ -616,8 +573,7 @@ async function observeConfirmedPublication(
     // Retained coverage is an observation receipt, not a retry queue. In
     // particular, legacy unverified observations are not historical measurements.
     if (!completion?.shouldObserve) return;
-    const observed = completion.record.state.publicationObservation;
-    const identity = { planId: attempt.planId, planName: attempt.planName };
+    const observed = completion.observation;
     const deadline = Date.now() + 5000;
     const pending = async () => {
         // The index owner already parsed the exact retained delivery bytes, and
@@ -641,25 +597,7 @@ async function observeConfirmedPublication(
         } catch {
             result = { persisted: false, reason: "recording_failed" };
         }
-        // Only coverage retention needs a fresh revision. Append has already had
-        // its full acquisition budget, regardless of this runtime read's cost.
-        const retained = await readControllerRecord(projectRoot, identity);
-        if (Date.now() >= deadline || retained?.state.publicationObservation?.attemptId !== attempt.attemptId) return;
-        if (retained.state.publicationObservation.coverage === "complete") return;
-        await writeControllerState(
-            projectRoot,
-            identity,
-            {
-                publicationObservation: {
-                    attemptId: attempt.attemptId,
-                    eventId: workflowOutcomeEventId("publication_confirmed", attempt.attemptId),
-                    historyEpoch: result.historyEpoch || observed?.historyEpoch,
-                    coverage: result.persisted ? "complete" : "incomplete",
-                    ...(result.persisted ? {} : { reason: result.reason || "recording_failed" }),
-                },
-            },
-            { expectedRevision: retained.revision },
-        );
+        await recordPublicationObservation(projectRoot, attempt, result, deadline, observed?.historyEpoch);
     };
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {

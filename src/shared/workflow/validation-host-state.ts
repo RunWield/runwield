@@ -1,8 +1,9 @@
+import { savePlanValidationCheckpoint } from "../../plan-store/index.ts";
 /** Engine-owned persistence and identity for host waits. No alternate validation loop. */
 import { buildValidationRepairPrompt } from "./validation-repair-prompt.ts";
 import { buildDiffInspectionSection } from "./review-diff.ts";
 import { readSemanticRound, recordLifecycleEvent } from "./validation-context.ts";
-import { loadPlan, updatePlanFrontMatter } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
 import { semanticReviewMode } from "./validation-types.ts";
 import type { PhaseContext, ValidationLoopArgs } from "./validation-types.ts";
 import { readValidationReviewState, type ValidationCheckpoint } from "./validation-checkpoint.ts";
@@ -19,7 +20,7 @@ export async function saveHostCheckpoint(
     const plan = await loadPlan(cwd, args.planName);
     if (!plan?.attrs.validationCheckpoint) throw new Error("Validation checkpoint is missing.");
     const checkpoint = { ...plan.attrs.validationCheckpoint, ...patch };
-    await updatePlanFrontMatter(cwd, args.planName, { validationCheckpoint: checkpoint }, plan.attrs, {
+    await savePlanValidationCheckpoint(cwd, args.planName, checkpoint, {
         expectedRevision: plan.revision,
         expectedControllerRevision: plan.controllerRevision,
     });

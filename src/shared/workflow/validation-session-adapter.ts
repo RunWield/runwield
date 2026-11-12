@@ -1,4 +1,5 @@
-import { preparePlanWorkflow } from "./plan-preparation.ts";
+import { savePlanValidationCheckpoint } from "../../plan-store/index.ts";
+import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { type AgentMessage } from "@earendil-works/pi-agent-core";
 import { type HostedSession } from "../session/hosted-session.js";
@@ -19,7 +20,7 @@ import { clearValidationPosition, rememberValidationPosition } from "./validatio
 import { runFeaturePostVerificationHandoffs } from "./validation-helpers.ts";
 import { runValidationAgentUntilEvent } from "../session/agent-workflow-step.ts";
 import { logValidationFailure } from "./validation-state-errors.ts";
-import { loadPlan, updatePlanFrontMatter } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { getLockHostname } from "../process-liveness.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
@@ -491,7 +492,7 @@ async function prepareRepairInvocation(hostedSession: HostedSession, cwd: string
         lastSettledOperationId: prior?.lastSettledOperationId,
     });
     hostedSession.getManagedOperationCapability?.()?.assertLive();
-    await updatePlanFrontMatter(cwd, workflow.planName, { validationCheckpoint: checkpoint }, plan.attrs, {
+    await savePlanValidationCheckpoint(cwd, workflow.planName, checkpoint, {
         expectedRevision: plan.revision,
         expectedControllerRevision: plan.controllerRevision,
     });

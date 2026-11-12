@@ -10,7 +10,8 @@ import { effectiveDeliveryBranch } from "./plan-branch.ts";
  * reach the target branch actually did.
  */
 
-import { getDeclaredPlanStatus, planDocumentMarkdown, type PlanFrontMatter } from "../../plan-store.js";
+import { type PlanFrontMatter } from "../../plan-store/index.ts";
+import { getDeclaredPlanStatus, planDocumentMarkdown } from "../../plan-format.ts";
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
 import { dirname, join, resolve } from "node:path";
 
@@ -94,7 +95,8 @@ export async function verifyRecordedPublication(
     // Older published Plans predate the stamp. Exact committed document equality
     // proves their completion without inventing evidence or rewriting the Plan.
     if (
-        document && ["validated", "verified", "user_verified"].includes(getDeclaredPlanStatus(document.markdown) || "")
+        document &&
+        ["validated", "verified", "user_verified"].includes(getDeclaredPlanStatus(document.markdown) || "")
     ) {
         const saved = await runGitForMergeVerification(projectRoot, [
             "show",
@@ -124,9 +126,7 @@ export interface RepairedMergeCandidate {
  * MERGE_HEAD; after completion it is HEAD^2. Returning the same evidence in both
  * states prevents a retry from advancing the execution branch before Agent repair.
  */
-export async function readRepairedMergeCandidate(
-    repairWorktreePath: string,
-): Promise<RepairedMergeCandidate | null> {
+export async function readRepairedMergeCandidate(repairWorktreePath: string): Promise<RepairedMergeCandidate | null> {
     let metadata = await runGitForMergeVerification(repairWorktreePath, ["rev-parse", "HEAD^2"]);
     let completedMerge = "HEAD";
     let completed = metadata.exitCode === 0 && Boolean(metadata.stdout.trim());
@@ -142,22 +142,19 @@ export async function readRepairedMergeCandidate(
             ]);
             if (merge.exitCode !== 0 || !merge.stdout.trim()) return null;
             completedMerge = merge.stdout.trim();
-            metadata = await runGitForMergeVerification(repairWorktreePath, [
-                "rev-parse",
-                `${completedMerge}^2`,
-            ]);
+            metadata = await runGitForMergeVerification(repairWorktreePath, ["rev-parse", `${completedMerge}^2`]);
             completed = metadata.exitCode === 0 && Boolean(metadata.stdout.trim());
             if (!completed) return null;
         }
     }
-    const target = await runGitForMergeVerification(
-        repairWorktreePath,
-        ["rev-parse", completed ? `${completedMerge}^1` : "HEAD"],
-    );
-    const execution = await runGitForMergeVerification(
-        repairWorktreePath,
-        ["rev-parse", `${metadata.stdout.trim()}^1`],
-    );
+    const target = await runGitForMergeVerification(repairWorktreePath, [
+        "rev-parse",
+        completed ? `${completedMerge}^1` : "HEAD",
+    ]);
+    const execution = await runGitForMergeVerification(repairWorktreePath, [
+        "rev-parse",
+        `${metadata.stdout.trim()}^1`,
+    ]);
     if (target.exitCode !== 0 || execution.exitCode !== 0) {
         const reason = target.stderr || execution.stderr || "repair merge ancestry is incomplete";
         throw new Error(`Could not recover repaired Direct Delivery candidate: ${reason.trim()}`);
@@ -208,10 +205,15 @@ interface VerifyPostMergeCandidatePublishedOptions {
  * @param {string} [opts.targetBranch] Branch the evidence says was published to.
  * @returns {Promise<MergeVerificationResult>}
  */
-export async function verifyPostMergeCandidatePublished(
-    { projectRoot, worktreeBranch, worktreeBaseBranch, git, executionCommit, metadataCommit, targetBranch }:
-        VerifyPostMergeCandidatePublishedOptions,
-) {
+export async function verifyPostMergeCandidatePublished({
+    projectRoot,
+    worktreeBranch,
+    worktreeBaseBranch,
+    git,
+    executionCommit,
+    metadataCommit,
+    targetBranch,
+}: VerifyPostMergeCandidatePublishedOptions) {
     // Commit containment first: it names the exact thing validation approved, so its
     // failure is more specific than "the branch is not contained".
     if (targetBranch && executionCommit) {
@@ -272,8 +274,7 @@ export async function verifyPostMergeCandidatePublished(
             if (treeDiffResult.exitCode === 0) {
                 return {
                     merged: true,
-                    message:
-                        `${worktreeBranch} has no unmerged tree changes beyond ${targetRef}; latest branch-only metadata commit can be safely treated as merged.`,
+                    message: `${worktreeBranch} has no unmerged tree changes beyond ${targetRef}; latest branch-only metadata commit can be safely treated as merged.`,
                 };
             }
         }

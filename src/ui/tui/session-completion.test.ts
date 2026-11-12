@@ -1,5 +1,10 @@
+import { seedPlanState, seedPlan } from "../../shared/testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
+
+import { loadPlan } from "../../plan-store/index.ts";
+
 import process from "node:process";
-import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
+import { writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { DEV_DELIVERY_REPORT } from "../workspace/server/dev-delivery-fixture.ts";
 import { ok as assert } from "node:assert/strict";
@@ -25,183 +30,208 @@ for (const columns of [60, 140]) {
     for (const choice of ["new", "load-plan", "escape", "record-failed", "record-retry"]) {
         test(`completion choices stay visible at ${columns} columns and ${choice} works`, async () => {
             await withSessionViewFixture(async ({ runtime, sessionId, session, projectRoot }) => {
-                await fsMkdir(`${projectRoot}/docs/plans`, { recursive: true });
-                await fsWriteFile(
-                    `${projectRoot}/docs/plans/next-change.md`,
-                    "---\nstatus: draft\nclassification: PLANNED_CHANGE\nplanId: next-change\n---\n# Next change\n",
-                );
-                if (choice === "record-retry") {
-                    const { savePlan } = await import("../../plan-store.js");
-                    await savePlan(projectRoot, "record-retry", "# Delivered", {
-                        planId: "record-retry",
+                const run = async () => {
+                    await seedPlan(projectRoot, "next-change", "# Next change\n", {
+                        status: "draft",
                         classification: "PLANNED_CHANGE",
-                        status: "verified",
-                        workRecord: {
-                            status: "generated",
-                            recordId: "existing",
-                            path: "docs/work-records/existing.md",
-                        },
+                        planId: "next-change",
                     });
-                }
-                const capture = process.env["RUNWIELD_DELIVERY_SCREENSHOT"] && columns === 140 && choice === "new";
-                const terminal = new VirtualTerminal({ columns, rows: capture ? 54 : 30 });
-                let activeId = sessionId;
-                const tui = new TuiAltScreen(terminal);
-                const view = await createChatView({
-                    browser: NO_OPEN_BROWSER_PORT,
-                    documentLinks: null,
-                    tui,
-                    sessionRuntime: runtime,
-                    getSessionId: () => activeId,
-                    suppressStartupHeader: true,
-                    setActiveModel: () => Promise.resolve({ status: "active" }),
-                });
-                const attach = () =>
-                    attachTuiRuntimeAdapter({
-                        runtime,
-                        sessionId: activeId,
-                        uiAPI: view.uiAPI,
-                        browser: NO_OPEN_BROWSER_PORT,
-                        notifyRunWieldEvent: () => {},
-                        onSessionComplete: (id, failed, name) => controller.offerSessionCompletion(id, failed, name),
-                    });
-                const controller = createChatInputController({
-                    view,
-                    uiAPI: view.uiAPI,
-                    runtime,
-                    getSessionId: () => activeId,
-                    getProjectRoot: () => projectRoot,
-                    sessionStartedAt: new Date().toISOString(),
-                    isModelSetupRecoveryCommand: () => false,
-                    shouldBlockForModelSetup: () => false,
-                    isInitCommandAvailable: () => false,
-                    getPromptTemplateByName: () => new Map(),
-                    getSkills: () => [],
-                    chatPromptAgentName: "router",
-                    managedSyncController: { pause: () => Promise.resolve(), resume() {} },
-                    replaceRuntimeSession: (id) => {
-                        adapter.dispose();
-                        runtime.closeSession(activeId);
-                        activeId = id;
-                        adapter = attach();
-                        view.resetForSessionReplacement();
-                    },
-                    markCtrlCPendingExit() {},
-                    isCtrlCPendingExit: () => false,
-                });
-                let adapter = attach();
-                tui.start();
-                try {
-                    const originalId = activeId;
-                    for (let i = 0; i < 40; i++) {
-                        view.uiAPI.appendSystemMessage(`Earlier workflow activity ${i}`);
-                    }
-                    emitHostedSessionRuntimeEvent(session, {
-                        type: RuntimeEventTypes.SYSTEM_STATUS,
-                        message: "Publishing the Plan",
-                        validationProgress: {
-                            kind: "workflow",
-                            cycle: 1,
-                            maxCycles: 3,
-                            totalCycle: 1,
-                            stage: "merge",
-                            outcome: "running",
-                            checks: {
-                                ci: "passed",
-                                semanticReview: "passed",
-                                humanReview: "skipped",
-                                merge: "running",
+                    if (choice === "record-retry") {
+                        await seedPlan(projectRoot, "record-retry", "# Delivered", {
+                            planId: "record-retry",
+                            classification: "PLANNED_CHANGE",
+                            status: "verified",
+                            workRecord: {
+                                status: "generated",
+                                recordId: "existing",
+                                path: "docs/work-records/existing.md",
                             },
-                        },
-                    });
-                    tui.renderNow(true);
-                    await terminal.flush();
-                    assertStringIncludes(terminal.getScreenText(), "Publishing");
-                    emitHostedSessionRuntimeEvent(session, {
-                        type: RuntimeEventTypes.SYSTEM_STATUS,
-                        message: "Plan published successfully",
-                        validationProgress: {
-                            kind: "workflow",
-                            cycle: 1,
-                            maxCycles: 3,
-                            totalCycle: 1,
-                            stage: "terminal",
-                            outcome: "verified",
-                            workRecordFailed: choice.startsWith("record-"),
-                            workRecordPlanName: "record-retry",
-                            deliveryReport: DEV_DELIVERY_REPORT,
-                            checks: { ci: "passed", semanticReview: "passed", humanReview: "skipped", merge: "passed" },
-                        },
-                    });
-                    emitHostedSessionRuntimeEvent(session, {
-                        type: RuntimeEventTypes.BUSY_CHANGED,
-                        busy: false,
-                    });
-                    await waitFor(() => terminal.getScreenText().includes("What would you like to do next?"));
-                    const screen = terminal.getScreenText();
-                    if (capture) {
-                        await fsWriteFile(
-                            process.env["RUNWIELD_DELIVERY_SCREENSHOT"] || "",
-                            JSON.stringify({
-                                columns,
-                                lines: terminal.getViewportLines(),
-                                ansi: terminal.writes,
-                            }),
+                        });
+                        const plan = await loadPlan(projectRoot, "record-retry");
+                        assert(plan);
+                        await seedPlanState(
+                            projectRoot,
+                            "record-retry",
+                            {
+                                workRecord: {
+                                    status: "generated",
+                                    recordId: "existing",
+                                    path: "work-records/existing.md",
+                                },
+                            },
+                            plan.attrs,
+                            { expectedRevision: plan.revision },
                         );
                     }
-                    if (choice.startsWith("record-")) {
-                        assertStringIncludes(screen, "Code delivered; Work Record failed.");
-                        assertStringIncludes(screen, "wld wr backfill");
-                        assertStringIncludes(screen, "Retry Work Record");
-                        assert(!screen.includes("Session complete"));
-                    } else {
-                        assertStringIncludes(screen, "Session complete");
-                    }
-                    assertStringIncludes(screen, "Start a new session");
-                    assertStringIncludes(screen, "Load a Plan");
-                    assertStringIncludes(screen, "Quit");
-                    assert(!screen.includes("Publishing running"));
-                    assert(!screen.includes("Validation passed"));
-                    if (choice === "record-retry") {
-                        terminal.pressEnter();
-                        await waitFor(() => terminal.getScreenText().includes("Session complete"));
-                        assertEquals(activeId, originalId);
-                        terminal.pressEscape();
-                        await waitFor(() => !controller.isProcessingSubmission());
-                        tui.renderNow(true);
-                        await terminal.flush();
-                    } else if (choice === "escape" || choice === "record-failed") {
-                        terminal.pressEscape();
-                        await terminal.flush();
-                        await waitFor(() => !controller.isProcessingSubmission());
-                        tui.renderNow(true);
-                        await terminal.flush();
-                        assertEquals(activeId, originalId);
-                    } else {
-                        if (choice === "load-plan") terminal.input("\x1b[B");
-                        terminal.pressEnter();
-                        await waitFor(() => activeId !== originalId);
-                        assertEquals(runtime.getSessionSnapshot(activeId)?.activeAgent, "router");
-                        if (choice === "load-plan") {
-                            await waitFor(() => terminal.getScreenText().includes("Load plan:")).catch((error) => {
-                                throw new Error(`${error}\n${terminal.getScreenText()}`);
-                            });
-                            assertStringIncludes(terminal.getScreenText(), "next-change");
-                            terminal.pressEscape();
+                    const capture = process.env["RUNWIELD_DELIVERY_SCREENSHOT"] && columns === 140 && choice === "new";
+                    const terminal = new VirtualTerminal({ columns, rows: capture ? 54 : 30 });
+                    let activeId = sessionId;
+                    const tui = new TuiAltScreen(terminal);
+                    const view = await createChatView({
+                        browser: NO_OPEN_BROWSER_PORT,
+                        documentLinks: null,
+                        tui,
+                        sessionRuntime: runtime,
+                        getSessionId: () => activeId,
+                        suppressStartupHeader: true,
+                        setActiveModel: () => Promise.resolve({ status: "active" }),
+                    });
+                    const attach = () =>
+                        attachTuiRuntimeAdapter({
+                            runtime,
+                            sessionId: activeId,
+                            uiAPI: view.uiAPI,
+                            browser: NO_OPEN_BROWSER_PORT,
+                            notifyRunWieldEvent: () => {},
+                            onSessionComplete: (id, failed, name) =>
+                                controller.offerSessionCompletion(id, failed, name),
+                        });
+                    const controller = createChatInputController({
+                        view,
+                        uiAPI: view.uiAPI,
+                        runtime,
+                        getSessionId: () => activeId,
+                        getProjectRoot: () => projectRoot,
+                        sessionStartedAt: new Date().toISOString(),
+                        isModelSetupRecoveryCommand: () => false,
+                        shouldBlockForModelSetup: () => false,
+                        isInitCommandAvailable: () => false,
+                        getPromptTemplateByName: () => new Map(),
+                        getSkills: () => [],
+                        chatPromptAgentName: "router",
+                        managedSyncController: { pause: () => Promise.resolve(), resume() {} },
+                        replaceRuntimeSession: (id) => {
+                            adapter.dispose();
+                            runtime.closeSession(activeId);
+                            activeId = id;
+                            adapter = attach();
+                            view.resetForSessionReplacement();
+                        },
+                        markCtrlCPendingExit() {},
+                        isCtrlCPendingExit: () => false,
+                    });
+                    let adapter = attach();
+                    tui.start();
+                    try {
+                        const originalId = activeId;
+                        for (let i = 0; i < 40; i++) {
+                            view.uiAPI.appendSystemMessage(`Earlier workflow activity ${i}`);
                         }
-                        await terminal.flush();
-                        await waitFor(() => !controller.isProcessingSubmission());
+                        emitHostedSessionRuntimeEvent(session, {
+                            type: RuntimeEventTypes.SYSTEM_STATUS,
+                            message: "Publishing the Plan",
+                            validationProgress: {
+                                kind: "workflow",
+                                cycle: 1,
+                                maxCycles: 3,
+                                totalCycle: 1,
+                                stage: "merge",
+                                outcome: "running",
+                                checks: {
+                                    ci: "passed",
+                                    semanticReview: "passed",
+                                    humanReview: "skipped",
+                                    merge: "running",
+                                },
+                            },
+                        });
                         tui.renderNow(true);
                         await terminal.flush();
+                        assertStringIncludes(terminal.getScreenText(), "Publishing");
+                        emitHostedSessionRuntimeEvent(session, {
+                            type: RuntimeEventTypes.SYSTEM_STATUS,
+                            message: "Plan published successfully",
+                            validationProgress: {
+                                kind: "workflow",
+                                cycle: 1,
+                                maxCycles: 3,
+                                totalCycle: 1,
+                                stage: "terminal",
+                                outcome: "verified",
+                                workRecordFailed: choice.startsWith("record-"),
+                                workRecordPlanName: "record-retry",
+                                deliveryReport: DEV_DELIVERY_REPORT,
+                                checks: {
+                                    ci: "passed",
+                                    semanticReview: "passed",
+                                    humanReview: "skipped",
+                                    merge: "passed",
+                                },
+                            },
+                        });
+                        emitHostedSessionRuntimeEvent(session, {
+                            type: RuntimeEventTypes.BUSY_CHANGED,
+                            busy: false,
+                        });
+                        await waitFor(() => terminal.getScreenText().includes("What would you like to do next?"));
+                        const screen = terminal.getScreenText();
+                        if (capture) {
+                            await fsWriteFile(
+                                process.env["RUNWIELD_DELIVERY_SCREENSHOT"] || "",
+                                JSON.stringify({
+                                    columns,
+                                    lines: terminal.getViewportLines(),
+                                    ansi: terminal.writes,
+                                }),
+                            );
+                        }
+                        if (choice.startsWith("record-")) {
+                            assertStringIncludes(screen, "Code delivered; Work Record failed.");
+                            assertStringIncludes(screen, "wld wr backfill");
+                            assertStringIncludes(screen, "Retry Work Record");
+                            assert(!screen.includes("Session complete"));
+                        } else {
+                            assertStringIncludes(screen, "Session complete");
+                        }
+                        assertStringIncludes(screen, "Start a new session");
+                        assertStringIncludes(screen, "Load a Plan");
+                        assertStringIncludes(screen, "Quit");
+                        assert(!screen.includes("Publishing running"));
+                        assert(!screen.includes("Validation passed"));
+                        if (choice === "record-retry") {
+                            terminal.pressEnter();
+                            await waitFor(() => terminal.getScreenText().includes("Session complete"));
+                            assertEquals(activeId, originalId);
+                            terminal.pressEscape();
+                            await waitFor(() => !controller.isProcessingSubmission());
+                            tui.renderNow(true);
+                            await terminal.flush();
+                        } else if (choice === "escape" || choice === "record-failed") {
+                            terminal.pressEscape();
+                            await terminal.flush();
+                            await waitFor(() => !controller.isProcessingSubmission());
+                            tui.renderNow(true);
+                            await terminal.flush();
+                            assertEquals(activeId, originalId);
+                        } else {
+                            if (choice === "load-plan") terminal.input("\x1b[B");
+                            terminal.pressEnter();
+                            await waitFor(() => activeId !== originalId);
+                            assertEquals(runtime.getSessionSnapshot(activeId)?.activeAgent, "router");
+                            if (choice === "load-plan") {
+                                await waitFor(() => terminal.getScreenText().includes("Load plan:")).catch((error) => {
+                                    throw new Error(`${error}\n${terminal.getScreenText()}`);
+                                });
+                                assertStringIncludes(terminal.getScreenText(), "next-change");
+                                terminal.pressEscape();
+                            }
+                            await terminal.flush();
+                            await waitFor(() => !controller.isProcessingSubmission());
+                            tui.renderNow(true);
+                            await terminal.flush();
+                        }
+                        assert(!terminal.getScreenText().includes("What would you like to do next?"));
+                    } finally {
+                        terminal.pressEscape();
+                        await controller.dispose();
+                        adapter.dispose();
+                        view.dispose();
+                        tui.stop();
                     }
-                    assert(!terminal.getScreenText().includes("What would you like to do next?"));
-                } finally {
-                    terminal.pressEscape();
-                    await controller.dispose();
-                    adapter.dispose();
-                    view.dispose();
-                    tui.stop();
-                }
+                };
+                // Retry an existing pre-cutover completion whose backlink predates package receipts.
+                if (choice === "record-retry") await withRetainedPlanFixture(projectRoot, run);
+                else await run();
             });
         });
     }

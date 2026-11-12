@@ -1,13 +1,10 @@
+import { readRetainedExecutionPlan } from "../../plan-store/index.ts";
 import { access, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { dirname, resolve, join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import {
-    parsePlanFrontMatter,
-    mergeFrontMatterText,
-    planDocumentMarkdown,
-    type PlanFrontMatter,
-} from "../../plan-store.js";
+import { type PlanFrontMatter } from "../../plan-store/index.ts";
+import { parsePlanFrontMatter, mergeFrontMatterText, planDocumentMarkdown } from "../../plan-format.ts";
 import { stripRuntimeFields } from "./controller-state.ts";
 import { platform } from "node:process";
 import { captureForegroundProcess } from "../captured-process.ts";
@@ -159,7 +156,7 @@ async function assertSetupFilesUnchanged(cwd: string, receipt: SetupReceipt) {
     if (receipt.state === "ready" && receipt.lifecyclePlan && !allowedTrees.includes(current.tree)) {
         const changedPaths = await git(cwd, ["diff", "--name-only", receipt.tree, current.tree]);
         if (changedPaths === receipt.lifecyclePlan.path) {
-            const currentPlan = await readFile(join(cwd, receipt.lifecyclePlan.path), "utf8");
+            const currentPlan = await readRetainedExecutionPlan(cwd, receipt.lifecyclePlan.path);
             if (
                 isDeepStrictEqual(
                     parsePlanFrontMatter(currentPlan),
@@ -386,7 +383,7 @@ export async function recordExecutionSetupLifecycle(
 ): Promise<void> {
     const receipt = await readExecutionSetup(cwd);
     if (!receipt) return;
-    const before = await readFile(join(cwd, path), "utf8");
+    const before = await readRetainedExecutionPlan(cwd, path);
     const expected = planDocumentMarkdown(mergeFrontMatterText(before, stripRuntimeFields(updates)));
     await writeReceipt(cwd, { ...receipt, lifecyclePlan: { path, expected } });
 }

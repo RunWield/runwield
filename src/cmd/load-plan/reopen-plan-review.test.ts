@@ -1,3 +1,4 @@
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
@@ -6,9 +7,11 @@ import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
-import { ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.js";
+import { renamePlan } from "../../plan-store/index.ts";
+import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
+
 import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";
-import type { SequenceReviewDocument } from "../../shared/workflow/sequence-review.ts";
+import type { SequenceReviewDocument } from "../../plan-store/index.ts";
 
 test("an idle Session reopens the complete saved Sequence and saves approval without a model turn", async () => {
     await withRuntimeCommandFixture("reopen-sequence-", async ({ homeDir, projectRoot, setModelResponseFactory }) => {
@@ -17,13 +20,13 @@ test("an idle Session reopens the complete saved Sequence and saves approval wit
             modelTurns++;
             return fauxAssistantMessage(fauxText("Unexpected planning turn"));
         });
-        await savePlan(projectRoot, "sequence", "# Container\n\n## Context\n\nReview both.", {
+        await seedPlan(projectRoot, "sequence", "# Container\n\n## Context\n\nReview both.", {
             classification: "PROJECT",
             type: "sequence",
             status: "draft",
             affectedPaths: [],
         });
-        await savePlan(projectRoot, "sequence/child", "# Child\n\n## Context\n\nImplement.", {
+        await seedPlan(projectRoot, "sequence/child", "# Child\n\n## Context\n\nImplement.", {
             classification: "PLANNED_CHANGE",
             status: "draft",
             parentPlan: "sequence",
@@ -65,7 +68,11 @@ test("an idle Session reopens the complete saved Sequence and saves approval wit
                 if ("message" in event && typeof event.message === "string") notices.push(event.message);
             });
             assertEquals((await runtime.reopenPlanReview(sessionId)).kind, "complete");
-            assertEquals(reviewed.map((doc) => doc.planName), ["sequence", "sequence/child"], notices.join("\n"));
+            assertEquals(
+                reviewed.map((doc) => doc.planName),
+                ["sequence", "sequence/child"],
+                notices.join("\n"),
+            );
             assertEquals(
                 (await loadPlan(projectRoot, "sequence/child"))?.attrs.status,
                 "ready_for_work",
@@ -82,7 +89,8 @@ test("an idle Session reopens the complete saved Sequence and saves approval wit
 
 test("a saved review does not open a replacement Plan identity", async () => {
     await withRuntimeCommandFixture("reopen-identity-", async ({ homeDir, projectRoot }) => {
-        await savePlan(projectRoot, "target", "# Target", {
+        await seedPlan(projectRoot, "target", "# Target", {
+            planId: "old-identity",
             classification: "PLANNED_CHANGE",
             status: "draft",
             affectedPaths: [],
@@ -96,6 +104,15 @@ test("a saved review does not open a replacement Plan identity", async () => {
                 type: RuntimeInteractionTypes.PLAN_REVIEW,
                 prompt: "Review target",
                 _meta: { planId: "old-identity", planName: "target", planningAgentName: "planner" },
+            });
+            const original = await loadPlan(projectRoot, "target");
+            assert(original);
+            await renamePlan(projectRoot, "target", "previous-target", original.revision);
+            await seedPlan(projectRoot, "target", "# Replacement", {
+                planId: "replacement-identity",
+                classification: "PLANNED_CHANGE",
+                status: "draft",
+                affectedPaths: [],
             });
             const result = await runtime.reopenPlanReview(sessionId);
             assert(result.kind === "identity_mismatch");

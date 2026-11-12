@@ -1,13 +1,13 @@
-import { validateSequenceReviewDecision } from "../../../../shared/workflow/sequence-review.ts";
+import { validateSequenceReviewDecision } from "../../../../plan-store/index.ts";
 /** Review decision transport for Workspace-hosted review surfaces. */
 
 import { normalizePlanClassification } from "../../../../constants.js";
 import { readPlanApprovalAction } from "../../../../shared/workflow/plan-approval.ts";
-import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../../plan-store.js";
+import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../../plan-format.ts";
 
 /**
- * @typedef {import("../../../../shared/workflow/sequence-review.ts").SequenceReviewDecision} SequenceReviewDecision
- * @typedef {import("../../../../shared/workflow/sequence-review.ts").SequenceReviewDocument} SequenceReviewDocument
+ * @typedef {import("../../../../plan-store/index.ts").SequenceReviewDecision} SequenceReviewDecision
+ * @typedef {import("../../../../plan-store/index.ts").SequenceReviewDocument} SequenceReviewDocument
  * @typedef {import("../../../../shared/workflow/review-feedback-images.ts").ReviewImageDecision} ReviewImageDecision
  * @typedef {import("../../../../shared/workflow/review-feedback-images.ts").ReviewImageInput} ReviewImageInput
  * @typedef {import("../../../../shared/workflow/review-feedback-images.ts").ReviewAnnotationInput} ReviewAnnotationInput
@@ -48,7 +48,7 @@ import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../..
  * @property {string} [documentRevision]
  * @property {number} [reviewRevision]
  * @property {string} [classification]
- * @property {Pick<import("../../../../plan-store.js").PlanFrontMatter, "classification">} [frontmatter]
+ * @property {Pick<import("../../../../plan-store/index.ts").PlanFrontMatter, "classification">} [frontmatter]
  * @property {SequenceReviewDocument[]} [sequenceDocuments]
  *
  * @typedef {Object} ReviewRequestState

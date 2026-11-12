@@ -1,3 +1,4 @@
+import { seedPlan as saveOwnedPlan } from "../testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { stat, readFile, readdir } from "node:fs/promises";
@@ -5,7 +6,12 @@ import { join, relative } from "node:path";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
-import { savePlan } from "../../plan-store.js";
+
+import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
+
+// Seed the checkout contract still owned by the managed remote runtime.
+const savePlan: typeof saveOwnedPlan = (root, ...args) =>
+    withRetainedPlanFixture(root, () => saveOwnedPlan(root, ...args));
 import { git } from "../workflow/validation-test-helpers.js";
 import { assertRemoteStorageAbsent, withRemoteRuntimeFixture } from "./remote-runtime-test-fixture.ts";
 import type { BackgroundTaskStatus } from "../session/background-tasks.ts";
@@ -204,131 +210,133 @@ for (const scenario of [
 for (const boundary of ["handoff", "validation", "repair", "publication"] as const) {
     test(`a local Session still performs ${boundary} effects through the same workflow boundary`, async () => {
         await withRemoteRuntimeFixture(async (f) => {
-            const { Type } = await import("@earendil-works/pi-ai");
-            const { SessionRuntime } = await import("../session/session-runtime.ts");
-            const { SessionHost } = await import("../session/session-host.ts");
-            const { openFileSessionStore } = await import("../session/file-session-store.ts");
-            const { createExecutionStartPorts, startActiveExecutionWorkflow } =
-                await import("../workflow/execution-start.ts");
-            const { finalizePlanImplementation } = await import("../workflow/implementation-checkpoint.ts");
-            const { runValidationPhase, createEngineValidationArgs } = await import("../workflow/validation.ts");
-            const { createValidationSessionPort } = await import("../workflow/validation-session-adapter.ts");
-            const { resolvePhaseContext } = await import("../workflow/validation-context.ts");
-            const { runPublicationPhase } = await import("../workflow/validation-publication.ts");
-            const { createGitPort } = await import("../git-port.ts");
-            const { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } = await import("../work-records/mnemoteca-port.ts");
-            const { loadPlan } = await import("../../plan-store.js");
-            const { writeFile } = await import("node:fs/promises");
-            await savePlan(f.remoteProject, "effect-gate", "# Local effect gate\n", {
-                planId: "local-effect-plan",
-                classification: "QUICK_FIX",
-                status: "ready_for_work",
-                executionAgent: "engineer",
-                collaborationRecommendation: "autonomous",
-            });
-            const store = openFileSessionStore();
-            const host = new SessionHost();
-            const runtime = new SessionRuntime({
-                sessionHost: host,
-                sessionStore: store,
-                ownerProcessKind: "test",
-                ownerInstanceId: crypto.randomUUID(),
-            });
-            let completed = false;
-            let ci = 0;
-            scriptReviewAndRecord(f);
-            try {
-                const id = await runtime.createPromptReadySession({ cwd: f.remoteProject, agentName: "engineer" });
-                await runtime.promptUserTurn(id, {
-                    agentName: "engineer",
-                    initialRequest: "Run the local boundary scenario.",
-                    customTools: [
-                        {
-                            name: "boundary_scenario",
-                            label: "Boundary scenario",
-                            description: "Run a local workflow boundary.",
-                            parameters: Type.Object({}),
-                            execute: async () => {
-                                const session = host.requireSession(id);
-                                const plan = (await loadPlan(f.remoteProject, "effect-gate"))!;
-                                // This entry is a normal local save, not a remote capability fault.
-                                session
-                                    .getRootSessionManager()!
-                                    .appendCustomEntry?.("effect-gate-fault", { marker: "local-save" });
-                                await startActiveExecutionWorkflow({
-                                    planName: "effect-gate",
-                                    triageMeta: plan.attrs,
-                                    currentStatus: plan.attrs.status,
-                                    hostedSession: session,
-                                    ports: createExecutionStartPorts(),
-                                });
-                                const workflow = session.getActiveExecutionWorkflow()!;
-                                if (boundary !== "handoff") {
-                                    await writeFile(
-                                        join(workflow.executionCwd!, "sentinel.txt"),
-                                        "local implementation\n",
-                                    );
-                                    await finalizePlanImplementation({
-                                        projectRoot: f.remoteProject,
+            await withRetainedPlanFixture(f.remoteProject, async () => {
+                const { Type } = await import("@earendil-works/pi-ai");
+                const { SessionRuntime } = await import("../session/session-runtime.ts");
+                const { SessionHost } = await import("../session/session-host.ts");
+                const { openFileSessionStore } = await import("../session/file-session-store.ts");
+                const { createExecutionStartPorts, startActiveExecutionWorkflow } =
+                    await import("../workflow/execution-start.ts");
+                const { finalizePlanImplementation } = await import("../workflow/implementation-checkpoint.ts");
+                const { runValidationPhase, createEngineValidationArgs } = await import("../workflow/validation.ts");
+                const { createValidationSessionPort } = await import("../workflow/validation-session-adapter.ts");
+                const { resolvePhaseContext } = await import("../workflow/validation-context.ts");
+                const { runPublicationPhase } = await import("../workflow/validation-publication.ts");
+                const { createGitPort } = await import("../git-port.ts");
+                const { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } = await import("../work-records/mnemoteca-port.ts");
+                const { loadPlan } = await import("../../plan-store/index.ts");
+                const { writeFile } = await import("node:fs/promises");
+                await savePlan(f.remoteProject, "effect-gate", "# Local effect gate\n", {
+                    planId: "local-effect-plan",
+                    classification: "QUICK_FIX",
+                    status: "ready_for_work",
+                    executionAgent: "engineer",
+                    collaborationRecommendation: "autonomous",
+                });
+                const store = openFileSessionStore();
+                const host = new SessionHost();
+                const runtime = new SessionRuntime({
+                    sessionHost: host,
+                    sessionStore: store,
+                    ownerProcessKind: "test",
+                    ownerInstanceId: crypto.randomUUID(),
+                });
+                let completed = false;
+                let ci = 0;
+                scriptReviewAndRecord(f);
+                try {
+                    const id = await runtime.createPromptReadySession({ cwd: f.remoteProject, agentName: "engineer" });
+                    await runtime.promptUserTurn(id, {
+                        agentName: "engineer",
+                        initialRequest: "Run the local boundary scenario.",
+                        customTools: [
+                            {
+                                name: "boundary_scenario",
+                                label: "Boundary scenario",
+                                description: "Run a local workflow boundary.",
+                                parameters: Type.Object({}),
+                                execute: async () => {
+                                    const session = host.requireSession(id);
+                                    const plan = (await loadPlan(f.remoteProject, "effect-gate"))!;
+                                    // This entry is a normal local save, not a remote capability fault.
+                                    session
+                                        .getRootSessionManager()!
+                                        .appendCustomEntry?.("effect-gate-fault", { marker: "local-save" });
+                                    await startActiveExecutionWorkflow({
                                         planName: "effect-gate",
                                         triageMeta: plan.attrs,
-                                        executionContext: workflow,
+                                        currentStatus: plan.attrs.status,
                                         hostedSession: session,
+                                        ports: createExecutionStartPorts(),
                                     });
-                                    const implemented = (await loadPlan(workflow.executionCwd!, "effect-gate"))!;
-                                    const args = {
-                                        workRecordMnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
-                                        hostedSession: session,
-                                        planName: "effect-gate",
-                                        planContent: implemented.markdown,
-                                        triageMeta: implemented.attrs,
-                                        git: createGitPort(),
-                                        localCI: {
-                                            run: () => {
-                                                ci++;
-                                                return Promise.resolve({
-                                                    kind: "completed" as const,
-                                                    exitCode: 0,
-                                                    output: "passed",
-                                                });
+                                    const workflow = session.getActiveExecutionWorkflow()!;
+                                    if (boundary !== "handoff") {
+                                        await writeFile(
+                                            join(workflow.executionCwd!, "sentinel.txt"),
+                                            "local implementation\n",
+                                        );
+                                        await finalizePlanImplementation({
+                                            projectRoot: f.remoteProject,
+                                            planName: "effect-gate",
+                                            triageMeta: plan.attrs,
+                                            executionContext: workflow,
+                                            hostedSession: session,
+                                        });
+                                        const implemented = (await loadPlan(workflow.executionCwd!, "effect-gate"))!;
+                                        const args = {
+                                            workRecordMnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
+                                            hostedSession: session,
+                                            planName: "effect-gate",
+                                            planContent: implemented.markdown,
+                                            triageMeta: implemented.attrs,
+                                            git: createGitPort(),
+                                            localCI: {
+                                                run: () => {
+                                                    ci++;
+                                                    return Promise.resolve({
+                                                        kind: "completed" as const,
+                                                        exitCode: 0,
+                                                        output: "passed",
+                                                    });
+                                                },
                                             },
-                                        },
-                                    };
-                                    await runValidationPhase(args);
-                                    if (boundary === "repair") {
-                                        await createValidationSessionPort(session).runIndependentRepairTurn({
-                                            kind: "validation",
-                                            agentName: "engineer",
-                                            userRequest: "Repair the local change.",
-                                            cwd: workflow.executionCwd!,
-                                        });
-                                    } else if (boundary === "publication") {
+                                        };
                                         await runValidationPhase(args);
-                                        const engine = createEngineValidationArgs(args);
-                                        const phase = await resolvePhaseContext(engine);
-                                        assertEquals(phase.kind, "ok");
-                                        if (phase.kind !== "ok")
-                                            throw new Error("Local publication context unavailable");
-                                        const result = await runPublicationPhase(engine, phase.context, {
-                                            humanReviewMode: "always",
-                                            humanReviewDecision: "approved",
-                                            humanReviewedAt: new Date().toISOString(),
-                                        });
-                                        assertEquals(result.result.kind, "verified");
+                                        if (boundary === "repair") {
+                                            await createValidationSessionPort(session).runIndependentRepairTurn({
+                                                kind: "validation",
+                                                agentName: "engineer",
+                                                userRequest: "Repair the local change.",
+                                                cwd: workflow.executionCwd!,
+                                            });
+                                        } else if (boundary === "publication") {
+                                            await runValidationPhase(args);
+                                            const engine = createEngineValidationArgs(args);
+                                            const phase = await resolvePhaseContext(engine);
+                                            assertEquals(phase.kind, "ok");
+                                            if (phase.kind !== "ok")
+                                                throw new Error("Local publication context unavailable");
+                                            const result = await runPublicationPhase(engine, phase.context, {
+                                                humanReviewMode: "always",
+                                                humanReviewDecision: "approved",
+                                                humanReviewedAt: new Date().toISOString(),
+                                            });
+                                            assertEquals(result.result.kind, "verified");
+                                        }
                                     }
-                                }
-                                completed = true;
-                                return { content: [{ type: "text" as const, text: "Finished." }], details: {} };
+                                    completed = true;
+                                    return { content: [{ type: "text" as const, text: "Finished." }], details: {} };
+                                },
                             },
-                        },
-                    ],
-                });
-                assert(completed, "The local operation must pass the live-capability boundary");
-                assertEquals(ci, boundary === "handoff" ? 0 : 1);
-            } finally {
-                await runtime.closeAllSessionsWhenIdle();
-                store.close();
-            }
+                        ],
+                    });
+                    assert(completed, "The local operation must pass the live-capability boundary");
+                    assertEquals(ci, boundary === "handoff" ? 0 : 1);
+                } finally {
+                    await runtime.closeAllSessionsWhenIdle();
+                    store.close();
+                }
+            });
         });
     });
 }

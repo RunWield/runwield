@@ -1,26 +1,30 @@
-import { resolvePlanWithPrimaryRecovery } from "../../cmd/load-plan/primary-plan-recovery.ts";
+import { seedPlanController, inspectPlanFixtureController } from "../testing/plan-state-fixture.ts";
+import { selectPlanAccess } from "../../plan-store/index.ts";
+import { resolvePlanWithPrimaryRecovery } from "../../plan-store/index.ts";
 import { loadPlanActionEvidence } from "./plan-actions.ts";
-import { loadPlanBodyById, savePlanBodyById } from "../../plan-store.js";
+import { loadPlanBodyById, savePlanBodyById } from "../../plan-store/index.ts";
 import {
     updatePlanPackageMetadata,
     readPlanPackageInput,
     readPlanPackage,
     renamePlanPackage,
-} from "../plan-package-store.ts";
-import { findPlansByParent } from "../../plan-store.js";
-import { appendEpicManualQaSection } from "../epic-artifacts.ts";
-import { prepareSequenceReview, applySequenceReviewDecision } from "./sequence-review.ts";
-import { applySharedPlanReviewDecision } from "./plan-review-actions.ts";
+} from "../../plan-store/packages.ts";
+import { findPlansByParent } from "../../plan-store/index.ts";
+import { appendEpicManualQaSection } from "../../plan-store/index.ts";
+import { prepareSequenceReview, applySequenceReviewDecision } from "../../plan-store/index.ts";
+import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";
 import { PLAN_APPROVAL_ACTIONS } from "./plan-approval.ts";
 import { test } from "node:test";
 import { equal, deepEqual, ok, rejects } from "node:assert/strict";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { create, read, packageFixture } from "../testing/plan-package-fixture.ts";
-import { preparePlanWorkflow } from "./plan-preparation.ts";
-import { withPackageWorkflow, loadPackageWorkflowPlan, capturePackageWorkflowInput } from "./package-workflow.ts";
+import { preparePlanWorkflow } from "../../plan-store/index.ts";
+import { loadPackageWorkflowPlan, capturePackageWorkflowInput } from "../../plan-store/workflows.ts";
+import { withPackageWorkflow } from "../../plan-store/workflows.ts";
 import { recordPlanEvent } from "./plan-lifecycle.js";
-import { writeControllerState, readControllerRecord } from "./controller-registry.ts";
+import { startActiveExecutionWorkflow, createExecutionStartPorts } from "./execution-start.ts";
+import { git } from "../git-test-fixture.ts";
 
 test("explicit package admission reads home bytes despite a poisoned repository Plan", async () => {
     const f = await packageFixture();
@@ -76,7 +80,7 @@ test("controller scalar and complex evidence survive a fresh package scope", asy
             f.root,
             { identity: f.identity, planId: p.metadata.planId, expectedRevision: 1 },
             async () => {
-                await writeControllerState(
+                await seedPlanController(
                     f.root,
                     { planName: "one", planId: p.metadata.planId },
                     {
@@ -92,7 +96,10 @@ test("controller scalar and complex evidence survive a fresh package scope", asy
             f.root,
             { identity: f.identity, planId: p.metadata.planId, expectedRevision: current.metadata.revision },
             async () => {
-                const state = await readControllerRecord(f.root, { planName: "one", planId: p.metadata.planId });
+                const state = await inspectPlanFixtureController(f.root, {
+                    planName: "one",
+                    planId: p.metadata.planId,
+                });
                 equal(state?.state.implementedAt, "2026-11-05T00:00:00Z");
                 equal(state?.state.validationCheckpoint, null);
             },
@@ -174,7 +181,7 @@ test("shared review and readiness retain complete input and ignore controller-on
             async () => {
                 const view = await loadPackageWorkflowPlan("one");
                 const input = await capturePackageWorkflowInput("one");
-                await writeControllerState(f.root, { planName: "one" }, { updatedAt: "2026-11-05T12:00:00Z" });
+                await seedPlanController(f.root, { planName: "one" }, { updatedAt: "2026-11-05T12:00:00Z" });
                 const result = await applySharedPlanReviewDecision({
                     cwd: f.root,
                     planName: "one",
@@ -366,6 +373,7 @@ test("formatting-only review captures new exact bytes while reply-only review pr
 
 test("live ID relationships survive rename and unrelated sibling edits without staling the child", async () => {
     const f = await packageFixture();
+    let executionCwd: string | undefined;
     try {
         const parent = await create(f.identity, {
             planId: "parent",
@@ -407,6 +415,16 @@ test("live ID relationships survive rename and unrelated sibling edits without s
                     currentStatus: "approved",
                 });
                 equal((await loadPackageWorkflowPlan("one")).attrs.status, "ready_for_work");
+                const ready = await loadPackageWorkflowPlan("one");
+                const execution = await startActiveExecutionWorkflow({
+                    cwd: f.root,
+                    planName: "one",
+                    triageMeta: ready.attrs,
+                    currentStatus: "ready_for_work",
+                    ports: createExecutionStartPorts(),
+                });
+                executionCwd = execution.executionCwd;
+                equal((await loadPackageWorkflowPlan("one")).attrs.targetBranch, "main");
                 await appendEpicManualQaSection({
                     projectRoot: f.root,
                     epicPlanName: "renamed-parent",
@@ -423,6 +441,7 @@ test("live ID relationships survive rename and unrelated sibling edits without s
             },
         );
     } finally {
+        if (executionCwd && executionCwd !== f.root) await git(f.root, ["worktree", "remove", "--force", executionCwd]);
         await f.cleanup();
     }
 });
@@ -434,7 +453,10 @@ test("internal load/actions and ordinary body save keep selected package authori
         await create(f.identity, { planId: "second", name: "second" });
         const selection = { identity: f.identity, planId: p.metadata.planId, expectedRevision: 1 };
         await rejects(preparePlanWorkflow(f.root, "second", selection), /does not match/);
-        equal((await resolvePlanWithPrimaryRecovery(f.root, "one", selection)).plan.path, join(p.path, "context.md"));
+        equal(
+            (await resolvePlanWithPrimaryRecovery(f.root, "one", await selectPlanAccess(f.root, "one"))).plan.path,
+            join(p.path, "context.md"),
+        );
         await withPackageWorkflow(f.root, selection, async () => {
             equal((await loadPlanActionEvidence(f.root, p.metadata.planId)).kind, "success");
             const body = await loadPlanBodyById(f.root, p.metadata.planId);
@@ -496,14 +518,14 @@ test("two controller writers using the same package revision cannot both commit"
             async () => {
                 const identity = { planName: "one", planId: p.metadata.planId };
                 const results = await Promise.allSettled([
-                    writeControllerState(f.root, identity, { failureReason: "first" }, { expectedRevision: 1 }),
-                    writeControllerState(f.root, identity, { failureReason: "second" }, { expectedRevision: 1 }),
+                    seedPlanController(f.root, identity, { failureReason: "first" }, { expectedRevision: 1 }),
+                    seedPlanController(f.root, identity, { failureReason: "second" }, { expectedRevision: 1 }),
                 ]);
                 equal(results.filter((result) => result.status === "fulfilled").length, 1);
                 const winner = results.find((result) => result.status === "fulfilled")!;
                 ok(winner.status === "fulfilled");
                 equal(
-                    (await readControllerRecord(f.root, identity))?.state.failureReason,
+                    (await inspectPlanFixtureController(f.root, identity))?.state.failureReason,
                     winner.value.state.failureReason,
                 );
                 equal((await read(f.identity)).metadata.revision, 2);

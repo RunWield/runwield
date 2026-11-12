@@ -1,4 +1,5 @@
-import { currentPackageSelection, loadPackageWorkflowPlan } from "./package-workflow.ts";
+import { loadPackageWorkflowPlan } from "../../plan-store/workflows.ts";
+import { capturePlanAccess } from "../../plan-store/index.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { lstat as fsLstat, mkdir as fsMkdir, readFile as fsReadFile } from "node:fs/promises";
 /**
@@ -6,15 +7,14 @@ import { lstat as fsLstat, mkdir as fsMkdir, readFile as fsReadFile } from "node
  */
 
 import { dirname, join, relative, sep as SEPARATOR } from "node:path";
+import { getStoredPlanPath, writePlanMarkdownWithRevision } from "../../plan-store.js";
 import {
-    atomicWriteTextFileIfAbsent,
     getPlanRevisionForText,
-    getStoredPlanPath,
     mergeFrontMatterText,
     parsePlanFrontMatter,
     planDocumentMarkdown,
-    writePlanMarkdownWithRevision,
-} from "../../plan-store.js";
+} from "../../plan-format.ts";
+import { atomicWriteTextFileIfAbsent } from "../atomic-text-file.ts";
 
 /**
  * @typedef {Object} ExecutionPlanFileResult
@@ -25,22 +25,22 @@ import {
  * @property {{ from: string|undefined, to: string }} [healedPlanId] - Set when a diverged execution-copy Plan ID was reconciled to the canonical one.
  */
 
-/** @param {import('../../plan-store.js').PlanFrontMatter[keyof import('../../plan-store.js').PlanFrontMatter]} value */
+/** @param {import('../../plan-store/index.ts').PlanFrontMatter[keyof import('../../plan-store/index.ts').PlanFrontMatter]} value */
 function isPlanId(value) {
     return typeof value === "string" && value.trim().length > 0;
 }
 
 /**
- * @param {import('../../plan-store.js').PlanFrontMatter["planId"]} canonicalPlanId
- * @param {import('../../plan-store.js').PlanFrontMatter["planId"]} executionPlanId
+ * @param {import('../../plan-store/index.ts').PlanFrontMatter["planId"]} canonicalPlanId
+ * @param {import('../../plan-store/index.ts').PlanFrontMatter["planId"]} executionPlanId
  */
 function mustReconcilePlanId(canonicalPlanId, executionPlanId) {
     return isPlanId(canonicalPlanId) && canonicalPlanId !== executionPlanId;
 }
 
 /**
- * @param {import('../../plan-store.js').PlanFrontMatter["planId"]} canonicalPlanId
- * @param {import('../../plan-store.js').PlanFrontMatter["planId"]} executionPlanId
+ * @param {import('../../plan-store/index.ts').PlanFrontMatter["planId"]} canonicalPlanId
+ * @param {import('../../plan-store/index.ts').PlanFrontMatter["planId"]} executionPlanId
  */
 function hasPlanIdConflict(canonicalPlanId, executionPlanId) {
     return isPlanId(canonicalPlanId) && isPlanId(executionPlanId) && canonicalPlanId !== executionPlanId;
@@ -52,11 +52,11 @@ function hasPlanIdConflict(canonicalPlanId, executionPlanId) {
  * only in the primary checkout. Reconcile only those RunWield-owned fields; the
  * execution copy's user-owned body and unrelated Front Matter remain untouched.
  *
- * @param {import('../../plan-store.js').PlanFrontMatter} canonicalAttrs
- * @param {import('../../plan-store.js').PlanFrontMatter} executionAttrs
+ * @param {import('../../plan-store/index.ts').PlanFrontMatter} canonicalAttrs
+ * @param {import('../../plan-store/index.ts').PlanFrontMatter} executionAttrs
  */
 function executionMetadataOverrides(canonicalAttrs, executionAttrs) {
-    /** @type {Partial<import('../../plan-store.js').PlanFrontMatter>} */
+    /** @type {Partial<import('../../plan-store/index.ts').PlanFrontMatter>} */
     const overrides = {};
     if (executionAttrs.classification !== canonicalAttrs.classification) {
         overrides.classification = canonicalAttrs.classification;
@@ -69,7 +69,7 @@ function executionMetadataOverrides(canonicalAttrs, executionAttrs) {
     if (mustReconcilePlanId(canonicalAttrs.planId, executionAttrs.planId)) {
         overrides.planId = canonicalAttrs.planId;
     }
-    /** @type {(keyof import('../../plan-store.js').PlanFrontMatter)[]} */
+    /** @type {(keyof import('../../plan-store/index.ts').PlanFrontMatter)[]} */
     const documentKeys = [
         "executionAgent",
         "collaborationRecommendation",
@@ -177,10 +177,10 @@ async function inspectCanonicalParentChain(projectRoot, segments, sourceRelative
 /**
  * @param {string} projectRoot
  * @param {string} planName
- * @returns {Promise<{ kind: "loaded", path: string, relativePath: string, markdown: string, attrs: import('../../plan-store.js').PlanFrontMatter } | ExecutionPlanFileResult>}
+ * @returns {Promise<{ kind: "loaded", path: string, relativePath: string, markdown: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter } | ExecutionPlanFileResult>}
  */
 export async function loadCanonicalExecutionPlanSource(projectRoot, planName) {
-    if (currentPackageSelection()) return { ...(await loadPackageWorkflowPlan(planName)), relativePath: "context.md" };
+    if (capturePlanAccess()) return { ...(await loadPackageWorkflowPlan(planName)), relativePath: "context.md" };
     const path = getStoredPlanPath(projectRoot, planName);
     const relativePath = projectRelativePath(projectRoot, path);
     const parentRelativePath = dirname(relativePath);
@@ -339,7 +339,7 @@ export async function ensureExecutionPlanFile({
     reconcileFromCanonical = true,
     replaceFromCanonical = false,
 }) {
-    if (currentPackageSelection()) {
+    if (capturePlanAccess()) {
         const source = await loadPackageWorkflowPlan(planName);
         return { kind: "present", path: source.path, relativePath: "context.md" };
     }

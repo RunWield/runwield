@@ -1,3 +1,5 @@
+import { seedPlanState } from "../testing/plan-state-fixture.ts";
+import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { readAttachedAction } from "./coordinator.ts";
 import { test } from "node:test";
 import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
@@ -5,15 +7,12 @@ import { captureForegroundProcess } from "../captured-process.ts";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { archivePlan, loadPlan, updatePlanFrontMatter } from "../../plan-store.js";
+
+import { archivePlan, loadPlan } from "../../plan-store/index.ts";
 import { recordPlanEvent } from "../workflow/plan-lifecycle.js";
 import { createWorktreeGitArtifacts, settleWorktreeAttempt } from "../worktree.js";
 import { finalizePlanImplementation } from "../workflow/implementation-checkpoint.ts";
-import {
-    getTransitionJournalDir,
-    getTransitionJournalPath,
-    listTransitionRecoveryRecords,
-} from "../workflow/state-transition.ts";
+import { listTransitionRecoveryRecords } from "../../plan-store/index.ts";
 import { findById, listEntries, updateEntry } from "../worktree-registry.js";
 import {
     EVIDENCE,
@@ -78,9 +77,11 @@ test("fresh start heals an unsettled preparation journal and adopts the same aut
         const execution = started.workflow.execution;
         assert(execution?.executionCwd && execution.worktreeId);
         const transitionId = crypto.randomUUID();
-        await fsMkdir(getTransitionJournalDir(execution.executionCwd), { recursive: true });
+        await fsMkdir(resolveProjectRuntimeLayout(root).selected.transitionJournalsDir, {
+            recursive: true,
+        });
         await fsWriteFile(
-            getTransitionJournalPath(execution.executionCwd, transitionId),
+            join(resolveProjectRuntimeLayout(root).selected.transitionJournalsDir, `${transitionId}.json`),
             JSON.stringify({
                 version: 1,
                 transitionId,
@@ -107,7 +108,7 @@ test("fresh start heals an unsettled preparation journal and adopts the same aut
                 updatedAt: new Date().toISOString(),
             }),
         );
-        assertEquals((await listTransitionRecoveryRecords(execution.executionCwd)).length, 1);
+        assertEquals((await listTransitionRecoveryRecords(root)).length, 1);
         await fsWriteFile(join(locateAttachedWorkflows(root).workflowsDir, `${ready.workflowId}.json`), oldRecord);
         const projected = await runOperation("status", root, { workflowId: ready.workflowId });
         assert(projected.ok);
@@ -119,7 +120,7 @@ test("fresh start heals an unsettled preparation journal and adopts the same aut
         assert(current.ok);
         assertEquals(current.workflow.execution?.worktreeId, execution.worktreeId);
         assertEquals(current.workflow.execution?.baselineTree, execution.baselineTree);
-        assertEquals((await listTransitionRecoveryRecords(execution.executionCwd)).length, 0);
+        assertEquals((await listTransitionRecoveryRecords(root)).length, 0);
         assertEquals((await listEntries(root)).length, 1);
     });
 });
@@ -149,18 +150,7 @@ test("completion retry settles the Attached result after Core committed before t
 
 test("status retains the pending implementation action and resolves frontend role layers on each result", async () => {
     await withProject(async (root) => {
-        const ready = await readyPlan(root);
-        const plan = await loadPlan(root, "dark-mode-toggle");
-        assert(plan);
-        await updatePlanFrontMatter(
-            root,
-            "dark-mode-toggle",
-            { executionAgent: "frontend-engineer" },
-            {},
-            {
-                expectedRevision: plan.revision,
-            },
-        );
+        const ready = await readyPlan(root, "frontend-engineer");
         const started = await runOperation("start_execution", root, executionInput(ready, "constructor"));
         assert(started.ok && started.workflow.nextAction.kind === "implementation");
         assertEquals(started.workflow.nextAction.role, "frontend-engineer");
@@ -199,7 +189,7 @@ test("execution evidence projects Core feedback and later AI review from the wor
         assert(execution?.executionCwd);
         const plan = await loadPlan(execution.executionCwd, "dark-mode-toggle");
         assert(plan);
-        await updatePlanFrontMatter(
+        await seedPlanState(
             execution.executionCwd,
             "dark-mode-toggle",
             { status: "draft" },
@@ -214,7 +204,7 @@ test("execution evidence projects Core feedback and later AI review from the wor
         const current = await loadPlan(execution.executionCwd, "dark-mode-toggle");
         assert(current);
         // Core now keeps mechanical validation at implemented; AI review advances to reviewed.
-        await updatePlanFrontMatter(
+        await seedPlanState(
             execution.executionCwd,
             "dark-mode-toggle",
             { status: "reviewed" },
@@ -246,9 +236,11 @@ test("partial Core completion retains the handoff and retry finishes checkpoint 
             details: { executionReport: "- Finished before the process stopped" },
         });
         const transitionId = crypto.randomUUID();
-        await fsMkdir(getTransitionJournalDir(execution.executionCwd), { recursive: true });
+        await fsMkdir(resolveProjectRuntimeLayout(root).selected.transitionJournalsDir, {
+            recursive: true,
+        });
         await fsWriteFile(
-            getTransitionJournalPath(execution.executionCwd, transitionId),
+            join(resolveProjectRuntimeLayout(root).selected.transitionJournalsDir, `${transitionId}.json`),
             JSON.stringify({
                 version: 1,
                 transitionId,
@@ -273,7 +265,7 @@ test("partial Core completion retains the handoff and retry finishes checkpoint 
         assert(finished.result.ok, JSON.stringify(finished.result));
         assertEquals(finished.result.workflow.state, "implemented");
         assertEquals((await findById(root, execution.worktreeId))?.status, "completed");
-        assertEquals((await listTransitionRecoveryRecords(execution.executionCwd)).length, 0);
+        assertEquals((await listTransitionRecoveryRecords(root)).length, 0);
         const diff = await captureForegroundProcess("git", {
             args: ["status", "--porcelain"],
             cwd: execution.executionCwd,
@@ -301,11 +293,11 @@ test("first preparation retry heals its source journal before selecting an unmat
             baseBranch: "main",
         });
         const entry = await settleWorktreeAttempt(root, artifacts);
-        assertEquals(await loadPlan(entry.path, "dark-mode-toggle"), null);
+        assertEquals((await loadPlan(entry.path, "dark-mode-toggle"))?.attrs.planId, ready.plan.planId);
         const transitionId = crypto.randomUUID();
-        await fsMkdir(getTransitionJournalDir(root), { recursive: true });
+        await fsMkdir(resolveProjectRuntimeLayout(root).selected.transitionJournalsDir, { recursive: true });
         await fsWriteFile(
-            getTransitionJournalPath(root, transitionId),
+            join(resolveProjectRuntimeLayout(root).selected.transitionJournalsDir, `${transitionId}.json`),
             JSON.stringify({
                 version: 1,
                 transitionId,
@@ -351,7 +343,7 @@ test("status closes an execution workflow when Core archives its authoritative P
         const plan = await loadPlan(execution.executionCwd, "dark-mode-toggle");
         assert(plan);
         await updateEntry(root, execution.worktreeId, { status: "validated" });
-        await updatePlanFrontMatter(
+        await seedPlanState(
             execution.executionCwd,
             "dark-mode-toggle",
             {
@@ -389,9 +381,9 @@ for (const checkpoint of ["retained", "missing"] as const) {
                     ? new TextDecoder().decode(git.stdout).trim()
                     : "0000000000000000000000000000000000000000";
             const transitionId = crypto.randomUUID();
-            await fsMkdir(getTransitionJournalDir(root), { recursive: true });
+            await fsMkdir(resolveProjectRuntimeLayout(root).selected.transitionJournalsDir, { recursive: true });
             await fsWriteFile(
-                getTransitionJournalPath(root, transitionId),
+                join(resolveProjectRuntimeLayout(root).selected.transitionJournalsDir, `${transitionId}.json`),
                 JSON.stringify({
                     version: 1,
                     transitionId,

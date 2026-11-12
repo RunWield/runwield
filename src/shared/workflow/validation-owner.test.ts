@@ -1,3 +1,5 @@
+import { seedPlanState, seedPlan } from "../testing/plan-state-fixture.ts";
+import { makeValidationProjectRoot } from "./validation-test-helpers.js";
 import { mkdtempSync as fsMkdtempSync, rmSync as fsRmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -6,7 +8,9 @@ import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm } from "node:f
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertExists, assertRejects } from "../../testing/assertions.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
+
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { HostedSession } from "../session/hosted-session.js";
 import {
     acknowledgeTaskCompletion,
@@ -63,7 +67,7 @@ test("every production entry uses one validation owner", async () => {
 test("validation checkpoint survives a new Plan load", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-validation-checkpoint-"));
     try {
-        await savePlan(root, "demo", "# Demo\n", {
+        await seedPlan(root, "demo", "# Demo\n", {
             planId: "plan-demo",
             classification: "PLANNED_CHANGE",
             status: "implemented",
@@ -80,7 +84,7 @@ test("validation checkpoint survives a new Plan load", async () => {
             repairKind: "ci",
             repairGeneration: "repair-one",
         });
-        await updatePlanFrontMatter(root, "demo", { validationCheckpoint: checkpoint }, plan.attrs, {
+        await seedPlanState(root, "demo", { validationCheckpoint: checkpoint }, plan.attrs, {
             expectedRevision: plan.revision,
         });
 
@@ -123,12 +127,16 @@ test("an earlier validation checkpoint remains authoritative only for the same a
 test("semantic feedback commits open Review Issues with the lifecycle transition", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-validation-review-authority-"));
     try {
-        await savePlan(root, "demo", "# Demo\n", {
-            planId: "plan-demo",
-            classification: "PLANNED_CHANGE",
-            status: "validated_ci",
-            worktreeId: "wt-demo",
-        });
+        await makeValidationProjectRoot(
+            "demo",
+            {
+                classification: "PLANNED_CHANGE",
+                status: "implemented",
+                validationPhase: "semantic",
+            },
+            "# Demo",
+            root,
+        );
         const plan = await loadPlan(root, "demo");
         assertExists(plan);
         const checkpoint = makeValidationCheckpoint({
@@ -182,7 +190,7 @@ test("semantic feedback commits open Review Issues with the lifecycle transition
 test("semantic repair completion is an idempotent mechanical receipt", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-validation-repair-receipt-"));
     try {
-        await savePlan(root, "demo", "# Demo\n", {
+        await seedPlan(root, "demo", "# Demo\n", {
             planId: "plan-demo",
             classification: "PLANNED_CHANGE",
             status: "implemented",
@@ -217,7 +225,7 @@ test("semantic repair completion is an idempotent mechanical receipt", async () 
                 repairBaselineTree: "tree-before-repair",
             },
         });
-        await updatePlanFrontMatter(root, "demo", { validationCheckpoint: checkpoint }, plan.attrs, {
+        await seedPlanState(root, "demo", { validationCheckpoint: checkpoint }, plan.attrs, {
             expectedRevision: plan.revision,
         });
 

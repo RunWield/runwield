@@ -13,7 +13,7 @@ import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { inspectSemantic, prepareIndexRuntime, toDelivery } from "./delivery-test-fixture.ts";
 import { DENO_CONFIG_PATH, EVIDENCE, spawnAttachedCli } from "./attached-test-fixture.ts";
 import { listWorkRecords } from "../work-records/store.js";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
 import { git } from "../git-test-fixture.ts";
 import type { AttachedJsonObject, AttachedOperationName } from "./operations.ts";
 
@@ -168,7 +168,7 @@ export async function recoverDelivery(point: string, timing: string): Promise<vo
             false,
         );
         const logs = await git(fixture.root, ["log", "--format=%B", "main"]);
-        assertEquals(logs.split("RunWield-Publication-Attempt: wt-host").length - 1, 1);
+        assertEquals(logs.split(`RunWield-Publication-Attempt: ${fixture.id}`).length - 1, 1);
     } finally {
         await fixture.close();
     }

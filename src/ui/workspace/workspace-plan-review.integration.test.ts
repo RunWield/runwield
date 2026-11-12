@@ -52,7 +52,7 @@ test("lost review interaction prepares but does not send Agent resubmission", as
 
 test("owner requests retain admitted document identity and reject stale saves without changing metadata", async () => {
     const { packageFixture, create, read } = await import("../../shared/testing/plan-package-fixture.ts");
-    const { withPackageWorkflow } = await import("../../shared/workflow/package-workflow.ts");
+    const { withPlanAccess, selectPlanAccess } = await import("../../plan-store/index.ts");
     const { openOwnerCoordinationStore } = await import("../../shared/owner-coordination/index.js");
     const { createOwnerWorkspaceApp } = await import("./server.js");
     const { equal, deepEqual } = await import("node:assert/strict");
@@ -66,9 +66,9 @@ test("owner requests retain admitted document identity and reject stale saves wi
         store.approvePairingRequest(pairing.code);
         const device = store.claimPairingRequest(pairing.proof);
         const origin = "http://127.0.0.1:8787";
-        app = await withPackageWorkflow(
+        app = await withPlanAccess(
             f.root,
-            { identity: f.identity, planId: p.metadata.planId, expectedRevision: 1 },
+            (await selectPlanAccess(f.root, p.metadata.planId))!,
             async () => await createOwnerWorkspaceApp({ mode: "owner", publicOrigin: origin, store }),
         );
         const handler = app.handler();
@@ -144,53 +144,40 @@ test("owner requests retain admitted document identity and reject stale saves wi
 
 test("document reads keep the revision paired with the displayed bytes during external edits", async () => {
     const { packageFixture, create } = await import("../../shared/testing/plan-package-fixture.ts");
-    const { withPackageWorkflow } = await import("../../shared/workflow/package-workflow.ts");
-    const { readPlanDocuments, savePlanDocument } = await import("../../shared/workflow/plan-documents.ts");
+    const { withPlanAccess, selectPlanAccess } = await import("../../plan-store/index.ts");
+    const { readPlanDocuments, savePlanDocument } = await import("../../plan-store/index.ts");
     const { writeFile, rename } = await import("node:fs/promises");
     const { join } = await import("node:path");
     const { equal } = await import("node:assert/strict");
     const f = await packageFixture();
     try {
         const plan = await create(f.identity);
-        await withPackageWorkflow(
-            f.root,
-            { identity: f.identity, planId: "plan-one", expectedRevision: 1 },
-            async () => {
-                const first = await readPlanDocuments("plan-one");
-                const second = await savePlanDocument(
-                    "plan-one",
-                    "context.md",
-                    first.revision,
-                    "# External revision\n",
-                );
-                const revisions = new Map([
-                    [first.body, first.revision],
-                    [second.body, second.revision],
-                ]);
-                let running = true;
-                const writer = (async () => {
-                    while (running) {
-                        for (const body of revisions.keys()) {
-                            await writeFile(join(plan.path, "editor-save.tmp"), body);
-                            await rename(join(plan.path, "editor-save.tmp"), join(plan.path, "context.md"));
-                        }
+        await withPlanAccess(f.root, (await selectPlanAccess(f.root, "plan-one"))!, async () => {
+            const first = await readPlanDocuments("plan-one");
+            const second = await savePlanDocument("plan-one", "context.md", first.revision, "# External revision\n");
+            const revisions = new Map([
+                [first.body, first.revision],
+                [second.body, second.revision],
+            ]);
+            let running = true;
+            const writer = (async () => {
+                while (running) {
+                    for (const body of revisions.keys()) {
+                        await writeFile(join(plan.path, "editor-save.tmp"), body);
+                        await rename(join(plan.path, "editor-save.tmp"), join(plan.path, "context.md"));
                     }
-                })();
-                try {
-                    for (let index = 0; index < 30; index++) {
-                        const current = await readPlanDocuments("plan-one");
-                        equal(
-                            current.revision,
-                            revisions.get(current.body),
-                            "Revision must describe the returned bytes",
-                        );
-                    }
-                } finally {
-                    running = false;
-                    await writer;
                 }
-            },
-        );
+            })();
+            try {
+                for (let index = 0; index < 30; index++) {
+                    const current = await readPlanDocuments("plan-one");
+                    equal(current.revision, revisions.get(current.body), "Revision must describe the returned bytes");
+                }
+            } finally {
+                running = false;
+                await writer;
+            }
+        });
     } finally {
         await f.cleanup();
     }

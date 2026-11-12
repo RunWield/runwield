@@ -1,3 +1,5 @@
+import { seedPlan } from "../../../shared/testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../../../shared/testing/retained-plan-fixture.ts";
 import { serveHttp } from "../../../shared/http-server.ts";
 // @ts-nocheck: focused service tests use the repository's JavaScript-style owner store.
 import { constants as fsConstants, readdirSync as fsReaddirSync } from "node:fs";
@@ -21,7 +23,9 @@ import { platform, tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../../testing/assertions.ts";
 import { join } from "node:path";
 import { DatabaseSync } from "../../../shared/sqlite.ts";
-import { savePlan, writePlanMarkdownWithRevision } from "../../../plan-store.js";
+import { authorLocalPlan, savePlanProse } from "../../../plan-store/index.ts";
+import { loadPlan } from "../../../plan-store/index.ts";
+
 import { openOwnerCoordinationStore } from "../../../shared/owner-coordination/index.js";
 import { defineCommittedGitFixture, git } from "../../../shared/git-test-fixture.ts";
 import { addEntry, withWorktreeRegistryLock } from "../../../shared/worktree-registry.js";
@@ -363,32 +367,25 @@ test("production Workspace HTTP server closes and restarts Search", async () => 
 });
 
 test("nested and execution-worktree Plan writes request refresh for the primary Project", async () => {
-    const dir = await fsMkdtemp(join(tmpdir(), "runwield-search-plan-refresh-"));
+    const dir = await defineCommittedGitFixture().checkout();
     try {
-        await savePlan(dir, "new-plan", "# New Plan\n\nCreation refresh.\n", {
-            planId: "new-plan-id",
-            classification: "PLANNED_CHANGE",
-            status: "draft",
-        });
+        await authorLocalPlan(dir, { planName: "epic/child", contextMarkdown: "# Child Plan\n" });
         const marker = await getWorkspaceSearchRefreshMarker(dir);
         assertEquals((await fsStat(marker)).isFile(), true);
         await fsRm(marker);
-
-        await fsMkdir(join(dir, "docs", "plans", "epic"), { recursive: true });
-        const planPath = join(dir, "docs", "plans", "epic", "child.md");
-        const markdown = "# Child Plan\n\nRefresh nested Plan search.\n";
-        await fsWriteFile(planPath, markdown);
-        await writePlanMarkdownWithRevision(planPath, `${markdown}\nUpdated.\n`);
+        const current = await loadPlan(dir, "epic/child");
+        await savePlanProse(dir, "epic/child", "# Updated child\n", current!.revision);
         assertEquals((await fsStat(marker)).isFile(), true);
         await fsRm(marker);
-
         const executionRoot = join(dir, "execution-worktree");
-        await fsMkdir(join(dir, ".git", "worktrees", "execution"), { recursive: true });
-        await fsMkdir(join(executionRoot, "docs", "plans", "sequence"), { recursive: true });
-        await fsWriteFile(join(executionRoot, ".git"), `gitdir: ${join(dir, ".git", "worktrees", "execution")}\n`);
-        const executionPlan = join(executionRoot, "docs", "plans", "sequence", "child.md");
-        await fsWriteFile(executionPlan, markdown);
-        await writePlanMarkdownWithRevision(executionPlan, `${markdown}\nExecution update.\n`);
+        await git(dir, ["worktree", "add", "-b", "execution-refresh", executionRoot]);
+        const updated = await loadPlan(dir, "epic/child");
+        await authorLocalPlan(executionRoot, {
+            planName: "epic/child",
+            contextMarkdown: "# Execution update\n",
+            expectedRevision: updated!.revision,
+        });
+        assertEquals((await loadPlan(executionRoot, "epic/child"))?.markdown, "# Execution update\n");
         assertEquals((await fsStat(marker)).isFile(), true);
     } finally {
         await fsRm(dir, { recursive: true });
@@ -511,23 +508,25 @@ test("Workspace search and Plan opens reject a linked Plan directory after index
     const fixture = await searchFixture("plan-open-containment");
     const outside = join(fixture.dir, "outside-plans");
     try {
-        await savePlan(fixture.root, "contained", "# Contained Plan\n\nIssued destination needle.\n", {
-            planId: "contained-plan-id",
-            classification: "PLANNED_CHANGE",
-            status: "draft",
+        await withRetainedPlanFixture(fixture.root, async () => {
+            await seedPlan(fixture.root, "contained", "# Contained Plan\n\nIssued destination needle.\n", {
+                planId: "contained-plan-id",
+                classification: "PLANNED_CHANGE",
+                status: "draft",
+            });
+            await fixture.search.refresh();
+            assertEquals((await fixture.search.search({ query: "Issued destination" })).total, 1);
+            await fsRename(join(fixture.root, "docs", "plans"), outside);
+            await fsSymlink(outside, join(fixture.root, "docs", "plans"));
+            assertEquals((await fixture.search.search({ query: "Issued destination" })).total, 0);
+            let message = "";
+            try {
+                await loadWorkspaceDetail(fixture.root, "contained-plan-id");
+            } catch (error) {
+                message = error instanceof Error ? error.message : String(error);
+            }
+            assertStringIncludes(message, "leaves the Project");
         });
-        await fixture.search.refresh();
-        assertEquals((await fixture.search.search({ query: "Issued destination" })).total, 1);
-        await fsRename(join(fixture.root, "docs", "plans"), outside);
-        await fsSymlink(outside, join(fixture.root, "docs", "plans"));
-        assertEquals((await fixture.search.search({ query: "Issued destination" })).total, 0);
-        let message = "";
-        try {
-            await loadWorkspaceDetail(fixture.root, "contained-plan-id");
-        } catch (error) {
-            message = error instanceof Error ? error.message : String(error);
-        }
-        assertStringIncludes(message, "leaves the Project");
     } finally {
         await fixture.close();
     }
@@ -541,53 +540,58 @@ test("Workspace search and Plan opens accept registered execution-worktree autho
     const repository = await executionAuthorityFixture.checkout();
     try {
         await fsCp(repository, fixture.root, { recursive: true });
-        await git(fixture.root, ["worktree", "add", "-b", "worktree/authority", executionRoot]);
-        await savePlan(fixture.root, "authority", "# Primary authority\n\nOld primary body.\n", {
-            planId: "execution-authority-id",
-            title: "Primary authority",
-            classification: "PLANNED_CHANGE",
-            status: "in_progress",
-        });
-        await fsMkdir(join(executionRoot, "docs", "plans"), { recursive: true });
-        const primary = await fsReadFile(join(fixture.root, "docs", "plans", "authority.md"), "utf8");
-        await fsWriteFile(
-            join(executionRoot, "docs", "plans", "authority.md"),
-            primary
-                .replaceAll("Primary authority", "Execution authority")
-                .replace("Old primary body", "Execution needle"),
-        );
-        const now = "2026-09-01T00:00:00.000Z";
-        await addEntry(fixture.root, {
-            id: "execution-attempt",
-            planName: "authority",
-            planId: "execution-authority-id",
-            baseBranch: "main",
-            baseRef: "refs/heads/main",
-            baseCommit: await git(fixture.root, ["rev-parse", "HEAD"]),
-            branch: "worktree/authority",
-            path: executionRoot,
-            status: "active",
-            createdAt: now,
-            updatedAt: now,
-        });
-        await fixture.search.refresh();
-        const payload = await fixture.search.search({ query: "Execution needle", contentType: "plan" });
-        assertEquals(payload.results[0].title, "Execution authority");
-        assertEquals((await loadWorkspaceDetail(fixture.root, "execution-authority-id")).title, "Execution authority");
+        await withRetainedPlanFixture(fixture.root, async () => {
+            await git(fixture.root, ["worktree", "add", "-b", "worktree/authority", executionRoot]);
+            await seedPlan(fixture.root, "authority", "# Primary authority\n\nOld primary body.\n", {
+                planId: "execution-authority-id",
+                title: "Primary authority",
+                classification: "PLANNED_CHANGE",
+                status: "in_progress",
+            });
+            await fsMkdir(join(executionRoot, "docs", "plans"), { recursive: true });
+            const primary = await fsReadFile(join(fixture.root, "docs", "plans", "authority.md"), "utf8");
+            await fsWriteFile(
+                join(executionRoot, "docs", "plans", "authority.md"),
+                primary
+                    .replaceAll("Primary authority", "Execution authority")
+                    .replace("Old primary body", "Execution needle"),
+            );
+            const now = "2026-09-01T00:00:00.000Z";
+            await addEntry(fixture.root, {
+                id: "execution-attempt",
+                planName: "authority",
+                planId: "execution-authority-id",
+                baseBranch: "main",
+                baseRef: "refs/heads/main",
+                baseCommit: await git(fixture.root, ["rev-parse", "HEAD"]),
+                branch: "worktree/authority",
+                path: executionRoot,
+                status: "active",
+                createdAt: now,
+                updatedAt: now,
+            });
+            await fixture.search.refresh();
+            const payload = await fixture.search.search({ query: "Execution needle", contentType: "plan" });
+            assertEquals(payload.results[0].title, "Execution authority");
+            assertEquals(
+                (await loadWorkspaceDetail(fixture.root, "execution-authority-id")).title,
+                "Execution authority",
+            );
 
-        const outsidePlans = join(fixture.dir, "outside-execution-plans");
-        await fsRename(join(executionRoot, "docs", "plans"), outsidePlans);
-        await fsSymlink(outsidePlans, join(executionRoot, "docs", "plans"));
-        assertEquals((await fixture.search.search({ query: "Execution needle", contentType: "plan" })).total, 0);
-        let message = "";
-        try {
-            await loadWorkspaceDetail(fixture.root, "execution-authority-id");
-        } catch (error) {
-            message = error instanceof Error ? error.message : String(error);
-        }
-        // Registered authority validation excludes the unsafe document before hydration.
-        // The stale primary copy must not become a replacement detail result.
-        assertEquals(message, "Plan not found for planId: execution-authority-id");
+            const outsidePlans = join(fixture.dir, "outside-execution-plans");
+            await fsRename(join(executionRoot, "docs", "plans"), outsidePlans);
+            await fsSymlink(outsidePlans, join(executionRoot, "docs", "plans"));
+            assertEquals((await fixture.search.search({ query: "Execution needle", contentType: "plan" })).total, 0);
+            let message = "";
+            try {
+                await loadWorkspaceDetail(fixture.root, "execution-authority-id");
+            } catch (error) {
+                message = error instanceof Error ? error.message : String(error);
+            }
+            // Registered authority validation excludes the unsafe document before hydration.
+            // The stale primary copy must not become a replacement detail result.
+            assertEquals(message, "Plan not found for planId: execution-authority-id");
+        });
     } finally {
         await fixture.close();
         await fsRm(repository, { recursive: true, force: true });
@@ -683,17 +687,17 @@ test("Workspace refresh reads through registry writer locks and sees new files o
 test("Workspace search returns a large Plan result set", async () => {
     const fixture = await searchFixture("plan-volume");
     try {
-        await savePlan(fixture.root, "template", "# Matching Plan\n\nShared volume needle.\n", {
+        await seedPlan(fixture.root, "template", "# Matching Plan\n\nShared volume needle.\n", {
             planId: "volume-0",
             classification: "PLANNED_CHANGE",
             status: "draft",
         });
-        const template = await fsReadFile(join(fixture.root, "docs", "plans", "template.md"), "utf8");
         for (let index = 1; index < 80; index++) {
-            await fsWriteFile(
-                join(fixture.root, "docs", "plans", `volume-${index}.md`),
-                template.replace("volume-0", `volume-${index}`),
-            );
+            await seedPlan(fixture.root, `volume-${index}`, "# Matching Plan\n\nShared volume needle.\n", {
+                planId: `volume-${index}`,
+                classification: "PLANNED_CHANGE",
+                status: "draft",
+            });
         }
         await fixture.search.refresh();
         const first = await fixture.search.search({ query: "Shared volume needle", contentType: "plan", pageSize: 50 });
@@ -715,6 +719,7 @@ test("Workspace search leaves a lone Plan without an ID unchanged", async () => 
     const fixture = await searchFixture("plan-identity-diagnostics");
     try {
         await fsMkdir(join(fixture.root, "docs", "plans"), { recursive: true });
+        await fsMkdir(join(fixture.root, "docs", "plans"), { recursive: true });
         const path = join(fixture.root, "docs", "plans", "missing-id.md");
         const markdown = "---\nclassification: PLANNED_CHANGE\nstatus: draft\n---\n# Missing ID\n";
         await fsWriteFile(path, markdown);
@@ -731,11 +736,12 @@ test("Workspace search leaves a lone Plan without an ID unchanged", async () => 
 test("Workspace search skips a Plan without an ID and keeps other results", async () => {
     const fixture = await searchFixture("plan-identity-diagnostics");
     try {
-        await savePlan(fixture.root, "valid", "# Searchable Plan\n\nShared needle.\n", {
+        await seedPlan(fixture.root, "valid", "# Searchable Plan\n\nShared needle.\n", {
             planId: "valid-id",
             classification: "PLANNED_CHANGE",
             status: "draft",
         });
+        await fsMkdir(join(fixture.root, "docs", "plans"), { recursive: true });
         const path = join(fixture.root, "docs", "plans", "missing-id.md");
         const markdown = "---\nclassification: PLANNED_CHANGE\nstatus: draft\n---\n# Missing ID\n\nShared needle.\n";
         await fsWriteFile(path, markdown);
@@ -765,19 +771,21 @@ test("Workspace search skips a Plan without an ID and keeps other results", asyn
 test("Workspace search reports duplicate Plan identity diagnostics", async () => {
     const fixture = await searchFixture("duplicate-plan-identities");
     try {
-        await savePlan(fixture.root, "first", "# First duplicate Plan\n", {
-            planId: "duplicate-plan-id",
-            classification: "PLANNED_CHANGE",
-            status: "draft",
+        await withRetainedPlanFixture(fixture.root, async () => {
+            await seedPlan(fixture.root, "first", "# First duplicate Plan\n", {
+                planId: "duplicate-plan-id",
+                classification: "PLANNED_CHANGE",
+                status: "draft",
+            });
+            const first = await fsReadFile(join(fixture.root, "docs", "plans", "first.md"), "utf8");
+            await fsWriteFile(
+                join(fixture.root, "docs", "plans", "second.md"),
+                first.replace("First duplicate Plan", "Second duplicate Plan"),
+            );
+            await fixture.search.refresh();
+            const payload = await fixture.search.search({ query: "duplicate Plan" });
+            assertStringIncludes(payload.states[0].message, "Duplicate planId values");
         });
-        const first = await fsReadFile(join(fixture.root, "docs", "plans", "first.md"), "utf8");
-        await fsWriteFile(
-            join(fixture.root, "docs", "plans", "second.md"),
-            first.replace("First duplicate Plan", "Second duplicate Plan"),
-        );
-        await fixture.search.refresh();
-        const payload = await fixture.search.search({ query: "duplicate Plan" });
-        assertStringIncludes(payload.states[0].message, "Duplicate planId values");
     } finally {
         await fixture.close();
     }
@@ -795,7 +803,7 @@ test("Workspace search reports duplicate Work Record identity diagnostics and ex
             createdAt: "2026-09-01T00:00:00.000Z",
             provenance: { sourcePlans: ["plan-id"] },
         };
-        await writeWorkRecord(
+        const original = await writeWorkRecord(
             fixture.root,
             { ...base, status: "approved" },
             "# Current Record\n\n## Summary\n\nCurrent record needle.\n",
@@ -841,13 +849,13 @@ test("Workspace search reports duplicate Work Record identity diagnostics and ex
         assertEquals((await fixture.search.search({ query: "Pending verification record needle" })).total, 0);
         assertEquals((await fixture.search.search({ query: "Archived record needle" })).total, 0);
         assertEquals((await fixture.search.search({ query: "Superseded record needle" })).total, 0);
-        await writeWorkRecord(
-            fixture.root,
-            { ...base, status: "approved" },
-            "# Duplicate Record\n\n## Summary\n\nDuplicate record.\n",
-            {
-                fileName: "duplicate.md",
-            },
+        // Corrupt the stored bytes directly: the public writer correctly refuses duplicate identities.
+        await fsWriteFile(
+            join(original.path, "..", "duplicate.md"),
+            formatWorkRecordMarkdown(
+                { ...base, status: "approved" },
+                "# Duplicate Record\n\n## Summary\n\nDuplicate record.\n",
+            ),
         );
         await fixture.search.refresh();
         // A background refresh can replace the diagnostic with an interim indexing state.
@@ -868,16 +876,20 @@ test("Workspace search reports duplicate Work Record identity diagnostics and ex
 test("Workspace search uses current authoritative Plan evidence", async () => {
     const fixture = await searchFixture("plan-evidence");
     try {
-        await savePlan(fixture.root, "authority", "# Old authority\n\nCanonical needle.\n", {
+        await seedPlan(fixture.root, "authority", "# Old authority\n\nCanonical needle.\n", {
             planId: "authority-plan",
             title: "Old authority",
             classification: "PLANNED_CHANGE",
             status: "draft",
         });
         await fixture.search.refresh();
-        const planPath = join(fixture.root, "docs", "plans", "authority.md");
-        const current = await fsReadFile(planPath, "utf8");
-        await writePlanMarkdownWithRevision(planPath, current.replaceAll("Old authority", "Current authority"));
+        const plan = (await loadPlan(fixture.root, "authority"))!;
+        await authorLocalPlan(fixture.root, {
+            planName: "authority",
+            contextMarkdown: plan.markdown.replaceAll("Old authority", "Current authority"),
+            definition: { title: "Current authority" },
+            expectedRevision: plan.revision,
+        });
         const payload = await fixture.search.search({ query: "authority" });
         assertEquals(payload.results[0].title, "Current authority");
         assertEquals(payload.results[0].freshness, "changed");
@@ -888,7 +900,7 @@ test("Workspace search uses current authoritative Plan evidence", async () => {
 
 test("admitted search reads home Plans and Work Records while isolating another registered Project", async () => {
     const { packageFixture, create, tree } = await import("../../../shared/testing/plan-package-fixture.ts");
-    const { withPackageWorkflow } = await import("../../../shared/workflow/package-workflow.ts");
+    const { withPlanAccess, selectPlanAccess } = await import("../../../plan-store/index.ts");
     const { recordAttrs, recordBody } = await import("../../../shared/work-records/test-fixtures/package-records.ts");
     const f = await packageFixture();
     const other = await packageFixture();
@@ -902,14 +914,10 @@ test("admitted search reads home Plans and Work Records while isolating another 
         const project = store.registerProject({ root: f.root });
         const unrelated = store.registerProject({ root: other.root });
         let record;
-        search = await withPackageWorkflow(
-            f.root,
-            { identity: f.identity, planId: "plan-one", expectedRevision: 1 },
-            async () => {
-                record = await writeWorkRecord(f.root, recordAttrs(), recordBody);
-                return createWorkspaceSearchService({ store, dbPath: ":memory:" });
-            },
-        );
+        search = await withPlanAccess(f.root, (await selectPlanAccess(f.root, "plan-one"))!, async () => {
+            record = await writeWorkRecord(f.root, recordAttrs(), recordBody);
+            return createWorkspaceSearchService({ store, dbPath: ":memory:" });
+        });
         const before = await tree(f.root);
         await search.refresh();
         const found = await search.search({ query: "Canonical evidence", projectId: project.projectId });
@@ -920,14 +928,10 @@ test("admitted search reads home Plans and Work Records while isolating another 
             (await search.search({ query: "Other private home Plan", projectId: unrelated.projectId })).results.length,
             0,
         );
-        await withPackageWorkflow(
-            f.root,
-            { identity: f.identity, planId: "plan-one", expectedRevision: 1 },
-            async () => {
-                const artifact = await readProjectArtifact(f.root, "work-record", record.attrs.recordId);
-                assertStringIncludes(artifact.markdown, "Canonical evidence");
-            },
-        );
+        await withPlanAccess(f.root, (await selectPlanAccess(f.root, "plan-one"))!, async () => {
+            const artifact = await readProjectArtifact(f.root, "work-record", record.attrs.recordId);
+            assertStringIncludes(artifact.markdown, "Canonical evidence");
+        });
         assertEquals(await tree(f.root), before);
     } finally {
         await search?.close();

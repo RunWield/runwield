@@ -1,3 +1,5 @@
+import { seedPlan, seedPlanController } from "./testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "./testing/retained-plan-fixture.ts";
 import { makeTempFile } from "../testing/temp-file.ts";
 import { test } from "node:test";
 import {
@@ -16,7 +18,8 @@ import {
 import { assertEquals, assertRejects } from "../testing/assertions.ts";
 import { join } from "node:path";
 import { getRunWieldRuntimeDir } from "../constants.js";
-import { listPlans, loadPlan, savePlan } from "../plan-store.js";
+import { listPlans, loadPlan } from "../plan-store/index.ts";
+
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
 import {
@@ -26,7 +29,7 @@ import {
     ProjectRuntimeEntryRefusedError,
     withProjectRuntimeReadScope,
 } from "./project-runtime-layout.ts";
-import { writeControllerState } from "./workflow/controller-registry.ts";
+
 import { listEntries } from "./worktree-registry.js";
 
 const fixture = defineCommittedGitFixture({ "README.md": "# Runtime read scope\n" });
@@ -83,43 +86,47 @@ async function withTracedProject(run: (project: TracedProject) => Promise<void>)
         const previous = process.env["GIT_TRACE2_EVENT"];
         try {
             await enterProjectRuntime(root);
-            process.env["GIT_TRACE2_EVENT"] = trace;
-            await run({
-                root,
-                identityQueries: async () => {
-                    const events: GitTraceEvent[] = (await fsReadFile(trace, "utf8"))
-                        .trim()
-                        .split("\n")
-                        .filter(Boolean)
-                        .map((line) => JSON.parse(line));
-                    return events.filter(
-                        (event) =>
-                            event.event === "start" &&
-                            event.argv?.slice(-4).join(" ") === "rev-parse --show-toplevel --git-common-dir --git-dir",
-                    ).length;
-                },
-                indexQueries: async () => {
-                    const events: GitTraceEvent[] = (await fsReadFile(trace, "utf8"))
-                        .trim()
-                        .split("\n")
-                        .filter(Boolean)
-                        .map((line) => JSON.parse(line));
-                    return events.filter(
-                        (event) => event.event === "start" && event.argv?.slice(-4).join(" ") === "ls-files -z -- .wld",
-                    ).length;
-                },
-                listings: async () => {
-                    const lines = (await fsReadFile(trace, "utf8")).trim().split("\n").filter(Boolean);
-                    const events: GitTraceEvent[] = lines.map((line) => JSON.parse(line));
-                    return events.filter(
-                        (event) =>
-                            event.event === "start" &&
-                            event.argv
-                                ?.filter((arg) => arg !== "-z")
-                                .slice(-3)
-                                .join(" ") === "worktree list --porcelain",
-                    ).length;
-                },
+            await withRetainedPlanFixture(root, async () => {
+                process.env["GIT_TRACE2_EVENT"] = trace;
+                await run({
+                    root,
+                    identityQueries: async () => {
+                        const events: GitTraceEvent[] = (await fsReadFile(trace, "utf8"))
+                            .trim()
+                            .split("\n")
+                            .filter(Boolean)
+                            .map((line) => JSON.parse(line));
+                        return events.filter(
+                            (event) =>
+                                event.event === "start" &&
+                                event.argv?.slice(-4).join(" ") ===
+                                    "rev-parse --show-toplevel --git-common-dir --git-dir",
+                        ).length;
+                    },
+                    indexQueries: async () => {
+                        const events: GitTraceEvent[] = (await fsReadFile(trace, "utf8"))
+                            .trim()
+                            .split("\n")
+                            .filter(Boolean)
+                            .map((line) => JSON.parse(line));
+                        return events.filter(
+                            (event) =>
+                                event.event === "start" && event.argv?.slice(-4).join(" ") === "ls-files -z -- .wld",
+                        ).length;
+                    },
+                    listings: async () => {
+                        const lines = (await fsReadFile(trace, "utf8")).trim().split("\n").filter(Boolean);
+                        const events: GitTraceEvent[] = lines.map((line) => JSON.parse(line));
+                        return events.filter(
+                            (event) =>
+                                event.event === "start" &&
+                                event.argv
+                                    ?.filter((arg) => arg !== "-z")
+                                    .slice(-3)
+                                    .join(" ") === "worktree list --porcelain",
+                        ).length;
+                    },
+                });
             });
         } finally {
             if (previous === undefined) delete process.env["GIT_TRACE2_EVENT"];
@@ -162,13 +169,13 @@ test("bounded runtime reads share real Git inspection and ask Git again only for
 test("Plan lists share validation without caching Plan or controller contents", async () => {
     await withTracedProject(async ({ root, listings }) => {
         for (const name of ["first", "second", "third"]) {
-            await savePlan(root, name, `# ${name}\n`, { planId: name, status: "draft" });
+            await seedPlan(root, name, `# ${name}\n`, { planId: name, status: "draft" });
         }
         const before = await listings();
         assertEquals((await listPlans(root)).length, 3);
         assert((await listings()) - before <= 1);
         const first = await loadPlan(root, "first");
-        await writeControllerState(
+        await seedPlanController(
             root,
             { planName: "first", planId: first?.attrs.planId },
             {
@@ -209,7 +216,7 @@ test("controller writes revalidate and invalidate surrounding runtime reads", as
         await withProjectRuntimeReadScope(async () => {
             const layout = await enterProjectRuntime(root);
             await recreateLegacyDebug(root, "before-write.txt");
-            await writeControllerState(root, { planId: "test", planName: "test" }, { validationCiAttempts: 1 });
+            await seedPlanController(root, { planId: "test", planName: "test" }, { validationCiAttempts: 1 });
             assertEquals(
                 await fsReadFile(join(layout.primary.debugRoot, "before-write.txt"), "utf8"),
                 "before-write.txt",

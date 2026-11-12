@@ -1,8 +1,8 @@
-import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
-import { loadPlan, updatePlanFrontMatter } from "../../plan-store.js";
-import { dirname, join } from "node:path";
-import { buildPlanEventUpdates, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
-import { runRecoveryTransition } from "../../shared/workflow/state-transition.ts";
+import { resetPlanExecutionMetadata, restoreRecreatedPlanExecution } from "../../plan-store/index.ts";
+import { loadPlan } from "../../plan-store/index.ts";
+
+import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
+import { runPlanRecoveryEffects } from "../../plan-store/index.ts";
 import { buildPlanRecoveryUserMessage, planRecoveryMessage } from "../../shared/workflow/validation-user-messages.ts";
 import {
     createWorktreeGitArtifacts,
@@ -27,7 +27,7 @@ import { updateEntry as updateWorktreeRegistryEntry } from "../../shared/worktre
 import { settleDiscardedRecoveryAttempt } from "./plan-recovery-discard.ts";
 import { transitionFailureError } from "./transition-failure.ts";
 
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store/index.ts";
 import type { RecoveryWorktreeContext } from "./plan-session-types.ts";
 import type { RecoveryActionContext, RecoveryActionOutcome } from "./plan-recovery-actions.ts";
 
@@ -52,18 +52,14 @@ export async function resetRecoveryPlan(
     const { projectRoot, plan, uiAPI } = context;
     const hasWorktree = hasWorktreeContext(context.worktreeContext);
     if (!hasWorktree && !plan.attrs.executionBaselineTree) {
-        uiAPI.appendSystemMessage(
-            buildPlanRecoveryUserMessage({ kind: "reset_baseline_missing" }),
-            true,
-            "RunWield",
-        );
+        uiAPI.appendSystemMessage(buildPlanRecoveryUserMessage({ kind: "reset_baseline_missing" }), true, "RunWield");
         return { kind: "menu" };
     }
     if (gitRecoveryBlocked && !hasWorktree) {
         if (!(await confirmMetadataOnlyRecoveryCleanup(plan.planName, uiAPI))) {
             return { kind: "menu" };
         }
-        const transition = await runRecoveryTransition({
+        const transition = await runPlanRecoveryEffects({
             projectRoot,
             planName: plan.planName,
             planId: plan.attrs.planId,
@@ -76,25 +72,7 @@ export async function resetRecoveryPlan(
                         status: "abandoned",
                     });
                 }
-                const resetUpdates = buildPlanEventUpdates("recovery_reset", plan.attrs.status, {
-                    triageMeta: plan.attrs,
-                });
-                return await updatePlanFrontMatter(
-                    projectRoot,
-                    plan.planName,
-                    {
-                        ...resetUpdates,
-                        status: "ready_for_work",
-                        executionBaselineTree: null,
-                        worktreeId: null,
-                        worktreePath: null,
-                        worktreeBranch: null,
-                        worktreeBaseBranch: null,
-                        worktreeStatus: null,
-                    },
-                    plan.attrs,
-                    { expectedRevision: beforePlan?.revision },
-                );
+                return await resetPlanExecutionMetadata(projectRoot, plan.planName, "clear", beforePlan?.revision);
             },
         });
         if (transition.status !== "committed") {
@@ -103,11 +81,7 @@ export async function resetRecoveryPlan(
         const transitionValue = (transition.value || {}) as RecoveryPlanTransitionValue;
         plan.attrs = transitionValue.value as PlanFrontMatter;
         context.worktreeContext = null;
-        uiAPI.appendSystemMessage(
-            buildPlanRecoveryUserMessage({ kind: "reset_done" }),
-            false,
-            "RunWield",
-        );
+        uiAPI.appendSystemMessage(buildPlanRecoveryUserMessage({ kind: "reset_done" }), false, "RunWield");
         await context.recordRecoveryResult("reset", "metadata_only", { gitState: gitState });
         return { kind: "handled" };
     }
@@ -130,15 +104,15 @@ export async function resetRecoveryPlan(
             const message = isGitRepositoryRequiredError(error)
                 ? formatGitRequiredMessage(error)
                 : error instanceof Error
-                ? error.message
-                : String(error);
+                  ? error.message
+                  : String(error);
             console.error("[RunWield] Baseline reset failed", message);
             uiAPI.appendSystemMessage(planRecoveryMessage("baseline_reset_failed"), true, "RunWield");
             return { kind: "menu" };
         }
     }
     if (!recreatedWorktree) {
-        const resetTransition = await runRecoveryTransition({
+        const resetTransition = await runPlanRecoveryEffects({
             projectRoot,
             planName: plan.planName,
             planId: plan.attrs.planId,
@@ -178,11 +152,7 @@ async function recreateRecoveryWorktree(context: RecoveryActionContext): Promise
     const worktreeContext = context.worktreeContext;
     const recreateBaseRef = getRecordedWorktreeRecreateBase(worktreeContext);
     if (!recreateBaseRef) {
-        uiAPI.appendSystemMessage(
-            buildPlanRecoveryUserMessage({ kind: "recreate_base_missing" }),
-            true,
-            "RunWield",
-        );
+        uiAPI.appendSystemMessage(buildPlanRecoveryUserMessage({ kind: "recreate_base_missing" }), true, "RunWield");
         return null;
     }
     const recordedPathExists = await pathExists(worktreeContext?.path);
@@ -202,7 +172,7 @@ async function recreateRecoveryWorktree(context: RecoveryActionContext): Promise
             baseRef: recreateBaseRef,
         });
         await validateWorktreeDiscard({ projectRoot, ...worktreeContext });
-        const transition = await runRecoveryTransition({
+        const transition = await runPlanRecoveryEffects({
             projectRoot,
             planName: plan.planName,
             planId: plan.attrs.planId,
@@ -253,31 +223,7 @@ async function recreateRecoveryWorktree(context: RecoveryActionContext): Promise
                     path: nextWorktree.path,
                     branch: nextWorktree.branch,
                 });
-                const nextPlanPath = join(nextWorktree.path, "docs", "plans", `${plan.planName}.md`);
-                await fsMkdir(dirname(nextPlanPath), { recursive: true });
-                await fsWriteFile(nextPlanPath, plan.markdown);
-                const nextPlan = await loadPlan(nextWorktree.path, plan.planName);
-                if (!nextPlan) throw new Error(`Recreated execution Plan is missing: ${plan.planName}`);
-                const resetUpdates = buildPlanEventUpdates("recovery_reset", plan.attrs.status, {
-                    triageMeta: plan.attrs,
-                });
-                const attrs = await updatePlanFrontMatter(
-                    nextWorktree.path,
-                    plan.planName,
-                    {
-                        ...resetUpdates,
-                        status: "ready_for_work",
-                        worktreeId: nextWorktree.id,
-                        worktreePath: nextWorktree.path,
-                        worktreeBranch: nextWorktree.branch,
-                        worktreeBaseBranch: nextWorktree.baseBranch,
-                        worktreeBaseCommit: nextWorktree.baseCommit,
-                        worktreeStatus: "active",
-                        executionBaselineTree: nextWorktree.baseTree,
-                    },
-                    nextPlan.attrs,
-                    { expectedRevision: nextPlan.revision },
-                );
+                const attrs = await restoreRecreatedPlanExecution(projectRoot, plan.planName, nextWorktree.id);
                 return { attrs, worktree: nextWorktree };
             },
         });
@@ -315,8 +261,8 @@ async function recreateRecoveryWorktree(context: RecoveryActionContext): Promise
         const message = isGitRepositoryRequiredError(error)
             ? formatGitRequiredMessage(error)
             : error instanceof Error
-            ? error.message
-            : String(error);
+              ? error.message
+              : String(error);
         console.error("[RunWield] Worktree recreation failed", message);
         uiAPI.appendSystemMessage(
             buildPlanRecoveryUserMessage({ kind: "worktree_cleanup_result", failed: true, detail: message }),

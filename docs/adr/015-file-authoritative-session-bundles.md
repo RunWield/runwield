@@ -4,6 +4,14 @@ status: accepted
 
 # ADR-015: File-Authoritative Session Bundles
 
+## Local home-store activation
+
+Ordinary local and manual-SSH Plan and Work Record access now uses the executing account's personal Project store
+under [ADR-0020](0020-home-project-state-and-launch-mode-ownership.md). Project catalog authority is separate from
+revision-checked workflow selection. Explicit import preserves original execution ownership until publication is proven
+or the user deliberately abandons the attempt; it never starts a replacement attempt or weakens publication evidence.
+Session bundle authority and managed-remote personal ownership retain their existing contracts.
+
 ## Context
 
 Personal Workspace serves one owner moving between TUI and browser, including a phone. An open window does not own a

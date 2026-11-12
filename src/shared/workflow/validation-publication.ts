@@ -1,12 +1,14 @@
-import { currentPackageSelection } from "./package-workflow.ts";
-import { preparePackageCopies, settlePackageInPlace, sealPackagePublication } from "./package-publication.ts";
-import { preparePlanWorkflow } from "./plan-preparation.ts";
+import { preparePlanInPlacePublication } from "../../plan-store/index.ts";
+import { preparePlanGeneratedArtifacts } from "../../plan-store/index.ts";
+import { capturePlanAccess } from "../../plan-store/index.ts";
+import { preparePackageCopies, settlePackageInPlace, sealPackagePublication } from "../../plan-store/index.ts";
+import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { ProjectRuntimeReadPendingError } from "../project-runtime-layout.ts";
 import { stat as fsStat } from "node:fs/promises";
 import { completeInPlaceWorkRecord } from "../work-records/in-place-completion.ts";
 import { ValidationHostRejected, ValidationHostWait } from "./validation-host-contract.ts";
 import { runHostRecorder } from "./validation-host-recorder.ts";
-import { syncEpicChildPlanDeviations } from "./epic-review-context.ts";
+import { syncEpicChildPlanDeviations } from "../../plan-store/index.ts";
 import { effectiveDeliveryBranch } from "./plan-branch.ts";
 import {
     readDeliveryEvidence,
@@ -21,7 +23,7 @@ import {
     readPublishedDeliverySources,
     readPublishedRecordMarkdown,
     retainPublishedWorkRecordSource,
-} from "../work-records/published-source.ts";
+} from "../../plan-store/index.ts";
 /**
  * @module shared/workflow/validation-publication
  * The publication phase: merging the validated worktree into the target branch
@@ -34,9 +36,10 @@ import {
 
 import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
 import { logValidationFailure } from "./validation-state-errors.ts";
-import { loadPlan, withPlanLock } from "../../plan-store.js";
+import { withPlanPublication } from "../../plan-store/index.ts";
+import { loadPlan } from "../../plan-store/index.ts";
 import { resolveTargetedWorkRecordSource } from "../work-records/auto-generation.ts";
-import { findEpicManualQaSection } from "../epic-artifacts.ts";
+import { findEpicManualQaSection } from "../../plan-store/index.ts";
 import { checkpointExecutionWorktree, resolveTargetBranchName } from "../worktree.js";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
 import { findById as findWorktreeRegistryEntryById } from "../worktree-registry.js";
@@ -91,8 +94,8 @@ import {
 import type { PublicationAttempt } from "./publication-attempt.ts";
 import { preparePublicationRevalidation, PUBLICATION_REVALIDATION_MESSAGE } from "./publication-revalidation.ts";
 
-type DeliveryEvidence = import("../../plan-store.js").DeliveryEvidence;
-type WorktreeDeliveryEvidence = import("../../plan-store.js").WorktreeDeliveryEvidence;
+type DeliveryEvidence = import("../../plan-store/index.ts").DeliveryEvidence;
+type WorktreeDeliveryEvidence = import("../../plan-store/index.ts").WorktreeDeliveryEvidence;
 type ManualQaPreparationResult = { kind: "ready" } | { kind: "blocked"; outcome: PublicationOutcome };
 
 function firstMarkdownHeading(markdown: string, fallback: string): string {
@@ -159,7 +162,8 @@ async function prepareEpicChildManualQaArtifact(
     cwd: string,
     projectRoot: string,
 ): Promise<ManualQaPreparationResult> {
-    if (args.hostTurn || currentPackageSelection()) return { kind: "ready" };
+    if (args.hostTurn) return { kind: "ready" };
+    await preparePlanGeneratedArtifacts(args.planName);
     const plan = await loadPlan(cwd, args.planName).catch(() => null);
     const parentPlan =
         typeof plan?.attrs.parentPlan === "string" && plan.attrs.parentPlan.trim() ? plan.attrs.parentPlan.trim() : "";
@@ -270,7 +274,7 @@ export async function runPublicationPhase(
             args.session.assertLive();
             await preparePlanWorkflow(context.projectRoot, args.planName);
             args.session.releaseActiveAgent();
-            const outcome = await withPlanLock(
+            const outcome = await withPlanPublication(
                 context.projectRoot,
                 args.planName,
                 async () => await runLockedPublicationPhase(args, context, humanReviewMetadata),
@@ -343,19 +347,15 @@ async function runLockedPublicationPhase(
         const deliveryEvidence: DeliveryEvidence = context.nonGitInPlace
             ? { version: 1, mode: "non_git_in_place" }
             : null;
-        if (args.hostTurn && !currentPackageSelection())
+        if (args.hostTurn && !capturePlanAccess())
             await runPostVerificationHandoffs(args, context.executionCwd || context.projectRoot, true);
         await recordLifecycleEvent(args, context.projectRoot, "validation_passed", "reviewed", undefined, {
             executionMode: context.nonGitInPlace ? "non_git_in_place" : undefined,
             deliveryEvidence,
-            pendingPublication: Boolean(currentPackageSelection()),
+            pendingPublication: Boolean(capturePlanAccess()),
             ...humanReviewMetadata,
         });
-        if (currentPackageSelection()) {
-            const selected = await import("./package-workflow.ts").then((module) =>
-                module.selectedPackage(args.planName),
-            );
-            await sealPackagePublication(args.planName, selected.metadata.workflow!.attempt!.attemptId, "", "", true);
+        if (await preparePlanInPlacePublication(args.planName)) {
             await runPostVerificationHandoffs(args, context.executionCwd || context.projectRoot, true);
             await settlePackageInPlace(args.planName, args.workRecordMnemotecaPort);
             return { recorded: true, result: await buildVerifiedResult(args, context.projectRoot) };
@@ -664,6 +664,7 @@ async function runLockedPublicationPhase(
             );
             if (publicationAttempt.phase === "cleanup_complete") {
                 args.session.assertLive();
+                await args.session.handoffVerifiedPublication(context.projectRoot);
                 const cleanup = await cleanupStoredPublication(
                     context.projectRoot,
                     publicationAttempt,
@@ -712,7 +713,7 @@ async function runLockedPublicationPhase(
                     }),
             );
             args.session.assertLive();
-            if (currentPackageSelection())
+            if (capturePlanAccess())
                 await stageValidationPassedInExecutionWorktree({
                     projectRoot: context.projectRoot,
                     executionCwd: context.executionCwd,
@@ -729,7 +730,7 @@ async function runLockedPublicationPhase(
                         },
                     },
                 });
-            if (currentPackageSelection()) {
+            if (capturePlanAccess()) {
                 await sealPackagePublication(args.planName, worktreeId, candidate.executionCommit, targetBranch, true);
                 await runPostVerificationHandoffs(args, context.executionCwd, true);
             }
@@ -959,7 +960,7 @@ export async function runPostVerificationHandoffs(
     projectRoot: string,
     pendingPublication = false,
 ): Promise<void> {
-    if (!isPlannedChangeClassification(args.triageMeta?.classification) && !currentPackageSelection()) return;
+    if (!isPlannedChangeClassification(args.triageMeta?.classification) && !capturePlanAccess()) return;
     if (args.hostTurn) return await runHostRecorder(args, projectRoot, pendingPublication);
     await args.session.runPostVerificationHandoffs({
         planName: args.planName,

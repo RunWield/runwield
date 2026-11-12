@@ -1,3 +1,4 @@
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { after, test } from "node:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,7 +16,8 @@ import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { admitProjectIdentity } from "../../shared/project-identity.ts";
 import { getRunWieldSessionDir } from "../../shared/session/root-session.js";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
-import { savePlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { getSettingsManager } from "../../shared/settings.js";
 import { createInteractiveTuiComposition, type InteractiveTuiComposition } from "./interactive-tui-composition.ts";
 import { type ChatInputRuntime, createChatInputController } from "./chat-input-controller.ts";
@@ -148,7 +150,7 @@ test("composed TUI keeps /plan-review reachable during the original browser revi
             });
             try {
                 await composition.waitForIdle();
-                await savePlan(projectRoot, "target", "# Target\n\nReview this saved Plan.\n", {
+                await seedPlan(projectRoot, "target", "# Target\n\nReview this saved Plan.\n", {
                     classification: "PLANNED_CHANGE",
                     status: "draft",
                     executionAgent: "engineer",
@@ -201,7 +203,11 @@ test("composed TUI keeps /plan-review reachable during the original browser revi
                     {
                         method: "POST",
                         headers: { "content-type": "application/json", "x-runwield-review-token": token },
-                        body: JSON.stringify({ approved: true, approvalAction: "later" }),
+                        body: JSON.stringify({
+                            approved: true,
+                            approvalAction: "later",
+                            documentRevision: (await loadPlan(projectRoot, "target"))!.revision,
+                        }),
                     },
                 );
                 assertEquals(response.ok, true);

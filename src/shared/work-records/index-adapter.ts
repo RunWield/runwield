@@ -1,3 +1,4 @@
+import { readLocalHomeStore } from "../../plan-store/index.ts";
 import { workRecordOwnerLayout, assertWorkRecordPath } from "./owner.ts";
 import { mkdir as fsMkdir } from "node:fs/promises";
 import { captureForegroundProcess } from "../captured-process.ts";
@@ -64,7 +65,15 @@ function resolveWorkRecordIndexProjectName(cwd: string, gitCommonDir: string) {
     return rawName === "global" || !rawName ? "default" : rawName;
 }
 
-export async function getWorkRecordIndexCollectionName(cwd: string) {
+export async function getWorkRecordIndexCollectionName(cwd: string): Promise<string> {
+    return await readLocalHomeStore(
+        cwd,
+        () => getWorkRecordIndexCollectionNameInScope(cwd),
+        () => getWorkRecordIndexCollectionNameInScope(cwd),
+    );
+}
+
+async function getWorkRecordIndexCollectionNameInScope(cwd: string) {
     if (workRecordOwnerLayout()) return workRecordOwnerLayout()!.collection;
     return `${resolveWorkRecordIndexProjectName(cwd, await resolveGitCommonDir(cwd))}:work-records`;
 }
@@ -123,7 +132,19 @@ function decode(bytes: Uint8Array) {
     return new TextDecoder().decode(bytes || new Uint8Array()).trim();
 }
 
-export async function runMnemotecaWorkRecordCommand(cwd: string, args: string[], options: WorkRecordIndexOptions) {
+export async function runMnemotecaWorkRecordCommand(
+    cwd: string,
+    args: string[],
+    options: WorkRecordIndexOptions,
+): Promise<string> {
+    return await readLocalHomeStore(
+        cwd,
+        () => runMnemotecaWorkRecordCommandInScope(cwd, args, options),
+        () => runMnemotecaWorkRecordCommandInScope(cwd, args, options),
+    );
+}
+
+async function runMnemotecaWorkRecordCommandInScope(cwd: string, args: string[], options: WorkRecordIndexOptions) {
     const mnemotecaPort = options.mnemotecaPort;
     let result;
     try {

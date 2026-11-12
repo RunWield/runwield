@@ -1,3 +1,5 @@
+import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
+import { capturePlanAccess } from "../../plan-store/index.ts";
 import { applyAttachedCodeReviewDecision } from "./code-review-decision.ts";
 /** Process-local browser hosting; the coordinator owns every durable review decision. */
 import { type BrowserPort, SYSTEM_BROWSER_PORT } from "../browser-port.ts";
@@ -161,6 +163,20 @@ export async function ensureReviewHosted(
     browser: BrowserPort = SYSTEM_BROWSER_PORT,
     reply?: AttachedChatReply,
     hostId: AttachedHostId = "claude-code",
+): Promise<HostedAttachedReview | null> {
+    if (workflow.plan && !capturePlanAccess())
+        return await withLocalPlanWorkflow(projectRoot, workflow.plan.planName, () =>
+            ensureReviewHostedInScope(projectRoot, workflow, browser, reply, hostId),
+        );
+    return await ensureReviewHostedInScope(projectRoot, workflow, browser, reply, hostId);
+}
+
+async function ensureReviewHostedInScope(
+    projectRoot: string,
+    workflow: AttachedWorkflowView,
+    browser: BrowserPort,
+    reply: AttachedChatReply | undefined,
+    hostId: AttachedHostId,
 ): Promise<HostedAttachedReview | null> {
     const host = ATTACHED_HOSTS[hostId];
     const previous = hosted.get(workflow.workflowId);

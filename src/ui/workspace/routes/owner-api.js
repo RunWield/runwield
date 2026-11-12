@@ -1,4 +1,4 @@
-import { readPlanDocuments, savePlanDocument, readPlanDocumentLink } from "../../../shared/workflow/plan-documents.ts";
+import { readPlanDocuments, savePlanDocument, readPlanDocumentLink } from "../../../plan-store/index.ts";
 import { loadOwnerUsage } from "../server/owner-usage.ts";
 import { loadUsageSettings, mutateUsageSettings, UsageSettingsError } from "../server/owner-usage-settings.ts";
 import { DirectoryConfirmationRequired } from "../../../shared/project-directory.ts";

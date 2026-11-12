@@ -7,10 +7,10 @@
  */
 
 import { CLI_BIN } from "../../constants.js";
-import { findPlansByParent } from "../../plan-store.js";
+import { findPlansByParent } from "../../plan-store/index.ts";
 import { isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
 import { listCommitsTouchingPathsSince } from "../../shared/workflow/git-snapshot.ts";
-import { runRecoveryTransition } from "../../shared/workflow/state-transition.ts";
+import { runPlanRecoveryEffects } from "../../plan-store/index.ts";
 import { resolveWorkRecordSupersessionProposalsWithUi } from "../../shared/workflow/validation-helpers.ts";
 import {
     autoGenerateWorkRecordForCompletedPlan,
@@ -28,12 +28,12 @@ import { buildPlanSummary } from "../../shared/plan-presentation.ts";
 import { formatEpicProgressSummary } from "./plan-epic-children.ts";
 import { confirmWorktreeAction, hasWorktreeContext, resolveRecoveryWorktree } from "./plan-recovery-worktree.ts";
 import { settleDiscardedRecoveryAttempt } from "./plan-recovery-discard.ts";
-import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
-import { loadPlan } from "../../plan-store.js";
-import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
+import { detachPlanExecution } from "../../plan-store/index.ts";
+import { loadPlan } from "../../plan-store/index.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { completeUserVerification } from "./user-verification-completion.ts";
 import { resolvePrimaryCheckoutRoot } from "../../shared/primary-checkout.ts";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store/index.ts";
 import type { UiAPI } from "../../ui/tui/types.js";
 import type { PlanSessionSurface } from "./plan-session-types.ts";
 
@@ -123,7 +123,7 @@ export function isUserVerifiableStatus(status: string): boolean {
 }
 
 /**
- * @param {Partial<import('../../plan-store.js').PlanFrontMatter>} attrs
+ * @param {Partial<import('../../plan-store/index.ts').PlanFrontMatter>} attrs
  * @returns {string | undefined}
  */
 export function getHoldStalenessBaseline(attrs: PlanFrontMatter): string | undefined {
@@ -131,7 +131,7 @@ export function getHoldStalenessBaseline(attrs: PlanFrontMatter): string | undef
 }
 
 /**
- * @param {Partial<import('../../plan-store.js').PlanFrontMatter>} attrs
+ * @param {Partial<import('../../plan-store/index.ts').PlanFrontMatter>} attrs
  * @returns {boolean}
  */
 export function hasRecordedWorktreeMetadata(attrs: PlanFrontMatter): boolean {
@@ -155,7 +155,7 @@ export async function confirmHoldWarning(uiAPI: UiAPI, message: string): Promise
 /**
  * @param {Object} opts
  * @param {string} opts.projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter }} opts.plan
+ * @param {{ planName: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }} opts.plan
  * @param {import('../../ui/tui/types.js').UiAPI} opts.uiAPI
  * @returns {Promise<boolean>}
  */
@@ -211,7 +211,7 @@ export async function putPlanOnHold({ projectRoot, plan, uiAPI }: PutPlanOnHoldO
 /**
  * @param {Object} opts
  * @param {string} opts.projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter }} opts.plan
+ * @param {{ planName: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }} opts.plan
  * @param {import('../../ui/tui/types.js').UiAPI} opts.uiAPI
  * @returns {Promise<boolean>}
  */
@@ -307,7 +307,7 @@ export async function markPlanUserVerified({
 /**
  * @param {Object} opts
  * @param {string} opts.projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter }} opts.plan
+ * @param {{ planName: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }} opts.plan
  * @param {import('../../ui/tui/types.js').UiAPI} opts.uiAPI
  * @returns {Promise<{ status: "pass" | "warn" | "fail", messages: string[] }>}
  */
@@ -397,7 +397,7 @@ export async function runResumeCheck({
 /**
  * @param {Object} opts
  * @param {string} opts.projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter }} opts.plan
+ * @param {{ planName: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }} opts.plan
  * @param {import('../../ui/tui/types.js').UiAPI} opts.uiAPI
  * @returns {Promise<boolean>}
  */
@@ -438,7 +438,7 @@ export async function resetHeldPlanToDraft({ projectRoot, plan, uiAPI }: ResetHe
             return false;
         }
     }
-    const transition = await runRecoveryTransition({
+    const transition = await runPlanRecoveryEffects({
         projectRoot,
         planName: plan.planName,
         planId: plan.attrs.planId,
@@ -463,12 +463,7 @@ export async function resetHeldPlanToDraft({ projectRoot, plan, uiAPI }: ResetHe
                 retained,
             );
             await markEffect("recovery_discard_registry_settled", { worktreeId: worktreeContext?.id, retained });
-            await writeControllerState(
-                projectRoot,
-                { planName: plan.planName, planId: plan.attrs.planId },
-                { executionMode: null, documentWorktreeId: null },
-                { expectedRevision: beforePlan?.controllerRevision, recovery: null },
-            );
+            await detachPlanExecution(projectRoot, plan.planName, plan.attrs.planId, beforePlan?.controllerRevision);
             return await recordPlanEvent({
                 cwd: projectRoot,
                 planName: plan.planName,
@@ -504,7 +499,7 @@ export async function resetHeldPlanToDraft({ projectRoot, plan, uiAPI }: ResetHe
 /**
  * @param {Object} opts
  * @param {string} opts.projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter, body: string, markdown?: string }} opts.plan
+ * @param {{ planName: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter, body: string, markdown?: string }} opts.plan
  * @param {import('../../ui/tui/types.js').UiAPI} opts.uiAPI
  * @param {PlanSessionSurface} opts.session
  * @returns {Promise<"resume" | "handled">}

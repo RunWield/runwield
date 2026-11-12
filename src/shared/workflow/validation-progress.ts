@@ -13,31 +13,29 @@ import type {
     RuntimeValidationCheckResults,
     RuntimeValidationProgress,
 } from "../session/session-runtime-events.js";
-import type { TransitionResult } from "./state-transition.ts";
+import type { TransitionResult } from "../../plan-store/index.ts";
 
 /** Fields accepted when building a progress record from scratch. */
-export type ValidationProgressInput =
-    & Omit<Partial<RuntimeValidationProgress>, "checks">
-    & { checks?: Partial<RuntimeValidationCheckResults> };
+export type ValidationProgressInput = Omit<Partial<RuntimeValidationProgress>, "checks"> & {
+    checks?: Partial<RuntimeValidationCheckResults>;
+};
 
 /**
  * Fields accepted when amending a record. `null` clears a counter, which is how a
  * terminal update drops cycle numbers that no longer mean anything.
  */
-export type ValidationProgressPatch =
-    & Omit<
-        Partial<RuntimeValidationProgress>,
-        "checks" | "cycle" | "maxCycles" | "totalCycle" | "repairAttempt" | "maxRepairAttempts" | "message"
-    >
-    & {
-        checks?: Partial<RuntimeValidationCheckResults>;
-        cycle?: number | null;
-        maxCycles?: number | null;
-        totalCycle?: number | null;
-        repairAttempt?: number | null;
-        maxRepairAttempts?: number | null;
-        message?: string | null;
-    };
+export type ValidationProgressPatch = Omit<
+    Partial<RuntimeValidationProgress>,
+    "checks" | "cycle" | "maxCycles" | "totalCycle" | "repairAttempt" | "maxRepairAttempts" | "message"
+> & {
+    checks?: Partial<RuntimeValidationCheckResults>;
+    cycle?: number | null;
+    maxCycles?: number | null;
+    totalCycle?: number | null;
+    repairAttempt?: number | null;
+    maxRepairAttempts?: number | null;
+    message?: string | null;
+};
 
 const CLEARABLE_COUNTERS = ["cycle", "maxCycles", "totalCycle", "repairAttempt", "maxRepairAttempts"] as const;
 const CHECK_KEYS = ["ci", "semanticReview", "humanReview", "merge"] as const;
@@ -78,7 +76,7 @@ export function describeUnsettledTransition(transition: TransitionResult, intent
     return [
         `RunWield could not record ${intent}: ${transition.message}`,
         "The repository change already happened; only RunWield's record of it is behind, so the Plan may still show " +
-        "its previous status until this is resolved.",
+            "its previous status until this is resolved.",
         ...(commands.length > 0 ? [`Resolve it with: ${commands.join("  or  ")}`] : []),
     ].join(" ");
 }
@@ -94,8 +92,10 @@ export function describeUnsettledTransition(transition: TransitionResult, intent
 export function getCurrentValidationProgress(
     hostedSession: HostedSession | undefined,
 ): RuntimeValidationProgress | undefined {
-    return (hostedSession ? CURRENT_VALIDATION_PROGRESS.get(hostedSession) : undefined) ||
-        hostedSession?.getWorkflowContext?.()?.validationProgress;
+    return (
+        (hostedSession ? CURRENT_VALIDATION_PROGRESS.get(hostedSession) : undefined) ||
+        hostedSession?.getWorkflowContext?.()?.validationProgress
+    );
 }
 
 /**
@@ -122,8 +122,7 @@ export function emitRunWieldSystemStatus(
     validationProgress?: RuntimeValidationProgress,
 ): void {
     const resolvedLevel = level === true ? "error" : level === false ? "info" : level;
-    const currentProgress = validationProgress ||
-        getCurrentValidationProgress(hostedSession);
+    const currentProgress = validationProgress || getCurrentValidationProgress(hostedSession);
     const snapshot = currentProgress ? structuredClone(currentProgress) : undefined;
     // A saved report is emitted once with explicit completion, not on unrelated later status lines.
     if (snapshot && !validationProgress) delete snapshot.deliveryReport;
@@ -140,10 +139,13 @@ export function emitRunWieldSystemStatus(
         CURRENT_VALIDATION_PROGRESS.set(hostedSession, validationProgress);
         const context = hostedSession.getWorkflowContext?.();
         if (context) {
-            hostedSession.replaceWorkflowContext?.({
-                ...context,
-                validationProgress: structuredClone(validationProgress),
-            }, { persist: true });
+            hostedSession.replaceWorkflowContext?.(
+                {
+                    ...context,
+                    validationProgress: structuredClone(validationProgress),
+                },
+                { persist: true },
+            );
         }
     }
 }
@@ -164,8 +166,8 @@ export function createValidationProgress(values: ValidationProgressInput): Runti
         ...(values.kind === "workflow"
             ? { totalCycle: values.totalCycle || values.cycle || 1 }
             : values.totalCycle
-            ? { totalCycle: values.totalCycle }
-            : {}),
+              ? { totalCycle: values.totalCycle }
+              : {}),
         ...(values.repairAttempt ? { repairAttempt: values.repairAttempt } : {}),
         ...(values.maxRepairAttempts ? { maxRepairAttempts: values.maxRepairAttempts } : {}),
         ...(values.message ? { message: values.message } : {}),
@@ -228,10 +230,12 @@ export interface CodeReviewAnnotation {
 }
 
 export function formatCodeReviewAnnotations(annotations: CodeReviewAnnotation[]): string {
-    return annotations.map((annotation, index) => {
-        const file = annotation.file || annotation.path || annotation.filePath || "unknown file";
-        const line = typeof annotation.line === "number" ? `:${annotation.line}` : "";
-        const text = annotation.text || annotation.comment || "";
-        return `${index + 1}. ${file}${line}${text ? `\n${text}` : ""}`;
-    }).join("\n\n");
+    return annotations
+        .map((annotation, index) => {
+            const file = annotation.file || annotation.path || annotation.filePath || "unknown file";
+            const line = typeof annotation.line === "number" ? `:${annotation.line}` : "";
+            const text = annotation.text || annotation.comment || "";
+            return `${index + 1}. ${file}${line}${text ? `\n${text}` : ""}`;
+        })
+        .join("\n\n");
 }

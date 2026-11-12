@@ -1,8 +1,10 @@
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 // @ts-nocheck: owner Workspace app and managed fixture expose JavaScript records.
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
-import { ensurePlanIdentity, savePlan } from "../../plan-store.js";
+import { ensurePlanIdentity } from "../../plan-store/index.ts";
+
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createOwnerWorkspaceApp } from "./server.js";
@@ -16,7 +18,7 @@ test("owner Plan review command opens a saved review through the authorized rout
             const store = fixture.openStore();
             let app;
             try {
-                await savePlan(fixture.projectRoot, "saved", "# Saved\n\n## Context\n\nReview this plan.", {
+                await seedPlan(fixture.projectRoot, "saved", "# Saved\n\n## Context\n\nReview this plan.", {
                     planId: "saved-id",
                     classification: "PLANNED_CHANGE",
                     status: "draft",

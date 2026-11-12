@@ -26,11 +26,13 @@ function ciCancellationScenario(choice: "engineer_follow_up" | "retry" | "stop")
         committedProjectFiles: [
             { path: ".wld/settings.json", text: `${JSON.stringify({ verification_command: "sleep 30" }, null, 4)}\n` },
         ],
-        reviewDecisions: [{
-            approved: true,
-            feedback: "Approved for CI cancellation coverage.",
-            approvalAction: "run",
-        }],
+        reviewDecisions: [
+            {
+                approved: true,
+                feedback: "Approved for CI cancellation coverage.",
+                approvalAction: "run",
+            },
+        ],
         reviewedPlan: `# ${planName}\n\nGolden CI cancellation content.\n`,
         scriptedInteractions: [{ type: "select", promptIncludes: "tests for", value: choice }],
         script: [
@@ -40,10 +42,12 @@ function ciCancellationScenario(choice: "engineer_follow_up" | "retry" | "stop")
                 phase: "plan_review",
                 ordinal: 1,
                 requiredTools: ["plan_written"],
-                toolCalls: [{
-                    name: "plan_written",
-                    arguments: { planName },
-                }],
+                toolCalls: [
+                    {
+                        name: "plan_written",
+                        arguments: { planName },
+                    },
+                ],
             },
             {
                 id: `engineer-implements-${planName}`,
@@ -68,10 +72,9 @@ function ciCancellationScenario(choice: "engineer_follow_up" | "retry" | "stop")
         ],
         actions: [
             {
-                type: "writeProjectFile",
-                path: `docs/plans/${planName}.md`,
-                text:
-                    `---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: CI cancel\naffectedPaths: []\nstatus: draft\n---\n# CI cancel\n\nDraft content.\n`,
+                type: "savePlan",
+                planName,
+                text: `---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: CI cancel\naffectedPaths: []\nstatus: draft\n---\n# CI cancel\n\nDraft content.\n`,
             },
             { type: "type", text: `submit ${planName} plan for review` },
             { type: "enter" },
@@ -89,17 +92,19 @@ function ciCancellationScenario(choice: "engineer_follow_up" | "retry" | "stop")
 export const validationTreeCiCancelRetryScenario = withValidationBranches(
     {
         ...ciCancellationScenario("retry"),
-        scriptedInteractions: [{
-            type: "select",
-            promptIncludes: "tests for",
-            value: "retry",
-            userFixesFirst: {
-                target: "execution",
-                planName: "ci-cancel-retry",
-                path: ".wld/settings.json",
-                text: `${JSON.stringify({ verification_command: "true" }, null, 4)}\n`,
+        scriptedInteractions: [
+            {
+                type: "select",
+                promptIncludes: "tests for",
+                value: "retry",
+                userFixesFirst: {
+                    target: "execution",
+                    planName: "ci-cancel-retry",
+                    path: ".wld/settings.json",
+                    text: `${JSON.stringify({ verification_command: "true" }, null, 4)}\n`,
+                },
             },
-        }],
+        ],
     },
     "validation-tree-ci-cancel-retry",
     ["ci-cancel-retry"],
@@ -132,10 +137,12 @@ export const validationTreeCiRepairIncompleteScenario = withValidationBranches(
                 planName: "validation-retry",
                 ordinal: 3,
                 requiredTools: ["bash"],
-                toolCalls: [{
-                    name: "bash",
-                    arguments: { command: "printf repaired > golden-validation-retry.txt" },
-                }],
+                toolCalls: [
+                    {
+                        name: "bash",
+                        arguments: { command: "printf repaired > golden-validation-retry.txt" },
+                    },
+                ],
             },
             {
                 id: "engineer-ci-repair-stops-before-completion",
@@ -148,10 +155,9 @@ export const validationTreeCiRepairIncompleteScenario = withValidationBranches(
         ],
         actions: [
             {
-                type: "writeProjectFile",
-                path: "docs/plans/validation-retry.md",
-                text:
-                    "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Validation retry\naffectedPaths: []\nstatus: draft\n---\n# Validation retry\n\nDraft content.\n",
+                type: "savePlan",
+                planName: "validation-retry",
+                text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Validation retry\naffectedPaths: []\nstatus: draft\n---\n# Validation retry\n\nDraft content.\n",
             },
             { type: "type", text: "submit validation retry plan for review" },
             { type: "enter" },
@@ -169,17 +175,19 @@ export const validationTreeCiRepairIncompleteScenario = withValidationBranches(
 export const validationTreeValidationExhaustedRetryScenario = withValidationBranches(
     {
         ...plannedChangeValidationExhaustedScenario,
-        scriptedInteractions: [{
-            type: "select",
-            promptIncludes: "tests for",
-            value: "retry",
-            userFixesFirst: {
-                target: "execution",
-                planName: "validation-exhausted",
-                path: ".wld/settings.json",
-                text: `${JSON.stringify({ verification_command: "true" }, null, 4)}\n`,
+        scriptedInteractions: [
+            {
+                type: "select",
+                promptIncludes: "tests for",
+                value: "retry",
+                userFixesFirst: {
+                    target: "execution",
+                    planName: "validation-exhausted",
+                    path: ".wld/settings.json",
+                    text: `${JSON.stringify({ verification_command: "true" }, null, 4)}\n`,
+                },
             },
-        }],
+        ],
         script: [
             ...(plannedChangeValidationExhaustedScenario.script ?? []),
             {
@@ -216,8 +224,8 @@ export const validationTreeValidationExhaustedRetryScenario = withValidationBran
             },
         ],
         actions: [
-            ...(plannedChangeValidationExhaustedScenario.actions ?? []).filter((action: { type?: string }) =>
-                action.type !== "captureProjectState"
+            ...(plannedChangeValidationExhaustedScenario.actions ?? []).filter(
+                (action: { type?: string }) => action.type !== "captureProjectState",
             ),
             { type: "waitForPlanStatus", planName: "validation-exhausted", statuses: ["verified"], timeoutMs: 90000 },
         ],
@@ -250,11 +258,11 @@ export const validationTreeValidationExhaustedFollowUpScenario = withValidationB
                 text: "I need more user guidance before changing the verification setup.",
             },
         ],
-        actions: (plannedChangeValidationExhaustedScenario.actions ?? []).map((
-            action: { type?: string; event?: string },
-        ) => action.type === "waitForEventCount" && action.event === "runtime:interaction_resolved"
-            ? { ...action, count: 3 }
-            : action
+        actions: (plannedChangeValidationExhaustedScenario.actions ?? []).map(
+            (action: { type?: string; event?: string }) =>
+                action.type === "waitForEventCount" && action.event === "runtime:interaction_resolved"
+                    ? { ...action, count: 3 }
+                    : action,
         ),
     },
     "validation-tree-validation-exhausted-follow-up",

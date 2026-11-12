@@ -1,5 +1,5 @@
 /** Plan-scoped continuation entry points, including Plans without a working Session. */
-import { findPlanEvidenceById } from "../../../plan-store.js";
+import { findPlanEvidenceById } from "../../../plan-store/index.ts";
 import {
     executePlanAction,
     loadPlanActionEvidence,
@@ -49,14 +49,15 @@ export async function ownerPlanContinuationApi(ctx: PlanContinuationContext) {
             if (!body.expectedRevision) throw new Error("Plan revision is required. Refresh and try again.");
             const action: PlanActionRequest = {
                 planId: plan.planId,
-                action: /** @type {const} */ ("resume_from_hold"),
+                action: /** @type {const} */ "resume_from_hold",
                 expectedRevision: body.expectedRevision,
                 expectedStatus: evidence.evidence.status,
                 expectedWorktree: evidence.evidence.worktree,
                 acceptResumeWarnings: body.acceptResumeWarnings,
             };
-            const sessionId = ctx.params.runwieldSessionId ||
-                await associatedPlanSession(ctx.state.store, ctx.params.projectId, plan.planId);
+            const sessionId =
+                ctx.params.runwieldSessionId ||
+                (await associatedPlanSession(ctx.state.store, ctx.params.projectId, plan.planId));
             if (sessionId) {
                 const state = ctx.state.store.inspectSessionActivation(sessionId);
                 if (state.activation?.state !== "idle") throw new Error("This Session is busy.");

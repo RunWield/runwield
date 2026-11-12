@@ -1,10 +1,14 @@
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
+import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
+import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
 import { assertEquals } from "../../testing/assertions.ts";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import process from "node:process";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { loadPlanActionEvidence, type PlanActionRequest } from "../../shared/workflow/plan-actions.ts";
 import { makeManagedSessionFixture, type ManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
@@ -18,7 +22,7 @@ async function withActionFixture(body: (fixture: ManagedSessionFixture) => Promi
         try {
             const fixture = await makeManagedSessionFixture({ home });
             try {
-                await savePlan(fixture.projectRoot, "demo", "# Demo\n", {
+                await seedPlan(fixture.projectRoot, "demo", "# Demo\n", {
                     planId: "plan-demo",
                     status: "draft",
                     classification: "FEATURE",
@@ -97,17 +101,9 @@ test("revalidates canonical evidence for a new request id", async () => {
         const action = await makeAction(fixture.projectRoot);
         const before = await loadPlan(fixture.projectRoot, "demo");
         if (!before?.revision) throw new Error("fixture Plan missing revision");
-        await savePlan(
-            fixture.projectRoot,
-            "demo",
-            "# Demo changed\n",
-            {
-                planId: "plan-demo",
-                status: "draft",
-                classification: "FEATURE",
-            },
-            { expectedRevision: before.revision },
-        );
+        await seedPlan(fixture.projectRoot, "demo", "# Changed Demo\n", before.attrs, {
+            expectedRevision: before.revision,
+        });
         const result = await runOwnerPlanAction(fixture.store, makeRequest(fixture, action));
         assertEquals(result.status, 409);
         assertEquals(result.body.result.kind, "refresh_required");
@@ -124,17 +120,20 @@ test("Workspace Plan action rejects changed status and worktree evidence with a 
         const action = await makeAction(fixture.projectRoot);
         const before = await loadPlan(fixture.projectRoot, "demo");
         if (!before?.revision) throw new Error("fixture Plan missing revision");
-        await savePlan(
-            fixture.projectRoot,
-            "demo",
-            "# Demo\n",
-            {
-                planId: "plan-demo",
-                status: "ready_for_work",
-                classification: "FEATURE",
-            },
-            { expectedRevision: before.revision },
-        );
+        await withLocalPlanWorkflow(fixture.projectRoot, "demo", async () => {
+            await recordPlanEvent({
+                cwd: fixture.projectRoot,
+                planName: "demo",
+                event: "review_approved",
+                currentStatus: "draft",
+            });
+            await recordPlanEvent({
+                cwd: fixture.projectRoot,
+                planName: "demo",
+                event: "readiness_passed",
+                currentStatus: "approved",
+            });
+        });
         const result = await runOwnerPlanAction(fixture.store, makeRequest(fixture, action));
         assertEquals(result.status, 409);
         assertEquals(result.body.result.kind, "refresh_required");

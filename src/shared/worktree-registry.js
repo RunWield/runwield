@@ -31,7 +31,7 @@ import {
     resolveProjectRuntimeLayout,
     withProjectRuntimeReadScope,
 } from "./project-runtime-layout.ts";
-import { inspectPlanIdentityDocuments } from "./workflow/plan-diagnostic-evidence.ts";
+import { inspectPlanIdentityDocuments } from "../plan-store/index.ts";
 import { assertPublicationAttempt } from "./workflow/publication-attempt.ts";
 
 /** @typedef {import("./lock-file-snapshot.ts").LockFileSnapshot} LockFileSnapshot */

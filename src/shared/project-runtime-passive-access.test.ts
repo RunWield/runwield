@@ -152,9 +152,12 @@ async function invokePassiveCli(root: string, home: string, args: string[]): Pro
     try {
         const code = await finished;
         await closing;
-        strictEqual(code, 0, output);
-        doesNotMatch(output, /Project clone-link choice required|matches known Projects|Fatal error/);
-        if (args[0] === "read") match(html, /CLI passive document/);
+        strictEqual(code, args[0] === "read" ? 1 : 0, output);
+        doesNotMatch(output, /Project clone-link choice required|matches known Projects/);
+        if (args[0] === "read") {
+            match(output, /Plan not found: passive/);
+            strictEqual(html, "", "Unimported checkout documents must not open a review surface.");
+        } else doesNotMatch(output, /Fatal error/);
         return output;
     } finally {
         clearTimeout(timeout);
@@ -196,7 +199,7 @@ for (const state of ["fresh", "matching clone", "legacy runtime"] as const) {
                 }
                 const before = [...(await snapshotTree(home)), ...(await snapshotTree(source))];
                 const output = await invokePassiveCli(root, home, command.args);
-                if (command.name === "list") match(output, /passive/);
+                if (command.name === "list") doesNotMatch(output, /CLI passive document|passive\.md/);
                 if (command.name === "check-only Doctor" && state === "legacy runtime") {
                     match(output, /adoption.*pending|pending.*adoption/i);
                     match(output, /No files changed/);

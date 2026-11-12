@@ -1,7 +1,7 @@
 /** Instructions shared by tool reviews and direct saved-Plan reviews. */
 export function buildPlanConversationRequest({ planName, feedback }: { planName: string; feedback?: string }): string {
     return [
-        `## Plan review conversation: docs/plans/${planName}.md`,
+        `## Plan review conversation: ${planName}`,
         "",
         feedback || "(no message provided)",
         "",

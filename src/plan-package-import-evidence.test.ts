@@ -1,3 +1,6 @@
+import { planFixtureControllerPath } from "./shared/testing/plan-state-fixture.ts";
+import { seedPlanController } from "./shared/testing/plan-state-fixture.ts";
+import { withRetainedCheckoutSource } from "./plan-store/retained-source.ts";
 import { test } from "node:test";
 import { deepEqual, equal, ok } from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -9,12 +12,12 @@ import {
     readPlanImportEvidence,
     renamePlanPackage,
     savePlanPackageDocument,
-    archivePlan,
-} from "./plan-store.js";
+} from "./plan-store/packages.ts";
+import { archivePlan } from "./plan-store/index.ts";
 import { git } from "./shared/git-test-fixture.ts";
 import { enterProjectRuntime } from "./shared/project-runtime-layout.ts";
 import { addEntry, getWorktreeRegistryPath, updateEntry } from "./shared/worktree-registry.js";
-import { writeControllerState, controllerRecordPath } from "./shared/workflow/controller-registry.ts";
+
 import { createPublicationAttempt } from "./shared/workflow/publication-attempt.ts";
 import { validationCheckpointCanResume, type ValidationCheckpoint } from "./shared/workflow/validation-checkpoint.ts";
 import { hasApplicablePublicationReceipt } from "./shared/workflow/publication-receipt.ts";
@@ -87,7 +90,7 @@ for (const status of ["planning", "active"] as const)
                     },
                 },
             };
-            const controller = await writeControllerState(
+            const controller = await seedPlanController(
                 f.root,
                 { planId: "active-plan", planName: "active" },
                 {
@@ -98,7 +101,7 @@ for (const status of ["planning", "active"] as const)
             );
             const registryBefore = await fs.readFile(getWorktreeRegistryPath(f.root), "utf8");
             const controllerBefore = await fs.readFile(
-                controllerRecordPath(f.root, { planId: "active-plan", planName: "active" }),
+                planFixtureControllerPath(f.root, { planId: "active-plan", planName: "active" }),
                 "utf8",
             );
             const result = await importPlanPackages(f.identity, f.source);
@@ -136,7 +139,10 @@ for (const status of ["planning", "active"] as const)
             );
             equal(await fs.readFile(getWorktreeRegistryPath(f.root), "utf8"), registryBefore);
             equal(
-                await fs.readFile(controllerRecordPath(f.root, { planId: "active-plan", planName: "active" }), "utf8"),
+                await fs.readFile(
+                    planFixtureControllerPath(f.root, { planId: "active-plan", planName: "active" }),
+                    "utf8",
+                ),
                 controllerBefore,
             );
             const restarted = await driver({ identity: f.identity, command: "evidence", planId: "active-plan" });
@@ -264,12 +270,12 @@ for (const changed of ["source", "controller", "registry"] as const)
     test(`${changed} changes during capture invalidate import before publication`, async () => {
         const f = await execution();
         try {
-            const controller = await writeControllerState(
+            const controller = await seedPlanController(
                 f.root,
                 { planId: "active-plan", planName: "active" },
                 { failureReason: "original" },
             );
-            const controllerPath = controllerRecordPath(f.root, { planId: "active-plan", planName: "active" });
+            const controllerPath = planFixtureControllerPath(f.root, { planId: "active-plan", planName: "active" });
             const registryPath = getWorktreeRegistryPath(f.root);
             const registry = JSON.parse(await fs.readFile(registryPath, "utf8"));
             registry.entries[0].updatedAt = "changed";
@@ -402,8 +408,10 @@ for (const foreignId of [false, true])
                 "active",
                 markdown("# Completed execution\n").replace("status: implemented", "status: verified"),
             );
-            const archived = await archivePlan(f.root, "active", { now: "2026-01-01", reason: "complete" });
-            const controller = await writeControllerState(
+            const archived = await withRetainedCheckoutSource(f.identity, () =>
+                archivePlan(f.root, "active", { now: "2026-01-01", reason: "complete" }),
+            );
+            const controller = await seedPlanController(
                 f.root,
                 { planId: "active-plan", planName: "active" },
                 { publicationReceipt: { validatedCommit: f.commit, publishedCommit: f.commit, targetBranch: "main" } },

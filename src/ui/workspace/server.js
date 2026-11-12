@@ -1,11 +1,8 @@
 // @ts-nocheck: local wrapper includes a tiny Fresh-free router and production Astro bridge with dynamic handler shapes.
-import {
-    capturePackageWorkflowAccess,
-    currentPackageSelection,
-    loadPackageWorkflowPlan,
-    selectedPackage,
-} from "../../shared/workflow/package-workflow.ts";
-import { readPlanDocumentLink } from "../../shared/workflow/plan-documents.ts";
+import { readPlanReviewPresentation, planControllerRoot } from "../../plan-store/index.ts";
+
+import { capturePlanReadContext } from "../../plan-store/index.ts";
+import { readPlanDocumentLink } from "../../plan-store/index.ts";
 import { ownerPlanContinuationApi } from "./routes/owner-plan-continuation.ts";
 import { serveHttp } from "../../shared/http-server.ts";
 import { env, versions } from "node:process";
@@ -16,7 +13,7 @@ import { basename, dirname, extname, join } from "node:path";
 import { pathToFileURL as toFileUrl } from "node:url";
 import { parseWorkRecordMarkdown } from "../../shared/work-records/markdown.js";
 import { workRecordNotices } from "../../shared/work-records/list.ts";
-import { isEpicArtifactPlanName } from "../../shared/epic-artifacts.ts";
+import { isEpicArtifactPlanName } from "../../plan-format.ts";
 import { RUNWIELD_ROOT, RUNWIELD_SOURCE_ROOT } from "../../../runtime-root.js";
 import { getCwd, PLAN_UI_TOKEN_HEADER, PLAN_UI_TOKEN_QUERY } from "../../constants.js";
 import { getWorktreeReviewDiff, WorktreeReviewComparisonError } from "../../shared/workflow/git-snapshot.ts";
@@ -245,8 +242,8 @@ export function createRemoteWorkspaceApp(options = { mode: "remote" }) {
 
 /** @param {OwnerWorkspaceAppOptions} options */
 export function createOwnerWorkspaceApp(options) {
-    const admissionRoot = currentPackageSelection()?.identity.checkoutRoot;
-    const packageAccess = capturePackageWorkflowAccess();
+    const admissionRoot = planControllerRoot("") || undefined;
+    const packageAccess = capturePlanReadContext();
     const app = createWorkspaceRouter();
     const store = options.store;
     setAstroOwnerWorkspaceStore(store);
@@ -300,7 +297,9 @@ export function createOwnerWorkspaceApp(options) {
                 ? store.getProjectById(decodeURIComponent(projectRoute[1]))?.currentRoot
                 : admissionRoot;
             // Handlers enforce availability; settings and recovery actions must work without a usable root.
-            let response = await packageAccess(responseRoot, () => ctx.next());
+            const registrationRoute =
+                /^\/projects\/[^/]+\/settings$/.test(path) || /^\/api\/owner\/projects\/[^/]+\/action$/.test(path);
+            let response = await packageAccess(registrationRoute ? undefined : responseRoot, () => ctx.next());
             if (
                 ctx.state.ownerDevice &&
                 ctx.req.method === "GET" &&
@@ -443,6 +442,7 @@ export function createOwnerWorkspaceApp(options) {
 
 /** @param {LocalWorkspaceAppOptions} options */
 function createLocalWorkspaceApp({ cwd, token, skipTokenCheck = false, mnemotecaPort }) {
+    const packageAccess = capturePlanReadContext();
     return {
         handler() {
             /** @param {Request} request */
@@ -452,7 +452,7 @@ function createLocalWorkspaceApp({ cwd, token, skipTokenCheck = false, mnemoteca
                 if (!skipTokenCheck && !hasWorkspaceToken(request, token)) {
                     return new Response("Workspace token required.", { status: 401 });
                 }
-                return await handleLocalWorkspaceRequest(request, { cwd, mnemotecaPort });
+                return await packageAccess(cwd, () => handleLocalWorkspaceRequest(request, { cwd, mnemotecaPort }));
             };
         },
     };
@@ -600,7 +600,7 @@ function linkedDocumentKind(path) {
 
 /** @param {ReviewWorkspaceServerOptions} options */
 export function createReviewWorkspaceApp(options) {
-    const packageAccess = capturePackageWorkflowAccess();
+    const packageAccess = capturePlanReadContext();
     const { cwd = getCwd(), token, reviewPayload, reviewType, reviewConversation } = options;
     const reviewAgentState =
         reviewType === "code"
@@ -630,12 +630,16 @@ export function createReviewWorkspaceApp(options) {
                         if (!hasReviewAssetToken(request, token)) {
                             return new Response("Review token required.", { status: 401 });
                         }
-                        if (currentPackageSelection() && typeof reviewPayload.planId === "string") {
+                        if (typeof reviewPayload.planId === "string") {
                             try {
-                                const document = await readPlanDocumentLink(
+                                const planId = url.searchParams.get("planId") || reviewPayload.planId;
+                                const allowedIds = new Set([
                                     reviewPayload.planId,
-                                    url.searchParams.get("path") || "",
-                                );
+                                    ...(reviewPayload.sequenceDocuments || []).map((document) => document.planId),
+                                ]);
+                                if (!allowedIds.has(planId))
+                                    return Response.json({ error: "Plan is outside this review." }, { status: 403 });
+                                const document = await readPlanDocumentLink(planId, url.searchParams.get("path") || "");
                                 if (document)
                                     return Response.json({
                                         codeFile: true,
@@ -798,19 +802,9 @@ export function createReviewWorkspaceApp(options) {
  * @param {{ cwd: string, reviewPayload: Record<string, unknown>, reviewType: "plan" | "code", token: string }} options
  */
 async function currentReviewPagePayload({ cwd, reviewPayload, reviewType, token }) {
-    if (reviewType === "plan" && currentPackageSelection()) {
-        const plan = await loadPackageWorkflowPlan({ planId: String(reviewPayload.planId) });
-        const selected = await selectedPackage({ planId: String(reviewPayload.planId) });
-        Object.assign(reviewPayload, {
-            plan: plan.body,
-            planName: selected.metadata.name,
-            frontmatter: plan.attrs,
-            classification: plan.attrs.classification,
-            documentRevision: plan.revision,
-            linkedFiles: Object.fromEntries(
-                selected.documents.map((entry) => [entry.name, new TextDecoder().decode(entry.bytes)]),
-            ),
-        });
+    if (reviewType === "plan" && typeof reviewPayload.planId === "string") {
+        const presentation = await readPlanReviewPresentation(reviewPayload.planId);
+        if (presentation) Object.assign(reviewPayload, presentation);
     }
     const payload = { ...reviewPayload, token, mode: "workflow" };
     if (reviewType === "code" && typeof reviewPayload.targetBranch === "string") {

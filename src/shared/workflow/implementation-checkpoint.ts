@@ -1,19 +1,16 @@
 // @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
-import {
-    currentPackageSelection,
-    withPackageWorkflow,
-    withPackageExecutionJournal,
-    assertPackageWorkflowInput,
-} from "./package-workflow.ts";
-import { readPlanPackage } from "../plan-package-store.ts";
-import { getPlanRevisionForText, loadPlan } from "../../plan-store.js";
+import { withPlanImplementationCompletion } from "../../plan-store/index.ts";
+import { capturePlanAccess } from "../../plan-store/index.ts";
+import { resumePlanAttempt } from "../../plan-store/index.ts";
+import { getPlanRevisionForText } from "../../plan-format.ts";
+import { loadPlan } from "../../plan-store/index.ts";
 import { checkpointExecutionWorktree } from "../worktree.js";
 import { acknowledgeTaskCompletion, claimPendingTaskCompletion } from "../session/task-completion-session.ts";
 import { updateEntry as updateWorktreeRegistryEntry } from "../worktree-registry.js";
 import { isInValidation, recordPlanEvent } from "./plan-lifecycle.js";
-import { restoreExecutionPlanFromBaseline } from "./execution-plan-file.js";
+import { restoreExecutionPlanFromBaseline } from "../../plan-store/index.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
-import { runImplementationCheckpointTransition, withOrderedTransitionResources } from "./state-transition.ts";
+import { runImplementationCheckpointTransition } from "../../plan-store/index.ts";
 
 interface FinalizePlanImplementationOptions {
     projectRoot: string;
@@ -36,15 +33,12 @@ interface FinalizePlanImplementationOptions {
  */
 export async function finalizePlanImplementation(options: FinalizePlanImplementationOptions) {
     const { executionContext, projectRoot, planName } = options;
-    if (executionContext?.packageSelection && !currentPackageSelection()) {
+    if (executionContext?.packageSelection && !capturePlanAccess()) {
         const selection = executionContext.packageSelection;
-        const current = await readPlanPackage(selection.identity, { planId: selection.planId });
-        if (current.kind !== "loaded") throw new Error(current.message);
-        if (current.metadata.workflow?.attempt?.attemptId !== executionContext.worktreeId)
-            throw new Error("Implementation attempt binding changed.");
-        return await withPackageWorkflow(
+        return await resumePlanAttempt(
             projectRoot,
-            { ...selection, expectedRevision: current.metadata.revision },
+            selection,
+            executionContext.packageAttemptId || executionContext.worktreeId,
             () => finalizePlanImplementation(options),
         );
     }
@@ -55,10 +49,12 @@ export async function finalizePlanImplementation(options: FinalizePlanImplementa
         executionContext.executionMode === "worktree" && executionContext.executionCwd
             ? executionContext.executionCwd
             : projectRoot;
-    const resources = [{ kind: "plan", id: planName }];
-    if (executionContext.worktreeId) resources.push({ kind: "attempt", id: executionContext.worktreeId });
-    return await withPackageExecutionJournal(() =>
-        withOrderedTransitionResources(planCwd, resources, () => finalizeLockedImplementation(options)),
+    return await withPlanImplementationCompletion(
+        planCwd,
+        planName,
+        executionContext.worktreeId,
+        executionContext.packageInput,
+        () => finalizeLockedImplementation(options),
     );
 }
 
@@ -115,10 +111,6 @@ async function finalizeLockedImplementation({
                 currentPlan.attrs.planId || "missing"
             }, expected ${expectedPlanId}.`,
         );
-    }
-    if (currentPackageSelection()) {
-        if (!executionContext.packageInput) throw new Error("Implementation retained input is missing.");
-        await assertPackageWorkflowInput(planName, executionContext.packageInput);
     }
     const planStatus = currentPlan?.attrs?.status;
     // Attached binds completion to the issued document. Check under the same

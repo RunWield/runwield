@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { approveSemantic, toDelivery } from "./delivery-test-fixture.ts";
 import { git } from "../git-test-fixture.ts";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
 
 test("Attached code review rejects an approval after the worktree changes", async () => {
     const fixture = await attachedValidationFixture();

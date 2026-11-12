@@ -1,3 +1,5 @@
+import { seedPlan } from "./testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "./testing/retained-plan-fixture.ts";
 import type { WorktreeRegistryEntry } from "./worktree-registry.js";
 import { open as fsOpen } from "node:fs/promises";
 import {
@@ -14,7 +16,8 @@ import { test } from "node:test";
 import process from "node:process";
 import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
 import { dirname, join } from "node:path";
-import { listPlans, savePlan } from "../plan-store.js";
+import { listPlans } from "../plan-store/index.ts";
+
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "./project-runtime-layout.ts";
@@ -498,37 +501,39 @@ test("worktree registry prunes entries whose paths are missing", async () => {
 
 test("worktree registry migration resolves unambiguous legacy plan names", async () => {
     const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
-    try {
-        await savePlan(projectRoot, "demo-plan", "# Demo", {
-            planId: "plan-1",
-            status: "in_progress",
-            classification: "FEATURE",
-        });
-        const path = getWorktreeRegistryPath(projectRoot);
-        await fsMkdir(dirname(path), { recursive: true });
-        await fsWriteFile(
-            path,
-            JSON.stringify({
-                version: 1,
-                entries: [entry({ planId: undefined, path: join(projectRoot, "missing-attempt") })],
-            }),
-        );
-        const primaryPath = join(projectRoot, "docs/plans/demo-plan.md");
-        const beforePlan = await fsReadFile(primaryPath, "utf8");
-        assertEquals(await listPlans(projectRoot), []);
+    return await withRetainedPlanFixture(projectRoot, async () => {
+        try {
+            await seedPlan(projectRoot, "demo-plan", "# Demo", {
+                planId: "plan-1",
+                status: "in_progress",
+                classification: "FEATURE",
+            });
+            const path = getWorktreeRegistryPath(projectRoot);
+            await fsMkdir(dirname(path), { recursive: true });
+            await fsWriteFile(
+                path,
+                JSON.stringify({
+                    version: 1,
+                    entries: [entry({ planId: undefined, path: join(projectRoot, "missing-attempt") })],
+                }),
+            );
+            const primaryPath = join(projectRoot, "docs/plans/demo-plan.md");
+            const beforePlan = await fsReadFile(primaryPath, "utf8");
+            assertEquals(await listPlans(projectRoot), []);
 
-        const beforeRegistry = await fsReadFile(path, "utf8");
-        await listEntries(projectRoot);
-        assertEquals(await fsReadFile(path, "utf8"), beforeRegistry);
-        const entries = await prepareWorktreeRegistry(projectRoot);
-        assertEquals(entries[0].planId, "plan-1");
-        const stored = JSON.parse(await fsReadFile(path, "utf8"));
-        assertEquals(stored.version, 2);
-        assertEquals(await fsReadFile(primaryPath, "utf8"), beforePlan);
-        assertEquals(await listPlans(projectRoot), []);
-    } finally {
-        await fsRm(projectRoot, { recursive: true });
-    }
+            const beforeRegistry = await fsReadFile(path, "utf8");
+            await listEntries(projectRoot);
+            assertEquals(await fsReadFile(path, "utf8"), beforeRegistry);
+            const entries = await prepareWorktreeRegistry(projectRoot);
+            assertEquals(entries[0].planId, "plan-1");
+            const stored = JSON.parse(await fsReadFile(path, "utf8"));
+            assertEquals(stored.version, 2);
+            assertEquals(await fsReadFile(primaryPath, "utf8"), beforePlan);
+            assertEquals(await listPlans(projectRoot), []);
+        } finally {
+            await fsRm(projectRoot, { recursive: true });
+        }
+    });
 });
 
 test("worktree registry migration classifies duplicate live legacy attempts for recovery", async () => {
@@ -579,64 +584,74 @@ test("worktree registry migration classifies duplicate live legacy attempts for 
 });
 
 test("registry migration keeps distinct execution documents ambiguous", async () => {
-    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-registry-evidence-"));
-    try {
-        const firstPath = join(projectRoot, "first");
-        const secondPath = join(projectRoot, "second");
-        await fsMkdir(firstPath, { recursive: true });
-        await fsMkdir(secondPath, { recursive: true });
-        for (const root of [projectRoot, firstPath, secondPath]) {
-            await savePlan(root, "demo-plan", "# Same Plan identity\n", {
-                planId: "plan-1",
-                status: "in_progress",
-                classification: "FEATURE",
-            });
-        }
-        const path = getWorktreeRegistryPath(projectRoot);
-        await fsMkdir(dirname(path), { recursive: true });
-        await fsWriteFile(
-            path,
-            JSON.stringify({
-                version: 1,
-                entries: [
-                    entry({ id: "first", planId: undefined, path: firstPath }),
-                    entry({ id: "second", planId: undefined, path: secondPath, branch: "runwield/worktree/second" }),
-                ],
-            }),
-        );
-        const beforeRegistry = await fsReadFile(path, "utf8");
-        await listEntries(projectRoot);
-        assertEquals(await fsReadFile(path, "utf8"), beforeRegistry);
-        const entries = await prepareWorktreeRegistry(projectRoot);
-        assertEquals(
-            entries.map((attempt) => attempt.planId),
-            [undefined, undefined],
-        );
-        const issues = JSON.parse(
-            await fsReadFile(
-                resolveProjectRuntimeLayout(await fsRealpath(projectRoot)).primary.worktreeRegistryMigrationIssuesPath,
-                "utf8",
-            ),
-        );
-        assertEquals(
-            issues.issues.map((issue: MigrationIssue) => issue.reason),
-            ["ambiguous_plan_name", "ambiguous_plan_name"],
-        );
-        for (const root of [firstPath, secondPath]) {
-            const document = join(root, "docs/plans/demo-plan.md");
+    const projectRoot = await gitFixture.checkout();
+    return await withRetainedPlanFixture(projectRoot, async () => {
+        try {
+            const firstPath = join(projectRoot, "first");
+            const secondPath = join(projectRoot, "second");
+            await git(projectRoot, ["worktree", "add", "-b", "first", firstPath]);
+            await git(projectRoot, ["worktree", "add", "-b", "second", secondPath]);
+            await enterProjectRuntime(firstPath);
+            await enterProjectRuntime(secondPath);
+            for (const root of [projectRoot, firstPath, secondPath]) {
+                await seedPlan(root, "demo-plan", "# Same Plan identity\n", {
+                    planId: "plan-1",
+                    status: "in_progress",
+                    classification: "FEATURE",
+                });
+            }
+            const path = getWorktreeRegistryPath(projectRoot);
+            await fsMkdir(dirname(path), { recursive: true });
             await fsWriteFile(
-                document,
-                (await fsReadFile(document, "utf8")).replace("---\n", "---\nworktreeId: first\n"),
+                path,
+                JSON.stringify({
+                    version: 1,
+                    entries: [
+                        entry({ id: "first", planId: undefined, path: firstPath }),
+                        entry({
+                            id: "second",
+                            planId: undefined,
+                            path: secondPath,
+                            branch: "runwield/worktree/second",
+                        }),
+                    ],
+                }),
             );
+            const beforeRegistry = await fsReadFile(path, "utf8");
+            await listEntries(projectRoot);
+            assertEquals(await fsReadFile(path, "utf8"), beforeRegistry);
+            const entries = await prepareWorktreeRegistry(projectRoot);
+            assertEquals(
+                entries.map((attempt) => attempt.planId),
+                [undefined, undefined],
+            );
+            const issues = JSON.parse(
+                await fsReadFile(
+                    resolveProjectRuntimeLayout(await fsRealpath(projectRoot)).primary
+                        .worktreeRegistryMigrationIssuesPath,
+                    "utf8",
+                ),
+            );
+            assertEquals(
+                issues.issues.map((issue: MigrationIssue) => issue.reason),
+                ["ambiguous_plan_name", "ambiguous_plan_name"],
+            );
+            for (const root of [firstPath, secondPath]) {
+                const document = join(root, "docs/plans/demo-plan.md");
+                await fsWriteFile(
+                    document,
+                    (await fsReadFile(document, "utf8")).replace("---\n", "---\nworktreeId: first\n"),
+                );
+            }
+            const conflictingPointers = await prepareWorktreeRegistry(projectRoot);
+            assertEquals(
+                conflictingPointers.map((attempt) => attempt.planId),
+                [undefined, undefined],
+            );
+        } finally {
+            await fsRm(projectRoot, { recursive: true });
         }
-        const conflictingPointers = await prepareWorktreeRegistry(projectRoot);
-        assertEquals(
-            conflictingPointers.map((attempt) => attempt.planId),
-            [undefined, undefined],
-        );
-    } finally {
-        await fsRm(projectRoot, { recursive: true });
-    }
+    });
 });
 
 test("worktree registry migration preserves unresolved legacy schema and records evidence", async () => {

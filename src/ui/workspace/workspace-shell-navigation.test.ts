@@ -1,3 +1,4 @@
+import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
 // @ts-nocheck: Deno test imports browser-shell helpers with a small fake DOM.
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -1003,39 +1004,41 @@ const warningNavigationFixture = defineGitFixture(async (root) => {
 
 test("real owner sidebar response renders partial Plan results and safe parser text", async () => {
     const root = await warningNavigationFixture.checkout();
-    const home = await mkdtemp(join(tmpdir(), "warning-navigation-"));
-    const store = openOwnerCoordinationStore({ dbPath: join(home, "owner.sqlite3") });
-    let app;
-    try {
-        await enterProjectRuntime(root);
-        const project = store.registerProject({ root, displayName: "Warning navigation" });
-        const pairing = store.createPairingRequest({ codeFactory: () => "WARN12", proofFactory: () => "proof" });
-        store.approvePairingRequest(pairing.code);
-        const claimed = store.claimPairingRequest(pairing.proof, {
-            credentialFactory: () => "reader",
-            csrfFactory: () => "csrf",
-        });
-        app = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: "http://127.0.0.1:8787", store });
-        const response = await app.handler()(
-            new Request("http://127.0.0.1:8787/api/owner/sidebar", {
-                headers: { cookie: `rw_owner_device=${claimed.credential}; rw_owner_csrf=csrf` },
-            }),
-        );
-        assertEquals(response.status, 200);
-        const payload = await response.json();
-        const { sidebar, document } = installFakeBrowser(`/projects/${project.projectId}/plans`);
-        renderSidebar(payload, currentRouteFromUrl(globalThis.location.href));
-        assert(sidebar.querySelector('[data-sidebar-plan="healthy-id"]'));
-        const warning = sidebar.querySelector('[data-sidebar-plan-warning="broken"]');
-        assert(warning);
-        assertEquals(warning.children[0].href, `/projects/${project.projectId}/plans`);
-        warning.querySelector("[data-plan-warning-control]").dispatchEvent({ type: "mouseenter" });
-        assertStringIncludes(document.querySelector('[role="tooltip"]').textContent, "(1:16)");
-        assertEquals(sidebar.querySelector(".workspace-sidebar-diagnostics").textContent, "");
-    } finally {
-        await app?.close();
-        store.close();
-        await rm(root, { recursive: true, force: true });
-        await rm(home, { recursive: true, force: true });
-    }
+    return await withRetainedPlanFixture(root, async () => {
+        const home = await mkdtemp(join(tmpdir(), "warning-navigation-"));
+        const store = openOwnerCoordinationStore({ dbPath: join(home, "owner.sqlite3") });
+        let app;
+        try {
+            await enterProjectRuntime(root);
+            const project = store.registerProject({ root, displayName: "Warning navigation" });
+            const pairing = store.createPairingRequest({ codeFactory: () => "WARN12", proofFactory: () => "proof" });
+            store.approvePairingRequest(pairing.code);
+            const claimed = store.claimPairingRequest(pairing.proof, {
+                credentialFactory: () => "reader",
+                csrfFactory: () => "csrf",
+            });
+            app = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: "http://127.0.0.1:8787", store });
+            const response = await app.handler()(
+                new Request("http://127.0.0.1:8787/api/owner/sidebar", {
+                    headers: { cookie: `rw_owner_device=${claimed.credential}; rw_owner_csrf=csrf` },
+                }),
+            );
+            assertEquals(response.status, 200);
+            const payload = await response.json();
+            const { sidebar, document } = installFakeBrowser(`/projects/${project.projectId}/plans`);
+            renderSidebar(payload, currentRouteFromUrl(globalThis.location.href));
+            assert(sidebar.querySelector('[data-sidebar-plan="healthy-id"]'));
+            const warning = sidebar.querySelector('[data-sidebar-plan-warning="broken"]');
+            assert(warning);
+            assertEquals(warning.children[0].href, `/projects/${project.projectId}/plans`);
+            warning.querySelector("[data-plan-warning-control]").dispatchEvent({ type: "mouseenter" });
+            assertStringIncludes(document.querySelector('[role="tooltip"]').textContent, "(1:16)");
+            assertEquals(sidebar.querySelector(".workspace-sidebar-diagnostics").textContent, "");
+        } finally {
+            await app?.close();
+            store.close();
+            await rm(root, { recursive: true, force: true });
+            await rm(home, { recursive: true, force: true });
+        }
+    });
 });

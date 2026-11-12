@@ -28,19 +28,19 @@ the producer's turn to return before claiming its accepted event. That timing di
 
 ## The state owners
 
-| State                                                                                                   | Owner in current code                                                           | What it establishes                                                                                                                |
-| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Plan definition and lifecycle status                                                                    | Primary Plan before execution; execution-worktree Plan during an active attempt | What the work is and how far validation has progressed.                                                                            |
-| Validation checkpoint, review issues, repair receipt, counters, human review decision, execution report | Controller record under `.wld/internal/controller/plans/`                       | Which phase may resume and which repair/review generation it belongs to. `loadPlan` joins this state into its returned attributes. |
-| Execution attempt and publication phase                                                                 | `.wld/internal/worktrees.json`, backed by Git facts                             | Which checkout/branch is owned and whether publication and cleanup completed.                                                      |
-| Accepted root tool calls and acknowledgements                                                           | Structured custom entries in the Session's JSONL storage                        | Pending handoffs, not a replacement for Plan/controller truth. Isolated event delivery is in memory.                               |
-| Interrupted non-publication mutation                                                                    | State-transition journal                                                        | Which owned effects can be proved, completed, or rolled back. Publication uses its registry record instead.                        |
+| State                                                                                                   | Owner in current code                                                   | What it establishes                                                                                                                |
+| ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Plan definition and lifecycle status                                                                    | Plan store: canonical home package, or explicit retained legacy source  | What the work is and how far validation has progressed.                                                                            |
+| Validation checkpoint, review issues, repair receipt, counters, human review decision, execution report | Plan store: canonical controller evidence or retained controller record | Which phase may resume and which repair/review generation it belongs to. `loadPlan` joins this state into its returned attributes. |
+| Execution attempt and publication phase                                                                 | Execution registry in the admitted runtime, backed by Git facts         | Which checkout/branch is owned and whether publication and cleanup completed.                                                      |
+| Accepted root tool calls and acknowledgements                                                           | Structured custom entries in the Session's JSONL storage                | Pending handoffs, not a replacement for Plan/controller truth. Isolated event delivery is in memory.                               |
+| Interrupted non-publication mutation                                                                    | State-transition journal                                                | Which owned effects can be proved, completed, or rolled back. Publication uses its registry record instead.                        |
 
-Sources: [Plan location](../src/shared/workflow/plan-location.ts),
-[controller storage](../src/shared/workflow/controller-registry.ts),
+Sources: [Plan location](../src/plan-store/location.ts),
+[controller storage](../src/plan-store/controllers.ts),
 [event storage](../src/shared/workflow/workflow-tool-events.ts),
 [task completion receipts](../src/shared/session/task-completion-session.ts),
-[mutation boundary](../src/shared/workflow/state-transition.ts).
+[mutation boundary](../src/plan-store/transitions.ts).
 
 The public success path is `implemented → reviewed → verified`. Passing CI keeps the Plan implemented and saves
 `validationPhase: semantic` in the controller. Reviewed work remains pending through artifact preparation and
@@ -138,7 +138,7 @@ The queue, isolated question sends, and approval warning follow
 [Workspace Browser Plan review](prd/runwield-workspace-prd.md#browser-plan-review-and-workflow).
 
 Sources: [plan_written](../src/tools/plan-written.ts),
-[shared review decision](../src/shared/workflow/plan-review-actions.ts),
+[shared review decision](../src/plan-store/review.ts),
 [planning runner](../src/shared/workflow/planning-agent.ts),
 [decision interpreter](../src/shared/workflow/decisions.ts), [root handler](../src/shared/session/agent-handler.ts).
 

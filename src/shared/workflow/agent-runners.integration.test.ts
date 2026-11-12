@@ -1,10 +1,12 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { HostedSession } from "../session/hosted-session.js";
 import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.js";
 import { AgyCliBackendError } from "../session/backends/agy-cli/failure.ts";
@@ -20,11 +22,12 @@ interface AgentSessionFixture {
 function createAgentSession(
     projectRoot: string,
     interactionRequests: RuntimeInteractionRequest[] = [],
-    respond: (request: RuntimeInteractionRequest) => RuntimeInteractionResponse | Promise<RuntimeInteractionResponse> =
-        () => ({
-            outcome: "selected",
-            value: "continue",
-        }),
+    respond: (
+        request: RuntimeInteractionRequest,
+    ) => RuntimeInteractionResponse | Promise<RuntimeInteractionResponse> = () => ({
+        outcome: "selected",
+        value: "continue",
+    }),
 ): AgentSessionFixture {
     const sessionManager = SessionManager.inMemory(projectRoot);
     const hostedSession = new HostedSession({
@@ -46,11 +49,13 @@ function createAgentSession(
 
 test("planning runs the real plan_written machinery with the supplied triage context", async () => {
     await withRuntimeCommandFixture("planning-agent-runner-", async ({ projectRoot, setModelMessages }) => {
-        await savePlan(projectRoot, "fixture-plan", "# Fixture Plan", { status: "draft" });
+        await seedPlan(projectRoot, "fixture-plan", "# Fixture Plan", { status: "draft" });
         setModelMessages([
-            fauxAssistantMessage(fauxToolCall("plan_written", {
-                planName: "fixture-plan",
-            })),
+            fauxAssistantMessage(
+                fauxToolCall("plan_written", {
+                    planName: "fixture-plan",
+                }),
+            ),
         ]);
         const fixture = createAgentSession(projectRoot, [], async (request) => {
             if (request.type === "plan_review") {
@@ -154,11 +159,13 @@ test("Engineer completion is derived from the real task_completed tool result", 
 test("Pair execution reports a durable checkpoint and settles without a form", async () => {
     await withRuntimeCommandFixture("pair-engineer-runner-", async ({ projectRoot, setModelMessages }) => {
         setModelMessages([
-            fauxAssistantMessage(fauxToolCall("pair_checkpoint", {
-                action: "report",
-                summary: "The fixture screen is ready.",
-                evidence: ["fixture screenshot"],
-            })),
+            fauxAssistantMessage(
+                fauxToolCall("pair_checkpoint", {
+                    action: "report",
+                    summary: "The fixture screen is ready.",
+                    evidence: ["fixture screenshot"],
+                }),
+            ),
         ]);
         const interactionRequests: RuntimeInteractionRequest[] = [];
         const fixture = createAgentSession(projectRoot, interactionRequests);

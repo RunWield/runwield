@@ -1,24 +1,24 @@
-import { capturePackageWorkflowAccess } from "../../../shared/workflow/package-workflow.ts";
-import { currentPackageSelection } from "../../../shared/workflow/package-workflow.ts";
-import { readPlanDocuments } from "../../../shared/workflow/plan-documents.ts";
+import { loadPlanDetail as readPlanDetail } from "../../../plan-store/index.ts";
+import { capturePlanReadContext } from "../../../plan-store/index.ts";
+
 /**
  * Server-only Plan adapter for the read-only Workspace.
  */
 
 import {
     countChildPlanProgress,
-    findPlanById,
-    findPlanEvidenceById,
     groupPlanHierarchy,
     isChildFeaturePlan,
     isProjectPlan,
+    resolveSiblingChildPlanDependencyStates,
+} from "../../../plan-format.ts";
+import {
+    findPlanById,
     listPlanResources,
     readPlanResourceCatalog,
-    loadPlanBodyById,
-    resolveSiblingChildPlanDependencyStates,
     savePlanBodyById,
     StalePlanBodyError,
-} from "../../../plan-store.js";
+} from "../../../plan-store/index.ts";
 import {
     ACTIVE_PLAN_STATUSES,
     buildPlanEventUpdates,
@@ -582,7 +582,7 @@ export function serializePlanError(error) {
  * @param {string} cwd
  */
 export async function loadPlanSummaries(cwd) {
-    const resources = await capturePackageWorkflowAccess()(cwd, () => listPlanResources(cwd));
+    const resources = await capturePlanReadContext()(cwd, () => listPlanResources(cwd));
     return enrichPlanSetDependencies(annotatePlanHierarchy(resources.map(serializePlanSummary)));
 }
 
@@ -591,7 +591,7 @@ export async function loadPlanSummaries(cwd) {
  * @param {string} cwd
  */
 export async function loadPlanSummaryCatalog(cwd) {
-    const { resources, diagnostics } = await capturePackageWorkflowAccess()(cwd, () => readPlanResourceCatalog(cwd));
+    const { resources, diagnostics } = await capturePlanReadContext()(cwd, () => readPlanResourceCatalog(cwd));
     const plans = enrichPlanSetDependencies(annotatePlanHierarchy(resources.map(serializePlanSummary)));
     return {
         plans,
@@ -620,6 +620,10 @@ export async function loadPlanDetail(cwd, planId) {
  * @param {WorkspacePlanDetailOptions} [options]
  */
 export async function loadWorkspaceDetail(cwd, planId, options = {}) {
+    return await capturePlanReadContext()(cwd, () => loadWorkspaceDetailInProject(cwd, planId, options));
+}
+/** @param {string} cwd @param {string} planId @param {WorkspacePlanDetailOptions} options */
+async function loadWorkspaceDetailInProject(cwd, planId, options) {
     if (options.documentName) {
         const resource = (await listPlanResources(cwd)).find(
             (candidate) => !candidate.planId && candidate.planName === options.documentName,
@@ -629,14 +633,10 @@ export async function loadWorkspaceDetail(cwd, planId, options = {}) {
         await assertReadablePlanResource(cwd, resource);
         return serializePlanDetail({ ...resource, capabilities: { bodyEditing: false } });
     }
-    // Review needs one document, not board dependencies, lifecycle controls, or catalog writes.
-    const baseResource = options.reviewOnly ? await findPlanEvidenceById(cwd, planId) : await findPlanById(cwd, planId);
-    const { assertReadablePlanResource } = await import("./project-artifacts.ts");
-    await assertReadablePlanResource(cwd, baseResource);
-    const packageDocument = currentPackageSelection() ? await readPlanDocuments(planId) : undefined;
-    if (options.reviewOnly)
-        return { ...serializePlanDetail({ ...baseResource, packageDocument }), path: baseResource.path };
-    const resource = isProjectPlan(baseResource.attrs) ? baseResource : await loadPlanBodyById(cwd, planId);
+    const detail = await readPlanDetail(cwd, planId, options.reviewOnly);
+    const resource = detail.resource;
+    const packageDocument = detail.document;
+    if (options.reviewOnly) return { ...serializePlanDetail({ ...resource, packageDocument }), path: resource.path };
     const summaries = await loadPlanSummaries(cwd);
     return projectWorkspaceDetail(
         {
@@ -644,10 +644,7 @@ export async function loadWorkspaceDetail(cwd, planId, options = {}) {
             packageDocument,
             workspaceKey: await sha256Hex(cwd),
             capabilities: {
-                bodyEditing:
-                    resource.readAvailability?.kind !== "pending" &&
-                    !/^[a-f0-9]{40,64}:/.test(resource.path) &&
-                    !isProjectPlan(resource.attrs),
+                bodyEditing: detail.bodyEditing,
             },
         },
         summaries,

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { ensureRootAgentSession } from "../session/session.js";
 import { dispatchCiRepair } from "./validation-mechanical.ts";

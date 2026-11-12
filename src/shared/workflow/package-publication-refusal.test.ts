@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { publicationFixture } from "./testing/package-publication-fixture.ts";
 import { read } from "../testing/plan-package-fixture.ts";
 import { git } from "../git-test-fixture.ts";
-import { readPlanPackagePublication } from "../plan-package-store.ts";
-import { loadPublishedWorkRecordSource } from "../work-records/published-source.ts";
+import { readPlanPackagePublication } from "../../plan-store/packages.ts";
+import { loadPublishedWorkRecordSource } from "../../plan-store/index.ts";
 
 test("corrupt retained input refuses publication, then exact restoration resumes without losing editor bytes", async () => {
     const f = await publicationFixture(true);
@@ -81,7 +81,7 @@ for (const interrupted of [false, true]) {
 for (const issue of ["missing-manifest", "foreign-reference", "missing-registry"] as const) {
     test(`${issue} refuses without freeing ownership and exact repair resumes the same attempt`, async () => {
         const { getWorktreeRegistryPath } = await import("../worktree-registry.js");
-        const { updatePlanPackageMetadata } = await import("../plan-package-store.ts");
+        const { updatePlanPackageMetadata } = await import("../../plan-store/packages.ts");
         const f = await publicationFixture(false);
         try {
             equal((await f.drive("candidate_receipt")).code, 86);
@@ -277,7 +277,7 @@ for (const place of ["linked-clone", "foreign-owner"] as const) {
 
 test("stale receipt cannot complete or promote an active attempt; fresh proof settles and reopening invalidates completion", async () => {
     const { rejects } = await import("node:assert/strict");
-    const { updatePlanPackageMetadata } = await import("../plan-package-store.ts");
+    const { updatePlanPackageMetadata } = await import("../../plan-store/packages.ts");
     const { recordPlanEvent } = await import("./plan-lifecycle.js");
     const f = await publicationFixture(false);
     try {
@@ -327,7 +327,7 @@ test("stale receipt cannot complete or promote an active attempt; fresh proof se
         equal((await read(f.identity)).metadata.definition.status, "draft");
         ok((await read(f.identity)).metadata.workflow?.delivery?.source);
         const { startActiveExecutionWorkflow, createExecutionStartPorts } = await import("./execution-start.ts");
-        const { loadPackageWorkflowPlan } = await import("./package-workflow.ts");
+        const { loadPackageWorkflowPlan } = await import("../../plan-store/workflows.ts");
         let nextPath = "";
         try {
             await f.scope(async () => {

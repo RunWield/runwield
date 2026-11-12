@@ -1,10 +1,14 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
+import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
+import { recordPlanEvent } from "./plan-lifecycle.js";
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { HostedSession } from "../session/hosted-session.js";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { listEntries } from "../worktree-registry.js";
 import { removeWorktreeGitArtifacts } from "../worktree.js";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
@@ -64,7 +68,7 @@ fs.writeFileSync('node_modules/hook.cjs', "require('node:fs').appendFileSync('no
 ${
     options.hookFailure
         ? `if [ ! -f node_modules/allow-hook ]; then
-${options.hookMutation ? "printf 'unrelated hook output\\n' > docs/plans/hook-output.md" : ""}
+${options.hookMutation ? "mkdir -p docs/plans; printf 'unrelated hook output\\n' > docs/plans/hook-output.md" : ""}
 echo hook-fixture-failed >&2
 exit 7
 fi`
@@ -78,11 +82,15 @@ exec bun node_modules/hook.cjs
     await git(root, ["add", "."]);
     await git(root, ["commit", "-m", "fixture setup contract"]);
     await git(root, ["config", "core.hooksPath", ".hooks"]);
-    await savePlan(root, planName, "# Dependency hook", {
+    await seedPlan(root, planName, "# Dependency hook", {
         classification: "PLANNED_CHANGE",
-        status: "ready_for_work",
+        status: "draft",
         planId: "setup-plan",
         summary: "Dependency hook",
+    });
+    await withLocalPlanWorkflow(root, planName, async () => {
+        await recordPlanEvent({ cwd: root, planName, event: "review_approved", currentStatus: "draft" });
+        await recordPlanEvent({ cwd: root, planName, event: "readiness_passed", currentStatus: "approved" });
     });
     const session = new HostedSession({ id: "execution-setup-test", cwd: root });
     session.setInteractionAdapter({ requestInteraction: () => ({ outcome: "text", value: "bun setup.cjs" }) });

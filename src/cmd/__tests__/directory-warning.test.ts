@@ -81,7 +81,8 @@ test("leading acknowledgement reaches real plans listing and help is exempt", as
                 }),
             );
             assertEquals(output.code, 0, decode(output.stderr));
-            if (args[0] === "--allow-system-directory") assertStringIncludes(decode(output.stdout), "Consent fixture");
+            if (args[0] === "--allow-system-directory")
+                assertStringIncludes(decode(output.stdout), "Use wld plans import <file-or-folder>");
         }
     } finally {
         await rm(home, { recursive: true });

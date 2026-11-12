@@ -17,7 +17,7 @@ import {
 } from "./attached-test-fixture.ts";
 import { conversation, pendingChat, reply, reviewApi, sendChat, status } from "./review-chat-test-fixture.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
 import { recordPlanEvent } from "../workflow/plan-lifecycle.js";
 
 test("Plan page chat queues in order, replies through the saved source, and still accepts a structured decision", async () => {
@@ -80,6 +80,7 @@ test("Plan page chat queues in order, replies through the saved source, and stil
             const approved = await fetch(reviewApi(hosted.url, "decision"), {
                 method: "POST",
                 body: JSON.stringify({
+                    documentRevision: (await loadPlan(root, "dark-mode-toggle"))!.revision,
                     approvalAction: "run",
                     executionAgent: "engineer",
                     collaborationRecommendation: "autonomous",
@@ -248,6 +249,7 @@ test("a Plan change from chat has no Feedback and opens the next round on the sa
             const approved = await fetch(reviewApi(next.url, "decision"), {
                 method: "POST",
                 body: JSON.stringify({
+                    documentRevision: (await loadPlan(root, "dark-mode-toggle"))!.revision,
                     approvalAction: "run",
                     executionAgent: "engineer",
                     collaborationRecommendation: "autonomous",

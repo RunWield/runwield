@@ -6,10 +6,10 @@
  * not have to choose one owner for a type several parts need.
  */
 
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store/index.ts";
 import type { PlanApprovalAction } from "../../shared/workflow/plan-approval.ts";
 import type { PlanActionRequest, PlanActionResult } from "../../shared/workflow/plan-actions.ts";
-import type { SequenceReviewDecision, SequenceReviewDocument } from "../../shared/workflow/sequence-review.ts";
+import type { SequenceReviewDecision, SequenceReviewDocument } from "../../plan-store/index.ts";
 import type { EpicIntegrationGateResult } from "../../shared/workflow/epic-integration.ts";
 
 export type ActiveExecutionWorkflow = import("../../shared/types.js").ActiveExecutionWorkflow;
@@ -103,15 +103,4 @@ export interface PlanSessionSurface {
  * Every field is optional because recovery's whole job is handling Plans whose
  * recorded metadata is partial or stale.
  */
-export interface RecoveryWorktreeContext {
-    id?: string;
-    path?: string;
-    branch?: string;
-    baseBranch?: string;
-    status?: string;
-    baseRef?: string;
-    baseCommit?: string;
-    baseTree?: string;
-    executionBaselineTree?: string;
-    publication?: import("../../shared/workflow/publication-attempt.ts").PublicationAttempt;
-}
+export type { RecoveryWorktreeContext } from "../../plan-store/index.ts";

@@ -1,3 +1,8 @@
+import { inspectPlanFixtureController, seedPlan } from "../../../shared/testing/plan-state-fixture.ts";
+import { inspectLocalHomeStore } from "../../../plan-store/access.ts";
+import { readGoldenPublishedPlan } from "./published-plan-fixture.ts";
+import { withRetainedPlanFixture } from "../../../shared/testing/retained-plan-fixture.ts";
+import { inspectProjectIdentity } from "../../../shared/project-identity.ts";
 import { captureForegroundProcess } from "../../../shared/captured-process.ts";
 import { tmpdir } from "node:os";
 import {
@@ -23,11 +28,13 @@ import { RuntimeEventTypes } from "../../../shared/session/session-runtime-event
 import { openFileSessionStore } from "../../../shared/session/file-session-store.ts";
 import { ok as assert } from "node:assert/strict";
 import { extractYaml } from "../../../shared/front-matter.ts";
-import { PLAN_RUNTIME_FIELDS } from "../../../shared/workflow/controller-state.ts";
-import { readControllerRecord } from "../../../shared/workflow/controller-registry.ts";
+import { PLAN_RUNTIME_FIELDS, pickControllerState } from "../../../shared/workflow/controller-state.ts";
+
 import { getCurrentSystemPrompt, getCurrentTools } from "@earendil-works/pi-ai";
 import { registerFauxProvider } from "@earendil-works/pi-ai/compat";
-import { findPlansByParent, loadPlan, parsePlanFrontMatter } from "../../../plan-store.js";
+import { parsePlanFrontMatter } from "../../../plan-format.ts";
+import { findPlansByParent, listPlans, loadPlan } from "../../../plan-store/index.ts";
+
 import { withProcessGlobalTestLock } from "../../../testing/process-global-lock.ts";
 import { submitPlanForReview } from "../../review/plan-review.ts";
 import { createScriptedReviewBrowser } from "../../review/review-test-fixture.ts";
@@ -215,12 +222,31 @@ function createGoldenReviewBrowser(
  * @returns {{ status?: unknown, updatedAt?: unknown, markdown?: string }}
  */
 function findFixturePlanLifecycle(directory, expectedStatus) {
+    if (directory === join(getCwd(), "docs", "plans")) {
+        const owner = inspectProjectIdentity(getCwd());
+        if (owner.kind === "existing") {
+            const canonical = findFixturePlanLifecycle(
+                join(owner.identity.executionAccountHome, ".wld", "projects", owner.identity.projectId, "plans"),
+                expectedStatus,
+            );
+            if (canonical.status === expectedStatus) return canonical;
+        }
+    }
     try {
         for (const entry of fsReaddirSync(directory, { withFileTypes: true })) {
             const path = join(directory, entry.name);
             if (entry.isDirectory()) {
                 const nested = findFixturePlanLifecycle(path, expectedStatus);
                 if (nested.status === expectedStatus) return nested;
+            } else if (entry.isFile() && entry.name === "plan.wld.json") {
+                const metadata = /** @type {import('../../../plan-store/packages.ts').PlanPackageMetadata} */ (
+                    JSON.parse(fsReadFileSync(path, "utf8"))
+                );
+                if (metadata.definition.status === expectedStatus)
+                    return {
+                        status: metadata.definition.status,
+                        markdown: fsReadFileSync(join(directory, "context.md"), "utf8"),
+                    };
             } else if (entry.isFile() && entry.name.endsWith(".md")) {
                 const markdown = fsReadFileSync(path, "utf8");
                 const attrs = parsePlanFrontMatter(markdown).attrs;
@@ -248,6 +274,8 @@ function findFixturePlanLifecycle(directory, expectedStatus) {
  * @property {"new" | "continue"} [sessionStartMode]
  * @property {string} [initialAgentName]
  * @property {unknown} [reviewedPlan]
+ * @property {Array<{ planName: string, text: string }>} [initialPlans]
+ * @property {boolean} [retainedCheckoutInput] Exercise an explicitly retained pre-cutover checkout source.
  * @property {Array<{ path: string, text: string }>} [initialProjectFiles]
  * @property {Array<{ path: string, text: string }>} [committedProjectFiles]
  * @property {boolean} [nonGitProject]
@@ -843,6 +871,13 @@ async function captureNativeFailureEvidence(projectRoot, home) {
  * @returns {Promise<GoldenScenarioResult>}
  */
 async function runComposedTuiScenario(scenario, options) {
+    if (scenario.retainedCheckoutInput)
+        return await withRetainedPlanFixture(getCwd(), () => runComposedTuiScenarioInScope(scenario, options));
+    return await runComposedTuiScenarioInScope(scenario, options);
+}
+
+/** @param {GoldenScenario} scenario @param {{ keepArtifacts?: boolean, artifactRoot?: string, heartbeatPath?: string, onReady?: () => void }} options */
+async function runComposedTuiScenarioInScope(scenario, options) {
     return await withProcessGlobalTestLock(async () => {
         const useCurrentEnvironment = process.env["WLD_GOLDEN_TUI_CHILD"] === "1";
         const previousHome = process.env["HOME"];
@@ -865,6 +900,25 @@ async function runComposedTuiScenario(scenario, options) {
             const path = join(getCwd(), String(/** @type {any} */ (fixture).path || ""));
             await fsMkdir(join(path, ".."), { recursive: true });
             await fsWriteFile(path, String(/** @type {any} */ (fixture).text || ""));
+        }
+        for (const fixture of scenario.initialPlans || []) {
+            const attrs = parsePlanFrontMatter(fixture.text).attrs;
+            await seedPlan(getCwd(), fixture.planName, fixture.text, { ...attrs, status: "draft" });
+            if (attrs.status === "ready_for_work") {
+                const { recordPlanEvent } = await import("../../../shared/workflow/plan-lifecycle.js");
+                await recordPlanEvent({
+                    cwd: getCwd(),
+                    planName: fixture.planName,
+                    event: "review_approved",
+                    currentStatus: "draft",
+                });
+                await recordPlanEvent({
+                    cwd: getCwd(),
+                    planName: fixture.planName,
+                    event: "readiness_passed",
+                    currentStatus: "approved",
+                });
+            }
         }
         // Committed baseline state, as opposed to `initialProjectFiles`, which stay
         // dirty in the primary checkout. Publication runs in an isolated clone and
@@ -1605,6 +1659,10 @@ async function runComposedTuiScenario(scenario, options) {
                         );
                     }
                     events.push(`terminal:size:${typed.columns}x${typed.rows}`);
+                } else if (typed.type === "savePlan") {
+                    const text = String(typed.text || "");
+                    await seedPlan(getCwd(), String(typed.planName || "plan"), text, parsePlanFrontMatter(text).attrs);
+                    events.push(`project:plan-saved:${typed.planName || "plan"}`);
                 } else if (typed.type === "writeProjectFile") {
                     const path = join(getCwd(), typed.path || "");
                     await fsMkdir(join(path, ".."), { recursive: true });
@@ -1696,13 +1754,12 @@ async function runComposedTuiScenario(scenario, options) {
                               getCwd(),
                           )
                         : "";
-                    const publishedPlanText = await runGoldenGit(
-                        ["--git-dir", remotePath, "show", `${deliveredHead}:docs/plans/plan.md`],
-                        getCwd(),
-                    );
-                    const publishedPlan = parsePlanFrontMatter(publishedPlanText);
+                    const publishedPlan = await readGoldenPublishedPlan(getCwd(), "plan", remotePath, deliveredHead);
+                    const publishedPlanText = publishedPlan.markdown;
                     const publishedDeliveryEvidence = plan.attrs.deliveryEvidence;
-                    const publishedFields = extractYaml(publishedPlanText).attrs;
+                    const publishedFields = publishedPlanText.startsWith("---")
+                        ? extractYaml(publishedPlanText).attrs
+                        : {};
                     for (const field of PLAN_RUNTIME_FIELDS) {
                         if (Object.hasOwn(publishedFields, field)) {
                             throw new Error(`Published Plan contains controller field ${field}`);
@@ -2404,9 +2461,16 @@ async function runComposedTuiScenario(scenario, options) {
                                     (remotePlanText ? parsePlanFrontMatter(remotePlanText).attrs : localPlan?.attrs) ||
                                     null;
                                 const controller = attrs
-                                    ? await readControllerRecord(getCwd(), { planName, planId: attrs.planId })
+                                    ? await inspectPlanFixtureController(getCwd(), { planName, planId: attrs.planId })
                                     : null;
-                                plans.push({ name: planName, attrs, controllerState: controller?.state || null });
+                                plans.push({
+                                    name: planName,
+                                    attrs,
+                                    controllerState:
+                                        inspectLocalHomeStore(getCwd()).kind === "local" && attrs
+                                            ? pickControllerState(attrs)
+                                            : controller?.state || null,
+                                });
                             }
                             const { listWorkRecords } = await import("../../../shared/work-records/store.ts");
                             const records = await listWorkRecords(getCwd(), { createDir: false }).catch(() => []);
@@ -2788,7 +2852,6 @@ async function runComposedTuiScenario(scenario, options) {
                         (await runGoldenGit(["config", "--get", `branch.${targetBranch}.remote`], getCwd())) ||
                         "origin";
                     const remotePath = await runGoldenGit(["remote", "get-url", remote], getCwd());
-                    const planPath = `docs/plans/${planName}.md`;
                     const startedAt = performance.now();
                     let latestStatus = "";
                     while (!expectedStatuses.has(latestStatus)) {
@@ -2799,11 +2862,13 @@ async function runComposedTuiScenario(scenario, options) {
                                 )}; latest=${latestStatus || "unreadable"}`,
                             );
                         }
-                        const remoteText = await runGoldenGit(
-                            ["--git-dir", remotePath, "show", `refs/heads/${targetBranch}:${planPath}`],
+                        const published = await readGoldenPublishedPlan(
                             getCwd(),
-                        ).catch(() => "");
-                        latestStatus = remoteText ? String(parsePlanFrontMatter(remoteText).attrs.status || "") : "";
+                            planName,
+                            remotePath,
+                            `refs/heads/${targetBranch}`,
+                        ).catch(() => null);
+                        latestStatus = published ? String(published.attrs.status || "") : "";
                         await terminal.flush();
                         await new Promise((resolve) => setTimeout(resolve, 20));
                     }
@@ -2823,10 +2888,8 @@ async function runComposedTuiScenario(scenario, options) {
                         ["--git-dir", remotePath, "rev-parse", `refs/heads/${targetBranch}`],
                         getCwd(),
                     );
-                    const remotePlanText = await runGoldenGit(
-                        ["--git-dir", remotePath, "show", `${remoteHead}:docs/plans/${planName}.md`],
-                        getCwd(),
-                    );
+                    const remotePlan = await readGoldenPublishedPlan(getCwd(), planName, remotePath, remoteHead);
+                    const remotePlanText = remotePlan.markdown;
                     const remoteTree = await runGoldenGit(
                         ["--git-dir", remotePath, "ls-tree", "-r", "--name-only", remoteHead],
                         getCwd(),
@@ -2845,7 +2908,7 @@ async function runComposedTuiScenario(scenario, options) {
                     const branchExists = Boolean(
                         await runGoldenGit(["for-each-ref", "--format=%(refname)", "refs/heads/worktree/"], getCwd()),
                     );
-                    const remotePlanAttrs = parsePlanFrontMatter(remotePlanText).attrs;
+                    const remotePlanAttrs = remotePlan.attrs;
                     const capturedPublication = {
                         validatedCommitPublished:
                             Boolean(remotePlanAttrs.validatedCommit) &&
@@ -2899,12 +2962,20 @@ async function runComposedTuiScenario(scenario, options) {
                         primaryStatus: await runGoldenGit(["status", "--porcelain", "--untracked-files=all"], getCwd()),
                         primaryFiles: currentFiles,
                         remoteHead,
-                        remotePlanStatus: parsePlanFrontMatter(remotePlanText).attrs.status,
+                        remotePlanStatus: remotePlan.attrs.status,
                         remotePlanAttrs,
-                        remotePlanFields: Object.keys(extractYaml(remotePlanText).attrs),
-                        controllerState: (
-                            await readControllerRecord(getCwd(), { planName, planId: primaryPlan?.attrs.planId })
-                        )?.state,
+                        remotePlanFields: remotePlanText.startsWith("---")
+                            ? Object.keys(extractYaml(remotePlanText).attrs)
+                            : [],
+                        controllerState:
+                            inspectLocalHomeStore(getCwd()).kind === "local" && primaryPlan
+                                ? pickControllerState(primaryPlan.attrs)
+                                : (
+                                      await inspectPlanFixtureController(getCwd(), {
+                                          planName,
+                                          planId: primaryPlan?.attrs.planId,
+                                      })
+                                  )?.state,
                         remoteTree,
                         deliveredText: deliveredPath
                             ? await runGoldenGit(
@@ -3040,9 +3111,16 @@ async function runComposedTuiScenario(scenario, options) {
                     `Expected every real Plan Review decision to resolve; pending=${pendingReviewLifecycleObservations.length}`,
                 );
                 reviewSurface.assertComplete();
-                let parsedPlan = await fsReadFile(join(getCwd(), "docs", "plans", "plan.md"), "utf8")
-                    .catch(() => fsReadFile(join(getCwd(), "docs", "plans", "epic.md"), "utf8"))
-                    .catch(() => "");
+                const reviewPlanName = (await listPlans(getCwd()))[0]?.name;
+                const canonicalPlan =
+                    (await loadPlan(getCwd(), "plan")) ||
+                    (await loadPlan(getCwd(), "epic")) ||
+                    (reviewPlanName ? await loadPlan(getCwd(), reviewPlanName) : null);
+                let parsedPlan =
+                    canonicalPlan?.markdown ||
+                    (await fsReadFile(join(getCwd(), "docs", "plans", "plan.md"), "utf8")
+                        .catch(() => fsReadFile(join(getCwd(), "docs", "plans", "epic.md"), "utf8"))
+                        .catch(() => ""));
                 if (!parsedPlan) {
                     for await (const entry of await fsReaddir(join(getCwd(), "docs", "plans"), {
                         withFileTypes: true,
@@ -3054,7 +3132,7 @@ async function runComposedTuiScenario(scenario, options) {
                     }
                 }
                 state.planReview = {
-                    attrs: parsePlanFrontMatter(parsedPlan).attrs,
+                    attrs: canonicalPlan?.attrs || parsePlanFrontMatter(parsedPlan).attrs,
                     lifecycleEvents: persistedLifecycleEvents,
                     conversationDocuments,
                     consumed: reviewSurface.consumed,

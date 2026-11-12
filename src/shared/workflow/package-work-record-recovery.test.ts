@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import { join } from "node:path";
 import { recordingFixture } from "./testing/package-recording-fixture.ts";
 import { read } from "../testing/plan-package-fixture.ts";
-import { readPlanPackagePublication } from "../plan-package-store.ts";
+import { readPlanPackagePublication } from "../../plan-store/packages.ts";
 import { listWorkRecords } from "../work-records/store.ts";
 import { withWorkRecordOwner } from "../work-records/owner.ts";
 import { git } from "../git-test-fixture.ts";
@@ -233,7 +233,7 @@ test("pending retry refuses lost target proof and damaged retained input, then r
         const delivered = await git(f.remote, ["rev-parse", "main"]);
         await f.scope(async () => {
             const { retryWorkRecordForPlan } = await import("../work-records/auto-generation.ts");
-            const { loadPublishedWorkRecordSource } = await import("../work-records/published-source.ts");
+            const { loadPublishedWorkRecordSource } = await import("../../plan-store/index.ts");
             const { createWorkRecordMnemotecaFixture } =
                 await import("../work-records/test-fixtures/mnemoteca-port.ts");
             const args = {

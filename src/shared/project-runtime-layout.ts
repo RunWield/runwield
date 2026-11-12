@@ -1,3 +1,4 @@
+import { recoverLegacyPlanControllers } from "../plan-store/index.ts";
 import {
     admitProjectIdentity,
     inspectProjectIdentity,
@@ -1965,11 +1966,14 @@ async function replayJournal(
 ): Promise<undefined | ProjectRuntimeMigrationBlockedResult> {
     for (const operation of journal.operations) {
         if (operation.action === "reconcile") {
-            await recoverLegacyRuntimeFiles({
+            await (
+                operation.source === join(legacyRuntimeBase(layout.primary.checkoutRoot), "controller")
+                    ? recoverLegacyPlanControllers
+                    : recoverLegacyRuntimeFiles
+            )({
                 source: operation.source,
                 destination: operation.destination,
                 archiveRoot: join(layout.primary.internalRoot, "legacy-recovery"),
-                controller: operation.source === join(legacyRuntimeBase(layout.primary.checkoutRoot), "controller"),
                 registry: operation.source === legacyWorktreeRegistryPath(layout.primary.checkoutRoot),
             });
             operation.completed = true;

@@ -1,13 +1,14 @@
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { packageFixture, create, read } from "../../testing/plan-package-fixture.ts";
-import { withPackageWorkflow, loadPackageWorkflowPlan, type PackageWorkflowSelection } from "../package-workflow.ts";
+import { loadPackageWorkflowPlan, type PackageWorkflowSelection } from "../../../plan-store/workflows.ts";
+import { withPackageWorkflow } from "../../../plan-store/workflows.ts";
 import { recordPlanEvent } from "../plan-lifecycle.js";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "../execution-start.ts";
 import { finalizePlanImplementation } from "../implementation-checkpoint.ts";
 import { git } from "../../git-test-fixture.ts";
 import { captureForegroundProcess } from "../../captured-process.ts";
-import type { DeliveryCopy, PackageDocuments } from "../../plan-package-store.ts";
+import type { DeliveryCopy, PackageDocuments } from "../../../plan-store/packages.ts";
 
 export async function publicationFixture(
     plans = false,

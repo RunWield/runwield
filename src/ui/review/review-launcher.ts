@@ -1,4 +1,5 @@
-import { currentPackageSelection, loadPackageWorkflowPlan } from "../../shared/workflow/package-workflow.ts";
+import { readPlanReviewPresentation } from "../../plan-store/index.ts";
+
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
 import process from "node:process";
 /**
@@ -6,10 +7,10 @@ import process from "node:process";
  * Hosts human Plan, code, and artifact review surfaces in Workspace.
  */
 
-import type { SequenceReviewDocument } from "../../shared/workflow/sequence-review.ts";
+import type { SequenceReviewDocument } from "../../plan-store/index.ts";
 import { startReviewWorkspaceServer } from "../../review-workspace-server.ts";
-import { parsePlanFrontMatter, resolvePlanExecutionPolicy } from "../../plan-store.js";
-import type { PlanExecutionPolicy, PlanFrontMatter } from "../../plan-store.js";
+import { parsePlanFrontMatter, resolvePlanExecutionPolicy } from "../../plan-format.ts";
+import type { PlanExecutionPolicy, PlanFrontMatter } from "../../plan-store/index.ts";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 import type { GuidedReviewPolicy } from "../../shared/workflow/guided-review.js";
 import type { ReviewDecisionSink } from "../workspace/routes/api/review-handlers.js";
@@ -370,10 +371,8 @@ export async function startPlanReviewSurface<TDecision = ReviewDecisionValue>({
     onReviewOpen,
 }: PlanReviewSurfaceOptions): Promise<ReviewSurface<TDecision>> {
     if (!cwd) throw new Error("startPlanReviewSurface: cwd is required");
-    const selection = currentPackageSelection();
-    const { attrs } = selection
-        ? await loadPackageWorkflowPlan({ planId: selection.planId })
-        : parsePlanFrontMatter(plan);
+    const presentation = await readPlanReviewPresentation();
+    const attrs = presentation?.frontmatter || parsePlanFrontMatter(plan).attrs;
     const policy = resolvePlanExecutionPolicy(attrs);
     const executionPolicy = policy.ok ? policy.policy : undefined;
     const resolvedAgentLabel = agentLabel || reviewConversation?.agentLabel || "Planner";
@@ -385,10 +384,10 @@ export async function startPlanReviewSurface<TDecision = ReviewDecisionValue>({
         ...(planVersions && { planVersions }),
         classification: attrs.classification,
         frontmatter: attrs,
-        ...(selection
+        ...(presentation
             ? {
-                  planId: selection.planId,
-                  documentRevision: (await loadPackageWorkflowPlan({ planId: selection.planId })).revision,
+                  planId: presentation.planId,
+                  documentRevision: presentation.documentRevision,
               }
             : {}),
         ...(executionPolicy && { executionPolicy }),
@@ -398,12 +397,11 @@ export async function startPlanReviewSurface<TDecision = ReviewDecisionValue>({
         ...(surfaceId && { reviewRevisionUrl: "/api/review/revision", reviewRevision: 0 }),
     };
     const externalDecision = onDecision;
-    if (selection)
+    if (presentation && !externalDecision)
         onDecision = async (decision) => {
-            const current = await loadPackageWorkflowPlan({ planId: selection.planId });
-            if (!decision.exit && !decision.canceled && current.revision !== reviewPayload.documentRevision)
+            const current = await readPlanReviewPresentation(presentation.planId);
+            if (!decision.exit && !decision.canceled && current?.documentRevision !== reviewPayload.documentRevision)
                 throw new Error("Plan documents changed. Refresh the review; your draft was kept.");
-            return await externalDecision?.(decision);
         };
     const reuseId = reviewConversation?.id ?? surfaceId;
     const existing = reuseId ? activePlanReviewConversations.get(reuseId) : null;

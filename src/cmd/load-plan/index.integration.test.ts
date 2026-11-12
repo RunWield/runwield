@@ -1,4 +1,6 @@
-import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
+import { seedPlanState, seedPlan, seedPlanController } from "../../shared/testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
+import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { bashFixtureExecutable } from "../../../scripts/bash-fixture.ts";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
 import { test } from "node:test";
@@ -23,14 +25,10 @@ import {
     getCurrentSystemPrompt,
     type TranscriptContext,
 } from "@earendil-works/pi-ai";
-import {
-    loadArchivedPlan,
-    loadPlan,
-    parsePlanFrontMatter,
-    resolveSiblingChildPlanDependencies,
-    savePlan,
-    updatePlanFrontMatter,
-} from "../../plan-store.js";
+
+import { parsePlanFrontMatter } from "../../plan-format.ts";
+import { loadArchivedPlan, loadPlan, resolveSiblingChildPlanDependencies } from "../../plan-store/index.ts";
+
 import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
 import { createPlanSessionSurface } from "./plan-session-surface.ts";
@@ -39,15 +37,15 @@ import { addEntry, findById, removeEntry, updateEntry } from "../../shared/workt
 import { setCustomSetting } from "../../shared/settings.js";
 import { executePlanAction, loadPlanActionEvidence } from "../../shared/workflow/plan-actions.ts";
 import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
-import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
+
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
 import { createTestWorktreeAttempt } from "../../shared/worktree-test-helpers.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runLoadPlanCommand } from "./index.ts";
 import { getLoadPlanCompletions } from "./getArgumentCompletions.ts";
-import { getRunWieldRuntimeDir } from "../../constants.js";
-import type { PlanFrontMatterInput } from "../../plan-store.js";
+import { getRunWieldRuntimeDir, AGENTS } from "../../constants.js";
+import type { PlanFrontMatterInput } from "../../plan-format.ts";
 import type { EditorAPI, SelectOption, UiAPI } from "../../ui/tui/types.js";
 
 interface LoadPlanUiFixture {
@@ -117,7 +115,7 @@ async function writePlan(
     attrs: PlanFrontMatterInput,
     body = `# ${planName}`,
 ): Promise<void> {
-    await savePlan(projectRoot, planName, body, {
+    await seedPlan(projectRoot, planName, body, {
         classification: "PLANNED_CHANGE",
         complexity: "LOW",
         summary: `Fixture ${planName}`,
@@ -154,7 +152,7 @@ async function prepareImplementedFollowUpPlan(
     await git(projectRoot, ["worktree", "add", "-b", branch, worktreePath, "HEAD"]);
     const plan = await loadPlan(projectRoot, "follow-up");
     if (!plan) throw new Error("follow-up Plan fixture disappeared");
-    await updatePlanFrontMatter(
+    await seedPlanState(
         projectRoot,
         "follow-up",
         {
@@ -215,7 +213,7 @@ async function prepareValidatedPublicationPlan(
     });
     const worktreePlan = await loadPlan(worktree.path, planName);
     if (!worktreePlan) throw new Error("worktree Plan fixture disappeared");
-    await savePlan(
+    await seedPlan(
         worktree.path,
         planName,
         worktreePlan.markdown || worktreePlan.body || `# ${planName}`,
@@ -492,7 +490,7 @@ for (const runtimeState of ["absent", "legacy", "mixed"] as const) {
                 process.chdir(projectRoot);
                 assertEquals(
                     (await getLoadPlanCompletions("ext")).map((item) => item.value),
-                    ["external"],
+                    [],
                 );
                 await runLoadPlanCommand([], {
                     sessionRuntime: runtime,
@@ -500,9 +498,11 @@ for (const runtimeState of ["absent", "legacy", "mixed"] as const) {
                     uiAPI: ui.uiAPI,
                     editor: ui.editor,
                 });
-                assertEquals(ui.prompts, ["Load plan:"]);
-                assertEquals(ui.promptOptions[0].map((option) => option.value).sort(), ["epic", "external"]);
-                assertEquals(ui.messages, []);
+                assertEquals(ui.prompts, []);
+                assertEquals(
+                    ui.messages.some((message) => /no.*plans/i.test(message)),
+                    true,
+                );
                 assertEquals(await snapshotPickerFiles(projectRoot), beforeProject);
                 assertEquals(await snapshotPickerFiles(homeDir), beforeHome);
                 assertEquals(runtime.getSessionSnapshot(sessionId), beforeSession);
@@ -516,54 +516,56 @@ for (const runtimeState of ["absent", "legacy", "mixed"] as const) {
 test("load-plan picker leaves a registered Git worktree and recreated legacy records untouched", async () => {
     await withRuntimeCommandFixture("runwield-picker-worktree-", async ({ homeDir }) => {
         const projectRoot = await recoverableArchiveFixture.checkout({ prefix: "runwield-picker-git-" });
-        let worktreePath = "";
-        try {
-            await writePlan(projectRoot, "unfinished", { status: "in_progress", planId: "unfinished-plan" });
-            await git(projectRoot, ["add", "docs/plans"]);
-            await git(projectRoot, ["commit", "-m", "Plan fixture"]);
-            const attempt = await createTestWorktreeAttempt({
-                projectRoot,
-                planName: "unfinished",
-                planId: "unfinished-plan",
-                attemptId: "picker-attempt",
-            });
-            worktreePath = attempt.path;
-            const { runtime, sessionId } = await createRuntime(projectRoot);
-            // An old writer recreates records after the project was migrated.
-            const primaryLegacy = getRunWieldRuntimeDir(projectRoot);
-            const selectedLegacy = getRunWieldRuntimeDir(worktreePath);
-            await fsMkdir(join(primaryLegacy, "controller/plans"), { recursive: true });
-            await fsWriteFile(join(primaryLegacy, "controller/plans/unfinished.json"), "old writer\n");
-            await fsMkdir(join(selectedLegacy, "plan-locks"), { recursive: true });
-            await fsMkdir(join(selectedLegacy, "plan-transitions"), { recursive: true });
-            await fsWriteFile(join(selectedLegacy, "plan-transitions/unfinished.json"), "unfinished transition\n");
-            const beforeProject = await snapshotPickerFiles(projectRoot);
-            const beforeWorktree = await snapshotPickerFiles(worktreePath);
-            const beforeHome = await snapshotPickerFiles(homeDir);
-            const ui = makeUi([null]);
+        return await withRetainedPlanFixture(projectRoot, async () => {
+            let worktreePath = "";
             try {
-                await runLoadPlanCommand([], {
-                    sessionRuntime: runtime,
-                    sessionId,
-                    uiAPI: ui.uiAPI,
-                    editor: ui.editor,
+                await writePlan(projectRoot, "unfinished", { status: "in_progress", planId: "unfinished-plan" });
+                await git(projectRoot, ["add", "docs/plans"]);
+                await git(projectRoot, ["commit", "-m", "Plan fixture"]);
+                const attempt = await createTestWorktreeAttempt({
+                    projectRoot,
+                    planName: "unfinished",
+                    planId: "unfinished-plan",
+                    attemptId: "picker-attempt",
                 });
-                assertEquals(ui.prompts, ["Load plan:"]);
-                assertEquals(
-                    ui.promptOptions[0].map((option) => option.value),
-                    ["unfinished"],
-                );
-                assertEquals(ui.messages, []);
-                assertEquals(await snapshotPickerFiles(projectRoot), beforeProject);
-                assertEquals(await snapshotPickerFiles(worktreePath), beforeWorktree);
-                assertEquals(await snapshotPickerFiles(homeDir), beforeHome);
+                worktreePath = attempt.path;
+                const { runtime, sessionId } = await createRuntime(projectRoot);
+                // An old writer recreates records after the project was migrated.
+                const primaryLegacy = getRunWieldRuntimeDir(projectRoot);
+                const selectedLegacy = getRunWieldRuntimeDir(worktreePath);
+                await fsMkdir(join(primaryLegacy, "controller/plans"), { recursive: true });
+                await fsWriteFile(join(primaryLegacy, "controller/plans/unfinished.json"), "old writer\n");
+                await fsMkdir(join(selectedLegacy, "plan-locks"), { recursive: true });
+                await fsMkdir(join(selectedLegacy, "plan-transitions"), { recursive: true });
+                await fsWriteFile(join(selectedLegacy, "plan-transitions/unfinished.json"), "unfinished transition\n");
+                const beforeProject = await snapshotPickerFiles(projectRoot);
+                const beforeWorktree = await snapshotPickerFiles(worktreePath);
+                const beforeHome = await snapshotPickerFiles(homeDir);
+                const ui = makeUi([null]);
+                try {
+                    await runLoadPlanCommand([], {
+                        sessionRuntime: runtime,
+                        sessionId,
+                        uiAPI: ui.uiAPI,
+                        editor: ui.editor,
+                    });
+                    assertEquals(ui.prompts, ["Load plan:"]);
+                    assertEquals(
+                        ui.promptOptions[0].map((option) => option.value),
+                        ["unfinished"],
+                    );
+                    assertEquals(ui.messages, []);
+                    assertEquals(await snapshotPickerFiles(projectRoot), beforeProject);
+                    assertEquals(await snapshotPickerFiles(worktreePath), beforeWorktree);
+                    assertEquals(await snapshotPickerFiles(homeDir), beforeHome);
+                } finally {
+                    runtime.closeAllSessions();
+                }
             } finally {
-                runtime.closeAllSessions();
+                if (worktreePath) await git(projectRoot, ["worktree", "remove", "--force", worktreePath]);
+                await fsRm(projectRoot, { recursive: true });
             }
-        } finally {
-            if (worktreePath) await git(projectRoot, ["worktree", "remove", "--force", worktreePath]);
-            await fsRm(projectRoot, { recursive: true });
-        }
+        });
     });
 });
 
@@ -592,76 +594,80 @@ test("load-plan archives a verified Plan through the real Plan store", async () 
 
 test("load-plan offers lifecycle actions for a validated Plan already published to its target branch", async () => {
     await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot }) => {
-        await git(projectRoot, ["init", "-b", "main"]);
-        await git(projectRoot, ["config", "user.email", "tests@example.com"]);
-        await git(projectRoot, ["config", "user.name", "RunWield Tests"]);
-        await git(projectRoot, ["commit", "--allow-empty", "-m", "fixture baseline"]);
-        const executionCommit = await git(projectRoot, ["rev-parse", "HEAD"]);
-        await writePlan(projectRoot, "published", {
-            planId: "published-plan",
-            status: "validated",
-            targetBranch: "main",
-            executionMode: "worktree",
-            deliveryEvidence: {
-                version: 1,
-                mode: "worktree_merge",
-                executionCommit,
+        return await withRetainedPlanFixture(projectRoot, async () => {
+            await git(projectRoot, ["init", "-b", "main"]);
+            await git(projectRoot, ["config", "user.email", "tests@example.com"]);
+            await git(projectRoot, ["config", "user.name", "RunWield Tests"]);
+            await git(projectRoot, ["commit", "--allow-empty", "-m", "fixture baseline"]);
+            const executionCommit = await git(projectRoot, ["rev-parse", "HEAD"]);
+            await writePlan(projectRoot, "published", {
+                planId: "published-plan",
+                status: "validated",
                 targetBranch: "main",
-                targetHeadBeforeMerge: executionCommit,
-            },
-        });
-        await git(projectRoot, ["add", "docs/plans/published.md"]);
-        await git(projectRoot, ["commit", "-m", "Publish validated Plan"]);
-        // Completed Plans must remain usable after all controller bookkeeping is lost.
-        await fsRm(join(resolveProjectRuntimeLayout(projectRoot).primary.internalRoot, "controller"), {
-            recursive: true,
-        });
-        const { runtime, sessionId } = await createRuntime(projectRoot);
-        const ui = makeUi(["archive"]);
-        try {
-            await runLoadPlanCommand(["published"], {
-                sessionRuntime: runtime,
-                sessionId,
-                uiAPI: ui.uiAPI,
-                editor: ui.editor,
+                executionMode: "worktree",
+                deliveryEvidence: {
+                    version: 1,
+                    mode: "worktree_merge",
+                    executionCommit,
+                    targetBranch: "main",
+                    targetHeadBeforeMerge: executionCommit,
+                },
             });
-            await waitForArchive(ui);
+            await git(projectRoot, ["add", "docs/plans/published.md"]);
+            await git(projectRoot, ["commit", "-m", "Publish validated Plan"]);
+            // Completed Plans must remain usable after all controller bookkeeping is lost.
+            await fsRm(join(resolveProjectRuntimeLayout(projectRoot).primary.internalRoot, "controller"), {
+                recursive: true,
+            });
+            const { runtime, sessionId } = await createRuntime(projectRoot);
+            const ui = makeUi(["archive"]);
+            try {
+                await runLoadPlanCommand(["published"], {
+                    sessionRuntime: runtime,
+                    sessionId,
+                    uiAPI: ui.uiAPI,
+                    editor: ui.editor,
+                });
+                await waitForArchive(ui);
 
-            assertEquals(ui.prompts.includes("What would you like to do?"), true);
-            assertEquals(await loadPlan(projectRoot, "published"), null);
-            assertEquals((await loadArchivedPlan(projectRoot, "published"))?.attrs.archivedFromStatus, "verified");
-        } finally {
-            runtime.closeAllSessions();
-        }
+                assertEquals(ui.prompts.includes("What would you like to do?"), true);
+                assertEquals(await loadPlan(projectRoot, "published"), null);
+                assertEquals((await loadArchivedPlan(projectRoot, "published"))?.attrs.archivedFromStatus, "verified");
+            } finally {
+                runtime.closeAllSessions();
+            }
+        });
     });
 });
 
 test("load-plan offers completed actions for a validated non-Git Plan without controller state", async () => {
     await withRuntimeCommandFixture("runwield-load-plan-non-git-completed-", async ({ projectRoot }) => {
-        await writePlan(projectRoot, "finished", { status: "validated" });
-        await fsRm(join(resolveProjectRuntimeLayout(projectRoot).primary.internalRoot, "controller"), {
-            recursive: true,
-        }).catch((error) => {
-            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
-        });
-        const { runtime, sessionId } = await createRuntime(projectRoot);
-        const ui = makeUi(["archive"]);
-        try {
-            await runLoadPlanCommand(["finished"], {
-                sessionRuntime: runtime,
-                sessionId,
-                uiAPI: ui.uiAPI,
-                editor: ui.editor,
+        return await withRetainedPlanFixture(projectRoot, async () => {
+            await writePlan(projectRoot, "finished", { status: "validated" });
+            await fsRm(join(resolveProjectRuntimeLayout(projectRoot).primary.internalRoot, "controller"), {
+                recursive: true,
+            }).catch((error) => {
+                if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
             });
-            await waitForArchive(ui);
-            assertEquals(
-                ui.prompts.some((prompt) => prompt.startsWith("Plan recovery")),
-                false,
-            );
-            assertEquals((await loadArchivedPlan(projectRoot, "finished"))?.attrs.archivedFromStatus, "verified");
-        } finally {
-            runtime.closeAllSessions();
-        }
+            const { runtime, sessionId } = await createRuntime(projectRoot);
+            const ui = makeUi(["archive"]);
+            try {
+                await runLoadPlanCommand(["finished"], {
+                    sessionRuntime: runtime,
+                    sessionId,
+                    uiAPI: ui.uiAPI,
+                    editor: ui.editor,
+                });
+                await waitForArchive(ui);
+                assertEquals(
+                    ui.prompts.some((prompt) => prompt.startsWith("Plan recovery")),
+                    false,
+                );
+                assertEquals((await loadArchivedPlan(projectRoot, "finished"))?.attrs.archivedFromStatus, "verified");
+            } finally {
+                runtime.closeAllSessions();
+            }
+        });
     });
 });
 
@@ -669,53 +675,55 @@ test("load-plan resumes publication, removes the worktree, and leaves Engineer i
     await withRuntimeCommandFixture(
         "runwield-load-plan-published-session-",
         async ({ projectRoot, setModelResponseFactories }) => {
-            const fixture = await prepareValidatedPublicationPlan(projectRoot);
-            const { runtime, sessionId } = await createRuntime(fixture.worktreePath, "planner");
-            const canonicalProjectRoot = await fsRealpath(projectRoot);
-            const unsubscribe = runtime.subscribeSessionEvents(sessionId, () => {});
-            setModelResponseFactories([
-                () => fauxAssistantMessage(fauxText("Warm turn reply.")),
-                () =>
-                    fauxAssistantMessage(
-                        fauxToolCall("bash", {
-                            command: `${process.platform === "win32" ? "pwd -W" : "pwd"} && git branch --show-current && cat published-marker.txt`,
-                        }),
-                    ),
-                () => fauxAssistantMessage(fauxText("Shell checked.")),
-            ]);
-            const ui = makeUi(["validate"]);
-            try {
-                await runtime.promptSession(sessionId, { initialRequest: "Warm the root Agent." });
-                await runLoadPlanCommand([fixture.planName], {
-                    sessionRuntime: runtime,
-                    sessionId,
-                    uiAPI: ui.uiAPI,
-                    editor: ui.editor,
-                });
+            return await withRetainedPlanFixture(projectRoot, async () => {
+                const fixture = await prepareValidatedPublicationPlan(projectRoot);
+                const { runtime, sessionId } = await createRuntime(fixture.worktreePath, "planner");
+                const canonicalProjectRoot = await fsRealpath(projectRoot);
+                const unsubscribe = runtime.subscribeSessionEvents(sessionId, () => {});
+                setModelResponseFactories([
+                    () => fauxAssistantMessage(fauxText("Warm turn reply.")),
+                    () =>
+                        fauxAssistantMessage(
+                            fauxToolCall("bash", {
+                                command: `${process.platform === "win32" ? "pwd -W" : "pwd"} && git branch --show-current && cat published-marker.txt`,
+                            }),
+                        ),
+                    () => fauxAssistantMessage(fauxText("Shell checked.")),
+                ]);
+                const ui = makeUi(["validate"]);
+                try {
+                    await runtime.promptSession(sessionId, { initialRequest: "Warm the root Agent." });
+                    await runLoadPlanCommand([fixture.planName], {
+                        sessionRuntime: runtime,
+                        sessionId,
+                        uiAPI: ui.uiAPI,
+                        editor: ui.editor,
+                    });
 
-                const snapshot = runtime.getSessionSnapshot(sessionId);
-                assertEquals(await pathExists(fixture.worktreePath), false);
-                assertEquals(await findById(projectRoot, fixture.worktreeId), null);
-                assertEquals(snapshot?.activeAgent, "engineer");
-                assertEquals(snapshot?.cwd, canonicalProjectRoot);
-                assertEquals(snapshot?.activeExecutionWorkflow, null);
+                    const snapshot = runtime.getSessionSnapshot(sessionId);
+                    assertEquals(await pathExists(fixture.worktreePath), false);
+                    assertEquals(await findById(projectRoot, fixture.worktreeId), null);
+                    assertEquals(snapshot?.activeAgent, AGENTS.ENGINEER);
+                    assertEquals(snapshot?.cwd, canonicalProjectRoot);
+                    assertEquals(snapshot?.activeExecutionWorkflow, null);
 
-                const shell = await captureForegroundProcess(bashFixtureExecutable(), {
-                    cwd: canonicalProjectRoot,
-                    args: [
-                        "-c",
-                        `${process.platform === "win32" ? "pwd -W" : "pwd"} && git branch --show-current && cat published-marker.txt`,
-                    ],
-                });
-                assertEquals(shell.success, true, new TextDecoder().decode(shell.stderr));
-                const shellOutput = new TextDecoder().decode(shell.stdout);
-                assertStringIncludes(shellOutput.replaceAll("\\", "/"), canonicalProjectRoot.replaceAll("\\", "/"));
-                assertStringIncludes(shellOutput, "main");
-                assertStringIncludes(shellOutput, "from worktree");
-            } finally {
-                unsubscribe();
-                runtime.closeAllSessions();
-            }
+                    const shell = await captureForegroundProcess(bashFixtureExecutable(), {
+                        cwd: canonicalProjectRoot,
+                        args: [
+                            "-c",
+                            `${process.platform === "win32" ? "pwd -W" : "pwd"} && git branch --show-current && cat published-marker.txt`,
+                        ],
+                    });
+                    assertEquals(shell.success, true, new TextDecoder().decode(shell.stderr));
+                    const shellOutput = new TextDecoder().decode(shell.stdout);
+                    assertStringIncludes(shellOutput.replaceAll("\\", "/"), canonicalProjectRoot.replaceAll("\\", "/"));
+                    assertStringIncludes(shellOutput, "main");
+                    assertStringIncludes(shellOutput, "from worktree");
+                } finally {
+                    unsubscribe();
+                    runtime.closeAllSessions();
+                }
+            });
         },
     );
 });
@@ -723,135 +731,139 @@ test("load-plan resumes publication, removes the worktree, and leaves Engineer i
 for (const confirmRemoval of [true, false]) {
     test(`User Verification carries the Plan to primary and ${confirmRemoval ? "removes" : "preserves"} the worktree after confirmation`, async () => {
         await withRuntimeCommandFixture("runwield-user-verification-authority-", async ({ projectRoot }) => {
-            const fixture = await prepareImplementedFollowUpPlan(projectRoot);
-            await updateEntry(projectRoot, "follow-up-worktree", { status: "active" });
-            await setCustomSetting("workRecords", { autoGenerateOnPlanCompletion: false }, "project", projectRoot);
-            const execution = await loadPlan(fixture.worktreePath, fixture.planName);
-            if (!execution) throw new Error("Missing execution Plan");
-            await fsWriteFile(execution.path, execution.markdown + "\nExecution-only completion notes.\n");
-            const { runtime, sessionId } = await createRuntime(projectRoot);
-            await runtime.switchAgent(sessionId, { agentName: "planner" });
-            await runtime.switchAgent(sessionId, { agentName: "engineer", cwd: fixture.worktreePath });
-            await runtime.setActiveExecutionWorkflow(sessionId, {
-                planName: fixture.planName,
-                projectRoot,
-                triageMeta: execution.attrs,
-                executionAgent: "engineer",
-                executionMode: "worktree",
-                executionCwd: fixture.worktreePath,
-            });
-            try {
-                const verify = makeUi(
-                    ["user_verify", confirmRemoval ? "confirm" : "cancel"],
-                    ["Shipped through the release PR."],
-                );
-                await runLoadPlanCommand([fixture.planName], {
-                    sessionRuntime: runtime,
-                    sessionId,
-                    uiAPI: verify.uiAPI,
-                    editor: verify.editor,
+            return await withRetainedPlanFixture(projectRoot, async () => {
+                const fixture = await prepareImplementedFollowUpPlan(projectRoot);
+                await updateEntry(projectRoot, "follow-up-worktree", { status: "active" });
+                await setCustomSetting("workRecords", { autoGenerateOnPlanCompletion: false }, "project", projectRoot);
+                const execution = await loadPlan(fixture.worktreePath, fixture.planName);
+                if (!execution) throw new Error("Missing execution Plan");
+                await fsWriteFile(execution.path, execution.markdown + "\nExecution-only completion notes.\n");
+                const { runtime, sessionId } = await createRuntime(projectRoot);
+                await runtime.switchAgent(sessionId, { agentName: "planner" });
+                await runtime.switchAgent(sessionId, { agentName: "engineer", cwd: fixture.worktreePath });
+                await runtime.setActiveExecutionWorkflow(sessionId, {
+                    planName: fixture.planName,
+                    projectRoot,
+                    triageMeta: execution.attrs,
+                    executionAgent: "engineer",
+                    executionMode: "worktree",
+                    executionCwd: fixture.worktreePath,
                 });
-                const accepted = await loadPlan(projectRoot, fixture.planName);
-                assertEquals(accepted?.attrs.status, "user_verified");
-                assertEquals(accepted?.attrs.userVerificationNote, "Shipped through the release PR.");
-                assertEquals(accepted?.attrs.verifiedAt, undefined);
-                assertEquals(accepted?.attrs.deliveryEvidence, undefined);
-                assertStringIncludes(accepted?.body || "", "Execution-only completion notes.");
-                assertEquals(await pathExists(fixture.worktreePath), !confirmRemoval);
-                assertEquals(
-                    (await findById(projectRoot, "follow-up-worktree"))?.status,
-                    confirmRemoval ? undefined : "abandoned",
-                );
-                assertEquals(runtime.getSessionSnapshot(sessionId)?.cwd, await fsRealpath(projectRoot));
-                assertEquals(accepted?.attrs.documentWorktreeId, undefined);
-                assertEquals(accepted?.attrs.executionMode, undefined);
+                try {
+                    const verify = makeUi(
+                        ["user_verify", confirmRemoval ? "confirm" : "cancel"],
+                        ["Shipped through the release PR."],
+                    );
+                    await runLoadPlanCommand([fixture.planName], {
+                        sessionRuntime: runtime,
+                        sessionId,
+                        uiAPI: verify.uiAPI,
+                        editor: verify.editor,
+                    });
+                    const accepted = await loadPlan(projectRoot, fixture.planName);
+                    assertEquals(accepted?.attrs.status, "user_verified");
+                    assertEquals(accepted?.attrs.userVerificationNote, "Shipped through the release PR.");
+                    assertEquals(accepted?.attrs.verifiedAt, undefined);
+                    assertEquals(accepted?.attrs.deliveryEvidence, undefined);
+                    assertStringIncludes(accepted?.body || "", "Execution-only completion notes.");
+                    assertEquals(await pathExists(fixture.worktreePath), !confirmRemoval);
+                    assertEquals(
+                        (await findById(projectRoot, "follow-up-worktree"))?.status,
+                        confirmRemoval ? undefined : "abandoned",
+                    );
+                    assertEquals(runtime.getSessionSnapshot(sessionId)?.cwd, await fsRealpath(projectRoot));
+                    assertEquals(accepted?.attrs.documentWorktreeId, undefined);
+                    assertEquals(accepted?.attrs.executionMode, undefined);
 
-                const reload = makeUi(confirmRemoval ? ["archive"] : ["archive", "cancel", "archive", "confirm"]);
-                await runLoadPlanCommand([fixture.planName], {
-                    sessionRuntime: runtime,
-                    sessionId,
-                    uiAPI: reload.uiAPI,
-                    editor: reload.editor,
-                });
-                await waitForArchive(reload);
-                assertEquals(
-                    reload.promptOptions[0].map((option) => option.value),
-                    ["archive", "review", "view", "cancel"],
-                );
-                assertEquals(
-                    reload.prompts.some((prompt) => prompt.startsWith("Plan recovery")),
-                    false,
-                );
-                assertEquals(
-                    (await loadArchivedPlan(projectRoot, fixture.planName))?.attrs.archivedFromStatus,
-                    "user_verified",
-                );
-                assertEquals(await pathExists(fixture.worktreePath), false);
-                assertEquals(await findById(projectRoot, "follow-up-worktree"), null);
-            } finally {
-                runtime.closeAllSessions();
-                await git(projectRoot, ["worktree", "remove", "--force", fixture.worktreePath]).catch(() => {});
-            }
+                    const reload = makeUi(confirmRemoval ? ["archive"] : ["archive", "cancel", "archive", "confirm"]);
+                    await runLoadPlanCommand([fixture.planName], {
+                        sessionRuntime: runtime,
+                        sessionId,
+                        uiAPI: reload.uiAPI,
+                        editor: reload.editor,
+                    });
+                    await waitForArchive(reload);
+                    assertEquals(
+                        reload.promptOptions[0].map((option) => option.value),
+                        ["archive", "review", "view", "cancel"],
+                    );
+                    assertEquals(
+                        reload.prompts.some((prompt) => prompt.startsWith("Plan recovery")),
+                        false,
+                    );
+                    assertEquals(
+                        (await loadArchivedPlan(projectRoot, fixture.planName))?.attrs.archivedFromStatus,
+                        "user_verified",
+                    );
+                    assertEquals(await pathExists(fixture.worktreePath), false);
+                    assertEquals(await findById(projectRoot, "follow-up-worktree"), null);
+                } finally {
+                    runtime.closeAllSessions();
+                    await git(projectRoot, ["worktree", "remove", "--force", fixture.worktreePath]).catch(() => {});
+                }
+            });
         });
     });
 }
 
 test("load-plan confirms cleanup of unregistered legacy recovery when archiving a User Verified Plan", async () => {
     await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot }) => {
-        await git(projectRoot, ["init", "-b", "main"]);
-        await git(projectRoot, ["config", "user.email", "tests@example.com"]);
-        await git(projectRoot, ["config", "user.name", "RunWield Tests"]);
-        await git(projectRoot, ["commit", "--allow-empty", "-m", "recovery fixture"]);
-        const lostPath = `${projectRoot}/lost-worktree`;
-        await writePlan(projectRoot, "finished-with-stale-worktree", {
-            planId: "lost-plan",
-            status: "user_verified",
-            executionMode: "worktree",
-            worktreeStatus: "validation_failed",
-            worktreeId: "lost-worktree",
-            worktreePath: lostPath,
-            worktreeBranch: "worktree/lost-worktree",
-            worktreeBaseBranch: "main",
-        });
-        await writeControllerState(
-            projectRoot,
-            { planId: "lost-plan", planName: "finished-with-stale-worktree" },
-            {},
-            {
-                recovery: {
-                    worktreeId: "lost-worktree",
-                    worktreePath: lostPath,
-                    worktreeBranch: "worktree/lost-worktree",
-                    worktreeBaseBranch: "main",
-                    worktreeStatus: "validation_failed",
-                },
-            },
-        );
-        assertEquals(await findById(projectRoot, "lost-worktree"), null);
-        const { runtime, sessionId } = await createRuntime(projectRoot);
-        const ui = makeUi(["archive", "confirm"]);
-        try {
-            await runLoadPlanCommand(["finished-with-stale-worktree"], {
-                sessionRuntime: runtime,
-                sessionId,
-                uiAPI: ui.uiAPI,
-                editor: ui.editor,
+        return await withRetainedPlanFixture(projectRoot, async () => {
+            await git(projectRoot, ["init", "-b", "main"]);
+            await git(projectRoot, ["config", "user.email", "tests@example.com"]);
+            await git(projectRoot, ["config", "user.name", "RunWield Tests"]);
+            await git(projectRoot, ["commit", "--allow-empty", "-m", "recovery fixture"]);
+            const lostPath = `${projectRoot}/lost-worktree`;
+            await writePlan(projectRoot, "finished-with-stale-worktree", {
+                planId: "lost-plan",
+                status: "user_verified",
+                executionMode: "worktree",
+                worktreeStatus: "validation_failed",
+                worktreeId: "lost-worktree",
+                worktreePath: lostPath,
+                worktreeBranch: "worktree/lost-worktree",
+                worktreeBaseBranch: "main",
             });
-            await waitForArchive(ui);
+            await seedPlanController(
+                projectRoot,
+                { planId: "lost-plan", planName: "finished-with-stale-worktree" },
+                {},
+                {
+                    recovery: {
+                        worktreeId: "lost-worktree",
+                        worktreePath: lostPath,
+                        worktreeBranch: "worktree/lost-worktree",
+                        worktreeBaseBranch: "main",
+                        worktreeStatus: "validation_failed",
+                    },
+                },
+            );
+            assertEquals(await findById(projectRoot, "lost-worktree"), null);
+            const { runtime, sessionId } = await createRuntime(projectRoot);
+            const ui = makeUi(["archive", "confirm"]);
+            try {
+                await runLoadPlanCommand(["finished-with-stale-worktree"], {
+                    sessionRuntime: runtime,
+                    sessionId,
+                    uiAPI: ui.uiAPI,
+                    editor: ui.editor,
+                });
+                await waitForArchive(ui);
 
-            assertEquals(await loadPlan(projectRoot, "finished-with-stale-worktree"), null);
-            const archived = await loadArchivedPlan(projectRoot, "finished-with-stale-worktree");
-            assertEquals(archived?.attrs.archivedFromStatus, "user_verified");
-            assertEquals(archived?.attrs.worktreeStatus, undefined, "unregistered recovery hints remain cleared");
-            assertEquals(archived?.attrs.worktreeId, undefined);
-            assertEquals(archived?.attrs.worktreePath, undefined);
-            const archivedDocument = parsePlanFrontMatter(archived?.markdown || "").attrs;
-            assertEquals(archivedDocument.worktreeStatus, undefined, "archives do not contain runtime state");
-            assertEquals(archivedDocument.worktreeId, undefined);
-            assertStringIncludes(ui.messages.join("\n"), "Archived finished-with-stale-worktree");
-        } finally {
-            runtime.closeAllSessions();
-        }
+                assertEquals(await loadPlan(projectRoot, "finished-with-stale-worktree"), null);
+                const archived = await loadArchivedPlan(projectRoot, "finished-with-stale-worktree");
+                assertEquals(archived?.attrs.archivedFromStatus, "user_verified");
+                assertEquals(archived?.attrs.worktreeStatus, undefined, "unregistered recovery hints remain cleared");
+                assertEquals(archived?.attrs.worktreeId, undefined);
+                assertEquals(archived?.attrs.worktreePath, undefined);
+                const archivedDocument = parsePlanFrontMatter(archived?.markdown || "").attrs;
+                assertEquals(archivedDocument.worktreeStatus, undefined, "archives do not contain runtime state");
+                assertEquals(archivedDocument.worktreeId, undefined);
+                assertStringIncludes(ui.messages.join("\n"), "Archived finished-with-stale-worktree");
+            } finally {
+                runtime.closeAllSessions();
+            }
+        });
     });
 });
 
@@ -880,9 +892,11 @@ test("load-plan archives a verified Epic with every child Plan and keeps the fol
                 (await loadArchivedPlan(projectRoot, "epic/02-second"))?.attrs.archivedFromStatus,
                 "ready_for_work",
             );
-            await fsStat(`${projectRoot}/docs/plans/archived/epic.md`);
-            await fsStat(`${projectRoot}/docs/plans/archived/epic/01-first.md`);
-            await fsStat(`${projectRoot}/docs/plans/archived/epic/02-second.md`);
+            for (const name of ["epic", "epic/01-first", "epic/02-second"]) {
+                const archived = await loadArchivedPlan(projectRoot, name);
+                assertEquals(archived?.path.includes("/.wld/projects/"), true);
+                await fsStat(archived!.path);
+            }
             assertEquals(await pathExists(`${projectRoot}/docs/plans/epic`), false);
         } finally {
             runtime.closeAllSessions();
@@ -893,52 +907,54 @@ test("load-plan archives a verified Epic with every child Plan and keeps the fol
 test("load-plan refuses to archive an Epic whose child has a recoverable worktree", async () => {
     await withRuntimeCommandFixture("runwield-load-plan-command-", async () => {
         const projectRoot = await recoverableArchiveFixture.checkout();
-        await writePlan(projectRoot, "epic", { classification: "PROJECT", status: "verified" });
-        await writePlan(projectRoot, "epic/child", {
-            planId: "active-child",
-            status: "ready_for_work",
-            parentPlan: "epic",
-            worktreeStatus: "active",
-        });
-        await git(projectRoot, ["add", "docs"]);
-        await git(projectRoot, ["commit", "-m", "Epic with recoverable child"]);
-        const worktreePath = `${projectRoot}-child`;
-        await git(projectRoot, ["worktree", "add", "-b", "worktree/child", worktreePath]);
-        await addEntry(projectRoot, {
-            id: "child-attempt",
-            planId: "active-child",
-            planName: "epic/child",
-            path: worktreePath,
-            branch: "worktree/child",
-            baseBranch: "main",
-            baseRef: "main",
-            baseCommit: await git(projectRoot, ["rev-parse", "HEAD"]),
-            baseTree: await git(projectRoot, ["rev-parse", "HEAD^{tree}"]),
-            status: "active",
-            createdAt: "2026-01-01T00:00:00.000Z",
-            updatedAt: "2026-01-01T00:00:00.000Z",
-        });
-        const { runtime, sessionId } = await createRuntime(projectRoot);
-        const ui = makeUi(["archive_epic", "cancel"]);
-        try {
-            await runLoadPlanCommand(["epic"], {
-                sessionRuntime: runtime,
-                sessionId,
-                uiAPI: ui.uiAPI,
-                editor: ui.editor,
+        return await withRetainedPlanFixture(projectRoot, async () => {
+            await writePlan(projectRoot, "epic", { classification: "PROJECT", status: "verified" });
+            await writePlan(projectRoot, "epic/child", {
+                planId: "active-child",
+                status: "ready_for_work",
+                parentPlan: "epic",
+                worktreeStatus: "active",
             });
+            await git(projectRoot, ["add", "docs"]);
+            await git(projectRoot, ["commit", "-m", "Epic with recoverable child"]);
+            const worktreePath = `${projectRoot}-child`;
+            await git(projectRoot, ["worktree", "add", "-b", "worktree/child", worktreePath]);
+            await addEntry(projectRoot, {
+                id: "child-attempt",
+                planId: "active-child",
+                planName: "epic/child",
+                path: worktreePath,
+                branch: "worktree/child",
+                baseBranch: "main",
+                baseRef: "main",
+                baseCommit: await git(projectRoot, ["rev-parse", "HEAD"]),
+                baseTree: await git(projectRoot, ["rev-parse", "HEAD^{tree}"]),
+                status: "active",
+                createdAt: "2026-01-01T00:00:00.000Z",
+                updatedAt: "2026-01-01T00:00:00.000Z",
+            });
+            const { runtime, sessionId } = await createRuntime(projectRoot);
+            const ui = makeUi(["archive_epic", "cancel"]);
+            try {
+                await runLoadPlanCommand(["epic"], {
+                    sessionRuntime: runtime,
+                    sessionId,
+                    uiAPI: ui.uiAPI,
+                    editor: ui.editor,
+                });
 
-            assertEquals((await loadPlan(projectRoot, "epic"))?.attrs.status, "verified");
-            assertEquals((await loadPlan(projectRoot, "epic/child"))?.attrs.worktreeStatus, "active");
-            assertEquals(await loadArchivedPlan(projectRoot, "epic"), null);
-            assertEquals(await loadArchivedPlan(projectRoot, "epic/child"), null);
-            assertStringIncludes(ui.messages.join("\n"), "epic/child");
-            assertStringIncludes(ui.messages.join("\n"), "active");
-        } finally {
-            runtime.closeAllSessions();
-            await git(projectRoot, ["worktree", "remove", "--force", worktreePath]).catch(() => {});
-            await fsRm(projectRoot, { recursive: true });
-        }
+                assertEquals((await loadPlan(projectRoot, "epic"))?.attrs.status, "verified");
+                assertEquals((await loadPlan(projectRoot, "epic/child"))?.attrs.worktreeStatus, "active");
+                assertEquals(await loadArchivedPlan(projectRoot, "epic"), null);
+                assertEquals(await loadArchivedPlan(projectRoot, "epic/child"), null);
+                assertStringIncludes(ui.messages.join("\n"), "epic/child");
+                assertStringIncludes(ui.messages.join("\n"), "active");
+            } finally {
+                runtime.closeAllSessions();
+                await git(projectRoot, ["worktree", "remove", "--force", worktreePath]).catch(() => {});
+                await fsRm(projectRoot, { recursive: true });
+            }
+        });
     });
 });
 
@@ -1034,82 +1050,26 @@ test("load-plan marks an Epic done enough only after the real lifecycle write", 
 
 test("load-plan distinguishes validated Epic children from pending publication", async () => {
     await withRuntimeCommandFixture("runwield-epic-publication-", async ({ projectRoot }) => {
-        await prepareValidatedPublicationPlan(
-            projectRoot,
-            "epic/child",
-            {
-                status: "validated",
-                parentPlan: "epic",
-                order: 1,
-            },
-            async () => {
-                await writePlan(projectRoot, "epic", {
-                    classification: "PROJECT",
+        return await withRetainedPlanFixture(projectRoot, async () => {
+            await prepareValidatedPublicationPlan(
+                projectRoot,
+                "epic/child",
+                {
                     status: "validated",
-                    epicCompletionMode: "done_enough",
-                    epicDoneEnoughSummary: "All child plans are completed.",
-                });
-            },
-        );
-        const { runtime, sessionId } = await createRuntime(projectRoot);
-        const ui = makeUi(["publish:epic/child", "cancel"]);
-        try {
-            await runLoadPlanCommand(["epic"], {
-                sessionRuntime: runtime,
-                sessionId,
-                uiAPI: ui.uiAPI,
-                editor: ui.editor,
-            });
-            assertStringIncludes(ui.messages.join("\n"), "Publication is still pending for epic/child");
-            assertEquals(
-                ui.messages.some((message) => message.includes("All child plans are completed")),
-                false,
-            );
-            assertEquals(
-                ui.promptOptions.flat().some((option) => option.value === "publish:epic/child"),
-                true,
-            );
-            assertStringIncludes(ui.messages.join("\n"), "Plan loaded: epic/child");
-        } finally {
-            runtime.closeAllSessions();
-        }
-    });
-});
-
-for (const ordinaryChildPending of [false, true]) {
-    test(`load-plan ${ordinaryChildPending ? "withholds" : "offers"} integration retry with ${ordinaryChildPending ? "undelivered scope" : "only an open repair draft"}`, async () => {
-        await withRuntimeCommandFixture("runwield-epic-retry-", async () => {
-            const projectRoot = await recoverableArchiveFixture.checkout({ prefix: "runwield-epic-retry-git-" });
-            await writePlan(projectRoot, "epic", {
-                classification: "PROJECT",
-                status: "implemented",
-                targetBranch: "epic/epic",
-                epicIntegrationReport: "docs/plans/epic/integration-report.md",
-            });
-            await writePlan(projectRoot, "epic/01-delivered", {
-                parentPlan: "epic",
-                status: "verified",
-                order: 1,
-            });
-            await git(projectRoot, ["add", "docs/plans"]);
-            await git(projectRoot, ["commit", "-m", "Delivered Epic"]);
-            await git(projectRoot, ["branch", "epic/epic"]);
-            const repairName = "epic/02-repair-integration-findings";
-            await writePlan(projectRoot, repairName, {
-                parentPlan: "epic",
-                status: "draft",
-                order: 2,
-                targetBranch: "epic/epic",
-            });
-            if (ordinaryChildPending) {
-                await writePlan(projectRoot, "epic/03-pending", {
                     parentPlan: "epic",
-                    status: "draft",
-                    order: 3,
-                });
-            }
+                    order: 1,
+                },
+                async () => {
+                    await writePlan(projectRoot, "epic", {
+                        classification: "PROJECT",
+                        status: "validated",
+                        epicCompletionMode: "done_enough",
+                        epicDoneEnoughSummary: "All child plans are completed.",
+                    });
+                },
+            );
             const { runtime, sessionId } = await createRuntime(projectRoot);
-            const ui = makeUi(["cancel"]);
+            const ui = makeUi(["publish:epic/child", "cancel"]);
             try {
                 await runLoadPlanCommand(["epic"], {
                     sessionRuntime: runtime,
@@ -1117,21 +1077,83 @@ for (const ordinaryChildPending of [false, true]) {
                     uiAPI: ui.uiAPI,
                     editor: ui.editor,
                 });
+                assertStringIncludes(ui.messages.join("\n"), "Publication is still pending for epic/child");
                 assertEquals(
-                    ui.promptOptions.flat().filter((option) => option.value === "integration_gate"),
-                    ordinaryChildPending ? [] : [{ value: "integration_gate", label: "Retry the integration gate" }],
+                    ui.messages.some((message) => message.includes("All child plans are completed")),
+                    false,
                 );
-                if (!ordinaryChildPending) {
-                    assertStringIncludes(ui.messages.join("\n"), repairName);
-                    assertStringIncludes(ui.messages.join("\n"), "docs/plans/epic/integration-report.md");
-                    assertStringIncludes(
-                        ui.messages.join("\n"),
-                        "Retry the integration gate or plan the repair child.",
-                    );
-                }
+                assertEquals(
+                    ui.promptOptions.flat().some((option) => option.value === "publish:epic/child"),
+                    true,
+                );
+                assertStringIncludes(ui.messages.join("\n"), "Plan loaded: epic/child");
             } finally {
                 runtime.closeAllSessions();
             }
+        });
+    });
+});
+
+for (const ordinaryChildPending of [false, true]) {
+    test(`load-plan ${ordinaryChildPending ? "withholds" : "offers"} integration retry with ${ordinaryChildPending ? "undelivered scope" : "only an open repair draft"}`, async () => {
+        await withRuntimeCommandFixture("runwield-epic-retry-", async () => {
+            const projectRoot = await recoverableArchiveFixture.checkout({ prefix: "runwield-epic-retry-git-" });
+            return await withRetainedPlanFixture(projectRoot, async () => {
+                await writePlan(projectRoot, "epic", {
+                    classification: "PROJECT",
+                    status: "implemented",
+                    targetBranch: "epic/epic",
+                    epicIntegrationReport: "docs/plans/epic/integration-report.md",
+                });
+                await writePlan(projectRoot, "epic/01-delivered", {
+                    parentPlan: "epic",
+                    status: "verified",
+                    order: 1,
+                });
+                await git(projectRoot, ["add", "docs/plans"]);
+                await git(projectRoot, ["commit", "-m", "Delivered Epic"]);
+                await git(projectRoot, ["branch", "epic/epic"]);
+                const repairName = "epic/02-repair-integration-findings";
+                await writePlan(projectRoot, repairName, {
+                    parentPlan: "epic",
+                    status: "draft",
+                    order: 2,
+                    targetBranch: "epic/epic",
+                });
+                if (ordinaryChildPending) {
+                    await writePlan(projectRoot, "epic/03-pending", {
+                        parentPlan: "epic",
+                        status: "draft",
+                        order: 3,
+                    });
+                }
+                const { runtime, sessionId } = await createRuntime(projectRoot);
+                const ui = makeUi(["cancel"]);
+                try {
+                    await runLoadPlanCommand(["epic"], {
+                        sessionRuntime: runtime,
+                        sessionId,
+                        uiAPI: ui.uiAPI,
+                        editor: ui.editor,
+                    });
+                    assertEquals(
+                        ui.promptOptions.flat().filter((option) => option.value === "integration_gate"),
+                        ordinaryChildPending
+                            ? []
+                            : [{ value: "integration_gate", label: "Retry the integration gate" }],
+                    );
+                    if (!ordinaryChildPending) {
+                        assertStringIncludes(ui.messages.join("\n"), repairName);
+                        assertStringIncludes(ui.messages.join("\n"), "docs/plans/epic/integration-report.md");
+                        assertStringIncludes(
+                            ui.messages.join("\n"),
+                            "Retry the integration gate or plan the repair child.",
+                        );
+                    }
+                } finally {
+                    runtime.closeAllSessions();
+                }
+            });
         });
     });
 }
@@ -1139,8 +1161,9 @@ for (const ordinaryChildPending of [false, true]) {
 test("Approve for Later creates no execution segment", async () => {
     await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot }) => {
         await fsMkdir(`${projectRoot}/docs/plans`, { recursive: true });
-        await fsWriteFile(
-            `${projectRoot}/docs/plans/reviewed.md`,
+        await seedPlan(
+            projectRoot,
+            "reviewed",
             [
                 "---",
                 "classification: PLANNED_CHANGE",
@@ -1156,6 +1179,15 @@ test("Approve for Later creates no execution segment", async () => {
         const { runtime, sessionId } = await createRuntime(projectRoot);
         runtime.setInteractionAdapter(sessionId, {
             requestInteraction: async (request) => {
+                const before = await loadPlan(projectRoot, "reviewed");
+                await recordPlanEvent({
+                    cwd: projectRoot,
+                    planName: "reviewed",
+                    event: "review_approved",
+                    currentStatus: before!.attrs.status,
+                    expectedRevision: before!.revision,
+                    details: { triageMeta: before!.attrs },
+                });
                 const plan = await loadPlan(projectRoot, "reviewed");
                 return {
                     outcome: "accepted",
@@ -1194,8 +1226,9 @@ test("Approve for Later creates no execution segment", async () => {
 test("direct review from draft approves for later without a planning turn", async () => {
     await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot }) => {
         await fsMkdir(`${projectRoot}/docs/plans`, { recursive: true });
-        await fsWriteFile(
-            `${projectRoot}/docs/plans/direct-draft.md`,
+        await seedPlan(
+            projectRoot,
+            "direct-draft",
             [
                 "---",
                 "classification: PLANNED_CHANGE",
@@ -1259,13 +1292,7 @@ for (const status of ["draft", "feedback", "approved", "ready_for_work"] as cons
     test(`direct review menu is available for ${status} without custom shell checks`, async () => {
         await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot }) => {
             await writePlan(projectRoot, "review-without-checks", { status: status === "feedback" ? "draft" : status });
-            if (status === "feedback") {
-                const path = `${projectRoot}/docs/plans/review-without-checks.md`;
-                await fsWriteFile(
-                    path,
-                    (await fsReadFile(path, "utf8")).replace('status: "draft"', 'status: "feedback"'),
-                );
-            }
+            // Legacy feedback is canonicalized to draft before package authoring.
             const { runtime, sessionId } = await createRuntime(projectRoot);
             const ui = makeUi(["cancel"]);
             try {
@@ -1299,8 +1326,9 @@ for (const status of ["draft", "feedback", "approved", "ready_for_work"] as cons
 test("direct review from draft can approve and start execution", async () => {
     await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot, setModelMessages }) => {
         await fsMkdir(`${projectRoot}/docs/plans`, { recursive: true });
-        await fsWriteFile(
-            `${projectRoot}/docs/plans/direct-run.md`,
+        await seedPlan(
+            projectRoot,
+            "direct-run",
             [
                 "---",
                 "classification: PLANNED_CHANGE",
@@ -1369,8 +1397,9 @@ test("direct review from draft can approve and start execution", async () => {
 test("direct review from feedback can send feedback back through Planner", async () => {
     await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot, setModelMessages }) => {
         await fsMkdir(`${projectRoot}/docs/plans`, { recursive: true });
-        await fsWriteFile(
-            `${projectRoot}/docs/plans/direct-feedback.md`,
+        await seedPlan(
+            projectRoot,
+            "direct-feedback",
             [
                 "---",
                 "classification: PLANNED_CHANGE",
@@ -1456,8 +1485,9 @@ test("direct review from feedback can send feedback back through Planner", async
 test("direct review from ready_for_work reopens review and approves for later", async () => {
     await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot, setModelResponseFactory }) => {
         await fsMkdir(`${projectRoot}/docs/plans`, { recursive: true });
-        await fsWriteFile(
-            `${projectRoot}/docs/plans/direct-ready.md`,
+        await seedPlan(
+            projectRoot,
+            "direct-ready",
             [
                 "---",
                 "classification: PLANNED_CHANGE",
@@ -1535,8 +1565,9 @@ test("direct review from ready_for_work reopens review and approves for later", 
 test("direct review menu is omitted when a draft has an invalid execution policy", async () => {
     await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot }) => {
         await fsMkdir(`${projectRoot}/docs/plans`, { recursive: true });
-        await fsWriteFile(
-            `${projectRoot}/docs/plans/invalid-policy-draft.md`,
+        await seedPlan(
+            projectRoot,
+            "invalid-policy-draft",
             [
                 "---",
                 "classification: PLANNED_CHANGE",
@@ -1774,7 +1805,7 @@ test("load-plan adopts a plain Markdown file into the real Plan catalogue", asyn
         const { runtime, sessionId } = await createRuntime(projectRoot);
         const ui = makeUi(["cancel"]);
         try {
-            await runLoadPlanCommand(["external"], {
+            await runLoadPlanCommand([`${projectRoot}/docs/plans/external.md`], {
                 sessionRuntime: runtime,
                 sessionId,
                 uiAPI: ui.uiAPI,
@@ -1785,7 +1816,10 @@ test("load-plan adopts a plain Markdown file into the real Plan catalogue", asyn
             assertEquals(plan?.attrs.status, "draft");
             assertEquals(typeof plan?.attrs.planId, "string");
             assertStringIncludes(plan?.body || "", "Keep this body.");
-            assertStringIncludes(ui.messages.join("\n"), "Adopted external as a RunWield Plan");
+            assertEquals(
+                (await fsReadFile(`${projectRoot}/docs/plans/external.md`, "utf8")).includes("Keep this body."),
+                true,
+            );
         } finally {
             runtime.closeAllSessions();
         }
@@ -1794,62 +1828,64 @@ test("load-plan adopts a plain Markdown file into the real Plan catalogue", asyn
 
 test("load-plan recovery rejects replaced worktree registry evidence before mutation", async () => {
     await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot }) => {
-        const worktreePath = `${projectRoot}-failed-worktree`;
-        const worktreeBranch = "worktree/failed-worktree-old";
-        await writePlan(projectRoot, "failed-worktree", {
-            status: "failed",
-            planId: "plan-failed-worktree",
-            executionMode: "worktree",
-            worktreeId: "wt-old",
-            worktreePath,
-            worktreeBranch,
-            worktreeBaseBranch: "main",
-            worktreeStatus: "active",
-            failureReason: "Fixture execution stopped",
+        return await withRetainedPlanFixture(projectRoot, async () => {
+            const worktreePath = `${projectRoot}-failed-worktree`;
+            const worktreeBranch = "worktree/failed-worktree-old";
+            await writePlan(projectRoot, "failed-worktree", {
+                status: "failed",
+                planId: "plan-failed-worktree",
+                executionMode: "worktree",
+                worktreeId: "wt-old",
+                worktreePath,
+                worktreeBranch,
+                worktreeBaseBranch: "main",
+                worktreeStatus: "active",
+                failureReason: "Fixture execution stopped",
+            });
+            await git(projectRoot, ["init", "-b", "main"]);
+            await git(projectRoot, ["config", "user.email", "runwield@example.test"]);
+            await git(projectRoot, ["config", "user.name", "RunWield Test"]);
+            await git(projectRoot, ["add", "docs/plans/failed-worktree.md"]);
+            await git(projectRoot, ["commit", "-m", "seed failed worktree Plan"]);
+            const baseCommit = await git(projectRoot, ["rev-parse", "HEAD"]);
+            await git(projectRoot, ["worktree", "add", "-b", worktreeBranch, worktreePath, "HEAD"]);
+            try {
+                await addEntry(projectRoot, {
+                    id: "wt-old",
+                    planName: "failed-worktree",
+                    planId: "plan-failed-worktree",
+                    baseBranch: "main",
+                    baseRef: "refs/heads/main",
+                    baseCommit,
+                    branch: worktreeBranch,
+                    path: worktreePath,
+                    status: "active",
+                    createdAt: "2026-01-01T00:00:00.000Z",
+                    updatedAt: "2026-01-01T00:00:00.000Z",
+                });
+                await preparePlanWorkflow(projectRoot, "failed-worktree");
+                const evidence = await loadPlanActionEvidence(projectRoot, "plan-failed-worktree");
+                if (evidence.kind !== "success") throw new Error(evidence.message);
+                // Replace the actual attempt, not a retired Plan front-matter pointer.
+                const old = await findById(projectRoot, "wt-old");
+                if (!old) throw new Error("fixture attempt disappeared");
+                await removeEntry(projectRoot, "wt-old");
+                await addEntry(projectRoot, { ...old, id: "wt-new" });
+
+                const result = await executePlanAction(projectRoot, {
+                    planId: "plan-failed-worktree",
+                    expectedRevision: evidence.evidence.revision,
+                    expectedStatus: evidence.evidence.status,
+                    expectedWorktree: evidence.evidence.worktree,
+                    action: "reset_to_draft",
+                });
+
+                assertEquals(result.kind, "recovery_required");
+                assertEquals((await loadPlan(worktreePath, "failed-worktree"))?.attrs.status, "failed");
+            } finally {
+                await git(projectRoot, ["worktree", "remove", "--force", worktreePath]).catch(() => {});
+            }
         });
-        await git(projectRoot, ["init", "-b", "main"]);
-        await git(projectRoot, ["config", "user.email", "runwield@example.test"]);
-        await git(projectRoot, ["config", "user.name", "RunWield Test"]);
-        await git(projectRoot, ["add", "docs/plans/failed-worktree.md"]);
-        await git(projectRoot, ["commit", "-m", "seed failed worktree Plan"]);
-        const baseCommit = await git(projectRoot, ["rev-parse", "HEAD"]);
-        await git(projectRoot, ["worktree", "add", "-b", worktreeBranch, worktreePath, "HEAD"]);
-        try {
-            await addEntry(projectRoot, {
-                id: "wt-old",
-                planName: "failed-worktree",
-                planId: "plan-failed-worktree",
-                baseBranch: "main",
-                baseRef: "refs/heads/main",
-                baseCommit,
-                branch: worktreeBranch,
-                path: worktreePath,
-                status: "active",
-                createdAt: "2026-01-01T00:00:00.000Z",
-                updatedAt: "2026-01-01T00:00:00.000Z",
-            });
-            await preparePlanWorkflow(projectRoot, "failed-worktree");
-            const evidence = await loadPlanActionEvidence(projectRoot, "plan-failed-worktree");
-            if (evidence.kind !== "success") throw new Error(evidence.message);
-            // Replace the actual attempt, not a retired Plan front-matter pointer.
-            const old = await findById(projectRoot, "wt-old");
-            if (!old) throw new Error("fixture attempt disappeared");
-            await removeEntry(projectRoot, "wt-old");
-            await addEntry(projectRoot, { ...old, id: "wt-new" });
-
-            const result = await executePlanAction(projectRoot, {
-                planId: "plan-failed-worktree",
-                expectedRevision: evidence.evidence.revision,
-                expectedStatus: evidence.evidence.status,
-                expectedWorktree: evidence.evidence.worktree,
-                action: "reset_to_draft",
-            });
-
-            assertEquals(result.kind, "recovery_required");
-            assertEquals((await loadPlan(worktreePath, "failed-worktree"))?.attrs.status, "failed");
-        } finally {
-            await git(projectRoot, ["worktree", "remove", "--force", worktreePath]).catch(() => {});
-        }
     });
 });
 
@@ -2168,6 +2204,7 @@ for (const orders of [
                 await writePlan(projectRoot, `long-parent-prefix/${index === 0 ? "99-first" : "middle"}`, {
                     status: orders[0] === 2 && index === 1 ? "ready_for_work" : "draft",
                     parentPlan: "long-parent-prefix",
+                    summary: index === 0 ? "first child" : "middle child",
                     ...(order === undefined ? {} : { order }),
                 });
             }
@@ -2175,6 +2212,7 @@ for (const orders of [
                 await writePlan(projectRoot, "long-parent-prefix/01-last", {
                     parentPlan: "long-parent-prefix",
                     order: 10,
+                    summary: "Last child",
                     status: "failed",
                 });
             }
@@ -2213,7 +2251,7 @@ for (const orders of [
                 if (orders[0] === 2) {
                     const last = await loadPlan(projectRoot, "long-parent-prefix/01-last");
                     if (!last) throw new Error("Expected last child");
-                    await updatePlanFrontMatter(
+                    await seedPlanState(
                         projectRoot,
                         "long-parent-prefix/01-last",
                         { order: 0 },

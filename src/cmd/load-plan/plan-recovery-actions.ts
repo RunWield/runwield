@@ -1,7 +1,7 @@
 import { recordWorkflowOutcome } from "../../shared/workflow/outcome-observations.ts";
 import { AGENTS } from "../../constants.js";
-import { buildPlanEventUpdates } from "../../shared/workflow/plan-lifecycle.js";
-import { closeTransitionRecordByAttestation, runRecoveryTransition } from "../../shared/workflow/state-transition.ts";
+
+import { closeTransitionRecordByAttestation, runPlanRecoveryEffects } from "../../plan-store/index.ts";
 import { healSettledTransitionRecords } from "../../shared/workflow/transition-recovery.ts";
 import {
     buildPlanRecoveryUserMessage,
@@ -31,11 +31,11 @@ import {
 import { markPlanUserVerified, putPlanOnHold } from "./plan-hold.ts";
 import { settleDiscardedRecoveryAttempt } from "./plan-recovery-discard.ts";
 import { transitionFailureError } from "./transition-failure.ts";
-import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
-import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
+import { detachPlanExecution } from "../../plan-store/index.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { ProjectRuntimeEntryRefusedError } from "../../shared/project-runtime-layout.ts";
 
-import { updatePlanFrontMatter } from "../../plan-store.js";
+import { resetPlanExecutionMetadata } from "../../plan-store/index.ts";
 import type { UiAPI } from "../../ui/tui/types.js";
 import type { PlanSessionSurface, RecoveryWorktreeContext } from "./plan-session-types.ts";
 import type { RecoveryFlowPlan, UnresolvedTransitionRecord } from "./plan-recovery-flow.ts";
@@ -74,10 +74,7 @@ export type RecoveryActionName =
 
 export async function stopLostRecoveryPlan(context: RecoveryActionContext): Promise<RecoveryActionOutcome> {
     const { projectRoot, plan } = context;
-    const resetUpdates = buildPlanEventUpdates("recovery_reset", plan.attrs.status, {
-        triageMeta: plan.attrs,
-    });
-    const transition = await runRecoveryTransition({
+    const transition = await runPlanRecoveryEffects({
         projectRoot,
         planName: plan.planName,
         action: "abandon",
@@ -92,18 +89,7 @@ export async function stopLostRecoveryPlan(context: RecoveryActionContext): Prom
                 });
                 await updateWorktreeRegistryEntry(projectRoot, entry.id, { status: "abandoned" });
             }
-            return await updatePlanFrontMatter(
-                projectRoot,
-                plan.planName,
-                {
-                    ...resetUpdates,
-                    status: "ready_for_work",
-                    executionMode: null,
-                    worktreeId: null,
-                },
-                {},
-                { expectedRevision: beforePlan?.revision },
-            );
+            return await resetPlanExecutionMetadata(projectRoot, plan.planName, "stop", beforePlan?.revision);
         },
     });
     if (transition.status !== "committed") {
@@ -498,7 +484,7 @@ export async function abandonRecoveryPlan(context: RecoveryActionContext): Promi
         await context.recordRecoveryResult("abandon", "blocked");
         return { kind: "menu" };
     }
-    const transition = await runRecoveryTransition({
+    const transition = await runPlanRecoveryEffects({
         projectRoot,
         planName: plan.planName,
         planId: plan.attrs.planId,
@@ -529,12 +515,7 @@ export async function abandonRecoveryPlan(context: RecoveryActionContext): Promi
             // Review reopening retains this reference because its directory survives.
             // Imported recovery hints must not revive this attempt either.
             // Keep this write inside the transition so rollback owns it too.
-            await writeControllerState(
-                projectRoot,
-                { planName: plan.planName, planId: plan.attrs.planId },
-                { executionMode: null, documentWorktreeId: null },
-                { expectedRevision: beforePlan?.controllerRevision, recovery: null },
-            );
+            await detachPlanExecution(projectRoot, plan.planName, plan.attrs.planId, beforePlan?.controllerRevision);
             return {
                 ...plan.attrs,
                 executionMode: null,

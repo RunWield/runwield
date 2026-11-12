@@ -163,7 +163,7 @@ Object.defineProperty(Bun, "spawn", {
     }),
 });
 if (request.command !== "import") mock.module("node:fs/promises", () => ({ ...promises, default: promises }));
-const store = await import("../../plan-store.js");
+const store = await import("../../plan-store/packages.ts");
 const planId = request.planId ?? "plan-one";
 try {
     if (request.command === "hold") {
@@ -195,10 +195,9 @@ try {
             case "recover-lifecycle":
             case "execution": {
                 if (!current || current.kind !== "loaded") throw new Error("Missing package");
-                const { withPackageWorkflow, loadPackageWorkflowPlan } =
-                    await import("../workflow/package-workflow.ts");
+                const { withPackageWorkflow, loadPackageWorkflowPlan } = await import("../../plan-store/workflows.ts");
                 const { recordPlanEvent } = await import("../workflow/plan-lifecycle.js");
-                const { preparePlanWorkflow } = await import("../workflow/plan-preparation.ts");
+                const { preparePlanWorkflow } = await import("../../plan-store/index.ts");
                 result = await withPackageWorkflow(
                     request.identity.checkoutRoot,
                     { identity: request.identity, planId, expectedRevision: current.metadata.revision },
@@ -217,9 +216,8 @@ try {
                             });
                         }
                         if (request.command === "review-race" || request.command === "review") {
-                            const { capturePackageWorkflowInput } = await import("../workflow/package-workflow.ts");
-                            const { applySharedPlanReviewDecision } =
-                                await import("../workflow/plan-review-actions.ts");
+                            const { capturePackageWorkflowInput } = await import("../../plan-store/workflows.ts");
+                            const { applySharedPlanReviewDecision } = await import("../../plan-store/index.ts");
                             const plan = await loadPackageWorkflowPlan(current.metadata.name);
                             const input = await capturePackageWorkflowInput(current.metadata.name);
                             return await applySharedPlanReviewDecision({
@@ -243,7 +241,7 @@ try {
                         }
                         if (request.command === "sequence" || request.command === "sequence-race") {
                             const { prepareSequenceReview, applySequenceReviewDecision } =
-                                await import("../workflow/sequence-review.ts");
+                                await import("../../plan-store/index.ts");
                             const documents = await prepareSequenceReview(
                                 request.identity.checkoutRoot,
                                 current.metadata.name,

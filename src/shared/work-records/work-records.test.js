@@ -1,9 +1,11 @@
-import { syncEpicChildPlanDeviations } from "../workflow/epic-review-context.ts";
+import { seedPlan } from "../testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
+import { syncEpicChildPlanDeviations } from "../../plan-store/index.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { getCwd } from "../../constants.js";
 import { mkdtemp as fsMkdtemp, rm as fsRm, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import {
@@ -32,7 +34,8 @@ import {
     syncWorkRecordToIndex,
     writeWorkRecord,
 } from "./index.ts";
-import { archivePlan, loadArchivedPlan, loadPlan, savePlan } from "../../plan-store.js";
+import { archivePlan, loadArchivedPlan, loadPlan } from "../../plan-store/index.ts";
+
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
 
 /** @type {import('./schema.ts').WorkRecordFrontMatter} */
@@ -246,7 +249,7 @@ test("Work Record store writes flat files and resolves by recordId", async () =>
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         const written = await writeWorkRecord(cwd, INTERNAL_ATTRS, BODY, { fileName: "2026-07-14-example.md" });
-        assertEquals(written.relativePath, "docs/work-records/2026-07-14-example.md");
+        assertEquals(written.relativePath, "work-records/2026-07-14-example.md");
         const found = await findWorkRecordById(cwd, INTERNAL_ATTRS.recordId.toUpperCase());
         assertEquals(found?.title, "Example Work");
         await assertRejects(
@@ -268,10 +271,7 @@ test("Work Record create collision preserves the old record and uses a determini
         const newRecord = await writeWorkRecord(cwd, newAttrs, BODY.replaceAll("Example", "Replacement"), { fileName });
 
         assertEquals((await findWorkRecordById(cwd, INTERNAL_ATTRS.recordId))?.markdown, oldRecord.markdown);
-        assertEquals(
-            newRecord.relativePath,
-            "docs/work-records/2026-07-14-example-33333333-3333-4333-8333-333333333333.md",
-        );
+        assertEquals(newRecord.relativePath, "work-records/2026-07-14-example-33333333-3333-4333-8333-333333333333.md");
         await assertRejects(
             () => writeWorkRecord(cwd, newAttrs, BODY.replaceAll("Example", "Third"), { fileName }),
             Error,
@@ -420,7 +420,7 @@ test("default Recorder generation invokes the Recorder prompt boundary", async (
 test("Work Record backfill previews eligible sources, child skips, and existing record links", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await savePlan(cwd, "standalone", "# Standalone\n\n## Plan\n\nBody", {
+        await seedPlan(cwd, "standalone", "# Standalone\n\n## Plan\n\nBody", {
             planId: "plan-standalone",
             classification: "FEATURE",
             complexity: "LOW",
@@ -429,7 +429,7 @@ test("Work Record backfill previews eligible sources, child skips, and existing 
             createdAt: "2026-07-14T00:00:00.000Z",
             status: "verified",
         });
-        await savePlan(cwd, "already-recorded", "# Already\n\n## Plan\n\nBody", {
+        await seedPlan(cwd, "already-recorded", "# Already\n\n## Plan\n\nBody", {
             planId: "plan-existing",
             classification: "FEATURE",
             complexity: "LOW",
@@ -438,7 +438,7 @@ test("Work Record backfill previews eligible sources, child skips, and existing 
             createdAt: "2026-07-14T00:00:00.000Z",
             status: "verified",
         });
-        await savePlan(cwd, "epic", "# Epic\n\n## Plan\n\nBody", {
+        await seedPlan(cwd, "epic", "# Epic\n\n## Plan\n\nBody", {
             planId: "plan-epic",
             classification: "PROJECT",
             complexity: "MEDIUM",
@@ -448,7 +448,7 @@ test("Work Record backfill previews eligible sources, child skips, and existing 
             status: "verified",
             epicCompletionMode: "done_enough",
         });
-        await savePlan(cwd, "epic/01-child", "# Child\n\n## Plan\n\nBody", {
+        await seedPlan(cwd, "epic/01-child", "# Child\n\n## Plan\n\nBody", {
             planId: "plan-child",
             classification: "FEATURE",
             complexity: "LOW",
@@ -490,7 +490,7 @@ test("Work Record backfill previews eligible sources, child skips, and existing 
 test("Work Record generation writes a record and active Plan backlink", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await savePlan(cwd, "standalone", "# Standalone\n\n## Plan\n\nBody", {
+        await seedPlan(cwd, "standalone", "# Standalone\n\n## Plan\n\nBody", {
             planId: "plan-standalone",
             classification: "FEATURE",
             complexity: "LOW",
@@ -525,7 +525,7 @@ test("Work Record generation writes a record and active Plan backlink", async ()
 test("Work Record generation always includes confirmed Plan Deviations", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await savePlan(cwd, "deviated", "# Deviated\n\n## Plan\n\nReplace nav.", {
+        await seedPlan(cwd, "deviated", "# Deviated\n\n## Plan\n\nReplace nav.", {
             planId: "plan-deviated",
             classification: "FEATURE",
             complexity: "LOW",
@@ -571,7 +571,7 @@ test("Work Record generation always includes confirmed Plan Deviations", async (
 test("Work Record generation includes confirmed child Plan Deviations in Epic records", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await savePlan(cwd, "epic", "# Epic\n\n## Plan\n\nParent body.", {
+        await seedPlan(cwd, "epic", "# Epic\n\n## Plan\n\nParent body.", {
             planId: "plan-epic-deviated",
             classification: "PROJECT",
             complexity: "MEDIUM",
@@ -581,7 +581,7 @@ test("Work Record generation includes confirmed child Plan Deviations in Epic re
             status: "verified",
             epicCompletionMode: "done_enough",
         });
-        await savePlan(cwd, "epic/01-child", "# Child\n\n## Plan\n\nReplace nav.", {
+        await seedPlan(cwd, "epic/01-child", "# Child\n\n## Plan\n\nReplace nav.", {
             planId: "plan-child-deviated",
             classification: "FEATURE",
             complexity: "LOW",
@@ -648,7 +648,7 @@ test("Work Record generation rejects missing and self Recorder proposals before 
     for (const testCase of cases) {
         const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
         try {
-            await savePlan(cwd, testCase.name, `# ${testCase.name}\n\n## Plan\n\nBody`, {
+            await seedPlan(cwd, testCase.name, `# ${testCase.name}\n\n## Plan\n\nBody`, {
                 planId: `plan-${testCase.name}`,
                 classification: "FEATURE",
                 complexity: "LOW",
@@ -681,7 +681,7 @@ test("Work Record generation rejects missing and self Recorder proposals before 
 test("Work Record generation preserves canonical state when the external index is unavailable", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await savePlan(cwd, "index-unavailable", "# Index Unavailable\n\n## Plan\n\nBody", {
+        await seedPlan(cwd, "index-unavailable", "# Index Unavailable\n\n## Plan\n\nBody", {
             planId: "plan-index-unavailable",
             classification: "FEATURE",
             complexity: "LOW",
@@ -729,7 +729,7 @@ test("Work Record generation distills the task completion report into the summar
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         const executionReport = "- Implemented the settings save action.\n- Verification passed: deno task ci.";
-        await savePlan(cwd, "reported", "# Reported\n\n## Plan\n\nBody", {
+        await seedPlan(cwd, "reported", "# Reported\n\n## Plan\n\nBody", {
             planId: "plan-reported",
             classification: "FEATURE",
             complexity: "LOW",
@@ -766,7 +766,7 @@ test("Work Record generation includes deterministic Plan record requirements", a
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         const required = "The generated Work Record must include the approved delivery decision.";
-        await savePlan(cwd, "required-note", `# Required note\n\n## Work Record Requirements\n\n${required}\n`, {
+        await seedPlan(cwd, "required-note", `# Required note\n\n## Work Record Requirements\n\n${required}\n`, {
             planId: "plan-required-note",
             classification: "FEATURE",
             complexity: "LOW",
@@ -850,7 +850,7 @@ test("Work Record recorder prompt includes the task completion report as source 
 test("Work Record generation discloses skipped verification reason fallback", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await savePlan(cwd, "closed", "# Closed\n\n## Plan\n\nBody", {
+        await seedPlan(cwd, "closed", "# Closed\n\n## Plan\n\nBody", {
             planId: "plan-closed",
             classification: "FEATURE",
             complexity: "LOW",
@@ -878,7 +878,7 @@ test("Work Record generation discloses skipped verification reason fallback", as
 test("Work Record generation preserves User Verification attribution and note", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await savePlan(cwd, "user-verified", "# User Verified\n\n## Plan\n\nBody", {
+        await seedPlan(cwd, "user-verified", "# User Verified\n\n## Plan\n\nBody", {
             planId: "plan-user-verified",
             classification: "FEATURE",
             complexity: "LOW",
@@ -915,7 +915,7 @@ test("Work Record generation preserves User Verification attribution and note", 
 test("Work Record backfill updates archived Plan backlinks", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await savePlan(cwd, "archived-source", "# Archived Source\n\n## Plan\n\nBody", {
+        await seedPlan(cwd, "archived-source", "# Archived Source\n\n## Plan\n\nBody", {
             planId: "plan-archived",
             classification: "FEATURE",
             complexity: "LOW",
@@ -944,7 +944,7 @@ test("Work Record backfill updates archived Plan backlinks", async () => {
 test("Work Record backfill retries failed Plan backlinks", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await savePlan(cwd, "retry", "# Retry\n\n## Plan\n\nBody", {
+        await seedPlan(cwd, "retry", "# Retry\n\n## Plan\n\nBody", {
             planId: "plan-retry",
             classification: "FEATURE",
             complexity: "LOW",
@@ -984,7 +984,7 @@ test("Work Record backfill retries failed Plan backlinks", async () => {
 test("Work Record generation rejects empty structured sections and records failure backlink", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await savePlan(cwd, "empty", "# Empty\n\n## Plan\n\nBody", {
+        await seedPlan(cwd, "empty", "# Empty\n\n## Plan\n\nBody", {
             planId: "plan-empty",
             classification: "FEATURE",
             complexity: "LOW",
@@ -1014,7 +1014,7 @@ test("Work Record generation rejects empty structured sections and records failu
 test("Work Record generation records failure backlink without changing terminal status", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await savePlan(cwd, "bad", "# Bad\n\n## Plan\n\nBody", {
+        await seedPlan(cwd, "bad", "# Bad\n\n## Plan\n\nBody", {
             planId: "plan-bad",
             classification: "FEATURE",
             complexity: "LOW",
@@ -1044,7 +1044,7 @@ test("Work Record generation records failure backlink without changing terminal 
 test("Work Record backfill preview does not create docs/work-records", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await savePlan(cwd, "standalone", "# Standalone\n\n## Plan\n\nBody", {
+        await seedPlan(cwd, "standalone", "# Standalone\n\n## Plan\n\nBody", {
             planId: "plan-dry-run",
             classification: "FEATURE",
             complexity: "LOW",
@@ -1066,7 +1066,7 @@ test("Work Record backfill preview does not create docs/work-records", async () 
 test("Work Record backfill ignores non-linkable existing records and generates approved internal record", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await savePlan(cwd, "standalone", "# Standalone\n\n## Plan\n\nBody", {
+        await seedPlan(cwd, "standalone", "# Standalone\n\n## Plan\n\nBody", {
             planId: "plan-needs-approved",
             classification: "FEATURE",
             complexity: "LOW",
@@ -1313,7 +1313,7 @@ test("Work Record search hydrates indexed candidates from a single canonical sca
                     if (args[0] === "search") {
                         // Once the external search begins, remove its canonical
                         // source. Hydration must use the one completed scan.
-                        await fsRm(join(cwd, "docs", "work-records"), { recursive: true });
+                        await fsRm(dirname(first.path), { recursive: true });
                         return Promise.resolve(
                             ok(
                                 JSON.stringify({
@@ -1501,37 +1501,39 @@ test("Work Record markdown round-trips Ticket References and index/search surfac
 test("Work Record generation preserves child Ticket References when assigning active Epic planId", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await savePlan(cwd, "epic-without-plan-id", "# Epic", {
-            classification: "PROJECT",
-            status: "verified",
-            epicCompletionMode: "done_enough",
-            tickets: [{ url: "https://example.com/tickets/EPIC-NO-ID" }],
-        });
-        await savePlan(cwd, "epic-without-plan-id/01-child", "# Child", {
-            parentPlan: "epic-without-plan-id",
-            order: 1,
-            status: "verified",
-            tickets: [{ url: "https://example.com/tickets/CHILD-NO-ID" }],
-        });
-        const source = (await previewWorkRecordBackfill(cwd)).eligible.find(
-            (candidate) => candidate.name === "epic-without-plan-id",
-        );
-        if (!source) throw new Error("Expected active Epic source");
-        assertEquals(source.planId, "");
-        assertEquals(source.children?.length, 1);
+        await withRetainedPlanFixture(cwd, async () => {
+            await seedPlan(cwd, "epic-without-plan-id", "# Epic", {
+                classification: "PROJECT",
+                status: "verified",
+                epicCompletionMode: "done_enough",
+                tickets: [{ url: "https://example.com/tickets/EPIC-NO-ID" }],
+            });
+            await seedPlan(cwd, "epic-without-plan-id/01-child", "# Child", {
+                parentPlan: "epic-without-plan-id",
+                order: 1,
+                status: "verified",
+                tickets: [{ url: "https://example.com/tickets/CHILD-NO-ID" }],
+            });
+            const source = (await previewWorkRecordBackfill(cwd)).eligible.find(
+                (candidate) => candidate.name === "epic-without-plan-id",
+            );
+            if (!source) throw new Error("Expected active Epic source");
+            assertEquals(source.planId, "");
+            assertEquals(source.children?.length, 1);
 
-        const ids = ["11111111-1111-4111-8111-111111111114", "11111111-1111-4111-8111-111111111115"];
-        const outcome = await generateWorkRecordForSource(cwd, source, {
-            idGenerator: () => ids.shift() || "11111111-1111-4111-8111-111111111116",
-            runRecorderStep: recorderResponse({ title: "Epic Without Plan ID", summary: "Done." }),
-            mnemotecaPort: createWorkRecordMnemotecaFixture(),
-        });
+            const ids = ["11111111-1111-4111-8111-111111111114", "11111111-1111-4111-8111-111111111115"];
+            const outcome = await generateWorkRecordForSource(cwd, source, {
+                idGenerator: () => ids.shift() || "11111111-1111-4111-8111-111111111116",
+                runRecorderStep: recorderResponse({ title: "Epic Without Plan ID", summary: "Done." }),
+                mnemotecaPort: createWorkRecordMnemotecaFixture(),
+            });
 
-        assertEquals(outcome.status, "generated");
-        assertEquals((await findWorkRecordById(cwd, "11111111-1111-4111-8111-111111111115"))?.attrs.tickets, [
-            { url: "https://example.com/tickets/EPIC-NO-ID" },
-            { url: "https://example.com/tickets/CHILD-NO-ID" },
-        ]);
+            assertEquals(outcome.status, "generated");
+            assertEquals((await findWorkRecordById(cwd, "11111111-1111-4111-8111-111111111115"))?.attrs.tickets, [
+                { url: "https://example.com/tickets/EPIC-NO-ID" },
+                { url: "https://example.com/tickets/CHILD-NO-ID" },
+            ]);
+        });
     } finally {
         await cleanupTempProject(cwd);
     }
@@ -1540,7 +1542,7 @@ test("Work Record generation preserves child Ticket References when assigning ac
 test("Work Record generation snapshots standalone and Epic Ticket References deterministically", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await savePlan(cwd, "standalone", "# Standalone", {
+        await seedPlan(cwd, "standalone", "# Standalone", {
             planId: "plan-standalone",
             status: "verified",
             tickets: [{ url: "https://example.com/tickets/STAND-1", label: "standalone" }],
@@ -1559,21 +1561,21 @@ test("Work Record generation snapshots standalone and Epic Ticket References det
             { url: "https://example.com/tickets/STAND-1", label: "standalone" },
         ]);
 
-        await savePlan(cwd, "epic", "# Epic", {
+        await seedPlan(cwd, "epic", "# Epic", {
             classification: "PROJECT",
             planId: "plan-epic",
             status: "verified",
             epicCompletionMode: "done_enough",
             tickets: [{ url: "https://example.com/tickets/DUP", label: "epic" }],
         });
-        await savePlan(cwd, "epic/02-child", "# Child 2", {
+        await seedPlan(cwd, "epic/02-child", "# Child 2", {
             planId: "plan-child-2",
             parentPlan: "epic",
             order: 2,
             status: "draft",
             tickets: [{ url: "https://example.com/tickets/CHILD-2" }],
         });
-        await savePlan(cwd, "epic/01-child", "# Child 1", {
+        await seedPlan(cwd, "epic/01-child", "# Child 1", {
             planId: "plan-child-1",
             parentPlan: "epic",
             order: 1,

@@ -309,11 +309,20 @@ requirement.
 
 ### Chat workflow access
 
+**Local canonical access:** Ordinary local/manual-SSH entry uses Core’s personal Project store, including an empty
+store. New authoring submits Markdown prose and typed definition facts; hosts do not write protected metadata or rely
+on checkout Plan copies. Read and review operations revalidate their own Project/action/revision authority. Restricted
+hosts continue through authorized Plan and Work Record operations without requiring arbitrary home-directory access.
+Managed-remote ownership activation remains deferred; its current admitted contract is preserved.
+
+**Acceptance:** A Plan imported or authored through one local surface is the same ID and current revision when read
+from another. Unimported checkout documents remain invisible and stale action evidence cannot authorize a save.
+
 **Internally admitted package path:** The existing ACP Session workflow reads the same Core home Plan as Workspace and
 the terminal workflow. Protocol `session/new` and `session/prompt` with `/load-plan` expose the current document after a
 Core edit. ACP keeps reasoning and canonical reads inside Core; it does not require the client to read home Plan files.
 Connect MCP document tools are a separate carrier, not new ACP methods. Existing capability negotiation and client
-permission contracts remain unchanged. No client-root grant is inferred from package presence. Public default admission remains the legacy path until activation.
+permission contracts remain unchanged. No client-root grant is inferred from package presence. Ordinary local and manual-SSH requests admit the personal Project store without changing client permission grants.
 
 **Acceptance:** Load an admitted Plan through the ACP protocol and view its details after another Core surface edits
 it with client filesystem capabilities disabled; the displayed text must be current without a client filesystem or

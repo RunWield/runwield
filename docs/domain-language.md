@@ -402,20 +402,23 @@ Request. _Avoid_: Semantic Review, duplicate review
 execution, Workflow Validation, and delivery as their real events occur. It is not Init, a separate Plan lifecycle, a
 sample project, or a substitute for validation. _Avoid_: Onboarding workflow, training Plan, Workspace tutorial
 
-**Plan**: A markdown file in `docs/plans/` describing the implementation strategy for a user request. Its YAML front
-matter records classification, complexity, status, timestamps, and origin when present. Plain Markdown without identity
-or metadata is a valid local draft; browsing does not adopt it. _Avoid_: Blueprint, spec, design doc
+**Plan**: A canonical package in the personal home Project store for local and manual-SSH work. Editable Markdown
+context, validation and optional evidence documents sit beside Core-owned Plan Metadata. Checkout Markdown is an
+explicit import source or optional delivery copy. _Avoid_: Blueprint, spec, design doc
 
-**External Plan Adoption**: Deliberate preparation of an external Markdown Plan through selected load or an owning
-write. It persists identity and applicable defaults while preserving the body, original age, and existing decisions.
-It is distinct from project runtime-layout adoption. _Avoid_: discovery, listing, indexing, pending read
+**Plan Metadata**: Core-owned identity, definition, relationships and workflow facts in `plan.wld.json`. Agent prose
+cannot assign lifecycle state or identity. _Avoid_: editable front matter, agent-authored controller state
+
+**External Plan Adoption**: Explicit file/folder import into the personal Plan store, including loading an external
+Markdown path. It preserves source bytes and applicable identity/continuation evidence. Name lookup and passive browsing
+never adopt documents. Runtime-layout adoption is separate. _Avoid_: automatic discovery, indexing, pending read
 
 **Plan Read Availability**: Read-result metadata (`ready` or `pending`) carried separately from Plan Front Matter.
 Pending means required workflow authority or preparation is unavailable, not that the Plan has changed lifecycle state,
 failed, or been adopted. Safe local documents can remain browseable by name; pending facts cannot authorize actions or
 stand in for current search evidence. _Avoid_: pending Plan status, migration complete, adoption status, approval
 
-**Work Record**: A small repo-local markdown retrospective planning-memory artifact that distills what completed planned
+**Work Record**: A small canonical personal-Project Markdown retrospective planning-memory artifact that distills what completed planned
 work actually produced. It holds only facts that stay true after later changes: the delivered outcome, recorded Plan
 Deviations, out-of-scope facts, and durable lessons. _Avoid_: Review log, chat transcript, implementation diary, duplicate
 Plan, known issues list, validation receipt

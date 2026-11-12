@@ -1,13 +1,14 @@
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
+
 import { parseAttachedMcpArgs } from "./index.ts";
 import { saveAttachedReviewChat } from "../../shared/attached/coordinator.ts";
 import { compactResult, compactStatus } from "../../shared/attached/presentation.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
-import { rm as fsRm, mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
+import { rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
-import { join } from "node:path";
 import { git } from "../../shared/git-test-fixture.ts";
 import { ATTACHED_OPERATIONS, type AttachedJsonObject } from "../../shared/attached/operations.ts";
 import {
@@ -97,8 +98,10 @@ test("two processes racing on one revision leave exactly one accepted outcome", 
 test("CLI plan_written accepts the Plan and matches the coordinator replay", async () => {
     await withProject(async (projectRoot) => {
         const { planning } = await reachPlanning(projectRoot);
-        await fsMkdir(join(projectRoot, "docs", "plans"), { recursive: true });
-        await fsWriteFile(join(projectRoot, "docs", "plans", "dark-mode-toggle.md"), "# Toggle\n");
+        await seedPlan(projectRoot, "dark-mode-toggle", "# Toggle\n", {
+            status: "draft",
+            classification: "PLANNED_CHANGE",
+        });
         const input = planWrittenInput(planning);
         const cli = await spawnAttachedCli("plan_written", projectRoot, input);
         assertEquals(cli.code, 0, cli.stderr);

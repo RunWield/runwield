@@ -6,7 +6,7 @@ import { test } from "node:test";
 import process from "node:process";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { loadPlanBodyById, savePlanBodyById } from "../../plan-store.js";
+import { loadPlanBodyById, savePlanBodyById } from "../../plan-store/index.ts";
 import { createRendererFixture } from "../../../scripts/workspace-memory-fixture.ts";
 import { RUNWIELD_ROOT } from "../../../runtime-root.js";
 
@@ -39,22 +39,20 @@ test("fixture follows unprefixed Session and protected Plan navigation", async (
     const origin = "http://127.0.0.1";
     const fixture = await createRendererFixture(root, origin);
     try {
-        const ownerPlan = fixture.routes.find((route) =>
-            route.path.includes("/projects/") && route.path.endsWith("/plans")
+        const ownerPlan = fixture.routes.find(
+            (route) => route.path.includes("/projects/") && route.path.endsWith("/plans"),
         )!;
-        const ownerSession = fixture.routes.find((route) =>
-            route.path.includes("/sessions/") && !route.path.endsWith("/sessions")
+        const ownerSession = fixture.routes.find(
+            (route) => route.path.includes("/sessions/") && !route.path.endsWith("/sessions"),
         )!;
-        for (
-            const [path, referer, marker] of [
-                [ownerPlan.path.replace("/fixture/owner", "") + "/fixture-id-0", ownerPlan.path, "Memory plan body 0"],
-                [ownerSession.path.replace("/fixture/owner", ""), ownerPlan.path, "Project Session"],
-                [ownerSession.path.replace("/fixture/owner", "").replace(/\/[^/]+$/, "/new"), ownerSession.path, "New"],
-                ["/plans/fixture-id-1", "/fixture/local/plans/fixture-id-0", "Memory plan body 1"],
-                ["/review/code", "/fixture/review/code", "Memory code review marker"],
-                ["/session-question", "/fixture/question/session-question", "Memory question marker"],
-            ]
-        ) {
+        for (const [path, referer, marker] of [
+            [ownerPlan.path.replace("/fixture/owner", "") + "/fixture-id-0", ownerPlan.path, "Memory plan body 0"],
+            [ownerSession.path.replace("/fixture/owner", ""), ownerPlan.path, "Project Session"],
+            [ownerSession.path.replace("/fixture/owner", "").replace(/\/[^/]+$/, "/new"), ownerSession.path, "New"],
+            ["/plans/fixture-id-1", "/fixture/local/plans/fixture-id-0", "Memory plan body 1"],
+            ["/review/code", "/fixture/review/code", "Memory code review marker"],
+            ["/session-question", "/fixture/question/session-question", "Memory question marker"],
+        ]) {
             const response = await fixture.request(
                 path,
                 new Request(`${origin}${path}`, {
@@ -103,15 +101,17 @@ test("shared renderer serves concurrent pages with independent current Plan, rev
             ["/fixture/review/plan", "Memory plan review marker"],
             ["/fixture/review/code", "Memory code review marker"],
             ["/fixture/question/session-question", "Memory question marker"],
-            ...fixture.routes.filter((route) => route.path.startsWith("/fixture/owner/")).map((
-                route,
-            ) => [route.path, route.marker]),
+            ...fixture.routes
+                .filter((route) => route.path.startsWith("/fixture/owner/"))
+                .map((route) => [route.path, route.marker]),
         ];
         for (let round = 0; round < 2; round++) {
-            const responses = await Promise.all(routes.map(async ([path, marker]) => {
-                const response = await fixture.request(path);
-                return { status: response.status, body: await response.text(), marker };
-            }));
+            const responses = await Promise.all(
+                routes.map(async ([path, marker]) => {
+                    const response = await fixture.request(path);
+                    return { status: response.status, body: await response.text(), marker };
+                }),
+            );
             for (const [index, { status, body, marker }] of responses.entries()) {
                 assertEquals(status, 200, `${routes[index][0]}: ${body}`);
                 assertStringIncludes(body, marker);

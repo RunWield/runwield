@@ -1,3 +1,4 @@
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
@@ -5,7 +6,8 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { createTuiInteractionAdapter as createAdapterImplementation } from "./runtime-interaction-adapter.js";
-import { getStoredPlanPath, savePlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { createScriptedReviewBrowser } from "../review/review-test-fixture.ts";
 import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";
 import { ToolExecutionBlock } from "./blocks.js";
@@ -58,7 +60,7 @@ test("TUI Plan review resumes progress after feedback and review failures", asyn
     const scripted = createScriptedReviewBrowser("deny", { feedback: "Add a test" });
     const adapter = createAdapter(makeUi(null, { busyValues }), { browser: scripted.browser });
     try {
-        await savePlan(cwd, "plan", "# Plan\n\nDo the work.\n", {
+        await seedPlan(cwd, "plan", "# Plan\n\nDo the work.\n", {
             planId: "tui-review-plan",
             classification: "PLANNED_CHANGE",
             status: "draft",
@@ -66,7 +68,7 @@ test("TUI Plan review resumes progress after feedback and review failures", asyn
         const request = {
             type: RuntimeInteractionTypes.PLAN_REVIEW,
             prompt: "Review the Plan",
-            _meta: { cwd, planName: "plan", planPath: getStoredPlanPath(cwd, "plan") },
+            _meta: { cwd, planName: "plan", planPath: (await loadPlan(cwd, "plan"))!.path },
         } satisfies RuntimeInteractionRequest;
         const response = await adapter.requestInteraction(request);
         assertEquals(response.outcome, "selected");

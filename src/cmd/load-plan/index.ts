@@ -1,3 +1,7 @@
+import { isCurrentPlan } from "../../plan-store/index.ts";
+import { continueMissingPlanExecution } from "../../plan-store/index.ts";
+import { selectPlanAccess } from "../../plan-store/index.ts";
+import { capturePlanAccess, withPlanAccess } from "../../plan-store/index.ts";
 import { admitProjectWithIdentityChoice } from "../../ui/tui/project-identity-entry.ts";
 import { prepareWorktreeRegistry } from "../../shared/worktree-registry.js";
 import process from "node:process";
@@ -16,17 +20,16 @@ import { isEpicPlan, projectPlanType } from "../../shared/project-plan.ts";
 
 import { parseArgs } from "../../shared/cli-args.ts";
 import { AGENTS, CLI_BIN, getCwd } from "../../constants.js";
+import { canonicalPlanStatus, isRecoverableWorktreeStatus } from "../../plan-format.ts";
 import {
     archivePlan,
-    canonicalPlanStatus,
     ensurePlanIdentity,
-    isRecoverableWorktreeStatus,
     listPlanDocuments,
     loadPlan,
     onboardExternalPlan,
     resolvePlan,
     resolveSiblingChildPlanDependencies,
-} from "../../plan-store.js";
+} from "../../plan-store/index.ts";
 import { isPlanArchivePending, startBackgroundArchive } from "./archive-background.ts";
 import { decidePostPlanning } from "../../shared/workflow/decisions.ts";
 import { buildPlannerReReviewRequest, buildResumeRequest } from "./plan-presentation.ts";
@@ -69,12 +72,12 @@ import {
     discoverPlanDocumentRoot,
     resolvePlanWithPrimaryRecovery,
     resumePlanPublicationCleanup,
-} from "./primary-plan-recovery.ts";
+} from "../../plan-store/index.ts";
 import {
     needsSessionPlanningWorktree,
     PlanningNotStartedError,
     resolveWorkflowPlanLocation,
-} from "../../shared/workflow/plan-location.ts";
+} from "../../plan-store/index.ts";
 import type { CommandContext } from "../registry.js";
 import type { UiAPI } from "../../ui/tui/types.js";
 import {
@@ -187,7 +190,19 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
                 : confirmProjectDirectory(discovered.path)))
         )
             return;
+        if (
+            discovered.missingExecutionCheckout &&
+            (await continueMissingPlanExecution(startupProjectRoot, planArg, () => runLoadPlanCommand(argv, options)))
+        )
+            return;
         const startupResolved = await resolvePlanWithPrimaryRecovery(startupProjectRoot, planArg);
+        if (!capturePlanAccess()) {
+            const selection = await selectPlanAccess(startupProjectRoot, startupResolved.plan.planName);
+            if (selection)
+                return await withPlanAccess(startupProjectRoot, selection, () =>
+                    runLoadPlanCommand([startupResolved.plan.planName], options),
+                );
+        }
         if (!discovered.missingExecutionCheckout && !(await confirmProjectDirectory(discovered.path))) return;
         let startupPlan = startupResolved.plan;
         if (!startupPlan.attrs.planId) {
@@ -286,6 +301,15 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
         )
             return;
         const resolved = await resolvePlanWithPrimaryRecovery(projectRoot, planArg);
+        if (!isCurrentPlan(resolved.plan.attrs.planId)) {
+            const selection = await selectPlanAccess(projectRoot, resolved.plan.planName);
+            if (selection) {
+                skipRouterRestore = true;
+                return await withPlanAccess(projectRoot, selection, () =>
+                    runLoadPlanCommand([resolved.plan.planName], options),
+                );
+            }
+        }
         if (discovered && !discovered.missingExecutionCheckout && !(await confirmProjectDirectory(discovered.path)))
             return;
         const plan = resolved.plan;

@@ -1,5 +1,5 @@
 ---
-import type { PlanReadAvailability } from "../../../../../../plan-store.js";
+import type { PlanReadAvailability } from "../../../../../../plan-store/index.ts";
 import LoadingSurface from "../../../../components/LoadingSurface.astro";
 import WorkspaceLayout from "../../../../layouts/WorkspaceLayout.astro";
 import ReviewLayout from "../../../../layouts/ReviewLayout.astro";
@@ -22,7 +22,7 @@ type WorkspacePlanAttrs = {
 
 type WorkspacePlanDetail = {
     readAvailability?: PlanReadAvailability;
-    packageDocument?: Awaited<ReturnType<typeof import("../../../../../../shared/workflow/plan-documents.ts").readPlanDocuments>>;
+    packageDocument?: Awaited<ReturnType<typeof import("../../../../../../plan-store/index.ts").readPlanDocuments>>;
     planName?: string;
     title?: string;
     status?: string;

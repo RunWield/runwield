@@ -1,3 +1,4 @@
+import { inspectPlanFixtureController, seedPlanController } from "./testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { deepEqual, equal, ok, rejects } from "node:assert/strict";
 import { mkdir, readFile, writeFile, lstat, rm, mkdtemp, readdir, realpath, symlink } from "node:fs/promises";
@@ -10,7 +11,7 @@ import {
     resolveProjectRuntimeLayout,
     inspectProjectRuntimeReadAccess,
 } from "./project-runtime-layout.ts";
-import { readControllerRecord, writeControllerState } from "./workflow/controller-registry.ts";
+
 import { DatabaseSync } from "./sqlite.ts";
 import { admitProjectIdentity, inspectProjectIdentity } from "./project-identity.ts";
 
@@ -36,7 +37,7 @@ test("ordinary admission preserves controller decisions and all hidden legacy by
         await put(join(root, ".wld", "settings.json"), '{ "exact": true }\n');
         const layout = await enterProjectRuntime(root);
         ok(layout.primary.controllerPlansDir.startsWith(join(getHomeDir(), ".wld", "projects")));
-        deepEqual(await readControllerRecord(root, { planId: "one", planName: "demo" }), controller);
+        deepEqual(await inspectPlanFixtureController(root, { planId: "one", planName: "demo" }), controller);
         await rejects(() => lstat(join(base, "internal")), { code: "ENOENT" });
         equal(await readFile(join(root, ".wld", "settings.json"), "utf8"), '{ "exact": true }\n');
         const identity = inspectProjectIdentity(root);
@@ -55,8 +56,8 @@ test("ordinary admission preserves controller decisions and all hidden legacy by
             ),
             "preserve me\0",
         );
-        await writeControllerState(root, { planId: "one", planName: "demo" }, { validationCiAttempts: 2 });
-        equal((await readControllerRecord(root, { planId: "one", planName: "demo" }))?.revision, 5);
+        await seedPlanController(root, { planId: "one", planName: "demo" }, { validationCiAttempts: 2 });
+        equal((await inspectPlanFixtureController(root, { planId: "one", planName: "demo" }))?.revision, 5);
         deepEqual(await enterProjectRuntime(root), layout);
         await rejects(() => lstat(join(base, "internal")), { code: "ENOENT" });
     } finally {
@@ -219,7 +220,7 @@ test("ordinary admission finishes already-applied old journal without recreating
             }),
         );
         const layout = await enterProjectRuntime(root);
-        equal((await readControllerRecord(root, { planId: "one", planName: "demo" }))?.revision, 1);
+        equal((await inspectPlanFixtureController(root, { planId: "one", planName: "demo" }))?.revision, 1);
         await rejects(() => lstat(join(base, "internal")), { code: "ENOENT" });
         await rejects(() => lstat(source), { code: "ENOENT" });
         equal((await enterProjectRuntime(root)).primary.controllerPlansDir, layout.primary.controllerPlansDir);
@@ -315,8 +316,8 @@ test("explicitly linked clones share Project identity and isolate execution and 
         ok(first.primary.worktreeRegistryPath !== second.primary.worktreeRegistryPath);
         ok(first.primary.controllerPlansDir !== second.primary.controllerPlansDir);
         equal(first.primary.projectSecretStorePath, second.primary.projectSecretStorePath);
-        await writeControllerState(one, { planId: "one", planName: "demo" }, { validationCiAttempts: 3 });
-        equal(await readControllerRecord(two, { planId: "one", planName: "demo" }), null);
+        await seedPlanController(one, { planId: "one", planName: "demo" }, { validationCiAttempts: 3 });
+        equal(await inspectPlanFixtureController(two, { planId: "one", planName: "demo" }), null);
     } finally {
         for (const root of [one, two, remote]) await rm(root, { recursive: true, force: true });
     }
@@ -360,8 +361,8 @@ test("returning legacy controller input cannot revert adopted home decisions", a
             }),
         );
         await enterProjectRuntime(root);
-        await writeControllerState(root, { planId: "one", planName: "demo" }, { validationCiAttempts: 2 });
-        const adopted = await readControllerRecord(root, { planId: "one", planName: "demo" });
+        await seedPlanController(root, { planId: "one", planName: "demo" }, { validationCiAttempts: 2 });
+        const adopted = await inspectPlanFixtureController(root, { planId: "one", planName: "demo" });
         await put(
             source,
             JSON.stringify({
@@ -373,7 +374,7 @@ test("returning legacy controller input cannot revert adopted home decisions", a
             }),
         );
         await enterProjectRuntime(root);
-        deepEqual(await readControllerRecord(root, { planId: "one", planName: "demo" }), adopted);
+        deepEqual(await inspectPlanFixtureController(root, { planId: "one", planName: "demo" }), adopted);
         await rejects(() => lstat(join(getRunWieldRuntimeDir(root), "internal")), { code: "ENOENT" });
     } finally {
         await rm(root, { recursive: true, force: true });
@@ -384,11 +385,11 @@ test("primary entry makes a newly attached checkout readable without another adm
     const root = await realpath(await fixture.checkout());
     const linked = await realpath(await mkdtemp(join(tmpdir(), "runtime-new-linked-")));
     try {
-        await writeControllerState(root, { planId: "new-linked", planName: "demo" }, { validationCiAttempts: 2 });
+        await seedPlanController(root, { planId: "new-linked", planName: "demo" }, { validationCiAttempts: 2 });
         await git(root, ["worktree", "add", "-b", "new-linked", linked]);
         await enterProjectRuntime(root);
         equal((await inspectProjectRuntimeReadAccess(linked)).kind, "ready");
-        equal((await readControllerRecord(linked, { planId: "new-linked", planName: "demo" }))?.revision, 1);
+        equal((await inspectPlanFixtureController(linked, { planId: "new-linked", planName: "demo" }))?.revision, 1);
     } finally {
         await rm(linked, { recursive: true, force: true });
         await rm(root, { recursive: true, force: true });

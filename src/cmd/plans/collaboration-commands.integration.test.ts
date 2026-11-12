@@ -1,3 +1,5 @@
+import { seedPlan as seedStoredPlan } from "../../shared/testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
 import { getCwd } from "../../constants.js";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
@@ -15,15 +17,11 @@ import process from "node:process";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
-import {
-    hashPlanBody,
-    injectFrontMatter,
-    loadPlan,
-    savePlan,
-    updatePlanCollaborationMetadata,
-} from "../../plan-store.js";
+import { hashPlanBody, injectFrontMatter } from "../../plan-format.ts";
+import { loadPlan, updatePlanCollaborationMetadata } from "../../plan-store/index.ts";
+
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
-import { PlanningNotStartedError } from "../../shared/workflow/plan-location.ts";
+import { PlanningNotStartedError } from "../../plan-store/index.ts";
 import { listEntries } from "../../shared/worktree-registry.js";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
 import { generateBearerCapability, hashCapability, MAINTAINER_SCOPE } from "../../shared/collaboration/capabilities.ts";
@@ -68,7 +66,7 @@ async function captureConsole(run: () => Promise<void>): Promise<CapturedConsole
 }
 
 async function seedPlan(projectRoot: string, name = "demo-plan"): Promise<void> {
-    await savePlan(projectRoot, name, "# Demo Plan\n\nInitial fixture body.\n", {
+    await seedStoredPlan(projectRoot, name, "# Demo Plan\n\nInitial fixture body.\n", {
         classification: "PLANNED_CHANGE",
         complexity: "LOW",
         status: "approved",
@@ -251,64 +249,24 @@ test("named pull and push use a linked checkout's migrated 0.10 capability", asy
             try {
                 delete process.env["WLD_TEST_SANDBOX_HOME"];
                 await withCollaborationServer(async ({ adapter, serverUrl }) => {
-                    const planName = "migrated-capability";
-                    const planId = crypto.randomUUID();
-                    const body = "# Migrated capability\n\nContent encrypted before runtime migration.\n";
-                    const contentKey = await generateContentKeyString();
-                    const maintainerCapability = generateBearerCapability();
-                    await savePlan(projectRoot, planName, body, {
-                        planId,
-                        classification: "PLANNED_CHANGE",
-                        complexity: "LOW",
-                        status: "approved",
-                        summary: "Migrated capability",
-                    });
-                    await createLinkedCheckout(projectRoot, alternateRoot);
-                    const existingPlan = await loadPlan(alternateRoot, planName);
-                    assert(existingPlan);
-                    const storedBody = existingPlan.body;
-                    const payloadCiphertext = await encryptJsonPayload(
-                        {
+                    await withRetainedPlanFixture(projectRoot, async () => {
+                        const planName = "migrated-capability";
+                        const planId = crypto.randomUUID();
+                        const body = "# Migrated capability\n\nContent encrypted before runtime migration.\n";
+                        const contentKey = await generateContentKeyString();
+                        const maintainerCapability = generateBearerCapability();
+                        await seedStoredPlan(projectRoot, planName, body, {
                             planId,
-                            title: "Migrated capability",
-                            metadata: {
-                                classification: "PLANNED_CHANGE",
-                                complexity: "LOW",
-                                status: "approved",
-                                summary: "Migrated capability",
-                            },
-                            body: storedBody,
-                        },
-                        await importContentKey(contentKey),
-                    );
-                    const created = adapter.createSharedSpace({
-                        planId,
-                        payloadCiphertext,
-                        capabilities: [
-                            {
-                                scope: MAINTAINER_SCOPE,
-                                capabilityHash: await hashCapability(maintainerCapability),
-                            },
-                        ],
-                    });
-                    await updatePlanCollaborationMetadata(
-                        alternateRoot,
-                        planName,
-                        {
-                            collaborationState: "remote_canonical",
-                            collaborationServerUrl: serverUrl,
-                            collaborationSpaceId: created.spaceId,
-                            collaborationRevision: 1,
-                            collaborationBodyHash: await hashPlanBody(storedBody),
-                        },
-                        COLLABORATION_LOCK_BYPASS.share,
-                        { body: storedBody },
-                    );
-                    assertEquals((await loadPlan(alternateRoot, planName))?.body, storedBody);
-                    const remoteBody = "# Migrated capability\n\nRemote content encrypted before runtime migration.\n";
-                    adapter.appendRevision(
-                        created.spaceId,
-                        await encryptJsonPayload(
+                            classification: "PLANNED_CHANGE",
+                            complexity: "LOW",
+                            status: "approved",
+                            summary: "Migrated capability",
+                        });
+                        await createLinkedCheckout(projectRoot, alternateRoot);
+                        const existingPlan = await loadPlan(alternateRoot, planName);
+                        assert(existingPlan);
+                        const storedBody = existingPlan.body;
+                        const payloadCiphertext = await encryptJsonPayload(
                             {
                                 planId,
                                 title: "Migrated capability",
@@ -318,99 +276,147 @@ test("named pull and push use a linked checkout's migrated 0.10 capability", asy
                                     status: "approved",
                                     summary: "Migrated capability",
                                 },
-                                body: remoteBody,
+                                body: storedBody,
                             },
                             await importContentKey(contentKey),
-                        ),
-                        2,
-                    );
-                    await fsCp(
-                        join(resolveProjectRuntimeLayout(projectRoot).primary.internalRoot, "controller"),
-                        join(projectRoot, ".wld", "controller"),
-                        { recursive: true },
-                    );
-                    await fsRm(join(projectRoot, ".wld", "internal"), { recursive: true, force: true });
-                    await fsRm(join(alternateRoot, ".wld", "internal"), { recursive: true }).catch(() => {});
-
-                    const recordKey = `${planId}:${created.spaceId}`;
-                    const legacyStorePath = join(alternateRoot, ".wld", "collaboration-secrets.json");
-                    const legacyStoreBytes = `${JSON.stringify(
-                        {
-                            schemaVersion: 1,
-                            records: {
-                                [recordKey]: {
+                        );
+                        const created = adapter.createSharedSpace({
+                            planId,
+                            payloadCiphertext,
+                            capabilities: [
+                                {
+                                    scope: MAINTAINER_SCOPE,
+                                    capabilityHash: await hashCapability(maintainerCapability),
+                                },
+                            ],
+                        });
+                        await updatePlanCollaborationMetadata(
+                            alternateRoot,
+                            planName,
+                            {
+                                collaborationState: "remote_canonical",
+                                collaborationServerUrl: serverUrl,
+                                collaborationSpaceId: created.spaceId,
+                                collaborationRevision: 1,
+                                collaborationBodyHash: await hashPlanBody(storedBody),
+                            },
+                            COLLABORATION_LOCK_BYPASS.share,
+                            { body: storedBody },
+                        );
+                        assertEquals((await loadPlan(alternateRoot, planName))?.body, storedBody);
+                        const remoteBody =
+                            "# Migrated capability\n\nRemote content encrypted before runtime migration.\n";
+                        adapter.appendRevision(
+                            created.spaceId,
+                            await encryptJsonPayload(
+                                {
                                     planId,
-                                    spaceId: created.spaceId,
-                                    contentKey,
-                                    maintainerCapability,
-                                    updatedAt: "2026-01-01T00:00:00.000Z",
+                                    title: "Migrated capability",
+                                    metadata: {
+                                        classification: "PLANNED_CHANGE",
+                                        complexity: "LOW",
+                                        status: "approved",
+                                        summary: "Migrated capability",
+                                    },
+                                    body: remoteBody,
+                                },
+                                await importContentKey(contentKey),
+                            ),
+                            2,
+                        );
+                        await fsCp(
+                            join(resolveProjectRuntimeLayout(projectRoot).primary.internalRoot, "controller"),
+                            join(projectRoot, ".wld", "controller"),
+                            { recursive: true },
+                        );
+                        await fsRm(join(projectRoot, ".wld", "internal"), { recursive: true, force: true });
+                        await fsRm(join(alternateRoot, ".wld", "internal"), { recursive: true }).catch(() => {});
+
+                        const recordKey = `${planId}:${created.spaceId}`;
+                        const legacyStorePath = join(alternateRoot, ".wld", "collaboration-secrets.json");
+                        const legacyStoreBytes = `${JSON.stringify(
+                            {
+                                schemaVersion: 1,
+                                records: {
+                                    [recordKey]: {
+                                        planId,
+                                        spaceId: created.spaceId,
+                                        contentKey,
+                                        maintainerCapability,
+                                        updatedAt: "2026-01-01T00:00:00.000Z",
+                                    },
                                 },
                             },
-                        },
-                        null,
-                        2,
-                    )}\n`;
-                    await fsMkdir(dirname(legacyStorePath), { recursive: true });
-                    await fsWriteFile(legacyStorePath, legacyStoreBytes, { mode: 0o600 });
-                    await fsChmod(legacyStorePath, 0o600).catch(() => {});
-                    assertEquals(Object.keys((await readSecretStore(getGlobalSecretStoreLocation())).records), []);
+                            null,
+                            2,
+                        )}\n`;
+                        await fsMkdir(dirname(legacyStorePath), { recursive: true });
+                        await fsWriteFile(legacyStorePath, legacyStoreBytes, { mode: 0o600 });
+                        await fsChmod(legacyStorePath, 0o600).catch(() => {});
+                        assertEquals(Object.keys((await readSecretStore(getGlobalSecretStoreLocation())).records), []);
 
-                    process.chdir(alternateRoot);
-                    setModelResponse("The migrated collaboration content remains valid.");
-                    const runtime = createSessionRuntime();
-                    try {
-                        const sessionId = await runtime.createPromptReadySession({
-                            cwd: alternateRoot,
-                            agentName: "router",
-                        });
-                        const migratedStore = await readSecretStore(await getProjectSecretStoreLocation(alternateRoot));
-                        assertEquals(Object.keys(migratedStore.records), [recordKey]);
-                        assertEquals((await loadPlan(alternateRoot, planName))?.body, storedBody);
-                        const pulledOutput = await captureConsole(() =>
-                            runPlansPullCommand([planName, "--project-secrets"], {
-                                sessionRuntime: runtime,
-                                sessionId,
-                            }),
+                        process.chdir(alternateRoot);
+                        setModelResponse("The migrated collaboration content remains valid.");
+                        const runtime = createSessionRuntime();
+                        try {
+                            const sessionId = await runtime.createPromptReadySession({
+                                cwd: alternateRoot,
+                                agentName: "router",
+                            });
+                            const migratedStore = await readSecretStore(
+                                await getProjectSecretStoreLocation(alternateRoot),
+                            );
+                            assertEquals(Object.keys(migratedStore.records), [recordKey]);
+                            assertEquals((await loadPlan(alternateRoot, planName))?.body, storedBody);
+                            const pulledOutput = await captureConsole(() =>
+                                runPlansPullCommand([planName, "--project-secrets"], {
+                                    sessionRuntime: runtime,
+                                    sessionId,
+                                }),
+                            );
+                            assertStringIncludes(pulledOutput.logs.join("\n"), "revision 2");
+                        } finally {
+                            runtime.closeAllSessions();
+                        }
+                        assertEquals((await loadPlan(alternateRoot, planName))?.body, remoteBody);
+
+                        const primaryStorePath =
+                            resolveProjectRuntimeLayout(alternateRoot).primary.projectSecretStorePath;
+                        assertEquals(await fsReadFile(primaryStorePath, "utf8"), legacyStoreBytes);
+                        if (process.platform !== "win32") {
+                            assertEquals(((await fsStat(primaryStorePath)).mode ?? 0) & 0o777, 0o600);
+                        }
+                        await assertRejects(() => fsStat(legacyStorePath));
+                        assertEquals(Object.keys((await readSecretStore(getGlobalSecretStoreLocation())).records), []);
+
+                        const pushedBody = "# Migrated capability\n\nChanged after migration.\n";
+                        const pulledPlan = await loadPlan(alternateRoot, planName);
+                        assert(pulledPlan);
+                        await fsWriteFile(pulledPlan.path, injectFrontMatter(pushedBody, pulledPlan.attrs));
+                        const pushedOutput = await captureConsole(() =>
+                            runPlansPushCommand([planName, "--project-secrets"]),
                         );
-                        assertStringIncludes(pulledOutput.logs.join("\n"), "revision 2");
-                    } finally {
-                        runtime.closeAllSessions();
-                    }
-                    assertEquals((await loadPlan(alternateRoot, planName))?.body, remoteBody);
+                        assertStringIncludes(pushedOutput.logs.join("\n"), "revision 3");
+                        assertEquals(adapter.getSharedSpace(created.spaceId).latestRevision, 3);
+                        assertEquals(
+                            adapter.database.handle
+                                .prepare(
+                                    "SELECT capability_hash FROM space_capabilities WHERE space_id = ? AND scope = ?",
+                                )
+                                .get(created.spaceId, MAINTAINER_SCOPE)?.capability_hash,
+                            await hashCapability(maintainerCapability),
+                        );
+                        assertEquals(await fsReadFile(primaryStorePath, "utf8"), legacyStoreBytes);
 
-                    const primaryStorePath = resolveProjectRuntimeLayout(alternateRoot).primary.projectSecretStorePath;
-                    assertEquals(await fsReadFile(primaryStorePath, "utf8"), legacyStoreBytes);
-                    if (process.platform !== "win32") {
-                        assertEquals(((await fsStat(primaryStorePath)).mode ?? 0) & 0o777, 0o600);
-                    }
-                    await assertRejects(() => fsStat(legacyStorePath));
-                    assertEquals(Object.keys((await readSecretStore(getGlobalSecretStoreLocation())).records), []);
-
-                    const pushedBody = "# Migrated capability\n\nChanged after migration.\n";
-                    const pulledPlan = await loadPlan(alternateRoot, planName);
-                    assert(pulledPlan);
-                    await fsWriteFile(pulledPlan.path, injectFrontMatter(pushedBody, pulledPlan.attrs));
-                    const pushedOutput = await captureConsole(() =>
-                        runPlansPushCommand([planName, "--project-secrets"]),
-                    );
-                    assertStringIncludes(pushedOutput.logs.join("\n"), "revision 3");
-                    assertEquals(adapter.getSharedSpace(created.spaceId).latestRevision, 3);
-                    assertEquals(
-                        adapter.database.handle
-                            .prepare("SELECT capability_hash FROM space_capabilities WHERE space_id = ? AND scope = ?")
-                            .get(created.spaceId, MAINTAINER_SCOPE)?.capability_hash,
-                        await hashCapability(maintainerCapability),
-                    );
-                    assertEquals(await fsReadFile(primaryStorePath, "utf8"), legacyStoreBytes);
-
-                    await fsWriteFile(primaryStorePath, `${JSON.stringify({ schemaVersion: 1, records: {} })}\n`, {
-                        mode: 0o600,
+                        await fsWriteFile(primaryStorePath, `${JSON.stringify({ schemaVersion: 1, records: {} })}\n`, {
+                            mode: 0o600,
+                        });
+                        await assertRejects(
+                            () => captureConsole(() => runPlansPullCommand([planName, "--project-secrets"])),
+                            Error,
+                            "maintainer secrets are missing",
+                        );
                     });
-                    await assertRejects(
-                        () => captureConsole(() => runPlansPullCommand([planName, "--project-secrets"])),
-                        Error,
-                        "maintainer secrets are missing",
-                    );
                 });
             } finally {
                 if (originalSandboxHome === undefined) delete process.env["WLD_TEST_SANDBOX_HOME"];
@@ -489,7 +495,7 @@ test("project-local collaboration commands share one primary store across linked
                     assert(primaryPlan);
                     await fsWriteFile(primaryPlan.path, sharedPlan.markdown);
                     const pushedBody = "# Demo Plan\n\nEdited in primary checkout.\n";
-                    await fsWriteFile(primaryPlan.path, injectFrontMatter(pushedBody, sharedPlan.attrs));
+                    await fsWriteFile(primaryPlan.path, pushedBody);
                     const pushed = await pushPlanRevision({
                         target: "project-secret-plan",
                         cwd: projectRoot,
@@ -582,7 +588,7 @@ test("project maintainer URL import writes only the fresh primary store and keep
 
                 const importedPlan = await loadPlan(freshLinked, "imported-url-plan");
                 assert(importedPlan);
-                assertEquals(importedPlan.path?.startsWith(freshLinked), true);
+                assertEquals((await loadPlan(freshPrimary, "imported-url-plan"))?.path, importedPlan.path);
                 assertEquals(pulled.secretImported, true);
                 const freshStorePath = resolveProjectRuntimeLayout(freshPrimary).primary.projectSecretStorePath;
                 assertEquals(getProjectSecretStorePath(freshLinked), freshStorePath);
@@ -667,7 +673,7 @@ test("real collaboration guards reject unsafe operations without replacing their
             );
 
             await unsharePlan({ target: "guarded", cwd: projectRoot, force: true });
-            await savePlan(projectRoot, "archived/old", "# Archived fixture", { status: "verified" });
+            await seedStoredPlan(projectRoot, "archived/old", "# Archived fixture", { status: "verified" });
             await assertRejects(
                 () => sharePlanForReview({ target: "archived/old", cwd: projectRoot, planServer: serverUrl }),
                 Error,
@@ -782,99 +788,100 @@ test("unstarted shared child refuses push and unshare before changing remote rev
     await withRuntimeCommandFixture("unstarted-shared-child-", async () => {
         await withCollaborationServer(async ({ serverUrl }) => {
             const repo = await unstartedSharedFixture.checkout();
-            await seedPlan(repo, "epic/child");
-            const shared = await sharePlanForReview({ cwd: repo, target: "epic/child", planServer: serverUrl });
-            const plan = await loadPlan(repo, "epic/child");
-            assert(plan);
-            await savePlan(repo, "epic", "# Epic\n", {
-                planId: "epic-id",
-                classification: "PROJECT",
-                status: "ready_for_work",
-                targetBranch: "epic-target",
-            });
-            await fsWriteFile(
-                plan.path,
-                injectFrontMatter(plan.body, {
-                    ...plan.attrs,
-                    parentPlan: "epic",
+            await withRetainedPlanFixture(repo, async () => {
+                await seedPlan(repo, "epic/child");
+                const shared = await sharePlanForReview({ cwd: repo, target: "epic/child", planServer: serverUrl });
+                const plan = await loadPlan(repo, "epic/child");
+                assert(plan);
+                await seedStoredPlan(repo, "epic", "# Epic\n", {
+                    planId: "epic-id",
+                    classification: "PROJECT",
+                    status: "ready_for_work",
                     targetBranch: "epic-target",
-                }),
-            );
-            await git(repo, ["add", "."]);
-            await git(repo, ["commit", "-m", "shared child on Epic branch"]);
-            await git(repo, ["branch", "epic-target"]);
-            await fsWriteFile(
-                plan.path,
-                (await fsReadFile(plan.path, "utf8")).replace("Initial fixture body.", "Updated fixture body."),
-            );
-            const before = await fsReadFile(plan.path, "utf8");
-            const secrets = await readSecretStore(getGlobalSecretStoreLocation());
-            const maintainer = parseCollaborationUrl(shared.maintainerUrl);
-            const client = createCollaborationClient({
-                serverUrl,
-                bearerCapability: maintainer.bearerCapability,
-                fetch: SYSTEM_COLLABORATION_FETCH,
+                });
+                await fsWriteFile(
+                    plan.path,
+                    injectFrontMatter(plan.body, {
+                        ...plan.attrs,
+                        parentPlan: "epic",
+                        targetBranch: "epic-target",
+                    }),
+                );
+                await git(repo, ["add", "."]);
+                await git(repo, ["commit", "-m", "shared child on Epic branch"]);
+                await git(repo, ["branch", "epic-target"]);
+                await fsWriteFile(
+                    plan.path,
+                    (await fsReadFile(plan.path, "utf8")).replace("Initial fixture body.", "Updated fixture body."),
+                );
+                const before = await fsReadFile(plan.path, "utf8");
+                const secrets = await readSecretStore(getGlobalSecretStoreLocation());
+                const maintainer = parseCollaborationUrl(shared.maintainerUrl);
+                const client = createCollaborationClient({
+                    serverUrl,
+                    bearerCapability: maintainer.bearerCapability,
+                    fetch: SYSTEM_COLLABORATION_FETCH,
+                });
+                const remote = await client.getSharedSpace(shared.spaceId);
+                await assertRejects(
+                    () => pushPlanRevision({ cwd: repo, target: "epic/child" }),
+                    PlanningNotStartedError,
+                );
+                await assertRejects(
+                    () => unsharePlan({ cwd: repo, target: "epic/child", force: true }),
+                    PlanningNotStartedError,
+                );
+                assertEquals(await client.getSharedSpace(shared.spaceId), remote);
+                assertEquals(await readSecretStore(getGlobalSecretStoreLocation()), secrets);
+                assertEquals(await fsReadFile(plan.path, "utf8"), before);
+                assertEquals(await listEntries(repo), []);
             });
-            const remote = await client.getSharedSpace(shared.spaceId);
-            await assertRejects(() => pushPlanRevision({ cwd: repo, target: "epic/child" }), PlanningNotStartedError);
-            await assertRejects(
-                () => unsharePlan({ cwd: repo, target: "epic/child", force: true }),
-                PlanningNotStartedError,
-            );
-            assertEquals(await client.getSharedSpace(shared.spaceId), remote);
-            assertEquals(await readSecretStore(getGlobalSecretStoreLocation()), secrets);
-            assertEquals(await fsReadFile(plan.path, "utf8"), before);
-            assertEquals(await listEntries(repo), []);
         });
     });
 });
 
 test("admitted package sharing keeps remote revisions and refuses independent local edits", async () => {
     const { packageFixture, create, read } = await import("../../shared/testing/plan-package-fixture.ts");
-    const { withPackageWorkflow } = await import("../../shared/workflow/package-workflow.ts");
-    const { readPlanDocuments, savePlanDocument } = await import("../../shared/workflow/plan-documents.ts");
+    const { withPlanAccess, selectPlanAccess } = await import("../../plan-store/index.ts");
+    const { readPlanDocuments, savePlanDocument } = await import("../../plan-store/index.ts");
     const f = await packageFixture();
     try {
         await create(f.identity, { controller: { validationCiAttempts: 3 } });
-        await withPackageWorkflow(
-            f.root,
-            { identity: f.identity, planId: "plan-one", expectedRevision: 1 },
-            async () => {
-                await withCollaborationServer(async ({ serverUrl }) => {
-                    const shared = await sharePlanForReview({ target: "one", cwd: f.root, planServer: serverUrl });
-                    assertEquals(shared.revision, 1);
-                    const document = await readPlanDocuments("plan-one");
-                    assertEquals(document.writable, false);
-                    await assertRejects(() =>
-                        savePlanDocument("plan-one", "context.md", document.revision, "unapproved local write"),
-                    );
-                    await fsWriteFile(join((await read(f.identity)).path, "context.md"), "# Maintainer revision\n");
-                    const pushed = await pushPlanRevision({ target: "one", cwd: f.root });
-                    assertEquals(pushed.revision, 2);
-                    const pulled = await pullPlanForRevision({ target: "one", cwd: f.root });
-                    assertEquals(pulled.revision, 2);
-                    assertEquals((await read(f.identity)).metadata.controller.validationCiAttempts, 3);
-                    const maintainer = parseCollaborationUrl(shared.maintainerUrl);
-                    const client = createCollaborationClient({
-                        serverUrl,
-                        bearerCapability: maintainer.bearerCapability,
-                        fetch: SYSTEM_COLLABORATION_FETCH,
-                    });
-                    await client.appendRevision(shared.spaceId, {
-                        payloadCiphertext: "opaque-concurrent-revision",
-                        expectedRevision: 3,
-                    });
-                    const before = await read(f.identity);
-                    await assertRejects(
-                        () => pushPlanRevision({ target: "one", cwd: f.root }),
-                        Error,
-                        "Run `wld plans pull` before pushing",
-                    );
-                    assertEquals((await read(f.identity)).metadata, before.metadata);
-                    assertEquals(await fsReadFile(join(before.path, "context.md"), "utf8"), "# Maintainer revision\n");
+        await withPlanAccess(f.root, (await selectPlanAccess(f.root, "plan-one"))!, async () => {
+            await withCollaborationServer(async ({ serverUrl }) => {
+                const shared = await sharePlanForReview({ target: "one", cwd: f.root, planServer: serverUrl });
+                assertEquals(shared.revision, 1);
+                const document = await readPlanDocuments("plan-one");
+                assertEquals(document.writable, false);
+                await assertRejects(() =>
+                    savePlanDocument("plan-one", "context.md", document.revision, "unapproved local write"),
+                );
+                await fsWriteFile(join((await read(f.identity)).path, "context.md"), "# Maintainer revision\n");
+                const pushed = await pushPlanRevision({ target: "one", cwd: f.root });
+                assertEquals(pushed.revision, 2);
+                const pulled = await pullPlanForRevision({ target: "one", cwd: f.root });
+                assertEquals(pulled.revision, 2);
+                assertEquals((await read(f.identity)).metadata.controller.validationCiAttempts, 3);
+                const maintainer = parseCollaborationUrl(shared.maintainerUrl);
+                const client = createCollaborationClient({
+                    serverUrl,
+                    bearerCapability: maintainer.bearerCapability,
+                    fetch: SYSTEM_COLLABORATION_FETCH,
                 });
-            },
-        );
+                await client.appendRevision(shared.spaceId, {
+                    payloadCiphertext: "opaque-concurrent-revision",
+                    expectedRevision: 3,
+                });
+                const before = await read(f.identity);
+                await assertRejects(
+                    () => pushPlanRevision({ target: "one", cwd: f.root }),
+                    Error,
+                    "Run `wld plans pull` before pushing",
+                );
+                assertEquals((await read(f.identity)).metadata, before.metadata);
+                assertEquals(await fsReadFile(join(before.path, "context.md"), "utf8"), "# Maintainer revision\n");
+            });
+        });
     } finally {
         await f.cleanup();
     }

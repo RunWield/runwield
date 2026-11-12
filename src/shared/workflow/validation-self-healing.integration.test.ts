@@ -1,3 +1,5 @@
+import { seedPlanState, seedPlan } from "../testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import {
     mkdtemp as fsMkdtemp,
     readFile as fsReadFile,
@@ -9,13 +11,10 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import {
-    injectFrontMatter,
-    loadPlan,
-    parsePlanFrontMatter,
-    savePlan,
-    updatePlanFrontMatter,
-} from "../../plan-store.js";
+
+import { injectFrontMatter, parsePlanFrontMatter } from "../../plan-format.ts";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { createGitPort } from "../git-port.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { HostedSession } from "../session/hosted-session.js";
@@ -61,86 +60,88 @@ const fixture = defineGitFixture(async (repoPath) => {
 
 async function makeReportedMismatchFixture() {
     const projectRoot = await fixture.checkout({ prefix: "runwield-validation-self-heal-" });
-    await savePlan(projectRoot, "demo", "# Demo\n\nKeep the approved body.\n", {
-        planId: "plan-demo",
-        classification: "PLANNED_CHANGE",
-        workKind: "REFACTOR",
-        status: "ready_for_work",
-        targetBranch: "main",
-        summary: "Check stale Plan data",
-        affectedPaths: ["README.md"],
-        executionAgent: "engineer",
-        collaborationRecommendation: "autonomous",
-        executionMode: "worktree",
-    });
-    await git(projectRoot, ["add", "docs/plans/demo.md"]);
-    await git(projectRoot, ["commit", "-m", "approve demo plan"]);
-
-    const baseCommit = await git(projectRoot, ["rev-parse", "HEAD"]);
-    const baselineTree = await git(projectRoot, ["rev-parse", "HEAD^{tree}"]);
-    const worktreeParent = await fsMkdtemp(join(tmpdir(), "runwield-validation-self-heal-worktrees-"));
-    const executionCwd = join(worktreeParent, "demo");
-    const branch = "runwield/worktree/demo-wt-demo";
-    await git(projectRoot, ["worktree", "add", "-b", branch, executionCwd, "HEAD"]);
-    await fsWriteFile(join(executionCwd, "README.md"), "# Validation fixture\n\nImplemented change.\n");
-
-    // Reproduce stale RunWield-owned identity while keeping the execution Plan's
-    // user-owned definition and lifecycle authoritative.
-    const executionPath = join(executionCwd, "docs", "plans", "demo.md");
-    const staleExecution = injectFrontMatter("# Demo\n\nKeep the approved body.\n", {
-        planId: "plan-stale-copy",
-        classification: "PLANNED_CHANGE",
-        workKind: "REFACTOR",
-        status: "implemented",
-        targetBranch: "main",
-        summary: "Check stale Plan data",
-        affectedPaths: ["README.md"],
-        executionAgent: "engineer",
-        collaborationRecommendation: "autonomous",
-        executionMode: "worktree",
-    });
-    await fsWriteFile(executionPath, staleExecution);
-    const staleAttrs = parsePlanFrontMatter(await fsReadFile(executionPath, "utf8")).attrs;
-    assertEquals(staleAttrs.planId, "plan-stale-copy");
-    assertEquals(staleAttrs.collaborationRecommendation, "autonomous");
-
-    const primary = await loadPlan(projectRoot, "demo");
-    assertExists(primary);
-    await savePlan(
-        projectRoot,
-        "demo",
-        primary.body,
-        {
-            ...primary.attrs,
-            status: "implemented",
-            implementedAt: "2026-08-13T00:00:00.000Z",
+    return await withRetainedPlanFixture(projectRoot, async () => {
+        await seedPlan(projectRoot, "demo", "# Demo\n\nKeep the approved body.\n", {
+            planId: "plan-demo",
+            classification: "PLANNED_CHANGE",
+            workKind: "REFACTOR",
+            status: "ready_for_work",
+            targetBranch: "main",
+            summary: "Check stale Plan data",
+            affectedPaths: ["README.md"],
+            executionAgent: "engineer",
+            collaborationRecommendation: "autonomous",
             executionMode: "worktree",
-            executionBaselineTree: baselineTree,
-            worktreeId: "wt-demo",
-            worktreePath: executionCwd,
-            worktreeBranch: branch,
-            worktreeBaseBranch: "main",
-            worktreeStatus: "completed",
-        },
-        { expectedRevision: primary.revision },
-    );
-    await addEntry(projectRoot, {
-        id: "wt-demo",
-        planName: "demo",
-        planId: "plan-demo",
-        baseBranch: "main",
-        baseRef: "refs/heads/main",
-        baseCommit,
-        baseTree: baselineTree,
-        executionBaselineTree: baselineTree,
-        branch,
-        path: executionCwd,
-        status: "completed",
-        createdAt: "2026-08-13T00:00:00.000Z",
-        updatedAt: "2026-08-13T00:00:00.000Z",
-    });
+        });
+        await git(projectRoot, ["add", "docs/plans/demo.md"]);
+        await git(projectRoot, ["commit", "-m", "approve demo plan"]);
 
-    return { projectRoot, executionCwd, executionPath, worktreeParent, branch, baseCommit, baselineTree };
+        const baseCommit = await git(projectRoot, ["rev-parse", "HEAD"]);
+        const baselineTree = await git(projectRoot, ["rev-parse", "HEAD^{tree}"]);
+        const worktreeParent = await fsMkdtemp(join(tmpdir(), "runwield-validation-self-heal-worktrees-"));
+        const executionCwd = join(worktreeParent, "demo");
+        const branch = "runwield/worktree/demo-wt-demo";
+        await git(projectRoot, ["worktree", "add", "-b", branch, executionCwd, "HEAD"]);
+        await fsWriteFile(join(executionCwd, "README.md"), "# Validation fixture\n\nImplemented change.\n");
+
+        // Reproduce stale RunWield-owned identity while keeping the execution Plan's
+        // user-owned definition and lifecycle authoritative.
+        const executionPath = join(executionCwd, "docs", "plans", "demo.md");
+        const staleExecution = injectFrontMatter("# Demo\n\nKeep the approved body.\n", {
+            planId: "plan-stale-copy",
+            classification: "PLANNED_CHANGE",
+            workKind: "REFACTOR",
+            status: "implemented",
+            targetBranch: "main",
+            summary: "Check stale Plan data",
+            affectedPaths: ["README.md"],
+            executionAgent: "engineer",
+            collaborationRecommendation: "autonomous",
+            executionMode: "worktree",
+        });
+        await fsWriteFile(executionPath, staleExecution);
+        const staleAttrs = parsePlanFrontMatter(await fsReadFile(executionPath, "utf8")).attrs;
+        assertEquals(staleAttrs.planId, "plan-stale-copy");
+        assertEquals(staleAttrs.collaborationRecommendation, "autonomous");
+
+        const primary = await loadPlan(projectRoot, "demo");
+        assertExists(primary);
+        await seedPlan(
+            projectRoot,
+            "demo",
+            primary.body,
+            {
+                ...primary.attrs,
+                status: "implemented",
+                implementedAt: "2026-08-13T00:00:00.000Z",
+                executionMode: "worktree",
+                executionBaselineTree: baselineTree,
+                worktreeId: "wt-demo",
+                worktreePath: executionCwd,
+                worktreeBranch: branch,
+                worktreeBaseBranch: "main",
+                worktreeStatus: "completed",
+            },
+            { expectedRevision: primary.revision },
+        );
+        await addEntry(projectRoot, {
+            id: "wt-demo",
+            planName: "demo",
+            planId: "plan-demo",
+            baseBranch: "main",
+            baseRef: "refs/heads/main",
+            baseCommit,
+            baseTree: baselineTree,
+            executionBaselineTree: baselineTree,
+            branch,
+            path: executionCwd,
+            status: "completed",
+            createdAt: "2026-08-13T00:00:00.000Z",
+            updatedAt: "2026-08-13T00:00:00.000Z",
+        });
+
+        return { projectRoot, executionCwd, executionPath, worktreeParent, branch, baseCommit, baselineTree };
+    });
 }
 
 async function removeFixture(fixturePaths: { projectRoot: string; worktreeParent: string }) {
@@ -157,88 +158,90 @@ async function removeFixture(fixturePaths: { projectRoot: string; worktreeParent
 test("stale RunWield state self-heals and validation continues", async () => {
     const testFixture = await makeReportedMismatchFixture();
     try {
-        let ciRuns = 0;
-        const recorder = makeUi();
-        const hostedSession = attachRecorder(
-            new HostedSession({ id: "validation-self-healing", cwd: testFixture.projectRoot }),
-            recorder,
-        );
-        hostedSession.setActiveExecutionWorkflow({
-            planName: "demo",
-            triageMeta: {
-                planId: "stale-session-id",
-                classification: "PLANNED_CHANGE",
-                collaborationRecommendation: "pair",
-            },
-            executionAgent: "engineer",
-            executionStarted: true,
-            executionMode: "worktree",
-            executionCwd: join(testFixture.worktreeParent, "wrong-path"),
-            worktreeId: "stale-worktree-id",
-            worktreeBranch: "stale-branch",
-            worktreeBaseBranch: "stale-target",
-            baselineTree: "stale-tree",
-        });
-
-        const result = await continueWorkflowValidation({
-            trigger: "load_plan",
-            hostedSession,
-            planName: "demo",
-            planContent: "stale caller body",
-            triageMeta: {
-                planId: "stale-caller-id",
-                classification: "PLANNED_CHANGE",
-                status: "implemented",
-                collaborationRecommendation: "pair",
-            },
-            executionContext: {
+        await withRetainedPlanFixture(testFixture.projectRoot, async () => {
+            let ciRuns = 0;
+            const recorder = makeUi();
+            const hostedSession = attachRecorder(
+                new HostedSession({ id: "validation-self-healing", cwd: testFixture.projectRoot }),
+                recorder,
+            );
+            hostedSession.setActiveExecutionWorkflow({
                 planName: "demo",
-                triageMeta: { classification: "PLANNED_CHANGE", planId: "stale-context-id" },
+                triageMeta: {
+                    planId: "stale-session-id",
+                    classification: "PLANNED_CHANGE",
+                    collaborationRecommendation: "pair",
+                },
                 executionAgent: "engineer",
                 executionStarted: true,
                 executionMode: "worktree",
-                executionCwd: join(testFixture.worktreeParent, "another-wrong-path"),
-                worktreeId: "another-stale-worktree-id",
-                worktreeBranch: "another-stale-branch",
-                worktreeBaseBranch: "another-stale-target",
-                baselineTree: "another-stale-tree",
-            },
-            git: createGitPort(),
-            localCI: {
-                run: async ({ cwd }) => {
-                    ciRuns += 1;
-                    assertEquals(cwd, await fsRealpath(testFixture.executionCwd));
-                    return { kind: "completed", exitCode: 0, output: "ok" };
+                executionCwd: join(testFixture.worktreeParent, "wrong-path"),
+                worktreeId: "stale-worktree-id",
+                worktreeBranch: "stale-branch",
+                worktreeBaseBranch: "stale-target",
+                baselineTree: "stale-tree",
+            });
+
+            const result = await continueWorkflowValidation({
+                trigger: "load_plan",
+                hostedSession,
+                planName: "demo",
+                planContent: "stale caller body",
+                triageMeta: {
+                    planId: "stale-caller-id",
+                    classification: "PLANNED_CHANGE",
+                    status: "implemented",
+                    collaborationRecommendation: "pair",
                 },
-            },
-            semanticReviewPort: {
-                runIsolatedAgentSession: () => Promise.reject(new Error("stop after mechanical proof")),
-            },
-            workRecordMnemotecaPort: {
-                run: () => Promise.reject(new Error("publication must not run in this test")),
-            },
+                executionContext: {
+                    planName: "demo",
+                    triageMeta: { classification: "PLANNED_CHANGE", planId: "stale-context-id" },
+                    executionAgent: "engineer",
+                    executionStarted: true,
+                    executionMode: "worktree",
+                    executionCwd: join(testFixture.worktreeParent, "another-wrong-path"),
+                    worktreeId: "another-stale-worktree-id",
+                    worktreeBranch: "another-stale-branch",
+                    worktreeBaseBranch: "another-stale-target",
+                    baselineTree: "another-stale-tree",
+                },
+                git: createGitPort(),
+                localCI: {
+                    run: async ({ cwd }) => {
+                        ciRuns += 1;
+                        assertEquals(cwd, await fsRealpath(testFixture.executionCwd));
+                        return { kind: "completed", exitCode: 0, output: "ok" };
+                    },
+                },
+                semanticReviewPort: {
+                    runIsolatedAgentSession: () => Promise.reject(new Error("stop after mechanical proof")),
+                },
+                workRecordMnemotecaPort: {
+                    run: () => Promise.reject(new Error("publication must not run in this test")),
+                },
+            });
+
+            assertEquals(result.kind, "failed", result.reason || "the fake semantic boundary must stop validation");
+            assertEquals(ciRuns, 1, `fresh Mechanical Validation must run once: ${JSON.stringify(result)}`);
+            const executionAfter = parsePlanFrontMatter(await fsReadFile(testFixture.executionPath, "utf8"));
+            assertEquals(executionAfter.attrs.planId, "plan-demo");
+            assertEquals(executionAfter.attrs.collaborationRecommendation, "autonomous");
+            assertEquals(executionAfter.attrs.status, "implemented");
+            assertEquals(executionAfter.body, "# Demo\n\nKeep the approved body.\n");
+            const primaryAfter = await loadPlan(testFixture.projectRoot, "demo");
+            assertExists(primaryAfter);
+            assertEquals(primaryAfter.attrs.status, "implemented");
+            const savedWorktree = await findById(testFixture.projectRoot, "wt-demo");
+            assertExists(savedWorktree);
+            assertEquals(await fsRealpath(savedWorktree.path), await fsRealpath(testFixture.executionCwd));
+
+            const shown = recorder.messages.join("\n");
+            assertEquals(shown.includes("fresh Plan review"), false);
+            assertEquals(shown.includes("execution-shaping"), false);
+            assertEquals(shown.includes("planId"), false);
+            assertEquals(shown.includes("collaborationRecommendation"), false);
+            assertStringIncludes(shown, "Running the tests in");
         });
-
-        assertEquals(result.kind, "failed", result.reason || "the fake semantic boundary must stop validation");
-        assertEquals(ciRuns, 1, `fresh Mechanical Validation must run once: ${JSON.stringify(result)}`);
-        const executionAfter = parsePlanFrontMatter(await fsReadFile(testFixture.executionPath, "utf8"));
-        assertEquals(executionAfter.attrs.planId, "plan-demo");
-        assertEquals(executionAfter.attrs.collaborationRecommendation, "autonomous");
-        assertEquals(executionAfter.attrs.status, "implemented");
-        assertEquals(executionAfter.body, "# Demo\n\nKeep the approved body.\n");
-        const primaryAfter = await loadPlan(testFixture.projectRoot, "demo");
-        assertExists(primaryAfter);
-        assertEquals(primaryAfter.attrs.status, "implemented");
-        const savedWorktree = await findById(testFixture.projectRoot, "wt-demo");
-        assertExists(savedWorktree);
-        assertEquals(await fsRealpath(savedWorktree.path), await fsRealpath(testFixture.executionCwd));
-
-        const shown = recorder.messages.join("\n");
-        assertEquals(shown.includes("fresh Plan review"), false);
-        assertEquals(shown.includes("execution-shaping"), false);
-        assertEquals(shown.includes("planId"), false);
-        assertEquals(shown.includes("collaborationRecommendation"), false);
-        assertStringIncludes(shown, "Running the tests in");
     } finally {
         await removeFixture(testFixture);
     }
@@ -247,74 +250,76 @@ test("stale RunWield state self-heals and validation continues", async () => {
 test("body-only Plan amendment no longer prompts before Mechanical Validation", async () => {
     const testFixture = await makeReportedMismatchFixture();
     try {
-        const primary = await loadPlan(testFixture.projectRoot, "demo");
-        const execution = await loadPlan(testFixture.executionCwd, "demo");
-        assertExists(primary);
-        assertExists(execution);
-        await savePlan(
-            testFixture.executionCwd,
-            "demo",
-            "# Demo\n\nEngineer clarified the implementation notes.\n",
-            primary.attrs,
-            { expectedRevision: execution.revision },
-        );
+        await withRetainedPlanFixture(testFixture.projectRoot, async () => {
+            const primary = await loadPlan(testFixture.projectRoot, "demo");
+            const execution = await loadPlan(testFixture.executionCwd, "demo");
+            assertExists(primary);
+            assertExists(execution);
+            await seedPlan(
+                testFixture.executionCwd,
+                "demo",
+                "# Demo\n\nEngineer clarified the implementation notes.\n",
+                primary.attrs,
+                { expectedRevision: execution.revision },
+            );
 
-        const recorder = makeUi();
-        const prompts: string[] = [];
-        recorder.promptSelect = (prompt: string) => {
-            prompts.push(prompt);
-            return Promise.resolve("stop");
-        };
-        const hostedSession = attachRecorder(
-            new HostedSession({ id: "validation-body-amendment", cwd: testFixture.projectRoot }),
-            recorder,
-        );
-        hostedSession.setActiveExecutionWorkflow({
-            planName: "demo",
-            triageMeta: primary.attrs,
-            executionAgent: "engineer",
-            executionStarted: true,
-            executionMode: "worktree",
-            executionCwd: testFixture.executionCwd,
-            worktreeId: "wt-demo",
-            worktreeBranch: testFixture.branch,
-            worktreeBaseBranch: "main",
-            baselineTree: testFixture.baselineTree,
-        });
-        let ciRuns = 0;
-        const result = await continueWorkflowValidation({
-            trigger: "task_completion",
-            hostedSession,
-            planName: "demo",
-            planContent: primary.markdown,
-            triageMeta: primary.attrs,
-            git: createGitPort(),
-            localCI: {
-                run: () => {
-                    ciRuns += 1;
-                    return Promise.resolve({ kind: "completed", exitCode: 0, output: "ok" });
+            const recorder = makeUi();
+            const prompts: string[] = [];
+            recorder.promptSelect = (prompt: string) => {
+                prompts.push(prompt);
+                return Promise.resolve("stop");
+            };
+            const hostedSession = attachRecorder(
+                new HostedSession({ id: "validation-body-amendment", cwd: testFixture.projectRoot }),
+                recorder,
+            );
+            hostedSession.setActiveExecutionWorkflow({
+                planName: "demo",
+                triageMeta: primary.attrs,
+                executionAgent: "engineer",
+                executionStarted: true,
+                executionMode: "worktree",
+                executionCwd: testFixture.executionCwd,
+                worktreeId: "wt-demo",
+                worktreeBranch: testFixture.branch,
+                worktreeBaseBranch: "main",
+                baselineTree: testFixture.baselineTree,
+            });
+            let ciRuns = 0;
+            const result = await continueWorkflowValidation({
+                trigger: "task_completion",
+                hostedSession,
+                planName: "demo",
+                planContent: primary.markdown,
+                triageMeta: primary.attrs,
+                git: createGitPort(),
+                localCI: {
+                    run: () => {
+                        ciRuns += 1;
+                        return Promise.resolve({ kind: "completed", exitCode: 0, output: "ok" });
+                    },
                 },
-            },
-            semanticReviewPort: {
-                runIsolatedAgentSession: () => Promise.reject(new Error("stop after Mechanical Validation proof")),
-            },
-            workRecordMnemotecaPort: {
-                run: () => Promise.reject(new Error("publication must not run")),
-            },
-        });
+                semanticReviewPort: {
+                    runIsolatedAgentSession: () => Promise.reject(new Error("stop after Mechanical Validation proof")),
+                },
+                workRecordMnemotecaPort: {
+                    run: () => Promise.reject(new Error("publication must not run")),
+                },
+            });
 
-        assertEquals(prompts.length, 0);
-        assertEquals(ciRuns, 1);
-        assertEquals(result.kind, "failed");
-        const executionAfter = await loadPlan(testFixture.executionCwd, "demo");
-        assertExists(executionAfter);
-        assertEquals(executionAfter.body, "# Demo\n\nEngineer clarified the implementation notes.\n");
-        assertEquals(executionAfter.attrs.status, "implemented");
-        const primaryAfter = await loadPlan(testFixture.projectRoot, "demo");
-        assertExists(primaryAfter);
-        assertEquals(primaryAfter.body, "# Demo\n\nKeep the approved body.\n");
-        assertEquals(primaryAfter.attrs.status, "implemented");
-        assertEquals(recorder.messages.join("\n").includes("The Plan change is saved"), false);
+            assertEquals(prompts.length, 0);
+            assertEquals(ciRuns, 1);
+            assertEquals(result.kind, "failed");
+            const executionAfter = await loadPlan(testFixture.executionCwd, "demo");
+            assertExists(executionAfter);
+            assertEquals(executionAfter.body, "# Demo\n\nEngineer clarified the implementation notes.\n");
+            assertEquals(executionAfter.attrs.status, "implemented");
+            const primaryAfter = await loadPlan(testFixture.projectRoot, "demo");
+            assertExists(primaryAfter);
+            assertEquals(primaryAfter.body, "# Demo\n\nKeep the approved body.\n");
+            assertEquals(primaryAfter.attrs.status, "implemented");
+            assertEquals(recorder.messages.join("\n").includes("The Plan change is saved"), false);
+        });
     } finally {
         await removeFixture(testFixture);
     }
@@ -323,15 +328,17 @@ test("body-only Plan amendment no longer prompts before Mechanical Validation", 
 test("durable registry recovery returns the worktree base commit", async () => {
     const testFixture = await makeReportedMismatchFixture();
     try {
-        const resolution = await resolveValidationExecutionContext({
-            projectRoot: testFixture.projectRoot,
-            planName: "demo",
-            triageMeta: { classification: "PLANNED_CHANGE", status: "implemented" },
+        await withRetainedPlanFixture(testFixture.projectRoot, async () => {
+            const resolution = await resolveValidationExecutionContext({
+                projectRoot: testFixture.projectRoot,
+                planName: "demo",
+                triageMeta: { classification: "PLANNED_CHANGE", status: "implemented" },
+            });
+            assertEquals(resolution.kind, "ok");
+            if (resolution.kind === "ok" && resolution.context.executionMode === "worktree") {
+                assertEquals(resolution.context.worktreeBaseCommit, testFixture.baseCommit);
+            }
         });
-        assertEquals(resolution.kind, "ok");
-        if (resolution.kind === "ok" && resolution.context.executionMode === "worktree") {
-            assertEquals(resolution.context.worktreeBaseCommit, testFixture.baseCommit);
-        }
     } finally {
         await removeFixture(testFixture);
     }
@@ -340,33 +347,38 @@ test("durable registry recovery returns the worktree base commit", async () => {
 test("a missing worktree is restored from its branch", async () => {
     const testFixture = await makeReportedMismatchFixture();
     try {
-        await git(testFixture.executionCwd, ["add", "."]);
-        await git(testFixture.executionCwd, ["commit", "-m", "save implementation"]);
-        await fsRm(testFixture.executionCwd, { recursive: true });
-        await git(testFixture.projectRoot, ["worktree", "prune"]);
+        await withRetainedPlanFixture(testFixture.projectRoot, async () => {
+            await git(testFixture.executionCwd, ["add", "."]);
+            await git(testFixture.executionCwd, ["commit", "-m", "save implementation"]);
+            await fsRm(testFixture.executionCwd, { recursive: true });
+            await git(testFixture.projectRoot, ["worktree", "prune"]);
 
-        const plan = await loadPlan(testFixture.projectRoot, "demo");
-        assertExists(plan);
-        const resolution = await resolveValidationExecutionContext({
-            projectRoot: testFixture.projectRoot,
-            planName: "demo",
-            triageMeta: plan.attrs,
-        });
+            const plan = await loadPlan(testFixture.projectRoot, "demo");
+            assertExists(plan);
+            const resolution = await resolveValidationExecutionContext({
+                projectRoot: testFixture.projectRoot,
+                planName: "demo",
+                triageMeta: plan.attrs,
+            });
 
-        assertEquals(resolution.kind, "ok");
-        if (resolution.kind === "ok") {
-            assertEquals(resolution.context.executionMode, "worktree");
-            assertEquals(await fsRealpath(resolution.context.executionCwd), await fsRealpath(testFixture.executionCwd));
-            assertEquals(
-                resolution.selfHealNotices?.some((notice) => notice.kind === "worktree_restored"),
-                true,
+            assertEquals(resolution.kind, "ok");
+            if (resolution.kind === "ok") {
+                assertEquals(resolution.context.executionMode, "worktree");
+                assertEquals(
+                    await fsRealpath(resolution.context.executionCwd),
+                    await fsRealpath(testFixture.executionCwd),
+                );
+                assertEquals(
+                    resolution.selfHealNotices?.some((notice) => notice.kind === "worktree_restored"),
+                    true,
+                );
+            }
+            assertEquals(await git(testFixture.executionCwd, ["branch", "--show-current"]), testFixture.branch);
+            assertStringIncludes(
+                await fsReadFile(join(testFixture.executionCwd, "README.md"), "utf8"),
+                "Implemented change",
             );
-        }
-        assertEquals(await git(testFixture.executionCwd, ["branch", "--show-current"]), testFixture.branch);
-        assertStringIncludes(
-            await fsReadFile(join(testFixture.executionCwd, "README.md"), "utf8"),
-            "Implemented change",
-        );
+        });
     } finally {
         await removeFixture(testFixture);
     }
@@ -381,7 +393,7 @@ test("a durable validation field survives a fresh project read", async () => {
     try {
         const first = await loadPlan(projectRoot, "resume-demo");
         assertExists(first);
-        await updatePlanFrontMatter(
+        await seedPlanState(
             projectRoot,
             "resume-demo",
             {

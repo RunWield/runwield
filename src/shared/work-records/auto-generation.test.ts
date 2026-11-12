@@ -1,18 +1,28 @@
+import { seedPlanState, seedPlan } from "../testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import process from "node:process";
 import { test } from "node:test";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
+
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { git } from "../git-test-fixture.ts";
 import { addEntry } from "../worktree-registry.js";
-import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
+import { withRuntimeCommandFixture as withBaseRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { setCustomSetting } from "../settings.js";
 import { listWorkRecords, writeWorkRecord } from "./store.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
 import { autoGenerateWorkRecordForCompletedPlan } from "./auto-generation.ts";
 
+// These cases exercise recording a retained checkout completion, before package delivery receipts existed.
+const withRuntimeCommandFixture: typeof withBaseRuntimeCommandFixture = (prefix, run) =>
+    withBaseRuntimeCommandFixture(prefix, (fixture) =>
+        withRetainedPlanFixture(fixture.projectRoot, () => run(fixture)),
+    );
+
 async function saveStandalonePlan(projectRoot: string, supersedes: string[] = []): Promise<void> {
-    await savePlan(projectRoot, "standalone", "# Standalone\n\n## Plan\n\nBuild the fixture feature.", {
+    await seedPlan(projectRoot, "standalone", "# Standalone\n\n## Plan\n\nBuild the fixture feature.", {
         planId: "plan-standalone",
         classification: "PLANNED_CHANGE",
         complexity: "LOW",
@@ -42,7 +52,7 @@ async function savePredecessor(projectRoot: string, recordId: string, title: str
 }
 
 async function saveEpicWithChild(projectRoot: string, terminal: boolean): Promise<void> {
-    await savePlan(projectRoot, "epic", "# Epic\n\n## Plan\n\nCoordinate the fixture project.", {
+    await seedPlan(projectRoot, "epic", "# Epic\n\n## Plan\n\nCoordinate the fixture project.", {
         planId: "plan-epic",
         classification: "PROJECT",
         complexity: "MEDIUM",
@@ -52,7 +62,7 @@ async function saveEpicWithChild(projectRoot: string, terminal: boolean): Promis
         status: terminal ? "verified" : "ready_for_work",
         ...(terminal ? { epicCompletionMode: "done_enough" as const } : {}),
     });
-    await savePlan(projectRoot, "epic/01-child", "# Child\n\n## Plan\n\nComplete one fixture slice.", {
+    await seedPlan(projectRoot, "epic/01-child", "# Child\n\n## Plan\n\nComplete one fixture slice.", {
         planId: "plan-child",
         classification: "PLANNED_CHANGE",
         complexity: "LOW",
@@ -102,7 +112,7 @@ test("automatic Work Record generation reads acceptance from the registered work
         await git(projectRoot, ["init", "-b", "main"]);
         await git(projectRoot, ["config", "user.email", "tests@example.com"]);
         await git(projectRoot, ["config", "user.name", "RunWield Tests"]);
-        await savePlan(projectRoot, "accepted", "# Accepted\n\nDelivered through the release PR.", {
+        await seedPlan(projectRoot, "accepted", "# Accepted\n\nDelivered through the release PR.", {
             planId: "accepted-plan",
             classification: "PLANNED_CHANGE",
             status: "in_progress",
@@ -127,7 +137,7 @@ test("automatic Work Record generation reads acceptance from the registered work
             });
             const plan = await loadPlan(path, "accepted");
             if (!plan) throw new Error("Missing fixture Plan");
-            await updatePlanFrontMatter(
+            await seedPlanState(
                 path,
                 "accepted",
                 {

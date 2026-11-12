@@ -1,11 +1,14 @@
-import { withPackageWorkflow, type PackageWorkflowSelection } from "../package-workflow.ts";
-import { readPlanPackage } from "../../plan-package-store.ts";
-import { preparePackageCopies } from "../package-publication.ts";
+import { holdPlanFixtureLock } from "../../testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../../testing/retained-plan-fixture.ts";
+import { type PackageWorkflowSelection } from "../../../plan-store/workflows.ts";
+import { withPackageWorkflow } from "../../../plan-store/workflows.ts";
+import { readPlanPackage } from "../../../plan-store/packages.ts";
+import { preparePackageCopies } from "../../../plan-store/index.ts";
 import { captureForegroundProcess } from "../../captured-process.ts";
 import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import process from "node:process";
 import { publishExecutionWorktreeIsolated } from "../../isolated-publication.ts";
-import { withPlanLock } from "../../../plan-store.js";
+
 import { checkpointExecutionWorktree } from "../../worktree.js";
 import { findById } from "../../worktree-registry.js";
 import {
@@ -27,6 +30,7 @@ type DriverConfig = {
     crashAfter?: string;
     operation?: "revalidate" | "validate";
     packageSelection?: PackageWorkflowSelection;
+    retainedCheckoutInput?: boolean;
 };
 
 function crash(config: DriverConfig, boundary: string): void {
@@ -75,7 +79,7 @@ const run = async () => {
         if (result.kind !== "verified") throw new Error(JSON.stringify(result));
         return;
     }
-    return await withPlanLock(config.projectRoot, config.planName, async () => {
+    return await holdPlanFixtureLock(config.projectRoot, config.planName, async () => {
         if (config.operation === "revalidate") {
             const { preparePublicationRevalidation } = await import("../publication-revalidation.ts");
             await preparePublicationRevalidation(config.projectRoot, config.planName);
@@ -232,4 +236,5 @@ if (config.packageSelection) {
         { ...config.packageSelection, expectedRevision: selected.metadata.revision },
         run,
     );
-} else await run();
+} else if (config.retainedCheckoutInput) await withRetainedPlanFixture(config.projectRoot, run);
+else await run();

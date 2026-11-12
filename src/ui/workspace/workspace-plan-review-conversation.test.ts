@@ -1,9 +1,11 @@
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { savePlan, loadPlan, ensurePlanIdentity } from "../../plan-store.js";
+import { loadPlan, ensurePlanIdentity } from "../../plan-store/index.ts";
+
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
@@ -15,7 +17,7 @@ for (const source of ["new", "saved"] as const)
             await withRuntimeCommandFixture(
                 "workspace-plan-conversation-",
                 async ({ homeDir, projectRoot, setModelResponseFactories }) => {
-                    await savePlan(projectRoot, "target", "# Target\n\n## Context\n\nKeep the reviewed scope.\n", {
+                    await seedPlan(projectRoot, "target", "# Target\n\n## Context\n\nKeep the reviewed scope.\n", {
                         classification: "PLANNED_CHANGE",
                         status: "ready_for_work",
                         affectedPaths: [],

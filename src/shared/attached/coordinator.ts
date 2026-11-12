@@ -1,7 +1,18 @@
-import { readPlanDocuments } from "../workflow/plan-documents.ts";
+import { PlanAccessMismatchError } from "../../plan-store/index.ts";
+import { readPlanPublicationReference } from "../../plan-store/index.ts";
+import { capturePlanReviewInput } from "../../plan-store/index.ts";
+import { withPlanReadScope, readPlanResource } from "../../plan-store/index.ts";
+import { requiresPlanWorkflow } from "../../plan-store/index.ts";
+import { savePlanDefinition } from "../../plan-store/index.ts";
+
+import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
+import { authorLocalPlan } from "../../plan-store/index.ts";
+
+import type { PackageWorkflowInput } from "../../plan-store/index.ts";
+
 import { readWorkRecordById, searchWorkRecords, formatWorkRecordReadResult } from "../work-records/search.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
-import { currentPackageSelection } from "../workflow/package-workflow.ts";
+import { capturePlanAccess } from "../../plan-store/index.ts";
 /**
  * @module shared/attached/coordinator
  * The Attached Workflow Coordinator: a sibling runtime to `SessionRuntime` (ADR-014).
@@ -20,7 +31,7 @@ import { getHomeDir } from "../../constants.js";
 import { resolveCodexRoleSettings } from "./codex-role-settings.ts";
 import { readTextPage } from "../text-page.ts";
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
-import { readPublishedDeliverySources } from "../work-records/published-source.ts";
+import { readPublishedDeliverySources } from "../../plan-store/index.ts";
 import { parseRecorderSections } from "../work-records/generation.js";
 import { stat as fsStat } from "node:fs/promises";
 import { captureForegroundProcess } from "../captured-process.ts";
@@ -35,28 +46,25 @@ import { hasNonGitExecutionConsent, rememberNonGitExecutionConsent } from "../no
 import { findActiveByPlanName, findById, listEntries } from "../worktree-registry.js";
 import { createHash } from "node:crypto";
 import { isAbsolute, join, relative } from "node:path";
+import { type PlanFrontMatter } from "../../plan-store/index.ts";
 import {
     canonicalizeStoredPlanName,
-    ensurePlanIdentity,
     getPlanRevisionForText,
     isHiddenPlanName,
-    loadArchivedPlan,
-    loadPlan,
     resolvePlanExecutionPolicy,
-    updatePlanFrontMatter,
-    type PlanFrontMatter,
-} from "../../plan-store.js";
-import { assertNotReservedEpicArtifactPlanName } from "../epic-artifacts.ts";
+} from "../../plan-format.ts";
+import { ensurePlanIdentity, loadArchivedPlan, loadPlan } from "../../plan-store/index.ts";
+import { assertNotReservedEpicArtifactPlanName } from "../../plan-format.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { runWieldGitignoreNeedsUpdate } from "../runwield-owned-paths.ts";
 import { VERSION } from "../version.js";
-import { recordPlanEvent } from "../workflow/plan-lifecycle.js";
-import { withOrderedTransitionResources } from "../workflow/state-transition.ts";
+
+import { applyPlanReviewForExecution } from "../../plan-store/index.ts";
 import { isAnsweredPlanReview } from "../workflow/plan-review-recovery.js";
-import { applySharedPlanReviewDecision } from "../workflow/plan-review-actions.ts";
+
 import { loadReviewFeedbackImagePaths } from "../workflow/review-feedback-images.ts";
 import { type ReviewDecision } from "../../ui/workspace/routes/api/review-handlers.js";
-import { resolveWorkflowPlanLocation } from "../workflow/plan-location.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { normalizeTriageOutcome, type TriageOutcome } from "../workflow/triage-outcome.ts";
 import {
     type AttachedActionReadEnvelope,
@@ -240,7 +248,13 @@ async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNe
     }
     if (record.state === "implementing" && record.execution && record.plan && pending) {
         const executionCwd = record.execution.executionCwd || currentAttachedProjectRoot(record);
-        const packagePlan = currentPackageSelection() ? await loadPlan(executionCwd, record.plan.planName) : null;
+        const packagePlan = await loadPlan(
+            capturePlanAccess() ? currentAttachedProjectRoot(record) : executionCwd,
+            record.plan.planName,
+        ).catch((error) => {
+            if (!capturePlanAccess() && error instanceof Error && error.message.includes("ENOENT")) return null;
+            throw error;
+        });
         return {
             kind: "implementation",
             ...pending,
@@ -341,6 +355,10 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
                             planName: record.plan.planName,
                             planId: record.plan.planId,
                             phase: "publication_verified",
+                            packageInput: await readPlanPublicationReference(
+                                currentAttachedProjectRoot(record),
+                                record.plan.planName,
+                            ),
                         })
                     ).workRecordOwner?.attrs.workRecord,
                 },
@@ -761,6 +779,29 @@ async function submitPlanDocument(
         planName = canonicalizeStoredPlanName(payload.planName).name;
         assertNotReservedEpicArtifactPlanName(planName);
         if (isHiddenPlanName(planName)) throw new Error(`Plan is archived or hidden: ${planName}`);
+        if (payload.contextMarkdown !== undefined) {
+            const policy = resolvePlanExecutionPolicy({
+                ...triage,
+                executionAgent: payload.executionAgent,
+                collaborationRecommendation: payload.collaborationRecommendation,
+            });
+            if (!policy.ok) throw new Error(policy.error);
+            await authorLocalPlan(projectRoot, {
+                planName,
+                contextMarkdown: payload.contextMarkdown,
+                validationMarkdown: payload.validationMarkdown,
+                expectedRevision: payload.expectedRevision,
+                definition: {
+                    classification: "PLANNED_CHANGE",
+                    summary: triage.summary,
+                    workKind: triage.workKind,
+                    complexity: triage.complexity,
+                    ...payload.definition,
+                    executionAgent: policy.policy.executionAgent,
+                    collaborationRecommendation: policy.policy.collaborationRecommendation,
+                },
+            });
+        }
         location = await resolveWorkflowPlanLocation(projectRoot, planName, { readOnly: true });
     } catch (error) {
         return { ok: false, message: error instanceof Error ? error.message : String(error) };
@@ -789,15 +830,9 @@ async function submitPlanDocument(
     }
 
     await enterProjectRuntime(projectRoot);
-    await updatePlanFrontMatter(
-        location.documentRoot,
-        planName,
-        updates,
-        {},
-        {
-            expectedRevision: location.plan.revision,
-        },
-    );
+    await savePlanDefinition(location.documentRoot, planName, updates, {
+        expectedRevision: location.plan.revision,
+    });
     const identified = await ensurePlanIdentity(location.documentRoot, planName);
     const submittedPlan = await loadPlan(location.documentRoot, planName);
     if (!submittedPlan) throw new Error(`Plan not found: ${planName}`);
@@ -975,7 +1010,9 @@ export async function startExecution(envelope: StartExecutionEnvelope): Promise<
                     (await listEntries(location.projectRoot)).some(
                         (entry) =>
                             entry.planId === current.plan?.planId &&
-                            entry.path === source.documentRoot &&
+                            ("packageSelection" in source && source.packageSelection
+                                ? entry.id === source.plan?.attrs.worktreeId
+                                : entry.path === source.documentRoot) &&
                             entry.status === "active",
                     );
                 const recoveredInPlace =
@@ -1140,6 +1177,7 @@ export async function taskCompleted(
 
 /** The reviewed document and durable round identity a carrier must present together. */
 export interface AttachedReviewPayloadBasis {
+    packageInput?: PackageWorkflowInput;
     review: NonNullable<AttachedWorkflowRecord["review"]>;
     planName: string;
     planPath: string;
@@ -1194,6 +1232,7 @@ export async function openAttachedReviewRound(
                     kind: "opened",
                     basis: {
                         review,
+                        packageInput: await capturePlanReviewInput(projectRoot, current.plan.planName, plan.revision),
                         planName: current.plan.planName,
                         planPath: plan.path,
                         documentRoot,
@@ -1221,6 +1260,10 @@ export async function applyAttachedReviewDecision(
     round: AttachedReviewPayloadBasis,
     decision: ReviewDecision,
 ): Promise<AttachedReviewOutcome | { kind: "chat" }> {
+    if (requiresPlanWorkflow(projectRoot))
+        return await withLocalPlanWorkflow(projectRoot, round.planName, () =>
+            applyAttachedReviewDecision(projectRoot, workflowId, round, decision),
+        );
     if (decision.conversationTurn) {
         await saveAttachedReviewChat(
             projectRoot,
@@ -1271,51 +1314,30 @@ export async function applyAttachedReviewDecision(
             if (canceled) {
                 outcome = { kind: "canceled" };
             } else {
-                outcome = await withOrderedTransitionResources(
-                    round.documentRoot,
-                    [{ kind: "catalog" }, { kind: "plan", id: round.planName }],
-                    async (): Promise<AttachedReviewOutcome> => {
-                        const applied = await applySharedPlanReviewDecision({
-                            cwd: round.documentRoot,
-                            planName: round.planName,
-                            planPath: round.planPath,
-                            planWithFrontMatter: round.markdown,
-                            planRevision: saved.planRevision,
-                            expectedControllerRevision: saved.controllerRevision,
-                            originalAttrs: round.attrs,
-                            trustedClassification: current.triageOutcome?.classification,
-                            trustedWorkKind: current.triageOutcome?.workKind,
-                            decision,
-                        });
-                        if (applied.cancellationReason || applied.recoveryRequired) {
-                            throw new Error(applied.feedback || "The Plan changed. Reload this review.");
-                        }
-                        if (applied.approved) {
-                            await recordPlanEvent({
-                                cwd: round.documentRoot,
-                                planName: round.planName,
-                                event: "readiness_passed",
-                                currentStatus: "approved",
-                                expectedRevision: applied.revision,
-                            });
-                            // Read the revision while the same canonical Plan locks still cover
-                            // approval and readiness. A later read could pin a newer Core approval.
-                            const ready = await loadPlan(round.documentRoot, round.planName);
-                            if (!ready) throw new Error(`Plan not found: ${round.planName}`);
-                            approvalControllerRevision = ready.controllerRevision;
-                            return {
-                                kind: "approved",
-                                ...(applied.approvalAction && { approvalAction: applied.approvalAction }),
-                            };
-                        } else {
-                            return {
-                                kind: "feedback",
-                                feedback: applied.feedback ?? "",
-                                imagePaths: await loadReviewFeedbackImagePaths(decision, round.documentRoot),
-                            };
-                        }
-                    },
-                );
+                const applied = await applyPlanReviewForExecution({
+                    packageInput: round.packageInput,
+                    cwd: round.documentRoot,
+                    planName: round.planName,
+                    planPath: round.planPath,
+                    planWithFrontMatter: round.markdown,
+                    planRevision: saved.planRevision,
+                    expectedControllerRevision: saved.controllerRevision,
+                    originalAttrs: round.attrs,
+                    trustedClassification: current.triageOutcome?.classification,
+                    trustedWorkKind: current.triageOutcome?.workKind,
+                    decision,
+                });
+                approvalControllerRevision = applied.approvalControllerRevision;
+                outcome = applied.approved
+                    ? {
+                          kind: "approved",
+                          ...(applied.approvalAction && { approvalAction: applied.approvalAction }),
+                      }
+                    : {
+                          kind: "feedback",
+                          feedback: applied.feedback ?? "",
+                          imagePaths: await loadReviewFeedbackImagePaths(decision, round.documentRoot),
+                      };
             }
             const pendingAction =
                 outcome.kind === "approved"
@@ -1914,6 +1936,21 @@ export async function runAttachedOperation(
             operation: name,
             rejection: rejection("home_unavailable", "Set HOME to use Attached workflows."),
         };
+    try {
+        return await withPlanReadScope(projectRoot, () =>
+            runAttachedOperationInScope(name, projectRoot, inputText, options),
+        );
+    } catch (error) {
+        if (!(error instanceof PlanAccessMismatchError)) throw error;
+        return { ok: false, operation: name, rejection: rejection("invalid_input", error.message) };
+    }
+}
+async function runAttachedOperationInScope(
+    name: Parameters<typeof runAttachedOperation>[0],
+    projectRoot: string,
+    inputText: string,
+    options: AttachedOperationOptions,
+): Promise<AttachedCarrierResult> {
     if (new TextEncoder().encode(inputText).length > MAX_ATTACHED_INPUT_BYTES) {
         return await rejected(name, rejection("payload_too_large", `Input exceeds ${MAX_ATTACHED_INPUT_BYTES} bytes.`));
     }
@@ -1980,19 +2017,9 @@ export async function readAttachedAction(envelope: AttachedActionReadEnvelope) {
             let canonicalMarkdown: string | undefined;
             if (envelope.content === "read_plan") {
                 if (!workflow.plan) throw new Error("This action has no selected Plan.");
-                if (currentPackageSelection()) {
-                    const document = await readPlanDocuments(workflow.plan.planId, envelope.resource);
-                    text = document.body;
-                    planRevision = document.revision;
-                } else {
-                    if (envelope.resource && envelope.resource !== "context.md")
-                        throw new Error("This Plan has no separate document.");
-                    const plan = await loadPlan(cwd, workflow.plan.planName);
-                    if (!plan || plan.attrs.planId !== workflow.plan.planId)
-                        throw new Error("The selected Plan is unavailable.");
-                    text = plan.body;
-                    planRevision = plan.revision;
-                }
+                const document = await readPlanResource(cwd, workflow.plan, envelope.resource);
+                text = document.body;
+                planRevision = document.revision;
             } else if (envelope.content === "work_record_read") {
                 const record = await readWorkRecordById(cwd, envelope.recordId!, { accessMode });
                 text = formatWorkRecordReadResult(record);
@@ -2460,13 +2487,17 @@ async function validateAttachedReviewerCandidate(
     resume: Extract<import("../workflow/validation-host-contract.ts").ValidationHostResume, { kind: "reviewer" }>,
 ): Promise<void> {
     if (!record.plan) throw new Error("The Plan is missing.");
+    if (requiresPlanWorkflow(currentAttachedProjectRoot(record)))
+        return await withLocalPlanWorkflow(currentAttachedProjectRoot(record), record.plan.planName, () =>
+            validateAttachedReviewerCandidate(record, resume),
+        );
     const source = await resolveWorkflowPlanLocation(currentAttachedProjectRoot(record), record.plan.planName, {
         readOnly: true,
     });
     if (!source.plan?.attrs.validationCheckpoint) throw new Error("The validation checkpoint is missing.");
     const entry = await findActiveByPlanName(currentAttachedProjectRoot(record), record.plan.planName);
     await assertHostReviewerCandidate({
-        cwd: source.documentRoot,
+        cwd: source.plan.attrs.worktreePath || source.documentRoot,
         baseBranch: source.plan.attrs.worktreeBaseBranch || "",
         baseRef: entry?.baseRef,
         checkpoint: source.plan.attrs.validationCheckpoint,

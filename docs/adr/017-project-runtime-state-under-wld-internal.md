@@ -13,8 +13,9 @@ leave project `.wld/` for configuration and overrides.
 
 Stable Project identity is separate from repository and checkout identity. Linked worktrees share repository-owned
 resources; explicitly linked clones share Project identity while retaining separate Git refs and execution attempts.
-Legacy Plan Markdown and front matter remain authoritative for ordinary public selection and unfinished imported
-attempts. Explicit internal package selection uses the separate personal Plan authority described below.
+Ordinary local and manual-SSH selection uses personal home Plan packages and Work Records. Legacy checkout documents
+are read only for explicit import and continuation of a recorded pre-cutover attempt until proven settlement. Managed
+remote launch ownership remains on its existing contract.
 
 Passive inspection must not admit identity, migrate files, probe writer locks, or reconcile old data. Deliberate
 entry owns those effects. An interrupted transfer must preserve unfinished Git work and the publication proof defined
@@ -42,8 +43,8 @@ managed transport and Plan Store proposal remains in
 [ADR-0020](0020-home-project-state-and-launch-mode-ownership.md).
 
 The shared layout owner resolves these paths from stable identity. Resolving a path grants no read or write authority.
-Registry, controller, sharing, indexing, transition, and diagnostic callers use the shared boundary. Canonical Plans
-retain repository locations for legacy selection; Work Records retain their existing locations. Normal worktrees already under `~/.wld/worktrees/` keep
+Registry, controller, sharing, indexing, transition, and diagnostic callers use the shared boundary. Canonical Plans and Work Records use the personal Project store described in
+[ADR-0020](0020-home-project-state-and-launch-mode-ownership.md). Checkout copies are publication output only. Normal worktrees already under `~/.wld/worktrees/` keep
 their locations. Missing home access is an actionable prerequisite; it never creates a checkout fallback.
 
 ### Explicit package lifecycle authority

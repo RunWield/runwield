@@ -22,7 +22,7 @@ import type { PhaseContext } from "../workflow/validation-types.ts";
 import { createValidationSessionPort } from "../workflow/validation-session-adapter.ts";
 import { createGitPort } from "../git-port.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
 import { remoteBackgroundTaskLogDirectory } from "./background-task-logs.ts";
 import { git } from "../workflow/validation-test-helpers.js";
 

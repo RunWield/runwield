@@ -9,9 +9,8 @@ import {
     readPlanImportEvidence,
     renamePlanPackage,
     savePlanPackageDocument,
-    loadPlan,
-    listPlans,
-} from "./plan-store.js";
+} from "./plan-store/packages.ts";
+import { loadPlan, listPlans } from "./plan-store/index.ts";
 
 async function source(root: string, name: string, markdown: string) {
     const path = join(root, "docs", "plans", `${name}.md`);
@@ -207,11 +206,12 @@ test("duplicate IDs, case collisions, traversal and symlink escapes are explicit
     }
 });
 
-test("import leaves legacy list/load behavior intact and refuses managed-remote persistence", async () => {
+test("explicit import activates home discovery and refuses managed-remote persistence", async () => {
     const f = await packageFixture();
     try {
         const path = await source(f.root, "legacy", legacy("legacy"));
-        const before = await loadPlan(f.root, "legacy");
+        equal(await loadPlan(f.root, "legacy"), null);
+        const before = await fs.readFile(path, "utf8");
         equal(
             (
                 await importPlanPackages(
@@ -223,7 +223,8 @@ test("import leaves legacy list/load behavior intact and refuses managed-remote 
         );
         equal((await listPlanPackages(f.identity)).packages.length, 0);
         equal((await importPlanPackages(f.identity, path)).kind, "committed");
-        deepEqual(await loadPlan(f.root, "legacy"), before);
+        equal(await fs.readFile(path, "utf8"), before);
+        equal((await loadPlan(f.root, "legacy"))?.attrs.planId, "legacy");
         equal((await listPlans(f.root)).length, 1);
         equal((await tree(join(f.root, ".wld")))["internal/"], undefined);
     } finally {

@@ -1,10 +1,12 @@
 // @ts-nocheck: owner Workspace routes and the fixture expose JavaScript records.
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.js";
+import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
+
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createOwnerWorkspaceApp } from "./server.js";
@@ -18,7 +20,7 @@ async function withOpenReview(run) {
             const store = fixture.openStore();
             let app;
             try {
-                await savePlan(projectRoot, "saved", "# Saved\n\n## Context\n\nReview this plan.", {
+                await seedPlan(projectRoot, "saved", "# Saved\n\n## Context\n\nReview this plan.", {
                     planId: "saved-id",
                     classification: "PLANNED_CHANGE",
                     status: "draft",
@@ -132,7 +134,7 @@ async function withOpenReview(run) {
 test("Workspace rejects an approval if the reviewed Plan body changes while the review is open", async () => {
     await withOpenReview(async ({ fixture, answer }) => {
         const before = await loadPlan(fixture.projectRoot, "saved");
-        await savePlan(
+        await seedPlan(
             fixture.projectRoot,
             "saved",
             "# Saved\n\n## Context\n\nNew content not reviewed.",

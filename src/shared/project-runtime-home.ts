@@ -1,3 +1,4 @@
+import { recoverLegacyPlanControllers } from "../plan-store/index.ts";
 /** Home-owned ordinary runtime. A durable inventory separates copying, publication, and retirement. */
 import {
     gitWorktreeListEvidence,
@@ -770,6 +771,7 @@ async function repairRepositories(journal: RuntimeTransfer, primary: string): Pr
         if (!(await info(mapping.destination))) continue;
         for (const entry of await fs.readdir(mapping.destination)) {
             const root = join(mapping.destination, entry);
+            if (!(await info(root))?.isDirectory()) continue;
             const gitInfo = await info(join(root, ".git"));
             if (!gitInfo) continue;
             if (gitInfo.isFile()) git(primary, ["worktree", "repair", root]);
@@ -893,10 +895,13 @@ export async function enterHomeProjectRuntime(identity: ProjectIdentity): Promis
                         m.destination === dirname(layout.primary.controllerPlansDir) ||
                         m.destination === layout.primary.worktreeRegistryPath,
                 )) {
-                    await recoverLegacyRuntimeFiles({
+                    await (
+                        mapping.destination === dirname(layout.primary.controllerPlansDir)
+                            ? recoverLegacyPlanControllers
+                            : recoverLegacyRuntimeFiles
+                    )({
                         ...mapping,
                         archiveRoot: join(layout.primary.internalRoot, "legacy-recovery"),
-                        controller: mapping.destination === dirname(layout.primary.controllerPlansDir),
                         registry: mapping.destination === layout.primary.worktreeRegistryPath,
                     });
                 }

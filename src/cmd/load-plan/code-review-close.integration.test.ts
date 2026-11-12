@@ -1,18 +1,26 @@
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
 import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
+import { withRuntimeCommandFixture as withBaseRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runLoadPlanCommand } from "./index.ts";
+
+const withRuntimeCommandFixture: typeof withBaseRuntimeCommandFixture = (prefix, run) =>
+    withBaseRuntimeCommandFixture(prefix, (fixture) =>
+        withRetainedPlanFixture(fixture.projectRoot, () => run(fixture)),
+    );
 
 test("load-plan offers code review again after closing, including in a fresh Session", async () => {
     await withRuntimeCommandFixture("code-review-close-", async ({ projectRoot, setModelResponseFactory }) => {
         setModelResponseFactory(() => {
             throw new Error("Closing or reopening review must not run an Agent turn");
         });
-        await savePlan(projectRoot, "review-later", "# Review later\n", {
+        await seedPlan(projectRoot, "review-later", "# Review later\n", {
             classification: "PLANNED_CHANGE",
             status: "reviewed",
             executionMode: "non_git_in_place",
@@ -37,7 +45,10 @@ test("load-plan offers code review again after closing, including in a fresh Ses
                         }
                         assertEquals(request.type, "select");
                         if (request.prompt.includes("code review before merge")) {
-                            assertEquals(request.options?.map((option) => option.value), ["open", "skip", "close"]);
+                            assertEquals(
+                                request.options?.map((option) => option.value),
+                                ["open", "skip", "close"],
+                            );
                             offers.push(request.prompt);
                             return { outcome: "selected", value: choice };
                         }
@@ -48,7 +59,7 @@ test("load-plan offers code review again after closing, including in a fresh Ses
                 runtime.subscribeSessionEvents(sessionId, (event) => {
                     if ("message" in event && typeof event.message === "string") messages.push(event.message);
                 });
-                await runLoadPlanCommand([join(projectRoot, "docs/plans/review-later.md")], {
+                await runLoadPlanCommand([(await loadPlan(projectRoot, "review-later"))!.path], {
                     sessionRuntime: runtime,
                     sessionId,
                     uiAPI: {

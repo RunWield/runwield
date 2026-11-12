@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { readFile as fsReadFile } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
 import { applyAttachedReviewDecision, openAttachedReviewRound } from "./coordinator.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows, writeAttachedWorkflowRecord } from "./record-store.ts";
 import { spawnAttachedCli, submitReview, withProject } from "./attached-test-fixture.ts";

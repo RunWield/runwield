@@ -132,3 +132,36 @@ test("multi_file_edit prepareArguments leaves malformed calls for schema validat
     assertEquals(malformedPrepared?.edits[0].oldText, "a");
     assertStrictEquals(malformedPrepared?.edits[0].newText, undefined);
 });
+
+import { authorLocalPlan, loadPlan } from "../../plan-store/index.ts";
+import { packageFixture } from "../../shared/testing/plan-package-fixture.ts";
+
+test("multi_file_edit uses canonical Plan operations and rolls back an earlier edit after a later mismatch", async () => {
+    const fixture = await packageFixture();
+    try {
+        await authorLocalPlan(fixture.root, { planName: "first", contextMarkdown: "# First\n\noriginal\n" });
+        await authorLocalPlan(fixture.root, { planName: "second", contextMarkdown: "# Second\n\noriginal\n" });
+        const first = (await loadPlan(fixture.root, "first"))!;
+        const second = (await loadPlan(fixture.root, "second"))!;
+        const tool = createMultiFileEditTool(fixture.root);
+        const failed = await executeMultiFileEdit(tool, {
+            edits: [
+                { path: first.path, oldText: "original", newText: "changed" },
+                { path: second.path, oldText: "missing", newText: "changed" },
+            ],
+        });
+        assertEquals(failed.isError, true);
+        assertEquals((await loadPlan(fixture.root, "first"))!.markdown, first.markdown);
+        const succeeded = await executeMultiFileEdit(tool, {
+            edits: [
+                { path: first.path, oldText: "original", newText: "changed" },
+                { path: second.path, oldText: "original", newText: "changed" },
+            ],
+        });
+        assertEquals(succeeded.isError, undefined);
+        assertEquals((await loadPlan(fixture.root, "first"))!.markdown, "# First\n\nchanged\n");
+        assertEquals((await loadPlan(fixture.root, "second"))!.attrs.status, "draft");
+    } finally {
+        await fixture.cleanup();
+    }
+});

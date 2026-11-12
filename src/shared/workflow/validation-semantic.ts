@@ -1,3 +1,5 @@
+import { planDocumentReference } from "../../plan-store/index.ts";
+
 /**
  * @module shared/workflow/validation-semantic
  * The Semantic Review phase: reviewer rounds with ledger convergence, repair
@@ -10,7 +12,7 @@ import { AGENTS } from "../../constants.js";
 import { captureWorktreeTree, getWorkflowDiff, getWorktreeReviewDiff } from "./git-snapshot.ts";
 import { buildDiffInspectionSection, requiredReviewDiffFiles, ReviewDiffParseError } from "./review-diff.ts";
 import { ReviewInspection } from "./review-inspection.ts";
-import { loadEpicReviewContext, recordIntegrationNotes } from "./epic-review-context.ts";
+import { loadEpicReviewContext, recordIntegrationNotes } from "../../plan-store/index.ts";
 import { logValidationFailure } from "./validation-state-errors.ts";
 import {
     applyRoundFindings,
@@ -663,7 +665,7 @@ export async function runReviewerRound(
             args.planContent,
             inspection,
             epicContext?.section || "",
-            args.hostTurn ? `docs/plans/${args.planName}.md` : undefined,
+            args.hostTurn ? await planDocumentReference(context.executionCwd, args.planName) : undefined,
         );
         const correction = nudgeReason;
         nudgeReason = undefined;
@@ -1173,7 +1175,9 @@ export function buildSemanticReviewAttempt(
         "### Approved Plan",
         "",
         ...(planPath
-            ? [`Read the complete approved Plan at ${planPath}. Use the file read tools; the Plan is not inlined here.`]
+            ? [
+                  `Read the complete approved Plan at ${planPath}. Attached hosts can use MCP read_plan with their workflow and action IDs; otherwise use the authorized file read tools. Read every page; the Plan is not inlined here.`,
+              ]
             : [projectEngineerPlanBody(planContent)]),
     );
     return {

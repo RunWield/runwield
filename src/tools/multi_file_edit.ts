@@ -10,32 +10,39 @@ import { readFile as fsReadFile, stat as fsStat, writeFile as fsWriteFile } from
 import { defineTool, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
-import { isAbsolute, join, relative } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { getHomeDir } from "../constants.js";
-import {
-    getPlanRevisionForText,
-    withPlanCatalogLock,
-    withPlanLock,
-    writePlanMarkdownWithRevision,
-} from "../plan-store.js";
+import { operatePlanFile } from "../plan-store/index.ts";
 
-const fileEditSchema = Type.Object({
-    path: Type.String({ description: "Path to the file for this replacement, relative to root or the session cwd." }),
-    oldText: Type.String({
-        description: "Exact text to replace in this file. It must match one unique, non-overlapping region.",
-    }),
-    newText: Type.String({ description: "Replacement text for oldText." }),
-}, { additionalProperties: false });
+const fileEditSchema = Type.Object(
+    {
+        path: Type.String({
+            description: "Path to the file for this replacement, relative to root or the session cwd.",
+        }),
+        oldText: Type.String({
+            description: "Exact text to replace in this file. It must match one unique, non-overlapping region.",
+        }),
+        newText: Type.String({ description: "Replacement text for oldText." }),
+    },
+    { additionalProperties: false },
+);
 
-const PARAMETERS = Type.Object({
-    root: Type.Optional(Type.String({
-        description: "Optional base directory for relative edit paths. Defaults to the session working directory.",
-    })),
-    edits: Type.Array(fileEditSchema, {
-        minItems: 1,
-        description: "One or more replacements. Use edit instead when there is exactly one replacement in one file.",
-    }),
-}, { additionalProperties: false });
+const PARAMETERS = Type.Object(
+    {
+        root: Type.Optional(
+            Type.String({
+                description:
+                    "Optional base directory for relative edit paths. Defaults to the session working directory.",
+            }),
+        ),
+        edits: Type.Array(fileEditSchema, {
+            minItems: 1,
+            description:
+                "One or more replacements. Use edit instead when there is exactly one replacement in one file.",
+        }),
+    },
+    { additionalProperties: false },
+);
 
 interface MultiFileEdit {
     path: string;
@@ -75,8 +82,7 @@ interface EditMatch {
 interface WrittenSnapshot {
     path: string;
     content: string;
-    planName?: string;
-    writtenRevision?: string;
+    writtenPlanContent?: string;
 }
 
 interface MultiFileEditDetails {
@@ -158,29 +164,6 @@ function resolveToBaseDir(targetPath: string, baseDir: string): string {
     const expanded = targetPath.startsWith("~") ? getHomeDir() + targetPath.slice(1) : targetPath;
     if (isAbsolute(expanded)) return expanded;
     return join(baseDir, expanded);
-}
-
-/**
- * @param {string} path
- * @param {string} baseDir
- * @returns {boolean}
- */
-function isPlanMarkdownPath(path: string, baseDir: string): boolean {
-    const rel = relative(baseDir, path).replaceAll("\\", "/");
-    return rel.startsWith("docs/plans/") && rel.endsWith(".md") && !rel.startsWith("docs/plans/archived/");
-}
-
-/**
- * @param {string} path
- * @param {string} baseDir
- * @returns {string}
- */
-function planNameFromMarkdownPath(path: string, baseDir: string): string {
-    const rel = relative(baseDir, path).replaceAll("\\", "/");
-    if (!rel.startsWith("docs/plans/") || !rel.endsWith(".md") || rel.startsWith("docs/plans/archived/")) {
-        throw new Error(`Not a canonical Plan markdown path: ${path}`);
-    }
-    return rel.slice("docs/plans/".length, -".md".length);
 }
 
 /**
@@ -266,8 +249,8 @@ function applyEdits(normalizedContent: string, edits: MultiFileEdit[], path: str
     let newContent = normalizedContent;
     for (let i = matches.length - 1; i >= 0; i--) {
         const match = matches[i];
-        newContent = newContent.substring(0, match.index) + match.newText +
-            newContent.substring(match.index + match.length);
+        newContent =
+            newContent.substring(0, match.index) + match.newText + newContent.substring(match.index + match.length);
     }
 
     if (normalizedContent === newContent) {
@@ -285,20 +268,18 @@ const prepareMultiFileEditArguments: PrepareArgumentsFunction = (input) => {
     if (!isInputRecord(input)) return input as MultiFileEditParams;
 
     const args = input;
-    const topLevelPath = typeof args.path === "string"
-        ? args.path
-        : typeof args.file_path === "string"
-        ? args.file_path
-        : undefined;
+    const topLevelPath =
+        typeof args.path === "string" ? args.path : typeof args.file_path === "string" ? args.file_path : undefined;
 
     if (Array.isArray(args.edits)) {
         const edits = args.edits.map((rawEdit) => {
             if (!isInputRecord(rawEdit)) return rawEdit;
-            const editPath = typeof rawEdit.path === "string"
-                ? rawEdit.path
-                : typeof rawEdit.file_path === "string"
-                ? rawEdit.file_path
-                : topLevelPath;
+            const editPath =
+                typeof rawEdit.path === "string"
+                    ? rawEdit.path
+                    : typeof rawEdit.file_path === "string"
+                      ? rawEdit.file_path
+                      : topLevelPath;
             return {
                 path: editPath,
                 oldText: rawEdit.oldText,
@@ -364,11 +345,6 @@ export function createMultiFileEditTool(cwd: string) {
             let replacementCount = 0;
 
             const writtenSnapshots: WrittenSnapshot[] = [];
-            const planNames = [...groupedEdits.keys()]
-                .map((filePath) => resolveToBaseDir(filePath, baseDir))
-                .filter((absolutePath) => isPlanMarkdownPath(absolutePath, baseDir))
-                .map((absolutePath) => planNameFromMarkdownPath(absolutePath, baseDir))
-                .sort((a, b) => a.localeCompare(b));
             const applyAllEdits = async () => {
                 for (const [filePath, fileEdits] of groupedEdits) {
                     const absolutePath = resolveToBaseDir(filePath, baseDir);
@@ -376,34 +352,35 @@ export function createMultiFileEditTool(cwd: string) {
                         try {
                             await fsStat(absolutePath);
                         } catch (err) {
-                            const msg = err instanceof Error && "code" in err && err.code === "ENOENT"
-                                ? `Could not find file: ${filePath}`
-                                : `Could not access file: ${filePath}. ${
-                                    coerceErrorMessage(err instanceof Error ? err : String(err))
-                                }`;
+                            const msg =
+                                err instanceof Error && "code" in err && err.code === "ENOENT"
+                                    ? `Could not find file: ${filePath}`
+                                    : `Could not access file: ${filePath}. ${coerceErrorMessage(
+                                          err instanceof Error ? err : String(err),
+                                      )}`;
                             throw new Error(msg);
                         }
 
-                        const rawContent = await fsReadFile(absolutePath, "utf8");
+                        const owned = await operatePlanFile(cwd, { path: absolutePath, mode: "read" });
+                        const rawContent = owned ? owned.content! : await fsReadFile(absolutePath, "utf8");
                         const { bom, text: content } = stripBom(rawContent);
                         const originalEnding = detectLineEnding(content);
                         const normalizedContent = normalizeToLF(content);
                         const { baseContent, newContent } = applyEdits(normalizedContent, fileEdits, filePath);
                         const finalContent = bom + restoreLineEndings(newContent, originalEnding);
 
-                        if (isPlanMarkdownPath(absolutePath, baseDir)) {
-                            const expectedRevision = await getPlanRevisionForText(rawContent);
-                            const snapshot: WrittenSnapshot = {
+                        if (owned) {
+                            await operatePlanFile(cwd, {
+                                path: absolutePath,
+                                mode: "edit",
+                                oldText: rawContent,
+                                newText: finalContent,
+                            });
+                            writtenSnapshots.push({
                                 path: absolutePath,
                                 content: rawContent,
-                                planName: planNameFromMarkdownPath(absolutePath, baseDir),
-                            };
-                            writtenSnapshots.push(snapshot);
-                            snapshot.writtenRevision = await writePlanMarkdownWithRevision(
-                                absolutePath,
-                                finalContent,
-                                expectedRevision,
-                            );
+                                writtenPlanContent: finalContent,
+                            });
                         } else {
                             writtenSnapshots.push({ path: absolutePath, content: rawContent });
                             await fsWriteFile(absolutePath, finalContent);
@@ -418,34 +395,30 @@ export function createMultiFileEditTool(cwd: string) {
             };
 
             try {
-                const runWithPlanLocks = async (index: number): Promise<void> => {
-                    if (index >= planNames.length) return await applyAllEdits();
-                    return await withPlanLock(baseDir, planNames[index], async () => await runWithPlanLocks(index + 1));
-                };
-                if (planNames.length > 0) await withPlanCatalogLock(baseDir, () => runWithPlanLocks(0));
-                else await applyAllEdits();
+                await applyAllEdits();
 
                 const fileCount = groupedEdits.size;
                 const replacementNoun = replacementCount === 1 ? "replacement" : "replacements";
                 const fileNoun = fileCount === 1 ? "file" : "files";
                 return {
-                    content: [{
-                        type: "text" as const,
-                        text:
-                            `Successfully applied ${replacementCount} ${replacementNoun} across ${fileCount} ${fileNoun}.`,
-                    }],
+                    content: [
+                        {
+                            type: "text" as const,
+                            text: `Successfully applied ${replacementCount} ${replacementNoun} across ${fileCount} ${fileNoun}.`,
+                        },
+                    ],
                     details: { diff: diffSections.join("\n\n"), firstChangedLine },
                 };
             } catch (err) {
                 for (const snapshot of writtenSnapshots.toReversed()) {
                     try {
-                        if (snapshot.planName) {
-                            if (!snapshot.writtenRevision) continue;
-                            await writePlanMarkdownWithRevision(
-                                snapshot.path,
-                                snapshot.content,
-                                snapshot.writtenRevision,
-                            );
+                        if (snapshot.writtenPlanContent !== undefined) {
+                            await operatePlanFile(cwd, {
+                                path: snapshot.path,
+                                mode: "edit",
+                                oldText: snapshot.writtenPlanContent,
+                                newText: snapshot.content,
+                            });
                         } else {
                             await fsWriteFile(snapshot.path, snapshot.content);
                         }

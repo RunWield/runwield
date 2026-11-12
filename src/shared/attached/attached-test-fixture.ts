@@ -1,3 +1,4 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { rm as fsRm, readFile as fsReadFile } from "node:fs/promises";
@@ -5,7 +6,7 @@ import { spawnNativeProcess } from "../foreground-process.ts";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { join } from "node:path";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
-import { savePlan } from "../../plan-store.js";
+
 import { type AttachedReadResult, type AttachedCarrierResult, runAttachedOperation } from "./coordinator.ts";
 import {
     type AttachedJsonObject,
@@ -228,7 +229,7 @@ export async function spawnAttachedCli(
 /** Submit one FEATURE Plan through the real coordinator and return its pending review. */
 export async function submitReview(projectRoot: string) {
     const { planning } = await reachPlanning(projectRoot);
-    await savePlan(projectRoot, "dark-mode-toggle", "# Toggle\n\nAdd a toggle.\n", {
+    await seedPlan(projectRoot, "dark-mode-toggle", "# Toggle\n\nAdd a toggle.\n", {
         classification: "PLANNED_CHANGE",
         executionAgent: "engineer",
         collaborationRecommendation: "pair",

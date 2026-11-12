@@ -1,19 +1,9 @@
 // @ts-nocheck: server module uses the repository's JSDoc JavaScript style while keeping the TypeScript production extension.
-import { currentPackageSelection, selectedPackage } from "../../../shared/workflow/package-workflow.ts";
 import { workRecordOwnerLayout, assertWorkRecordPath } from "../../../shared/work-records/owner.ts";
 import { readFile as fsReadFile, realpath as fsRealpath } from "node:fs/promises";
 /** @module ui/workspace/server/project-artifacts */
 
-import { loadTargetPlan } from "../../../shared/workflow/planning-worktree.ts";
-import {
-    inspectProjectRuntimeReadAccess,
-    ProjectRuntimeEntryRefusedError,
-} from "../../../shared/project-runtime-layout.ts";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import {
-    assertControllerDocumentAvailable,
-    listControllerDocumentWorktrees,
-} from "../../../shared/workflow/controller-registry.ts";
 import { getWorkRecordsDir, listWorkRecords } from "../../../shared/work-records/store.ts";
 import { isCurrentWorkRecord, workRecordNotices } from "../../../shared/work-records/list.ts";
 
@@ -35,55 +25,7 @@ export async function assertContainedProjectPath(root, path) {
     return canonicalPath;
 }
 
-/** @param {string} root @param {string} path @param {string} planName */
-export async function assertAuthorizedPlanPath(root, path, planName) {
-    const access = await inspectProjectRuntimeReadAccess(root);
-    if (access.kind === "blocked") throw new ProjectRuntimeEntryRefusedError(access);
-    const attempts =
-        access.kind === "pending"
-            ? []
-            : (await listControllerDocumentWorktrees(root)).filter((entry) => entry.planName === planName);
-    if (!attempts.length) return await assertContainedProjectPath(root, path);
-    if (attempts.length !== 1) throw new Error("Plan document authority is ambiguous.");
-    const attempt = attempts[0];
-    assertControllerDocumentAvailable(attempt);
-    const canonicalPath = await fsRealpath(path);
-    for (const prefix of ["", "archived/"]) {
-        const expectedPath = join(attempt.path, "docs", "plans", `${prefix}${planName}.md`);
-        try {
-            const containedPath = await assertContainedProjectPath(attempt.path, expectedPath);
-            if (containedPath === canonicalPath) return canonicalPath;
-        } catch (error) {
-            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
-        }
-    }
-    throw new Error("Plan path is not the registered document authority.");
-}
-
-/** Authorize local Git bytes for browsing only. This does not authorize a filesystem write.
- * @param {string} root
- * @param {{ path: string, planName: string }} resource
- */
-export async function assertReadablePlanResource(root, resource) {
-    const selection = currentPackageSelection();
-    if (selection) {
-        if (resolve(root) !== resolve(selection.identity.checkoutRoot))
-            throw new Error("Plan resource belongs to another Project.");
-        const plan = await selectedPackage({ planId: resource.planId });
-        if (!plan.documents.some((document) => join(plan.path, document.name) === resource.path))
-            throw new Error("Plan resource is not an admitted document.");
-        return resource.path;
-    }
-
-    const snapshot = resource.path.match(/^([a-f0-9]{40,64}):(.+)$/);
-    if (!snapshot) return await assertAuthorizedPlanPath(root, resource.path, resource.planName);
-    const access = await inspectProjectRuntimeReadAccess(root);
-    if (access.kind === "blocked") throw new ProjectRuntimeEntryRefusedError(access);
-    if (snapshot[2] !== `docs/plans/${resource.planName}.md`) throw new Error("Plan snapshot identity is invalid.");
-    const plan = await loadTargetPlan(root, resource.planName, snapshot[1]);
-    if (!plan || plan.path !== resource.path) throw new Error("Plan snapshot is unavailable.");
-    return resource.path;
-}
+export { assertAuthorizedPlanPath, assertReadablePlanResource } from "../../../plan-store/index.ts";
 
 /** @param {string} root @param {string} relativePath */
 export async function readSafeProjectMarkdown(root, relativePath) {

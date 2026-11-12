@@ -1,3 +1,5 @@
+import { seedPlanState } from "../testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { compactStatus } from "./presentation.ts";
 import { readAttachedAction } from "./coordinator.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
@@ -6,7 +8,8 @@ import { writeFile as fsWriteFile, readFile as fsReadFile, rm as fsRm } from "no
 import { ok as assert, notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { loadPlan, parsePlanFrontMatter, updatePlanFrontMatter } from "../../plan-store.js";
+
+import { loadPlan } from "../../plan-store/index.ts";
 import { addEntry, findById, listEntries } from "../worktree-registry.js";
 import { EVIDENCE, runOperation, spawnAttachedCli, withProject } from "./attached-test-fixture.ts";
 import { locateAttachedWorkflows, type AttachedWorkflowRecord } from "./record-store.ts";
@@ -25,8 +28,8 @@ test("approved handoff captures baseline, preserves invoking files, and checkpoi
         await fsWriteFile(join(root, "scratch.txt"), "Untracked user work\n");
         const beforeBranch = await git(root, "branch", "--show-current");
         const beforeHead = await git(root, "rev-parse", "HEAD");
-        const primaryPlanPath = join(root, "docs/plans/dark-mode-toggle.md");
-        const primaryPlan = parsePlanFrontMatter(await fsReadFile(primaryPlanPath, "utf8"));
+        const primaryPlanPath = (await loadPlan(root, "dark-mode-toggle"))!.path;
+        const primaryPlan = (await loadPlan(root, "dark-mode-toggle"))!;
         const started = await runOperation("start_execution", root, executionInput(ready, "start"));
         assert(started.ok && started.workflow.nextAction.kind === "implementation", JSON.stringify(started));
         const execution = started.workflow.execution;
@@ -35,18 +38,23 @@ test("approved handoff captures baseline, preserves invoking files, and checkpoi
         // Core records delivery identity before handing authority to the worker.
         // This is the only permitted change to the invoking Plan.
         const preparedPrimaryBytes = await fsReadFile(primaryPlanPath, "utf8");
-        const preparedPrimaryPlan = parsePlanFrontMatter(preparedPrimaryBytes);
+        const preparedPrimaryPlan = (await loadPlan(root, "dark-mode-toggle"))!;
         assertEquals(preparedPrimaryPlan.body, primaryPlan.body);
-        assertEquals(preparedPrimaryPlan.attrs, {
-            ...primaryPlan.attrs,
-            targetBranch: "main",
-            deliveryBranch: "plan/dark-mode-toggle",
-        });
+        assertEquals(preparedPrimaryPlan.attrs.createdAt, primaryPlan.attrs.createdAt);
+        assertEquals(preparedPrimaryBytes, primaryPlan.markdown);
+        assertEquals((await loadPlan(root, "dark-mode-toggle"))?.attrs.targetBranch, "main");
+        // Canonical attempts record their landing in the execution owner; no checkout Plan branch is created.
+        assertEquals((await findById(root, execution.worktreeId))?.baseBranch, "main");
+        assertEquals(
+            (await findById(root, execution.worktreeId))?.branch,
+            await git(execution.executionCwd, "branch", "--show-current"),
+        );
         assertEquals((await loadPlan(execution.executionCwd, "dark-mode-toggle"))?.attrs.status, "in_progress");
         assertEquals((await findById(root, execution.worktreeId))?.executionBaselineTree, execution.baselineTree);
-        assertStringIncludes(
-            await git(execution.executionCwd, "show", `${execution.baselineTree}:docs/plans/dark-mode-toggle.md`),
-            "# Toggle",
+        assertEquals(await git(execution.executionCwd, "cat-file", "-t", execution.baselineTree), "tree");
+        assertStringIncludes(await fsReadFile(primaryPlanPath, "utf8"), "# Toggle");
+        await assertRejects(() =>
+            git(execution.executionCwd!, "show", `${execution.baselineTree}:docs/plans/dark-mode-toggle.md`),
         );
         await fsWriteFile(join(execution.executionCwd, "toggle.ts"), "export const dark = true;\n");
         const completed = await runOperation("task_completed", root, completionInput(started.workflow));
@@ -113,12 +121,12 @@ for (const change of ["body", "identity", "status", "branch", "registry-path", "
             const execution = started.workflow.execution;
             assert(execution?.executionCwd && execution.worktreeId);
             const worktree = execution.executionCwd;
-            const planPath = join(worktree, "docs/plans/dark-mode-toggle.md");
+            const planPath = (await loadPlan(root, "dark-mode-toggle"))!.path;
             if (change === "body") {
                 await fsWriteFile(planPath, (await fsReadFile(planPath, "utf8")) + "\nChanged approved scope\n");
             }
             if (change === "identity") {
-                await updatePlanFrontMatter(
+                await seedPlanState(
                     worktree,
                     "dark-mode-toggle",
                     { planId: crypto.randomUUID() },
@@ -129,7 +137,7 @@ for (const change of ["body", "identity", "status", "branch", "registry-path", "
                 );
             }
             if (change === "status") {
-                await updatePlanFrontMatter(
+                await seedPlanState(
                     worktree,
                     "dark-mode-toggle",
                     { status: "on_hold" },
@@ -168,14 +176,16 @@ for (const change of ["body", "identity", "status", "branch", "registry-path", "
 }
 
 test("completion restores a deleted execution Plan from its recorded baseline through Core", async () => {
-    await withProject(async (root) => {
-        const started = await implementing(root);
-        const execution = started.workflow.execution;
-        assert(execution?.executionCwd && execution.worktreeId && execution.baselineTree);
-        await fsRm(join(execution.executionCwd, "docs/plans/dark-mode-toggle.md"));
-        const result = await runOperation("task_completed", root, completionInput(started.workflow));
-        assert(result.ok, JSON.stringify(result));
-        assertEquals((await loadPlan(execution.executionCwd, "dark-mode-toggle"))?.attrs.status, "implemented");
-        assertEquals((await findById(root, execution.worktreeId))?.status, "completed");
-    });
+    await withProject((root) =>
+        withRetainedPlanFixture(root, async () => {
+            const started = await implementing(root);
+            const execution = started.workflow.execution;
+            assert(execution?.executionCwd && execution.worktreeId && execution.baselineTree);
+            await fsRm(join(execution.executionCwd, "docs/plans/dark-mode-toggle.md"));
+            const result = await runOperation("task_completed", root, completionInput(started.workflow));
+            assert(result.ok, JSON.stringify(result));
+            assertEquals((await loadPlan(execution.executionCwd, "dark-mode-toggle"))?.attrs.status, "implemented");
+            assertEquals((await findById(root, execution.worktreeId))?.status, "completed");
+        }),
+    );
 });

@@ -1,3 +1,4 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
@@ -8,7 +9,6 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
-import { git } from "../git-test-fixture.ts";
 import { prepareIndexRuntime } from "./delivery-test-fixture.ts";
 import { CLI_PATH, EVIDENCE, readRecordBytes } from "./attached-test-fixture.ts";
 import { listWorkRecords } from "../work-records/store.js";
@@ -19,7 +19,8 @@ import {
 } from "../work-records/index-adapter.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
 import { conversation, reviewApi, sendChat } from "./review-chat-test-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import type {
     AttachedJsonObject,
     AttachedOperationName,
@@ -126,7 +127,7 @@ plugin({ name: "count-core-model-sessions", setup(build) {
             },
         });
         assert(planResult.ok && planResult.workflow.nextAction.kind === "plan");
-        await savePlan(fixture.root, "chat-plan", "# Selector\n\nAdd a selector.\n", {
+        await seedPlan(fixture.root, "chat-plan", "# Selector\n\nAdd a selector.\n", {
             classification: "PLANNED_CHANGE",
             executionAgent: "engineer",
             collaborationRecommendation: "autonomous",
@@ -154,13 +155,10 @@ plugin({ name: "count-core-model-sessions", setup(build) {
                 executionAgent: "engineer",
                 collaborationRecommendation: "autonomous",
                 reviewRevision: 0,
+                documentRevision: (await loadPlan(fixture.root, "chat-plan"))!.revision,
             }),
         });
         assertEquals(planApproved.status, 200, await planApproved.text());
-        // This second workflow prepares primary-checkout ignores after the execution fixture was forked.
-        // Save only that project setup; an unrelated dirty primary edit would correctly block delivery.
-        await git(fixture.root, ["add", ".gitignore"]);
-        await git(fixture.root, ["commit", "-m", "Record project runtime ignores"]);
         const rejectedTranscript = await call("start_validation", await fixture.status(), {}, privateHostConversation);
         assert(!rejectedTranscript.ok);
         assertEquals(rejectedTranscript.rejection.code, "transcript_field");

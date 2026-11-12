@@ -26,7 +26,7 @@
 import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { ensurePlansDir, loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
 import { probeGitRepository } from "../git.ts";
 import { hasNonGitExecutionConsent, rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
 import { resolvePlanExecutionRuntimeAgent } from "./execution-agent.ts";
@@ -489,7 +489,6 @@ export async function dispatchPostTriage({
     if (isPlannedChangeClassification(normalizedTriage.routingIntent) || normalizedTriage.routingIntent === "PROJECT") {
         const isPlannedChange = isPlannedChangeClassification(normalizedTriage.routingIntent);
         const agentName = isPlannedChange ? AGENTS.PLANNER : AGENTS.ARCHITECT;
-        await ensurePlansDir(projectRoot);
         checkCanceled();
 
         const outcome = await runPlanningAgent({

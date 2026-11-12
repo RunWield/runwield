@@ -3,6 +3,7 @@ import { captureForegroundProcess } from "../../shared/captured-process.ts";
 import { getCwd } from "../../constants.js";
 import { test } from "node:test";
 import {
+    realpath as fsRealpath,
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,
     readFile as fsReadFile,
@@ -44,8 +45,8 @@ for (const repair of [false, true]) {
         await withRuntimeCommandFixture("legacy-publication-", async () => {
             const sandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
             delete process.env["WLD_TEST_SANDBOX_HOME"];
-            const root = await seed.checkout();
-            const directory = await fsMkdtemp(join(tmpdir(), "legacy-publication-git-"));
+            const root = await fsRealpath(await seed.checkout());
+            const directory = await fsRealpath(await fsMkdtemp(join(tmpdir(), "legacy-publication-git-")));
             const tree = join(directory, "execution");
             const remote = join(directory, "remote.git");
             const runtime = createSessionRuntime();

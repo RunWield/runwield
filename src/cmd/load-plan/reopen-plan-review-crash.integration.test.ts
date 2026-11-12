@@ -1,3 +1,6 @@
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
+import { capturePlanReviewInput } from "../../plan-store/index.ts";
+import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { spawnNativeProcess } from "../../shared/foreground-process.ts";
@@ -10,7 +13,8 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
-import { ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.js";
+import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
+
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";
@@ -30,7 +34,7 @@ test("a Session reopens the current saved Plan after its pending review process 
     await withRuntimeCommandFixture(
         "reopen-review-crash-",
         async ({ homeDir, projectRoot, setModelResponseFactory }) => {
-            await savePlan(projectRoot, "target", "# Target\n\n## Context\n\nOriginal content.\n", {
+            await seedPlan(projectRoot, "target", "# Target\n\n## Context\n\nOriginal content.\n", {
                 classification: "PLANNED_CHANGE",
                 status: "approved",
                 affectedPaths: [],
@@ -117,7 +121,7 @@ test("a Session reopens the current saved Plan after its pending review process 
                 // A newer saved version, not the pending request's original text, must be reviewed.
                 const savedBeforeEdit = await loadPlan(projectRoot, "target");
                 assert(savedBeforeEdit);
-                await savePlan(
+                await seedPlan(
                     projectRoot,
                     "target",
                     "# Target\n\n## Context\n\nUpdated after crash.\n",
@@ -147,7 +151,20 @@ test("a Session reopens the current saved Plan after its pending review process 
                                 assertEquals(request._meta?.planName, "target");
                                 assertEquals(request._meta?.planningAgentName, "planner");
                                 reviewedContent = await fsReadFile(String(request._meta?.planPath), "utf8");
-                                return { outcome: "accepted", _meta: { approved: true, approvalAction: "later" } };
+                                const current = await loadPlan(projectRoot, "target");
+                                assert(current);
+                                const result = await applySharedPlanReviewDecision({
+                                    cwd: projectRoot,
+                                    planName: "target",
+                                    planPath: current.path,
+                                    planWithFrontMatter: current.markdown,
+                                    planRevision: current.revision,
+                                    originalAttrs: current.attrs,
+                                    trustedClassification: current.attrs.classification,
+                                    packageInput: await capturePlanReviewInput(projectRoot, "target", current.revision),
+                                    decision: { approved: true, approvalAction: "later" },
+                                });
+                                return { outcome: "accepted", _meta: { ...result } };
                             }
                             return { outcome: "canceled" };
                         },
@@ -177,7 +194,7 @@ test("Workspace opens and approves a saved Plan review after its owner is SIGKIL
     await withRuntimeCommandFixture(
         "workspace-review-crash-",
         async ({ homeDir, projectRoot, setModelResponseFactory }) => {
-            await savePlan(projectRoot, "target", "# Target\n\n## Context\n\nOriginal content.\n", {
+            await seedPlan(projectRoot, "target", "# Target\n\n## Context\n\nOriginal content.\n", {
                 classification: "PLANNED_CHANGE",
                 status: "approved",
                 affectedPaths: [],
@@ -266,7 +283,7 @@ test("Workspace opens and approves a saved Plan review after its owner is SIGKIL
 
                 const previous = await loadPlan(projectRoot, "target");
                 assert(previous);
-                await savePlan(
+                await seedPlan(
                     projectRoot,
                     "target",
                     "# Target\n\n## Context\n\nUpdated after crash.\n",
