@@ -30,6 +30,7 @@ dependencies:
     - "open-projects-and-configure-providers"
     - "continue-saved-sessions-in-desktop"
     - "inspect-usage-and-control-recording-and-export"
+planId: "b46f0011-81bf-4cb5-9ee7-9098b29bcb0b"
 ---
 
 # Configure Model Providers in Desktop Settings
