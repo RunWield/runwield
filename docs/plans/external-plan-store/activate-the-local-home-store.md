@@ -38,6 +38,7 @@ dependencies:
 targetBranch: "epic/external-plan-store"
 userVerifiedAt: null
 status: "reviewed"
+validatedCommit: "d046f6e80fb7dc5254fa3985650451ca9282eb0c"
 ---
 
 # Activate the Local Home Store
