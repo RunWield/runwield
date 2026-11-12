@@ -13,7 +13,7 @@ interface DesktopGlobals {
     runwieldSession: WorkspaceSessionClient;
 }
 type DesktopWindow = typeof globalThis & DesktopGlobals;
-async function list(desktop: Desktop) {
+function list(desktop: Desktop) {
     return desktop.page.evaluate(() => (globalThis as DesktopWindow).runwieldProjects.listProjects());
 }
 async function picker(desktop: Desktop, path: string | null) {
@@ -29,7 +29,7 @@ async function link(desktop: Desktop, root: string) {
     await desktop.page.getByRole("button", { name: "Link Project", exact: true }).click();
     await desktop.page.getByRole("button", { name: "Settings", exact: true }).waitFor();
 }
-async function view(desktop: Desktop) {
+function view(desktop: Desktop) {
     return desktop.page.evaluate(
         () =>
             new Promise<SessionClientView>((resolve) => {

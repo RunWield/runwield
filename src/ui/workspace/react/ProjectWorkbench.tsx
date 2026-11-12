@@ -61,6 +61,7 @@ export function ProjectWorkbench({ projects, sessions }: ProjectWorkbenchProps) 
             <nav aria-label="Workspace">
                 <strong>RunWield</strong>
                 <button
+                    type="button"
                     className="secondary-action"
                     onClick={() => {
                         setSelected(false);
@@ -71,6 +72,7 @@ export function ProjectWorkbench({ projects, sessions }: ProjectWorkbenchProps) 
                 </button>
                 {view?.project && (
                     <button
+                        type="button"
                         className="secondary-action"
                         onClick={() => {
                             setSelected(true);
@@ -86,6 +88,7 @@ export function ProjectWorkbench({ projects, sessions }: ProjectWorkbenchProps) 
                     <h1>{project ? `${project.displayName || project.rootLabel} settings` : "Projects"}</h1>
                     {!project && (
                         <button
+                            type="button"
                             className="primary-action"
                             disabled={pending || view?.connection !== "ready"}
                             onClick={() =>
@@ -109,6 +112,7 @@ export function ProjectWorkbench({ projects, sessions }: ProjectWorkbenchProps) 
                         : status || (view?.connection !== "ready" ? view?.error || "Connecting to runtime…" : "")}
                 </p>
                 <button
+                    type="button"
                     className="secondary-action"
                     disabled={pending || view?.connection !== "ready"}
                     onClick={() => void action(refresh)}
@@ -125,6 +129,7 @@ export function ProjectWorkbench({ projects, sessions }: ProjectWorkbenchProps) 
                         ))}
                         <div className="project-actions">
                             <button
+                                type="button"
                                 className="secondary-action"
                                 disabled={pending}
                                 onClick={() =>
@@ -140,6 +145,7 @@ export function ProjectWorkbench({ projects, sessions }: ProjectWorkbenchProps) 
                                 {project.lifecycle === "enabled" ? "Disable" : "Enable"}
                             </button>
                             <button
+                                type="button"
                                 className="secondary-action"
                                 disabled={pending || !project.enabled}
                                 onClick={() =>
@@ -154,6 +160,7 @@ export function ProjectWorkbench({ projects, sessions }: ProjectWorkbenchProps) 
                                 Full Session rescan
                             </button>
                             <button
+                                type="button"
                                 ref={removeButton}
                                 className="secondary-action"
                                 disabled={pending}
@@ -228,6 +235,7 @@ export function ProjectWorkbench({ projects, sessions }: ProjectWorkbenchProps) 
                                     </div>
                                     <div className="project-actions">
                                         <button
+                                            type="button"
                                             className="primary-action"
                                             disabled={pending || !row.enabled}
                                             onClick={() =>
@@ -240,6 +248,7 @@ export function ProjectWorkbench({ projects, sessions }: ProjectWorkbenchProps) 
                                             Open
                                         </button>
                                         <button
+                                            type="button"
                                             className="secondary-action"
                                             disabled={pending}
                                             onClick={() => setSettings(row.projectId)}

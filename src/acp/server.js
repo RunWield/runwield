@@ -977,13 +977,42 @@ function createLiveOperation(options) {
     }
     /** @param {AcpNotificationContext} context */
     function installAdapter(context) {
-        runtime.setInteractionAdapter(
-            runtimeSessionId,
-            createAcpInteractionAdapter({
-                context,
-                acpSessionId,
-                clientCapabilities,
-                beforeAccept: () => {
+        const adapter = createAcpInteractionAdapter({
+            context,
+            acpSessionId,
+            clientCapabilities,
+            presentChatQuestion: (interaction, signal) => {
+                if (cancelled || signal?.aborted) {
+                    return Promise.resolve({
+                        outcome: RuntimeInteractionOutcomes.CANCELED,
+                        message: "Interaction canceled.",
+                    });
+                }
+                /** @type {PromiseWithResolvers<import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionResponse>} */
+                const answered = Promise.withResolvers();
+                const current = { interaction, delivered: false, queued: false };
+                question = current;
+                const abort = () => {
+                    if (question === current) question = null;
+                    answered.resolve({
+                        outcome: RuntimeInteractionOutcomes.CANCELED,
+                        message: "Interaction canceled.",
+                    });
+                };
+                if (signal?.aborted) abort();
+                else signal?.addEventListener("abort", abort, { once: true });
+                deliverQuestion();
+                return answered.promise.finally(() => signal?.removeEventListener("abort", abort));
+            },
+        });
+        runtime.setInteractionAdapter(runtimeSessionId, {
+            ...adapter,
+            async requestInteraction(interaction, signal) {
+                const response = await adapter.requestInteraction(interaction, signal);
+                if (
+                    response.outcome !== RuntimeInteractionOutcomes.CANCELED &&
+                    response.outcome !== RuntimeInteractionOutcomes.UNSUPPORTED
+                ) {
                     try {
                         options.workspace.checkInteraction(acpSessionId);
                     } catch (error) {
@@ -991,32 +1020,10 @@ function createLiveOperation(options) {
                         runtime.cancelSession(runtimeSessionId);
                         throw error;
                     }
-                },
-                presentChatQuestion: (interaction, signal) => {
-                    if (cancelled || signal?.aborted) {
-                        return Promise.resolve({
-                            outcome: RuntimeInteractionOutcomes.CANCELED,
-                            message: "Interaction canceled.",
-                        });
-                    }
-                    /** @type {PromiseWithResolvers<import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionResponse>} */
-                    const answered = Promise.withResolvers();
-                    const current = { interaction, delivered: false, queued: false };
-                    question = current;
-                    const abort = () => {
-                        if (question === current) question = null;
-                        answered.resolve({
-                            outcome: RuntimeInteractionOutcomes.CANCELED,
-                            message: "Interaction canceled.",
-                        });
-                    };
-                    if (signal?.aborted) abort();
-                    else signal?.addEventListener("abort", abort, { once: true });
-                    deliverQuestion();
-                    return answered.promise.finally(() => signal?.removeEventListener("abort", abort));
-                },
-            }),
-        );
+                }
+                return response;
+            },
+        });
     }
     // Answers are sent to the broker's existing callback, not to the adapter's
     // presentation Promise. Its abort listener dismisses the losing surface.

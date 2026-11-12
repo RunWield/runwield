@@ -951,6 +951,6 @@ export function requiresProjectDirectoryConsent(name, args = []) {
 }
 
 /** Browser management commands have metadata here, but execute only in the CLI/browser composition. */
-async function browserCommandRequiresCli() {
-    throw new Error("Browser management commands require the CLI or browser Workspace host.");
+function browserCommandRequiresCli() {
+    return Promise.reject(new Error("Browser management commands require the CLI or browser Workspace host."));
 }

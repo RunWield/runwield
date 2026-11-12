@@ -32,7 +32,7 @@ export interface WorkspaceCapability {
     connectionId: string;
     projects: WorkspaceProjectCapability;
 }
-export interface WorkspaceListProjectsRequest {}
+export type WorkspaceListProjectsRequest = Record<string, never>;
 export interface WorkspaceProjectRequest {
     projectId: string;
 }

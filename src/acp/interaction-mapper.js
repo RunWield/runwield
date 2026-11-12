@@ -194,7 +194,6 @@ function buildSchema(interaction) {
  * @property {any} context
  * @property {string} acpSessionId
  * @property {unknown} [clientCapabilities]
- * @property {() => void} [beforeAccept] Transport owner's admission check before accepting a form response.
  * @property {(interaction: import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest, signal?: AbortSignal) => Promise<import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionResponse>} [presentChatQuestion]
  */
 
@@ -202,13 +201,7 @@ function buildSchema(interaction) {
  * @param {AcpInteractionAdapterOptions} options
  * @returns {import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionAdapter}
  */
-export function createAcpInteractionAdapter({
-    context,
-    acpSessionId,
-    clientCapabilities,
-    presentChatQuestion,
-    beforeAccept,
-}) {
+export function createAcpInteractionAdapter({ context, acpSessionId, clientCapabilities, presentChatQuestion }) {
     return {
         supportsInteraction(type) {
             return (
@@ -303,7 +296,6 @@ export function createAcpInteractionAdapter({
             if (signal?.aborted) {
                 return { outcome: RuntimeInteractionOutcomes.CANCELED, message: "Interaction canceled." };
             }
-            beforeAccept?.();
             const value = response?.content?.answer;
             if (interaction.type === RuntimeInteractionTypes.TEXT) {
                 const text = typeof value === "undefined" ? "" : String(value);
