@@ -7,13 +7,14 @@ import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path
 import { desktopRoot } from "./desktop-paths.ts";
 import { renderRunWieldThemeCss } from "../src/ui/design-system/theme-bridge.ts";
 
-type DesktopTarget = "renderer" | "main" | "preload";
+type DesktopTarget = "renderer" | "main" | "preload" | "core";
 export interface DesktopEntry {
     target: DesktopTarget;
     entry: string;
 }
 
 const pureShared = new Set([
+    "src/acp/workspace-contract.ts",
     "src/tools/registry.ts",
     "src/shared/session/interaction-values.ts",
     "src/shared/session/session-artifact-types.ts",
@@ -27,6 +28,15 @@ function refuse(target: DesktopTarget, dependency: string): never {
 function inspectPath(target: DesktopTarget, path: string): void {
     const name = relative(desktopRoot, path).replaceAll("\\", "/");
     if (!name.startsWith("src/")) return; // Packages and explicit external fixture entrypoints still get full graph checks.
+    if (target === "core") {
+        if (
+            name === "src/ui/workspace/server.js" ||
+            name.startsWith("src/ui/workspace/server/") ||
+            name.startsWith("src/ui/workspace/routes/")
+        )
+            refuse(target, name);
+        return;
+    }
     const contract = name.startsWith("src/ui/workspace/client/");
     const design = name.startsWith("src/ui/design-system/");
     if (target === "preload") {
@@ -49,6 +59,7 @@ function inspectPath(target: DesktopTarget, path: string): void {
 
 /** Inspect emitted JavaScript, not TypeScript annotations or erased imports. */
 function inspectJavaScript(target: DesktopTarget, path: string, code: string): void {
+    if (target === "core") return;
     const source = ts.createSourceFile(path, code, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
     const globals = new Set(["Bun", "Deno"]);
     // Package environment guards are transformed by the bundler; our browser source has no Node ambient API.
@@ -94,6 +105,8 @@ function boundaryPlugin(target: DesktopTarget): Plugin {
                 if (specifier === "virtual:runwield-theme.css") return { path: specifier, namespace: "desktop-theme" };
                 if (args.kind === "url-token" && specifier.startsWith("data:"))
                     return { path: specifier, external: true };
+                if (target === "core" && /^(bun|deno)(:|\/|$)/i.test(specifier))
+                    return { path: specifier, external: true };
                 if (/^(bun|deno)(:|\/|$)/i.test(specifier) || /^(astro|@astrojs)(\/|$)/.test(specifier))
                     refuse(target, specifier);
                 if (specifier === "electron" || isBuiltin(specifier)) {
@@ -108,7 +121,8 @@ function boundaryPlugin(target: DesktopTarget): Plugin {
                     pluginData: { resolved: true },
                 });
                 if (resolved.errors.length) return { errors: resolved.errors };
-                if (resolved.external) refuse(target, specifier);
+                if (resolved.external && target !== "core") refuse(target, specifier);
+                if (resolved.external) return resolved;
                 inspectPath(target, resolved.path);
                 if (target === "preload" && /[/\\]node_modules[/\\]/.test(resolved.path)) refuse(target, resolved.path);
                 // Astro server code is not a UI dependency, even when it happens to bundle for browsers.
@@ -157,7 +171,14 @@ async function checkAssets(directory: string, outputs: string[]): Promise<void> 
 /** Build the real runtime graphs in a private directory. Explicit entries support real boundary regression fixtures. */
 export async function checkDesktop(entries?: readonly DesktopEntry[]): Promise<void> {
     const defaults = !entries;
+    // Include retained standalone browser hosts in the complete ACP/Core dependency boundary.
     const selected: readonly DesktopEntry[] = entries ?? [
+        { target: "core", entry: join(desktopRoot, "src/acp/server.js") },
+        { target: "core", entry: join(desktopRoot, "src/shared/browser-host/standalone.ts") },
+        { target: "core", entry: join(desktopRoot, "src/shared/remote/entry.ts") },
+        { target: "core", entry: join(desktopRoot, "src/acp/workspace-projects.ts") },
+        { target: "core", entry: join(desktopRoot, "src/shared/owner-coordination/index.ts") },
+        { target: "core", entry: join(desktopRoot, "src/shared/owner-coordination/owner-projects.ts") },
         { target: "main", entry: join(desktopRoot, "src/ui/desktop/main.ts") },
         { target: "preload", entry: join(desktopRoot, "src/ui/desktop/preload.ts") },
         { target: "renderer", entry: join(desktopRoot, "src/ui/desktop/renderer/index.tsx") },
@@ -172,6 +193,7 @@ export async function checkDesktop(entries?: readonly DesktopEntry[]): Promise<v
                 entryPoints: [entry],
                 outdir: join(directory, String(index)),
                 bundle: true,
+                ...(target === "core" ? { packages: "external" as const } : {}),
                 treeShaking: false, // A forbidden barrel export must not disappear before inspection.
                 platform: target === "renderer" ? "browser" : "node",
                 target: target === "renderer" ? "chrome156" : "node24",

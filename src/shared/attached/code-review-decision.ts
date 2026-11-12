@@ -4,7 +4,7 @@ import { loadReviewFeedbackImagePaths } from "../workflow/review-feedback-images
 import { normalizeCodeReviewDecision } from "../../ui/review/code-review.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
 import { buildHumanReviewFeedbackText } from "../workflow/validation-human-review.ts";
-import type { ReviewDecision, ReviewDecisionReceipt } from "../../ui/workspace/routes/api/review-handlers.ts";
+import type { ReviewDecision, ReviewDecisionReceipt } from "../browser-host/review-handlers.ts";
 
 export async function applyAttachedCodeReviewDecision(
     projectRoot: string,

@@ -1,23 +1,13 @@
 import { spawn } from "node:child_process";
-import { realpath, stat } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { desktopBuild, desktopElectron, desktopRoot, requireDesktopArtifacts } from "./desktop-paths.ts";
 
 await requireDesktopArtifacts();
 const index = process.argv.indexOf("--project");
 const input = index < 0 ? "" : process.argv[index + 1] || "";
-if (!isAbsolute(input)) throw new Error("Use bun run desktop:dev -- --project /absolute/project.");
-const project = await realpath(input);
-if (!(await stat(project)).isDirectory()) throw new Error("The Project must be a directory.");
-const args = [
-    join(desktopBuild, "main.mjs"),
-    "--project",
-    project,
-    "--bun",
-    process.execPath,
-    "--cli",
-    join(desktopRoot, "src/cli.ts"),
-];
+if (input && !isAbsolute(input)) throw new Error("The optional Project candidate must be absolute.");
+const args = [join(desktopBuild, "main.mjs"), "--bun", process.execPath, "--cli", join(desktopRoot, "src/cli.ts")];
+if (input) args.push("--project", input);
 const inspect = process.argv.indexOf("--cdp-port");
 if (inspect >= 0) args.push("--cdp-port", process.argv[inspect + 1] || "");
 const env = { ...process.env };

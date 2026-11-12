@@ -30,7 +30,7 @@ import {
 } from "./update/index.ts";
 import { runSnipFiltersCommand } from "./snip-filters/index.ts";
 import { getMcpCompletions, runMcpCommand } from "./mcp/index.ts";
-import { runWorkspaceCommand } from "./workspace/index.ts";
+
 import { getAgentDisplayName } from "../shared/session/agents.js";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../shared/work-records/mnemoteca-port.ts";
 
@@ -540,7 +540,7 @@ export const commandRegistry = {
             "Use --bind/--host only for explicit non-loopback exposure; RunWield prints a plaintext Plan-content warning.",
             "Workspace HTML and APIs require the per-server token in the launch URL or x-runwield-workspace-token header.",
         ],
-        execute: async (argv) => await (await import("./plans/index.ts")).runPlansCommand(argv),
+        execute: browserCommandRequiresCli,
         surfaces: ["cli"],
         slashSurfaces: ["workspace"],
     },
@@ -560,7 +560,7 @@ export const commandRegistry = {
             "Owner Workspace uses the owner coordination database and paired-device authorization.",
             "Use plans ui for the temporary current-checkout compatibility Plan Board.",
         ],
-        execute: runWorkspaceCommand,
+        execute: browserCommandRequiresCli,
         surfaces: ["cli"],
     },
     [COMMAND_NAMES.WR]: {
@@ -948,4 +948,9 @@ export function requiresProjectDirectoryConsent(name, args = []) {
         COMMAND_NAMES.SLEEP,
         COMMAND_NAMES.INIT,
     ].includes(command.name);
+}
+
+/** Browser management commands have metadata here, but execute only in the CLI/browser composition. */
+async function browserCommandRequiresCli() {
+    throw new Error("Browser management commands require the CLI or browser Workspace host.");
 }

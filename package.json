@@ -28,7 +28,7 @@
         "desktop:check": "bun node_modules/typescript/bin/tsc -p tsconfig.desktop-node.json && bun node_modules/typescript/bin/tsc -p tsconfig.desktop-preload.json && bun node_modules/typescript/bin/tsc -p tsconfig.desktop-renderer.json && bun scripts/check-desktop.ts",
         "desktop:build": "bun scripts/desktop-build.ts",
         "desktop:dev": "bun run desktop:build && bun scripts/desktop-dev.ts",
-        "desktop:test": "bun run desktop:build && bun scripts/run-tests.js src/ui/desktop/desktop-session.integration.test.ts src/ui/desktop/desktop-security.integration.test.ts",
+        "desktop:test": "bun run desktop:build && bun scripts/run-tests.js src/ui/desktop/desktop-entry.integration.test.ts src/ui/desktop/desktop-session.integration.test.ts src/ui/desktop/desktop-security.integration.test.ts",
         "workspace:build": "bun scripts/check-bun-runtime.ts && bun scripts/write-version.ts && bun node_modules/astro/bin/astro.mjs build --config src/ui/workspace/astro.config.mjs",
         "docs:stage": "bun scripts/public-docs.ts",
         "docs:dev": "bun scripts/docs-dev.ts",

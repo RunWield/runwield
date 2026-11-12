@@ -190,10 +190,25 @@ function buildSchema(interaction) {
 }
 
 /**
- * @param {{ context: any, acpSessionId: string, clientCapabilities?: unknown, presentChatQuestion?: (interaction: import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest, signal?: AbortSignal) => Promise<import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionResponse> }} options
+ * @typedef {Object} AcpInteractionAdapterOptions
+ * @property {any} context
+ * @property {string} acpSessionId
+ * @property {unknown} [clientCapabilities]
+ * @property {() => void} [beforeAccept] Transport owner's admission check before accepting a form response.
+ * @property {(interaction: import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest, signal?: AbortSignal) => Promise<import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionResponse>} [presentChatQuestion]
+ */
+
+/**
+ * @param {AcpInteractionAdapterOptions} options
  * @returns {import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionAdapter}
  */
-export function createAcpInteractionAdapter({ context, acpSessionId, clientCapabilities, presentChatQuestion }) {
+export function createAcpInteractionAdapter({
+    context,
+    acpSessionId,
+    clientCapabilities,
+    presentChatQuestion,
+    beforeAccept,
+}) {
     return {
         supportsInteraction(type) {
             return (
@@ -285,6 +300,10 @@ export function createAcpInteractionAdapter({ context, acpSessionId, clientCapab
                     message: "ACP elicitation returned no answer.",
                 };
             }
+            if (signal?.aborted) {
+                return { outcome: RuntimeInteractionOutcomes.CANCELED, message: "Interaction canceled." };
+            }
+            beforeAccept?.();
             const value = response?.content?.answer;
             if (interaction.type === RuntimeInteractionTypes.TEXT) {
                 const text = typeof value === "undefined" ? "" : String(value);

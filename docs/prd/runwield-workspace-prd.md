@@ -8,7 +8,7 @@ updatedAt: "2026-11-01"
 # RunWield Workspace PRD
 
 **Document role: Living central PRD.** Principles and lasting requirements for Workspace across browser and desktop,
-including continuity with the TUI and paired browser devices. Desktop has a source-development Session slice;
+including continuity with the TUI and paired browser devices. Desktop has source-development Project entry and Session slices;
 installed-app and hosted-account capabilities remain targets.
 
 **Status:** The personal local Workspace is delivered in its first iteration and remains free and open source.
@@ -120,7 +120,7 @@ This is a durable personal self-hosted product included in RunWield Core.
 Each capability owns its browser requirements and links to Core for shared behavior.
 
 - [Container hosting](#container-hosting)
-- [Desktop Workspace](#desktop-workspace) — development Session slice; full local application target
+- [Desktop Workspace](#desktop-workspace) — development Project/Session slices; full local application target
 - [Workspace identity and cloud services](#workspace-identity-and-cloud-services) — future target
 - [Network runtime access](#network-runtime-access) — future target
 - [Browser appearance and themes](#browser-appearance-and-themes)
@@ -141,9 +141,10 @@ Each capability owns its browser requirements and links to Core for shared behav
 
 ### Desktop Workspace
 
-**Scope and maturity:** A source-development Electron client can run a Session in one explicit Project with an
-already configured provider. It supports streamed conversation, structured answers, Stop, controlled shutdown, and
-known-ID reload/continuation through a separate source runtime. It is not an installed or released application.
+**Scope and maturity:** The source-development Electron client opens Projects without an argument, registers and
+manages existing directories through Core, and reuses existing provider settings. A separate source runtime supports
+streamed conversation, structured answers, Stop, controlled shutdown, and known-ID reload/continuation. One Session
+view remains open at a time; Project navigation cannot retarget it. It is not an installed or released application.
 Full-workbench parity and free local installation on Windows, macOS, and Linux remain targets. See accepted
 [ADR-020](../adr/020-electron-workspace-acp-client.md), the
 [local desktop Epic](../plans/local-workspace-desktop.md), and the
@@ -157,6 +158,14 @@ later cutover. The current public Workspace browser glossary is unchanged.
 local Workspace without signing up, subscribing, or connecting to hosted Workspace. Existing Core provider credentials
 and saved work remain usable. Provider setup is distinct from a Workspace account, and provider usage may carry its
 own costs. A missing provider does not prevent browsing saved local work or configuring the application.
+
+Current scope keeps Project listing/settings available without provider configuration. Model work requires external
+`wld login` and a desktop restart; credentials and layered defaults stay in Core's existing store. This temporary
+[child 2 journey](../plans/local-workspace-desktop/open-projects-and-configure-providers.md) does not narrow the
+clean-install target. [Child 3](../plans/local-workspace-desktop/continue-saved-sessions-in-desktop.md) owns
+provider-independent saved-history reading and Archived Sessions settings, paging, open, and Unarchive.
+[Child 10](../plans/local-workspace-desktop/configure-model-providers-in-desktop-settings.md) owns in-app provider
+authentication, default selection, and fresh readiness after setup. These remain deferred, not placeholder controls.
 
 **Requirement: The installed app owns the workbench.** Desktop supplies the Workspace application and native desktop
 integration, sharing product components and the design system with future hosted SaaS. It controls a
@@ -181,7 +190,18 @@ runtime authority remains in [Core Session continuity](runwield-core-prd.md#sess
 
 **Development acceptance scenarios (current slice):**
 
-- Given an absolute Project and configured provider, launch the source desktop client, create a Session, and see output
+- Launch without a Project argument and see Projects. Open Project offers a native directory picker; cancellation
+  makes no registration write. Review the path and optional name, then Link Project. An optional development
+  `--project` supplies a candidate through the same Core checks, not authorization.
+- Manage missing or disabled roots through Settings: relink, enable/disable, full Session rescan, and remove. Removal
+  preserves repository files and saved Sessions. Home/system-root confirmation starts on Quit; Escape cancels and
+  restores focus. Failed actions keep inputs and permit explicit retry.
+- With no provider/default, use Project settings and see Core's specific New Session prerequisite with external
+  `wld login` and restart guidance, not Workspace sign-in. With existing Core configuration, complete model work
+  without credential import or settings copies. Provider outages retain their actual error.
+- Visit settings during an open Session; its Project and pending answers cannot change silently. Close it explicitly
+  before opening Session work in another Project.
+- Given an admitted Project and configured provider, create a Session and see output
   before the turn finishes. Project identity, active saved ID, connection state, and waiting questions remain visible.
 - Answer a listed choice or Other in the shared form; the exact answer reaches the waiting tool and the next provider
   request once. Stop a held stream or question, wait for settlement, then send another prompt.

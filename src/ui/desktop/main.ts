@@ -2,13 +2,14 @@ import { app, BrowserWindow, dialog, ipcMain, net, protocol, session, shell } fr
 import type { IpcMainInvokeEvent } from "electron";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { access, realpath, stat } from "node:fs/promises";
+import { access, realpath } from "node:fs/promises";
 import { isAbsolute, resolve, sep } from "node:path";
 import { Readable, Writable } from "node:stream";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { AcpWorkspaceSessionClient } from "../../acp/client/workspace-session-client.ts";
 import type { SessionClientView } from "../workspace/client/session-client.ts";
 import { DESKTOP_URL, SESSION_CHANNEL, validateDesktopRequest } from "./bridge.ts";
+import { PROJECT_CHANNEL, validateProjectRequest, type DesktopProjectRequest } from "./bridge.ts";
 import type { DesktopRequest } from "./bridge.ts";
 import { DARK_BROWSER_THEME } from "../design-system/themes/dark.ts";
 
@@ -19,8 +20,8 @@ function argument(name: string): string {
 const projectArgument = argument("--project");
 const bun = argument("--bun");
 const cli = argument("--cli");
-if (![projectArgument, bun, cli].every((path) => isAbsolute(path)))
-    throw new Error("Use desktop:dev with an absolute Project and the source runtime launcher.");
+if (![bun, cli].every((path) => isAbsolute(path)) || (projectArgument && !isAbsolute(projectArgument)))
+    throw new Error("Use desktop:dev with the source runtime launcher and an optional absolute Project candidate.");
 const inspector = argument("--cdp-port");
 if (inspector) {
     if (!/^\d+$/.test(inspector) || Number(inspector) < 1024 || Number(inspector) > 65535)
@@ -33,8 +34,7 @@ protocol.registerSchemesAsPrivileged([
     { scheme: "runwield", privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ]);
 async function startDesktop(): Promise<void> {
-    const project = await realpath(projectArgument);
-    if (!(await stat(project)).isDirectory()) throw new Error("The Project must be a directory.");
+    const project = "";
     await access(bun);
     await access(cli);
     await app.whenReady();
@@ -88,7 +88,11 @@ async function startDesktop(): Promise<void> {
     window.webContents.on("will-redirect", (event) => event.preventDefault());
     window.webContents.on("will-attach-webview", (event) => event.preventDefault());
 
-    const runtime = spawn(bun, [cli, "acp"], { cwd: project, env: process.env, stdio: ["pipe", "pipe", "pipe"] });
+    const runtime = spawn(bun, [cli, "acp"], {
+        cwd: resolve(cli, "../.."),
+        env: process.env,
+        stdio: ["pipe", "pipe", "pipe"],
+    });
     console.info(`[desktop] runtime PID ${runtime.pid}; Project ${project}`);
     let stderr = "";
     runtime.stderr.setEncoding("utf8").on("data", (chunk: string) => {
@@ -109,6 +113,7 @@ async function startDesktop(): Promise<void> {
     const client = new AcpWorkspaceSessionClient({
         connectionId: randomUUID(),
         project,
+        workspaceAdmission: true,
         input: Readable.toWeb(runtime.stdout),
         output: Writable.toWeb(runtime.stdin),
     });
@@ -154,6 +159,62 @@ async function startDesktop(): Promise<void> {
                     return client.cancel(payload);
                 case "close":
                     return client.close(payload);
+            }
+        });
+    }
+    for (const operation of [
+        "list",
+        "open",
+        "register",
+        "relink",
+        "setEnabled",
+        "remove",
+        "rescan",
+        "pick",
+        "candidate",
+    ] as const) {
+        ipcMain.handle(`${PROJECT_CHANNEL}${operation}`, async (event, payload: DesktopProjectRequest) => {
+            trusted(event);
+            validateProjectRequest(operation, payload, view.connectionId);
+            if (view.connection !== "ready") throw new Error("Wait for the runtime connection.");
+            const projectRequest = { projectId: payload.projectId! };
+            switch (operation) {
+                case "list":
+                    return client.listProjects();
+                case "open":
+                    return client.openProject(projectRequest);
+                case "register":
+                    return client.registerProject({
+                        root: payload.root!,
+                        ...(payload.displayName ? { displayName: payload.displayName } : {}),
+                        ...(payload.directoryConfirmation
+                            ? { directoryConfirmation: payload.directoryConfirmation }
+                            : {}),
+                    });
+                case "relink":
+                    return client.relinkProject({
+                        ...projectRequest,
+                        newRoot: payload.newRoot!,
+                        ...(payload.displayName ? { displayName: payload.displayName } : {}),
+                        ...(payload.directoryConfirmation
+                            ? { directoryConfirmation: payload.directoryConfirmation }
+                            : {}),
+                    });
+                case "setEnabled":
+                    return client.setProjectEnabled({ ...projectRequest, enabled: payload.enabled! });
+                case "remove":
+                    return client.removeProject(projectRequest);
+                case "rescan":
+                    return client.rescanProject(projectRequest);
+                case "candidate":
+                    return projectArgument;
+                case "pick": {
+                    const result = await dialog.showOpenDialog(window, {
+                        title: "Open Project",
+                        properties: ["openDirectory"],
+                    });
+                    return result.canceled ? null : result.filePaths[0] || null;
+                }
             }
         });
     }

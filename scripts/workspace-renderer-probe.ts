@@ -39,7 +39,13 @@ async function entry(path: string, name: string): Promise<void> {
 try {
     await mirror("", ["runtime-root.js", "src", "dist"]);
     await fsCopyFile(join(sourceRoot, "runtime-root.js"), join(root, "runtime-root.js"));
-    await mirror("src", ["ui"]);
+    await mirror("src", ["ui", "shared"]);
+    await mirror("src/shared", ["browser-host"]);
+    await mirror("src/shared/browser-host", ["page-runtime.ts"]);
+    await fsCopyFile(
+        join(sourceRoot, "src/shared/browser-host/page-runtime.ts"),
+        join(root, "src/shared/browser-host/page-runtime.ts"),
+    );
     await mirror("src/ui", ["workspace"]);
     await mirror("src/ui/workspace", ["server.js"]);
     await fsCopyFile(join(sourceRoot, "src/ui/workspace/server.js"), join(root, "src/ui/workspace/server.js"));

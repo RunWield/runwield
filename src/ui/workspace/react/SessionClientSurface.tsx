@@ -185,7 +185,7 @@ export function SessionClientSurface({ client }: SessionClientSurfaceProps) {
             ) : null}
             {error || view.error ? (
                 <p className="session-client-error" role="alert">
-                    {error || view.error}
+                    {view.error || error}
                 </p>
             ) : null}
             <section
