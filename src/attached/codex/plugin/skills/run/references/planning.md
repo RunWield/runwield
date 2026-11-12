@@ -23,7 +23,10 @@ a question is not a completed role result. With both fields inherited, the initi
 For `triage`, fetch `get_instructions` for the workflow and action IDs. Require contract
 `runwield.attached.triage/1`, follow the Router instructions, and use `context.requestText` when restoring a request.
 Submit `triage_report` with the issued `actionId` and the Core Triage fields in `payload.outcome`. Follow the returned
-action rather than assuming the request is FEATURE-sized.
+action rather than assuming the request is FEATURE-sized. For `role_handoff`, follow
+[Ideator and Guide conversation](conversation.md): fetch current stateless instructions for the returned role, apply
+its Codex dispatch preferences, and answer the original user request. Router's handoff is not the answer; no Planner or
+workflow completion call follows it.
 
 For `plan`, fetch current instructions and context; require `runwield.attached.planner/1`. Use `context.planningCwd` for
 every command and edit, and `context.planPath` for the bound existing Plan. Follow the Planner role and

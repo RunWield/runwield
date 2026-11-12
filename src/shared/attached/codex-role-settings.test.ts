@@ -58,7 +58,7 @@ test("settings schema exposes exactly the supported Codex roles and host-native 
     }
 });
 
-test("all seven Codex roles inherit without consulting Core presets", async () => {
+test("all supported Codex roles inherit without consulting Core presets", async () => {
     await withSettings(async (root) => {
         await setCustomSetting(
             "agents",

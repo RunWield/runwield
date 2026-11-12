@@ -223,6 +223,7 @@
     "src/shared/attached/codex-role-settings.test.ts",
     "src/shared/attached/compatibility.test.ts",
     "src/shared/attached/coordinator.test.ts",
+    "src/shared/attached/conversation.test.ts",
     "src/shared/attached/cross-host.test.ts",
     "src/shared/attached/delivery-in-place-recovery.test.ts",
     "src/shared/attached/delivery-privacy.test.ts",

@@ -1,7 +1,7 @@
 # RunWield Connect for Codex
 
-RunWield Connect brings Plan review, isolated implementation, validation, and delivery into Codex. Codex owns the
-conversation and every model call. RunWield Core owns the Plan, workflow gates, recovery, and delivery evidence.
+RunWield Connect brings Ideator and Guide conversations, Plan review, isolated implementation, validation, and delivery
+into Codex. Codex owns the conversation and every model call. RunWield Core owns the Plan, workflow gates, recovery, and delivery evidence.
 
 The Codex adapter is available for **FEATURE Preview qualification** in this source version. It targets the Codex
 desktop app and CLI. Neither surface has a qualified complete workflow yet; this is not a stable-support claim.
@@ -9,9 +9,9 @@ The [Claude Code guide](connect-claude-code.md) has its own tested scope.
 
 ## Scope and evidence
 
-The native package provides one explicitly invoked skill, `$wld:run`, for starting and resuming work. It uses the
-same Core workflow as Claude Code, including browser review, fresh implementation and review workers, repair,
-publication, and Work Records. Other request types, hooks, and enforced worker tool restrictions are outside this Preview.
+The native package provides `$wld:run` for routed requests and delivery resume, plus explicit Ideator and Guide skills
+in current source. Delivery uses the same Core workflow as Claude Code, including browser review, fresh implementation and review workers, repair,
+publication, and Work Records. Other Routing Intents, hooks, and enforced worker tool restrictions are outside this Preview.
 
 | Surface                               | Evidence available                                                                                     | Qualification limit                                                                                                 |
 | ------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
@@ -26,6 +26,16 @@ acceptance ledger remains empty: policy coverage does not claim an individual ru
 continue quietly, while internal assessments remain available. Actionable host and adapter-contract rejections still show
 update guidance. The [Codex acceptance requirements](../prd/runwield-connect-prd.md#codex-acceptance) distinguish
 protocol checks from live workflow qualification. A complete default-permissions walkthrough remains unproven.
+
+Codex app-server `0.164.0-alpha.11.1` completed live source-Skill conversations for both roles and entry paths, including
+follow-up replies and requested Markdown/PRD writes. A fresh worker accepted explicit native model/effort controls and
+continued the interview and PRD work in the same thread. An unsupported-model probe stopped with a diagnostic. Both
+inherited dispatch and preservation of older open delivery work were observed.
+See [Conversation acceptance](../prd/runwield-connect-prd.md#conversation-acceptance) for exact scope and remaining checks.
+These runs used explicit packaged Skill paths and full access in disposable projects, not installed discovery or desktop
+UI. A temporary installation supplied that host version; the system CLI was `0.167.0-alpha.4.1`. No new version is
+qualified. Use updated Core and the source plugin together for this unpublished behavior; older distributed packages
+may not include it.
 
 ## Install
 
@@ -72,8 +82,8 @@ surface; a completed RunWield desktop walkthrough has not yet been recorded.
 ### What loads and what it can do
 
 The installed plugin starts a local Core MCP process and exposes workflow tools. Loading it does not create a workflow,
-read your conversation, or activate RunWield for ordinary prompts. The skill disables implicit invocation: explicitly
-select it when you want RunWield to govern a request.
+read your conversation, or activate RunWield for ordinary prompts. The entry skills disable implicit invocation:
+explicitly select one when you want RunWield for a request.
 
 Codex's permissions and sandbox still apply. Codex may request access to Core's execution directory or permission to
 run a tool. Use your normal permissions; the plugin installs no hooks or permission bypass. Worker roles are
@@ -82,6 +92,42 @@ instructions, not a sandbox.
 Core can write Plans and recovery evidence, prepare an isolated checkout, run the project's validation command, serve
 browser review, and publish approved work through its workflow gates. Codex supplies all model reasoning. Current Core
 role instructions and project Skill overrides are fetched when needed; the package does not copy those roles.
+
+## Explore an idea or ask Guide
+
+The source plugin provides dedicated skills that skip Router and create no delivery workflow:
+
+```text
+$runwield:ideator Help me explore a simpler onboarding experience.
+$runwield:guide Explain how this project's validation works.
+```
+
+The distributed namespace remains `$wld:`; use the matching skill only in a package that includes these additions.
+You can also use `$runwield:run` (distributed `$wld:run`) for an idea or question. Router maps `IDEATION` to Ideator and
+`INQUIRY` to Guide, closes only the routing record, and hands the original request to that role. Both paths fetch
+current role instructions and dispatch preferences. Expect a substantive answer or interview question, not just an
+“instructions loaded” acknowledgement.
+
+Continue your replies in Codex. With inherited model and effort, the role stays in the current context. An explicit
+preference uses a fresh worker that fetches its own instructions; subsequent answers continue in that same worker.
+See [role preferences](#choose-a-model-and-thinking-level-per-role). Use Codex's own history or resume for discussion;
+Core starts no Session, stores no conversation, and accepts no conversation-completion report. `$wld:run resume`
+restores delivery, not these discussions. A newer question does not displace older open delivery work.
+
+- **Ideator** interviews, researches, and tests assumptions. Ask it to synthesize a PRD when ready. It reports the saved
+  path without claiming Core artifact registration. Saving a PRD does not start planning.
+- **Guide** answers from project evidence with citations. It preserves an explanation as ordinary Markdown only when
+  asked, not as source, settings, Plans, PRDs, ADRs, domain glossaries, or other workflow artifacts. Guide is read-mostly,
+  not a host sandbox, and is distinct from Guided Review.
+- Both use current layered Agent Definitions, shared practices, Skills, and available native tools. Memory or image
+  work requires an already available capability that performs the requested function. This entry adds no tool bridge.
+  Missing capabilities must be disclosed, not reported as successful persistence or image creation.
+
+Only an explicit request to plan starts a fresh normal `$runwield:run` with the agreed task and relevant artifact
+references, not your transcript. Keep Router, `start_planning`, Plan review, and execution gates. Core-only `/agent`
+and `artifact_written` directions, including those in loaded document formats, yield to this conversation flow and
+actual Connect entrypoints. Neither role automatically starts implementation, commits, or publication. A missing role
+tool, dispatch response, or contract requires compatible Core/plugin updates and a retry, not a substitute workflow.
 
 ## Start one FEATURE request
 
@@ -121,14 +167,16 @@ checks in the conversation rather than saving a Manual QA checklist.
 ## Choose a model and thinking level per role
 
 Save preferences in personal `~/.wld/settings.json` or project `.wld/settings.json`. Both accept JSONC. These settings
-apply only to activated Codex Connect work; Core's `agents` and `modelPresets`, Claude, and ordinary Codex chats keep
-their own settings.
+apply only to explicitly invoked Codex Connect work. Core's `agents` and `modelPresets`, Claude, and ordinary Codex chats
+keep their own settings.
 
 ```jsonc
 {
     "connect": {
         "codex": {
             "roles": {
+                "ideator": { "model": "inherit", "thinkingLevel": "high" },
+                "guide": { "model": "inherit", "thinkingLevel": "inherit" },
                 "planner": { "model": "inherit", "thinkingLevel": "high" },
                 "reviewer": { "model": "inherit", "thinkingLevel": "inherit" },
             },
@@ -137,8 +185,8 @@ their own settings.
 }
 ```
 
-Supported roles are `router`, `planner`, `engineer`, `frontend-engineer`, `reviewer`, `reviewer-feedback-engineer`, and
-`recorder`. Use a Codex-native model ID and a reasoning effort supported by your model and client. RunWield does not
+Supported roles are `router`, `ideator`, `guide`, `planner`, `engineer`, `frontend-engineer`, `reviewer`,
+`reviewer-feedback-engineer`, and `recorder`. Use a Codex-native model ID and a reasoning effort supported by your model and client. RunWield does not
 maintain a model catalog or restrict efforts to Core's list.
 
 Each field resolves independently: project value, personal value, then `inherit`. A project thinking-level choice
@@ -156,11 +204,20 @@ workers continue unchanged. Router and the initial Planner use fresh workers whe
 repair, Recorder, implementation, and feedback Planner workers keep their fresh-context requirements. Cross-host
 resume uses the calling host's preferences, regardless of where the workflow began.
 
+For Ideator and Guide, both entry paths read fresh `instructions.dispatch`. With both fields inherited, use the
+current Codex context. If either is explicit, apply native spawn `model` and `reasoning_effort` controls, omitting each
+inherited argument. The fresh worker receives only the role, current request, cwd, and relevant artifact references,
+not inherited conversation history. It fetches its own role instructions through MCP, then keeps the dialogue across
+your replies through Codex's worker-continuation tool. A question is not completion; do not restart a worker per reply.
+Missing native controls, fresh context, worker MCP access, or continuation stop with a diagnostic. Change the preference
+or update the relevant host/plugin/Core capability and retry. Core cannot restore the worker discussion.
+
 Malformed fields report the settings file and field to fix. If Codex rejects a model/effort or cannot apply a requested
-spawn control, the plugin reports the limitation and keeps the current action resumable. Change the preference or
-host capability, then resume. It never silently substitutes a model. This configuration and dispatch contract does
+spawn control, the plugin reports the limitation. Delivery actions stay resumable; role discussions use host
+continuation only. Change the preference or host capability, then retry the role entry or resume delivery. It never silently substitutes a model. This configuration and dispatch contract does
 not add a tested host version or establish live model selection for every client; the qualification limits above
-still apply. Use the updated Core and plugin together; older compatible Core without dispatch metadata inherits.
+still apply. Use updated Core and plugin together. Older compatible Core without delivery dispatch metadata inherits;
+new conversational entries require their dispatch metadata.
 
 ## Resume or switch hosts
 
@@ -223,6 +280,9 @@ Plans remain ordinary files under `docs/plans/`, alongside the project's Work Re
 per-request recovery records under `~/.wld/attached/`, associated with the local repository. Browser review chat is
 temporary workflow context. The [shared privacy contract](../prd/runwield-connect-prd.md#artifact-privacy-and-records)
 defines what becomes durable project knowledge.
+
+Direct Ideator/Guide instruction reads create no record or repository setup. Routed conversations leave only their
+closed routing record and explicit routing evidence; receipts save no role prompts, dispatch settings, or later dialogue.
 
 Core does not import or save the Codex conversation. Codex controls its own history and model credentials. Do not paste
 host transcripts into Plans, worker reports, or Work Records. Cross-host continuation reads Core artifacts rather than

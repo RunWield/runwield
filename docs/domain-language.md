@@ -68,9 +68,12 @@ RunWield's registry and baseline evidence; it does not own a second worktree lif
 report to the coordinating conversation, which submits Core's `task_completed` contract. With remembered non-Git
 consent, the directory is the current checkout rather than a worktree. _Avoid_: worker session, host worktree
 
-**Attached Role Instructions**: The effective layered agent instructions Core returns with a pending host action. They
-are resolved for each response from project, home, and bundled definitions and are not saved in the Attached Workflow
-Record. _Avoid_: generated Skill, role contract copy
+**Attached Role Instructions**: The effective layered Agent instructions Core returns either for a pending workflow
+action through `get_instructions` or for explicit stateless Ideator/Guide entry through `get_role_instructions`. Each
+response resolves current project, home, and bundled definitions, shared practices, and applicable Skills. Conversation
+instructions use `runwield.attached.conversation/1` without a workflow; the host owns replies and resume. A Router
+`role_handoff` closes only its routing record, not the discussion or delivery. Instructions are not saved in the
+Attached Workflow Record; handoff receipts also omit conversation dispatch settings. _Avoid_: generated Skill, role contract copy, conversation store
 
 **Headless Mode**: The non-interactive RunWield execution surface that emits machine-readable Agent Session events for
 external hosts. _Avoid_: TUI mode, batch wrapper, remote UI
@@ -642,11 +645,14 @@ orchestrator, classifier, triager
 
 **Architect**: The planning Agent for PROJECT Epics. _Avoid_: Designer, lead
 
-**Guide**: The read-mostly Agent for `INQUIRY` work that answers directly without materializing artifacts or running a
-Socratic interview. _Avoid_: Explainer, investigator, researcher
+**Guide**: The read-mostly Agent for `INQUIRY` work that answers directly from project evidence without a Socratic
+interview. It can preserve an explanation as ordinary Markdown only when asked, or create a requested image when a
+suitable capability is available. It does not author workflow artifacts or implement changes. Guide is not Guided
+Review. _Avoid_: Explainer, investigator, researcher, Guided Review
 
 **Ideator**: The strategic product and research Agent that conducts Socratic interviews to sharpen vague ideas before
-planning or implementation. _Avoid_: General helper, explainer, guide
+planning or implementation, with requested PRD synthesis. In Connect, saving a PRD does not start planning.
+_Avoid_: General helper, explainer, guide, Guided Review
 
 **Slicer**: The Agent that helps decompose an approved PROJECT Epic into child PLANNED_CHANGE Plans and can materialize
 those plans under `docs/plans/<epic-name>/`. _Avoid_: Task planner, splitter

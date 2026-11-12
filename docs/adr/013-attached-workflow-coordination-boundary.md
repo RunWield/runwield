@@ -27,8 +27,10 @@ one host transport covers the complete integration. The first release must remai
 requiring an always-running RunWield daemon.
 
 RunWield follows the Pi approach to agent tools: it gives the model good instructions and trusts it to follow them. In
-Core, the Planner has unrestricted edit, write, and shell tools and is told to write only Plan files. Only the Guide is
-restricted, because a safe read-only agent is its purpose. Attached Mode uses the same trust model.
+Core, the Planner has unrestricted edit, write, and shell tools and is told to write only Plan files. Guide is
+read-mostly, not universally read-only: its role permits explicitly requested ordinary Markdown preservation and
+requested images when a configured capability is available. Connect preserves those role boundaries as instructions,
+not host tool restrictions. Attached Mode uses the same trust model.
 
 ## Decision
 
@@ -50,9 +52,28 @@ Transcript, or mutate Plan Status directly. Host assertions are orchestration ev
 guards.
 
 Use short-lived `wld attached ...` command-line interface (CLI) operations as the canonical local coordination boundary.
-Every operation loads durable state, validates the current workflow checkpoint and ownership, performs one bounded
-transition or reports the next required action, then exits. This preserves on-demand Core operation and makes process
-loss recoverable from artifacts rather than process memory.
+Each workflow operation loads durable state, validates the current checkpoint and ownership, performs one bounded
+transition or reports the next action, then exits. Stateless role reads return instructions without loading or
+advancing a workflow. This keeps Core on demand and makes workflow recovery depend on artifacts, not process memory.
+
+Expose `get_role_instructions` for explicit Ideator and Guide conversations, alongside unchanged action-bound
+`get_instructions`. The stateless contract accepts only the selected role and transport-owned host evidence; it
+accepts no workflow identity, request text, or transcript. Success returns current role instructions under
+`runwield.attached.conversation/1`, with no workflow. Direct entry creates no record or repository setup. This keeps
+casual discussion outside delivery coordination while reusing current role resolution and compatibility checks.
+
+Router also supports these roles: `IDEATION` selects Ideator and `INQUIRY` selects Guide. It closes only the routing
+record with reason `role_handoff`, clears the pending action, and exposes the selected role through compact next-action
+metadata. The host then fetches stateless instructions and answers the original request. Closing a route is neither
+conversation completion nor delivery proof and does not advance a bound Plan. Existing operation identity and revision
+checks protect replay. Receipts store no role prompt or dispatch settings; those are resolved on the next read.
+
+The host owns all questions, replies, and conversation resume. Core creates no conversational Session, turn store,
+completion tool, or worker-resume record. Closed routes are excluded from open delivery selection, so a newer Guide
+question cannot displace older delivery work. An open conversational action with Core resume and completion was
+rejected: the owner does not need conversation recovery in Core, and it would mix casual discussion with delivery
+resume selection. Only an explicit planning request starts a new normal routed request with the agreed task and
+artifact references, not the transcript; Router, `start_planning`, review, and execution gates remain authoritative.
 
 Store each Attached Workflow Record in the user's home, at
 `~/.wld/attached/<encoded primary checkout root>/workflows/<workflowId>.json`. The key uses the same encoding as
@@ -96,9 +117,9 @@ presentation, native entrypoints, and compatibility guidance, while the coordina
 retain every lifecycle rule. Codex prereleases are parsed without equating them to a tested stable version; no tested
 matrix entry is created from a protocol-only probe.
 
-Deliver role instructions at run time. Each coordinator response that hands a role to the host carries that role's
-current instructions, resolved from the project, home, and bundled agent definitions in the same order Core Sessions
-use, and a map from RunWield tool names to host tool names. Roles whose Core prompt uses Skills also receive the
+Deliver role instructions at run time through the appropriate instruction read. Each read returns current instructions,
+resolved from project, home, and bundled Agent Definitions in the same order Core Sessions use, with host tool mappings.
+A routing handoff returns only the selected role; the host fetches its instructions separately. Roles whose Core prompt uses Skills also receive the
 current effective Skill catalog with read paths, resolved from project, home, external, and bundled Skills. The
 independent reviewer receives no Skills. Core and Attached share the catalog's visibility and text rules, so overrides
 and disabled Skills behave the same way. The adapter package ships no generated role Skills or copied role
@@ -113,6 +134,17 @@ request and current step before continuing. `status {inspectOnly: true}` perform
 reconciliation, checks, publication, or review hosting. Its request preview is bounded to 160 Unicode characters from
 the explicit activation request. Ordinary status retains recovery behavior after the host shows the summary; existing
 revision and action checks remain authoritative.
+
+Conversational instructions use host-native tools and a final addendum that overrides Core-only `artifact_written`
+and `/agent` directions, including loaded document formats. A requested PRD is reported by path without claiming Core
+registration; Guide's ordinary Markdown boundary remains. Existing host/MCP Memory or image capabilities may be used
+when available, but this entry creates no new bridge or persistence claim. Native permissions still apply.
+
+Codex reuses per-field `connect.codex.roles` settings for Ideator and Guide on both entry paths. Both inherited fields
+keep the current context; an explicit model or effort requires native controls and a fresh worker that fetches its own
+instructions. The host continues subsequent replies in that same worker. Missing controls, fresh context, MCP access,
+or continuation stop with a diagnostic rather than silently substituting a model or restarting per reply. Settings
+resolution in Core does not make Core the model executor or conversation owner.
 
 Do not add hooks or permission rules that restrict host tools during an Attached Workflow. Role boundaries, such as "the
 Planner writes only Plan files," come from the role instructions, as they do in Core.
