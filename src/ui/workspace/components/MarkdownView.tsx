@@ -1,4 +1,3 @@
-// @ts-ignore — quikdown .d.ts uses CommonJS-style exports while the ESM runtime has a default export.
 import quikdown from "quikdown";
 
 export interface MarkdownViewProps {
