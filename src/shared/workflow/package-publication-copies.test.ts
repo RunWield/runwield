@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import { join } from "node:path";
 import { create, read } from "../testing/plan-package-fixture.ts";
 import { git } from "../git-test-fixture.ts";
-import { readPlanPackagePublication } from "../plan-package-store.ts";
+import { readPlanPackagePublication } from "../../plan-store/packages.ts";
 
 for (const plans of [false, true]) {
     test(`one copies commit composes prepared Work Record and Plan copies ${plans}`, async () => {
@@ -35,7 +35,7 @@ for (const plans of [false, true]) {
 
 test("sealed copy policy and destination survive reused name, live edits and target advancement", async () => {
     const { publicationFixture } = await import("./testing/package-publication-fixture.ts");
-    const { renamePlanPackage } = await import("../plan-package-store.ts");
+    const { renamePlanPackage } = await import("../../plan-store/packages.ts");
     const f = await publicationFixture(true);
     try {
         equal((await f.drive("candidate_receipt")).code, 86);
@@ -123,7 +123,7 @@ test("publication input variants reject mixed formats, malformed references and 
     const { publicationFixture } = await import("./testing/package-publication-fixture.ts");
     const { assertPublicationAttempt } = await import("./publication-attempt.ts");
     const { loadPublicationAttempt } = await import("./publication-machine.ts");
-    const { packageArtifactEvidence } = await import("./package-publication.ts");
+    const { packageArtifactEvidence } = await import("../../plan-store/index.ts");
     const f = await publicationFixture(true);
     try {
         equal((await f.drive("artifact_receipt")).code, 86);
@@ -181,7 +181,7 @@ for (const scenario of ["changed", "unchanged", "externally-edited"] as const) {
                 await git(editor, ["commit", "-m", "edit prior delivery copy"]);
                 await git(editor, ["push", "origin", "main"]);
                 const target = await git(f.remote, ["rev-parse", "main"]);
-                const { assertPackageCopyTargets } = await import("./package-publication.ts");
+                const { assertPackageCopyTargets } = await import("../../plan-store/index.ts");
                 await rejects(
                     assertPackageCopyTargets(
                         f.root,
@@ -221,8 +221,8 @@ for (const scenario of ["changed", "unchanged", "externally-edited"] as const) {
 test("retained Markdown preserves BOM and CRLF bytes in copies and Recorder source", async () => {
     const { publicationFixture } = await import("./testing/package-publication-fixture.ts");
     const { captureForegroundProcess } = await import("../captured-process.ts");
-    const { loadPublishedWorkRecordSource } = await import("../work-records/published-source.ts");
-    const { decodePackageMarkdown, assertDeliveryCopies } = await import("../plan-package-store.ts");
+    const { loadPublishedWorkRecordSource } = await import("../../plan-store/index.ts");
+    const { decodePackageMarkdown, assertDeliveryCopies } = await import("../../plan-store/packages.ts");
     throws(() => decodePackageMarkdown(new Uint8Array([0xff])));
     throws(() => assertDeliveryCopies([{ kind: "work-record", path: "docs/work-records/invalid.md", text: "\ud800" }]));
     const documents = {

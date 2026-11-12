@@ -1,4 +1,4 @@
-import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
+import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { prepareWorktreeRegistry } from "../../shared/worktree-registry.js";
 /**
  * @module cmd/plans/pull
@@ -7,12 +7,12 @@ import { prepareWorktreeRegistry } from "../../shared/worktree-registry.js";
 
 import { parseArgs } from "../../shared/cli-args.ts";
 import { CLI_BIN, getCwd } from "../../constants.js";
+import { hashPlanBody } from "../../plan-format.ts";
 import {
     createPulledCollaborationPlan,
-    hashPlanBody,
     listPlanResources,
     updatePlanCollaborationMetadata,
-} from "../../plan-store.js";
+} from "../../plan-store/index.ts";
 import { MAINTAINER_SCOPE, redactSecrets } from "../../shared/collaboration/capabilities.ts";
 import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../../shared/collaboration/client.js";
 import { decryptJsonPayload, importContentKey } from "../../shared/collaboration/crypto.ts";

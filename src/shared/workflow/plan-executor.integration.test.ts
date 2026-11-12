@@ -1,3 +1,5 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
+import { approvePlanForExecution } from "../testing/ready-plan-fixture.ts";
 import { isAbsolute, join } from "node:path";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { test } from "node:test";
@@ -7,7 +9,8 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { git } from "../git-test-fixture.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { setCustomSetting } from "../settings.js";
@@ -50,9 +53,9 @@ async function initializeGitProject(projectRoot: string): Promise<void> {
 async function saveExecutablePlan(
     projectRoot: string,
     planName: string,
-    attrs: Parameters<typeof savePlan>[3] = {},
+    attrs: Parameters<typeof seedPlan>[3] = {},
 ): Promise<void> {
-    await savePlan(projectRoot, planName, `# ${planName}`, {
+    await seedPlan(projectRoot, planName, `# ${planName}`, {
         classification: "PLANNED_CHANGE",
         complexity: "MEDIUM",
         summary: planName,
@@ -62,6 +65,7 @@ async function saveExecutablePlan(
         planId: `plan-${crypto.randomUUID()}`,
         ...attrs,
     });
+    if (!attrs.status || attrs.status === "ready_for_work") await approvePlanForExecution(projectRoot, planName);
 }
 
 test("executePlan rejects a persisted Epic before starting an Agent", async () => {

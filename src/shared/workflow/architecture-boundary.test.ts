@@ -78,7 +78,7 @@ test("Git publication uses the durable publication machine instead of recovery a
 });
 
 test("transition wrappers expose expected revision preconditions for lifecycle writers", async () => {
-    const text = await fsReadFile(repoPath("src/shared/workflow/state-transition.ts"), "utf8");
+    const text = await fsReadFile(repoPath("src/plan-store/transitions.ts"), "utf8");
     const wrappers = [
         "runPlanLifecycleEventTransition",
         "runPlanReviewDecisionTransition",
@@ -98,10 +98,20 @@ test("transition wrappers expose expected revision preconditions for lifecycle w
     assertEquals(offenders, []);
 });
 
-test("Agent Plan creation uses create-if-absent instead of rename-over writes", async () => {
-    const text = await fsReadFile(repoPath("src/tools/plan-safe-file-tools.ts"), "utf8");
-    assertEquals(/atomicWriteTextFileIfAbsent\s*\(/.test(text), true);
-    assertEquals(/atomicWriteTextFile\s*\(/.test(text), false);
+test("Agent Plan tools and import commands cannot bypass the public Plan store", async () => {
+    for (const file of ["src/tools/plan-safe-file-tools.ts", "src/cmd/plans/import.ts"]) {
+        const imports = importSpecifiers(await fsReadFile(repoPath(file), "utf8"), file);
+        assertEquals(
+            imports.filter(
+                (path) =>
+                    path.startsWith("node:fs") ||
+                    path.endsWith("plan-store.js") ||
+                    /plan-store\/(?!index\.ts$)/.test(path) ||
+                    path.includes("atomic-text-file"),
+            ),
+            [],
+        );
+    }
 });
 
 /** Includes static imports, re-exports, dynamic imports, and import-type expressions. */

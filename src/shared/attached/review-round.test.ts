@@ -1,9 +1,10 @@
+import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
+import { assertPlanFixtureInput } from "../testing/plan-state-fixture.ts";
 import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { join } from "node:path";
-import { archivePlan, loadPlan } from "../../plan-store.js";
+import { archivePlan, loadPlan } from "../../plan-store/index.ts";
 import { recordPlanEvent } from "../workflow/plan-lifecycle.js";
 import { openAttachedReviewRound } from "./coordinator.ts";
 import { readRecordBytes, runOperation, spawnAttachedCli, submitReview, withProject } from "./attached-test-fixture.ts";
@@ -16,7 +17,7 @@ test("opening and restoring a round pin the current Plan document without changi
         assert(first.kind === "opened");
         assertEquals(first.basis.review, submitted.review);
         assertStringIncludes(first.basis.markdown, "Add a toggle.");
-        const path = join(projectRoot, "docs/plans/dark-mode-toggle.md");
+        const path = (await loadPlan(projectRoot, "dark-mode-toggle"))!.path;
         await fsWriteFile(path, (await fsReadFile(path, "utf8")).replace("Add a toggle.", "Add a theme selector."));
         const restored = await openAttachedReviewRound(projectRoot, submitted.workflowId);
         assert(restored.kind === "opened");
@@ -32,7 +33,17 @@ test("opening and restoring a round pin the current Plan document without changi
         assert(record.status === "found");
         assertEquals(record.record.review, restored.basis.review);
         const bytes = await readRecordBytes(projectRoot, submitted.workflowId);
-        assertEquals(await openAttachedReviewRound(projectRoot, submitted.workflowId), restored);
+        const reopened = await openAttachedReviewRound(projectRoot, submitted.workflowId);
+        assert(reopened.kind === "opened");
+        const { packageInput: restoredInput, ...restoredBasis } = restored.basis;
+        const { packageInput: reopenedInput, ...reopenedBasis } = reopened.basis;
+        assertEquals(reopenedBasis, restoredBasis);
+        assert(restoredInput && reopenedInput);
+        assertEquals(reopenedInput.definitionHash, restoredInput.definitionHash);
+        await withLocalPlanWorkflow(projectRoot, "dark-mode-toggle", async () => {
+            await assertPlanFixtureInput("dark-mode-toggle", restoredInput);
+            await assertPlanFixtureInput("dark-mode-toggle", reopenedInput);
+        });
         assertEquals(await readRecordBytes(projectRoot, submitted.workflowId), bytes);
     });
 });

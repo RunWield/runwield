@@ -52,7 +52,8 @@ test("Attached invokes the shared preparation and completion authorities, not wo
         );
         assertEquals(/event\s*:\s*["'](?:execution_started|implementation_finished)["']/.test(text), false);
     }
-    assertStringIncludes(coordinator, 'event: "readiness_passed"');
+    assertStringIncludes(coordinator, "await applyPlanReviewForExecution(");
+    assertEquals(/event\s*:\s*["']readiness_passed["']/.test(coordinator), false);
 });
 
 test("Attached carriers neither construct a RunWield model session nor invoke a model execution backend", async () => {

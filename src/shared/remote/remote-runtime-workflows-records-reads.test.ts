@@ -1,3 +1,4 @@
+import { seedPlan as saveOwnedPlan } from "../testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { appendFile } from "node:fs/promises";
@@ -10,7 +11,12 @@ import {
     resolvePendingSegmentHandoff,
 } from "../workflow/execution-segment-handoff.ts";
 import type { ActiveExecutionWorkflow } from "../types.js";
-import { savePlan } from "../../plan-store.js";
+
+import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
+
+// Seed the checkout contract still owned by the managed remote runtime.
+const savePlan: typeof saveOwnedPlan = (root, ...args) =>
+    withRetainedPlanFixture(root, () => saveOwnedPlan(root, ...args));
 import { getRemoteSessionOwner } from "../session/file-session-store.ts";
 import {
     readPersistedPendingSegmentContinuationEntry,
@@ -84,7 +90,9 @@ async function seedLaptopRecords(
         await savePlan(f.remoteProject, "laptop-only", "# Prepared remote execution\n", {
             ...activeWorkflow.triageMeta,
         });
-        const prepared = await loadPlanActionEvidence(f.remoteProject, "laptop-only-plan");
+        const prepared = await withRetainedPlanFixture(f.remoteProject, () =>
+            loadPlanActionEvidence(f.remoteProject, "laptop-only-plan"),
+        );
         assert(prepared.kind === "success");
         appendExecutionWorkflowSnapshot(manager, activeWorkflow);
         recordPendingSegmentContinuation(
@@ -230,11 +238,13 @@ test("remote reconnect restores laptop execution and tutorial context without re
         assert(marker);
         assertEquals(
             (
-                await resolvePendingSegmentHandoff({
-                    marker,
-                    projectRoot: f.remoteProject,
-                    runwieldSessionId: ready.savedId,
-                })
+                await withRetainedPlanFixture(f.remoteProject, () =>
+                    resolvePendingSegmentHandoff({
+                        marker,
+                        projectRoot: f.remoteProject,
+                        runwieldSessionId: ready.savedId!,
+                    }),
+                )
             ).kind,
             "pending",
         );

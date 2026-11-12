@@ -1,3 +1,5 @@
+import { ensureRunWieldOwnedGitignoreBlock } from "../runwield-owned-paths.ts";
+import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
 import { dirname, join } from "node:path";
@@ -72,6 +74,7 @@ function deliveryYaml(executionCommit: string): string {
 }
 
 export const repoFixture = defineGitFixture(async (repo) => {
+    await ensureRunWieldOwnedGitignoreBlock(repo);
     await fsWriteFile(join(repo, "README.md"), "# Fixture\n");
     await git(repo, ["add", "."]);
     await git(repo, ["commit", "-m", "primary"]);
@@ -83,44 +86,46 @@ export const repoFixture = defineGitFixture(async (repo) => {
  */
 export async function epicWithPendingSecondChild() {
     const repo = await repoFixture.checkout();
-    const base = await git(repo, ["rev-parse", "main"]);
-    await git(repo, ["switch", "-c", "epic/epic"]);
-    await writePlan(repo, "epic/01-first", childAttrs(1), "# First\n");
-    await fsWriteFile(join(repo, "first.js"), "export const first = true;\n");
-    await git(repo, ["add", "."]);
-    await git(repo, ["commit", "-m", "first child delivered"]);
-    await git(repo, ["switch", "-c", "side", "main"]);
-    await fsWriteFile(join(repo, "second.js"), "export const second = true;\n");
-    await git(repo, ["add", "."]);
-    await git(repo, ["commit", "-m", "second child work"]);
-    const secondCommit = await git(repo, ["rev-parse", "HEAD"]);
-    await git(repo, ["switch", "main"]);
-    await writePlan(
-        repo,
-        "epic",
-        {
-            planId: "plan-epic",
-            classification: "PROJECT",
-            complexity: "HIGH",
-            status: "ready_for_work",
-            targetBranch: "epic/epic",
-            epicBaseCommit: base,
-            affectedPaths: [],
-            createdAt: "2026-01-01T00:00:00.000Z",
-        },
-        "# Epic\n\n## Objective\n\nShip first and second together.\n",
-    );
-    const epicDocument = await fsReadFile(join(repo, "docs/plans/epic.md"), "utf8");
-    await git(repo, ["switch", "epic/epic"]);
-    await git(repo, ["add", "docs/plans/epic.md"]);
-    await git(repo, ["commit", "-m", "Epic requirements"]);
-    await git(repo, ["switch", "main"]);
-    await fsMkdir(join(repo, "docs/plans"), { recursive: true });
-    await fsWriteFile(join(repo, "docs/plans/epic.md"), epicDocument);
-    await git(repo, ["add", "docs/plans/epic.md"]);
-    await git(repo, ["commit", "-m", "primary Epic copy"]);
-    await writePlan(repo, "epic/02-second", childAttrs(2), "# Second\n", deliveryYaml(secondCommit));
-    return { repo, base, secondCommit };
+    return await withRetainedPlanFixture(repo, async () => {
+        const base = await git(repo, ["rev-parse", "main"]);
+        await git(repo, ["switch", "-c", "epic/epic"]);
+        await writePlan(repo, "epic/01-first", childAttrs(1), "# First\n");
+        await fsWriteFile(join(repo, "first.js"), "export const first = true;\n");
+        await git(repo, ["add", "."]);
+        await git(repo, ["commit", "-m", "first child delivered"]);
+        await git(repo, ["switch", "-c", "side", "main"]);
+        await fsWriteFile(join(repo, "second.js"), "export const second = true;\n");
+        await git(repo, ["add", "."]);
+        await git(repo, ["commit", "-m", "second child work"]);
+        const secondCommit = await git(repo, ["rev-parse", "HEAD"]);
+        await git(repo, ["switch", "main"]);
+        await writePlan(
+            repo,
+            "epic",
+            {
+                planId: "plan-epic",
+                classification: "PROJECT",
+                complexity: "HIGH",
+                status: "ready_for_work",
+                targetBranch: "epic/epic",
+                epicBaseCommit: base,
+                affectedPaths: [],
+                createdAt: "2026-01-01T00:00:00.000Z",
+            },
+            "# Epic\n\n## Objective\n\nShip first and second together.\n",
+        );
+        const epicDocument = await fsReadFile(join(repo, "docs/plans/epic.md"), "utf8");
+        await git(repo, ["switch", "epic/epic"]);
+        await git(repo, ["add", "docs/plans/epic.md"]);
+        await git(repo, ["commit", "-m", "Epic requirements"]);
+        await git(repo, ["switch", "main"]);
+        await fsMkdir(join(repo, "docs/plans"), { recursive: true });
+        await fsWriteFile(join(repo, "docs/plans/epic.md"), epicDocument);
+        await git(repo, ["add", "docs/plans/epic.md"]);
+        await git(repo, ["commit", "-m", "primary Epic copy"]);
+        await writePlan(repo, "epic/02-second", childAttrs(2), "# Second\n", deliveryYaml(secondCommit));
+        return { repo, base, secondCommit };
+    });
 }
 
 export async function deliverSecondChild(repo: string) {

@@ -1,6 +1,9 @@
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { archivePlan, loadArchivedPlan, savePlan } from "../../plan-store.js";
+import { archivePlan, loadArchivedPlan } from "../../plan-store/index.ts";
+
 import { setCustomSetting } from "../../shared/settings.js";
 import { writeWorkRecord } from "../../shared/work-records/store.ts";
 import type { WorkRecordFrontMatter } from "../../shared/work-records/schema.ts";
@@ -23,7 +26,11 @@ async function captureLogs(run: () => Promise<void>): Promise<string> {
 }
 
 function pruneTest(name: string, run: (fixture: PlanCommandFixture) => Promise<void>): void {
-    test(name, () => withPlanCommandFixture("runwield-plans-prune-command-", run));
+    test(name, () =>
+        withPlanCommandFixture("runwield-plans-prune-command-", (fixture) =>
+            withRetainedPlanFixture(fixture.projectRoot, () => run(fixture)),
+        ),
+    );
 }
 
 function recordAttrs(recordId: string, sourcePlan: string): WorkRecordFrontMatter {
@@ -50,8 +57,8 @@ async function writeRecord(projectRoot: string, recordId: string, sourcePlan: st
 
 pruneTest("plans prune --yes deletes old archived Plans that have Work Records", async ({ projectRoot }) => {
     await setCustomSetting("plans", { archiveRetentionDays: 14, archiveKeepLast: 0 }, "project", projectRoot);
-    await savePlan(projectRoot, "old", "# Old", { status: "verified", planId: "old-id" });
-    await savePlan(projectRoot, "no-record", "# No Record", { status: "verified", planId: "no-record-id" });
+    await seedPlan(projectRoot, "old", "# Old", { status: "verified", planId: "old-id" });
+    await seedPlan(projectRoot, "no-record", "# No Record", { status: "verified", planId: "no-record-id" });
     await archivePlan(projectRoot, "old", { now: "2026-08-01T00:00:00Z" });
     await archivePlan(projectRoot, "no-record", { now: "2026-08-01T00:00:00Z" });
     await writeRecord(projectRoot, "11111111-1111-4111-8111-111111111111", "old-id");
@@ -67,7 +74,7 @@ pruneTest("plans prune --yes deletes old archived Plans that have Work Records",
 
 pruneTest("plans prune --dry-run reports due Plans without deleting", async ({ projectRoot }) => {
     await setCustomSetting("plans", { archiveRetentionDays: 14, archiveKeepLast: 0 }, "project", projectRoot);
-    await savePlan(projectRoot, "old", "# Old", { status: "verified", planId: "old-id" });
+    await seedPlan(projectRoot, "old", "# Old", { status: "verified", planId: "old-id" });
     await archivePlan(projectRoot, "old", { now: "2026-08-01T00:00:00Z" });
     await writeRecord(projectRoot, "22222222-2222-4222-8222-222222222222", "old-id");
 
@@ -79,8 +86,8 @@ pruneTest("plans prune --dry-run reports due Plans without deleting", async ({ p
 
 pruneTest("plans prune honors repository retention and keepLast settings", async ({ projectRoot }) => {
     await setCustomSetting("plans", { archiveRetentionDays: 14, archiveKeepLast: 1 }, "project", projectRoot);
-    await savePlan(projectRoot, "old", "# Old", { status: "verified", planId: "old-id" });
-    await savePlan(projectRoot, "new", "# New", { status: "verified", planId: "new-id" });
+    await seedPlan(projectRoot, "old", "# Old", { status: "verified", planId: "old-id" });
+    await seedPlan(projectRoot, "new", "# New", { status: "verified", planId: "new-id" });
     await archivePlan(projectRoot, "old", { now: "2026-08-01T00:00:00Z" });
     await archivePlan(projectRoot, "new", { now: new Date().toISOString() });
     await writeRecord(projectRoot, "33333333-3333-4333-8333-333333333333", "old-id");

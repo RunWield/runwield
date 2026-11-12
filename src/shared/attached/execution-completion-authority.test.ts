@@ -1,8 +1,10 @@
+import { holdPlanFixtureLock } from "../testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { readdir as fsReaddir, writeFile as fsWriteFile } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { loadPlan, withPlanLock } from "../../plan-store.js";
+
+import { loadPlan } from "../../plan-store/index.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { findById } from "../worktree-registry.js";
 import { runOperation, withProject } from "./attached-test-fixture.ts";
@@ -23,7 +25,7 @@ test("completion rejects a Plan body edit made while Core waits for the real Pla
         const locked = new Promise<void>((resolve) => {
             acquired = resolve;
         });
-        const holder = withPlanLock(execution.executionCwd, "dark-mode-toggle", async () => {
+        const holder = holdPlanFixtureLock(execution.executionCwd, "dark-mode-toggle", async () => {
             acquired();
             await held;
         });
@@ -46,7 +48,7 @@ test("completion rejects a Plan body edit made while Core waits for the real Pla
             await holder;
             const result = await completion;
             assert(!result.ok, JSON.stringify(result));
-            assertStringIncludes(result.rejection.message, "Plan changed");
+            assertStringIncludes(result.rejection.message, "Required Plan documents changed");
             assertEquals((await loadPlan(execution.executionCwd, "dark-mode-toggle"))?.attrs.status, "in_progress");
             assertEquals((await findById(root, execution.worktreeId))?.status, "active");
         } finally {

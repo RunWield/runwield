@@ -1,4 +1,4 @@
-import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
+import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { prepareWorktreeRegistry } from "../../shared/worktree-registry.js";
 /**
  * @module cmd/plans/push
@@ -7,7 +7,8 @@ import { prepareWorktreeRegistry } from "../../shared/worktree-registry.js";
 
 import { parseArgs } from "../../shared/cli-args.ts";
 import { CLI_BIN, getCwd } from "../../constants.js";
-import { hashPlanBody, listPlans, listPlanResources, updatePlanCollaborationMetadata } from "../../plan-store.js";
+import { hashPlanBody } from "../../plan-format.ts";
+import { listPlans, listPlanResources, updatePlanCollaborationMetadata } from "../../plan-store/index.ts";
 import { redactSecrets, REVIEWER_SCOPE } from "../../shared/collaboration/capabilities.ts";
 import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../../shared/collaboration/client.js";
 import { encryptJsonPayload, importContentKey } from "../../shared/collaboration/crypto.ts";
@@ -20,7 +21,7 @@ import {
 } from "../../shared/collaboration/secrets.js";
 import { buildCollaborationUrl } from "../../shared/collaboration/urls.ts";
 import { normalizePlanServerUrl } from "../../shared/collaboration/urls.ts";
-import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 
 interface PlansPushArgs {
     target?: string;

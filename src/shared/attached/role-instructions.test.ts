@@ -72,7 +72,8 @@ test("Codex planning workers return structured outcomes and leave lifecycle subm
             assertStringIncludes(worker, "Fetch your own current get_instructions and context");
             assertStringIncludes(worker, "return context.projectSetup paths to the coordinator");
             assertStringIncludes(worker, "structured triage_report outcome");
-            assertStringIncludes(worker, "return planName");
+            assertStringIncludes(worker, "contextMarkdown");
+            assertStringIncludes(worker, "planName");
             assertStringIncludes(worker, "Make no lifecycle calls");
             assertStringIncludes(worker, "The coordinator submits your result");
             assertEquals(

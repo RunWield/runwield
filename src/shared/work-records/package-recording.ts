@@ -15,7 +15,7 @@ import { approveWorkRecord } from "./lifecycle.ts";
 import { applyWorkRecordSupersession } from "./supersession.ts";
 import { syncWorkRecordToIndex } from "./index-adapter.ts";
 import { retainWorkRecordLocation, workRecordDigest } from "./import.ts";
-import type { DeliveryCopy, PackagePublicationManifest } from "../plan-package-store.ts";
+import type { DeliveryCopy, PackagePublicationManifest } from "../../plan-store/index.ts";
 import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
 
 type Source = import("./generation.js").WorkRecordSource;

@@ -1,3 +1,6 @@
+import { savePlanWithController as savePlan } from "../../shared/testing/plan-controller-fixture.ts";
+import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
+
 import type { WorkspaceLifecyclePayload } from "./routes/api/handlers.ts";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -12,7 +15,8 @@ import { test } from "node:test";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
-import { loadPlanBodyById, savePlan } from "../../plan-store.js";
+import { loadPlanBodyById } from "../../plan-store/index.ts";
+
 import { PLAN_UI_TOKEN_HEADER } from "../../constants.js";
 import {
     applyWorkspaceLifecycleActionInMemory,
@@ -117,22 +121,24 @@ test("workspace lifecycle action metadata blocks protected status movement and e
 test("legacy feedback Plans appear in Draft with no Feedback board column", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "legacy-feedback-board-"));
     try {
-        await savePlan(cwd, "legacy", "# Legacy review\n", { status: "draft", classification: "FEATURE" });
-        const path = join(cwd, "docs/plans/legacy.md");
-        await fsWriteFile(path, (await fsReadFile(path, "utf8")).replace('status: "draft"', 'status: "feedback"'));
+        await withRetainedPlanFixture(cwd, async () => {
+            await savePlan(cwd, "legacy", "# Legacy review\n", { status: "draft", classification: "FEATURE" });
+            const path = join(cwd, "docs/plans/legacy.md");
+            await fsWriteFile(path, (await fsReadFile(path, "utf8")).replace('status: "draft"', 'status: "feedback"'));
 
-        const board = await loadBoard(cwd);
-        assertEquals(
-            board.screens.active.columns.some((column) => column.status === "feedback"),
-            false,
-        );
-        const draft = board.screens.active.columns.find((column) => column.status === "draft");
-        assertEquals(
-            draft?.cards.map((card: WorkspacePlanCard) => card.planName),
-            ["legacy"],
-        );
-        assertEquals(board.plans[0].readAvailability.kind, "pending");
-        assertEquals(board.plans[0].actions, null);
+            const board = await loadBoard(cwd);
+            assertEquals(
+                board.screens.active.columns.some((column) => column.status === "feedback"),
+                false,
+            );
+            const draft = board.screens.active.columns.find((column) => column.status === "draft");
+            assertEquals(
+                draft?.cards.map((card: WorkspacePlanCard) => card.planName),
+                ["legacy"],
+            );
+            assertEquals(board.plans[0].readAvailability.kind, "pending");
+            assertEquals(board.plans[0].actions, null);
+        });
     } finally {
         await fsRm(cwd, { recursive: true });
     }
@@ -270,7 +276,7 @@ test("Workspace lifecycle API mutates through lifecycle events and blocks invali
         loaded = await loadWorkspaceDetail(cwd, "feature-id");
         assertEquals(loaded.status, "closed_without_verification");
         assertEquals(loaded.closedWithoutVerificationReason, "Verified manually in staging.");
-        assertEquals(loaded.frontMatter.verifiedAt, undefined);
+        assertEquals(loaded.frontMatter.verifiedAt, null);
     } finally {
         await fsRm(cwd, { recursive: true });
     }
@@ -465,26 +471,28 @@ test("Workspace lifecycle API requires Resume Check confirmation for staleness w
 test("Workspace Resume Check does not expose absolute worktree paths in blocked API responses", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
-        const missingWorktreePath = `${cwd}/missing-worktree`;
-        await savePlan(cwd, "held-leak", "# Held Leak", {
-            planId: "held-leak-id",
-            status: "on_hold",
-            heldFromStatus: "ready_for_work",
-            worktreeId: "missing-attempt",
-            worktreePath: missingWorktreePath,
-            worktreeBranch: "missing-branch",
-            classification: "FEATURE",
+        await withRetainedPlanFixture(cwd, async () => {
+            const missingWorktreePath = `${cwd}/missing-worktree`;
+            await savePlan(cwd, "held-leak", "# Held Leak", {
+                planId: "held-leak-id",
+                status: "on_hold",
+                heldFromStatus: "ready_for_work",
+                worktreeId: "missing-attempt",
+                worktreePath: missingWorktreePath,
+                worktreeBranch: "missing-branch",
+                classification: "FEATURE",
+            });
+            const app = createWorkspaceApp({
+                cwd,
+                token: "secret",
+                mnemotecaPort: createWorkRecordMnemotecaFixture(),
+            }).handler();
+            const response = await postLifecycle(app, cwd, "held-leak-id", { action: "resume_from_hold" });
+            assertEquals(response.status, 409);
+            const bodyText = await response.text();
+            assertEquals(bodyText.includes(cwd), false);
+            assertEquals(bodyText.includes(missingWorktreePath), false);
         });
-        const app = createWorkspaceApp({
-            cwd,
-            token: "secret",
-            mnemotecaPort: createWorkRecordMnemotecaFixture(),
-        }).handler();
-        const response = await postLifecycle(app, cwd, "held-leak-id", { action: "resume_from_hold" });
-        assertEquals(response.status, 409);
-        const bodyText = await response.text();
-        assertEquals(bodyText.includes(cwd), false);
-        assertEquals(bodyText.includes(missingWorktreePath), false);
     } finally {
         await fsRm(cwd, { recursive: true });
     }
@@ -522,55 +530,57 @@ test("Workspace Resume Check blocks resume when recorded branch cannot be determ
 test("Workspace APIs return lock-aware 409 responses without mutating locked Plans", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
-        await savePlan(cwd, "locked", "# Locked\n", {
-            planId: "locked-api-id",
-            status: "draft",
-            classification: "FEATURE",
-            collaborationState: COLLABORATION_STATE_REMOTE_CANONICAL,
-            collaborationServerUrl: "https://plans.example.test",
-            collaborationSpaceId: "space-1",
+        await withRetainedPlanFixture(cwd, async () => {
+            await savePlan(cwd, "locked", "# Locked\n", {
+                planId: "locked-api-id",
+                status: "draft",
+                classification: "FEATURE",
+                collaborationState: COLLABORATION_STATE_REMOTE_CANONICAL,
+                collaborationServerUrl: "https://plans.example.test",
+                collaborationSpaceId: "space-1",
+            });
+            const loaded = await loadPlanBodyById(cwd, "locked-api-id");
+            const before = await fsReadFile(`${cwd}/docs/plans/locked.md`, "utf8");
+            const app = createWorkspaceApp({
+                cwd,
+                token: "secret",
+                mnemotecaPort: createWorkRecordMnemotecaFixture(),
+            }).handler();
+
+            const bodyEdit = await app(
+                new Request("http://localhost/api/plans/locked-api-id/body", {
+                    method: "POST",
+                    headers: { [PLAN_UI_TOKEN_HEADER]: "secret", "content-type": "application/json" },
+                    body: JSON.stringify({
+                        body: "# Changed\n",
+                        expectedBodyHash: loaded.bodyHash,
+                        expectedRevision: loaded.revision,
+                    }),
+                }),
+            );
+            assertEquals(bodyEdit.status, 409);
+            const bodyPayload = await bodyEdit.json();
+            assertStringIncludes(bodyPayload.error, "remote-canonical");
+            assertStringIncludes(bodyPayload.repair, "wld plans pull");
+            assertEquals(await fsReadFile(`${cwd}/docs/plans/locked.md`, "utf8"), before);
+
+            const lifecycle = await app(
+                new Request("http://localhost/api/plans/locked-api-id/lifecycle-action", {
+                    method: "POST",
+                    headers: { [PLAN_UI_TOKEN_HEADER]: "secret", "content-type": "application/json" },
+                    body: JSON.stringify({
+                        action: "move_status",
+                        targetStatus: "approved",
+                        expectedRevision: loaded.revision,
+                    }),
+                }),
+            );
+            assertEquals(lifecycle.status, 409);
+            const lifecyclePayload = await lifecycle.json();
+            assertStringIncludes(lifecyclePayload.blockedReason, "remote-canonical");
+            assertStringIncludes(lifecyclePayload.repair, "wld plans pull");
+            assertEquals(await fsReadFile(`${cwd}/docs/plans/locked.md`, "utf8"), before);
         });
-        const loaded = await loadPlanBodyById(cwd, "locked-api-id");
-        const before = await fsReadFile(`${cwd}/docs/plans/locked.md`, "utf8");
-        const app = createWorkspaceApp({
-            cwd,
-            token: "secret",
-            mnemotecaPort: createWorkRecordMnemotecaFixture(),
-        }).handler();
-
-        const bodyEdit = await app(
-            new Request("http://localhost/api/plans/locked-api-id/body", {
-                method: "POST",
-                headers: { [PLAN_UI_TOKEN_HEADER]: "secret", "content-type": "application/json" },
-                body: JSON.stringify({
-                    body: "# Changed\n",
-                    expectedBodyHash: loaded.bodyHash,
-                    expectedRevision: loaded.revision,
-                }),
-            }),
-        );
-        assertEquals(bodyEdit.status, 409);
-        const bodyPayload = await bodyEdit.json();
-        assertStringIncludes(bodyPayload.error, "remote-canonical");
-        assertStringIncludes(bodyPayload.repair, "wld plans pull");
-        assertEquals(await fsReadFile(`${cwd}/docs/plans/locked.md`, "utf8"), before);
-
-        const lifecycle = await app(
-            new Request("http://localhost/api/plans/locked-api-id/lifecycle-action", {
-                method: "POST",
-                headers: { [PLAN_UI_TOKEN_HEADER]: "secret", "content-type": "application/json" },
-                body: JSON.stringify({
-                    action: "move_status",
-                    targetStatus: "approved",
-                    expectedRevision: loaded.revision,
-                }),
-            }),
-        );
-        assertEquals(lifecycle.status, 409);
-        const lifecyclePayload = await lifecycle.json();
-        assertStringIncludes(lifecyclePayload.blockedReason, "remote-canonical");
-        assertStringIncludes(lifecyclePayload.repair, "wld plans pull");
-        assertEquals(await fsReadFile(`${cwd}/docs/plans/locked.md`, "utf8"), before);
     } finally {
         await fsRm(cwd, { recursive: true });
     }

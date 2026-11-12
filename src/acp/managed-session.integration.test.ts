@@ -231,17 +231,17 @@ test("ACP load queues a prompt while Workspace owns activation and sends it afte
 test("ACP protocol load-plan reads the same admitted home Plan after a document revision", async () => {
     const { admitProjectIdentity } = await import("../shared/project-identity.ts");
     const { create } = await import("../shared/testing/plan-package-fixture.ts");
-    const { withPackageWorkflow, loadPackageWorkflowPlan } = await import("../shared/workflow/package-workflow.ts");
-    const { savePlanDocument } = await import("../shared/workflow/plan-documents.ts");
+    const { withPlanAccess, selectPlanAccess, loadPlan } = await import("../plan-store/index.ts");
+    const { savePlanDocument } = await import("../plan-store/index.ts");
     await withRuntimeCommandFixture("acp-home-plan-", async ({ projectRoot }) => {
         const identity = await admitProjectIdentity(projectRoot);
         assert(identity.kind === "existing");
         await create(identity.identity, {
             definition: { classification: "PLANNED_CHANGE", status: "draft", summary: "Canonical ACP Plan" },
         });
-        const selection = { identity: identity.identity, planId: "plan-one", expectedRevision: 1 };
-        const revision = await withPackageWorkflow(projectRoot, selection, async () => {
-            const current = await loadPackageWorkflowPlan({ planId: "plan-one" });
+        const access = (await selectPlanAccess(projectRoot, "plan-one"))!;
+        const revision = await withPlanAccess(projectRoot, access, async () => {
+            const current = (await loadPlan(projectRoot, "one"))!;
             return await savePlanDocument(
                 "plan-one",
                 "context.md",
@@ -250,7 +250,11 @@ test("ACP protocol load-plan reads the same admitted home Plan after a document 
             );
         });
         for (let connection = 0; connection < 2; connection++) {
-            const server = await withPackageWorkflow(projectRoot, selection, async () => await startTestServer());
+            const server = await withPlanAccess(
+                projectRoot,
+                (await selectPlanAccess(projectRoot, "plan-one"))!,
+                async () => await startTestServer(),
+            );
             try {
                 await sendMessage(server, {
                     jsonrpc: "2.0",
@@ -307,8 +311,8 @@ test("ACP protocol load-plan reads the same admitted home Plan after a document 
                 assert(denied.response.error, JSON.stringify(denied));
                 assert(!JSON.stringify(denied).includes("Edited shared home revision"));
                 await prompt("Cancel");
-                await withPackageWorkflow(projectRoot, selection, async () => {
-                    assertEquals((await loadPackageWorkflowPlan({ planId: "plan-one" })).revision, revision.revision);
+                await withPlanAccess(projectRoot, (await selectPlanAccess(projectRoot, "plan-one"))!, async () => {
+                    assertEquals((await loadPlan(projectRoot, "one"))!.revision, revision.revision);
                 });
             } finally {
                 await closeTestServer(server);

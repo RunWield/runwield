@@ -5,8 +5,8 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
 import { admitProjectIdentity, type ProjectIdentity } from "../project-identity.ts";
-import { createPlanPackage, readPlanPackage } from "../../plan-store.js";
-import type { CreatePlanPackage, PackageInspection, LoadedPlanPackage } from "../plan-package-store.ts";
+import { createPlanPackage, readPlanPackage } from "../../plan-store/packages.ts";
+import type { CreatePlanPackage, PackageInspection, LoadedPlanPackage } from "../../plan-store/packages.ts";
 
 const fixture = defineCommittedGitFixture({ "README.md": "package fixture\n" });
 export const documents = { "context.md": "# A Plan\n\nProse — 世界\n", "validation.md": "# Verify\n\nRun checks.\n" };

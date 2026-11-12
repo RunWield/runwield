@@ -1,7 +1,7 @@
-import { updatePlanPackageMetadata } from "../plan-package-store.ts";
+import { updatePlanPackageMetadata } from "../../plan-store/packages.ts";
 import { getWorktreeRegistryPath } from "../worktree-registry.js";
 import { settleDiscardedRecoveryAttempt } from "../../cmd/load-plan/plan-recovery-discard.ts";
-import { preparePlanWorkflow } from "./plan-preparation.ts";
+import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { createGitPort } from "../git-port.ts";
 import { systemLocalCIPort } from "./validation-local-ci.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
@@ -18,7 +18,8 @@ import { equal, ok, rejects, deepEqual } from "node:assert/strict";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { create, read, packageFixture, startDriver } from "../testing/plan-package-fixture.ts";
-import { withPackageWorkflow, loadPackageWorkflowPlan } from "./package-workflow.ts";
+import { loadPackageWorkflowPlan } from "../../plan-store/workflows.ts";
+import { withPackageWorkflow } from "../../plan-store/workflows.ts";
 import { recordPlanEvent } from "./plan-lifecycle.js";
 import { startActiveExecutionWorkflow, createExecutionStartPorts } from "./execution-start.ts";
 import { inspectWorktreeRegistry } from "../worktree-registry.js";
@@ -296,7 +297,7 @@ test("package dispatch supplies frozen complete context and checkpoints real imp
                         }),
                         /documents changed/,
                     );
-                    equal((await read(identity)).metadata.controller.verifiedAt, undefined);
+                    equal((await read(identity)).metadata.controller.verifiedAt, null);
                     await git(projectRoot, ["worktree", "remove", "--force", result.executionContext!.executionCwd!]);
                 },
             );

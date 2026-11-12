@@ -1,4 +1,4 @@
-import type { PlanAuthoringDefinition } from "../local-home-store.ts";
+import type { PlanAuthoringDefinition } from "../../plan-store/index.ts";
 /**
  * @module shared/attached/operations
  * The bounded operation contract between an External Agent Host carrier and the
@@ -313,7 +313,7 @@ export type AttachedNextAction = (
           planName: string;
           guidance: string;
           completionMode?: import("../workflow/validation-host-contract.ts").HostDeliveryMode;
-          workRecord?: import("../../plan-store.js").PlanFrontMatter["workRecord"];
+          workRecord?: import("../../plan-store/index.ts").PlanFrontMatter["workRecord"];
       }
     | { kind: "return_to_host"; reason: "unsupported_in_preview" | "plan_advanced_in_core"; message?: string }
 ) & { dispatch?: CodexRoleDispatch };
@@ -338,7 +338,7 @@ export type AttachedWorkflowClosure =
     | {
           reason: "delivered";
           completionMode?: import("../workflow/validation-host-contract.ts").HostDeliveryMode;
-          workRecord?: import("../../plan-store.js").PlanFrontMatter["workRecord"];
+          workRecord?: import("../../plan-store/index.ts").PlanFrontMatter["workRecord"];
       };
 
 export interface ProjectMovedRecovery {

@@ -14,7 +14,7 @@ import type { ValidationLocalCIPort, ValidationSessionPort, ValidationWorkflowSt
 import type { ValidationCheckpoint, ValidationCheckpointPhase } from "./validation-checkpoint.ts";
 import type { ValidationRecoveryResult } from "./validation-recovery.ts";
 
-type PlanFrontMatter = import("../../plan-store.js").PlanFrontMatter;
+type PlanFrontMatter = import("../../plan-store/index.ts").PlanFrontMatter;
 type GitPort = import("../git-port.ts").GitPort;
 type WorkRecordMnemotecaPort = import("../work-records/mnemoteca-port.ts").WorkRecordMnemotecaPort;
 type RecordPlanEventArgs = Parameters<typeof import("./plan-lifecycle.js").recordPlanEvent>[0];
@@ -24,7 +24,7 @@ type EpicContinuationResolution = import("./epic-continuation.ts").EpicContinuat
 /** The engine's result shape, mirroring the public entry's `WorkflowValidationResult`. */
 export type WorkflowValidationResult = {
     kind: "verified" | "paused" | "failed" | "semantic_repair_handoff" | "host_request";
-    packageContinuation?: import("../plan-package-store.ts").PackageAttemptContinuation;
+    packageContinuation?: import("../../plan-store/index.ts").PackageAttemptContinuation;
     hostRequest?: import("./validation-host-contract.ts").ValidationHostRequest;
     workRecord?: PlanFrontMatter["workRecord"];
     planName: string;
@@ -141,11 +141,7 @@ export type SemanticRoundState = {
     lastRepairReport: string;
 };
 
-export type HumanReviewMetadata = {
-    humanReviewMode: PlanFrontMatter["humanReviewMode"];
-    humanReviewDecision: PlanFrontMatter["humanReviewDecision"];
-    humanReviewedAt: string | null;
-};
+export type HumanReviewMetadata = import("../../plan-store/index.ts").PlanHumanReviewMetadata;
 
 export type PublicationOutcome = {
     result: ValidationPhaseResult;

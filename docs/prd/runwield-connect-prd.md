@@ -722,6 +722,14 @@ cannot take over its execution attempt. Compatibility, consent, current-action, 
 
 **Requirement: Start with necessary setup and preserve work after interruption.**
 
+- Large reviews retain each immutable validation request once. Reading another diff page adds its replay result and
+  coverage receipt, not another copy of the entire candidate. Exact operation replay and candidate identity remain
+  unchanged after process restart.
+- Core reads existing expanded records with memory bounded by individual requests and replay results. Passive reads
+  leave the record untouched; the next guarded write converts it to compact storage without changing its action,
+  revision preconditions, historical operation responses, or review coverage. Missing or altered retained request
+  evidence refuses continuation rather than weakening review.
+
 - A user must be able to run the first Attached Workflow in an uninitialized trusted repository.
 - Full `wld init` is not an entrance requirement.
 - Attached operations require a home directory for durable records. Without `HOME`, they return `home_unavailable`

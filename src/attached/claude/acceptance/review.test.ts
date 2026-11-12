@@ -192,6 +192,11 @@ test("successful decision logs retain only receipt identity, not HTTP response c
                 method: request.method,
                 body: request.method === "POST" ? Buffer.concat(chunks) : undefined,
             });
+            if (upstream.headers.get("content-type")?.includes("text/html")) {
+                response.writeHead(upstream.status, { "content-type": "text/html" });
+                response.end(await upstream.text());
+                return;
+            }
             const body = await upstream.json();
             response.writeHead(upstream.status, { "content-type": "application/json" });
             response.end(JSON.stringify({ ...body, prompt: secret, content: secret }));

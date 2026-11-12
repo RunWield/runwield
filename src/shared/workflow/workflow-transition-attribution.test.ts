@@ -1,3 +1,4 @@
+import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { test } from "node:test";
 import { readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
@@ -11,15 +12,14 @@ import { resolveValidationExecutionContext } from "./execution-context.ts";
 import {
     runArchiveTransition,
     runEpicDecompositionFinalizeTransition,
-    runExecutionPreparationTransition,
-    runImplementationCheckpointTransition,
     runPlanLifecycleEventTransition,
     runPlanReviewDecisionTransition,
     runRecoveryTransition,
     runReviewReopenTransition,
     runSequenceReviewTransition,
     runValidationOutcomeTransition,
-} from "./state-transition.ts";
+} from "../../plan-store/transitions.ts";
+import { runExecutionPreparationTransition, runImplementationCheckpointTransition } from "../../plan-store/index.ts";
 import { makePublicationOutcomeFixture } from "./testing/publication-outcome-fixture.ts";
 
 const options = { planName: "demo", worktreeId: "attempt-demo" };
@@ -134,23 +134,25 @@ for (const transition of transitions) {
     test(`${transition.name} observation retains its committed attempt Plan association`, async () => {
         await withWorkflowMetricsFixture(async (metrics) => {
             const fixture = await makePublicationOutcomeFixture(metrics.projectRoot);
-            try {
-                const result = await transition.run(metrics.projectRoot);
-                assertEquals(result.status, "committed");
-                // Archive transitions use the Plan document root as their observation directory.
-                await drainWorkflowMetrics();
-                const observationRoot = transition.name === "archive" ? fixture.executionCwd : metrics.projectRoot;
-                const contents = await fsReadFile(getWorkflowMetricsFilePath(observationRoot), "utf8");
-                const records: WorkflowMetricFixtureRecord[] = contents
-                    .trim()
-                    .split("\n")
-                    .map((line) => JSON.parse(line));
-                const rows = records.filter((row) => row.event === "workflow_transition_committed");
-                assertEquals(rows.length, 1);
-                assertEquals([rows[0].attemptId, rows[0].planId], ["attempt-demo", "plan-demo"]);
-            } finally {
-                await fixture.dispose();
-            }
+            return await withRetainedPlanFixture(metrics.projectRoot, async () => {
+                try {
+                    const result = await transition.run(metrics.projectRoot);
+                    assertEquals(result.status, "committed");
+                    // Archive transitions use the Plan document root as their observation directory.
+                    await drainWorkflowMetrics();
+                    const observationRoot = transition.name === "archive" ? fixture.executionCwd : metrics.projectRoot;
+                    const contents = await fsReadFile(getWorkflowMetricsFilePath(observationRoot), "utf8");
+                    const records: WorkflowMetricFixtureRecord[] = contents
+                        .trim()
+                        .split("\n")
+                        .map((line) => JSON.parse(line));
+                    const rows = records.filter((row) => row.event === "workflow_transition_committed");
+                    assertEquals(rows.length, 1);
+                    assertEquals([rows[0].attemptId, rows[0].planId], ["attempt-demo", "plan-demo"]);
+                } finally {
+                    await fixture.dispose();
+                }
+            });
         });
     });
 }
@@ -158,25 +160,27 @@ for (const transition of transitions) {
 test("restored execution Plan observation retains its committed attempt Plan association", async () => {
     await withWorkflowMetricsFixture(async (metrics) => {
         const fixture = await makePublicationOutcomeFixture(metrics.projectRoot);
-        try {
-            await fsRm(join(fixture.executionCwd, "docs/plans/demo.md"));
-            await fsWriteFile(join(fixture.executionCwd, "feature.txt"), "implemented feature\n");
-            await git(fixture.executionCwd, ["add", "."]);
-            await git(fixture.executionCwd, ["commit", "-m", "Implementation without Plan copy"]);
-            const result = await resolveValidationExecutionContext({
-                projectRoot: metrics.projectRoot,
-                planName: "demo",
-            });
-            assertEquals(result.kind, "ok");
-            assert(result.kind === "ok");
-            assertEquals(result.restoredPlanFile, { relativePath: "docs/plans/demo.md" });
-            const rows = (await metrics.readMetrics()).filter(
-                (row) => row.event === "execution_context_resolution" && row.v === 2,
-            );
-            assertEquals(rows.length, 1);
-            assertEquals([rows[0].attemptId, rows[0].planId], ["attempt-demo", "plan-demo"]);
-        } finally {
-            await fixture.dispose();
-        }
+        return await withRetainedPlanFixture(metrics.projectRoot, async () => {
+            try {
+                await fsRm(join(fixture.executionCwd, "docs/plans/demo.md"));
+                await fsWriteFile(join(fixture.executionCwd, "feature.txt"), "implemented feature\n");
+                await git(fixture.executionCwd, ["add", "."]);
+                await git(fixture.executionCwd, ["commit", "-m", "Implementation without Plan copy"]);
+                const result = await resolveValidationExecutionContext({
+                    projectRoot: metrics.projectRoot,
+                    planName: "demo",
+                });
+                assertEquals(result.kind, "ok");
+                assert(result.kind === "ok");
+                assertEquals(result.restoredPlanFile, { relativePath: "docs/plans/demo.md" });
+                const rows = (await metrics.readMetrics()).filter(
+                    (row) => row.event === "execution_context_resolution" && row.v === 2,
+                );
+                assertEquals(rows.length, 1);
+                assertEquals([rows[0].attemptId, rows[0].planId], ["attempt-demo", "plan-demo"]);
+            } finally {
+                await fixture.dispose();
+            }
+        });
     });
 });

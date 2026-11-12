@@ -5,8 +5,8 @@ import { publicationFixture } from "./package-publication-fixture.ts";
 import { read } from "../../testing/plan-package-fixture.ts";
 import { inspectWorktreeRegistry } from "../../worktree-registry.js";
 import { git } from "../../git-test-fixture.ts";
-import { readPlanPackagePublication } from "../../plan-package-store.ts";
-import { loadPublishedWorkRecordSource } from "../../work-records/published-source.ts";
+import { readPlanPackagePublication } from "../../../plan-store/packages.ts";
+import { loadPublishedWorkRecordSource } from "../../../plan-store/index.ts";
 
 export const publicationBoundaries = [
     "retained_input",

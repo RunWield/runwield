@@ -1,4 +1,4 @@
-import { writeFile, readFile, chmod, stat } from "node:fs/promises";
+import { writeFile, readFile, stat } from "node:fs/promises";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
@@ -6,15 +6,8 @@ import { join } from "node:path";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { toDelivery } from "./delivery-test-fixture.ts";
 import { git } from "../git-test-fixture.ts";
-import { loadPlan } from "../../plan-store.js";
-import {
-    type CliRun,
-    CLI_PATH,
-    DENO_CONFIG_PATH,
-    EVIDENCE,
-    readRecordBytes,
-    spawnAttachedCli,
-} from "./attached-test-fixture.ts";
+import { loadPlan } from "../../plan-store/index.ts";
+import { type CliRun, DENO_CONFIG_PATH, EVIDENCE, readRecordBytes, spawnAttachedCli } from "./attached-test-fixture.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
@@ -22,7 +15,6 @@ import { findById } from "../worktree-registry.js";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
 import process from "node:process";
 import type { AttachedNextAction, AttachedOperationResult } from "./operations.ts";
-import { compactResult } from "./presentation.ts";
 
 for (const resolve of [true, false]) {
     test(
@@ -146,25 +138,21 @@ test("status polling preserves the live Recorder claim after publication cleanup
             evidence: EVIDENCE,
             payload,
         };
-        const which = await captureForegroundProcess("sh", { cwd: fixture.root, args: ["-c", "command -v git"] });
-        assert(which.success);
-        const realGit = new TextDecoder().decode(which.stdout).trim();
-        const registry = resolveProjectRuntimeLayout(fixture.root).primary.worktreeRegistryPath;
-        // Gate only the child process's external Git read after real cleanup prunes the registry.
-        // The first such Plan read builds the verified delivery result, before Attached accepts it.
-        const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
-        const wrapper = join(fixture.bin, "git");
+        const config = join(fixture.parent, "live-recorder.json");
         await writeFile(
-            wrapper,
-            `#!/bin/sh
-if [ "$1" = show ] && [ "\${2#*:}" = docs/plans/p.md ] && ! grep -q '"id": "wt-host"' ${quote(registry)}; then
-    printf '%s\\n' "$*" > ${quote(entered)}
-    while ! test -f ${quote(release)}; do sleep 0.01; done
-fi
-exec ${quote(realGit)} "$@"
-`,
+            config,
+            JSON.stringify({
+                projectRoot: fixture.root,
+                operation: "work_record_completed",
+                input,
+                cleanupGate: {
+                    registryPath: resolveProjectRuntimeLayout(fixture.root).primary.worktreeRegistryPath,
+                    attemptId: fixture.id,
+                    entered,
+                    release,
+                },
+            }),
         );
-        await chmod(wrapper, 0o755);
         pending = captureForegroundProcess(process.execPath, {
             args: runtimeSourceArgs([
                 "run",
@@ -173,9 +161,8 @@ exec ${quote(realGit)} "$@"
                 "--no-check",
                 "--config",
                 DENO_CONFIG_PATH,
-                CLI_PATH,
-                "attached",
-                "work_record_completed",
+                new URL("./testing/delivery-process.ts", import.meta.url).pathname,
+                config,
             ]),
             cwd: fixture.root,
             env: { PATH: `${fixture.bin}:${process.env.PATH || ""}` },
@@ -186,7 +173,7 @@ exec ${quote(realGit)} "$@"
         // instead of rejecting a live publication halfway through its allowed runtime.
         const exitedBeforeGate = pending.then((output) => {
             throw new Error(
-                `Recorder completion exited before the post-cleanup Git gate (code ${output.code}): ` +
+                `Recorder completion exited before the persisted-cleanup filesystem gate (code ${output.code}): ` +
                     new TextDecoder().decode(output.stderr) +
                     new TextDecoder().decode(output.stdout),
             );
@@ -231,7 +218,8 @@ exec ${quote(realGit)} "$@"
         const saved = await loadAttachedWorkflowRecord(location, fixture.workflowId);
         assert(saved.status === "found");
         assertEquals(saved.record.acceptedOperations[input.operationId].result.workflow, completed.workflow);
-        assertEquals(JSON.parse(new TextDecoder().decode(output.stdout)), compactResult(completed));
+        const outputText = new TextDecoder().decode(output.stdout);
+        assertEquals(JSON.parse(outputText.slice(outputText.lastIndexOf("ATTACHED_RESULT=") + 16)), completed);
         assertEquals(saved.record.acceptedOperations[input.operationId].evidence, claim.record.validation.evidence);
     } finally {
         await writeFile(release, "continue\n");

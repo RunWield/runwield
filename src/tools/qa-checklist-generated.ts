@@ -1,16 +1,19 @@
 import { Type } from "@earendil-works/pi-ai";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
-import { appendEpicManualQaSection } from "../shared/epic-artifacts.ts";
+import { appendEpicManualQaSection } from "../plan-store/index.ts";
 import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
 import type { HostedSession } from "../shared/session/hosted-session.js";
 
-const TOOL_PARAMS = Type.Object({
-    checklistMarkdown: Type.String({
-        minLength: 1,
-        description:
-            "Markdown checklist starting with 'Manual verification steps for <child plan>' and 1 to 6 unchecked items.",
-    }),
-}, { additionalProperties: false });
+const TOOL_PARAMS = Type.Object(
+    {
+        checklistMarkdown: Type.String({
+            minLength: 1,
+            description:
+                "Markdown checklist starting with 'Manual verification steps for <child plan>' and 1 to 6 unchecked items.",
+        }),
+    },
+    { additionalProperties: false },
+);
 
 type QaChecklistGeneratedDetails = {
     outcome: "recorded" | "already_present" | "rejected";
@@ -58,12 +61,15 @@ export function createQaChecklistGeneratedTool(options: QaChecklistGeneratedTool
                     });
                 }
                 return {
-                    content: [{
-                        type: "text",
-                        text: result.status === "already_present"
-                            ? `Manual QA checklist already exists in ${result.relativePath}.`
-                            : `Manual QA checklist recorded in ${result.relativePath}.`,
-                    }],
+                    content: [
+                        {
+                            type: "text",
+                            text:
+                                result.status === "already_present"
+                                    ? `Manual QA checklist already exists in ${result.relativePath}.`
+                                    : `Manual QA checklist recorded in ${result.relativePath}.`,
+                        },
+                    ],
                     details,
                 };
             } catch (error) {

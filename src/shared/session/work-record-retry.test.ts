@@ -1,22 +1,31 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { withRuntimeCommandFixture as withBaseRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { listWorkRecords } from "../work-records/index.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
 
+// These cases exercise recording a retained checkout completion, before package delivery receipts existed.
+const withRuntimeCommandFixture: typeof withBaseRuntimeCommandFixture = (prefix, run) =>
+    withBaseRuntimeCommandFixture(prefix, (fixture) =>
+        withRetainedPlanFixture(fixture.projectRoot, () => run(fixture)),
+    );
+
 test("record retry belongs to the active Session and cancellation preserves delivered code", async () => {
     await withRuntimeCommandFixture("record-retry-cancel-", async ({ projectRoot, setModelResponseFactory }) => {
-        await savePlan(projectRoot, "delivered", "# Delivered", {
+        await seedPlan(projectRoot, "delivered", "# Delivered", {
             planId: "delivered",
             classification: "PLANNED_CHANGE",
             status: "verified",
         });
         let release = () => {};
         let entered = () => {};
-        const started = new Promise<void>((resolve) => entered = resolve);
-        const held = new Promise<void>((resolve) => release = resolve);
+        const started = new Promise<void>((resolve) => (entered = resolve));
+        const held = new Promise<void>((resolve) => (release = resolve));
         setModelResponseFactory(async () => {
             entered();
             await held;

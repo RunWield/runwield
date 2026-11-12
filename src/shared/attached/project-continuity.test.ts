@@ -1,3 +1,4 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { deepEqual, equal, ok } from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, realpath, rename, rm, stat } from "node:fs/promises";
@@ -19,7 +20,7 @@ import {
 import { locateAttachedWorkflows } from "./record-store.ts";
 import { implementing, completionInput, executionInput } from "./execution-test-fixture.ts";
 import { git } from "../git-test-fixture.ts";
-import { savePlan } from "../../plan-store.js";
+
 import { applyAttachedReviewDecision, openAttachedReviewRound } from "./coordinator.ts";
 
 test("a reused historical root cannot read or advance the moved Connect workflow", async () => {
@@ -321,7 +322,7 @@ test("planning in a linked clone binds first execution there without transferrin
             const original = JSON.parse(await readFile(file, "utf8"));
             const planning = await runOperation("triage_report", two, triageReportInput(pending));
             ok(planning.ok && planning.workflow.nextAction.kind === "plan", JSON.stringify(planning));
-            await savePlan(two, "dark-mode-toggle", "# Toggle\n\nAdd a toggle.\n", {
+            await seedPlan(two, "dark-mode-toggle", "# Toggle\n\nAdd a toggle.\n", {
                 classification: "PLANNED_CHANGE",
                 executionAgent: "engineer",
                 collaborationRecommendation: "autonomous",

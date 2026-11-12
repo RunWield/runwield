@@ -3,7 +3,7 @@ import { strictEqual, ok } from "node:assert";
 import { join } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { packageFixture, create } from "../../shared/testing/plan-package-fixture.ts";
-import { withLocalProjectAction } from "../../shared/local-home-store.ts";
+import { withLocalProjectAction } from "../../plan-store/index.ts";
 import { createReviewWorkspaceApp } from "./server.js";
 
 test("Sequence link requests bind the displayed child and refuse unrelated Plan IDs", async () => {

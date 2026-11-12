@@ -1,4 +1,5 @@
-import { compareChildPlansByOrder, listPlanDocuments } from "../../plan-store.js";
+import { compareChildPlansByOrder } from "../../plan-format.ts";
+import { listPlanDocuments } from "../../plan-store/index.ts";
 import { getCwd } from "../../constants.js";
 import type { CommandCompletionItem } from "../registry.js";
 

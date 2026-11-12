@@ -299,7 +299,8 @@ test("MCP returns reviewer artifact references and pages the canonical diff", as
 });
 
 test("MCP actions and status do not inline oversized review artifacts", async () => {
-    const fixture = await attachedValidationFixture();
+    const oversizedPlanMarker = "oversized-plan-body-marker-".repeat(3000);
+    const fixture = await attachedValidationFixture({ planMarkdown: `# Approved Plan\n\n${oversizedPlanMarker}` });
     const transport = new StdioClientTransport({
         command: process.execPath,
         args: runtimeSourceArgs([
@@ -320,12 +321,12 @@ test("MCP actions and status do not inline oversized review artifacts", async ()
         stderr: "pipe",
     });
     const client = new Client({ name: EVIDENCE.host, version: EVIDENCE.hostVersion });
-    const oversizedPlanMarker = "oversized-plan-body-marker-".repeat(3000);
     try {
-        const planPath = join(fixture.cwd, "docs/plans/p.md");
-        const plan = await fsReadFile(planPath, "utf8");
-        await fsWriteFile(planPath, `${plan}\n${oversizedPlanMarker}`);
         await fsWriteFile(join(fixture.cwd, "marker"), "pass");
+        await fsWriteFile(
+            join(fixture.cwd, "implementation.ts"),
+            `export const value = 2;\n// ${oversizedPlanMarker}\n`,
+        );
         const before = await fixture.status();
         await client.connect(transport);
         const started = await client.callTool({
@@ -368,7 +369,7 @@ test("MCP actions and status do not inline oversized review artifacts", async ()
                 payload: {
                     actionId: startResult.workflow.nextAction.actionId,
                     command: "show",
-                    path: "docs/plans/p.md",
+                    path: "implementation.ts",
                     maxBytes: 1024,
                 },
             },
@@ -451,13 +452,18 @@ test("MCP status waits for a browser decision without polling full workflow cont
         });
         await new Promise((resolve) => setTimeout(resolve, 100));
         const url = new URL(initial.review.url);
+        const html = await (await fetch(url)).text();
+        const embedded = html.match(/<script[^>]*data-review-payload[^>]*>([\s\S]*?)<\/script>/)?.[1];
+        assert(embedded, "Expected browser review revision payload");
+        const { reviewRevision, documentRevision } = JSON.parse(embedded);
         const decision = await fetch(new URL(`/api/review/decision${url.search}`, url), {
             method: "POST",
             body: JSON.stringify({
                 approvalAction: "run",
                 executionAgent: "engineer",
                 collaborationRecommendation: "autonomous",
-                reviewRevision: 0,
+                reviewRevision,
+                documentRevision,
             }),
         });
         assertEquals(decision.status, 200);

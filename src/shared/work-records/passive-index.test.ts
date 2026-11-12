@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { deepEqual, equal, ok, rejects } from "node:assert/strict";
+import { deepEqual, equal, ok } from "node:assert/strict";
 import { mkdir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { getRunWieldRuntimeDir } from "../../constants.js";
@@ -13,6 +13,19 @@ import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port
 import type { WorkRecordMnemotecaCommandOptions } from "./mnemoteca-port.ts";
 
 const fixture = defineCommittedGitFixture();
+function canonicalDatabase(root: string): string {
+    const inspected = inspectProjectIdentity(root);
+    if (inspected.kind !== "existing") throw new Error("Fixture has no canonical Project identity.");
+    return join(
+        inspected.identity.executionAccountHome,
+        ".wld",
+        "projects",
+        inspected.identity.projectId,
+        "internal",
+        "work-records",
+        "index.sqlite3",
+    );
+}
 for (const canonical of [false, true]) {
     test(`Work Record search preserves identity-free Project sources${canonical ? " during index bootstrap" : ""}`, async () => {
         const root = await realpath(await fixture.checkout());
@@ -38,7 +51,12 @@ for (const canonical of [false, true]) {
             const options = {
                 mnemotecaPort: {
                     run: async (args: string[], commandOptions?: WorkRecordMnemotecaCommandOptions) => {
-                        deepEqual(commandOptions, { cwd: root });
+                        deepEqual(
+                            commandOptions,
+                            canonical
+                                ? { cwd: root, env: { MNEMOTECA_DB_PATH: canonicalDatabase(root) } }
+                                : { cwd: root },
+                        );
                         return await external.run(args, commandOptions);
                     },
                 },
@@ -47,7 +65,7 @@ for (const canonical of [false, true]) {
             equal(result.records.length, canonical ? 1 : 0);
             await runMnemotecaWorkRecordCommand(root, ["list"], options);
             await runMnemotecaWorkRecordCommand(root, ["update", "--help"], options);
-            equal(inspectProjectIdentity(root).kind, "fresh");
+            equal(inspectProjectIdentity(root).kind, canonical ? "existing" : "fresh");
             deepEqual(await readdir(root), before);
             equal(await readFile(join(root, ".git", "config"), "utf8"), config);
         } finally {
@@ -62,10 +80,10 @@ test("Work Record search leaves unadmitted legacy runtime intact", async () => {
         const source = join(getRunWieldRuntimeDir(root), "internal", "debug", "trace");
         await mkdir(dirname(source), { recursive: true });
         await writeFile(source, "legacy bytes");
-        await rejects(
-            () => searchWorkRecords(root, "knowledge", { mnemotecaPort: createWorkRecordMnemotecaFixture() }),
-            /pending|migration evidence/i,
-        );
+        const result = await searchWorkRecords(root, "knowledge", {
+            mnemotecaPort: createWorkRecordMnemotecaFixture(),
+        });
+        deepEqual(result.records, []);
         equal(inspectProjectIdentity(root).kind, "fresh");
         equal(await readFile(source, "utf8"), "legacy bytes");
     } finally {
@@ -84,7 +102,7 @@ test("Work Record search uses admitted home index without recovering returning l
         await searchWorkRecords(root, "knowledge", {
             mnemotecaPort: {
                 run: async (args, options) => {
-                    equal(options?.env?.MNEMOTECA_DB_PATH, layout.primary.workRecordIndexDatabasePath);
+                    equal(options?.env?.MNEMOTECA_DB_PATH, canonicalDatabase(root));
                     return await external.run(args, options);
                 },
             },

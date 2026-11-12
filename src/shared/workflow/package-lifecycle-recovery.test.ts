@@ -1,17 +1,21 @@
-import { getTransitionJournalDir } from "./state-transition.ts";
-import { planPackageJournalDirectory } from "../plan-package-store.ts";
-import { importPlanPackages } from "../../plan-store.js";
+import { seedPlanState, seedPlanController, inspectPlanFixtureController } from "../testing/plan-state-fixture.ts";
+
+import { loadPlan } from "../../plan-store/index.ts";
+import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { planPackageJournalDirectory } from "../../plan-store/packages.ts";
+import { importPlanPackages } from "../../plan-store/packages.ts";
 import { addEntry } from "../worktree-registry.js";
-import { writeControllerState, readControllerRecord } from "./controller-registry.ts";
-import { preparePlanWorkflow } from "./plan-preparation.ts";
-import { LegacyPackageContinuation } from "./package-workflow.ts";
+
+import { preparePlanWorkflow } from "../../plan-store/index.ts";
+import { currentPackageSelection } from "../../plan-store/workflows.ts";
+import { hasRetainedCheckoutSource, withRetainedCheckoutSource } from "../../plan-store/retained-source.ts";
 import type { ValidationCheckpoint } from "./validation-checkpoint.ts";
-import { withPackageWorkflow } from "./package-workflow.ts";
+import { withPackageWorkflow } from "../../plan-store/workflows.ts";
 import { recordPlanEvent } from "./plan-lifecycle.js";
 import { inspectWorktreeRegistry } from "../worktree-registry.js";
 import { git } from "../git-test-fixture.ts";
 import { test } from "node:test";
-import { equal, deepEqual, ok, rejects } from "node:assert/strict";
+import { equal, deepEqual, ok } from "node:assert/strict";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { create, read, driver, packageFixture, startDriver } from "../testing/plan-package-fixture.ts";
@@ -169,7 +173,7 @@ test("an imported dirty unfinished attempt keeps its legacy controller, checkout
             repairCompletedOperationId: "repair-receipt",
             hostReview: { semanticRound: 2, correctionCount: 1 },
         };
-        await writeControllerState(
+        await seedPlanController(
             f.root,
             { planId: "legacy-id", planName: "legacy" },
             { validationCheckpoint: checkpoint },
@@ -178,23 +182,45 @@ test("an imported dirty unfinished attempt keeps its legacy controller, checkout
         const p = await read(f.identity, "legacy-id");
         const selection = { identity: f.identity, planId: "legacy-id", expectedRevision: p.metadata.revision };
         const prepared = await preparePlanWorkflow(f.root, "legacy", selection);
-        ok("legacyContinuation" in prepared);
-        equal(prepared.legacyContinuation?.attemptId, "legacy-attempt");
+        equal(prepared.registryRoot, f.root);
+        equal(prepared.plan?.attrs.worktreeId, "legacy-attempt");
         equal(prepared.plan?.path, join(path, "docs/plans/legacy.md"));
         deepEqual(
-            (await readControllerRecord(f.root, { planId: "legacy-id", planName: "legacy" }))?.state
+            (await inspectPlanFixtureController(f.root, { planId: "legacy-id", planName: "legacy" }))?.state
                 .validationCheckpoint,
             checkpoint,
         );
-        await rejects(
-            withPackageWorkflow(f.root, selection, () => Promise.reject(new Error("Must not enter package execution"))),
-            LegacyPackageContinuation,
-        );
+        await withPackageWorkflow(f.root, selection, () => {
+            equal(currentPackageSelection(), undefined);
+            equal(hasRetainedCheckoutSource(f.root), true);
+            return Promise.resolve();
+        });
         equal((await inspectWorktreeRegistry(f.root)).entries.length, 1);
         equal(await fs.readFile(join(path, "dirty-code.txt"), "utf8"), "unfinished work\n");
         equal((await read(f.identity, "legacy-id")).metadata.workflow?.attempt, undefined);
         await fs.writeFile(join(path, "docs/plans/legacy.md"), markdown + "Changed retained authority\n");
-        await rejects(preparePlanWorkflow(f.root, "legacy", selection), /evidence changed/);
+        const continued = await preparePlanWorkflow(f.root, "legacy", selection);
+        equal(continued.plan?.path, join(path, "docs/plans/legacy.md"));
+        ok(continued.plan?.markdown.includes("Changed retained authority"));
+        const beforePassiveRead = await fs.readFile(
+            join((await read(f.identity, "legacy-id")).path, "plan.wld.json"),
+            "utf8",
+        );
+        await withRetainedCheckoutSource(f.identity, async () => {
+            const live = await loadPlan(path, "legacy");
+            ok(live);
+            await seedPlanState(path, "legacy", { status: "reviewed" }, live.attrs, {
+                expectedRevision: live.revision,
+            });
+        });
+        equal((await loadPlan(f.root, "legacy"))?.attrs.status, "reviewed");
+        ok((await loadPlan(f.root, "legacy"))?.body.includes("Changed retained authority"));
+        equal(
+            await fs.readFile(join((await read(f.identity, "legacy-id")).path, "plan.wld.json"), "utf8"),
+            beforePassiveRead,
+        );
+        equal((await read(f.identity, "legacy-id")).metadata.workflow?.legacySettlement, undefined);
+        equal((await inspectWorktreeRegistry(f.root)).entries.length, 1);
     } finally {
         await f.cleanup();
     }
@@ -238,7 +264,7 @@ test("complex package checkpoint retains repair receipts and review state throug
             f.root,
             { identity: f.identity, planId: p.metadata.planId, expectedRevision: 1 },
             async () => {
-                await writeControllerState(
+                await seedPlanController(
                     f.root,
                     { planId: p.metadata.planId, planName: "one" },
                     { validationCheckpoint: checkpoint },
@@ -304,7 +330,7 @@ test("a newer metadata revision supersedes an interrupted metadata-only intent w
             f.root,
             { identity: f.identity, planId: p.metadata.planId, expectedRevision: current.metadata.revision },
             async () => {
-                await writeControllerState(
+                await seedPlanController(
                     f.root,
                     { planId: p.metadata.planId, planName: "one" },
                     { updatedAt: "2030-01-01T00:00:00Z" },
@@ -405,10 +431,12 @@ test("implementation interrupted after its Git commit retains the journal in its
             boundary: "implementation-committed",
         });
         equal(stopped.code, 86, stopped.output + stopped.errors);
-        const journals = await fs.readdir(getTransitionJournalDir(f.root));
+        const journals = await fs.readdir(resolveProjectRuntimeLayout(f.root).selected.transitionJournalsDir);
         const records = await Promise.all(
             journals.map((path) =>
-                fs.readFile(join(getTransitionJournalDir(f.root), path), "utf8").then((text) => JSON.parse(text)),
+                fs
+                    .readFile(join(resolveProjectRuntimeLayout(f.root).selected.transitionJournalsDir, path), "utf8")
+                    .then((text) => JSON.parse(text)),
             ),
         );
         ok(records.some((record) => record.operation === "implementation_checkpoint"));
@@ -425,7 +453,7 @@ test("implementation interrupted after its Git commit retains the journal in its
         equal(restarted.code, 0, restarted.output + restarted.errors);
         equal(await git(entries[0].path, ["rev-parse", "HEAD"]), head);
         equal((await inspectWorktreeRegistry(f.root)).entries[0].status, "completed");
-        equal((await fs.readdir(getTransitionJournalDir(f.root))).length, 0);
+        equal((await fs.readdir(resolveProjectRuntimeLayout(f.root).selected.transitionJournalsDir)).length, 0);
         await git(f.root, ["worktree", "remove", "--force", entries[0].path]);
     } finally {
         await f.cleanup();

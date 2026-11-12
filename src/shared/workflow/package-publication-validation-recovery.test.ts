@@ -8,8 +8,8 @@ import { git } from "../git-test-fixture.ts";
 import { setExactProjectCustomSetting } from "../settings.js";
 import { recordPlanEvent } from "./plan-lifecycle.js";
 import { loadPublicationAttempt } from "./publication-machine.ts";
-import { readPlanPackage, readPlanPackagePublication } from "../plan-package-store.ts";
-import { readPublishedDeliverySources } from "../work-records/published-source.ts";
+import { readPlanPackage, readPlanPackagePublication } from "../../plan-store/packages.ts";
+import { readPublishedDeliverySources } from "../../plan-store/index.ts";
 
 for (const boundary of ["artifact_effect", "copy_write"]) {
     test(`validation restart reconciles ${boundary} before deciding whether code changed`, async () => {

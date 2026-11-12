@@ -1,3 +1,4 @@
+import { inspectPlanFixtureController } from "../../shared/testing/plan-state-fixture.ts";
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 import process from "node:process";
 import {
@@ -13,14 +14,14 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { getHomeDir } from "../../constants.js";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { createGitPort } from "../../shared/git-port.ts";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { findById } from "../../shared/worktree-registry.js";
-import { type ControllerRecord, readControllerRecord } from "../../shared/workflow/controller-registry.ts";
+import type { PlanFixtureController as ControllerRecord } from "../../shared/testing/plan-state-fixture.ts";
 import { finalizePlanImplementation } from "../../shared/workflow/implementation-checkpoint.ts";
 import { makeValidationCheckpoint } from "../../shared/workflow/validation-checkpoint.ts";
 import { runLocalCI } from "../../shared/workflow/validation-local-ci.ts";
@@ -143,7 +144,7 @@ for (const stage of stages.flatMap((stage) => [
                 if (stage.reappeared) {
                     // Arrange an upgraded project whose old binary flushes its
                     // saved controller again. The command must recover it itself.
-                    await readControllerRecord(root, { planId: "migration-demo", planName: "demo" });
+                    await inspectPlanFixtureController(root, { planId: "migration-demo", planName: "demo" });
                     const oldDirectory = join(root, ".wld", "controller", "plans");
                     await fsMkdir(oldDirectory, { recursive: true });
                     await fsWriteFile(join(oldDirectory, "migration-demo.json"), JSON.stringify(controller));
@@ -178,7 +179,7 @@ for (const stage of stages.flatMap((stage) => [
                     `Status: ${stage.status === "validated_ci" ? "implemented" : stage.status}`,
                 );
                 assertEquals(
-                    await readControllerRecord(root, { planId: "migration-demo", planName: "demo" }),
+                    await inspectPlanFixtureController(root, { planId: "migration-demo", planName: "demo" }),
                     controller,
                 );
                 assertEquals(await fsReadFile(join(tree, planPath), "utf8"), planText);
@@ -314,16 +315,16 @@ test("legacy writer returning after migration does not block current controller 
             const bytes = JSON.stringify(record);
             await fsMkdir(directory, { recursive: true });
             await fsWriteFile(path, bytes);
-            await assertRejects(() => readControllerRecord(root, identity), Error, "Workflow details pending");
+            await assertRejects(() => inspectPlanFixtureController(root, identity), Error, "Workflow details pending");
             await enterProjectRuntime(root);
-            assertEquals(await readControllerRecord(root, identity), record);
+            assertEquals(await inspectPlanFixtureController(root, identity), record);
 
             // Simulate an old binary flushing its still-current record after the
             // new binary has moved the original directory. No conflicting edit.
             await fsMkdir(directory, { recursive: true });
             await fsWriteFile(path, bytes);
-            assertEquals(await readControllerRecord(root, identity), record);
-            assertEquals(await readControllerRecord(root, identity), record);
+            assertEquals(await inspectPlanFixtureController(root, identity), record);
+            assertEquals(await inspectPlanFixtureController(root, identity), record);
             assertEquals(
                 await fsReadFile(
                     join(resolveProjectRuntimeLayout(root).primary.controllerPlansDir, "migration-demo.json"),

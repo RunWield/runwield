@@ -1,19 +1,10 @@
 // @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
-import { selectLocalPlanWorkflow } from "../local-home-store.ts";
-import {
-    currentPackageSelection,
-    releaseSettledPackageAttempt,
-    resolvePackageExecutionTarget,
-    withPackageExecutionJournal,
-    withPackageWorkflow,
-    packageWorkflowLocks,
-    selectedPackage,
-    reservePackageExecution,
-    PackageExecutionContinuation,
-    type PackageWorkflowSelection,
-} from "./package-workflow.ts";
+import { capturePlanExecutionContext, reservePlanExecution, savePlanDefinition } from "../../plan-store/index.ts";
+import { selectPlanAccess } from "../../plan-store/index.ts";
+import { withPlanExecutionAdmission, type PlanAccess } from "../../plan-store/index.ts";
+import { capturePlanAccess, withPlanAccess } from "../../plan-store/index.ts";
 import { prepareWorktreeRegistry } from "../worktree-registry.js";
-import { preparePlanWorkflow } from "./plan-preparation.ts";
+import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import {
     prepareExecutionSetup,
     readExecutionSetup,
@@ -25,15 +16,10 @@ import {
 import { isMissingExecutableError } from "../foreground-process.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { stat as fsStat } from "node:fs/promises";
-import { prepareEditedSiblingPlans } from "./epic-sibling-drafts.ts";
+import { prepareEditedSiblingPlans } from "../../plan-store/index.ts";
 import { CLI_BIN } from "../../constants.js";
-import {
-    ensurePlanIdentity,
-    findPlansByParent,
-    getPlanFrontMatterRevisionForText,
-    loadPlan,
-    updatePlanFrontMatter,
-} from "../../plan-store.js";
+import { getPlanFrontMatterRevisionForText } from "../../plan-format.ts";
+import { ensurePlanIdentity, findPlansByParent, loadPlan } from "../../plan-store/index.ts";
 import {
     defaultPlanBranchName,
     effectiveDeliveryBranch,
@@ -65,7 +51,7 @@ import {
     updateEntry as updateWorktreeRegistryEntry,
 } from "../worktree-registry.js";
 import { captureWorktreeTree } from "./git-snapshot.ts";
-import { ensureExecutionPlanFile, loadCanonicalExecutionPlanSource } from "./execution-plan-file.js";
+import { ensureExecutionPlanFile, loadCanonicalExecutionPlanSource } from "../../plan-store/index.ts";
 import {
     emitCreatedExecutionWorktree,
     emitCreatingExecutionWorktree,
@@ -81,12 +67,12 @@ import {
 } from "./execution-preparation-progress.ts";
 import { recordPlanEvent, buildPlanEventUpdates } from "./plan-lifecycle.js";
 import { recordWorkflowMetric } from "./metrics.js";
-import { listTransitionRecoveryRecords, runExecutionPreparationTransition } from "./state-transition.ts";
+import { listTransitionRecoveryRecords, runExecutionPreparationTransition } from "../../plan-store/index.ts";
 import { healSettledTransitionRecords } from "./transition-recovery.ts";
 import { CollaborationStyles, resolveExecutionOwner } from "./execution-collaboration.ts";
 import { ensureRunWieldOwnedGitignoreBlock } from "../runwield-owned-paths.ts";
 import { emitSystemStatus } from "../session/session-runtime-events.js";
-import { resolveWorkflowPlanLocation } from "./plan-location.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 
@@ -300,9 +286,9 @@ export async function reconcileExecutionPreparationLocation(
 }
 
 interface ExecutionStartOptions {
-    packageSelection?: PackageWorkflowSelection;
+    packageSelection?: PlanAccess;
     planName: string;
-    triageMeta: Partial<import("../../plan-store.js").PlanFrontMatter>;
+    triageMeta: Partial<import("../../plan-store/index.ts").PlanFrontMatter>;
     currentStatus: import("./plan-lifecycle.js").PlanStatus;
     cwd?: string;
     existingExecution?: import("../session/hosted-session.js").ActiveExecutionWorkflow | null;
@@ -321,30 +307,18 @@ export async function startActiveExecutionWorkflow(
 ): Promise<import("../session/hosted-session.js").ActiveExecutionWorkflow> {
     const cwd = options.cwd || options.hostedSession?.cwd;
     if (!cwd) throw new Error("Execution requires its launch directory.");
-    if (!options.packageSelection && !currentPackageSelection()) {
-        const selection = await selectLocalPlanWorkflow(cwd, options.planName);
+    if (!options.packageSelection && !capturePlanAccess()) {
+        const selection = await selectPlanAccess(cwd, options.planName);
         if (selection) return await startActiveExecutionWorkflow({ ...options, packageSelection: selection });
     }
     if (options.packageSelection)
-        return await withPackageWorkflow(
+        return await withPlanAccess(
             cwd,
             options.packageSelection,
             () => startActiveExecutionWorkflow({ ...options, packageSelection: undefined }),
             options.planName,
         );
-    if (currentPackageSelection()) {
-        await prepareWorktreeRegistry(cwd);
-        return await withPackageExecutionJournal(() =>
-            packageWorkflowLocks([options.planName], async () => {
-                await releaseSettledPackageAttempt(options.planName);
-                const binding = (await selectedPackage(options.planName)).metadata.workflow?.attempt;
-                if (binding && binding.repositoryId !== currentPackageSelection()!.identity.repositoryId)
-                    throw new PackageExecutionContinuation(binding);
-                return await startActiveExecutionWorkflowInScope(options);
-            }),
-        );
-    }
-    return await startActiveExecutionWorkflowInScope(options);
+    return await withPlanExecutionAdmission(cwd, options.planName, () => startActiveExecutionWorkflowInScope(options));
 }
 async function startActiveExecutionWorkflowInScope({
     planName,
@@ -361,7 +335,7 @@ async function startActiveExecutionWorkflowInScope({
     if (!cwd) throw new Error("startActiveExecutionWorkflow: cwd is required");
     const projectRoot = resolvePrimaryCheckoutRoot(cwd);
     let sourceLocation = await reconcileExecutionPreparationLocation(cwd, planName, { readOnly: true });
-    if (!sourceLocation.resumeInterruptedPreparation && !currentPackageSelection()) {
+    if (!sourceLocation.resumeInterruptedPreparation && !capturePlanAccess()) {
         await prepareSessionPlanningWorktree(cwd, planName);
         sourceLocation = await reconcileExecutionPreparationLocation(cwd, planName);
     }
@@ -430,12 +404,10 @@ async function startActiveExecutionWorkflowInScope({
             );
         }
         emitPreparingInPlaceExecution(hostedSession);
-        const packagePlan = currentPackageSelection() ? await selectedPackage(planName) : undefined;
-        const attemptId =
-            packagePlan?.metadata.workflow?.attempt?.attemptId ||
-            triageMeta.worktreeId ||
-            `non-git-${crypto.randomUUID().slice(0, 8)}`;
-        if (currentPackageSelection()) await reservePackageExecution(planName, attemptId, "non_git_in_place");
+        const attemptId = await reservePlanExecution(planName, {
+            suggestedAttemptId: triageMeta.worktreeId,
+            executionMode: "non_git_in_place",
+        });
         const canonicalPlan = await loadPlan(projectRoot, planName);
         if (!canonicalPlan) throw new Error(`Plan not found: ${planName}`);
         await healSettledTransitionRecords(projectRoot, { planName, evidenceProjectRoot: projectRoot });
@@ -458,12 +430,7 @@ async function startActiveExecutionWorkflowInScope({
                     executionCwd: projectRoot,
                     executionMode: /** @type {const} */ "non_git_in_place",
                     nonGitInPlace: true,
-                    ...(packagePlan
-                        ? {
-                              packageSelection: currentPackageSelection(),
-                              packageInput: packagePlan.metadata.workflow?.readiness,
-                          }
-                        : {}),
+                    ...(await capturePlanExecutionContext(planName)),
                 };
                 if (needsExecutionStartedEvent) {
                     emitUpdatingPlanStatusToInProgress(hostedSession);
@@ -596,21 +563,16 @@ async function startActiveExecutionWorkflowInScope({
     deliveryBranch = effectiveDeliveryBranch(preflightCanonicalPlanSource.attrs) || targetBranch;
     // Existing attempts retain their recorded landing across setting changes.
     const adoptPlanBranch =
-        !currentPackageSelection() &&
-        !reusable &&
-        shouldAdoptPlanBranch(projectRoot, preflightCanonicalPlanSource.attrs);
+        !capturePlanAccess() && !reusable && shouldAdoptPlanBranch(projectRoot, preflightCanonicalPlanSource.attrs);
     const resolvedTargetBranch = reusable
         ? normalizeExecutionTargetBranch(reusable.baseBranch) || (await resolveCurrentBranch(projectRoot))
         : adoptPlanBranch
           ? defaultPlanBranchName(planName)
-          : deliveryBranch;
-    if (currentPackageSelection()) await resolvePackageExecutionTarget(planName, resolvedTargetBranch);
-    const packageAttempt = currentPackageSelection()
-        ? (await selectedPackage(planName)).metadata.workflow?.attempt
-        : undefined;
-    const attemptId =
-        packageAttempt?.attemptId || reusable?.id || triageMeta.worktreeId || crypto.randomUUID().slice(0, 8);
-    if (currentPackageSelection()) await reservePackageExecution(planName, attemptId);
+          : deliveryBranch || (await resolveCurrentBranch(projectRoot));
+    const attemptId = await reservePlanExecution(planName, {
+        targetBranch: resolvedTargetBranch,
+        suggestedAttemptId: reusable?.id || triageMeta.worktreeId,
+    });
     const authorityStatus = canonicalPlanForRevision?.attrs.status || currentStatus;
     const reusableBaseRef = reusable && (reusable.baseCommit || reusable.baseTree);
     const reusableHasExecutionChanges =
@@ -640,7 +602,7 @@ async function startActiveExecutionWorkflowInScope({
     // Reconcile cross-worktree planning edits before acquiring the active Plan's
     // transition lock, so simultaneous sibling starts cannot lock each other out.
     const editedSiblingPaths =
-        !currentPackageSelection() && reusable && needsPreparationCheckpoint
+        !capturePlanAccess() && reusable && needsPreparationCheckpoint
             ? await prepareEditedSiblingPlans(reusable.path, planName, preflightCanonicalPlanSource.relativePath)
             : [];
     const transition = await runExecutionPreparationTransition({
@@ -651,7 +613,7 @@ async function startActiveExecutionWorkflowInScope({
         planId: stablePlanId,
         worktreeId: attemptId,
         targetRef: resolvedTargetBranch || targetBranch || undefined,
-        expectedRevision: currentPackageSelection()
+        expectedRevision: capturePlanAccess()
             ? (await loadPlan(planAuthorityRoot, planName))?.revision
             : canonicalPlanForRevision?.revision,
         expectedPlanEvent: needsExecutionStartedEvent,
@@ -686,16 +648,15 @@ async function startActiveExecutionWorkflowInScope({
                     `Plan ${planName} had its front matter change while preparing execution; reload the Plan and start execution again.`,
                 );
             }
-            if (!currentPackageSelection() && !reusable && standalone) {
+            if (!capturePlanAccess() && !reusable && standalone) {
                 if (adoptPlanBranch) {
                     deliveryBranch = (await ensurePlanBranch({ projectRoot, planName, sourceBranch: targetBranch }))
                         .branch;
                 }
-                await updatePlanFrontMatter(
+                await savePlanDefinition(
                     planAuthorityRoot,
                     planName,
                     { targetBranch, deliveryBranch },
-                    canonicalPlanSource.attrs,
                     { expectedRevision: beforePlan.revision },
                 );
                 Object.assign(effectiveTriageMeta, { targetBranch, deliveryBranch });
@@ -792,7 +753,7 @@ async function startActiveExecutionWorkflowInScope({
             if (reusable) await addRunWieldOwnedGitignoreBlock(worktree.path, hostedSession);
             const worktreeBaseBranch = worktree.baseBranch === "HEAD" ? undefined : worktree.baseBranch;
             emitMaterializingPlanInExecutionWorktree(hostedSession);
-            const planFile = currentPackageSelection()
+            const planFile = capturePlanAccess()
                 ? { kind: "present", path: canonicalPlanSource.path, relativePath: undefined }
                 : await ensurePlanFile({
                       executionCwd: worktree.path,
@@ -826,7 +787,7 @@ async function startActiveExecutionWorkflowInScope({
                 );
             }
             let relatedPlanPaths = [];
-            if (needsPreparationCheckpoint && !currentPackageSelection()) {
+            if (needsPreparationCheckpoint && !capturePlanAccess()) {
                 // A reused planning worktree can contain parent and sibling edits
                 // too. Include the same family on initial preparation and retry;
                 // materialization preserves every already-present Plan verbatim.
@@ -876,15 +837,7 @@ async function startActiveExecutionWorkflowInScope({
                 executionAgent,
                 executionStarted: false,
                 ...collaborationState,
-                ...(currentPackageSelection()
-                    ? {
-                          packageSelection: {
-                              ...currentPackageSelection(),
-                              expectedRevision: (await selectedPackage(planName)).metadata.revision,
-                          },
-                          packageInput: (await selectedPackage(planName)).metadata.workflow?.readiness,
-                      }
-                    : {}),
+                ...(await capturePlanExecutionContext(planName)),
                 executionMode: /** @type {const} */ "worktree",
                 baselineTree,
                 projectRoot,
@@ -920,7 +873,7 @@ async function startActiveExecutionWorkflowInScope({
             }
             if (needsExecutionStartedEvent) {
                 emitUpdatingPlanStatusToInProgress(hostedSession);
-                if (!currentPackageSelection())
+                if (!capturePlanAccess())
                     await recordExecutionSetupLifecycle(
                         worktree.path,
                         planFile.relativePath,
@@ -959,9 +912,9 @@ async function startActiveExecutionWorkflowInScope({
                 // Sibling drafts Planner reshaped while planning this child travel with it.
                 relatedPlanPaths = [
                     ...relatedPlanPaths,
-                    ...(!currentPackageSelection() && reusedWorktree
+                    ...(!capturePlanAccess() && reusedWorktree
                         ? editedSiblingPaths
-                        : currentPackageSelection()
+                        : capturePlanAccess()
                           ? []
                           : await prepareEditedSiblingPlans(worktree.path, planName, planFile.relativePath)),
                 ];

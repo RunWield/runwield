@@ -1,15 +1,11 @@
 // @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
-import {
-    currentPackageSelection,
-    withPackageWorkflow,
-    selectedPackage,
-    type PackageWorkflowSelection,
-} from "./package-workflow.ts";
-import { readPlanPackageInput } from "../plan-package-store.ts";
+import { readFrozenPlanExecutionDocuments, planDocumentReference } from "../../plan-store/index.ts";
+import { type PlanAccess } from "../../plan-store/index.ts";
+import { withPlanAccess } from "../../plan-store/index.ts";
 import { isEpicPlan } from "../project-plan.ts";
-import { AGENTS, CLI_BIN, PLANS_DIR_NAME } from "../../constants.js";
-import { resolvePlanExecutionPolicy } from "../../plan-store.js";
-import { join } from "node:path";
+import { AGENTS, CLI_BIN } from "../../constants.js";
+import { resolvePlanExecutionPolicy } from "../../plan-format.ts";
+
 import { emitSystemStatus } from "../session/session-runtime-events.js";
 import { getAgentDisplayName } from "../session/agents.js";
 import {
@@ -37,9 +33,9 @@ import { resolvePlanExecutionRuntimeAgent } from "./execution-agent.ts";
 import { projectEngineerPlanBody } from "./engineer-plan-projection.ts";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 import { emitLaunchingExecutionAgent } from "./execution-preparation-progress.ts";
-import { resolveWorkflowPlanLocation } from "./plan-location.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store/index.ts";
 import type { ActiveExecutionWorkflow, HostedSession } from "../session/hosted-session.js";
 
 function isPlanReviewRetryAccepted(response) {
@@ -71,7 +67,7 @@ export interface PlanExecutionResult {
 }
 
 export interface ExecutePlanOptions {
-    packageSelection?: PackageWorkflowSelection;
+    packageSelection?: PlanAccess;
     planName: string;
     triageMeta?: Partial<PlanFrontMatter>;
     sessionManager?: SessionManager;
@@ -105,7 +101,7 @@ export interface ExecuteSingleEngineerPlanOptions {
 
 export async function executePlan(options: ExecutePlanOptions): Promise<PlanExecutionResult> {
     if (options.packageSelection)
-        return await withPackageWorkflow(
+        return await withPlanAccess(
             options.hostedSession.cwd,
             options.packageSelection,
             () => executePlanInScope(options),
@@ -157,7 +153,7 @@ async function executePlanInScope({
             projectRoot,
         );
 
-        const planPath = join(projectRoot, PLANS_DIR_NAME, `${planName}.md`);
+        const planPath = await planDocumentReference(projectRoot, planName);
         let recoveryAttempt = 0;
         let recoveryReason = initialLoad.error ? "plan_load_failed" : "plan_not_found";
         let recoveryResponse = { outcome: RuntimeInteractionOutcomes.UNSUPPORTED, message: recoveryReason };
@@ -280,7 +276,7 @@ async function executePlanInScope({
                 effectiveReviewImages = reviewMeta.images;
             }
             const approvedMeta =
-                /** @type {Partial<import('../../plan-store.js').PlanFrontMatter>} */ reviewMeta.planAttrs ||
+                /** @type {Partial<import('../../plan-store/index.ts').PlanFrontMatter>} */ reviewMeta.planAttrs ||
                 _triageMeta ||
                 {};
             const approvalAction = normalizePlanApprovalAction({
@@ -609,30 +605,9 @@ export async function executeSingleEngineerPlan({
             error: `Prepared execution Plan is missing: ${planName}`,
         };
     }
-    if (currentPackageSelection()) {
-        const selected = await selectedPackage(planName);
-        const input = executionContext.packageInput;
-        if (!input)
-            return { repairRequired: false, executionComplete: false, error: "Execution retained input is missing." };
-        const retained = await Promise.all(
-            input.inputs.map((ref) => readPlanPackageInput(currentPackageSelection()!.identity, ref)),
-        );
-        planBody = retained
-            .map((bundle, index) =>
-                bundle.documents
-                    .map(
-                        (doc) =>
-                            `# ${input.inputs[index].planId}/${doc.name}\n\n${new TextDecoder().decode(doc.bytes)}`,
-                    )
-                    .join("\n\n"),
-            )
-            .join("\n\n");
-        const own = retained[input.inputs.findIndex((ref) => ref.planId === selected.metadata.planId)];
-        approvedMarkdown = new TextDecoder().decode(own.documents.find((doc) => doc.name === "context.md")!.bytes);
-    } else {
-        planBody = projectEngineerPlanBody(preparedPlan.markdown);
-        approvedMarkdown = preparedPlan.markdown;
-    }
+    const frozenDocuments = await readFrozenPlanExecutionDocuments(planName, executionContext.packageInput);
+    planBody = frozenDocuments?.planBody ?? projectEngineerPlanBody(preparedPlan.markdown);
+    approvedMarkdown = frozenDocuments?.approvedMarkdown ?? preparedPlan.markdown;
     if (prepareSegmentHandoff) {
         const managed = hostedSession.getManagedMetadata?.();
         if (!managed?.runwieldSessionId) {

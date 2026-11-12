@@ -1,3 +1,4 @@
+import { renamePlan, findPlanById } from "../../plan-store/index.ts";
 import { test } from "node:test";
 import { deepEqual, equal, ok, rejects } from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -6,11 +7,15 @@ import { publicationFixture } from "../workflow/testing/package-publication-fixt
 import { captureForegroundProcess } from "../captured-process.ts";
 import { git } from "../git-test-fixture.ts";
 import { read } from "../testing/plan-package-fixture.ts";
-import { renamePlanPackage, readPlanPackage } from "../plan-package-store.ts";
 import { recordPlanEvent } from "../workflow/plan-lifecycle.js";
 import { loadPublicationAttempt } from "../workflow/publication-machine.ts";
-import { readPublishedDeliverySources } from "./published-source.ts";
+import { readPublishedDeliverySources } from "../../plan-store/index.ts";
 import type { WorkRecordSource } from "./generation.js";
+
+async function renameCurrentPlan(cwd: string, planId: string, name: string): Promise<void> {
+    const current = await findPlanById(cwd, planId);
+    await renamePlan(cwd, planId, name, current.revision);
+}
 
 for (const family of [undefined, "child", "epic"] as const) {
     test(`retained ${family || "Plan"} Recorder source survives cleanup, rename and editor changes`, async () => {
@@ -46,11 +51,11 @@ for (const family of [undefined, "child", "epic"] as const) {
                 await fs.rm(copies, { recursive: true, force: true });
             }
             const current = await read(f.identity);
-            await renamePlanPackage(f.identity, current.metadata.planId, current.metadata.revision, "renamed");
+            await renameCurrentPlan(f.root, current.metadata.planId, "renamed");
             if (family === "child") {
-                const parent = await readPlanPackage(f.identity, { planId: "parent" });
+                const parent = await read(f.identity, "parent");
                 ok(parent.kind === "loaded");
-                await renamePlanPackage(f.identity, "parent", parent.metadata.revision, "renamed-parent");
+                await renameCurrentPlan(f.root, "parent", "renamed-parent");
             }
             const renamed = await read(f.identity);
             await fs.writeFile(join(renamed.path, "context.md"), "# Editor changed source after delivery\n");
@@ -97,7 +102,7 @@ for (const family of [undefined, "child", "epic"] as const) {
             const failed = await record("fail");
             equal(failed.status, "failed");
             ok(failed.error?.includes("Recorder service unavailable"), JSON.stringify(failed));
-            const ownerAfterFailure = await readPlanPackage(f.identity, { planId: source.planId });
+            const ownerAfterFailure = await read(f.identity, source.planId);
             ok(ownerAfterFailure.kind === "loaded");
             equal(ownerAfterFailure.metadata.workflow?.workRecord?.status, "failed");
             deepEqual((await read(f.identity)).metadata.workflow!.delivery, receipt);
@@ -115,7 +120,7 @@ for (const family of [undefined, "child", "epic"] as const) {
                     join(ownerAfterFailure.path, "context.md"),
                     "# Live parent after failed recording\n",
                 );
-                const sibling = await readPlanPackage(f.identity, { planId: "sibling" });
+                const sibling = await read(f.identity, "sibling");
                 ok(sibling.kind === "loaded");
                 await fs.writeFile(join(sibling.path, "context.md"), "# Live sibling after failed recording\n");
                 const ownerSource = await getSource(source.planId);
@@ -209,18 +214,18 @@ test("recording owner can reuse the delivered child's sealed name without receiv
         equal(stopped.code, 86, stopped.text);
         const sealed = await read(f.identity);
         const reference = sealed.metadata.workflow!.publication!;
-        await renamePlanPackage(f.identity, sealed.metadata.planId, sealed.metadata.revision, "renamed");
-        const parent = await readPlanPackage(f.identity, { planId: "parent" });
+        await renameCurrentPlan(f.root, sealed.metadata.planId, "renamed");
+        const parent = await read(f.identity, "parent");
         ok(parent.kind === "loaded");
-        await renamePlanPackage(f.identity, "parent", parent.metadata.revision, "one");
-        const renamedParent = await readPlanPackage(f.identity, { planId: "parent" });
+        await renameCurrentPlan(f.root, "parent", "one");
+        const renamedParent = await read(f.identity, "parent");
         ok(renamedParent.kind === "loaded");
-        const siblingBefore = await readPlanPackage(f.identity, { planId: "sibling" });
+        const siblingBefore = await read(f.identity, "sibling");
         ok(siblingBefore.kind === "loaded");
 
         const delivered = await f.drive();
         equal(delivered.code, 0, delivered.text);
-        const owner = await readPlanPackage(f.identity, { planId: "parent" });
+        const owner = await read(f.identity, "parent");
         ok(owner.kind === "loaded");
         deepEqual(owner.metadata.workflow?.recordingSource, reference);
         deepEqual(owner.metadata.definition, renamedParent.metadata.definition);
@@ -254,20 +259,20 @@ test("recording owner can reuse the delivered child's sealed name without receiv
         const failed = JSON.parse(await invoke("plan-one", "fail"));
         equal(failed.status, "failed");
         ok(failed.error?.includes("Recorder service unavailable"), JSON.stringify(failed));
-        const failedOwner = await readPlanPackage(f.identity, { planId: "parent" });
+        const failedOwner = await read(f.identity, "parent");
         ok(failedOwner.kind === "loaded");
         equal(failedOwner.metadata.workflow?.workRecord?.status, "failed");
         deepEqual((await read(f.identity)).metadata, child.metadata);
         await fs.writeFile(join(owner.path, "context.md"), "# Preserve parent editor text\n");
         const retried = JSON.parse(await invoke("parent", "retry"));
         equal(retried.status, "generated", JSON.stringify(retried));
-        const retriedOwner = await readPlanPackage(f.identity, { planId: "parent" });
+        const retriedOwner = await read(f.identity, "parent");
         ok(retriedOwner.kind === "loaded");
         equal(retriedOwner.metadata.workflow?.workRecord?.status, "generated");
         deepEqual(retriedOwner.metadata.workflow?.recordingSource, reference);
         equal(JSON.parse(await invoke("plan-one")).body, source.body);
         deepEqual((await read(f.identity)).metadata, child.metadata);
-        const siblingAfter = await readPlanPackage(f.identity, { planId: "sibling" });
+        const siblingAfter = await read(f.identity, "sibling");
         ok(siblingAfter.kind === "loaded");
         deepEqual(siblingAfter.metadata, siblingBefore.metadata);
         equal(await fs.readFile(join(owner.path, "context.md"), "utf8"), "# Preserve parent editor text\n");

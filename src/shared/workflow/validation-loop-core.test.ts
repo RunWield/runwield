@@ -1,3 +1,5 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import type { TriageMeta } from "../../tools/plan-written.ts";
 import type { SessionRuntimeEvent } from "../session/session-runtime-events.js";
 import { hostname } from "node:os";
@@ -18,7 +20,9 @@ import process from "node:process";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { setCustomSetting } from "../settings.js";
-import { ensurePlanIdentity, loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.js";
+import { parsePlanFrontMatter } from "../../plan-format.ts";
+import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
+
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { createGitPort } from "../git-port.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
@@ -49,17 +53,19 @@ import {
     runValidationPhase,
 } from "./validation-test-helpers.js";
 
-const footerExecutionRepo = defineGitFixture(async (repoPath) => {
-    await savePlan(repoPath, "footer-plan", "# footer-plan\n\nvalidation fixture\n", {
-        classification: "FEATURE",
-        complexity: "MEDIUM",
-        status: "ready_for_work",
-        summary: "validation fixture",
-        affectedPaths: [],
-    });
-    await git(repoPath, ["add", "."]);
-    await git(repoPath, ["commit", "-m", "fixture base"]);
-});
+const footerExecutionRepo = defineGitFixture((repoPath) =>
+    withRetainedPlanFixture(repoPath, async () => {
+        await seedPlan(repoPath, "footer-plan", "# footer-plan\n\nvalidation fixture\n", {
+            classification: "FEATURE",
+            complexity: "MEDIUM",
+            status: "ready_for_work",
+            summary: "validation fixture",
+            affectedPaths: [],
+        });
+        await git(repoPath, ["add", "."]);
+        await git(repoPath, ["commit", "-m", "fixture base"]);
+    }),
+);
 
 function makeValidationUi() {
     const uiAPI = makeUi();
@@ -136,52 +142,54 @@ for (const decision of publicationReviewDecisions) {
 
 async function makePlannedReviewWorktree() {
     const projectRoot = await makeRepo();
-    await setCustomSetting("codereview", "none", "project", projectRoot);
-    await savePlan(projectRoot, "p", "# p\n\nvalidation fixture\n", {
-        planId: "test:p",
-        classification: "FEATURE",
-        status: "validated_ci",
-        summary: "validation fixture",
-        affectedPaths: [],
-    });
-    await git(projectRoot, ["add", "."]);
-    await git(projectRoot, ["commit", "-m", "add validation plan"]);
+    return await withRetainedPlanFixture(projectRoot, async () => {
+        await setCustomSetting("codereview", "none", "project", projectRoot);
+        await seedPlan(projectRoot, "p", "# p\n\nvalidation fixture\n", {
+            planId: "test:p",
+            classification: "FEATURE",
+            status: "validated_ci",
+            summary: "validation fixture",
+            affectedPaths: [],
+        });
+        await git(projectRoot, ["add", "."]);
+        await git(projectRoot, ["commit", "-m", "add validation plan"]);
 
-    const worktreeRoot = await fsMkdtemp(join(tmpdir(), "runwield-validation-worktree-"));
-    const worktree = await createTestWorktreeAttempt({
-        projectRoot,
-        planName: "p",
-        worktreeRoot,
+        const worktreeRoot = await fsMkdtemp(join(tmpdir(), "runwield-validation-worktree-"));
+        const worktree = await createTestWorktreeAttempt({
+            projectRoot,
+            planName: "p",
+            worktreeRoot,
+        });
+        const uiAPI = makeUi();
+        const hostedSession = attachRecorder(
+            new HostedSession({ id: "validation-worktree-test", cwd: projectRoot }),
+            uiAPI,
+        );
+        hostedSession.setActiveExecutionWorkflow({
+            planName: "p",
+            triageMeta: { classification: "FEATURE", status: "validated_ci" },
+            executionAgent: "engineer",
+            projectRoot,
+            executionCwd: worktree.path,
+            executionMode: "worktree",
+            baselineTree: worktree.baseTree,
+            worktreeId: worktree.id,
+            worktreeBranch: worktree.branch,
+            worktreeBaseBranch: worktree.baseBranch,
+        });
+        return {
+            projectRoot,
+            worktree,
+            executionCwd: worktree.path,
+            hostedSession,
+            uiAPI,
+            cleanup: async () => {
+                await removeWorktreeGitArtifacts({ projectRoot, path: worktree.path, force: true }).catch(() => {});
+                await fsRm(projectRoot, { recursive: true }).catch(() => {});
+                await fsRm(worktreeRoot, { recursive: true }).catch(() => {});
+            },
+        };
     });
-    const uiAPI = makeUi();
-    const hostedSession = attachRecorder(
-        new HostedSession({ id: "validation-worktree-test", cwd: projectRoot }),
-        uiAPI,
-    );
-    hostedSession.setActiveExecutionWorkflow({
-        planName: "p",
-        triageMeta: { classification: "FEATURE", status: "validated_ci" },
-        executionAgent: "engineer",
-        projectRoot,
-        executionCwd: worktree.path,
-        executionMode: "worktree",
-        baselineTree: worktree.baseTree,
-        worktreeId: worktree.id,
-        worktreeBranch: worktree.branch,
-        worktreeBaseBranch: worktree.baseBranch,
-    });
-    return {
-        projectRoot,
-        worktree,
-        executionCwd: worktree.path,
-        hostedSession,
-        uiAPI,
-        cleanup: async () => {
-            await removeWorktreeGitArtifacts({ projectRoot, path: worktree.path, force: true }).catch(() => {});
-            await fsRm(projectRoot, { recursive: true }).catch(() => {});
-            await fsRm(worktreeRoot, { recursive: true }).catch(() => {});
-        },
-    };
 }
 
 for (const interruption of ["abandoned catalog lock", "Git commit hook"]) {
@@ -192,95 +200,102 @@ for (const interruption of ["abandoned catalog lock", "Git commit hook"]) {
         },
         async function () {
             const fixture = await makePlannedReviewWorktree();
-            let obstruction = "";
-            try {
-                const plan = await loadPlan(fixture.executionCwd, "p");
-                if (!plan) throw new Error("Missing execution Plan");
-                await savePlan(
-                    fixture.executionCwd,
-                    "p",
-                    plan.body,
-                    {
-                        ...plan.attrs,
-                        status: "reviewed",
-                        humanReviewMode: "none",
-                        humanReviewDecision: "not_required",
-                    },
-                    { expectedRevision: plan.revision },
-                );
-                await fsWriteFile(`${fixture.executionCwd}/delivered.txt`, "reviewed implementation\n");
-                const mainBefore = await git(fixture.projectRoot, ["rev-parse", "main"]);
-                if (interruption === "abandoned catalog lock") {
-                    obstruction = resolveProjectRuntimeLayout(fixture.projectRoot).selected.planCatalogLockPath;
-                    const past = new Date(Date.now() - 60_000);
-                    await fsWriteFile(
-                        obstruction,
-                        JSON.stringify({
-                            token: "abandoned-by-live-workspace",
-                            pid: process.pid,
-                            hostname: hostname(),
-                            updatedAtMs: past.getTime(),
+            return await withRetainedPlanFixture(fixture.projectRoot, async () => {
+                let obstruction = "";
+                try {
+                    const plan = await loadPlan(fixture.executionCwd, "p");
+                    if (!plan) throw new Error("Missing execution Plan");
+                    await seedPlan(
+                        fixture.executionCwd,
+                        "p",
+                        plan.body,
+                        {
+                            ...plan.attrs,
+                            status: "reviewed",
+                            humanReviewMode: "none",
+                            humanReviewDecision: "not_required",
+                        },
+                        { expectedRevision: plan.revision },
+                    );
+                    await fsWriteFile(`${fixture.executionCwd}/delivered.txt`, "reviewed implementation\n");
+                    const mainBefore = await git(fixture.projectRoot, ["rev-parse", "main"]);
+                    if (interruption === "abandoned catalog lock") {
+                        obstruction = resolveProjectRuntimeLayout(fixture.projectRoot).selected.planCatalogLockPath;
+                        const past = new Date(Date.now() - 60_000);
+                        await fsWriteFile(
+                            obstruction,
+                            JSON.stringify({
+                                token: "abandoned-by-live-workspace",
+                                pid: process.pid,
+                                hostname: hostname(),
+                                updatedAtMs: past.getTime(),
+                            }),
+                        );
+                        await fsUtimes(obstruction, past, past);
+                    } else {
+                        obstruction = `${fixture.projectRoot}/.git/hooks/pre-commit`;
+                        await fsWriteFile(obstruction, "#!/bin/sh\necho 'commit hook rejected' >&2\nexit 1\n");
+                        await fsChmod(obstruction, 0o755);
+                    }
+                    setCurrentValidationProgress(
+                        fixture.hostedSession,
+                        createValidationProgress({
+                            kind: "workflow",
+                            outcome: "running",
+                            stage: "merge",
+                            cycle: 1,
+                            maxCycles: 3,
+                            checks: {
+                                ci: "passed",
+                                semanticReview: "passed",
+                                humanReview: "skipped",
+                                merge: "running",
+                            },
                         }),
                     );
-                    await fsUtimes(obstruction, past, past);
-                } else {
-                    obstruction = `${fixture.projectRoot}/.git/hooks/pre-commit`;
-                    await fsWriteFile(obstruction, "#!/bin/sh\necho 'commit hook rejected' >&2\nexit 1\n");
-                    await fsChmod(obstruction, 0o755);
+                    const result = await continueWorkflowValidation({
+                        hostedSession: fixture.hostedSession,
+                        planName: "p",
+                        planContent: plan.body,
+                        triageMeta: { classification: "FEATURE", status: "reviewed" },
+                        git: createGitPort(),
+                        localCI: { run: () => Promise.reject(new Error("Completed CI must not run again")) },
+                        workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
+                        semanticReviewPort: NO_ISOLATED_AGENT_PORT,
+                    });
+                    if (interruption === "abandoned catalog lock") {
+                        assertEquals(
+                            result.kind,
+                            "verified",
+                            JSON.stringify({
+                                result,
+                                publication: await loadPublicationAttempt(fixture.projectRoot, fixture.worktree.id),
+                            }),
+                        );
+                        assertEquals(
+                            await git(fixture.projectRoot, ["show", "main:delivered.txt"]),
+                            "reviewed implementation",
+                        );
+                    } else {
+                        assertEquals(result.kind, "paused", JSON.stringify(result));
+                        assertStringIncludes(result.reason || "", "Fix the Git hook or commit error");
+                        assertEquals(
+                            fixture.uiAPI.messages.filter((message: string) => message === result.reason).length,
+                            1,
+                        );
+                        assertEquals(getCurrentValidationProgress(fixture.hostedSession)?.outcome, "paused");
+                        assertEquals(await git(fixture.projectRoot, ["rev-parse", "main"]), mainBefore);
+                        assertEquals((await loadPlan(fixture.executionCwd, "p"))?.attrs.status, "reviewed");
+                        assertEquals(
+                            await fsReadFile(`${fixture.executionCwd}/delivered.txt`, "utf8"),
+                            "reviewed implementation\n",
+                        );
+                    }
+                } finally {
+                    if (obstruction) await fsRm(obstruction).catch(() => {});
+                    await fixture.cleanup();
                 }
-                setCurrentValidationProgress(
-                    fixture.hostedSession,
-                    createValidationProgress({
-                        kind: "workflow",
-                        outcome: "running",
-                        stage: "merge",
-                        cycle: 1,
-                        maxCycles: 3,
-                        checks: { ci: "passed", semanticReview: "passed", humanReview: "skipped", merge: "running" },
-                    }),
-                );
-                const result = await continueWorkflowValidation({
-                    hostedSession: fixture.hostedSession,
-                    planName: "p",
-                    planContent: plan.body,
-                    triageMeta: { classification: "FEATURE", status: "reviewed" },
-                    git: createGitPort(),
-                    localCI: { run: () => Promise.reject(new Error("Completed CI must not run again")) },
-                    workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
-                    semanticReviewPort: NO_ISOLATED_AGENT_PORT,
-                });
-                if (interruption === "abandoned catalog lock") {
-                    assertEquals(
-                        result.kind,
-                        "verified",
-                        JSON.stringify({
-                            result,
-                            publication: await loadPublicationAttempt(fixture.projectRoot, fixture.worktree.id),
-                        }),
-                    );
-                    assertEquals(
-                        await git(fixture.projectRoot, ["show", "main:delivered.txt"]),
-                        "reviewed implementation",
-                    );
-                } else {
-                    assertEquals(result.kind, "paused", JSON.stringify(result));
-                    assertStringIncludes(result.reason || "", "Fix the Git hook or commit error");
-                    assertEquals(
-                        fixture.uiAPI.messages.filter((message: string) => message === result.reason).length,
-                        1,
-                    );
-                    assertEquals(getCurrentValidationProgress(fixture.hostedSession)?.outcome, "paused");
-                    assertEquals(await git(fixture.projectRoot, ["rev-parse", "main"]), mainBefore);
-                    assertEquals((await loadPlan(fixture.executionCwd, "p"))?.attrs.status, "reviewed");
-                    assertEquals(
-                        await fsReadFile(`${fixture.executionCwd}/delivered.txt`, "utf8"),
-                        "reviewed implementation\n",
-                    );
-                }
-            } finally {
-                if (obstruction) await fsRm(obstruction).catch(() => {});
-                await fixture.cleanup();
-            }
+            });
         },
     );
 }
@@ -292,320 +307,329 @@ for (const malformed of [false, true])
             : "publication continues when sibling checkouts disappear during consecutive registry reads",
         async () => {
             const fixture = await makePlannedReviewWorktree();
-            const sibling = `${fixture.projectRoot}-sibling`;
-            const secondSibling = `${fixture.projectRoot}-sibling-two`;
-            const lstat = fs.lstat;
-            let armed = false;
-            let removed = false;
-            let secondRemoved = false;
-            let nextRead = false;
-            try {
-                const plan = await loadPlan(fixture.executionCwd, "p");
-                if (!plan) throw new Error("Missing execution Plan");
-                await savePlan(
-                    fixture.executionCwd,
-                    "p",
-                    plan.body,
-                    {
-                        ...plan.attrs,
-                        status: "reviewed",
-                        humanReviewMode: "none",
-                        humanReviewDecision: "not_required",
-                    },
-                    { expectedRevision: plan.revision },
-                );
-                await fsWriteFile(join(fixture.executionCwd, "delivered.txt"), "reviewed implementation\n");
-                await git(fixture.projectRoot, ["worktree", "add", "-b", "sibling-cleanup", sibling]);
-                await enterProjectRuntime(sibling);
-                await git(fixture.projectRoot, ["worktree", "add", "-b", "sibling-cleanup-two", secondSibling]);
-                const layout = await enterProjectRuntime(secondSibling);
-                const publicationLock = join(
-                    resolveProjectRuntimeLayout(fixture.projectRoot).selected.planLocksDir,
-                    "p.lock",
-                );
-                const siblingGit = join(await fsRealpath(sibling), ".git");
-                const secondSiblingGit = join(await fsRealpath(secondSibling), ".git");
-                const primaryGit = join(await fsRealpath(fixture.projectRoot), ".git");
-                const record = fixture.hostedSession.getEventSink();
-                fixture.hostedSession.setEventSink((event: SessionRuntimeEvent) => {
-                    if (event.type === "system_status" && event.message.includes("Merging work into main"))
-                        armed = true;
-                    if (typeof record === "function") record(event);
-                });
-                Object.defineProperty(fs, "lstat", {
-                    value: async (...args: Parameters<typeof fs.lstat>) => {
-                        const result = await lstat(...args);
-                        // Schedule real filesystem changes in passive inspection, after admission has finished.
-                        const passiveRead =
-                            [siblingGit, secondSiblingGit].includes(String(args[0])) &&
-                            new Error().stack?.includes("inspectHomeProjectRuntime") === true;
-                        if (removed && String(args[0]) === primaryGit) nextRead = true;
-                        if (armed && passiveRead && !removed && String(args[0]) === siblingGit) {
-                            assertEquals((await lstat(publicationLock)).isFile(), true);
-                            removed = true;
-                            if (malformed) await fsWriteFile(layout.primary.layoutMarkerPath, "invalid marker\n");
-                            else await git(fixture.projectRoot, ["worktree", "remove", "--force", sibling]);
-                        }
-                        if (
-                            !malformed &&
-                            armed &&
-                            passiveRead &&
-                            nextRead &&
-                            !secondRemoved &&
-                            String(args[0]) === secondSiblingGit
-                        ) {
-                            secondRemoved = true;
-                            await git(fixture.projectRoot, ["worktree", "remove", "--force", secondSibling]);
-                        }
-                        return result;
-                    },
-                });
-                const args = createEngineValidationArgs({
-                    hostedSession: fixture.hostedSession,
-                    planName: "p",
-                    planContent: plan.body,
-                    triageMeta: { classification: "FEATURE", status: "reviewed" },
-                    git: createGitPort(),
-                    localCI: { run: () => Promise.reject(new Error("Completed CI must not run again")) },
-                    workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
-                    semanticReviewPort: NO_ISOLATED_AGENT_PORT,
-                });
-                const phase = await resolvePhaseContext(args);
-                if (phase.kind !== "ok") throw new Error("Missing phase context");
-                let finished = false;
-                let observedRetry = false;
-                const lockObservations: boolean[] = [];
-                const observeRetry = (async () => {
-                    while (!finished) {
-                        const retry = [...fixture.hostedSession.getActiveInteractions().keys()].find((id) =>
-                            id.startsWith("validation-retry:"),
-                        );
-                        if (retry) {
-                            observedRetry = true;
-                            const held = await lstat(publicationLock).then(
-                                () => true,
-                                (error) => {
-                                    if (error.code === "ENOENT") return false;
-                                    throw error;
-                                },
-                            );
-                            if (fixture.hostedSession.getActiveInteractions().has(retry)) lockObservations.push(held);
-                        }
-                        await new Promise((resolve) => setTimeout(resolve, 10));
-                    }
-                })();
-                const publish = () =>
-                    runPublicationPhase(args, phase.context, {
-                        humanReviewMode: "none",
-                        humanReviewDecision: "not_required",
-                        humanReviewedAt: null,
-                    });
+            return await withRetainedPlanFixture(fixture.projectRoot, async () => {
+                const sibling = `${fixture.projectRoot}-sibling`;
+                const secondSibling = `${fixture.projectRoot}-sibling-two`;
+                const lstat = fs.lstat;
+                let armed = false;
+                let removed = false;
+                let secondRemoved = false;
+                let nextRead = false;
                 try {
-                    if (malformed) {
-                        await assertRejects(publish, Error, "Home runtime marker is unreadable");
-                        assertEquals(observedRetry, false);
-                    } else {
-                        const result = await publish();
-                        assertEquals(result.result.kind, "verified", JSON.stringify(result));
-                        assertEquals(secondRemoved, true, "The second passive read must race cleanup too");
-                        assertEquals(observedRetry, true);
-                        assertEquals(
-                            lockObservations.some(Boolean),
-                            false,
-                            "Retry must release the publishing Plan lock",
-                        );
-                        assertEquals(
-                            await git(fixture.projectRoot, ["show", "main:delivered.txt"]),
-                            "reviewed implementation",
-                        );
+                    const plan = await loadPlan(fixture.executionCwd, "p");
+                    if (!plan) throw new Error("Missing execution Plan");
+                    await seedPlan(
+                        fixture.executionCwd,
+                        "p",
+                        plan.body,
+                        {
+                            ...plan.attrs,
+                            status: "reviewed",
+                            humanReviewMode: "none",
+                            humanReviewDecision: "not_required",
+                        },
+                        { expectedRevision: plan.revision },
+                    );
+                    await fsWriteFile(join(fixture.executionCwd, "delivered.txt"), "reviewed implementation\n");
+                    await git(fixture.projectRoot, ["worktree", "add", "-b", "sibling-cleanup", sibling]);
+                    await enterProjectRuntime(sibling);
+                    await git(fixture.projectRoot, ["worktree", "add", "-b", "sibling-cleanup-two", secondSibling]);
+                    const layout = await enterProjectRuntime(secondSibling);
+                    const publicationLock = join(
+                        resolveProjectRuntimeLayout(fixture.projectRoot).selected.planLocksDir,
+                        "p.lock",
+                    );
+                    const siblingGit = join(await fsRealpath(sibling), ".git");
+                    const secondSiblingGit = join(await fsRealpath(secondSibling), ".git");
+                    const primaryGit = join(await fsRealpath(fixture.projectRoot), ".git");
+                    const record = fixture.hostedSession.getEventSink();
+                    fixture.hostedSession.setEventSink((event: SessionRuntimeEvent) => {
+                        if (event.type === "system_status" && event.message.includes("Merging work into main"))
+                            armed = true;
+                        if (typeof record === "function") record(event);
+                    });
+                    Object.defineProperty(fs, "lstat", {
+                        value: async (...args: Parameters<typeof fs.lstat>) => {
+                            const result = await lstat(...args);
+                            // Schedule real filesystem changes in passive inspection, after admission has finished.
+                            const passiveRead =
+                                [siblingGit, secondSiblingGit].includes(String(args[0])) &&
+                                new Error().stack?.includes("inspectHomeProjectRuntime") === true;
+                            if (removed && String(args[0]) === primaryGit) nextRead = true;
+                            if (armed && passiveRead && !removed && String(args[0]) === siblingGit) {
+                                assertEquals((await lstat(publicationLock)).isFile(), true);
+                                removed = true;
+                                if (malformed) await fsWriteFile(layout.primary.layoutMarkerPath, "invalid marker\n");
+                                else await git(fixture.projectRoot, ["worktree", "remove", "--force", sibling]);
+                            }
+                            if (
+                                !malformed &&
+                                armed &&
+                                passiveRead &&
+                                nextRead &&
+                                !secondRemoved &&
+                                String(args[0]) === secondSiblingGit
+                            ) {
+                                secondRemoved = true;
+                                await git(fixture.projectRoot, ["worktree", "remove", "--force", secondSibling]);
+                            }
+                            return result;
+                        },
+                    });
+                    const args = createEngineValidationArgs({
+                        hostedSession: fixture.hostedSession,
+                        planName: "p",
+                        planContent: plan.body,
+                        triageMeta: { classification: "FEATURE", status: "reviewed" },
+                        git: createGitPort(),
+                        localCI: { run: () => Promise.reject(new Error("Completed CI must not run again")) },
+                        workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
+                        semanticReviewPort: NO_ISOLATED_AGENT_PORT,
+                    });
+                    const phase = await resolvePhaseContext(args);
+                    if (phase.kind !== "ok") throw new Error("Missing phase context");
+                    let finished = false;
+                    let observedRetry = false;
+                    const lockObservations: boolean[] = [];
+                    const observeRetry = (async () => {
+                        while (!finished) {
+                            const retry = [...fixture.hostedSession.getActiveInteractions().keys()].find((id) =>
+                                id.startsWith("validation-retry:"),
+                            );
+                            if (retry) {
+                                observedRetry = true;
+                                const held = await lstat(publicationLock).then(
+                                    () => true,
+                                    (error) => {
+                                        if (error.code === "ENOENT") return false;
+                                        throw error;
+                                    },
+                                );
+                                if (fixture.hostedSession.getActiveInteractions().has(retry))
+                                    lockObservations.push(held);
+                            }
+                            await new Promise((resolve) => setTimeout(resolve, 10));
+                        }
+                    })();
+                    const publish = () =>
+                        runPublicationPhase(args, phase.context, {
+                            humanReviewMode: "none",
+                            humanReviewDecision: "not_required",
+                            humanReviewedAt: null,
+                        });
+                    try {
+                        if (malformed) {
+                            await assertRejects(publish, Error, "Home runtime marker is unreadable");
+                            assertEquals(observedRetry, false);
+                        } else {
+                            const result = await publish();
+                            assertEquals(result.result.kind, "verified", JSON.stringify(result));
+                            assertEquals(secondRemoved, true, "The second passive read must race cleanup too");
+                            assertEquals(observedRetry, true);
+                            assertEquals(
+                                lockObservations.some(Boolean),
+                                false,
+                                "Retry must release the publishing Plan lock",
+                            );
+                            assertEquals(
+                                await git(fixture.projectRoot, ["show", "main:delivered.txt"]),
+                                "reviewed implementation",
+                            );
+                        }
+                        assertEquals(removed, true, "The real authority inspection boundary must be exercised");
+                    } finally {
+                        finished = true;
+                        await observeRetry;
                     }
-                    assertEquals(removed, true, "The real authority inspection boundary must be exercised");
                 } finally {
-                    finished = true;
-                    await observeRetry;
+                    Object.defineProperty(fs, "lstat", { value: lstat });
+                    await fsRm(sibling, { recursive: true, force: true });
+                    await fsRm(secondSibling, { recursive: true, force: true });
+                    await fixture.cleanup();
                 }
-            } finally {
-                Object.defineProperty(fs, "lstat", { value: lstat });
-                await fsRm(sibling, { recursive: true, force: true });
-                await fsRm(secondSibling, { recursive: true, force: true });
-                await fixture.cleanup();
-            }
+            });
         },
     );
 
 for (const sealed of [false, true]) {
     test(`publication rereads a target edited after phase resolution (sealed: ${sealed})`, async () => {
         const fixture = await makePlannedReviewWorktree();
-        try {
-            const { projectRoot, worktree } = fixture;
-            await git(projectRoot, ["branch", "release/next"]);
-            const mainBefore = await git(projectRoot, ["rev-parse", "main"]);
-            const args = createEngineValidationArgs({
-                hostedSession: fixture.hostedSession,
-                planName: "p",
-                planContent: "# stale Plan",
-                triageMeta: { classification: "FEATURE", status: "reviewed", targetBranch: "main" },
-                git: createGitPort(),
-                localCI: { run: () => Promise.reject(new Error("Unexpected CI")) },
-                workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
-                semanticReviewPort: NO_ISOLATED_AGENT_PORT,
-            });
-            const phase = await resolvePhaseContext(args);
-            if (phase.kind !== "ok") throw new Error("Missing phase context");
-            assertEquals(phase.context.worktreeBaseBranch, "main");
-            if (sealed) {
-                await startPublicationAttempt({
-                    projectRoot,
-                    attemptId: worktree.id,
+        return await withRetainedPlanFixture(fixture.projectRoot, async () => {
+            try {
+                const { projectRoot, worktree } = fixture;
+                await git(projectRoot, ["branch", "release/next"]);
+                const mainBefore = await git(projectRoot, ["rev-parse", "main"]);
+                const args = createEngineValidationArgs({
+                    hostedSession: fixture.hostedSession,
                     planName: "p",
-                    targetBranch: "main",
-                    executionBranch: worktree.branch,
-                    executionCwd: worktree.path,
-                    validatedCommit: mainBefore,
-                    targetHeadAtSeal: mainBefore,
+                    planContent: "# stale Plan",
+                    triageMeta: { classification: "FEATURE", status: "reviewed", targetBranch: "main" },
+                    git: createGitPort(),
+                    localCI: { run: () => Promise.reject(new Error("Unexpected CI")) },
+                    workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
+                    semanticReviewPort: NO_ISOLATED_AGENT_PORT,
                 });
+                const phase = await resolvePhaseContext(args);
+                if (phase.kind !== "ok") throw new Error("Missing phase context");
+                assertEquals(phase.context.worktreeBaseBranch, "main");
+                if (sealed) {
+                    await startPublicationAttempt({
+                        projectRoot,
+                        attemptId: worktree.id,
+                        planName: "p",
+                        targetBranch: "main",
+                        executionBranch: worktree.branch,
+                        executionCwd: worktree.path,
+                        validatedCommit: mainBefore,
+                        targetHeadAtSeal: mainBefore,
+                    });
+                }
+                const plan = await loadPlan(worktree.path, "p");
+                if (!plan) throw new Error("Missing execution Plan");
+                await seedPlan(
+                    worktree.path,
+                    "p",
+                    plan.body,
+                    {
+                        ...plan.attrs,
+                        status: "reviewed",
+                        targetBranch: "release/next",
+                    },
+                    { expectedRevision: plan.revision },
+                );
+                await fsWriteFile(`${worktree.path}/delivered.txt`, "late target edit\n");
+                const result = await runPublicationPhase(args, phase.context, {
+                    humanReviewMode: "none",
+                    humanReviewDecision: "not_required",
+                    humanReviewedAt: null,
+                });
+                assertEquals(await git(projectRoot, ["rev-parse", "main"]), mainBefore);
+                if (sealed) {
+                    assertEquals(result.result.kind, "paused");
+                    assertEquals(result.result.reason, PUBLICATION_REVALIDATION_MESSAGE);
+                    assertEquals(result.result.continueValidation, true);
+                    assertEquals(await git(projectRoot, ["rev-parse", "release/next"]), mainBefore);
+                    assertEquals(await loadPublicationAttempt(projectRoot, worktree.id), null);
+                    const currentPlan = await loadPlan(worktree.path, "p");
+                    assertEquals(currentPlan?.attrs.status, "implemented");
+                    assertEquals(currentPlan?.attrs.targetBranch, "release/next");
+                    assertEquals(await fsReadFile(`${worktree.path}/delivered.txt`, "utf8"), "late target edit\n");
+                } else {
+                    assertEquals(result.result.kind, "verified", JSON.stringify(result));
+                    assertEquals(await git(projectRoot, ["show", "release/next:delivered.txt"]), "late target edit");
+                }
+            } finally {
+                await fixture.cleanup();
             }
-            const plan = await loadPlan(worktree.path, "p");
-            if (!plan) throw new Error("Missing execution Plan");
-            await savePlan(
-                worktree.path,
-                "p",
-                plan.body,
-                {
-                    ...plan.attrs,
-                    status: "reviewed",
-                    targetBranch: "release/next",
-                },
-                { expectedRevision: plan.revision },
-            );
-            await fsWriteFile(`${worktree.path}/delivered.txt`, "late target edit\n");
-            const result = await runPublicationPhase(args, phase.context, {
-                humanReviewMode: "none",
-                humanReviewDecision: "not_required",
-                humanReviewedAt: null,
-            });
-            assertEquals(await git(projectRoot, ["rev-parse", "main"]), mainBefore);
-            if (sealed) {
-                assertEquals(result.result.kind, "paused");
-                assertEquals(result.result.reason, PUBLICATION_REVALIDATION_MESSAGE);
-                assertEquals(result.result.continueValidation, true);
-                assertEquals(await git(projectRoot, ["rev-parse", "release/next"]), mainBefore);
-                assertEquals(await loadPublicationAttempt(projectRoot, worktree.id), null);
-                const currentPlan = await loadPlan(worktree.path, "p");
-                assertEquals(currentPlan?.attrs.status, "implemented");
-                assertEquals(currentPlan?.attrs.targetBranch, "release/next");
-                assertEquals(await fsReadFile(`${worktree.path}/delivered.txt`, "utf8"), "late target edit\n");
-            } else {
-                assertEquals(result.result.kind, "verified", JSON.stringify(result));
-                assertEquals(await git(projectRoot, ["show", "release/next:delivered.txt"]), "late target edit");
-            }
-        } finally {
-            await fixture.cleanup();
-        }
+        });
     });
 }
 
 for (const targetBranch of ["release/next", " origin/release/next ", undefined]) {
     test(`delivery rereads the execution Plan target: ${targetBranch ?? "recorded default"}`, async () => {
         const fixture = await makePlannedReviewWorktree();
-        try {
-            await git(fixture.projectRoot, ["branch", "release/next"]);
-            const mainBefore = await git(fixture.projectRoot, ["rev-parse", "main"]);
-            const plan = await loadPlan(fixture.executionCwd, "p");
-            if (!plan) throw new Error("Missing execution Plan");
-            // The Session, registry and primary Plan still describe the old target.
-            // Only the execution document changes after the workflow was loaded.
-            await savePlan(
-                fixture.executionCwd,
-                "p",
-                plan.body,
-                {
-                    ...plan.attrs,
-                    status: "reviewed",
-                    targetBranch,
-                    humanReviewMode: "none",
-                    humanReviewDecision: "not_required",
-                },
-                { expectedRevision: plan.revision },
-            );
-            await fsWriteFile(`${fixture.executionCwd}/delivered.txt`, "selected target\n");
-            setCurrentValidationProgress(
-                fixture.hostedSession,
-                createValidationProgress({
-                    kind: "workflow",
-                    outcome: "failed",
-                    stage: "terminal",
-                    cycle: 1,
-                    maxCycles: 3,
-                    checks: { ci: "failed", semanticReview: "canceled", humanReview: "canceled", merge: "failed" },
-                }),
-            );
-            const result = await runValidationLoop({
-                hostedSession: fixture.hostedSession,
-                planName: "p",
-                planContent: "# stale Plan",
-                triageMeta: { classification: "FEATURE", status: "validated_ci", targetBranch: "main" },
-                git: createGitPort(),
-                workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
-                semanticReviewPort: NO_ISOLATED_AGENT_PORT,
-            });
-            assertEquals(result.kind, "verified", JSON.stringify(result));
-            assertEquals(getCurrentValidationProgress(fixture.hostedSession)?.checks, {
-                ci: "passed",
-                semanticReview: "passed",
-                humanReview: "skipped",
-                merge: "passed",
-            });
-            assertEquals(getCurrentValidationProgress(fixture.hostedSession)?.outcome, "verified");
-            assertEquals(await loadPublicationAttempt(fixture.projectRoot, fixture.worktree.id), null);
-            assertEquals(fixture.uiAPI.messages.join("\n").includes("could not finish adding"), false);
-            const expectedTarget = targetBranch ? "release/next" : "main";
-            assertEquals(
-                await git(fixture.projectRoot, ["show", `${expectedTarget}:delivered.txt`]),
-                "selected target",
-            );
-            const publishedPlan = await git(fixture.projectRoot, ["show", `${expectedTarget}:docs/plans/p.md`]);
-            assertEquals(parsePlanFrontMatter(publishedPlan).attrs.targetBranch, expectedTarget);
-            if (targetBranch) {
-                assertEquals(await git(fixture.projectRoot, ["rev-parse", "main"]), mainBefore);
-                assertEquals(fixture.uiAPI.messages.join("\n").includes("Merging work into main"), false);
+        return await withRetainedPlanFixture(fixture.projectRoot, async () => {
+            try {
+                await git(fixture.projectRoot, ["branch", "release/next"]);
+                const mainBefore = await git(fixture.projectRoot, ["rev-parse", "main"]);
+                const plan = await loadPlan(fixture.executionCwd, "p");
+                if (!plan) throw new Error("Missing execution Plan");
+                // The Session, registry and primary Plan still describe the old target.
+                // Only the execution document changes after the workflow was loaded.
+                await seedPlan(
+                    fixture.executionCwd,
+                    "p",
+                    plan.body,
+                    {
+                        ...plan.attrs,
+                        status: "reviewed",
+                        targetBranch,
+                        humanReviewMode: "none",
+                        humanReviewDecision: "not_required",
+                    },
+                    { expectedRevision: plan.revision },
+                );
+                await fsWriteFile(`${fixture.executionCwd}/delivered.txt`, "selected target\n");
+                setCurrentValidationProgress(
+                    fixture.hostedSession,
+                    createValidationProgress({
+                        kind: "workflow",
+                        outcome: "failed",
+                        stage: "terminal",
+                        cycle: 1,
+                        maxCycles: 3,
+                        checks: { ci: "failed", semanticReview: "canceled", humanReview: "canceled", merge: "failed" },
+                    }),
+                );
+                const result = await runValidationLoop({
+                    hostedSession: fixture.hostedSession,
+                    planName: "p",
+                    planContent: "# stale Plan",
+                    triageMeta: { classification: "FEATURE", status: "validated_ci", targetBranch: "main" },
+                    git: createGitPort(),
+                    workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
+                    semanticReviewPort: NO_ISOLATED_AGENT_PORT,
+                });
+                assertEquals(result.kind, "verified", JSON.stringify(result));
+                assertEquals(getCurrentValidationProgress(fixture.hostedSession)?.checks, {
+                    ci: "passed",
+                    semanticReview: "passed",
+                    humanReview: "skipped",
+                    merge: "passed",
+                });
+                assertEquals(getCurrentValidationProgress(fixture.hostedSession)?.outcome, "verified");
+                assertEquals(await loadPublicationAttempt(fixture.projectRoot, fixture.worktree.id), null);
+                assertEquals(fixture.uiAPI.messages.join("\n").includes("could not finish adding"), false);
+                const expectedTarget = targetBranch ? "release/next" : "main";
+                assertEquals(
+                    await git(fixture.projectRoot, ["show", `${expectedTarget}:delivered.txt`]),
+                    "selected target",
+                );
+                const publishedPlan = await git(fixture.projectRoot, ["show", `${expectedTarget}:docs/plans/p.md`]);
+                assertEquals(parsePlanFrontMatter(publishedPlan).attrs.targetBranch, expectedTarget);
+                if (targetBranch) {
+                    assertEquals(await git(fixture.projectRoot, ["rev-parse", "main"]), mainBefore);
+                    assertEquals(fixture.uiAPI.messages.join("\n").includes("Merging work into main"), false);
+                }
+            } finally {
+                await fixture.cleanup();
             }
-        } finally {
-            await fixture.cleanup();
-        }
+        });
     });
 }
 
 test("startActiveExecutionWorkflow seeds footer workflow context from Plan front matter", async () => {
     const projectRoot = await footerExecutionRepo.checkout({ prefix: "footer-context-start-" });
-    const plan = await loadPlan(projectRoot, "footer-plan");
-    const uiAPI = makeUi();
-    const hostedSession = attachRecorder(
-        new HostedSession({ id: "footer-context-start-test", cwd: projectRoot }),
-        uiAPI,
-    );
+    return await withRetainedPlanFixture(projectRoot, async () => {
+        const plan = await loadPlan(projectRoot, "footer-plan");
+        const uiAPI = makeUi();
+        const hostedSession = attachRecorder(
+            new HostedSession({ id: "footer-context-start-test", cwd: projectRoot }),
+            uiAPI,
+        );
 
-    await startActiveExecutionWorkflow({
-        planName: "footer-plan",
-        triageMeta: plan?.attrs || {},
-        currentStatus: "ready_for_work",
-        hostedSession,
-        ports: createExecutionStartPorts(),
-    });
-
-    const workflowContext = hostedSession.getWorkflowContext();
-    assertEquals(typeof workflowContext?.planId, "string");
-    assertEquals(
-        { ...workflowContext, planId: "<generated>" },
-        {
-            routingIntent: "PLANNED_CHANGE",
-            complexity: "MEDIUM",
+        await startActiveExecutionWorkflow({
             planName: "footer-plan",
-            planId: "<generated>",
-            status: "ready_for_work",
-        },
-    );
-    assertEquals(hostedSession.getActiveExecutionWorkflow()?.executionAgent, "engineer");
+            triageMeta: plan?.attrs || {},
+            currentStatus: "ready_for_work",
+            hostedSession,
+            ports: createExecutionStartPorts(),
+        });
+
+        const workflowContext = hostedSession.getWorkflowContext();
+        assertEquals(typeof workflowContext?.planId, "string");
+        assertEquals(
+            { ...workflowContext, planId: "<generated>" },
+            {
+                routingIntent: "PLANNED_CHANGE",
+                complexity: "MEDIUM",
+                planName: "footer-plan",
+                planId: "<generated>",
+                status: "ready_for_work",
+            },
+        );
+        assertEquals(hostedSession.getActiveExecutionWorkflow()?.executionAgent, "engineer");
+    });
 });
 
 test("shouldContinueParentEpicAfterValidation detects parent epic linkage", () => {
@@ -655,77 +679,83 @@ test("shouldContinueParentEpicAfterValidation ignores standalone FEATURE plans",
 });
 
 test("runValidationLoop shows why FEATURE validation fails when workflow diff is empty", async () => {
-    const { executionCwd, hostedSession, uiAPI, cleanup } = await makePlannedReviewWorktree();
-    try {
+    const fixture = await makePlannedReviewWorktree();
+    return await withRetainedPlanFixture(fixture.projectRoot, async () => {
+        const { executionCwd, hostedSession, uiAPI, cleanup } = fixture;
+        try {
+            const result = await runValidationLoop({
+                hostedSession,
+                planName: "p",
+                planContent: "# p",
+                triageMeta: { classification: "FEATURE", status: "validated_ci" },
+                semanticReviewPort: NO_ISOLATED_AGENT_PORT,
+            });
+
+            const plan = await loadPlan(executionCwd, "p");
+            assertEquals(result.kind, "failed");
+            assertStringIncludes(result.reason || "", "No implementation changes detected");
+            assertEquals(plan?.attrs.status, "implemented");
+            const messages: string[] = uiAPI.messages;
+            assertEquals(
+                messages.some((message) => message.includes("Ask the Engineer to restore the code")),
+                true,
+            );
+        } finally {
+            await cleanup();
+        }
+    });
+});
+
+test("runValidationLoop fails PROJECT validation when workflow diff only changes a plan document", async () => {
+    const projectRoot = await makeRepo();
+    return await withRetainedPlanFixture(projectRoot, async () => {
+        const { hostedSession } = makeValidationUi();
+        await seedPlan(projectRoot, "p", "# p\n", { classification: "PROJECT", status: "validated_ci" });
+        await enterProjectRuntime(projectRoot);
+        await git(projectRoot, ["config", "user.email", "runwield@example.com"]);
+        await git(projectRoot, ["config", "user.name", "RunWield Test"]);
+        await git(projectRoot, ["add", "."]);
+        await git(projectRoot, ["commit", "-m", "validation baseline"]);
+        const baselineTree = await git(projectRoot, ["rev-parse", "HEAD^{tree}"]);
+        const baselinePlan = await loadPlan(projectRoot, "p");
+        await seedPlan(
+            projectRoot,
+            "p",
+            "# p\n\nPlan-only follow-up.\n",
+            {
+                classification: "PROJECT",
+                status: "validated_ci",
+                summary: "validation fixture",
+                affectedPaths: [],
+            },
+            { expectedRevision: baselinePlan?.revision },
+        );
+        hostedSession.setActiveExecutionWorkflow({
+            planName: "p",
+            triageMeta: { classification: "PROJECT", status: "validated_ci" },
+            executionAgent: "engineer",
+            projectRoot,
+            executionCwd: projectRoot,
+            executionMode: "worktree",
+            baselineTree,
+            worktreeId: "wt1",
+            worktreeBranch: "runwield/worktree/p-wt1",
+            worktreeBaseBranch: "main",
+        });
+
         const result = await runValidationLoop({
             hostedSession,
             planName: "p",
             planContent: "# p",
-            triageMeta: { classification: "FEATURE", status: "validated_ci" },
+            triageMeta: { classification: "PROJECT", status: "validated_ci" },
             semanticReviewPort: NO_ISOLATED_AGENT_PORT,
         });
 
-        const plan = await loadPlan(executionCwd, "p");
+        const plan = await loadPlan(projectRoot, "p");
         assertEquals(result.kind, "failed");
-        assertStringIncludes(result.reason || "", "No implementation changes detected");
+        assertStringIncludes(result.reason || "", "only plan document changes");
         assertEquals(plan?.attrs.status, "implemented");
-        const messages: string[] = uiAPI.messages;
-        assertEquals(
-            messages.some((message) => message.includes("Ask the Engineer to restore the code")),
-            true,
-        );
-    } finally {
-        await cleanup();
-    }
-});
-
-test("runValidationLoop fails PROJECT validation when workflow diff only changes a plan document", async () => {
-    const { projectRoot, hostedSession } = await makeLifecycleRun("validated_ci", { classification: "PROJECT" });
-    await git(projectRoot, ["init", "-b", "main"]);
-    await enterProjectRuntime(projectRoot);
-    await git(projectRoot, ["config", "user.email", "runwield@example.com"]);
-    await git(projectRoot, ["config", "user.name", "RunWield Test"]);
-    await git(projectRoot, ["add", "."]);
-    await git(projectRoot, ["commit", "-m", "validation baseline"]);
-    const baselineTree = await git(projectRoot, ["rev-parse", "HEAD^{tree}"]);
-    const baselinePlan = await loadPlan(projectRoot, "p");
-    await savePlan(
-        projectRoot,
-        "p",
-        "# p\n\nPlan-only follow-up.\n",
-        {
-            classification: "PROJECT",
-            status: "validated_ci",
-            summary: "validation fixture",
-            affectedPaths: [],
-        },
-        { expectedRevision: baselinePlan?.revision },
-    );
-    hostedSession.setActiveExecutionWorkflow({
-        planName: "p",
-        triageMeta: { classification: "PROJECT", status: "validated_ci" },
-        executionAgent: "engineer",
-        projectRoot,
-        executionCwd: projectRoot,
-        executionMode: "worktree",
-        baselineTree,
-        worktreeId: "wt1",
-        worktreeBranch: "runwield/worktree/p-wt1",
-        worktreeBaseBranch: "main",
     });
-
-    const result = await runValidationLoop({
-        hostedSession,
-        planName: "p",
-        planContent: "# p",
-        triageMeta: { classification: "PROJECT", status: "validated_ci" },
-        semanticReviewPort: NO_ISOLATED_AGENT_PORT,
-    });
-
-    const plan = await loadPlan(projectRoot, "p");
-    assertEquals(result.kind, "failed");
-    assertStringIncludes(result.reason || "", "only plan document changes");
-    assertEquals(plan?.attrs.status, "implemented");
 });
 
 test("runValidationLoop starts at implemented and records only the mechanical pass boundary", async () => {
@@ -765,87 +795,99 @@ test("runValidationLoop starts at implemented and records only the mechanical pa
 });
 
 test("validation returns a lifecycle invariant when controller preparation reads malformed YAML", async () => {
-    const projectRoot = await makeValidationProjectRoot("p", { classification: "FEATURE", status: "implemented" });
-    const hostedSession = attachRecorder(new HostedSession({ id: "malformed-validation", cwd: projectRoot }), makeUi());
-    const malformed = "---\nstatus: [implemented\n---\n# Broken Plan\n";
-    try {
-        await fsWriteFile(join(projectRoot, "docs/plans/p.md"), malformed);
-        const result = await runValidationPhase({
-            hostedSession,
-            planName: "p",
-            planContent: "# Stale cached Plan",
-            triageMeta: { classification: "FEATURE", status: "implemented" },
-            semanticReviewPort: NO_ISOLATED_AGENT_PORT,
-            localCI: { run: () => Promise.reject(new Error("Malformed Plans must not run CI")) },
-        });
-        assertEquals(result.kind, "failed");
-        assertEquals(result.recovery?.code, "policy/lifecycle_invariant");
-        assertEquals(await fsReadFile(join(projectRoot, "docs/plans/p.md"), "utf8"), malformed);
-    } finally {
-        hostedSession.dispose();
-        await fsRm(projectRoot, { recursive: true });
-    }
+    const projectRoot = await makeRepo();
+    return await withRetainedPlanFixture(projectRoot, async () => {
+        await seedPlan(projectRoot, "p", "# Plan\n", { classification: "FEATURE", status: "implemented" });
+        const hostedSession = attachRecorder(
+            new HostedSession({ id: "malformed-validation", cwd: projectRoot }),
+            makeUi(),
+        );
+        const malformed = "---\nstatus: [implemented\n---\n# Broken Plan\n";
+        try {
+            await fsWriteFile(join(projectRoot, "docs/plans/p.md"), malformed);
+            const result = await runValidationPhase({
+                hostedSession,
+                planName: "p",
+                planContent: "# Stale cached Plan",
+                triageMeta: { classification: "FEATURE", status: "implemented" },
+                semanticReviewPort: NO_ISOLATED_AGENT_PORT,
+                localCI: { run: () => Promise.reject(new Error("Malformed Plans must not run CI")) },
+            });
+            assertEquals(result.kind, "failed");
+            assertEquals(result.recovery?.code, "policy/lifecycle_invariant");
+            assertEquals(await fsReadFile(join(projectRoot, "docs/plans/p.md"), "utf8"), malformed);
+        } finally {
+            hostedSession.dispose();
+            await fsRm(projectRoot, { recursive: true });
+        }
+    });
 });
 
 test("validation recovers an unregistered execution checkout before selecting a stale primary Plan", async () => {
     const projectRoot = await footerExecutionRepo.checkout();
-    const parent = await fsMkdtemp(join(tmpdir(), "validation-unregistered-"));
-    const executionCwd = join(parent, "execution");
-    const hostedSession = attachRecorder(new HostedSession({ id: "recover-validation", cwd: projectRoot }), makeUi());
-    try {
-        await ensurePlanIdentity(projectRoot, "footer-plan");
-        const baselineTree = await git(projectRoot, ["rev-parse", "HEAD^{tree}"]);
-        const branch = "runwield/worktree/footer-plan-recovered";
-        await git(projectRoot, ["worktree", "add", "-b", branch, executionCwd, "HEAD"]);
-        const executionPlan = await loadPlan(executionCwd, "footer-plan");
-        await savePlan(
-            executionCwd,
-            "footer-plan",
-            "# Implemented execution Plan\n",
-            {
-                planId: "recovered-validation-plan",
-                classification: "FEATURE",
-                status: "implemented",
-            },
-            { expectedRevision: executionPlan?.revision },
+    return await withRetainedPlanFixture(projectRoot, async () => {
+        const parent = await fsMkdtemp(join(tmpdir(), "validation-unregistered-"));
+        const executionCwd = join(parent, "execution");
+        const hostedSession = attachRecorder(
+            new HostedSession({ id: "recover-validation", cwd: projectRoot }),
+            makeUi(),
         );
-        const primaryBefore = await fsReadFile(join(projectRoot, "docs/plans/footer-plan.md"), "utf8");
-        let ciCwd = "";
-        const result = await runValidationPhase({
-            hostedSession,
-            planName: "footer-plan",
-            planContent: "# Cached Plan",
-            triageMeta: { classification: "FEATURE", status: "ready_for_work" },
-            executionContext: {
-                planName: "footer-plan",
-                triageMeta: { classification: "FEATURE", status: "ready_for_work" },
-                projectRoot,
-                executionMode: "worktree",
+        try {
+            await ensurePlanIdentity(projectRoot, "footer-plan");
+            const baselineTree = await git(projectRoot, ["rev-parse", "HEAD^{tree}"]);
+            const branch = "runwield/worktree/footer-plan-recovered";
+            await git(projectRoot, ["worktree", "add", "-b", branch, executionCwd, "HEAD"]);
+            await enterProjectRuntime(executionCwd);
+            const executionPlan = await loadPlan(executionCwd, "footer-plan");
+            await seedPlan(
                 executionCwd,
-                executionAgent: "engineer",
-                worktreeId: "recovered-validation-attempt",
-                worktreeBranch: branch,
-                worktreeBaseBranch: "main",
-                baselineTree,
-            },
-            semanticReviewPort: NO_ISOLATED_AGENT_PORT,
-            localCI: {
-                run: ({ cwd }) => {
-                    ciCwd = cwd;
-                    return Promise.resolve({ kind: "completed", exitCode: 0, output: "ok" });
+                "footer-plan",
+                "# Implemented execution Plan\n",
+                {
+                    planId: "recovered-validation-plan",
+                    classification: "FEATURE",
+                    status: "implemented",
                 },
-            },
-        });
-        assertEquals(ciCwd, await fsRealpath(executionCwd));
-        assertEquals(result.kind, "paused");
-        assertEquals(result.continueValidation, true);
-        const recovered = await loadPlan(executionCwd, "footer-plan");
-        assertEquals(recovered?.attrs.validationPhase, "semantic");
-        assertEquals(recovered?.attrs.worktreeId, "recovered-validation-attempt");
-        assertEquals(await fsReadFile(join(projectRoot, "docs/plans/footer-plan.md"), "utf8"), primaryBefore);
-    } finally {
-        hostedSession.dispose();
-        await fsRm(projectRoot, { recursive: true });
-        await fsRm(parent, { recursive: true });
-    }
+                { expectedRevision: executionPlan?.revision },
+            );
+            const primaryBefore = await fsReadFile(join(projectRoot, "docs/plans/footer-plan.md"), "utf8");
+            let ciCwd = "";
+            const result = await runValidationPhase({
+                hostedSession,
+                planName: "footer-plan",
+                planContent: "# Cached Plan",
+                triageMeta: { classification: "FEATURE", status: "ready_for_work" },
+                executionContext: {
+                    planName: "footer-plan",
+                    triageMeta: { classification: "FEATURE", status: "ready_for_work" },
+                    projectRoot,
+                    executionMode: "worktree",
+                    executionCwd,
+                    executionAgent: "engineer",
+                    worktreeId: "recovered-validation-attempt",
+                    worktreeBranch: branch,
+                    worktreeBaseBranch: "main",
+                    baselineTree,
+                },
+                semanticReviewPort: NO_ISOLATED_AGENT_PORT,
+                localCI: {
+                    run: ({ cwd }) => {
+                        ciCwd = cwd;
+                        return Promise.resolve({ kind: "completed", exitCode: 0, output: "ok" });
+                    },
+                },
+            });
+            assertEquals(ciCwd, await fsRealpath(executionCwd));
+            assertEquals(result.kind, "paused");
+            assertEquals(result.continueValidation, true);
+            const recovered = await loadPlan(executionCwd, "footer-plan");
+            assertEquals(recovered?.attrs.validationPhase, "semantic");
+            assertEquals(recovered?.attrs.worktreeId, "recovered-validation-attempt");
+            assertEquals(await fsReadFile(join(projectRoot, "docs/plans/footer-plan.md"), "utf8"), primaryBefore);
+        } finally {
+            hostedSession.dispose();
+            await fsRm(projectRoot, { recursive: true });
+            await fsRm(parent, { recursive: true });
+        }
+    });
 });

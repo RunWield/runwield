@@ -1,3 +1,5 @@
+import { seedPlanAttemptReference } from "../../shared/testing/plan-state-fixture.ts";
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import process from "node:process";
 import {
     mkdir as fsMkdir,
@@ -8,14 +10,8 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { loadArchivedPlan, loadPlan, savePlan, archivePlan } from "../../plan-store.js";
-import { withLocalPlanWorkflow } from "../../shared/local-home-store.ts";
-import {
-    capturePackageWorkflowInput,
-    currentPackageProject,
-    selectedPackage,
-} from "../../shared/workflow/package-workflow.ts";
-import { updatePlanPackageMetadata } from "../../shared/plan-package-store.ts";
+import { loadArchivedPlan, loadPlan, archivePlan } from "../../plan-store/index.ts";
+
 import { runPlansCommand } from "./index.ts";
 import { addEntry } from "../../shared/worktree-registry.js";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
@@ -24,7 +20,7 @@ import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout
 import { getCwd, getRunWieldRuntimeDir } from "../../constants.js";
 import { type PlanCommandFixture, withPlanCommandFixture } from "./plans-command-test-fixture.ts";
 
-type PlanSeedAttrs = NonNullable<Parameters<typeof savePlan>[3]>;
+type PlanSeedAttrs = NonNullable<Parameters<typeof seedPlan>[3]>;
 
 interface PlanSeed {
     name: string;
@@ -37,7 +33,7 @@ function plansTest(name: string, run: (fixture: PlanCommandFixture) => Promise<v
 
 async function seedPlans(projectRoot: string, seeds: PlanSeed[]): Promise<void> {
     for (const seed of seeds) {
-        await savePlan(
+        await seedPlan(
             projectRoot,
             seed.name,
             `# ${seed.name}\n\n## Context\n\n${seed.attrs.summary || "Fixture body."}\n`,
@@ -183,22 +179,7 @@ plansTest("plans renders real Epic child progress and worktree metadata", async 
             updatedAt: "2026-08-25T00:00:00Z",
         });
 
-        await withLocalPlanWorkflow(projectRoot, "big-project/01-first", async () => {
-            const identity = currentPackageProject()!;
-            const plan = await selectedPackage("big-project/01-first");
-            const input = await capturePackageWorkflowInput("big-project/01-first");
-            await updatePlanPackageMetadata(identity, plan.metadata.planId, plan.metadata.revision, {
-                workflow: {
-                    attempt: {
-                        personalOwner: identity.personalOwner.identity,
-                        repositoryId: identity.repositoryId,
-                        repositoryRoot: identity.checkoutRoot,
-                        attemptId: "first-attempt",
-                        input,
-                    },
-                },
-            });
-        });
+        await seedPlanAttemptReference(projectRoot, "big-project/01-first", "first-attempt");
         const output = (await captureOutput(() => runPlansCommand([]))).join("\n");
         assertStringIncludes(output, "Epics:");
         assertStringIncludes(output, "Progress: 1/2 Planned Changes verified");
@@ -211,7 +192,7 @@ plansTest("plans renders real Epic child progress and worktree metadata", async 
 });
 
 plansTest("plans keeps done-enough and archived-parent child state visible", async ({ projectRoot }) => {
-    await savePlan(projectRoot, "missing-parent", "# Archived parent\n", { classification: "PROJECT" });
+    await seedPlan(projectRoot, "missing-parent", "# Archived parent\n", { classification: "PROJECT" });
     await seedPlans(projectRoot, [
         {
             name: "done-enough-epic",

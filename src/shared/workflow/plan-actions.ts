@@ -1,17 +1,19 @@
-import { preparePlanWorkflow } from "./plan-preparation.ts";
+import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
 /** Shared Plan action evidence and lifecycle executor. */
 
-import { findPlanEvidenceById, getPlanRevisionForText, loadPlan, type PlanFrontMatter } from "../../plan-store.js";
+import { type PlanFrontMatter } from "../../plan-store/index.ts";
+import { getPlanRevisionForText } from "../../plan-format.ts";
+import { findPlanEvidenceById, loadPlan } from "../../plan-store/index.ts";
 import {
     prepareWorktreeRegistry,
     readPlanActionWorktreeEvidence,
     WorktreeRegistryAmbiguityError,
 } from "../worktree-registry.js";
-import { RegisteredPlanDocumentUnavailableError } from "./controller-registry.ts";
+import { RegisteredPlanDocumentUnavailableError } from "../../plan-store/index.ts";
 import { getPlanLifecycleActionMetadata, recordPlanEvent } from "./plan-lifecycle.js";
 import type { PlanEvent, PlanStatus } from "./plan-lifecycle.js";
-import { PlanningNotStartedError } from "./plan-location.ts";
+import { PlanningNotStartedError } from "../../plan-store/index.ts";
 
 export type PlanActionName =
     | "move_status"

@@ -1,3 +1,7 @@
+import { requiresPlanWorkflow } from "../../plan-store/index.ts";
+
+import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
+
 /**
  * @module shared/workflow/validation-engine
  * The session-independent Workflow Validation engine: the phase loop, the
@@ -11,13 +15,8 @@
  * imports — they are RunWield's own machinery, never ports.
  */
 
-import {
-    ensurePlanIdentity,
-    canonicalPlanStatus,
-    getDeclaredPlanStatus,
-    loadPlan,
-    PlanFrontMatterParseError,
-} from "../../plan-store.js";
+import { canonicalPlanStatus, getDeclaredPlanStatus, PlanFrontMatterParseError } from "../../plan-format.ts";
+import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
 import { VALIDATION_PLAN_STATUSES } from "./plan-lifecycle.js";
 import { getProjectRoot, resolvePhaseContext } from "./validation-context.ts";
 import { emitStatus } from "./validation-emit.ts";
@@ -37,11 +36,11 @@ import {
     CANDIDATE_REVALIDATION_MESSAGE,
 } from "./publication-revalidation.ts";
 
-import { preparePlanController } from "./plan-preparation.ts";
+import { preparePlanController } from "../../plan-store/index.ts";
 import { validateHostReviewerResume } from "./validation-host-state.ts";
 
 type PlanStatus = "implemented" | "validated_ci" | "reviewed" | "validated";
-type PlanFrontMatter = import("../../plan-store.js").PlanFrontMatter;
+type PlanFrontMatter = import("../../plan-store/index.ts").PlanFrontMatter;
 
 /**
  * One phase for the Plan's current status. Reads canonical state; holds none.
@@ -50,6 +49,8 @@ type PlanFrontMatter = import("../../plan-store.js").PlanFrontMatter;
  * {@link runValidationLoop}, which drives phases until the Plan stops moving.
  */
 export async function runValidationPhase(args: ValidationLoopArgs): Promise<ValidationPhaseResult> {
+    if (requiresPlanWorkflow(getProjectRoot(args)))
+        return await withLocalPlanWorkflow(getProjectRoot(args), args.planName, () => runValidationPhase(args));
     args.session.assertLive();
     // Admit controller reads without selecting through stale cached Session
     // paths or rejecting legacy IDs before execution-context recovery owns them.
@@ -160,6 +161,8 @@ function resolveNextPhase(
  * the next phase. Document revisions and presentation text never do.
  */
 export async function runValidationLoop(args: ValidationLoopArgs): Promise<WorkflowValidationResult> {
+    if (requiresPlanWorkflow(getProjectRoot(args)))
+        return await withLocalPlanWorkflow(getProjectRoot(args), args.planName, () => runValidationLoop(args));
     const projectRoot = getProjectRoot(args);
     let result: ValidationPhaseResult | undefined;
     let phaseArgs: ValidationLoopArgs = { ...args, codeReviewConversation: { history: [] } };

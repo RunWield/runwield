@@ -1,5 +1,5 @@
-import { currentPackageSelection, withPackageWorkflow } from "./package-workflow.ts";
-import { readPlanPackage } from "../plan-package-store.ts";
+import { capturePlanAccess } from "../../plan-store/index.ts";
+import { resumePlanAttempt } from "../../plan-store/index.ts";
 /**
  * @module shared/workflow/validation
  * Workflow Validation public entry point.
@@ -14,9 +14,9 @@ import { readPlanPackage } from "../plan-package-store.ts";
 
 import * as engine from "./validation-engine.ts";
 import { runValidationAttempt, type ValidationTrigger } from "./validation-supervisor.ts";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
 import { findActiveByPlanName as findWorktreeByPlanName } from "../worktree-registry.js";
-import { resolveWorkflowPlanLocation } from "./plan-location.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { emitProgress, emitStatus } from "./validation-emit.ts";
 import { getCurrentValidationProgress } from "./validation-progress.ts";
@@ -46,7 +46,7 @@ export { type SemanticReviewPort, SYSTEM_SEMANTIC_REVIEW_PORT } from "./validati
 
 export type { ValidationPhaseResult, WorkflowValidationResult } from "./validation-types.ts";
 
-type PlanFrontMatter = import("../../plan-store.js").PlanFrontMatter;
+type PlanFrontMatter = import("../../plan-store/index.ts").PlanFrontMatter;
 type TriageMeta = import("../../tools/plan-written.ts").TriageMeta & Partial<PlanFrontMatter>;
 type ActiveExecutionWorkflow = import("../session/hosted-session.js").ActiveExecutionWorkflow;
 type HostedSession = import("../session/hosted-session.js").HostedSession;
@@ -187,15 +187,12 @@ export async function continueWorkflowValidation(
     args: ContinueWorkflowValidationArgs,
 ): Promise<WorkflowValidationResult> {
     const active = args.hostedSession.getActiveExecutionWorkflow();
-    if (active?.packageSelection && !currentPackageSelection()) {
+    if (active?.packageSelection && !capturePlanAccess()) {
         const selection = active.packageSelection;
-        const current = await readPlanPackage(selection.identity, { planId: selection.planId });
-        if (current.kind !== "loaded") throw new Error(current.message);
-        if (current.metadata.workflow?.attempt?.attemptId !== active.worktreeId)
-            throw new Error("Package validation attempt changed.");
-        return await withPackageWorkflow(
+        return await resumePlanAttempt(
             args.hostedSession.cwd,
-            { ...selection, expectedRevision: current.metadata.revision },
+            selection,
+            active.packageAttemptId || active.worktreeId,
             () => continueWorkflowValidation(args),
             args.planName,
         );

@@ -1,10 +1,12 @@
+import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { test } from "node:test";
-import { strictEqual, ok } from "node:assert/strict";
+import { strictEqual } from "node:assert/strict";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { getRunWieldRuntimeDir } from "../../constants.js";
-import { getPlanRevisionForText, loadPlan } from "../../plan-store.js";
-import { resolvePlanWithPrimaryRecovery } from "../../cmd/load-plan/primary-plan-recovery.ts";
+import { getPlanRevisionForText } from "../../plan-format.ts";
+import { loadPlan } from "../../plan-store/index.ts";
+import { resolvePlanWithPrimaryRecovery } from "../../plan-store/index.ts";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { executePlanAction, loadPlanActionEvidence } from "./plan-actions.ts";
@@ -28,7 +30,13 @@ for (const legacy of [false, true]) {
             const marker = resolveProjectRuntimeLayout(root).primary.layoutMarkerPath;
             const evidence = await loadPlanActionEvidence(root, planId);
             strictEqual(evidence.kind, "invalid_action");
-            if (evidence.kind === "invalid_action") ok(evidence.message.includes("pending"));
+            if (evidence.kind === "invalid_action")
+                strictEqual(
+                    evidence.message,
+                    legacy
+                        ? "Workflow details pending. Load this Plan to prepare its workflow."
+                        : "Plan action evidence check failed.",
+                );
             strictEqual(
                 await stat(marker)
                     .then(() => true)
@@ -50,30 +58,32 @@ for (const legacy of [false, true]) {
 test("lifecycle action prepares before checking revisions, then preserves the body and original age", async () => {
     const root = await fixture.checkout();
     try {
-        await seedLegacyRuntime(root);
-        const request = {
-            planId,
-            expectedRevision: "stale",
-            expectedStatus: "draft",
-            expectedWorktree: { kind: "none" as const },
-            action: "put_on_hold" as const,
-            holdReason: "Wait for owner input",
-        };
-        const stale = await executePlanAction(root, request);
-        strictEqual(stale.kind, "refresh_required");
-        const prepared = await loadPlan(root, "demo");
-        strictEqual(prepared?.readAvailability?.kind, "ready");
-        strictEqual(prepared?.attrs.executionReport, "Original workflow evidence");
-        strictEqual(await readFile(join(root, "docs/plans/demo.md"), "utf8"), markdown);
-        const changed = await executePlanAction(root, {
-            ...request,
-            expectedRevision: await getPlanRevisionForText(markdown),
+        await withRetainedPlanFixture(root, async () => {
+            await seedLegacyRuntime(root);
+            const request = {
+                planId,
+                expectedRevision: "stale",
+                expectedStatus: "draft",
+                expectedWorktree: { kind: "none" as const },
+                action: "put_on_hold" as const,
+                holdReason: "Wait for owner input",
+            };
+            const stale = await executePlanAction(root, request);
+            strictEqual(stale.kind, "refresh_required");
+            const prepared = await loadPlan(root, "demo");
+            strictEqual(prepared?.readAvailability?.kind, "ready");
+            strictEqual(prepared?.attrs.executionReport, "Original workflow evidence");
+            strictEqual(await readFile(join(root, "docs/plans/demo.md"), "utf8"), markdown);
+            const changed = await executePlanAction(root, {
+                ...request,
+                expectedRevision: await getPlanRevisionForText(markdown),
+            });
+            strictEqual(changed.kind, "success");
+            const held = await loadPlan(root, "demo");
+            strictEqual(held?.attrs.status, "on_hold");
+            strictEqual(held?.attrs.createdAt, "2020-01-01T00:00:00.000Z");
+            strictEqual(held?.body, body);
         });
-        strictEqual(changed.kind, "success");
-        const held = await loadPlan(root, "demo");
-        strictEqual(held?.attrs.status, "on_hold");
-        strictEqual(held?.attrs.createdAt, "2020-01-01T00:00:00.000Z");
-        strictEqual(held?.body, body);
     } finally {
         await rm(root, { recursive: true, force: true });
     }
@@ -83,13 +93,15 @@ for (const argument of ["demo", planId]) {
     test(`selected load prepares legacy runtime and controller without a preceding catalog (${argument})`, async () => {
         const root = await fixture.checkout();
         try {
-            await seedLegacyRuntime(root);
-            const selected = await resolvePlanWithPrimaryRecovery(root, argument);
-            strictEqual(selected.plan.attrs.executionReport, "Original workflow evidence");
-            strictEqual(selected.plan.readAvailability?.kind, "ready");
-            strictEqual(selected.plan.body, body);
-            strictEqual(selected.plan.attrs.createdAt, "2020-01-01T00:00:00.000Z");
-            strictEqual(await readFile(join(root, "docs/plans/demo.md"), "utf8"), markdown);
+            await withRetainedPlanFixture(root, async () => {
+                await seedLegacyRuntime(root);
+                const selected = await resolvePlanWithPrimaryRecovery(root, argument);
+                strictEqual(selected.plan.attrs.executionReport, "Original workflow evidence");
+                strictEqual(selected.plan.readAvailability?.kind, "ready");
+                strictEqual(selected.plan.body, body);
+                strictEqual(selected.plan.attrs.createdAt, "2020-01-01T00:00:00.000Z");
+                strictEqual(await readFile(join(root, "docs/plans/demo.md"), "utf8"), markdown);
+            });
         } finally {
             await rm(root, { recursive: true, force: true });
         }

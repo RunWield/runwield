@@ -1,3 +1,4 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
@@ -5,7 +6,8 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { HostedSession } from "../session/hosted-session.js";
 import type { SessionRuntimeEvent } from "../session/session-runtime-events.js";
 import { __resetSettingsForTests } from "../settings.js";
@@ -66,7 +68,7 @@ function createSessionFixture(projectRoot: string, rootAgent = "architect"): Sli
 }
 
 async function saveEpic(projectRoot: string, status: PlanStatus = "approved"): Promise<string> {
-    return await savePlan(projectRoot, "epic-a", "# Epic A", {
+    return await seedPlan(projectRoot, "epic-a", "# Epic A", {
         classification: "PROJECT",
         complexity: "HIGH",
         summary: "Epic A",
@@ -90,7 +92,7 @@ async function executeFinalizeTool(tool: ToolDefinition, params: SlicerFinalizeP
 test("Slicer starts a clean context phase and receives persisted Epic and child evidence", async () => {
     await withRuntimeCommandFixture("workflow-slicer-agent-", async ({ projectRoot, setModelResponseFactory }) => {
         await saveEpic(projectRoot);
-        await savePlan(projectRoot, "epic-a/01-child", "# Child", {
+        await seedPlan(projectRoot, "epic-a/01-child", "# Child", {
             classification: "PLANNED_CHANGE",
             status: "draft",
             parentPlan: "epic-a",
@@ -220,7 +222,7 @@ test("Slicer finalize commits child Plans and the Epic lifecycle transition toge
 test("Slicer finalize reuses existing children and is idempotent after the Epic is ready", async () => {
     await withRuntimeCommandFixture("workflow-slicer-idempotent-", async ({ projectRoot }) => {
         await saveEpic(projectRoot, "ready_for_decomposition");
-        await savePlan(projectRoot, "epic-a/01-child", "# Child", {
+        await seedPlan(projectRoot, "epic-a/01-child", "# Child", {
             classification: "PLANNED_CHANGE",
             status: "draft",
             parentPlan: "epic-a",
@@ -350,8 +352,8 @@ test("Slicer restores earlier child writes when a later reserved child fails", a
 test("Slicer rolls back an updated legacy draft when a later child fails", async () => {
     await withRuntimeCommandFixture("slicer-legacy-rollback-", async ({ projectRoot }) => {
         await saveEpic(projectRoot);
-        await savePlan(projectRoot, "earlier", "# Earlier dependency\n");
-        await savePlan(projectRoot, "epic-a/99-working", "# Original body\n", {
+        await seedPlan(projectRoot, "earlier", "# Earlier dependency\n");
+        await seedPlan(projectRoot, "epic-a/99-working", "# Original body\n", {
             parentPlan: "epic-a",
             order: 99,
             planId: "legacy-working",

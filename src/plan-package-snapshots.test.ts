@@ -3,7 +3,7 @@ import { deepEqual, equal, ok, rejects } from "node:assert/strict";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { create, read, driver, packageFixture, documents, tree } from "./shared/testing/plan-package-fixture.ts";
-import { capturePlanPackageInput, readPlanPackageInput, recoverPlanPackages } from "./plan-store.js";
+import { capturePlanPackageInput, readPlanPackageInput, recoverPlanPackages } from "./plan-store/packages.ts";
 
 test("durable capture retains exact bytes, metadata revision, optional membership and explicit Epic resource roles", async () => {
     const f = await packageFixture();

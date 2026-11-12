@@ -1,14 +1,15 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { mkdtemp as fsMkdtemp } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { savePlan } from "../../plan-store.js";
+
 import { buildExecutionSegmentContinuation, resolvePendingSegmentHandoff } from "./execution-segment-handoff.ts";
 
 test("rejects changed canonical Plan and worktree evidence before handoff", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-handoff-"));
-    await savePlan(root, "demo", "# Demo\n\nApproved", {
+    await seedPlan(root, "demo", "# Demo\n\nApproved", {
         planId: "plan-demo",
         status: "ready_for_work",
         classification: "PLANNED_CHANGE",
@@ -81,7 +82,7 @@ test("a marker written before the Plan Engineer split still resumes", async () =
     // Pre-split markers name `engineer`; rejecting them would strand a segment
     // that was handed off before the split landed.
     const root = await fsMkdtemp(join(tmpdir(), "runwield-handoff-legacy-"));
-    await savePlan(root, "legacy", "# Legacy\n\nApproved", {
+    await seedPlan(root, "legacy", "# Legacy\n\nApproved", {
         planId: "plan-legacy",
         status: "ready_for_work",
         classification: "PLANNED_CHANGE",
@@ -118,8 +119,5 @@ test("a marker written before the Plan Engineer split still resumes", async () =
 
     // Evidence drift is what stops it, not an unrecognized owner.
     assertEquals(result.kind, "refresh_required");
-    assertEquals(
-        "message" in result && result.message.includes("invalid execution owner"),
-        false,
-    );
+    assertEquals("message" in result && result.message.includes("invalid execution owner"), false);
 });

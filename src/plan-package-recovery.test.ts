@@ -2,7 +2,12 @@ import { test } from "node:test";
 import { deepEqual, equal, ok } from "node:assert/strict";
 import { join } from "node:path";
 import { create, read, driver, packageFixture, tree } from "./shared/testing/plan-package-fixture.ts";
-import { recoverPlanPackages, readPlanPackage, listPlanPackages, updatePlanPackageMetadata } from "./plan-store.js";
+import {
+    recoverPlanPackages,
+    readPlanPackage,
+    listPlanPackages,
+    updatePlanPackageMetadata,
+} from "./plan-store/packages.ts";
 
 for (const boundary of ["staged-package", "intent", "moved-resource", "metadata"] as const)
     test(`creation interrupted at ${boundary} never exposes a partial successful package`, async () => {

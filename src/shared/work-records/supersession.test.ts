@@ -1,3 +1,4 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { platform } from "node:process";
 import fs from "node:fs/promises";
 import { realpathSync } from "node:fs";
@@ -31,7 +32,7 @@ import {
 } from "./index.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { getRunWieldRuntimeDir } from "../../constants.js";
-import { savePlan } from "../../plan-store.js";
+
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
@@ -449,8 +450,8 @@ test("rollback failure reports original error and every uncertain canonical path
                 WorkRecordSupersessionRollbackError,
                 "Original error: injected rename failure 2",
             );
-            assertEquals(error.uncertainRelativePaths, ["docs/work-records/new.md"]);
-            assertStringIncludes(error.message, "docs/work-records/new.md");
+            assertEquals(error.uncertainRelativePaths, ["work-records/new.md"]);
+            assertStringIncludes(error.message, "work-records/new.md");
             assertEquals(error.originalError.message, "injected rename failure 2");
         } finally {
             fs.rename = originalRename;
@@ -467,7 +468,7 @@ test("generation preserves its successor when supersession rollback is incomplet
             await writeWorkRecord(cwd, attrs(PREDECESSOR_ID), "# Old\n\n## Summary\n\nOld work.", {
                 fileName: "old.md",
             });
-            await savePlan(cwd, "successor", "# Successor\n\n## Plan\n\nReplace old work.", {
+            await seedPlan(cwd, "successor", "# Successor\n\n## Plan\n\nReplace old work.", {
                 planId: "plan-successor",
                 classification: "FEATURE",
                 complexity: "LOW",
@@ -493,7 +494,7 @@ test("generation preserves its successor when supersession rollback is incomplet
 
             assertEquals(outcome.status, "failed");
             assertStringIncludes(outcome.error || "", "rollback was incomplete");
-            assertStringIncludes(outcome.error || "", "docs/work-records/2026-08-03-successor.md");
+            assertStringIncludes(outcome.error || "", "work-records/2026-08-03-successor.md");
             assertEquals((await findWorkRecordById(cwd, SUCCESSOR_ID))?.attrs.recordId, SUCCESSOR_ID);
         } finally {
             fs.rename = originalRename;

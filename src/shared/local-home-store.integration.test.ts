@@ -1,9 +1,12 @@
+import { seedPlan } from "./testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { deepEqual, equal, rejects } from "node:assert/strict";
 import fs from "node:fs/promises";
 import { join } from "node:path";
-import { listPlans, listPlanResources, loadPlan, readPlanResourceCatalog, savePlan } from "../plan-store.js";
-import { importPlanPackages } from "./plan-package-store.ts";
+import { listPlans, listPlanResources, loadPlan, readPlanResourceCatalog } from "../plan-store/index.ts";
+
+import { importPlans, authorLocalPlan } from "../plan-store/index.ts";
+import { updateArchivedPlanFrontMatter } from "../plan-store.js";
 import { packageFixture, tree } from "./testing/plan-package-fixture.ts";
 
 test("ordinary catalogs ignore checkout Plans, then show only explicitly imported home documents", async () => {
@@ -19,7 +22,7 @@ test("ordinary catalogs ignore checkout Plans, then show only explicitly importe
         deepEqual(await listPlanResources(fixture.root), []);
         equal(await loadPlan(fixture.root, "selected"), null);
         deepEqual(await tree(fixture.root), before);
-        const imported = await importPlanPackages(fixture.identity, selected);
+        const imported = await importPlans(fixture.root, selected);
         equal(imported.kind, "committed");
         const plans = await listPlans(fixture.root);
         equal(plans.length, 1);
@@ -27,7 +30,11 @@ test("ordinary catalogs ignore checkout Plans, then show only explicitly importe
         equal(plans[0].attrs.status, "draft");
         equal((await loadPlan(fixture.root, "selected"))?.markdown, "# Selected external Plan\n");
         equal(await loadPlan(fixture.root, "unselected"), null);
-        deepEqual(await tree(fixture.root), before);
+        const after = await tree(fixture.root);
+        // Explicit admission maintains the owned runtime ignore rule; import preserves source bytes.
+        equal((await fs.readFile(join(fixture.root, ".gitignore"), "utf8")).includes(".wld/internal/"), true);
+        delete after[".gitignore"];
+        deepEqual(after, before);
         const catalog = await readPlanResourceCatalog(fixture.root);
         equal(catalog.resources.length, 1);
         equal(catalog.resources[0].planId, plans[0].attrs.planId);
@@ -39,20 +46,21 @@ test("ordinary catalogs ignore checkout Plans, then show only explicitly importe
 test("ordinary authoring creates a first canonical draft and preserves identity on revisioned edits", async () => {
     const fixture = await packageFixture();
     try {
-        const path = await savePlan(fixture.root, "first", "# First\n", { summary: "First Plan" });
-        equal(path.includes("/.wld/projects/"), true);
+        await authorLocalPlan(fixture.root, {
+            planName: "first",
+            contextMarkdown: "# First\n",
+            definition: { summary: "First Plan" },
+        });
+        equal((await loadPlan(fixture.root, "first"))!.path.includes("/.wld/projects/"), true);
         const first = await loadPlan(fixture.root, "first");
         equal(first?.attrs.status, "draft");
         equal(first?.markdown, "# First\n");
-        await savePlan(
-            fixture.root,
-            "first",
-            "# Updated\n",
-            { summary: "Updated Plan" },
-            {
-                expectedRevision: first?.revision,
-            },
-        );
+        await authorLocalPlan(fixture.root, {
+            planName: "first",
+            contextMarkdown: "# Updated\n",
+            definition: { summary: "Updated Plan" },
+            expectedRevision: first!.revision,
+        });
         const updated = await loadPlan(fixture.root, "first");
         equal(updated?.attrs.planId, first?.attrs.planId);
         equal(updated?.markdown, "# Updated\n");
@@ -73,10 +81,9 @@ test("archive and restore use canonical metadata and preserve document identity 
             loadArchivedPlan,
             restoreArchivedPlan,
             resolvePlan,
-            updateArchivedPlanFrontMatter,
             deleteArchivedPlanUnit,
-        } = await import("../plan-store.js");
-        await savePlan(fixture.root, "retained", "# Keep the bytes\n");
+        } = await import("../plan-store/index.ts");
+        await seedPlan(fixture.root, "retained", "# Keep the bytes\n");
         const first = await loadPlan(fixture.root, "retained");
         await archivePlan(fixture.root, "retained", { force: true, reason: "Finished" });
         deepEqual(await listPlans(fixture.root), []);

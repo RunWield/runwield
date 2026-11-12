@@ -1,3 +1,5 @@
+import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
+import { makeValidationCheckpoint } from "../../shared/workflow/validation-checkpoint.ts";
 import { test } from "node:test";
 import {
     mkdir as fsMkdir,
@@ -14,7 +16,8 @@ import { strictEqual as assertStrictEquals } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
+import { savePlanWithController as savePlan } from "../../shared/testing/plan-controller-fixture.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
 import { writeWorkRecord } from "../../shared/work-records/store.ts";
@@ -545,9 +548,15 @@ test("Dashboard ignores historical attention flags and sorts all ready Plans by 
                 planId: status,
                 classification: "FEATURE",
                 status,
-                humanReviewMode: "pair",
-                humanReviewDecision: "pending",
-                validationCheckpoint: { state: "awaiting_repair" },
+                humanReviewMode: "always",
+                humanReviewDecision: "changes_requested",
+                validationCheckpoint: makeValidationCheckpoint({
+                    attemptId: "historical",
+                    generation: "historical",
+                    status: "ci_failed",
+                    phase: "mechanical",
+                    state: "awaiting_repair",
+                }),
             });
         }
         for (let index = 0; index < 7; index++) {
@@ -555,9 +564,15 @@ test("Dashboard ignores historical attention flags and sorts all ready Plans by 
                 planId: `ready-${index}`,
                 classification: "FEATURE",
                 status: "ready_for_work",
-                humanReviewMode: "pair",
-                humanReviewDecision: "pending",
-                validationCheckpoint: { state: "awaiting_repair" },
+                humanReviewMode: "always",
+                humanReviewDecision: "changes_requested",
+                validationCheckpoint: makeValidationCheckpoint({
+                    attemptId: "historical",
+                    generation: "historical",
+                    status: "ci_failed",
+                    phase: "mechanical",
+                    state: "awaiting_repair",
+                }),
                 updatedAt: `2026-09-${String(index + 1).padStart(2, "0")}T12:00:00.000Z`,
             });
         }
@@ -820,43 +835,47 @@ test("personal remote Workspace v2 Dashboard does not mark READY status ready wh
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-owner-dashboard-readiness-"));
     const projectRoot = `${dir}/project`;
     await fsMkdir(`${projectRoot}/.wld`, { recursive: true });
-    await savePlan(projectRoot, "ready", "# Ready\n", {
-        planId: "ready-plan",
-        classification: "FEATURE",
-        status: "ready_for_work",
+    return await withRetainedPlanFixture(projectRoot, async () => {
+        await savePlan(projectRoot, "ready", "# Ready\n", {
+            planId: "ready-plan",
+            classification: "FEATURE",
+            status: "ready_for_work",
+        });
+        assertEquals((await loadPlan(projectRoot, "ready"))?.readAvailability?.kind, "ready");
+        await fsWriteFile(resolveProjectRuntimeLayout(projectRoot).primary.worktreeRegistryPath, "{ broken");
+        const store = {
+            listProjects: () => [{ projectId: "project-1", displayName: "Project", lifecycle: "enabled" }],
+            getProjectHealth: () => ({ status: "available", evidence: [] }),
+            requireEnabledProjectRoot: () => projectRoot,
+            listSessionPlanAssociations: () => [],
+            inspectSessionActivation: () => ({ activation: { state: "idle" } }),
+        };
+        const sessionContinuation = {
+            operations: new Map(),
+            listSessions: () => Promise.resolve({ sessions: [], hasNext: false, diagnostics: [] }),
+        };
+        try {
+            const payload = await loadOwnerDashboard(store, sessionContinuation);
+            const readyItems = payload.dashboard.sections.find(
+                (section: { key: string }) => section.key === "ready",
+            ).items;
+            assertEquals(
+                readyItems.some((item: { planId: string }) => item.planId === "ready-plan"),
+                false,
+            );
+            const needsYou = payload.dashboard.sections.find(
+                (section: { key: string }) => section.key === "needs-you",
+            ).items;
+            assertEquals(needsYou.length, 0);
+            await assertRejects(() => loadPlan(projectRoot, "ready"), Error, "JSON Parse error");
+            assertEquals(
+                payload.projects[0].diagnostics.some((item) => item.source === "registry-reader"),
+                true,
+            );
+        } finally {
+            await fsRm(dir, { recursive: true });
+        }
     });
-    assertEquals((await loadPlan(projectRoot, "ready"))?.readAvailability?.kind, "ready");
-    await fsWriteFile(resolveProjectRuntimeLayout(projectRoot).primary.worktreeRegistryPath, "{ broken");
-    const store = {
-        listProjects: () => [{ projectId: "project-1", displayName: "Project", lifecycle: "enabled" }],
-        getProjectHealth: () => ({ status: "available", evidence: [] }),
-        requireEnabledProjectRoot: () => projectRoot,
-        listSessionPlanAssociations: () => [],
-        inspectSessionActivation: () => ({ activation: { state: "idle" } }),
-    };
-    const sessionContinuation = {
-        operations: new Map(),
-        listSessions: () => Promise.resolve({ sessions: [], hasNext: false, diagnostics: [] }),
-    };
-    try {
-        const payload = await loadOwnerDashboard(store, sessionContinuation);
-        const readyItems = payload.dashboard.sections.find((section: { key: string }) => section.key === "ready").items;
-        assertEquals(
-            readyItems.some((item: { planId: string }) => item.planId === "ready-plan"),
-            false,
-        );
-        const needsYou = payload.dashboard.sections.find(
-            (section: { key: string }) => section.key === "needs-you",
-        ).items;
-        assertEquals(needsYou.length, 0);
-        await assertRejects(() => loadPlan(projectRoot, "ready"), Error, "JSON Parse error");
-        assertEquals(
-            payload.projects[0].diagnostics.some((item) => item.source === "registry-reader"),
-            true,
-        );
-    } finally {
-        await fsRm(dir, { recursive: true });
-    }
 });
 
 test("personal remote Workspace v2 Session API filters committed Plan associations before pagination", async () => {

@@ -1,19 +1,14 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { compactStatus } from "./presentation.ts";
-import {
-    mkdir as fsMkdir,
-    writeFile as fsWriteFile,
-    stat as fsStat,
-    mkdtemp as fsMkdtemp,
-    readFile as fsReadFile,
-    rm as fsRm,
-} from "node:fs/promises";
+import { stat as fsStat, mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { RUNWIELD_GITIGNORE_BLOCK } from "../runwield-owned-paths.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
@@ -38,7 +33,7 @@ import process from "node:process";
 const PLAN_MARKDOWN = "# Dark mode toggle\n\n## Implementation Steps\n\n1. Add the toggle.\n";
 
 async function writePlan(projectRoot: string, planName = "dark-mode-toggle", markdown = PLAN_MARKDOWN) {
-    return await savePlan(projectRoot, planName, markdown);
+    return await seedPlan(projectRoot, planName, markdown);
 }
 
 async function exists(path: string): Promise<boolean> {
@@ -170,16 +165,12 @@ const REJECTIONS: RejectionCase[] = [
     {
         name: "a reserved Epic artifact name",
         code: "invalid_outcome",
-        arrange: async (root, planning) => {
-            return { ...planning, planName: "epic/manual-qa" };
-        },
+        arrange: (_root, planning) => Promise.resolve({ ...planning, planName: "epic/manual-qa" }),
     },
     {
         name: "an archived Plan name",
         code: "invalid_outcome",
-        arrange: async (root, planning) => {
-            return { ...planning, planName: "archived/dark-mode-toggle" };
-        },
+        arrange: (_root, planning) => Promise.resolve({ ...planning, planName: "archived/dark-mode-toggle" }),
     },
     {
         name: "an invalid execution policy",
@@ -291,8 +282,8 @@ test("concurrent Plan submissions change only the winning Plan", async () => {
 });
 
 test("Connect plan_written uses the explicitly admitted home Plan and preserves identity across fresh calls", async () => {
-    const { packageFixture, create, read } = await import("../testing/plan-package-fixture.ts");
-    const { withPackageWorkflow, loadPackageWorkflowPlan } = await import("../workflow/package-workflow.ts");
+    const { packageFixture, create } = await import("../testing/plan-package-fixture.ts");
+    const { withPlanAccess, selectPlanAccess } = await import("../../plan-store/index.ts");
     const f = await packageFixture();
     try {
         await create(f.identity, {
@@ -300,30 +291,22 @@ test("Connect plan_written uses the explicitly admitted home Plan and preserves 
             documents: { "context.md": PLAN_MARKDOWN, "validation.md": "# Validation\n" },
         });
         const { planning } = await reachPlanning(f.root);
-        const result = await withPackageWorkflow(
-            f.root,
-            { identity: f.identity, planId: "plan-one", expectedRevision: 1 },
-            () =>
-                submit(f.root, {
-                    ...planning,
-                    executionAgent: "engineer",
-                    collaborationRecommendation: "pair",
-                }),
+        const result = await withPlanAccess(f.root, (await selectPlanAccess(f.root, "plan-one"))!, () =>
+            submit(f.root, {
+                ...planning,
+                executionAgent: "engineer",
+                collaborationRecommendation: "pair",
+            }),
         );
         assert(result.ok, JSON.stringify(result));
         assertEquals(result.workflow.plan?.planId, "plan-one");
-        const current = await read(f.identity);
-        await withPackageWorkflow(
-            f.root,
-            { identity: f.identity, planId: "plan-one", expectedRevision: current.metadata.revision },
-            async () => {
-                const core = await loadPackageWorkflowPlan({ planId: "plan-one" });
-                assertEquals(core.body, PLAN_MARKDOWN);
-                assertEquals(core.attrs.planId, result.workflow.plan?.planId);
-                const stored = await loadPlan(f.root, "dark-mode-toggle");
-                assertEquals(stored?.revision, core.revision);
-            },
-        );
+        await withPlanAccess(f.root, (await selectPlanAccess(f.root, "plan-one"))!, async () => {
+            const core = (await loadPlan(f.root, "dark-mode-toggle"))!;
+            assertEquals(core.body, PLAN_MARKDOWN);
+            assertEquals(core.attrs.planId, result.workflow.plan?.planId);
+            const stored = await loadPlan(f.root, "dark-mode-toggle");
+            assertEquals(stored?.revision, core.revision);
+        });
         assertEquals(await exists(join(f.root, "docs/plans/dark-mode-toggle.md")), false);
     } finally {
         await f.cleanup();

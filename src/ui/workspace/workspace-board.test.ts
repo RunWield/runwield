@@ -1,3 +1,5 @@
+import { seedPlanState, seedPlan } from "../../shared/testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { devPlanCatalog, devPlanCatalogVariant, devOwnerSidebar } from "./server/dev-owner-fixtures.ts";
@@ -11,12 +13,8 @@ import { tmpdir } from "node:os";
 import { readWorkspaceStyles } from "./workspace-styles.ts";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
-import {
-    savePlan,
-    loadPlan,
-    updatePlanFrontMatter,
-    resolveSiblingChildPlanDependencyStates,
-} from "../../plan-store.js";
+import { resolveSiblingChildPlanDependencyStates } from "../../plan-format.ts";
+import { loadPlan } from "../../plan-store/index.ts";
 
 import {
     buildBoardGroups,
@@ -38,7 +36,7 @@ import { matchingPlanIds, normalizePlanSearchQuery, PLAN_SEARCH_QUERY_PARAM } fr
 type WorkspaceBoardColumn = BoardColumnData;
 type WorkspaceDependencyState = ReturnType<typeof resolveSiblingChildPlanDependencyStates>[number];
 
-type PlanMetadataFixture = NonNullable<Parameters<typeof savePlan>[3]>;
+type PlanMetadataFixture = NonNullable<Parameters<typeof seedPlan>[3]>;
 type NamedPlan = Pick<Parameters<typeof resolveSiblingChildPlanDependencyStates>[2][number], "name">;
 type PlanOrderingFixture = [
     name: string,
@@ -294,26 +292,28 @@ test("workspaceHref omits ephemeral token on owner Project Plan routes", () => {
 test("loadPlanSummaries marks top-level, Epic, child, and orphan-child hierarchy roles", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await savePlan(cwd, "top", "# Top", { planId: "top-id", classification: "FEATURE" });
-        await savePlan(cwd, "epic", "# Epic", {
-            planId: "epic-id",
-            classification: "PROJECT",
+        await withRetainedPlanFixture(cwd, async () => {
+            await seedPlan(cwd, "top", "# Top", { planId: "top-id", classification: "FEATURE" });
+            await seedPlan(cwd, "epic", "# Epic", {
+                planId: "epic-id",
+                classification: "PROJECT",
+            });
+            await seedPlan(cwd, "epic/child", "# Child", {
+                planId: "child-id",
+                classification: "FEATURE",
+                parentPlan: "epic",
+            });
+            await seedPlan(cwd, "missing/child", "# Orphan", {
+                planId: "orphan-id",
+                classification: "FEATURE",
+                parentPlan: "missing",
+            });
+            const byId = new Map((await loadPlanSummaries(cwd)).map((plan) => [plan.planId, plan.hierarchyRole]));
+            assertEquals(byId.get("top-id"), "top-level");
+            assertEquals(byId.get("epic-id"), "epic");
+            assertEquals(byId.get("child-id"), "child");
+            assertEquals(byId.get("orphan-id"), "orphan-child");
         });
-        await savePlan(cwd, "epic/child", "# Child", {
-            planId: "child-id",
-            classification: "FEATURE",
-            parentPlan: "epic",
-        });
-        await savePlan(cwd, "missing/child", "# Orphan", {
-            planId: "orphan-id",
-            classification: "FEATURE",
-            parentPlan: "missing",
-        });
-        const byId = new Map((await loadPlanSummaries(cwd)).map((plan) => [plan.planId, plan.hierarchyRole]));
-        assertEquals(byId.get("top-id"), "top-level");
-        assertEquals(byId.get("epic-id"), "epic");
-        assertEquals(byId.get("child-id"), "child");
-        assertEquals(byId.get("orphan-id"), "orphan-child");
     } finally {
         await fsRm(cwd, { recursive: true });
     }
@@ -331,7 +331,7 @@ test("loadPlanSummaries preserves the core plan-list order", async () => {
             ["verified", "verified-id", "FEATURE", "verified"],
         ];
         for (const [name, planId, classification, status] of plans) {
-            await savePlan(cwd, name, `# ${name}`, {
+            await seedPlan(cwd, name, `# ${name}`, {
                 planId,
                 classification: classification,
                 status: status,
@@ -350,13 +350,13 @@ test("loadPlanSummaries preserves the core plan-list order", async () => {
 test("loadWorkspaceDetail returns Epic detail with children grouped by status", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await savePlan(cwd, "epic", "# Epic\n\nBody", {
+        await seedPlan(cwd, "epic", "# Epic\n\nBody", {
             planId: "epic-id",
             classification: "PROJECT",
             status: "draft",
             type: "epic",
         });
-        await savePlan(cwd, "epic/child", "# Child", {
+        await seedPlan(cwd, "epic/child", "# Child", {
             planId: "child-id",
             classification: "FEATURE",
             parentPlan: "epic",
@@ -385,72 +385,74 @@ test("loadWorkspaceDetail returns Epic detail with children grouped by status", 
 test("workspace adapter exposes Epic dependency health done-enough held and orphan repair metadata", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await savePlan(cwd, "epic", "# Epic", {
-            planId: "epic-id",
-            classification: "PROJECT",
-            status: "on_hold",
-            heldFromStatus: "in_progress",
-            heldAt: "2026-01-01T00:00:00.000Z",
-            holdReason: "paused",
-            epicCompletionMode: "done_enough",
-            epicDoneEnoughSummary: "Enough value shipped",
-            epicDoneEnoughAt: "2026-01-02T00:00:00.000Z",
-        });
-        await savePlan(cwd, "epic/01-done", "# Done", {
-            planId: "done-id",
-            classification: "FEATURE",
-            parentPlan: "epic",
-            status: "verified",
-            verifiedAt: "2026-01-01T00:00:00.000Z",
-            deliveryEvidence: { version: 1, mode: "non_git_in_place" },
-        });
-        await savePlan(cwd, "epic/02-blocked", "# Blocked", {
-            planId: "blocked-id",
-            classification: "FEATURE",
-            parentPlan: "epic",
-            status: "draft",
-            dependencies: ["01-done", "03-held", "04-missing"],
-        });
-        await savePlan(cwd, "epic/03-held", "# Held", {
-            planId: "held-id",
-            classification: "FEATURE",
-            parentPlan: "epic",
-            status: "on_hold",
-            holdReason: "child paused",
-        });
-        await savePlan(cwd, "missing/child", "# Orphan", {
-            planId: "orphan-id",
-            classification: "FEATURE",
-            parentPlan: "missing",
-            status: "draft",
-            dependencies: ["other"],
-        });
+        await withRetainedPlanFixture(cwd, async () => {
+            await seedPlan(cwd, "epic", "# Epic", {
+                planId: "epic-id",
+                classification: "PROJECT",
+                status: "on_hold",
+                heldFromStatus: "in_progress",
+                heldAt: "2026-01-01T00:00:00.000Z",
+                holdReason: "paused",
+                epicCompletionMode: "done_enough",
+                epicDoneEnoughSummary: "Enough value shipped",
+                epicDoneEnoughAt: "2026-01-02T00:00:00.000Z",
+            });
+            await seedPlan(cwd, "epic/01-done", "# Done", {
+                planId: "done-id",
+                classification: "FEATURE",
+                parentPlan: "epic",
+                status: "verified",
+                verifiedAt: "2026-01-01T00:00:00.000Z",
+                deliveryEvidence: { version: 1, mode: "non_git_in_place" },
+            });
+            await seedPlan(cwd, "epic/02-blocked", "# Blocked", {
+                planId: "blocked-id",
+                classification: "FEATURE",
+                parentPlan: "epic",
+                status: "draft",
+                dependencies: ["01-done", "03-held", "04-missing"],
+            });
+            await seedPlan(cwd, "epic/03-held", "# Held", {
+                planId: "held-id",
+                classification: "FEATURE",
+                parentPlan: "epic",
+                status: "on_hold",
+                holdReason: "child paused",
+            });
+            await seedPlan(cwd, "missing/child", "# Orphan", {
+                planId: "orphan-id",
+                classification: "FEATURE",
+                parentPlan: "missing",
+                status: "draft",
+                dependencies: ["other"],
+            });
 
-        const detail = await loadWorkspaceDetail(cwd, "epic-id");
-        const blocked = detail.children.find((child: PlanCardData) => child.planId === "blocked-id");
-        assertEquals(detail.doneEnough, true);
-        assertEquals(
-            detail.childHealth.held.map((child: PlanCardData) => child.planId),
-            ["held-id"],
-        );
-        assertEquals(
-            detail.childHealth.blocked.map((child: PlanCardData) => child.planId),
-            ["blocked-id"],
-        );
-        assertEquals(
-            detail.childHealth.missingDependencies.map((child: PlanCardData) => child.planId),
-            ["blocked-id"],
-        );
-        assertEquals(
-            blocked.dependencyStates.map((entry: WorkspaceDependencyState) => entry.state),
-            ["verified", "unverified", "missing"],
-        );
+            const detail = await loadWorkspaceDetail(cwd, "epic-id");
+            const blocked = detail.children.find((child: PlanCardData) => child.planId === "blocked-id");
+            assertEquals(detail.doneEnough, true);
+            assertEquals(
+                detail.childHealth.held.map((child: PlanCardData) => child.planId),
+                ["held-id"],
+            );
+            assertEquals(
+                detail.childHealth.blocked.map((child: PlanCardData) => child.planId),
+                ["blocked-id"],
+            );
+            assertEquals(
+                detail.childHealth.missingDependencies.map((child: PlanCardData) => child.planId),
+                ["blocked-id"],
+            );
+            assertEquals(
+                blocked.dependencyStates.map((entry: WorkspaceDependencyState) => entry.state),
+                ["verified", "unverified", "missing"],
+            );
 
-        const orphan = await loadWorkspaceDetail(cwd, "orphan-id");
-        assertEquals(orphan.hierarchyRole, "orphan-child");
-        assertEquals(orphan.parentResolved, false);
-        assertStringIncludes(orphan.orphanReason, "missing");
-        assertEquals(orphan.dependencyStates, [{ dependency: "other", state: "missing" }]);
+            const orphan = await loadWorkspaceDetail(cwd, "orphan-id");
+            assertEquals(orphan.hierarchyRole, "orphan-child");
+            assertEquals(orphan.parentResolved, false);
+            assertStringIncludes(orphan.orphanReason, "missing");
+            assertEquals(orphan.dependencyStates, [{ dependency: "other", state: "missing" }]);
+        });
     } finally {
         await fsRm(cwd, { recursive: true });
     }
@@ -504,14 +506,14 @@ test("workspace detail header CSS lets lifecycle actions wrap without squeezing 
 test("Epic detail order ignores filename prefixes and status and follows metadata edits", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "child-order-board-"));
     try {
-        await savePlan(cwd, "epic", "# Epic", { planId: "epic-id", classification: "PROJECT" });
+        await seedPlan(cwd, "epic", "# Epic", { planId: "epic-id", classification: "PROJECT" });
         const children: ChildOrderingFixture[] = [
             { name: "99-first", order: 1, status: "draft" },
             { name: "middle", order: 2, status: "ready_for_work" },
             { name: "01-last", order: 10, status: "failed" },
         ];
         for (const child of children) {
-            await savePlan(cwd, `epic/${child.name}`, `# ${child.name}`, {
+            await seedPlan(cwd, `epic/${child.name}`, `# ${child.name}`, {
                 planId: child.name,
                 parentPlan: "epic",
                 order: child.order,
@@ -524,7 +526,7 @@ test("Epic detail order ignores filename prefixes and status and follows metadat
             ["epic/99-first", "epic/middle", "epic/01-last"],
         );
         const last = await loadPlan(cwd, "epic/01-last");
-        await updatePlanFrontMatter(cwd, "epic/01-last", { order: 0 }, {}, { expectedRevision: last!.revision });
+        await seedPlanState(cwd, "epic/01-last", { order: 0 }, {}, { expectedRevision: last!.revision });
         const after = await loadWorkspaceDetail(cwd, "epic-id");
         assertEquals(
             after.children.map((child: NamedPlan) => child.name),
@@ -595,29 +597,25 @@ test("development catalog selection is request-local and shared by sidebar and B
 
 test("admitted package Board keeps healthy Plans beside diagnostics and ignores repository delivery copies", async () => {
     const { packageFixture, create, tree } = await import("../../shared/testing/plan-package-fixture.ts");
-    const { withPackageWorkflow } = await import("../../shared/workflow/package-workflow.ts");
+    const { withPlanReadScope } = await import("../../plan-store/index.ts");
     const { loadBoard } = await import("./server/plan-adapter.js");
     const { mkdir, writeFile } = await import("node:fs/promises");
     const f = await packageFixture();
     try {
-        const p = await create(f.identity, { definition: { classification: "PLANNED_CHANGE", status: "draft" } });
+        await create(f.identity, { definition: { classification: "PLANNED_CHANGE", status: "draft" } });
         await mkdir(join(f.root, "docs/plans"), { recursive: true });
         await writeFile(join(f.root, "docs/plans/one.md"), "# Stale repository delivery copy\n");
         const broken = await create(f.identity, { planId: "broken", name: "broken" });
         await writeFile(join(broken.path, "plan.wld.json"), "{");
         const before = await tree(f.root);
-        await withPackageWorkflow(
-            f.root,
-            { identity: f.identity, planId: p.metadata.planId, expectedRevision: 1 },
-            async () => {
-                const board = await loadBoard(f.root);
-                assertEquals(board.plans.length, 1);
-                assertEquals(board.plans[0].planId, "plan-one");
-                assertEquals(board.diagnostics.length, 1);
-                const detail = await loadWorkspaceDetail(f.root, "plan-one", { reviewOnly: true });
-                assertStringIncludes(detail.body, "Prose — 世界");
-            },
-        );
+        await withPlanReadScope(f.root, async () => {
+            const board = await loadBoard(f.root);
+            assertEquals(board.plans.length, 1);
+            assertEquals(board.plans[0].planId, "plan-one");
+            assertEquals(board.diagnostics.length, 1);
+            const detail = await loadWorkspaceDetail(f.root, "plan-one", { reviewOnly: true });
+            assertStringIncludes(detail.body, "Prose — 世界");
+        });
         assertEquals(await tree(f.root), before);
     } finally {
         await f.cleanup();

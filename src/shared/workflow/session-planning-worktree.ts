@@ -1,19 +1,20 @@
-import { currentPackageSelection } from "./package-workflow.ts";
-import { preparePlanWorkflow } from "./plan-preparation.ts";
-import { loadPlan, mergeFrontMatterText } from "../../plan-store.js";
+import { capturePlanAccess } from "../../plan-store/index.ts";
+import { preparePlanWorkflow } from "../../plan-store/index.ts";
+import { mergeFrontMatterText } from "../../plan-format.ts";
+import { loadPlan } from "../../plan-store/index.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { findActiveByPlanName } from "../worktree-registry.js";
 import { executionWorktreePathExists, recoverMissingExecutionWorktree } from "./execution-worktree-rescue.ts";
 import { isPublicationCleanupPending } from "./publication-attempt.ts";
 import { isGitRepository } from "../git.ts";
-import { ensureExecutionPlanFile } from "./execution-plan-file.js";
+import { ensureExecutionPlanFile } from "../../plan-store/index.ts";
 import { ensureEpicBranch } from "./epic-branch.ts";
-import { needsSessionPlanningWorktree, resolveWorkflowPlanLocation } from "./plan-location.ts";
+import { needsSessionPlanningWorktree, resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { preparePlanningWorktreeForPlan } from "./planning-worktree.ts";
 
 /** Prepare the authoritative Plan document immediately before a workflow session starts. */
 export async function prepareSessionPlanningWorktree(projectRoot: string, planName: string) {
-    if (currentPackageSelection()) return await preparePlanWorkflow(projectRoot, planName);
+    if (capturePlanAccess()) return await preparePlanWorkflow(projectRoot, planName);
     await preparePlanWorkflow(projectRoot, planName);
     const registryRoot = resolvePrimaryCheckoutRoot(projectRoot);
     const attempt = await findActiveByPlanName(registryRoot, planName);

@@ -1,4 +1,4 @@
-import { readLocalHomeStore, withLocalProjectAction } from "../../shared/local-home-store.ts";
+import { readLocalHomeStore, withLocalProjectAction } from "../../plan-store/index.ts";
 import { importWorkRecords } from "../../shared/work-records/import.ts";
 /**
  * @module cmd/wr
@@ -132,6 +132,10 @@ function formatRebuildResult(result: Awaited<ReturnType<typeof rebuildWorkRecord
 }
 
 export async function runWorkRecordsCommand(argv: string[], options: WorkRecordCommandOptions): Promise<void> {
+    if (argv.includes("--help") || argv.includes("-h") || argv[0] === "help") {
+        printCommandHelp("wr");
+        return;
+    }
     const execute = () => runWorkRecordsCommandInOwner(argv, options);
     if (["import", "index", "rebuild", "backfill", "retry", "supersede"].includes(argv[0]))
         return await withLocalProjectAction(getCwd(), execute);

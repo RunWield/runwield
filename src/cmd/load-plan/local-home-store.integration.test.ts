@@ -3,8 +3,8 @@ import { equal, rejects } from "node:assert/strict";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { packageFixture } from "../../shared/testing/plan-package-fixture.ts";
-import { resolvePlanWithPrimaryRecovery } from "./primary-plan-recovery.ts";
-import { listPlans } from "../../plan-store.js";
+import { resolvePlanWithPrimaryRecovery } from "../../plan-store/index.ts";
+import { listPlans } from "../../plan-store/index.ts";
 
 test("load by name never adopts checkout prose; explicit path imports once and canonical references survive source deletion", async () => {
     const fixture = await packageFixture();

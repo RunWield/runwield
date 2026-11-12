@@ -1,10 +1,18 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
+import { mkdtemp } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
+import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
+import { resolveEpicArtifactPath } from "../../plan-store/index.ts";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import type { TriageMeta } from "../../tools/plan-written.ts";
 import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import {
     makeRecordedSession,
     makeUi,
@@ -102,18 +110,19 @@ test("runValidationLoop publishes only from reviewed after human review is durab
 });
 
 test("Epic child delivery commits its Manual QA artifact with verified metadata", async () => {
-    const projectRoot = await makeValidationProjectRoot("epic/01-one", {
-        classification: "PLANNED_CHANGE",
-        status: "reviewed",
-        parentPlan: "epic",
-        humanReviewMode: "none",
-        humanReviewDecision: "not_required",
-    });
-    await savePlan(projectRoot, "epic", "# Epic", {
-        classification: "PROJECT",
-        status: "ready_for_work",
-        summary: "Epic",
-    });
+    const projectRoot = await makeValidationProjectRoot("epic", { classification: "PROJECT", status: "draft" });
+    await makeValidationProjectRoot(
+        "epic/01-one",
+        {
+            classification: "PLANNED_CHANGE",
+            status: "reviewed",
+            parentPlan: "epic",
+            humanReviewMode: "none",
+            humanReviewDecision: "not_required",
+        },
+        "# One\n\nimplemented child",
+        projectRoot,
+    );
     const { hostedSession } = makeValidationUi();
     hostedSession.setActiveExecutionWorkflow({
         planName: "epic/01-one",
@@ -171,28 +180,39 @@ test("Epic child delivery commits its Manual QA artifact with verified metadata"
     assertEquals(result.epicContinuation?.completedPlanName, "epic/01-one");
     assertEquals(result.epicContinuation?.projectRoot, projectRoot);
     assertEquals((await loadPlan(projectRoot, "epic/01-one"))?.attrs.status, "verified");
-    const artifact = await fsReadFile(`${projectRoot}/docs/plans/epic/manual-qa.md`, "utf8");
+    const artifact = await withLocalPlanWorkflow(
+        projectRoot,
+        "epic",
+        async () => await fsReadFile(await resolveEpicArtifactPath(projectRoot, "epic", "manual-qa.md"), "utf8"),
+    );
     assertStringIncludes(artifact, "# Manual QA for epic");
     assertStringIncludes(artifact, "This checklist is advisory. It does not change RunWield verification status.");
-    assertStringIncludes(artifact, '<!-- runwield:manual-qa:start child="epic/01-one" -->');
+    assertStringIncludes(
+        artifact,
+        `<!-- runwield:manual-qa:start child="${(await loadPlan(projectRoot, "epic/01-one"))?.attrs.planId}" -->`,
+    );
     assertStringIncludes(artifact, "Manual verification steps for epic/01-one");
     assertStringIncludes(artifact, "- [ ] Check delivered child");
-    assertStringIncludes(artifact, '<!-- runwield:manual-qa:end child="epic/01-one" -->');
+    assertStringIncludes(
+        artifact,
+        `<!-- runwield:manual-qa:end child="${(await loadPlan(projectRoot, "epic/01-one"))?.attrs.planId}" -->`,
+    );
 });
 
 test("Epic child publication stops when the Manual QA Agent has a fatal failure", async () => {
-    const projectRoot = await makeValidationProjectRoot("epic/01-one", {
-        classification: "PLANNED_CHANGE",
-        status: "reviewed",
-        parentPlan: "epic",
-        humanReviewMode: "none",
-        humanReviewDecision: "not_required",
-    });
-    await savePlan(projectRoot, "epic", "# Epic", {
-        classification: "PROJECT",
-        status: "ready_for_work",
-        summary: "Epic",
-    });
+    const projectRoot = await makeValidationProjectRoot("epic", { classification: "PROJECT", status: "draft" });
+    await makeValidationProjectRoot(
+        "epic/01-one",
+        {
+            classification: "PLANNED_CHANGE",
+            status: "reviewed",
+            parentPlan: "epic",
+            humanReviewMode: "none",
+            humanReviewDecision: "not_required",
+        },
+        "# One\n\nimplemented child",
+        projectRoot,
+    );
     const { hostedSession } = makeValidationUi();
     const triageMeta: TriageMeta = {
         classification: "PLANNED_CHANGE",
@@ -225,36 +245,39 @@ test("Epic child publication stops when the Manual QA Agent has a fatal failure"
 });
 
 test("publication pauses on missing target branch metadata without recording validation failure", async () => {
-    const projectRoot = await makeValidationProjectRoot("p", {
-        classification: "QUICK_FIX",
-        status: "reviewed",
-        humanReviewMode: "none",
-        humanReviewDecision: "not_required",
-    });
-    const { hostedSession } = makeValidationUi();
-    const triageMeta: TriageMeta = {
-        classification: "QUICK_FIX",
-        status: "reviewed",
-        humanReviewMode: "none",
-        humanReviewDecision: "not_required",
-    };
-    hostedSession.setActiveExecutionWorkflow({
-        planName: "p",
-        triageMeta,
-        executionAgent: "engineer",
-        projectRoot,
-        executionCwd: projectRoot,
-        worktreeBranch: "runwield/worktree/p-wt1",
-    });
+    const projectRoot = await mkdtemp(join(tmpdir(), "legacy-missing-target-"));
+    await withRetainedPlanFixture(projectRoot, async () => {
+        await seedPlan(projectRoot, "p", "# Legacy publication", {
+            classification: "QUICK_FIX",
+            status: "reviewed",
+            humanReviewMode: "none",
+            humanReviewDecision: "not_required",
+        });
+        const { hostedSession } = makeValidationUi();
+        const triageMeta: TriageMeta = {
+            classification: "QUICK_FIX",
+            status: "reviewed",
+            humanReviewMode: "none",
+            humanReviewDecision: "not_required",
+        };
+        hostedSession.setActiveExecutionWorkflow({
+            planName: "p",
+            triageMeta,
+            executionAgent: "engineer",
+            projectRoot,
+            executionCwd: projectRoot,
+            worktreeBranch: "runwield/worktree/p-wt1",
+        });
 
-    const result = await runValidationLoop({
-        hostedSession,
-        planName: "p",
-        planContent: "# p",
-        triageMeta,
-        semanticReviewPort: NO_ISOLATED_AGENT_PORT,
-    });
+        const result = await runValidationLoop({
+            hostedSession,
+            planName: "p",
+            planContent: "# p",
+            triageMeta,
+            semanticReviewPort: NO_ISOLATED_AGENT_PORT,
+        });
 
-    assertEquals(result.kind, "paused");
-    assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "reviewed");
+        assertEquals(result.kind, "paused");
+        assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "reviewed");
+    });
 });

@@ -1,7 +1,9 @@
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
+
 import { assertEquals } from "../../testing/assertions.ts";
 import { getCwd } from "../../constants.js";
 import process from "node:process";
-import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -58,23 +60,24 @@ test("getLoadPlanCompletions sorts loadable plans by workflow priority", async (
         const originalCwd = getCwd();
         const tempDir = await fsMkdtemp(join(tmpdir(), "runwield-load-plan-completions-"));
         try {
-            await fsMkdir(`${tempDir}/docs/plans`, { recursive: true });
             const plans = [
-                ["z-verified", "FEATURE", "verified"],
+                ["z-verified", "PLANNED_CHANGE", "verified"],
                 ["b-ready-epic", "PROJECT", "ready_for_work"],
                 ["a-ready-epic", "PROJECT", "ready_for_work"],
-                ["ready-feature", "FEATURE", "ready_for_work"],
-                ["draft-plan", "FEATURE", "draft"],
-                ["failed-plan", "FEATURE", "failed"],
-                ["implemented-plan", "FEATURE", "implemented"],
-                ["held-plan", "FEATURE", "on_hold"],
+                ["ready-feature", "PLANNED_CHANGE", "ready_for_work"],
+                ["draft-plan", "PLANNED_CHANGE", "draft"],
+                ["failed-plan", "PLANNED_CHANGE", "failed"],
+                ["implemented-plan", "PLANNED_CHANGE", "implemented"],
+                ["held-plan", "PLANNED_CHANGE", "on_hold"],
                 ["decompose-epic", "PROJECT", "ready_for_decomposition"],
-            ];
+            ] as const;
             for (const [name, classification, status] of plans) {
-                await fsWriteFile(
-                    `${tempDir}/docs/plans/${name}.md`,
-                    `---\nclassification: "${classification}"\nstatus: "${status}"\nsummary: "${name}"\ncreatedAt: "2026-01-01T00:00:00.000Z"\n---\n\n# ${name}\n`,
-                );
+                await seedPlan(tempDir, name, `# ${name}\n`, {
+                    classification,
+                    status,
+                    summary: name,
+                    createdAt: "2026-01-01T00:00:00.000Z",
+                });
             }
 
             process.chdir(tempDir);

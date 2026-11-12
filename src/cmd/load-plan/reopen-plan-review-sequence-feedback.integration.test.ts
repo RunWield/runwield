@@ -1,25 +1,27 @@
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText, type TranscriptContext } from "@earendil-works/pi-ai";
-import { ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.js";
+import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
+
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";
-import type { SequenceReviewDocument } from "../../shared/workflow/sequence-review.ts";
+import type { SequenceReviewDocument } from "../../plan-store/index.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 
 test("reopened Sequence combines container and child feedback for its planning Agent", async () => {
     await withRuntimeCommandFixture(
         "reopen-sequence-feedback-",
         async ({ homeDir, projectRoot, setModelResponseFactory }) => {
-            await savePlan(projectRoot, "sequence", "# Sequence\n\n## Context\n\nThe entire change.\n", {
+            await seedPlan(projectRoot, "sequence", "# Sequence\n\n## Context\n\nThe entire change.\n", {
                 classification: "PROJECT",
                 type: "sequence",
                 status: "draft",
                 affectedPaths: [],
             });
-            await savePlan(projectRoot, "sequence/first", "# First\n\n## Context\n\nThe first step.\n", {
+            await seedPlan(projectRoot, "sequence/first", "# First\n\n## Context\n\nThe first step.\n", {
                 classification: "PLANNED_CHANGE",
                 status: "draft",
                 parentPlan: "sequence",

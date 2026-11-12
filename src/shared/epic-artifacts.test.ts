@@ -1,3 +1,4 @@
+import { seedPlan } from "./testing/plan-state-fixture.ts";
 import {
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,
@@ -9,23 +10,24 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
 import { join } from "node:path";
-import { loadPlan, savePlan } from "../plan-store.js";
+import { loadPlan } from "../plan-store/index.ts";
+
 import {
-    appendEpicManualQaSection,
     getEpicArtifactPath,
-    isEpicArtifactPlanName,
     moveEpicArtifactsFromArchive,
     moveEpicArtifactsToArchive,
-} from "./epic-artifacts.ts";
+} from "../plan-store/artifacts.ts";
+import { isEpicArtifactPlanName } from "../plan-format.ts";
+import { appendEpicManualQaSection } from "../plan-store/index.ts";
 
 async function makeEpicFixture() {
     const projectRoot = await fsMkdtemp(join(tmpdir(), "epic-artifacts-"));
-    await savePlan(projectRoot, "epic", "# Epic", {
+    await seedPlan(projectRoot, "epic", "# Epic", {
         classification: "PROJECT",
         status: "ready_for_work",
         summary: "Epic",
     });
-    await savePlan(projectRoot, "epic/01-one", "# One", {
+    await seedPlan(projectRoot, "epic/01-one", "# One", {
         classification: "PLANNED_CHANGE",
         status: "reviewed",
         parentPlan: "epic",

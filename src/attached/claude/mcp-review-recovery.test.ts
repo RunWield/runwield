@@ -112,9 +112,13 @@ test("fresh MCP status restores the same pending round and transport close stops
             assertEquals(status.workflow.review?.status, workflow.review?.status);
             assert(status.review.url !== original);
             const url = new URL(status.review.url);
+            const html = await (await fetch(url)).text();
+            const embedded = html.match(/<script[^>]*data-review-payload[^>]*>([\s\S]*?)<\/script>/)?.[1];
+            assert(embedded, "Expected browser review revision payload");
+            const { reviewRevision, documentRevision } = JSON.parse(embedded);
             const posted = await fetch(new URL(`/api/review/deny${url.search}`, url), {
                 method: "POST",
-                body: JSON.stringify({ feedback: "Use a selector.", reviewRevision: 0 }),
+                body: JSON.stringify({ feedback: "Use a selector.", reviewRevision, documentRevision }),
             });
             assertEquals(posted.status, 200);
             await posted.text();

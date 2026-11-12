@@ -1,17 +1,14 @@
-import { withLocalPlanWorkflow } from "../../shared/local-home-store.ts";
-import {
-    currentPackageSelection,
-    loadPackageWorkflowPlan,
-    capturePackageWorkflowInput,
-} from "../../shared/workflow/package-workflow.ts";
-import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
+import { preparePlanReviewDocument, renderPlanReviewMarkdown } from "../../plan-store/index.ts";
+import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
+
+import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import {
     type LoadedReviewImage,
     loadReviewFeedbackImages,
     type ReviewAnnotationInput,
     type ReviewImageInput,
 } from "../../shared/workflow/review-feedback-images.ts";
-import type { SequenceReviewDecision, SequenceReviewDocument } from "../../shared/workflow/sequence-review.ts";
+import type { SequenceReviewDecision, SequenceReviewDocument } from "../../plan-store/index.ts";
 /**
  * @module ui/review/plan-review
  * Browser plan-review consumer used by the terminal runtime adapter.
@@ -20,12 +17,11 @@ import type { SequenceReviewDecision, SequenceReviewDocument } from "../../share
  * The browser surface is isolated here so core only requests a review.
  */
 
-import { injectFrontMatter, loadPlanFileStrict, planDocumentMarkdown } from "../../plan-store.js";
 import { assertSharedPlanWriteAllowed } from "../../shared/collaboration/lock.ts";
 import { isAnsweredPlanReview } from "../../shared/workflow/plan-review-recovery.js";
-import { applySharedPlanReviewDecision } from "../../shared/workflow/plan-review-actions.ts";
+import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";
 import { startPlanReviewSurface } from "./review-launcher.ts";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store/index.ts";
 import type { PlanApprovalAction } from "../../shared/workflow/plan-approval.ts";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 
@@ -118,14 +114,8 @@ interface SubmitPlanForReviewOptions {
 
 /** Compose the same document-only payload for Core and Attached review hosts. */
 export async function preparePlanReviewPayload(planPath: string, triageMeta?: Partial<PlanFrontMatter>) {
-    const selection = currentPackageSelection();
-    const plan = selection
-        ? await loadPackageWorkflowPlan({ planId: selection.planId })
-        : await loadPlanFileStrict(planPath);
-    if (plan.kind !== "loaded") {
-        if (plan.kind === "malformed") throw plan.error;
-        throw new Error("The Plan could not be opened for review. Your files have not been changed.");
-    }
+    const snapshot = await preparePlanReviewDocument(planPath);
+    const plan = snapshot.document;
     const { attrs, body, revision: planRevision } = plan;
 
     assertSharedPlanWriteAllowed(attrs);
@@ -148,9 +138,17 @@ export async function preparePlanReviewPayload(planPath: string, triageMeta?: Pa
 
     const trustedClassification = fmOverrides.classification;
     const trustedWorkKind = fmOverrides.workKind;
-    const planWithFm = selection ? body : planDocumentMarkdown(injectFrontMatter(body, fmOverrides));
+    const planWithFm = renderPlanReviewMarkdown(body, fmOverrides);
 
-    return { attrs, planRevision, planWithFm, trustedClassification, trustedWorkKind };
+    return {
+        attrs,
+        planRevision,
+        planWithFm,
+        trustedClassification,
+        trustedWorkKind,
+        packageInput: snapshot.packageInput,
+        packageSelection: snapshot.access,
+    };
 }
 
 // ─── Main Function ────────────────────────────────────────────────────
@@ -177,13 +175,8 @@ async function submitPlanForReviewInScope({
     browser,
 }: SubmitPlanForReviewOptions): Promise<PlanReviewResult> {
     await preparePlanWorkflow(cwd, planName);
-    let { attrs, planRevision, planWithFm, trustedClassification, trustedWorkKind } = await preparePlanReviewPayload(
-        planPath,
-        triageMeta,
-    );
-
-    let packageSelection = currentPackageSelection();
-    let packageInput = packageSelection ? await capturePackageWorkflowInput(planName) : undefined;
+    let { attrs, planRevision, planWithFm, trustedClassification, trustedWorkKind, packageInput, packageSelection } =
+        await preparePlanReviewPayload(planPath, triageMeta);
 
     // 4. Start the real review surface; only browser opening crosses the port.
     const server = await startPlanReviewSurface<PlanReviewDecision>({
@@ -200,10 +193,15 @@ async function submitPlanForReviewInScope({
         onSurfaceReady,
         onReviewOpen: packageSelection
             ? async () => {
-                  ({ attrs, planRevision, planWithFm, trustedClassification, trustedWorkKind } =
-                      await preparePlanReviewPayload(planPath, triageMeta));
-                  packageSelection = currentPackageSelection();
-                  packageInput = await capturePackageWorkflowInput(planName);
+                  ({
+                      attrs,
+                      planRevision,
+                      planWithFm,
+                      trustedClassification,
+                      trustedWorkKind,
+                      packageInput,
+                      packageSelection,
+                  } = await preparePlanReviewPayload(planPath, triageMeta));
               }
             : undefined,
     });

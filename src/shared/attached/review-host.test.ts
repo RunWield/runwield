@@ -1,3 +1,4 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { mkdir, writeFile as fsWriteFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -19,7 +20,8 @@ import {
     submitReview,
     withProject,
 } from "./attached-test-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { recordPlanEvent } from "../workflow/plan-lifecycle.js";
 
 test("Codex browser review and restored chat identify the coordinating host", async () => {
@@ -33,7 +35,9 @@ test("Codex browser review and restored chat identify the coordinating host", as
             });
             assert(planned.ok && planned.workflow.nextAction.kind === "plan");
             await mkdir(join(root, "docs/plans"), { recursive: true });
-            await fsWriteFile(join(root, "docs/plans/dark-mode-toggle.md"), "# Toggle\n\nAdd a toggle.\n");
+            await seedPlan(root, "dark-mode-toggle", "# Toggle\n\nAdd a toggle.\n", {
+                classification: "PLANNED_CHANGE",
+            });
             const submitted = await runOperation("plan_written", root, {
                 ...planWrittenInput({
                     workflowId: planned.workflow.workflowId,
@@ -85,7 +89,11 @@ test("the production decision route acknowledges only a committed Attached outco
             assert(oldPlan);
             const response = await fetch(new URL(`/api/review/deny${url.search}`, url), {
                 method: "POST",
-                body: JSON.stringify({ feedback: "Revise the title.", reviewRevision: 0 }),
+                body: JSON.stringify({
+                    documentRevision: (await loadPlan(root, "dark-mode-toggle"))!.revision,
+                    feedback: "Revise the title.",
+                    reviewRevision: 0,
+                }),
             });
             assertEquals(response.status, 200);
             assertEquals(await response.text(), '{"ok":true}');
@@ -115,6 +123,7 @@ test("the production decision route acknowledges only a committed Attached outco
             const staleTab = await fetch(new URL(`/api/review/decision${url.search}`, url), {
                 method: "POST",
                 body: JSON.stringify({
+                    documentRevision: (await loadPlan(root, "dark-mode-toggle"))!.revision,
                     approvalAction: "run",
                     executionAgent: "engineer",
                     collaborationRecommendation: "autonomous",
@@ -128,6 +137,7 @@ test("the production decision route acknowledges only a committed Attached outco
             const approved = await fetch(new URL(`/api/review/decision${url.search}`, url), {
                 method: "POST",
                 body: JSON.stringify({
+                    documentRevision: (await loadPlan(root, "dark-mode-toggle"))!.revision,
                     approvalAction: "run",
                     executionAgent: "engineer",
                     collaborationRecommendation: "autonomous",
@@ -161,7 +171,10 @@ test("restoring hosting retains the durable round and does not invent cancellati
             const url = new URL(restored.url);
             const canceled = await fetch(new URL(`/api/review/exit${url.search}`, url), {
                 method: "POST",
-                body: JSON.stringify({ reviewRevision: 0 }),
+                body: JSON.stringify({
+                    documentRevision: (await loadPlan(root, "dark-mode-toggle"))!.revision,
+                    reviewRevision: 0,
+                }),
             });
             assertEquals(canceled.status, 200);
             await canceled.text();
@@ -187,6 +200,7 @@ test("the production stale-review response preserves the pending durable round",
             const rejected = await fetch(new URL(`/api/review/decision${url.search}`, url), {
                 method: "POST",
                 body: JSON.stringify({
+                    documentRevision: plan.revision,
                     approvalAction: "run",
                     executionAgent: "engineer",
                     collaborationRecommendation: "autonomous",
@@ -214,6 +228,7 @@ test("the production stale-review response preserves the pending durable round",
             const accepted = await fetch(new URL(`/api/review/decision${url.search}`, url), {
                 method: "POST",
                 body: JSON.stringify({
+                    documentRevision: (await loadPlan(root, "dark-mode-toggle"))!.revision,
                     approvalAction: "run",
                     executionAgent: "engineer",
                     collaborationRecommendation: "autonomous",
@@ -235,6 +250,7 @@ test("a Core-advanced browser reload returns its position without waiting on its
             const workflow = await submitReview(root);
             const hosted = await ensureReviewHosted(root, workflow, NO_OPEN_BROWSER_PORT);
             assert(hosted);
+            const reviewedPlan = (await loadPlan(root, "dark-mode-toggle"))!;
             await recordPlanEvent({
                 cwd: root,
                 planName: "dark-mode-toggle",
@@ -245,6 +261,7 @@ test("a Core-advanced browser reload returns its position without waiting on its
             const rejected = await fetch(new URL(`/api/review/decision${url.search}`, url), {
                 method: "POST",
                 body: JSON.stringify({
+                    documentRevision: reviewedPlan.revision,
                     approvalAction: "run",
                     executionAgent: "engineer",
                     collaborationRecommendation: "autonomous",
@@ -300,7 +317,7 @@ for (const pollCompletesFirst of [false, true]) {
             };
             try {
                 // Keep the real implemented Plan and worktree intact while seeding the preceding browser round.
-                await savePlan(fixture.root, "previous-plan", "# Previous Plan\n\nImplement the value.\n", {
+                await seedPlan(fixture.root, "previous-plan", "# Previous Plan\n\nImplement the value.\n", {
                     planId: "previous-plan",
                     classification: "PLANNED_CHANGE",
                     executionAgent: "engineer",

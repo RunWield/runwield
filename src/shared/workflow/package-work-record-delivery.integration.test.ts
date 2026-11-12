@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { equal, ok } from "node:assert/strict";
 import { recordingFixture } from "./testing/package-recording-fixture.ts";
 import { read } from "../testing/plan-package-fixture.ts";
-import { readPlanPackagePublication } from "../plan-package-store.ts";
+import { readPlanPackagePublication } from "../../plan-store/packages.ts";
 import { listWorkRecords } from "../work-records/store.ts";
 import { withWorkRecordOwner } from "../work-records/owner.ts";
 import { parseWorkRecordMarkdown } from "../work-records/markdown.js";
@@ -58,7 +58,7 @@ test("ordinary Recorder shares retained preparation and canonical settlement", a
         const { fauxAssistantMessage, fauxToolCall } = await import("@earendil-works/pi-ai");
         const { HostedSession } = await import("../session/hosted-session.js");
         const { runValidationAttempt } = await import("./validation-supervisor.ts");
-        const { loadPackageWorkflowPlan } = await import("./package-workflow.ts");
+        const { loadPackageWorkflowPlan } = await import("../../plan-store/workflows.ts");
         const { createGitPort } = await import("../git-port.ts");
         const { systemLocalCIPort } = await import("./validation-local-ci.ts");
         const { attachRecorder, makeUi } = await import("./validation-test-helpers.js");

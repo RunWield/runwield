@@ -51,15 +51,16 @@ function recoveryOptionValues(result: GoldenScenarioResult, index = 0): Set<stri
 }
 
 export const loadPlanActionsScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     name: "load-plan-hold-user-verify-actions",
     composedTui: true,
     initialAgentName: "guide",
     terminal: { columns: 100, rows: 30 },
     timeoutMs: 60000,
     coverage: ["workflow:load-plan", "durable:plan-lifecycle"],
-    initialProjectFiles: [
+    initialPlans: [
         {
-            path: "docs/plans/load-hold.md",
+            planName: "load-hold",
             text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Hold through load-plan\naffectedPaths: []\nstatus: ready_for_work\n---\n# Hold\n",
         },
     ],
@@ -105,6 +106,7 @@ export const loadPlanActionsScenario = {
 };
 
 export const loadPlanResetReviewArchiveScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     name: "load-plan-reset-review-and-archive-actions",
     composedTui: true,
     initialAgentName: "guide",
@@ -204,6 +206,7 @@ export const loadPlanResetReviewArchiveScenario = {
 };
 
 export const loadPlanCanceledExecutionThenPlannerReviewScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     name: "load-plan-cancel-stale-execution-then-planner-re-review",
     composedTui: true,
     initialAgentName: "guide",
@@ -305,6 +308,7 @@ export const loadPlanCanceledExecutionThenPlannerReviewScenario = {
 };
 
 export const loadPlanInterruptedRecoveryScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     name: "load-plan-interrupted-child-recovery-options",
     composedTui: true,
     initialAgentName: "guide",
@@ -398,6 +402,7 @@ export const loadPlanInterruptedRecoveryScenario = {
 };
 
 export const loadPlanWorktreeInspectResetScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     name: "load-plan-worktree-recovery-inspect-and-reset",
     composedTui: true,
     initialAgentName: "guide",
@@ -497,6 +502,7 @@ export const loadPlanWorktreeInspectResetScenario = {
 };
 
 export const loadPlanAbandonProgressScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     name: "load-plan-abandon-worktree-shows-progress",
     composedTui: true,
     initialAgentName: "guide",
@@ -543,6 +549,7 @@ export const loadPlanAbandonProgressScenario = {
 };
 
 export const loadPlanImplementedFollowUpRepaintsScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     name: "load-plan-implemented-follow-up-repaints-execution-session",
     composedTui: true,
     initialAgentName: "guide",
@@ -648,6 +655,7 @@ export const loadPlanImplementedFollowUpRepaintsScenario = {
 };
 
 export const loadPlanContinueUsesExecutionPlanAuthorityScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     // This scenario isolates automated delivery; human policy gates have dedicated journeys.
     globalSettings: { defaultProvider: "golden", defaultModel: "faux", codereview: "none" },
     name: "load-plan-continue-uses-execution-plan-authority",
@@ -766,6 +774,7 @@ export const loadPlanContinueUsesExecutionPlanAuthorityScenario = {
 
 export const loadPlanMalformedFrontMatterScenario = {
     name: "load-plan-malformed-front-matter-fails-closed",
+    retainedCheckoutInput: true,
     composedTui: true,
     initialAgentName: "guide",
     terminal: { columns: 100, rows: 30 },
@@ -821,6 +830,7 @@ export const loadPlanMalformedFrontMatterScenario = {
 };
 
 export const loadPlanValidateWithoutCustomChecksScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     name: "load-plan-validate-without-custom-checks-reaches-semantic-failure",
     composedTui: true,
     initialAgentName: "guide",
@@ -871,6 +881,7 @@ export const loadPlanValidateWithoutCustomChecksScenario = {
 };
 
 export const loadPlanDirectReviewScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     name: "load-plan-direct-review-from-draft",
     composedTui: true,
     initialAgentName: "guide",
@@ -912,6 +923,7 @@ export const loadPlanDirectReviewScenario = {
 };
 
 export const loadPlanDirectReviewRunScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     name: "load-plan-direct-review-approves-and-runs",
     composedTui: true,
     initialAgentName: "guide",
@@ -965,13 +977,14 @@ export const loadPlanDirectReviewRunScenario = {
 };
 
 export const loadPlanReadOnlyPickerScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     name: "load-plan-picker-cancel-preserves-project",
     composedTui: true,
     initialAgentName: "guide",
     terminal: { columns: 100, rows: 30 },
     timeoutMs: 20000,
     coverage: ["workflow:load-plan"],
-    initialProjectFiles: [{ path: "docs/plans/plain.md", text: "# Plain user-authored Plan\n" }],
+    initialPlans: [{ planName: "plain", text: "# Plain user-authored Plan\n" }],
     scriptedInteractions: [{ type: "select", promptIncludes: "Load plan:", value: null }],
     actions: [
         // The harness enters runtime storage at startup. Model a subsequent user

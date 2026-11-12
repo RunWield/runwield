@@ -1,5 +1,5 @@
 // @ts-nocheck: server module uses the repository's JSDoc JavaScript style while keeping the TypeScript production extension.
-import { capturePackageWorkflowAccess } from "../../../shared/workflow/package-workflow.ts";
+import { capturePlanReadContext } from "../../../plan-store/index.ts";
 /** @module ui/workspace/server/workspace-search */
 
 import { mkdirSync, renameSync } from "node:fs";
@@ -8,7 +8,7 @@ import { clearInterval, clearTimeout, setInterval, setTimeout } from "node:timer
 import { DatabaseSync } from "../../../shared/sqlite.ts";
 import { dirname, join, relative } from "node:path";
 import { getHomeDir } from "../../../constants.js";
-import { listPlanResources } from "../../../plan-store.js";
+import { listPlanResources, readPlanResourceCatalog } from "../../../plan-store/index.ts";
 import { getWorkRecordsDir, listWorkRecords } from "../../../shared/work-records/store.ts";
 import { isCurrentWorkRecord, workRecordNotices } from "../../../shared/work-records/list.ts";
 import { projectAggregateTranscript } from "../../../shared/session/session-transcript-manifest.ts";
@@ -407,11 +407,15 @@ async function hydrateCandidate(root, row, store, catalogs) {
         };
     }
     if (row.content_type === "plan") {
-        const plans = await cachedCatalog(catalogs, `${row.project_id}:plan`, () =>
-            readSearchDocuments("Plan reader", () => listPlanResources(root)),
+        const catalog = await cachedCatalog(catalogs, `${row.project_id}:plan`, () =>
+            readSearchDocuments("Plan reader", () => readPlanResourceCatalog(root)),
         );
-        const plan = plans.find((candidate) => candidate.planId === row.source_id);
-        if (!plan) throw new Error("Plan not found.");
+        const plan = catalog.resources.find((candidate) => candidate.planId === row.source_id);
+        if (!plan) {
+            if (catalog.diagnostics.length)
+                throw new SearchReaderError("Plan reader", new Error("Plan authority is unavailable."));
+            throw new Error("Plan not found.");
+        }
         if (plan.readAvailability?.kind === "pending")
             throw new SearchReaderError("Plan reader", new Error(plan.readAvailability.message));
         await readSearchDocuments("Plan reader", () => assertReadablePlanResource(root, plan));
@@ -471,7 +475,7 @@ async function hydrateCandidate(root, row, store, catalogs) {
 
 /** @param {{ store: import('../../../shared/owner-coordination/index.js').OwnerCoordinationStore, dbPath?: string, scanIntervalMs?: number }} options */
 export function createWorkspaceSearchService(options) {
-    const packageAccess = capturePackageWorkflowAccess();
+    const packageAccess = capturePlanReadContext();
     const dbPath =
         options.dbPath ||
         (options.store.path === ":memory:"

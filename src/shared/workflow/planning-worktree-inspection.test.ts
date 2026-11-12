@@ -1,3 +1,5 @@
+import { withRetainedPlanReadFixture } from "../testing/retained-plan-fixture.ts";
+import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -5,7 +7,7 @@ import { dirname, join } from "node:path";
 import process from "node:process";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { parsePlanFrontMatter } from "../../plan-store.js";
+import { parsePlanFrontMatter } from "../../plan-format.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { inspectTargetBranchPlansByParent, TargetBranchSnapshotUnavailableError } from "./planning-worktree.ts";
 
@@ -39,20 +41,22 @@ function childMarkdown(index: number) {
 }
 
 const fixture = defineGitFixture(async (repo) => {
-    await writeFile(join(repo, "README.md"), "base\n");
-    for (let index = 0; index < largeCount; index++) {
-        const path = join(repo, "docs/plans", `${childName(index)}.md`);
-        await mkdir(dirname(path), { recursive: true });
-        await writeFile(path, childMarkdown(index));
-        if (index === smallCount - 1 || index === largeCount - 1) {
-            await writeFile(join(repo, "docs/plans/standalone.md"), "---\nplanId: standalone\n---\n# Standalone\n");
-            await writeFile(join(repo, "docs/plans/ignored.txt"), childMarkdown(100));
-            await git(repo, ["add", "."]);
-            await git(repo, ["commit", "-m", `catalog with ${index + 1} children`]);
-            await git(repo, ["branch", index === smallCount - 1 ? "small" : "large"]);
+    return await withRetainedPlanFixture(repo, async () => {
+        await writeFile(join(repo, "README.md"), "base\n");
+        for (let index = 0; index < largeCount; index++) {
+            const path = join(repo, "docs/plans", `${childName(index)}.md`);
+            await mkdir(dirname(path), { recursive: true });
+            await writeFile(path, childMarkdown(index));
+            if (index === smallCount - 1 || index === largeCount - 1) {
+                await writeFile(join(repo, "docs/plans/standalone.md"), "---\nplanId: standalone\n---\n# Standalone\n");
+                await writeFile(join(repo, "docs/plans/ignored.txt"), childMarkdown(100));
+                await git(repo, ["add", "."]);
+                await git(repo, ["commit", "-m", `catalog with ${index + 1} children`]);
+                await git(repo, ["branch", index === smallCount - 1 ? "small" : "large"]);
+            }
         }
-    }
-    await git(repo, ["switch", "small"]);
+        await git(repo, ["switch", "small"]);
+    });
 });
 
 interface GitTraceEvent {
@@ -93,98 +97,104 @@ for (const remote of [false, true]) {
     test(`${remote ? "remote" : "local"} target inspection preserves children and bounds Git work as the catalog grows`, async (t) => {
         await withProcessGlobalTestLock(async () => {
             const repo = await fixture.checkout();
-            const origin = `${repo}-origin.git`;
-            try {
-                if (remote) {
-                    await git(repo, ["clone", "--bare", repo, origin]);
-                    await git(repo, ["remote", "add", "origin", origin]);
-                    // Reads use already fetched evidence, even when the remote later becomes unavailable.
-                    await git(repo, ["fetch", "origin"]);
-                    await git(repo, ["remote", "set-url", "origin", `${repo}-unavailable.git`]);
-                }
-                await writeFile(join(repo, "README.md"), "staged user work\n");
-                await git(repo, ["add", "README.md"]);
-                await writeFile(join(repo, "README.md"), "unstaged user work\n");
-                const before = await projectSnapshot(repo);
-                const small = await inspectWithProcessCount(repo, "small", "epic-0.md");
-                assertEquals(
-                    small.children.map((child) => child.name),
-                    [childName(0)],
-                );
-                for (const parent of [0, 1]) {
-                    const large = await inspectWithProcessCount(repo, "origin/large", `epic-${parent}.md`);
-                    const ref = await git(repo, [
-                        "rev-parse",
-                        remote ? "refs/remotes/origin/large" : "refs/heads/large",
-                    ]);
-                    const expected = Array.from({ length: largeCount }, (_, index) => index)
-                        .filter((index) => index % 2 === parent)
-                        .map((index) => ({
-                            name: childName(index),
-                            path: `${ref}:docs/plans/${childName(index)}.md`,
-                            attrs: parsePlanFrontMatter(childMarkdown(index)).attrs,
-                        }));
-                    // Hydration omits absent runtime fields; compare the stored values, not undefined keys.
-                    assertEquals(JSON.parse(JSON.stringify(large.children)), JSON.parse(JSON.stringify(expected)));
+            return await withRetainedPlanFixture(repo, async () => {
+                const origin = `${repo}-origin.git`;
+                try {
+                    if (remote) {
+                        await git(repo, ["clone", "--bare", repo, origin]);
+                        await git(repo, ["remote", "add", "origin", origin]);
+                        // Reads use already fetched evidence, even when the remote later becomes unavailable.
+                        await git(repo, ["fetch", "origin"]);
+                        await git(repo, ["remote", "set-url", "origin", `${repo}-unavailable.git`]);
+                    }
+                    await writeFile(join(repo, "README.md"), "staged user work\n");
+                    await git(repo, ["add", "README.md"]);
+                    await writeFile(join(repo, "README.md"), "unstaged user work\n");
+                    const before = await projectSnapshot(repo);
+                    const small = await inspectWithProcessCount(repo, "small", "epic-0.md");
                     assertEquals(
-                        await projectSnapshot(repo),
-                        before,
-                        "inspection must not change project Git storage or work",
+                        small.children.map((child) => child.name),
+                        [childName(0)],
                     );
-                    t.diagnostic(
-                        `Git processes: ${smallCount} children=${small.processes}, ${largeCount} children=${large.processes}`,
-                    );
-                    assert(
-                        large.processes <= small.processes + 1,
-                        `Git work must stay bounded: ${small.processes} processes for ${smallCount} children, ${large.processes} for ${largeCount}`,
-                    );
+                    for (const parent of [0, 1]) {
+                        const large = await inspectWithProcessCount(repo, "origin/large", `epic-${parent}.md`);
+                        const ref = await git(repo, [
+                            "rev-parse",
+                            remote ? "refs/remotes/origin/large" : "refs/heads/large",
+                        ]);
+                        const expected = Array.from({ length: largeCount }, (_, index) => index)
+                            .filter((index) => index % 2 === parent)
+                            .map((index) => ({
+                                name: childName(index),
+                                path: `${ref}:docs/plans/${childName(index)}.md`,
+                                attrs: parsePlanFrontMatter(childMarkdown(index)).attrs,
+                            }));
+                        // Hydration omits absent runtime fields; compare the stored values, not undefined keys.
+                        assertEquals(JSON.parse(JSON.stringify(large.children)), JSON.parse(JSON.stringify(expected)));
+                        assertEquals(
+                            await projectSnapshot(repo),
+                            before,
+                            "inspection must not change project Git storage or work",
+                        );
+                        t.diagnostic(
+                            `Git processes: ${smallCount} children=${small.processes}, ${largeCount} children=${large.processes}`,
+                        );
+                        assert(
+                            large.processes <= small.processes + 1,
+                            `Git work must stay bounded: ${small.processes} processes for ${smallCount} children, ${large.processes} for ${largeCount}`,
+                        );
+                    }
+                    assertEquals(await inspectTargetBranchPlansByParent(repo, "large", "absent"), []);
+                    await assertRejects(() => inspectTargetBranchPlansByParent(repo, "missing", "epic-0"), Error);
+                    assertEquals(await projectSnapshot(repo), before);
+                } finally {
+                    await rm(repo, { recursive: true, force: true });
+                    await rm(origin, { recursive: true, force: true });
                 }
-                assertEquals(await inspectTargetBranchPlansByParent(repo, "large", "absent"), []);
-                await assertRejects(() => inspectTargetBranchPlansByParent(repo, "missing", "epic-0"), Error);
-                assertEquals(await projectSnapshot(repo), before);
-            } finally {
-                await rm(repo, { recursive: true, force: true });
-                await rm(origin, { recursive: true, force: true });
-            }
+            });
         });
     });
 }
 
 test("target inspection rejects a malformed full Unicode document instead of returning an empty catalog", async () => {
     const repo = await fixture.checkout();
-    try {
-        const path = join(repo, "docs/plans", `${childName(0)}.md`);
-        await writeFile(path, `${childMarkdown(0)}\n<<<<<<< unresolved\n`);
-        await git(repo, ["add", "."]);
-        await git(repo, ["commit", "-m", "malformed child body"]);
-        await assertRejects(
-            () => inspectTargetBranchPlansByParent(repo, "small", "epic-0"),
-            Error,
-            "unresolved merge conflict markers",
-        );
-    } finally {
-        await rm(repo, { recursive: true, force: true });
-    }
+    return await withRetainedPlanFixture(repo, async () => {
+        try {
+            const path = join(repo, "docs/plans", `${childName(0)}.md`);
+            await writeFile(path, `${childMarkdown(0)}\n<<<<<<< unresolved\n`);
+            await git(repo, ["add", "."]);
+            await git(repo, ["commit", "-m", "malformed child body"]);
+            await assertRejects(
+                () => inspectTargetBranchPlansByParent(repo, "small", "epic-0"),
+                Error,
+                "unresolved merge conflict markers",
+            );
+        } finally {
+            await rm(repo, { recursive: true, force: true });
+        }
+    });
 });
 
 test("target inspection reports unavailable evidence without fetching remote-only branches", async () => {
     const repo = await fixture.checkout();
-    const origin = `${repo}-origin.git`;
-    try {
-        await git(repo, ["clone", "--bare", repo, origin]);
-        await git(repo, ["remote", "add", "origin", origin]);
-        await git(repo, ["branch", "-D", "large"]);
-        const before = await projectSnapshot(repo);
-        await assertRejects(
-            () => inspectTargetBranchPlansByParent(repo, "large", "epic-0"),
-            TargetBranchSnapshotUnavailableError,
-            "Local target branch evidence is unavailable",
-        );
-        assertEquals(await projectSnapshot(repo), before);
-    } finally {
-        await rm(repo, { recursive: true, force: true });
-        await rm(origin, { recursive: true, force: true });
-    }
+    return await withRetainedPlanFixture(repo, async () => {
+        const origin = `${repo}-origin.git`;
+        try {
+            await git(repo, ["clone", "--bare", repo, origin]);
+            await git(repo, ["remote", "add", "origin", origin]);
+            await git(repo, ["branch", "-D", "large"]);
+            const before = await projectSnapshot(repo);
+            await assertRejects(
+                () => inspectTargetBranchPlansByParent(repo, "large", "epic-0"),
+                TargetBranchSnapshotUnavailableError,
+                "Local target branch evidence is unavailable",
+            );
+            assertEquals(await projectSnapshot(repo), before);
+        } finally {
+            await rm(repo, { recursive: true, force: true });
+            await rm(origin, { recursive: true, force: true });
+        }
+    });
 });
 
 test("partial-clone passive object reads never fetch missing promised Plan blobs", async () => {
@@ -209,7 +219,7 @@ test("partial-clone passive object reads never fetch missing promised Plan blobs
                 args: ["cat-file", "-e", `${commit}:docs/plans/${childName(0)}.md`],
             });
             assertEquals(missing.success, false, "fixture must lack the promised Plan blob");
-            const { listPlans } = await import("../../plan-store.js");
+            const { listPlans } = await import("../../plan-store/index.ts");
             await mkdir(join(partial, "docs/plans"), { recursive: true });
             await writeFile(
                 join(partial, "docs/plans/epic.md"),
@@ -242,7 +252,7 @@ test("partial-clone passive object reads never fetch missing promised Plan blobs
                     }),
                 TargetBranchSnapshotUnavailableError,
             );
-            const catalog = await listPlans(partial);
+            const catalog = await withRetainedPlanReadFixture(partial, () => listPlans(partial));
             assertEquals(catalog.find((plan) => plan.name === "epic")?.readAvailability?.kind, "pending");
             assertEquals(
                 catalog
@@ -264,38 +274,43 @@ test("partial-clone passive object reads never fetch missing promised Plan blobs
 for (const primary of [true, false]) {
     test(`${primary ? "primary" : "cached remote"} target excludes malformed archives before parsing`, async () => {
         const repo = await fixture.checkout();
-        try {
-            await mkdir(join(repo, "docs/plans/archived"), { recursive: true });
-            await writeFile(
-                join(repo, "docs/plans/archived/broken.md"),
-                "---\naffectedPaths: - src/a.ts\n  status: draft\n---\n# Broken archive\n",
-            );
-            await git(repo, ["add", "."]);
-            await mkdir(join(repo, "docs/plans/epic-0"), { recursive: true });
-            await writeFile(join(repo, "docs/plans/epic-0/manual-qa.md"), "---\naffectedPaths: - not-a-plan\n---\n");
-            await writeFile(
-                join(repo, "docs/plans/epic-0/integration-report.md"),
-                "---\naffectedPaths: - not-a-plan\n---\n",
-            );
-            await git(repo, ["add", "."]);
-            await git(repo, ["commit", "-m", "historical malformed archive"]);
-            if (!primary) {
-                await git(repo, ["update-ref", "refs/remotes/origin/small", "HEAD"]);
-                await git(repo, ["switch", "main"]);
+        return await withRetainedPlanFixture(repo, async () => {
+            try {
+                await mkdir(join(repo, "docs/plans/archived"), { recursive: true });
+                await writeFile(
+                    join(repo, "docs/plans/archived/broken.md"),
+                    "---\naffectedPaths: - src/a.ts\n  status: draft\n---\n# Broken archive\n",
+                );
+                await git(repo, ["add", "."]);
+                await mkdir(join(repo, "docs/plans/epic-0"), { recursive: true });
+                await writeFile(
+                    join(repo, "docs/plans/epic-0/manual-qa.md"),
+                    "---\naffectedPaths: - not-a-plan\n---\n",
+                );
+                await writeFile(
+                    join(repo, "docs/plans/epic-0/integration-report.md"),
+                    "---\naffectedPaths: - not-a-plan\n---\n",
+                );
+                await git(repo, ["add", "."]);
+                await git(repo, ["commit", "-m", "historical malformed archive"]);
+                if (!primary) {
+                    await git(repo, ["update-ref", "refs/remotes/origin/small", "HEAD"]);
+                    await git(repo, ["switch", "main"]);
+                }
+                const { findTargetBranchPlansByParent } = await import("./planning-worktree.ts");
+                const children = await findTargetBranchPlansByParent(repo, "small", "epic-0");
+                assertEquals(
+                    children.map((child) => child.name),
+                    [childName(0)],
+                );
+                const inspected = await inspectTargetBranchPlansByParent(repo, "small", "epic-0");
+                assertEquals(
+                    inspected.map((child) => child.name),
+                    [childName(0)],
+                );
+            } finally {
+                await rm(repo, { recursive: true, force: true });
             }
-            const { findTargetBranchPlansByParent } = await import("./planning-worktree.ts");
-            const children = await findTargetBranchPlansByParent(repo, "small", "epic-0");
-            assertEquals(
-                children.map((child) => child.name),
-                [childName(0)],
-            );
-            const inspected = await inspectTargetBranchPlansByParent(repo, "small", "epic-0");
-            assertEquals(
-                inspected.map((child) => child.name),
-                [childName(0)],
-            );
-        } finally {
-            await rm(repo, { recursive: true, force: true });
-        }
+        });
     });
 }

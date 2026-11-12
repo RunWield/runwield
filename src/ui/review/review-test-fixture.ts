@@ -22,7 +22,7 @@ export interface ReviewAnnotationDecision {
 
 export interface ReviewDecisionBody {
     reviewRevision?: number;
-    documents?: import("../../shared/workflow/sequence-review.ts").SequenceDocumentDecision[];
+    documents?: import("../../plan-store/index.ts").SequenceDocumentDecision[];
     approved?: boolean;
     conversationTurn?: boolean;
     feedback?: string;

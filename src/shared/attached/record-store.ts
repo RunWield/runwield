@@ -8,7 +8,6 @@ import type { Dirent } from "node:fs";
 import { writeJsonAtomically } from "../private-json-file.ts";
 import { realpathSync } from "node:fs";
 import {
-    readFile as fsReadFile,
     readdir as fsReaddir,
     writeFile as fsWriteFile,
     rm as fsRm,
@@ -37,6 +36,7 @@ import {
 } from "./operations.ts";
 
 import process from "node:process";
+import { encodeAttachedRecord, readAttachedRecord } from "./record-encoding.ts";
 /**
  * @module shared/attached/record-store
  * Durable Attached Workflow Records under `~/.wld/attached/`.
@@ -138,9 +138,9 @@ function recordPath(workflowsDir: string, workflowId: string): string {
     return join(workflowsDir, `${workflowId}.json`);
 }
 
-async function readRecordAt(path: string): Promise<AttachedWorkflowRecord | null> {
+function readRecordAt(path: string): AttachedWorkflowRecord | null {
     try {
-        const record: AttachedWorkflowRecord = JSON.parse(await fsReadFile(path, "utf8"));
+        const record = readAttachedRecord(path);
         return {
             ...record,
             execution: record.execution ?? null,
@@ -337,10 +337,14 @@ async function removeAbandonedTemporaryFiles(path: string): Promise<void> {
 
 /** Receipts are durable workflow snapshots, never a second home for review text. */
 export function withoutAttachedChat(result: AttachedOperationResult): AttachedOperationResult {
-    const clean = structuredClone(result);
+    const clean = { ...result };
     if (clean.ok) delete clean.reviewReply;
     if (clean.workflow) {
-        if (clean.workflow.review) delete clean.workflow.review.chat;
+        clean.workflow = { ...clean.workflow, nextAction: { ...clean.workflow.nextAction } };
+        if (clean.workflow.review) {
+            clean.workflow.review = { ...clean.workflow.review };
+            delete clean.workflow.review.chat;
+        }
         const action = clean.workflow.nextAction;
         if (action.kind === "review" || action.kind === "code_review") delete action.chat;
     }
@@ -349,7 +353,12 @@ export function withoutAttachedChat(result: AttachedOperationResult): AttachedOp
 
 /** Apply privacy on every write, including external Core reconciliation and recovery. */
 export function scrubAttachedChat(record: AttachedWorkflowRecord): AttachedWorkflowRecord {
-    const clean = structuredClone(record);
+    const clean = {
+        ...record,
+        ...(record.review && { review: { ...record.review } }),
+        ...(record.validation && { validation: { ...record.validation } }),
+        acceptedOperations: { ...record.acceptedOperations },
+    };
     if (clean.review && (clean.state !== "awaiting_review" || clean.review.status !== "pending"))
         delete clean.review.chat;
     if (
@@ -360,7 +369,9 @@ export function scrubAttachedChat(record: AttachedWorkflowRecord): AttachedWorkf
             clean.validation.request.interaction.type !== "code_review")
     )
         delete clean.validation.chat;
-    for (const receipt of Object.values(clean.acceptedOperations)) {
+    for (const [id, original] of Object.entries(clean.acceptedOperations)) {
+        const receipt = { ...original };
+        clean.acceptedOperations[id] = receipt;
         receipt.result = withoutAttachedChat(receipt.result);
         const action = receipt.result.workflow?.nextAction;
         if (
@@ -375,7 +386,7 @@ export function scrubAttachedChat(record: AttachedWorkflowRecord): AttachedWorkf
 
 function atomicWrite(path: string, record: AttachedWorkflowRecord): void {
     const { currentProjectRoot: _currentProjectRoot, ...persisted } = scrubAttachedChat(record);
-    writeJsonAtomically(path, persisted);
+    writeJsonAtomically(path, encodeAttachedRecord(persisted));
 }
 
 /**

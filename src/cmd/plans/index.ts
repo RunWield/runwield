@@ -1,4 +1,4 @@
-import { readLocalHomeStore } from "../../shared/local-home-store.ts";
+import { readLocalHomeStore } from "../../plan-store/index.ts";
 import { runPlansImportCommand } from "./import.ts";
 /**
  * @module cmd/plans
@@ -9,7 +9,8 @@ import { DirectoryStartupCanceled } from "../../ui/tui/directory-warning.ts";
 import { admitProjectWithIdentityChoice } from "../../ui/tui/project-identity-entry.ts";
 import { parseArgs } from "../../shared/cli-args.ts";
 import { getCwd } from "../../constants.js";
-import { countChildPlanProgress, groupPlanHierarchy, listPlans } from "../../plan-store.js";
+import { countChildPlanProgress, groupPlanHierarchy } from "../../plan-format.ts";
+import { listPlans } from "../../plan-store/index.ts";
 import { printCommandHelp } from "../help/index.js";
 import { runPlansArchiveCommand } from "./archive.ts";
 import { runPlansDoctorCommand } from "./doctor.ts";

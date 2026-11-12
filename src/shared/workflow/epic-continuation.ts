@@ -1,4 +1,4 @@
-import { currentPackageSelection } from "./package-workflow.ts";
+import { capturePlanAccess } from "../../plan-store/index.ts";
 import { epicChildOrderProblem } from "./epic-child-order.ts";
 import { projectPlanType } from "../project-plan.ts";
 /**
@@ -8,12 +8,10 @@ import { projectPlanType } from "../project-plan.ts";
 
 import {
     compareChildPlansByOrder,
-    findPlansByParent,
     getDeclaredPlanStatus,
-    listPlans,
-    loadPlan,
     resolveSiblingChildPlanDependencyStates,
-} from "../../plan-store.js";
+} from "../../plan-format.ts";
+import { findPlansByParent, listPlans, loadPlan } from "../../plan-store/index.ts";
 import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
 import { recordPlanEvent } from "./plan-lifecycle.js";
 import { executePlan, runPlanningAgent } from "./workflow.ts";
@@ -23,7 +21,7 @@ import { SYSTEM_SEMANTIC_REVIEW_PORT } from "./validation.ts";
 import { continueWorkflowValidation } from "./validation.ts";
 import { emitSystemStatus } from "../session/session-runtime-events.js";
 import { buildPlanSummary } from "../plan-presentation.ts";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store/index.ts";
 import type { HostedSession } from "../session/hosted-session.js";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { WorkflowValidationResult } from "./validation.ts";
@@ -33,7 +31,7 @@ import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-por
 import { isGitRepository } from "../git.ts";
 import { prepareTargetBranchPlansByParent } from "./planning-worktree.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
-import { resolveWorkflowPlanLocation } from "./plan-location.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 
 const TERMINAL_CHILD_STATUSES = new Set(["validated", "verified", "user_verified", "closed_without_verification"]);
@@ -106,7 +104,7 @@ export async function resolveEpicContinuation({
     let completedAttrs = completedLocation.plan?.attrs;
     let completedDeclaredStatus =
         knownCompletedStatus ||
-        (currentPackageSelection()
+        (capturePlanAccess()
             ? completedAttrs?.status
             : completedLocation.plan
               ? getDeclaredPlanStatus(completedLocation.plan.markdown)
@@ -119,7 +117,7 @@ export async function resolveEpicContinuation({
     const completedTargetBranch =
         typeof completedAttrs.targetBranch === "string" ? completedAttrs.targetBranch.trim() : "";
     if (
-        !currentPackageSelection() &&
+        !capturePlanAccess() &&
         !TERMINAL_CHILD_STATUSES.has(completedDeclaredStatus || "") &&
         parentPlanName &&
         completedTargetBranch &&
@@ -168,7 +166,7 @@ export async function resolveEpicContinuation({
 
     const targetBranch = typeof parent.attrs.targetBranch === "string" ? parent.attrs.targetBranch.trim() : "";
     const family =
-        !currentPackageSelection() && targetBranch && (await isGitRepository(cwd))
+        !capturePlanAccess() && targetBranch && (await isGitRepository(cwd))
             ? await prepareTargetBranchPlansByParent(cwd, targetBranch, parentPlanName)
             : await findPlansByParent(cwd, parentPlanName);
     const siblings = family

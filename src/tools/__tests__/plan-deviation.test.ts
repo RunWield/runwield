@@ -1,4 +1,5 @@
-import { mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -8,7 +9,8 @@ import type {
     RuntimeInteractionRequest,
     RuntimeInteractionResponse,
 } from "../../shared/session/session-runtime-interactions.js";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { createPlanDeviationTool } from "../plan-deviation.ts";
 
 type PlanDeviationTool = ReturnType<typeof createPlanDeviationTool>;
@@ -21,7 +23,7 @@ type PlanDeviationSessionFixture = {
 };
 
 async function makePlan(projectRoot: string, planName = "demo-plan") {
-    await savePlan(projectRoot, planName, "# Demo Plan\n\nOriginal body.", {
+    await seedPlan(projectRoot, planName, "# Demo Plan\n\nOriginal body.", {
         classification: "PLANNED_CHANGE",
         workKind: "FEATURE",
         status: "in_progress",
@@ -103,11 +105,13 @@ test("record_plan_deviation confirms and appends one Plan-owned entry", async ()
         assertEquals(result.terminate, false);
         assertEquals(after.body, before.body);
         assertEquals(after.attrs.status, "in_progress");
+        assertEquals(after.attrs.executionAgent, before.attrs.executionAgent);
+        assertEquals(after.attrs.collaborationRecommendation, before.attrs.collaborationRecommendation);
         assertEquals(after.attrs.planDeviations?.length, 1);
         assertEquals(after.attrs.planDeviations?.[0].id, "call-1");
         assertEquals(after.attrs.planDeviations?.[0].supersededRequirement, "Replace the old navigation.");
         assertEquals(after.attrs.planDeviations?.[0].replacementRequirement, "Keep the existing navigation.");
-        assertStringIncludes(after.markdown, "planDeviations:");
+        assertEquals(after.markdown, before.markdown);
         assertEquals(
             fixture.requests[0].prompt,
             [
@@ -304,18 +308,18 @@ test("record_plan_deviation rejects a Session without active execution", async (
 });
 
 async function makeEpicChild(projectRoot: string, type = "epic") {
-    await savePlan(projectRoot, "epic", "# Epic\n\n## Objective\n\nReplace the old navigation.\n", {
+    await seedPlan(projectRoot, "epic", "# Epic\n\n## Objective\n\nReplace the old navigation.\n", {
         classification: "PROJECT",
         type,
         status: "ready_for_work",
         planId: "parent-epic",
     });
     const child = await makePlan(projectRoot);
-    await savePlan(
+    await seedPlan(
         projectRoot,
         "demo-plan",
         child.markdown,
-        { parentPlan: "epic" },
+        { ...child.attrs, parentPlan: "epic" },
         { expectedRevision: child.revision },
     );
     return (await loadPlan(projectRoot, "epic"))!;
@@ -328,6 +332,7 @@ test("confirmed child deviations are projected on the Epic and retries repair a 
         const tool = createPlanDeviationTool({ hostedSession: fixture.session });
         const first = await executeDeviation(tool, "epic-call");
         const projected = (await loadPlan(projectRoot, "epic"))!;
+        assertEquals((await loadPlan(projectRoot, "demo-plan"))?.attrs.parentPlan, "epic");
         assertStringIncludes(projected.body, "### Child Plan Deviations");
         assertStringIncludes(projected.body, "**demo-plan**");
         assertStringIncludes(projected.body, "Superseded requirement: Replace the old navigation.");
@@ -385,8 +390,10 @@ test("a Sequence child's deviation stays on the child", async () => {
 test("Epic sync errors do not revoke a recorded child deviation", async () => {
     await withTempProject(async (projectRoot) => {
         const epic = await makeEpicChild(projectRoot);
-        await fsWriteFile(epic.path, "---\nclassification: [broken\n---\n");
         const fixture = makeSession(projectRoot, [{ outcome: "accepted", value: true }]);
+        await executeDeviation(createPlanDeviationTool({ hostedSession: fixture.session }), "sync-error");
+        await fsRm(epic.path);
+        await fsMkdir(epic.path);
         const result = await executeDeviation(
             createPlanDeviationTool({ hostedSession: fixture.session }),
             "sync-error",

@@ -1,15 +1,11 @@
 import { test } from "node:test";
 import { equal, deepEqual, rejects } from "node:assert/strict";
 import { create, packageFixture, tree } from "../testing/plan-package-fixture.ts";
-import { listPlanPackages } from "../plan-package-store.ts";
+import { listPlanPackages } from "../../plan-store/packages.ts";
 import { currentWorkRecordOwner } from "../work-records/owner.ts";
-import {
-    currentPackageProject,
-    currentPackageSelection,
-    loadPackageWorkflowPlan,
-    withPackageProject,
-    withPackageWorkflow,
-} from "./package-workflow.ts";
+import { loadPackageWorkflowPlan } from "../../plan-store/workflows.ts";
+import { currentPackageProject, withPackageProject } from "../../plan-store/workflows.ts";
+import { currentPackageSelection, withPackageWorkflow } from "../../plan-store/workflows.ts";
 
 test("Project package access can inspect an empty store without selecting a Plan or writing files", async () => {
     const fixture = await packageFixture();

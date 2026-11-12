@@ -1,16 +1,15 @@
-import { inspectLocalHomeStore, withLocalPlanWorkflow } from "../local-home-store.ts";
-import { recoverPackageRecordingPreparation } from "./package-publication.ts";
-import { currentPackageSelection, selectedPackage, assertPackageWorkflowInput } from "./package-workflow.ts";
-import { preparePlanController } from "./plan-preparation.ts";
+import { planControllerRoot } from "../../plan-store/index.ts";
+import { requiresPlanWorkflow } from "../../plan-store/index.ts";
+import { savePlanValidationCheckpoint } from "../../plan-store/index.ts";
+
+import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
+import { preparePlanValidationInput } from "../../plan-store/index.ts";
+
+import { preparePlanController } from "../../plan-store/index.ts";
 import { type OutcomeSession, recordWorkflowOutcome } from "./outcome-observations.ts";
-import {
-    ensurePlanIdentity,
-    loadPlan,
-    resolvePlanExecutionPolicy,
-    StalePlanWriteError,
-    updatePlanFrontMatter,
-} from "../../plan-store.js";
-import { StaleControllerWriteError } from "./controller-registry.ts";
+import { resolvePlanExecutionPolicy } from "../../plan-format.ts";
+import { ensurePlanIdentity, loadPlan, StalePlanWriteError } from "../../plan-store/index.ts";
+import { StaleControllerWriteError } from "../../plan-store/index.ts";
 import { runPlansDoctor } from "../../cmd/plans/doctor.ts";
 import { isRecordedProcessAlive, readProcessIdentity } from "../process-identity.ts";
 import { getLockHostname } from "../process-liveness.ts";
@@ -33,7 +32,7 @@ import { resolvePhaseContext } from "./validation-context.ts";
 import { getWorktreeReviewDiff } from "./git-snapshot.ts";
 import { claimReviewFixes, renderOpenItems } from "./review-ledger.ts";
 import { PLAN_STATUSES } from "./plan-lifecycle.js";
-import { resolveWorkflowPlanLocation } from "./plan-location.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import {
     sameHostIdentity,
@@ -87,7 +86,7 @@ type ClaimResult =
     | { kind: "settled_completion"; projectRoot: string };
 
 function checkpointRecord(
-    value: import("../../plan-store.js").PlanFrontMatter["validationCheckpoint"],
+    value: import("../../plan-store/index.ts").PlanFrontMatter["validationCheckpoint"],
 ): ValidationCheckpoint | undefined {
     if (!value || !isValidationCheckpoint(value)) return undefined;
     return value;
@@ -161,7 +160,7 @@ async function claimValidation(args: RunValidationAttemptArgs): Promise<ClaimRes
         try {
             if (args.runtime.kind === "core")
                 args.runtime.args.hostedSession.getManagedOperationCapability?.()?.assertLive();
-            await updatePlanFrontMatter(planCwd, args.planName, { validationCheckpoint: checkpoint }, plan.attrs, {
+            await savePlanValidationCheckpoint(planCwd, args.planName, checkpoint, {
                 expectedRevision: plan.revision,
                 expectedControllerRevision: plan.controllerRevision,
             });
@@ -189,9 +188,7 @@ async function settleValidation(
 ): Promise<void> {
     // Publication can remove the execution checkout before controller settlement.
     // Canonical controller state remains owned by the admitted Project.
-    const packageOwner = currentPackageSelection();
-    if (packageOwner) planCwd = packageOwner.identity.checkoutRoot;
-    else if (result.kind === "verified") planCwd = args.projectRoot;
+    planCwd = planControllerRoot(result.kind === "verified" ? args.projectRoot : planCwd);
     for (let attempt = 0; attempt < 3; attempt += 1) {
         const plan = await loadPlan(planCwd, args.planName);
         if (!plan) return;
@@ -233,7 +230,7 @@ async function settleValidation(
         try {
             if (args.runtime.kind === "core")
                 args.runtime.args.hostedSession.getManagedOperationCapability?.()?.assertLive();
-            await updatePlanFrontMatter(planCwd, args.planName, { validationCheckpoint }, plan.attrs, {
+            await savePlanValidationCheckpoint(planCwd, args.planName, validationCheckpoint, {
                 expectedRevision: plan.revision,
                 expectedControllerRevision: plan.controllerRevision,
             });
@@ -315,13 +312,10 @@ export async function recordValidationRepairCompletion(args: ValidationRepairCom
                     : reviewState,
         });
         try {
-            await updatePlanFrontMatter(
-                args.projectRoot,
-                args.planName,
-                { validationCheckpoint: completed },
-                plan.attrs,
-                { expectedRevision: plan.revision, expectedControllerRevision: plan.controllerRevision },
-            );
+            await savePlanValidationCheckpoint(args.projectRoot, args.planName, completed, {
+                expectedRevision: plan.revision,
+                expectedControllerRevision: plan.controllerRevision,
+            });
             await recordWorkflowOutcome(args.projectRoot, {
                 category: "recovery",
                 event: "repair_round_finished",
@@ -450,20 +444,9 @@ function pausedResult(
 
 /** Reconcile canonical Plan state, claim one owner, run, and durably settle. */
 export async function runValidationAttempt(args: RunValidationAttemptArgs): Promise<WorkflowValidationResult> {
-    if (!currentPackageSelection() && inspectLocalHomeStore(args.projectRoot).kind === "local")
+    if (requiresPlanWorkflow(args.projectRoot))
         return await withLocalPlanWorkflow(args.projectRoot, args.planName, () => runValidationAttempt(args));
-    if (currentPackageSelection()) {
-        const plan = await selectedPackage(args.planName);
-        const binding = plan.metadata.workflow?.attempt;
-        if (binding && binding.repositoryRoot !== resolvePrimaryCheckoutRoot(args.projectRoot))
-            throw new Error("Continue package validation in its recorded repository.");
-        if (
-            binding &&
-            !plan.metadata.workflow?.publication &&
-            !(await recoverPackageRecordingPreparation(args.planName))
-        )
-            await assertPackageWorkflowInput(args.planName, binding.input);
-    }
+    await preparePlanValidationInput(args.projectRoot, args.planName);
     return await continueValidationAttempt({ ...args, projectRoot: resolvePrimaryCheckoutRoot(args.projectRoot) }, 0);
 }
 

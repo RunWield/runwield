@@ -3,7 +3,8 @@ import { equal, ok, rejects } from "node:assert/strict";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { packageFixture, create, read } from "../testing/plan-package-fixture.ts";
-import { withPackageWorkflow, loadPackageWorkflowPlan } from "./package-workflow.ts";
+import { loadPackageWorkflowPlan } from "../../plan-store/workflows.ts";
+import { withPackageWorkflow } from "../../plan-store/workflows.ts";
 import { recordPlanEvent } from "./plan-lifecycle.js";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 import { finalizePlanImplementation } from "./implementation-checkpoint.ts";
@@ -13,8 +14,8 @@ import { git } from "../git-test-fixture.ts";
 import { inspectWorktreeRegistry } from "../worktree-registry.js";
 import { coverage } from "./testing/validation-host-fixture.ts";
 import type { ValidationHostResume } from "./validation-host-contract.ts";
-import { readPlanPackage, readPlanPackagePublication } from "../plan-package-store.ts";
-import { loadPublishedWorkRecordSource } from "../work-records/published-source.ts";
+import { readPlanPackage, readPlanPackagePublication } from "../../plan-store/packages.ts";
+import { loadPublishedWorkRecordSource } from "../../plan-store/index.ts";
 
 for (const remote of [false, true])
     for (const plans of [false, true]) {

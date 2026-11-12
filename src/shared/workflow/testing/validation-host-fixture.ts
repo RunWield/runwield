@@ -1,5 +1,6 @@
+import { seedPlanState, seedPlan } from "../../testing/plan-state-fixture.ts";
 import { rememberNonGitExecutionConsent } from "../../non-git-execution-consent.ts";
-import { withLocalPlanWorkflow } from "../../local-home-store.ts";
+import { withLocalPlanWorkflow } from "../../../plan-store/index.ts";
 import { startActiveExecutionWorkflow, createExecutionStartPorts } from "../execution-start.ts";
 import { recordPlanEvent } from "../plan-lifecycle.js";
 import { finalizePlanImplementation } from "../implementation-checkpoint.ts";
@@ -22,8 +23,10 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertExists } from "../../../testing/assertions.ts";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { defineGitFixture, git } from "../../git-test-fixture.ts";
-import { loadPlan, savePlan, updatePlanFrontMatter } from "../../../plan-store.js";
-import { selectedPackage, packageController } from "../package-workflow.ts";
+
+import { loadPlan } from "../../../plan-store/index.ts";
+
+import { selectedPackage, packageController } from "../../../plan-store/workflows.ts";
 import { setCustomSetting, setExactProjectCustomSetting } from "../../settings.js";
 import { parseDiffFiles } from "../review-diff.ts";
 import {
@@ -47,8 +50,9 @@ const base = defineGitFixture(async (root) => {
 export type HostFixtureOptions = {
     nonGit?: boolean;
     command?: string | null;
-    attrs?: Partial<import("../../../plan-store.js").PlanFrontMatter>;
+    attrs?: Partial<import("../../../plan-format.ts").PlanFrontMatter>;
     planOnly?: boolean;
+    planMarkdown?: string;
 };
 export async function hostFixture(options: HostFixtureOptions = {}) {
     const attrs = {
@@ -71,7 +75,7 @@ export async function hostFixture(options: HostFixtureOptions = {}) {
     let id = options.nonGit ? "in-place" : "wt-host";
     {
         if (attrs.parentPlan) {
-            await savePlan(
+            await seedPlan(
                 root,
                 attrs.parentPlan,
                 "# Epic\n\n## Objective\n\nIntegrate the value.\n\n## Verification Plan\n\nCheck children.\n",
@@ -88,9 +92,18 @@ export async function hostFixture(options: HostFixtureOptions = {}) {
             setExactProjectCustomSetting("verification_command", options.command || "sh verify.sh", root);
         }
         await setCustomSetting("workflowMetrics", true, "project", root);
-        await savePlan(root, "p", "# Approved Plan\n\nImplement the value.\n", { ...attrs, status: "draft" });
+        await seedPlan(
+            root,
+            "p",
+            (options.planMarkdown || "# Approved Plan\n\nImplement the value.\n") +
+                (options.planOnly ? "\nPlan change.\n" : ""),
+            {
+                ...attrs,
+                status: "draft",
+            },
+        );
         if (!options.nonGit) {
-            await git(root, ["add", ".wld/settings.json"]);
+            await git(root, ["add", ".wld/settings.json", ".gitignore"]);
             await git(root, ["commit", "-m", "verification settings"]);
         }
         if (options.nonGit) await rememberNonGitExecutionConsent("featurePlan", root);
@@ -109,19 +122,38 @@ export async function hostFixture(options: HostFixtureOptions = {}) {
             assert(execution.executionCwd && (options.nonGit || execution.worktreeId), JSON.stringify(execution));
             cwd = await fsRealpath(execution.executionCwd);
             id = execution.worktreeId || "in-place";
-            if (options.planOnly) {
-                const plan = await loadPlan(root, "p");
-                assertExists(plan);
-                await savePlan(root, "p", plan.markdown + "\nPlan change.\n", attrs, {
-                    expectedRevision: plan.revision,
-                });
-            } else await fsWriteFile(join(cwd, "implementation.ts"), "export const value = 1; // implemented\n");
-            await finalizePlanImplementation({ projectRoot: root, planName: "p", executionContext: execution });
+            if (!options.planOnly)
+                await fsWriteFile(join(cwd, "implementation.ts"), "export const value = 1; // implemented\n");
+            await finalizePlanImplementation({
+                projectRoot: root,
+                planName: "p",
+                executionContext: execution,
+                executionReport: attrs.executionReport ?? undefined,
+            });
             const implemented = await loadPlan(root, "p");
             assertExists(implemented);
-            await updatePlanFrontMatter(root, "p", { humanReviewMode: attrs.humanReviewMode }, implemented.attrs, {
-                expectedRevision: implemented.revision,
-            });
+            await seedPlanState(
+                root,
+                "p",
+                {
+                    humanReviewMode: attrs.humanReviewMode,
+                    ...(attrs.humanReviewDecision !== undefined
+                        ? { humanReviewDecision: attrs.humanReviewDecision }
+                        : {}),
+                    ...(options.attrs?.status ? { status: options.attrs.status } : {}),
+                    ...(options.attrs?.executionReport ? { executionReport: options.attrs.executionReport } : {}),
+                    ...(options.attrs?.validationCiAttempts !== undefined
+                        ? { validationCiAttempts: options.attrs.validationCiAttempts }
+                        : {}),
+                    ...(attrs.validationCheckpoint
+                        ? { validationCheckpoint: { ...attrs.validationCheckpoint, attemptId: id } }
+                        : {}),
+                },
+                implemented.attrs,
+                {
+                    expectedRevision: implemented.revision,
+                },
+            );
         });
     }
     if (options.nonGit) {

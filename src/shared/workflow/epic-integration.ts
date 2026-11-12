@@ -1,6 +1,7 @@
-import { currentPackageSelection } from "./package-workflow.ts";
+import { saveEpicIntegrationReview } from "../../plan-store/index.ts";
+import { capturePlanAccess } from "../../plan-store/index.ts";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
-import { preparePlanWorkflow } from "./plan-preparation.ts";
+import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { REVIEW_DIFF_FORMAT_ARGS } from "./git-snapshot.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
@@ -21,16 +22,10 @@ import { rm as fsRm } from "node:fs/promises";
  */
 
 import { join } from "node:path";
-import {
-    compareChildPlansByOrder,
-    findPlansByParent,
-    loadPlan,
-    saveChildFeaturePlans,
-    writePlanMarkdownWithRevisionLocked,
-    updatePlanFrontMatter,
-    withPlanCatalogLock,
-} from "../../plan-store.js";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import { savePlanProse, preparePlanRepairDraft } from "../../plan-store/index.ts";
+import { compareChildPlansByOrder, parsePlanFrontMatter } from "../../plan-format.ts";
+import { findPlansByParent, loadPlan, saveChildFeaturePlans } from "../../plan-store/index.ts";
+import type { PlanFrontMatter } from "../../plan-store/index.ts";
 import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
 import { isGitRepository } from "../git.ts";
@@ -42,11 +37,12 @@ import {
     PROCESS_STREAM_OUTPUT_LIMIT_BYTES,
 } from "./process-output.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
-import { EPIC_INTEGRATION_REPORT_FILE_NAME, resolveEpicArtifactPath, saveEpicArtifact } from "../epic-artifacts.ts";
+import { EPIC_INTEGRATION_REPORT_FILE_NAME } from "../../plan-format.ts";
+import { resolveEpicArtifactPath, saveEpicArtifact } from "../../plan-store/index.ts";
 import type { HostedSession } from "../session/hosted-session.js";
 import { recordPlanEvent } from "./plan-lifecycle.js";
-import { resolveWorkflowPlanLocation } from "./plan-location.ts";
-import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
+
 import { findTargetBranchPlansByParent, prepareTargetBranchPlansByParent } from "./planning-worktree.ts";
 import { ensureEpicBranch } from "./epic-branch.ts";
 import type { LocalCIPort, LocalCIResult } from "./validation-local-ci.ts";
@@ -63,7 +59,8 @@ import {
     unaccountedOpenItems,
     type ReviewLedger,
 } from "./review-ledger.ts";
-import { readControllerRecord, StaleControllerWriteError } from "./controller-registry.ts";
+import { readEpicIntegrationReview } from "../../plan-store/index.ts";
+import { StaleControllerWriteError } from "../../plan-store/index.ts";
 import type { EpicIntegrationReviewState } from "./controller-state.ts";
 import { SEMANTIC_REVIEW_CYCLES } from "./validation-types.ts";
 import { formatCodeReviewAnnotations, normalizeHumanReview } from "./validation-human-review.ts";
@@ -739,22 +736,18 @@ async function addRepairChild(
         renderFindings(findings),
         "",
     ].join("\n");
-    const [written] = await withPlanCatalogLock(
-        documentRoot,
-        async () =>
-            await saveChildFeaturePlans(documentRoot, epicPlanName, [
-                {
-                    title,
-                    summary: `Repair ${findings.length} integration finding(s) on ${state.branch}.`,
-                    affectedPaths: [],
-                    dependencies: [],
-                    content,
-                    order: highestOrder + 1,
-                    targetBranch: state.branch,
-                    workKind: "BUG_FIX",
-                },
-            ]),
-    );
+    const [written] = await saveChildFeaturePlans(documentRoot, epicPlanName, [
+        {
+            title,
+            summary: `Repair ${findings.length} integration finding(s) on ${state.branch}.`,
+            affectedPaths: [],
+            dependencies: [],
+            content,
+            order: highestOrder + 1,
+            targetBranch: state.branch,
+            workKind: "BUG_FIX",
+        },
+    ]);
     const child = await loadPlan(documentRoot, written.name);
     if (!child) throw new Error(`Repair child was not saved: ${written.name}`);
     return {
@@ -769,22 +762,6 @@ async function addRepairChild(
 }
 
 /** Give a branch draft a writable document without losing a saved checkout copy. */
-async function prepareRepairDraftDocument(primaryRoot: string, name: string) {
-    const source = await resolveWorkflowPlanLocation(primaryRoot, name, { readOnly: true });
-    if (!source.planningNotStarted) return source;
-    const writable = await prepareSessionPlanningWorktree(primaryRoot, name);
-    if (source.plan && !source.publishedSnapshot && writable.plan) {
-        await writePlanMarkdownWithRevisionLocked(
-            writable.documentRoot,
-            name,
-            writable.plan.path,
-            source.plan.markdown,
-            writable.plan.revision,
-        );
-        writable.plan = await loadPlan(writable.documentRoot, name);
-    }
-    return writable;
-}
 
 /** A temporary detached checkout of the exact Epic commit, owned and removed by the gate. */
 async function withGateCheckout<T>(primaryRoot: string, commit: string, run: (path: string) => Promise<T>): Promise<T> {
@@ -870,8 +847,8 @@ export async function runEpicIntegrationGate(
         "info",
     );
 
-    const controller = await readControllerRecord(primaryRoot, { planName: epicPlanName, planId: epic.attrs.planId });
-    const saved = controller?.state.epicIntegrationReview;
+    const integrationReview = await readEpicIntegrationReview(primaryRoot, epicPlanName, epic.attrs.planId);
+    const saved = integrationReview.review;
     const round = (saved?.round ?? state.children.filter((child) => isIntegrationRepairChild(child.name)).length) + 1;
     let ledger = saved ? normalizeLedger(saved.ledger) : createLedger();
     if (saved && saved.checkedCommit !== head) ledger = claimReviewFixes(ledger);
@@ -962,16 +939,10 @@ export async function runEpicIntegrationGate(
             ledger = applyRoundFindings(ledger, review.outcome.findings, round).ledger;
             const reviewState: EpicIntegrationReviewState = { round, ledger, checkedCommit: head };
             try {
-                await updatePlanFrontMatter(
-                    location.documentRoot,
-                    epicPlanName,
-                    { epicIntegrationReview: reviewState },
-                    {},
-                    {
-                        expectedRevision: current.revision,
-                        expectedControllerRevision: controller?.revision || 0,
-                    },
-                );
+                await saveEpicIntegrationReview(location.documentRoot, epicPlanName, reviewState, {
+                    expectedRevision: current.revision,
+                    expectedControllerRevision: integrationReview.revision,
+                });
             } catch (error) {
                 if (!(error instanceof StaleControllerWriteError)) throw error;
                 return {
@@ -985,7 +956,7 @@ export async function runEpicIntegrationGate(
                 epicPlanName,
                 EPIC_INTEGRATION_REPORT_FILE_NAME,
             );
-            const reportRelativePath = currentPackageSelection()
+            const reportRelativePath = capturePlanAccess()
                 ? reportPath
                 : `docs/plans/${epicPlanName}/${EPIC_INTEGRATION_REPORT_FILE_NAME}`;
             if (findings.length) {
@@ -1055,15 +1026,9 @@ export async function runEpicIntegrationGate(
                 const reviewedAt = codeReview.kind === "approved" ? new Date().toISOString() : null;
                 if (takeover) {
                     reviewState.userTakeoverAt = reviewedAt;
-                    await updatePlanFrontMatter(
-                        location.documentRoot,
-                        epicPlanName,
-                        { epicIntegrationReview: reviewState },
-                        {},
-                        {
-                            expectedRevision: latest.revision,
-                        },
-                    );
+                    await saveEpicIntegrationReview(location.documentRoot, epicPlanName, reviewState, {
+                        expectedRevision: latest.revision,
+                    });
                 }
                 await recordPlanEvent({
                     cwd: primaryRoot,
@@ -1083,7 +1048,7 @@ export async function runEpicIntegrationGate(
                 });
                 for (const draft of repairDrafts) {
                     // Branch snapshots need a writable, registered document before lifecycle writes.
-                    if (draft.planningNotStarted) await prepareRepairDraftDocument(primaryRoot, draft.name);
+                    if (draft.planningNotStarted) await preparePlanRepairDraft(primaryRoot, draft.name);
                     await recordPlanEvent({
                         cwd: primaryRoot,
                         planName: draft.name,
@@ -1131,7 +1096,7 @@ export async function runEpicIntegrationGate(
             let repairChild: EpicContinuationResolution;
             if (newestDraft) {
                 const writable = newestDraft.planningNotStarted
-                    ? await prepareRepairDraftDocument(primaryRoot, newestDraft.name)
+                    ? await preparePlanRepairDraft(primaryRoot, newestDraft.name)
                     : newestDraft;
                 const draft = writable.plan;
                 if (!draft) throw new Error(`Repair child not found: ${newestDraft.name}`);
@@ -1142,11 +1107,10 @@ export async function runEpicIntegrationGate(
                     ),
                     findings,
                 );
-                await writePlanMarkdownWithRevisionLocked(
+                await savePlanProse(
                     writable.documentRoot,
                     newestDraft.name,
-                    draft.path,
-                    markdown,
+                    parsePlanFrontMatter(markdown).body,
                     draft.revision,
                 );
                 repairChild = {

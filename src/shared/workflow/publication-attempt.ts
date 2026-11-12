@@ -1,4 +1,4 @@
-import { assertPackagePublicationReference, type PackagePublicationReference } from "../plan-package-store.ts";
+import { assertPlanPublicationReference, type PackagePublicationReference } from "../../plan-store/index.ts";
 /**
  * Durable authority for publishing one validated execution attempt.
  *
@@ -229,7 +229,7 @@ export function assertPublicationAttempt(value: PublicationAttempt): void {
         if (!value[field]) throw new Error(`Publication attempt requires ${field}.`);
     }
     if (value.packageInput !== undefined) {
-        assertPackagePublicationReference(value.packageInput);
+        assertPlanPublicationReference(value.packageInput);
         if (
             value.deliveryMetadataVersion !== undefined ||
             value.packageInput.planId !== value.planId ||

@@ -1,6 +1,6 @@
+import { seedPlanState, seedPlan, seedPlanController } from "../../shared/testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
-import { importLocalPlanReference } from "../../shared/local-home-store.ts";
-import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
+import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { bashFixtureExecutable } from "../../../scripts/bash-fixture.ts";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
 import { test } from "node:test";
@@ -25,14 +25,10 @@ import {
     getCurrentSystemPrompt,
     type TranscriptContext,
 } from "@earendil-works/pi-ai";
-import {
-    loadArchivedPlan,
-    loadPlan,
-    parsePlanFrontMatter,
-    resolveSiblingChildPlanDependencies,
-    savePlan,
-    updatePlanFrontMatter,
-} from "../../plan-store.js";
+
+import { parsePlanFrontMatter } from "../../plan-format.ts";
+import { loadArchivedPlan, loadPlan, resolveSiblingChildPlanDependencies } from "../../plan-store/index.ts";
+
 import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
 import { createPlanSessionSurface } from "./plan-session-surface.ts";
@@ -41,15 +37,15 @@ import { addEntry, findById, removeEntry, updateEntry } from "../../shared/workt
 import { setCustomSetting } from "../../shared/settings.js";
 import { executePlanAction, loadPlanActionEvidence } from "../../shared/workflow/plan-actions.ts";
 import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
-import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
+
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
-import { resolveProjectRuntimeLayout, enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
 import { createTestWorktreeAttempt } from "../../shared/worktree-test-helpers.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runLoadPlanCommand } from "./index.ts";
 import { getLoadPlanCompletions } from "./getArgumentCompletions.ts";
 import { getRunWieldRuntimeDir, AGENTS } from "../../constants.js";
-import type { PlanFrontMatterInput } from "../../plan-store.js";
+import type { PlanFrontMatterInput } from "../../plan-format.ts";
 import type { EditorAPI, SelectOption, UiAPI } from "../../ui/tui/types.js";
 
 interface LoadPlanUiFixture {
@@ -119,7 +115,7 @@ async function writePlan(
     attrs: PlanFrontMatterInput,
     body = `# ${planName}`,
 ): Promise<void> {
-    await savePlan(projectRoot, planName, body, {
+    await seedPlan(projectRoot, planName, body, {
         classification: "PLANNED_CHANGE",
         complexity: "LOW",
         summary: `Fixture ${planName}`,
@@ -156,7 +152,7 @@ async function prepareImplementedFollowUpPlan(
     await git(projectRoot, ["worktree", "add", "-b", branch, worktreePath, "HEAD"]);
     const plan = await loadPlan(projectRoot, "follow-up");
     if (!plan) throw new Error("follow-up Plan fixture disappeared");
-    await updatePlanFrontMatter(
+    await seedPlanState(
         projectRoot,
         "follow-up",
         {
@@ -217,7 +213,7 @@ async function prepareValidatedPublicationPlan(
     });
     const worktreePlan = await loadPlan(worktree.path, planName);
     if (!worktreePlan) throw new Error("worktree Plan fixture disappeared");
-    await savePlan(
+    await seedPlan(
         worktree.path,
         planName,
         worktreePlan.markdown || worktreePlan.body || `# ${planName}`,
@@ -828,7 +824,7 @@ test("load-plan confirms cleanup of unregistered legacy recovery when archiving 
                 worktreeBranch: "worktree/lost-worktree",
                 worktreeBaseBranch: "main",
             });
-            await writeControllerState(
+            await seedPlanController(
                 projectRoot,
                 { planId: "lost-plan", planName: "finished-with-stale-worktree" },
                 {},
@@ -1165,7 +1161,7 @@ for (const ordinaryChildPending of [false, true]) {
 test("Approve for Later creates no execution segment", async () => {
     await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot }) => {
         await fsMkdir(`${projectRoot}/docs/plans`, { recursive: true });
-        await savePlan(
+        await seedPlan(
             projectRoot,
             "reviewed",
             [
@@ -1230,7 +1226,7 @@ test("Approve for Later creates no execution segment", async () => {
 test("direct review from draft approves for later without a planning turn", async () => {
     await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot }) => {
         await fsMkdir(`${projectRoot}/docs/plans`, { recursive: true });
-        await savePlan(
+        await seedPlan(
             projectRoot,
             "direct-draft",
             [
@@ -1330,7 +1326,7 @@ for (const status of ["draft", "feedback", "approved", "ready_for_work"] as cons
 test("direct review from draft can approve and start execution", async () => {
     await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot, setModelMessages }) => {
         await fsMkdir(`${projectRoot}/docs/plans`, { recursive: true });
-        await savePlan(
+        await seedPlan(
             projectRoot,
             "direct-run",
             [
@@ -1401,7 +1397,7 @@ test("direct review from draft can approve and start execution", async () => {
 test("direct review from feedback can send feedback back through Planner", async () => {
     await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot, setModelMessages }) => {
         await fsMkdir(`${projectRoot}/docs/plans`, { recursive: true });
-        await savePlan(
+        await seedPlan(
             projectRoot,
             "direct-feedback",
             [
@@ -1489,7 +1485,7 @@ test("direct review from feedback can send feedback back through Planner", async
 test("direct review from ready_for_work reopens review and approves for later", async () => {
     await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot, setModelResponseFactory }) => {
         await fsMkdir(`${projectRoot}/docs/plans`, { recursive: true });
-        await savePlan(
+        await seedPlan(
             projectRoot,
             "direct-ready",
             [
@@ -1569,7 +1565,7 @@ test("direct review from ready_for_work reopens review and approves for later", 
 test("direct review menu is omitted when a draft has an invalid execution policy", async () => {
     await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot }) => {
         await fsMkdir(`${projectRoot}/docs/plans`, { recursive: true });
-        await savePlan(
+        await seedPlan(
             projectRoot,
             "invalid-policy-draft",
             [
@@ -2255,7 +2251,7 @@ for (const orders of [
                 if (orders[0] === 2) {
                     const last = await loadPlan(projectRoot, "long-parent-prefix/01-last");
                     if (!last) throw new Error("Expected last child");
-                    await updatePlanFrontMatter(
+                    await seedPlanState(
                         projectRoot,
                         "long-parent-prefix/01-last",
                         { order: 0 },

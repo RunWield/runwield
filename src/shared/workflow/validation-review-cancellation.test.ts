@@ -1,6 +1,13 @@
+import { seedPlanState, seedPlan } from "../testing/plan-state-fixture.ts";
+import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
+import { recordPlanEvent } from "./plan-lifecycle.js";
+import { startActiveExecutionWorkflow, createExecutionStartPorts } from "./execution-start.ts";
+import { finalizePlanImplementation } from "./implementation-checkpoint.ts";
 import { test } from "node:test";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
@@ -184,15 +191,53 @@ async function awaitReviewStep<T>(name: string, pending: Promise<T>, timeoutMs =
 for (const revise of [false, true]) {
     test(`Code Review reopen projects the same live URL through ${revise ? "revision and CI" : "conversation"} until approval`, async () => {
         const projectRoot = await awaitReviewStep("fixture checkout", reopenFixture.checkout());
-        await savePlan(projectRoot, "p", "# Review reopen\n\nKeep the exported label.", {
-            classification: "QUICK_FIX",
-            status: "reviewed",
-            humanReviewMode: "always",
-            humanReviewDecision: null,
+        await seedPlan(projectRoot, "p", "# Review reopen\n\nKeep the exported label.", {
+            classification: "PLANNED_CHANGE",
+            status: "draft",
         });
+        const execution = await withLocalPlanWorkflow(projectRoot, "p", async () => {
+            await recordPlanEvent({
+                cwd: projectRoot,
+                planName: "p",
+                event: "review_approved",
+                currentStatus: "draft",
+            });
+            await recordPlanEvent({
+                cwd: projectRoot,
+                planName: "p",
+                event: "readiness_passed",
+                currentStatus: "approved",
+            });
+            const ready = await loadPlan(projectRoot, "p");
+            assertExists(ready);
+            const active = await startActiveExecutionWorkflow({
+                cwd: projectRoot,
+                planName: "p",
+                currentStatus: "ready_for_work",
+                triageMeta: ready.attrs,
+                ports: createExecutionStartPorts(),
+            });
+            assertExists(active.executionCwd);
+            await writeFile(join(active.executionCwd, "label.ts"), "export const label = 'first';\n");
+            await finalizePlanImplementation({ projectRoot, planName: "p", executionContext: active });
+            await recordPlanEvent({
+                cwd: projectRoot,
+                planName: "p",
+                event: "mechanical_validation_passed",
+                currentStatus: "implemented",
+            });
+            await recordPlanEvent({
+                cwd: projectRoot,
+                planName: "p",
+                event: "semantic_review_passed",
+                currentStatus: "implemented",
+            });
+            await seedPlanState(projectRoot, "p", { humanReviewMode: "always", humanReviewDecision: null });
+            return active;
+        });
+        assertExists(execution.executionCwd);
         const plan = await loadPlan(projectRoot, "p");
         assertExists(plan);
-        await writeFile(join(projectRoot, "label.ts"), "export const label = 'first';\n");
         const host = new SessionHost();
         const session = attachRecorder(host.createSession({ cwd: projectRoot }), makeUi());
         const runtime = new SessionRuntime({
@@ -201,15 +246,7 @@ for (const revise of [false, true]) {
             ownerProcessKind: "test",
             ownerInstanceId: crypto.randomUUID(),
         });
-        session.setActiveExecutionWorkflow({
-            planName: "p",
-            triageMeta: plan.attrs,
-            executionAgent: "engineer",
-            projectRoot,
-            executionCwd: projectRoot,
-            baselineTree: await git(projectRoot, ["rev-parse", "HEAD"]),
-            worktreeBaseBranch: "main",
-        });
+        session.setActiveExecutionWorkflow({ ...execution, triageMeta: plan.attrs });
         const opened = [Promise.withResolvers<string>(), Promise.withResolvers<string>()];
         const agentStarted = Promise.withResolvers<void>();
         const revisionCiRequested = Promise.withResolvers<void>();
@@ -257,7 +294,7 @@ for (const revise of [false, true]) {
                     agentStarted.resolve();
                     await releaseAgent.promise;
                     if (revise) {
-                        await writeFile(join(projectRoot, "label.ts"), "export const label = 'revised';\n");
+                        await writeFile(join(execution.executionCwd!, "label.ts"), "export const label = 'revised';\n");
                         await executeWorkflowTestTools(options, [
                             { name: "task_completed", arguments: { message: "Updated the label." } },
                         ]);

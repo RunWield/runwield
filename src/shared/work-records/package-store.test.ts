@@ -1,19 +1,19 @@
-import { withRetainedCheckoutSource } from "../legacy-plan-source.ts";
+import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { test } from "node:test";
 import { equal, ok, rejects } from "node:assert/strict";
 import fs from "node:fs/promises";
 import { basename, join } from "node:path";
 import { packageFixture, create, read } from "../testing/plan-package-fixture.ts";
-import { withPackageWorkflow } from "../workflow/package-workflow.ts";
+import { withPlanAccess, selectPlanAccess } from "../../plan-store/index.ts";
 import { runWorkRecordBackfill } from "./generation.js";
-import { loadArchivedPlan } from "../../plan-store.js";
+import { loadArchivedPlan } from "../../plan-store/index.ts";
 import { withWorkRecordOwner, workRecordOwnerLayout, withWorkRecordMutation } from "./owner.ts";
 import { writeWorkRecord, listWorkRecords, readWorkRecord, replaceWorkRecord, deleteWorkRecord } from "./store.ts";
 import { recordAttrs, recordBody } from "./test-fixtures/package-records.ts";
 import { formatWorkRecordMarkdown } from "./markdown.js";
 import { applyWorkRecordSupersession } from "./supersession.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
-import { importPlanPackages } from "../plan-package-store.ts";
+import { importPlans } from "../../plan-store/index.ts";
 import { retryWorkRecordForPlan } from "./auto-generation.ts";
 
 for (const operation of ["retry", "backfill"] as const) {
@@ -34,28 +34,24 @@ status: verified
 Mutable live prose.
 `,
             );
-            equal((await importPlanPackages(f.identity, path)).kind, "committed");
+            equal((await importPlans(f.root, path)).kind, "committed");
             const plan = await read(f.identity, "imported-plan");
             equal(plan.metadata.definition.status, "verified");
             const port = createWorkRecordMnemotecaFixture();
-            await withPackageWorkflow(
-                f.root,
-                { identity: f.identity, planId: plan.metadata.planId, expectedRevision: plan.metadata.revision },
-                async () => {
-                    const options = {
-                        mnemotecaPort: port,
-                        runRecorderStep: () => Promise.resolve({ title: "Unproved outcome", summary: "Live content." }),
-                    };
-                    const result =
-                        operation === "retry"
-                            ? await retryWorkRecordForPlan({ cwd: f.root, planName: "imported", ...options })
-                            : (await runWorkRecordBackfill(f.root, options)).outcomes[0];
-                    equal(result?.status, "failed", JSON.stringify(result));
-                    ok(result.error?.includes("retained publication source"), JSON.stringify(result));
-                    equal((await listWorkRecords(f.root, { createDir: false })).length, 0);
-                    equal(port.snapshot().length, 0);
-                },
-            );
+            await withPlanAccess(f.root, (await selectPlanAccess(f.root, plan.metadata.planId))!, async () => {
+                const options = {
+                    mnemotecaPort: port,
+                    runRecorderStep: () => Promise.resolve({ title: "Unproved outcome", summary: "Live content." }),
+                };
+                const result =
+                    operation === "retry"
+                        ? await retryWorkRecordForPlan({ cwd: f.root, planName: "imported", ...options })
+                        : (await runWorkRecordBackfill(f.root, options)).outcomes[0];
+                equal(result?.status, "failed", JSON.stringify(result));
+                ok(result.error?.includes("retained publication source"), JSON.stringify(result));
+                equal((await listWorkRecords(f.root, { createDir: false })).length, 0);
+                equal(port.snapshot().length, 0);
+            });
             equal((await read(f.identity, "imported-plan")).metadata.workflow?.workRecord, undefined);
         } finally {
             await f.cleanup();
@@ -87,23 +83,19 @@ Untrusted archive prose.
             mnemotecaPort: port,
             runRecorderStep: () => Promise.resolve({ title: "Legacy outcome", summary: "Legacy archive outcome." }),
         };
-        await withPackageWorkflow(
-            f.root,
-            { identity: f.identity, planId: plan.metadata.planId, expectedRevision: plan.metadata.revision },
-            async () => {
-                const result = await runWorkRecordBackfill(f.root, options);
-                equal((await listWorkRecords(f.root, { createDir: false })).length, 0);
-                equal(port.snapshot().length, 0);
-                equal(result.outcomes.length, 0, JSON.stringify(result.outcomes));
-                equal(
-                    result.sources.some((source) => source.sourceKind === "archived"),
-                    false,
-                );
-            },
-        );
+        await withPlanAccess(f.root, (await selectPlanAccess(f.root, plan.metadata.planId))!, async () => {
+            const result = await runWorkRecordBackfill(f.root, options);
+            equal((await listWorkRecords(f.root, { createDir: false })).length, 0);
+            equal(port.snapshot().length, 0);
+            equal(result.outcomes.length, 0, JSON.stringify(result.outcomes));
+            equal(
+                result.sources.some((source) => source.sourceKind === "archived"),
+                false,
+            );
+        });
         equal(await fs.readFile(archivePath, "utf8"), archive);
         equal((await runWorkRecordBackfill(f.root, options)).outcomes.length, 0);
-        await withRetainedCheckoutSource(f.identity, async () => {
+        await withRetainedPlanFixture(f.root, async () => {
             const legacy = await runWorkRecordBackfill(f.root, options);
             equal(legacy.outcomes.length, 1);
             equal(legacy.outcomes[0].status, "generated", JSON.stringify(legacy.outcomes));
@@ -122,9 +114,7 @@ Untrusted archive prose.
 test("ordinary canonical mutations ignore retained repository copies", async () => {
     const f = await packageFixture();
     try {
-        const legacy = await withRetainedCheckoutSource(f.identity, () =>
-            writeWorkRecord(f.root, recordAttrs(), recordBody),
-        );
+        const legacy = await withRetainedPlanFixture(f.root, () => writeWorkRecord(f.root, recordAttrs(), recordBody));
         await withWorkRecordOwner(f.root, f.identity, async () => {
             equal((await listWorkRecords(f.root, { createDir: false })).length, 0);
             const record = await writeWorkRecord(f.root, recordAttrs(), recordBody);

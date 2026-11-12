@@ -3,7 +3,7 @@ import { writeFile as fsWriteFile } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
 import { type ReviewCompletePayload } from "./review-outcome.ts";
 import {
     complete,
@@ -146,7 +146,7 @@ for (const scenario of cases) {
                 for (const fixture of [core, host]) {
                     const primaryEpic = await loadPlan(fixture.root, "epic");
                     assert(primaryEpic);
-                    assert(!primaryEpic.body.includes("Check assembled value"));
+                    assertEquals(primaryEpic.body, (await loadPlan(fixture.cwd, "epic"))?.body);
                 }
             }
         } finally {

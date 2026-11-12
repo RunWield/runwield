@@ -38,7 +38,7 @@ export {
 } from "./workflow-results.js";
 export { CollaborationStyles, PairCheckpointDecisions, PairPauseReasons } from "./execution-collaboration.ts";
 
-import type { PlanFrontMatter, PlanExecutionPolicy } from "../../plan-store.js";
+import type { PlanFrontMatter, PlanExecutionPolicy } from "../../plan-store/index.ts";
 import type { HostedSession, ActiveExecutionWorkflow } from "../session/hosted-session.js";
 import type { PlanWrittenEventPayload } from "./workflow-tool-events.ts";
 import type { PlanExecutionResult, ExecutePlanOptions } from "./plan-executor.ts";

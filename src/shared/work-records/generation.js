@@ -1,4 +1,5 @@
-import { currentPackageSelection, selectedPackage } from "../workflow/package-workflow.ts";
+import { recordPlanWorkRecord, ensureArchivedPlanIdentity } from "../../plan-store/index.ts";
+import { capturePlanAccess } from "../../plan-store/index.ts";
 import { currentWorkRecordOwner } from "./owner.ts";
 /**
  * @module shared/work-records/generation
@@ -7,17 +8,14 @@ import { currentWorkRecordOwner } from "./owner.ts";
 
 import { ValidationHostRejected, ValidationHostWait } from "../workflow/validation-host-contract.ts";
 import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
+import { compareChildPlansByOrder, isChildFeaturePlan, isProjectPlan } from "../../plan-format.ts";
 import {
-    compareChildPlansByOrder,
     ensurePlanIdentity,
-    isChildFeaturePlan,
-    isProjectPlan,
     listArchivedPlans,
     listPlans,
     loadArchivedPlan,
     loadPlan,
-    updateArchivedPlanFrontMatter,
-} from "../../plan-store.js";
+} from "../../plan-store/index.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { HostedSession } from "../session/hosted-session.js";
 import { runValidationAgentUntilEvent } from "../session/agent-workflow-step.ts";
@@ -26,7 +24,6 @@ import { settleWorkflowToolEvent } from "../workflow/workflow-tool-events.ts";
 import { createWorkRecordCompletedTool } from "../../tools/work-record-completed.ts";
 import { dedupeTicketReferencesByUrl } from "../ticket-references.ts";
 import { readPlanDeviations, renderPlanDeviationsForWorkRecord } from "../plan-deviations.ts";
-import { runPlanFrontMatterTransition } from "../workflow/state-transition.ts";
 import { buildWorkRecordFileName, deleteWorkRecord, listWorkRecords, writeWorkRecord } from "./store.ts";
 import { syncWorkRecordToIndex } from "./index-adapter.ts";
 import { applyWorkRecordSupersession, WorkRecordSupersessionRollbackError } from "./supersession.ts";
@@ -49,7 +46,7 @@ const USER_VERIFIED_TEXT = "The user attested verification; RunWield Workflow Va
  * @property {string} path
  * @property {string} planId
  * @property {string} [documentRevision] - Expected local document revision when recording a published source
- * @property {import('../../plan-store.js').PlanFrontMatter} attrs
+ * @property {import('../../plan-store/index.ts').PlanFrontMatter} attrs
  * @property {import('../plan-deviations.ts').PlanDeviation[]} [planDeviations]
  * @property {string} body
  * @property {string} markdown
@@ -316,7 +313,7 @@ export async function discoverWorkRecordSources(cwd) {
         sources.push(buildActiveWorkRecordSource(entry.name, loaded));
     }
     // Repository archives retain their legacy owner; admitted retries use package sources only.
-    if (currentPackageSelection()) return sources;
+    if (capturePlanAccess()) return sources;
     for (const entry of await listArchivedPlans(cwd)) {
         const loaded = await loadArchivedPlan(cwd, entry.name);
         if (!loaded) continue;
@@ -337,7 +334,7 @@ export async function discoverWorkRecordSources(cwd) {
 
 /**
  * @param {string} name
- * @param {{ path: string, markdown: string, attrs: import('../../plan-store.js').PlanFrontMatter, body: string }} loaded
+ * @param {{ path: string, markdown: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter, body: string }} loaded
  * @returns {WorkRecordSource}
  */
 export function buildActiveWorkRecordSource(name, loaded) {
@@ -391,33 +388,10 @@ export async function previewWorkRecordBackfill(cwd) {
 /**
  * @param {string} cwd
  * @param {WorkRecordSource} source
- * @param {Partial<import('../../plan-store.js').PlanFrontMatter>} updates
+ * @param {Partial<import('../../plan-store/index.ts').PlanFrontMatter>} updates
  */
 async function updateSourceFrontMatter(cwd, source, updates) {
-    if (source.recordingAttemptId && currentPackageSelection()) {
-        const live = await selectedPackage({ planId: source.planId });
-        const attempt = live.metadata.workflow?.attempt;
-        if (attempt && attempt.attemptId !== source.recordingAttemptId) return source.attrs;
-    }
-
-    if (source.sourceKind === "archived") return await updateArchivedPlanFrontMatter(cwd, source.name, updates);
-    // A Work Record backlink is post-settlement bookkeeping, so it gets an ordinary
-    // Plan transaction. Plan Recovery is deliberately not used here: recovery
-    // supersedes unresolved recovery journals and retires them on success, which
-    // would let a backlink write silently destroy the evidence for an uncertain
-    // publication it knows nothing about.
-    const transition = await runPlanFrontMatterTransition({
-        projectRoot: cwd,
-        planName: source.name,
-        operation: "work_record_backlink",
-        expectedRevision: source.documentRevision,
-        updates,
-        recoveryAttrs: source.attrs || {},
-    });
-    if (transition.status !== "committed") {
-        throw new Error(transition.message || `Could not link Work Record to Plan ${source.name}.`);
-    }
-    return /** @type {import('../../plan-store.js').PlanFrontMatter} */ (transition.value);
+    await recordPlanWorkRecord(cwd, source, updates.workRecord);
 }
 
 /**
@@ -439,9 +413,8 @@ async function ensureSourcePlanId(cwd, source, options) {
             children: source.children,
         };
     }
-    const planId = options.idGenerator ? options.idGenerator() : crypto.randomUUID();
-    const attrs = await updateArchivedPlanFrontMatter(cwd, source.name, { planId });
-    return { ...source, planId, attrs };
+    const attrs = await ensureArchivedPlanIdentity(cwd, source.name);
+    return { ...source, planId: attrs.planId || "", attrs };
 }
 
 /** @param {WorkRecordSource} source */
@@ -910,7 +883,7 @@ export async function runWorkRecordBackfill(cwd, options) {
     /** @type {BackfillResult["outcomes"]} */
     const outcomes = [];
     for (const source of preview.eligible) {
-        if (currentPackageSelection() && source.sourceKind === "active") {
+        if (capturePlanAccess() && source.sourceKind === "active") {
             const { retryWorkRecordForPlan } = await import("./auto-generation.ts");
             const result = await retryWorkRecordForPlan({ cwd, planName: source.name, ...options });
             outcomes.push({

@@ -1,4 +1,4 @@
-import { writeFile, readFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
@@ -7,7 +7,7 @@ import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { prepareIndexRuntime, toDelivery } from "./delivery-test-fixture.ts";
 import { listWorkRecords } from "../work-records/store.js";
 import { git } from "../git-test-fixture.ts";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
 
 test("Attached FEATURE records Claude sections and proves publication before delivered closure", async () => {
     const fixture = await attachedValidationFixture({ attrs: { workKind: "FEATURE", humanReviewMode: "none" } });
@@ -143,8 +143,7 @@ for (const invalid of [false, true]) {
             attrs: { humanReviewMode: "none", deliveryBranch: "landing" },
         });
         try {
-            await git(fixture.root, ["branch", "landing"]);
-            const primaryPlan = await readFile(join(fixture.root, "docs/plans/p.md"), "utf8");
+            const primaryPlan = await fixture.plan();
             let started = await toDelivery(fixture);
             assert(started.workflow.nextAction.kind === "recorder");
             const sections = {
@@ -170,7 +169,7 @@ for (const invalid of [false, true]) {
             assertEquals(completed.ok, !invalid, JSON.stringify(completed));
             assert(completed.workflow?.nextAction.kind === "delivered", JSON.stringify(completed));
             assertEquals(completed.workflow.nextAction.workRecord?.status, invalid ? "failed" : "generated");
-            assertEquals(await readFile(join(fixture.root, "docs/plans/p.md"), "utf8"), primaryPlan);
+            assertEquals((await fixture.plan()).markdown, primaryPlan.markdown);
             const replayedCore = await fixture.turn();
             assert(replayedCore.kind === "verified", JSON.stringify(replayedCore));
             assertEquals(replayedCore.workRecord, completed.workflow.nextAction.workRecord);

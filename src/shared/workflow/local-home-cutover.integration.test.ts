@@ -4,11 +4,11 @@ import fs from "node:fs/promises";
 import { join } from "node:path";
 import { packageFixture, read } from "../testing/plan-package-fixture.ts";
 import { git } from "../git-test-fixture.ts";
-import { importPlanPackages } from "../plan-package-store.ts";
+import { importPlans } from "../../plan-store/index.ts";
 import { addEntry, updateEntry, getWorktreeRegistryPath } from "../worktree-registry.js";
-import { loadPlan } from "../../plan-store.js";
-import { withLocalPlanWorkflow } from "../local-home-store.ts";
-import { currentPackageSelection } from "./package-workflow.ts";
+import { loadPlan } from "../../plan-store/index.ts";
+import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
+import { capturePlanAccess } from "../../plan-store/index.ts";
 
 async function retainedFixture() {
     const fixture = await packageFixture();
@@ -37,7 +37,7 @@ async function retainedFixture() {
         createdAt: "2026-01-01",
         updatedAt: "2026-01-01",
     });
-    equal((await importPlanPackages(fixture.identity, source)).kind, "committed");
+    equal((await importPlans(fixture.root, source)).kind, "committed");
     return { ...fixture, execution };
 }
 
@@ -45,7 +45,7 @@ test("imported active attempt continues its recorded owner and abandoned settlem
     const fixture = await retainedFixture();
     try {
         await withLocalPlanWorkflow(fixture.root, "active", async () => {
-            equal(currentPackageSelection(), undefined);
+            equal(capturePlanAccess(), undefined);
             const plan = await loadPlan(fixture.root, "active");
             equal(plan?.attrs.worktreeId, "original-attempt");
             await updateEntry(fixture.root, "original-attempt", { status: "abandoned" });
@@ -56,7 +56,7 @@ test("imported active attempt continues its recorded owner and abandoned settlem
         await fs.rm(join(fixture.root, "docs"), { recursive: true });
         await fs.rm(fixture.execution, { recursive: true });
         await withLocalPlanWorkflow(fixture.root, "active", async () => {
-            ok(currentPackageSelection());
+            ok(capturePlanAccess());
             equal((await loadPlan(fixture.root, "active"))?.body, "# Original attempt\n");
         });
     } finally {
@@ -72,8 +72,9 @@ test("changed retained execution identity cannot silently start canonical work",
         await fs.writeFile(registryPath, original.replace('"branch": "execution"', '"branch": "changed"'));
         let entered = false;
         await rejects(
-            withLocalPlanWorkflow(fixture.root, "active", async () => {
+            withLocalPlanWorkflow(fixture.root, "active", () => {
                 entered = true;
+                return Promise.resolve();
             }),
             /owner changed/,
         );
@@ -94,13 +95,15 @@ test("publication settlement requires target evidence and remains canonical afte
         await git(fixture.execution, ["commit", "-m", "validated legacy delivery"]);
         await updateEntry(fixture.root, "original-attempt", { status: "validated" });
         // A terminal registry label alone cannot prove that the target received this work.
-        await withLocalPlanWorkflow(fixture.root, "active", async () => {
-            equal(currentPackageSelection(), undefined);
+        await withLocalPlanWorkflow(fixture.root, "active", () => {
+            equal(capturePlanAccess(), undefined);
+            return Promise.resolve();
         });
         equal((await read(fixture.identity, "retained-plan")).metadata.workflow?.legacySettlement, undefined);
         await git(fixture.root, ["merge", "--ff-only", "execution"]);
-        await withLocalPlanWorkflow(fixture.root, "active", async () => {
-            ok(currentPackageSelection());
+        await withLocalPlanWorkflow(fixture.root, "active", () => {
+            ok(capturePlanAccess());
+            return Promise.resolve();
         });
         const settled = await read(fixture.identity, "retained-plan");
         equal(settled.metadata.workflow?.legacySettlement?.outcome, "published");
@@ -108,7 +111,7 @@ test("publication settlement requires target evidence and remains canonical afte
         await fs.rm(join(fixture.root, "docs"), { recursive: true });
         await fs.rm(fixture.execution, { recursive: true });
         await withLocalPlanWorkflow(fixture.root, "active", async () => {
-            ok(currentPackageSelection());
+            ok(capturePlanAccess());
             equal((await loadPlan(fixture.root, "active"))?.attrs.status, "verified");
         });
     } finally {

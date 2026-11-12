@@ -9,9 +9,8 @@ import {
     readPlanImportEvidence,
     renamePlanPackage,
     savePlanPackageDocument,
-    loadPlan,
-    listPlans,
-} from "./plan-store.js";
+} from "./plan-store/packages.ts";
+import { loadPlan, listPlans } from "./plan-store/index.ts";
 
 async function source(root: string, name: string, markdown: string) {
     const path = join(root, "docs", "plans", `${name}.md`);

@@ -1,3 +1,7 @@
+import { seedPlanState, seedPlan } from "../../shared/testing/plan-state-fixture.ts";
+import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
+import { capturePlanReviewInput } from "../../plan-store/index.ts";
+
 import {
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,
@@ -9,7 +13,8 @@ import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
-import { getPlanRevisionForText, injectFrontMatter, loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { createRootSessionManager, resolveCreatedRootSessionPath } from "../../shared/session/root-session.js";
 import { createOwnerWorkspaceApp, startWorkspaceServer } from "./server.js";
@@ -105,14 +110,14 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
     await fsMkdir(otherProjectRoot);
     await fsMkdir(`${projectRoot}/src`);
     await fsWriteFile(`${projectRoot}/src/referenced.ts`, "export const referenced = true;\n");
-    await savePlan(projectRoot, "owner-plan", "# Owner Plan\n\n## Context\n\nVisible owner plan", {
+    await seedPlan(projectRoot, "owner-plan", "# Owner Plan\n\n## Context\n\nVisible owner plan", {
         planId: "owner-plan-id",
         classification: "FEATURE",
         complexity: "LOW",
         summary: "Visible owner plan",
         status: "draft",
     });
-    await savePlan(projectRoot, "held-plan", "# Held Plan\n\n## Context\n\nVisible held plan", {
+    await seedPlan(projectRoot, "held-plan", "# Held Plan\n\n## Context\n\nVisible held plan", {
         planId: "held-plan-id",
         classification: "FEATURE",
         complexity: "LOW",
@@ -667,7 +672,7 @@ test("owner Workspace rejects stale live Plan review before answering Runtime", 
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-owner-plan-review-stale-"));
     const projectRoot = `${dir}/project`;
     await fsMkdir(projectRoot);
-    await savePlan(projectRoot, "owner-plan", "# Owner Plan\n\nBody", {
+    await seedPlan(projectRoot, "owner-plan", "# Owner Plan\n\nBody", {
         planId: "owner-plan-id",
         classification: "PLANNED_CHANGE",
         complexity: "LOW",
@@ -686,8 +691,13 @@ test("owner Workspace rejects stale live Plan review before answering Runtime", 
             })
         );
         const plan = await loadPlan(projectRoot, "owner-plan");
-        const openedRevision = await getPlanRevisionForText(plan.markdown);
-        await fsWriteFile(plan.path, injectFrontMatter(plan.markdown, { status: "approved" }));
+        const openedRevision = plan.revision;
+        const packageInput = await withLocalPlanWorkflow(projectRoot, "owner-plan", () =>
+            capturePlanReviewInput(projectRoot, "owner-plan", plan.revision),
+        );
+        await seedPlanState(projectRoot, "owner-plan", { status: "approved" }, plan.attrs, {
+            expectedRevision: plan.revision,
+        });
 
         let resolved = false;
         let rejectedMessage = "";
@@ -703,6 +713,7 @@ test("owner Workspace rejects stale live Plan review before answering Runtime", 
                     prompt: "Review Plan",
                     planReview: {
                         planId: "owner-plan-id",
+                        packageInput,
                         classification: "PLANNED_CHANGE",
                         expectedRevision: openedRevision,
                         reviewedSource: {
@@ -775,7 +786,7 @@ test("owner Workspace keeps read-only Project Plan progress API and removes prog
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-owner-progress-"));
     const projectRoot = `${dir}/project`;
     await fsMkdir(projectRoot);
-    await savePlan(projectRoot, "progress-plan", "# Progress Plan\n\nBody", {
+    await seedPlan(projectRoot, "progress-plan", "# Progress Plan\n\nBody", {
         planId: "progress-plan-id",
         classification: "PLANNED_CHANGE",
         complexity: "LOW",
@@ -824,20 +835,20 @@ test("owner Workspace keeps read-only Project Plan progress API and removes prog
 });
 
 test("owner Workspace reviews a complete Sequence and rejects stale sibling evidence", async () => {
-    const { prepareSequenceReview } = await import("../../shared/workflow/sequence-review.ts");
+    const { prepareSequenceReview } = await import("../../plan-store/index.ts");
     const { WorkspaceSessionContinuationService } = await import("./server/session-continuation.js");
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-owner-sequence-review-"));
     const root = `${dir}/project`;
     await fsMkdir(root);
     const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
     try {
-        await savePlan(root, "sequence", "# Sequence", {
+        await seedPlan(root, "sequence", "# Sequence", {
             classification: "PROJECT",
             type: "sequence",
             status: "draft",
         });
         for (const [index, name] of ["first", "second"].entries()) {
-            await savePlan(root, `sequence/${name}`, `# ${name}`, {
+            await seedPlan(root, `sequence/${name}`, `# ${name}`, {
                 classification: "PLANNED_CHANGE",
                 status: "draft",
                 parentPlan: "sequence",
@@ -846,7 +857,10 @@ test("owner Workspace reviews a complete Sequence and rejects stale sibling evid
         }
         const project = store.registerProject({ root, displayName: "Sequence project" });
         const service = new WorkspaceSessionContinuationService({ store });
-        const documents = await prepareSequenceReview(root, "sequence");
+        const documents = await withLocalPlanWorkflow(root, "sequence", () => prepareSequenceReview(root, "sequence"));
+        const packageInput = await withLocalPlanWorkflow(root, "sequence", () =>
+            capturePlanReviewInput(root, "sequence", documents[0].revision),
+        );
         const answers = [];
         service.operations.set("sequence-review", {
             status: "running",
@@ -858,7 +872,12 @@ test("owner Workspace reviews a complete Sequence and rejects stale sibling evid
                 request: {
                     type: "plan_review",
                     prompt: "Review Sequence",
-                    planReview: { planId: documents[0].planId, sequenceDocuments: documents },
+                    planReview: {
+                        planId: documents[0].planId,
+                        planName: "sequence",
+                        sequenceDocuments: documents,
+                        packageInput,
+                    },
                 },
             },
             answer: { resolve: (answer) => answers.push(answer), reject: () => {} },
@@ -879,7 +898,7 @@ test("owner Workspace reviews a complete Sequence and rejects stale sibling evid
             requestId: "stale-sequence",
             response: decision,
         };
-        await assertRejects(() => service.answerInteraction(request), Error, "changed while review was open");
+        await assertRejects(() => service.answerInteraction(request), Error, "Required Plan documents changed");
         assertEquals(answers.length, 0);
         assertEquals((await loadPlan(root, "sequence/first"))?.attrs.status, "draft");
         await fsWriteFile(second.planPath, second.plan);

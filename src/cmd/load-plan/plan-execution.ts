@@ -8,7 +8,8 @@
  */
 
 import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
-import { loadPlan, resolvePlanExecutionPolicy } from "../../plan-store.js";
+import { resolvePlanExecutionPolicy } from "../../plan-format.ts";
+import { loadPlan } from "../../plan-store/index.ts";
 import { isGitRepositoryRequiredError } from "../../shared/git.ts";
 import { isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
 import { decidePostExecution } from "../../shared/workflow/decisions.ts";
@@ -25,7 +26,7 @@ import {
     buildValidationRecoveryNotice,
     buildValidationUserMessage,
 } from "../../shared/workflow/validation-user-messages.ts";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store/index.ts";
 import type { UiAPI } from "../../ui/tui/types.js";
 import type { PlanSessionSurface, RecoveryWorktreeContext, ReviewImage } from "./plan-session-types.ts";
 import type { WorkflowDecision } from "../../shared/workflow/decisions.ts";
@@ -103,7 +104,7 @@ export interface ExecuteReadyPlanOptions {
  * @param {Object} opts
  * @param {string} opts.projectRoot
  * @param {string} opts.planName
- * @param {Partial<import('../../plan-store.js').PlanFrontMatter>} opts.triageMeta
+ * @param {Partial<import('../../plan-store/index.ts').PlanFrontMatter>} opts.triageMeta
  * @param {import('../../ui/tui/types.js').UiAPI} opts.uiAPI
  * @returns {Promise<boolean>}
  */
@@ -168,7 +169,7 @@ export async function confirmAffectedPathChangesBeforeExecution({
  * @param {unknown} executionResult
  * @param {string} planName
  * @param {string} fallbackPlanContent
- * @param {import('../../plan-store.js').PlanFrontMatter} triageMeta
+ * @param {import('../../plan-store/index.ts').PlanFrontMatter} triageMeta
  * @param {PlanSessionSurface["runValidation"]} continueWorkflowValidation
  * @param {RecoveryWorktreeContext | null} worktreeContext
  * @param {PlanSessionSurface} session
@@ -189,16 +190,17 @@ export async function validateCompletedExecution(
     if (!(executionResult && typeof executionResult === "object" && "executionComplete" in executionResult)) {
         return false;
     }
-    if (!/** @type {{ executionComplete?: boolean }} */ (executionResult).executionComplete) return false;
+    if (!(/** @type {{ executionComplete?: boolean }} */ executionResult.executionComplete)) return false;
     const returnedExecutionContext = (executionResult as { executionContext?: ExecutionContextCandidate })
         .executionContext;
     const returnedExecutionCwd = returnedExecutionContext?.executionCwd;
-    const authorityRoot = typeof returnedExecutionCwd === "string" && returnedExecutionCwd
-        ? returnedExecutionCwd
-        : worktreeContext?.path ||
-            (triageMeta.executionMode === "worktree" && triageMeta.worktreePath
-                ? triageMeta.worktreePath
-                : projectRoot);
+    const authorityRoot =
+        typeof returnedExecutionCwd === "string" && returnedExecutionCwd
+            ? returnedExecutionCwd
+            : worktreeContext?.path ||
+              (triageMeta.executionMode === "worktree" && triageMeta.worktreePath
+                  ? triageMeta.worktreePath
+                  : projectRoot);
     let planContent = fallbackPlanContent;
     let effectiveMeta = triageMeta;
     let latestPlan = null;
@@ -221,8 +223,11 @@ export async function validateCompletedExecution(
         planName,
         triageMeta: effectiveMeta,
         executionMode: effectiveMeta.executionMode,
-        baselineTree: effectiveMeta.executionBaselineTree || worktreeContext?.executionBaselineTree ||
-            worktreeContext?.baseTree || worktreeContext?.baseCommit,
+        baselineTree:
+            effectiveMeta.executionBaselineTree ||
+            worktreeContext?.executionBaselineTree ||
+            worktreeContext?.baseTree ||
+            worktreeContext?.baseCommit,
         worktreeId: worktreeContext?.id || effectiveMeta.worktreeId,
         worktreeBranch: worktreeContext?.branch || effectiveMeta.worktreeBranch,
         worktreeBaseBranch: worktreeContext?.baseBranch || effectiveMeta.worktreeBaseBranch,
@@ -246,22 +251,21 @@ export async function validateCompletedExecution(
             workflow.baselineTree = typeof context.baselineTree === "string" ? context.baselineTree : undefined;
             workflow.worktreeId = typeof context.worktreeId === "string" ? context.worktreeId : undefined;
             workflow.worktreeBranch = typeof context.worktreeBranch === "string" ? context.worktreeBranch : undefined;
-            workflow.worktreeBaseBranch = typeof context.worktreeBaseBranch === "string"
-                ? context.worktreeBaseBranch
-                : undefined;
-            workflow.worktreeBaseRef = typeof context.worktreeBaseRef === "string"
-                ? context.worktreeBaseRef
-                : undefined;
-            workflow.worktreeBaseCommit = typeof context.worktreeBaseCommit === "string"
-                ? context.worktreeBaseCommit
-                : undefined;
+            workflow.worktreeBaseBranch =
+                typeof context.worktreeBaseBranch === "string" ? context.worktreeBaseBranch : undefined;
+            workflow.worktreeBaseRef =
+                typeof context.worktreeBaseRef === "string" ? context.worktreeBaseRef : undefined;
+            workflow.worktreeBaseCommit =
+                typeof context.worktreeBaseCommit === "string" ? context.worktreeBaseCommit : undefined;
         }
         return workflow;
     };
     const initialWorkflow = buildWorkflow(explicitContext);
-    const needsImplementationCheckpoint = isPlannedChangeClassification(effectiveMeta.classification) &&
+    const needsImplementationCheckpoint =
+        isPlannedChangeClassification(effectiveMeta.classification) &&
         effectiveMeta.status !== "implemented" &&
-        effectiveMeta.status !== "validated" && effectiveMeta.status !== "verified" &&
+        effectiveMeta.status !== "validated" &&
+        effectiveMeta.status !== "verified" &&
         effectiveMeta.status !== "user_verified";
     if (needsImplementationCheckpoint) {
         const completionReport = (executionResult as { completionReport?: unknown }).completionReport;
@@ -398,14 +402,11 @@ export async function executePostPlanningDecision({
     const projectRoot = session.cwd;
     if (decision.kind === "start_slicer") {
         await runSlicerAgent({
-            planName: /** @type {string} */ (decision.payload.planName),
-            triageMeta: /** @type {import('../../plan-store.js').PlanFrontMatter} */ (
-                decision.payload.triageMeta
-            ),
-            reviewFeedback: /** @type {string | undefined} */ (decision.payload.reviewFeedback),
-            reviewImages: /** @type {Array<{base64: string, mimeType: string}> | undefined} */ (
-                decision.payload.reviewImages
-            ),
+            planName: /** @type {string} */ decision.payload.planName,
+            triageMeta: /** @type {import('../../plan-store/index.ts').PlanFrontMatter} */ decision.payload.triageMeta,
+            reviewFeedback: /** @type {string | undefined} */ decision.payload.reviewFeedback,
+            reviewImages:
+                /** @type {Array<{base64: string, mimeType: string}> | undefined} */ decision.payload.reviewImages,
         });
         return true;
     }
@@ -455,7 +456,7 @@ export function shouldKeepPlanningAgentActive(decision: WorkflowDecision): boole
 }
 
 /**
- * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter }} plan
+ * @param {{ planName: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }} plan
  * @param {import('../../ui/tui/types.js').UiAPI} uiAPI
  * @returns {boolean}
  */
@@ -472,7 +473,7 @@ export function validatePlanExecutionPolicyForReadiness(plan: { attrs: PlanFront
  * Run the Readiness Gate for an approved Plan.
  *
  * @param {string} projectRoot
- * @param {{ planName: string, path: string, attrs: import('../../plan-store.js').PlanFrontMatter }} plan
+ * @param {{ planName: string, path: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }} plan
  * @param {import('../../ui/tui/types.js').UiAPI} uiAPI
  * @returns {Promise<boolean>}
  */
@@ -515,7 +516,7 @@ export async function prepareApprovedPlanForWork(
  *
  * @param {Object} opts
  * @param {string} opts.projectRoot
- * @param {{ planName: string, markdown?: string, body: string, attrs: import('../../plan-store.js').PlanFrontMatter }} opts.plan
+ * @param {{ planName: string, markdown?: string, body: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }} opts.plan
  * @param {string} opts.agentName
  * @param {import('../../ui/tui/types.js').UiAPI} opts.uiAPI
  * @param {PlanSessionSurface["executePlan"]} opts.executePlan
@@ -535,12 +536,14 @@ export async function executeReadyPlanWithRepair({
     uiAPI,
     affectedPathsAlreadyConfirmed = false,
 }: ExecuteReadyPlanOptions): Promise<ValidationStartResult> {
-    const confirmed = affectedPathsAlreadyConfirmed || await confirmAffectedPathChangesBeforeExecution({
-        projectRoot,
-        planName: plan.planName,
-        triageMeta: plan.attrs,
-        uiAPI,
-    });
+    const confirmed =
+        affectedPathsAlreadyConfirmed ||
+        (await confirmAffectedPathChangesBeforeExecution({
+            projectRoot,
+            planName: plan.planName,
+            triageMeta: plan.attrs,
+            uiAPI,
+        }));
     if (!confirmed) return false;
 
     // The final execution confirmation is behind us. Claim the managed Session
@@ -554,7 +557,7 @@ export async function executeReadyPlanWithRepair({
     const executionOwner = policy.ok ? policy.policy.executionAgent : agentName;
     const executionDecision = decidePostExecution(execRes, {
         planName: plan.planName,
-        triageMeta: /** @type {import('../../tools/plan-written.ts').TriageMeta} */ (plan.attrs),
+        triageMeta: /** @type {import('../../tools/plan-written.ts').TriageMeta} */ plan.attrs,
         executionAgentName: executionOwner,
     });
     return await validatePostExecutionDecision({

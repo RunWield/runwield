@@ -3,7 +3,7 @@ import fs from "node:fs";
 import promises from "node:fs/promises";
 import { mock } from "bun:test";
 import { createWorkRecordMnemotecaFixture } from "../../work-records/test-fixtures/mnemoteca-port.ts";
-import type { PackageWorkflowSelection } from "../package-workflow.ts";
+import type { PackageWorkflowSelection } from "../../../plan-store/workflows.ts";
 import type { ValidationHostResume } from "../validation-host-contract.ts";
 interface Config {
     selection: PackageWorkflowSelection;
@@ -78,8 +78,8 @@ const operations = {
     },
 };
 mock.module("node:fs/promises", () => ({ ...operations, default: operations }));
-const { readPlanPackage } = await import("../../plan-package-store.ts");
-const { withPackageWorkflow } = await import("../package-workflow.ts");
+const { readPlanPackage } = await import("../../../plan-store/packages.ts");
+const { withPackageWorkflow } = await import("../../../plan-store/workflows.ts");
 const { continueHostTurnValidation } = await import("../validation-host-turn.ts");
 const current = await readPlanPackage(config.selection.identity, { planId: config.selection.planId });
 if (current.kind !== "loaded") throw new Error(current.message);

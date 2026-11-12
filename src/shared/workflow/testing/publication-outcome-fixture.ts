@@ -1,3 +1,5 @@
+import { seedPlan } from "../../testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../../testing/retained-plan-fixture.ts";
 import { readdir as fsReaddir, rmdir as fsRmdir } from "node:fs/promises";
 import { readFile as fsReadFile } from "node:fs/promises";
 import {
@@ -10,23 +12,26 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { mergeFrontMatterText, savePlan } from "../../../plan-store.js";
+import { mergeFrontMatterText } from "../../../plan-format.ts";
+
 import { publishExecutionWorktreeIsolated } from "../../isolated-publication.ts";
 import { defineGitFixture, git } from "../../git-test-fixture.ts";
 import { addEntry } from "../../worktree-registry.js";
 import { advanceStoredPublication, startPublicationAttempt } from "../publication-machine.ts";
 
-const repository = defineGitFixture(async (root) => {
-    await fsWriteFile(join(root, ".git", "info", "exclude"), "\n.wld/settings.json\n", { flag: "a" });
-    await savePlan(root, "demo", "# Demo\n", {
-        planId: "plan-demo",
-        classification: "PLANNED_CHANGE",
-        status: "implemented",
-        humanReviewMode: "none",
-    });
-    await git(root, ["add", "."]);
-    await git(root, ["commit", "-m", "Plan"]);
-});
+const repository = defineGitFixture((root) =>
+    withRetainedPlanFixture(root, async () => {
+        await fsWriteFile(join(root, ".git", "info", "exclude"), "\n.wld/settings.json\n", { flag: "a" });
+        await seedPlan(root, "demo", "# Demo\n", {
+            planId: "plan-demo",
+            classification: "PLANNED_CHANGE",
+            status: "implemented",
+            humanReviewMode: "none",
+        });
+        await git(root, ["add", "."]);
+        await git(root, ["commit", "-m", "Plan"]);
+    }),
+);
 
 export async function makePublicationOutcomeFixture(projectRoot: string, remote = false) {
     const copy = await repository.checkout();

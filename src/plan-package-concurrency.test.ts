@@ -3,7 +3,7 @@ import { equal, ok } from "node:assert/strict";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { create, read, packageFixture, startDriver } from "./shared/testing/plan-package-fixture.ts";
-import { listPlanPackages } from "./plan-store.js";
+import { listPlanPackages } from "./plan-store/packages.ts";
 import { admitProjectIdentity, inspectProjectIdentity } from "./shared/project-identity.ts";
 import { git } from "./shared/git-test-fixture.ts";
 

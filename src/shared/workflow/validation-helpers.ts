@@ -10,7 +10,7 @@
 import { dirname } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { AGENTS, isPlannedChangeClassification, SUBAGENTS } from "../../constants.js";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
 
 import { getAgentDisplayName } from "../session/agents.js";
 

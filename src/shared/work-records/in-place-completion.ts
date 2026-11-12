@@ -1,5 +1,5 @@
 /** Approve a prepared record after Core establishes non-Git in-place completion. */
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
 import { findWorkRecordById, replaceWorkRecord } from "./store.js";
 import { approveWorkRecord } from "./lifecycle.ts";
 import { formatWorkRecordMarkdown } from "./markdown.js";

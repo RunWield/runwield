@@ -134,15 +134,20 @@ for (const legacy of [false, true]) {
 
 test("runtime resumes saved Code Review from its name without stale Plan content", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId, session, projectRoot }) => {
-        const { savePlan } = await import("../../plan-store.js");
-        await savePlan(projectRoot, "resume-review", "# Saved Code Review", {
-            classification: "PLANNED_CHANGE",
-            status: "reviewed",
-            humanReviewMode: "always",
-            humanReviewDecision: null,
-            executionMode: "non_git_in_place",
-            affectedPaths: [],
-        });
+        const { makeValidationProjectRoot } = await import("../../shared/workflow/validation-test-helpers.js");
+        await makeValidationProjectRoot(
+            "resume-review",
+            {
+                classification: "PLANNED_CHANGE",
+                status: "reviewed",
+                humanReviewMode: "always",
+                humanReviewDecision: null,
+                executionMode: "non_git_in_place",
+                affectedPaths: [],
+            },
+            "# Saved Code Review",
+            projectRoot,
+        );
         session.setWorkflowExecutionContext({ planName: "resume-review", triageMeta: { status: "reviewed" } });
         let reviews = 0;
         runtime.setInteractionAdapter(sessionId, {

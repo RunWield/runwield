@@ -1,4 +1,4 @@
-import { readLocalHomeStore } from "../local-home-store.ts";
+import { readLocalHomeStore } from "../../plan-store/index.ts";
 import { currentWorkRecordOwner } from "./owner.ts";
 /**
  * @module shared/work-records/search

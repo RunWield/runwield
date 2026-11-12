@@ -1,4 +1,5 @@
-import { currentPackageProject, loadPackageWorkflowPlan } from "./package-workflow.ts";
+import { planDocumentReference } from "../../plan-store/index.ts";
+
 /**
  * @module shared/workflow/validation-semantic
  * The Semantic Review phase: reviewer rounds with ledger convergence, repair
@@ -11,7 +12,7 @@ import { AGENTS } from "../../constants.js";
 import { captureWorktreeTree, getWorkflowDiff, getWorktreeReviewDiff } from "./git-snapshot.ts";
 import { buildDiffInspectionSection, requiredReviewDiffFiles, ReviewDiffParseError } from "./review-diff.ts";
 import { ReviewInspection } from "./review-inspection.ts";
-import { loadEpicReviewContext, recordIntegrationNotes } from "./epic-review-context.ts";
+import { loadEpicReviewContext, recordIntegrationNotes } from "../../plan-store/index.ts";
 import { logValidationFailure } from "./validation-state-errors.ts";
 import {
     applyRoundFindings,
@@ -664,11 +665,7 @@ export async function runReviewerRound(
             args.planContent,
             inspection,
             epicContext?.section || "",
-            args.hostTurn
-                ? currentPackageProject()
-                    ? (await loadPackageWorkflowPlan(args.planName)).path
-                    : `docs/plans/${args.planName}.md`
-                : undefined,
+            args.hostTurn ? await planDocumentReference(context.executionCwd, args.planName) : undefined,
         );
         const correction = nudgeReason;
         nudgeReason = undefined;
