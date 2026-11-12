@@ -1,3 +1,7 @@
+import { readPlanDocuments } from "../workflow/plan-documents.ts";
+import { readWorkRecordById, searchWorkRecords, formatWorkRecordReadResult } from "../work-records/search.ts";
+import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
+import { currentPackageSelection } from "../workflow/package-workflow.ts";
 /**
  * @module shared/attached/coordinator
  * The Attached Workflow Coordinator: a sibling runtime to `SessionRuntime` (ADR-014).
@@ -97,6 +101,8 @@ import {
     parseValidationInput,
 } from "./operations.ts";
 import {
+    attachedWorkflowBelongsToLocation,
+    currentAttachedProjectRoot,
     scrubAttachedChat,
     withoutAttachedChat,
     attachedValidationHolderSettled,
@@ -194,7 +200,7 @@ async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNe
     }
     if (record.state === "triaging" && pending) return { kind: "triage", ...pending };
     if (record.state === "awaiting_planning" && pending) {
-        return { kind: "plan", ...pending, projectSetup: await projectSetupFor(record.projectRoot) };
+        return { kind: "plan", ...pending, projectSetup: await projectSetupFor(currentAttachedProjectRoot(record)) };
     }
     if (record.state === "awaiting_review" && record.plan && record.review) {
         return {
@@ -233,12 +239,20 @@ async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNe
         };
     }
     if (record.state === "implementing" && record.execution && record.plan && pending) {
-        const executionCwd = record.execution.executionCwd || record.projectRoot;
+        const executionCwd = record.execution.executionCwd || currentAttachedProjectRoot(record);
+        const packagePlan = currentPackageSelection() ? await loadPlan(executionCwd, record.plan.planName) : null;
         return {
             kind: "implementation",
             ...pending,
             planName: record.plan.planName,
-            planPath: join(executionCwd, "docs/plans", `${record.plan.planName}.md`),
+            planPath: packagePlan?.path || join(executionCwd, "docs/plans", `${record.plan.planName}.md`),
+            ...(packagePlan
+                ? {
+                      planRevision: packagePlan.revision,
+                      documentAccess:
+                          "Read the canonical Plan with read_plan using this workflowId and actionId. Core supplies its text and revision without host filesystem access. Follow every page; do not create a repository copy or link.",
+                  }
+                : {}),
             executionCwd,
             executionMode: record.execution.executionMode || "worktree",
             worktreeBranch: record.execution.worktreeBranch,
@@ -284,7 +298,7 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
     // Neither delivery nor Core-advance projection may take that call's claimed revision.
     if (
         holder &&
-        !(await attachedValidationHolderSettled(locateAttachedWorkflows(record.projectRoot), holder)) &&
+        !(await attachedValidationHolderSettled(locateAttachedWorkflows(currentAttachedProjectRoot(record)), holder)) &&
         !(await isLockHolderGone(JSON.stringify(holder)))
     )
         return record;
@@ -302,13 +316,13 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
     )
         return record;
     if (record.state === "validating" || record.state === "reviewed") {
-        const delivered = await loadPlan(record.projectRoot, record.plan.planName).catch(() => null);
+        const delivered = await loadPlan(currentAttachedProjectRoot(record), record.plan.planName).catch(() => null);
         const receipt = delivered?.attrs.publicationReceipt;
         if (
             receipt &&
-            !(await findActiveByPlanName(record.projectRoot, record.plan.planName)) &&
+            !(await findActiveByPlanName(currentAttachedProjectRoot(record), record.plan.planName)) &&
             (await isCommitPublishedToTarget({
-                projectRoot: record.projectRoot,
+                projectRoot: currentAttachedProjectRoot(record),
                 targetBranch: receipt.targetBranch,
                 commit: receipt.publishedCommit,
             }).catch(() => false))
@@ -322,7 +336,7 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
                     reason: "delivered",
                     completionMode: "publication",
                     workRecord: (
-                        await readPublishedDeliverySources(record.projectRoot, {
+                        await readPublishedDeliverySources(currentAttachedProjectRoot(record), {
                             artifactCommit: receipt.publishedCommit,
                             planName: record.plan.planName,
                             planId: record.plan.planId,
@@ -337,12 +351,22 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
     const executionRoot = record.execution?.executionCwd;
     const location = executionRoot
         ? { plan: await loadPlan(executionRoot, record.plan.planName).catch(() => null), archived: false }
-        : await resolveWorkflowPlanLocation(record.projectRoot, record.plan.planName, {
+        : await resolveWorkflowPlanLocation(currentAttachedProjectRoot(record), record.plan.planName, {
               readOnly: true,
           });
     const { plan, archived } = location;
+    if (!plan && executionRoot) {
+        const directory = await fsStat(executionRoot).catch((error) => {
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
+            throw error;
+        });
+        // Completion owns missing-checkout recovery; projection must retain its issued authority.
+        if (!directory) return record;
+    }
     const archivedPlan =
-        !plan && !archived ? await loadArchivedPlan(executionRoot || record.projectRoot, record.plan.planId) : null;
+        !plan && !archived
+            ? await loadArchivedPlan(executionRoot || currentAttachedProjectRoot(record), record.plan.planId)
+            : null;
     // Missing execution documents are restored by the completion authority, not this projection.
     if (!plan && !archived && !archivedPlan) {
         if (record.execution) return record;
@@ -372,7 +396,7 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
         record.state === "validating" &&
         status === "verified" &&
         (plan?.attrs.deliveryEvidence?.mode === "non_git_in_place" ||
-            (await findActiveByPlanName(record.projectRoot, record.plan.planName)))
+            (await findActiveByPlanName(currentAttachedProjectRoot(record), record.plan.planName)))
     )
         return record;
     if (record.state === "validating" && ["implemented", "validated_ci", "reviewed"].includes(status || "")) {
@@ -394,7 +418,7 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
         // checkpoint and registry settlement. Keep the issued action for retry.
         if (record.execution.executionMode === "worktree") {
             const entry = record.execution.worktreeId
-                ? await findById(record.projectRoot, record.execution.worktreeId)
+                ? await findById(currentAttachedProjectRoot(record), record.execution.worktreeId)
                 : null;
             if (entry?.status !== "completed") return record;
         }
@@ -603,7 +627,7 @@ async function loadForOperation(
             ),
         };
     }
-    if (loaded.status === "moved") {
+    if (loaded.status === "moved" || !attachedWorkflowBelongsToLocation(location, loaded.record)) {
         return {
             result: await rejected(
                 operation,
@@ -616,7 +640,12 @@ async function loadForOperation(
 
 export async function activate(envelope: ActivateEnvelope): Promise<AttachedOperationResult> {
     const location = locateAttachedWorkflows(envelope.projectRoot);
-    const workflowId = workflowIdFor(location.projectRoot, envelope.operationId);
+    if (location.foreignStorageRoot)
+        return await rejected("activate", rejection("project_moved", "Workflow storage belongs to another Project."));
+    const workflowId = workflowIdFor(
+        location.bindings?.[0]?.attachedRoot ?? location.projectRoot,
+        envelope.operationId,
+    );
     const replay = async (current: AttachedWorkflowRecord): Promise<Decision> => {
         const saved = Object.hasOwn(current.acceptedOperations, envelope.operationId)
             ? current.acceptedOperations[envelope.operationId]
@@ -629,6 +658,8 @@ export async function activate(envelope: ActivateEnvelope): Promise<AttachedOper
     };
 
     const loaded = await loadAttachedWorkflowRecord(location, workflowId);
+    if (loaded.status === "moved")
+        return await rejected("activate", rejection("project_moved", "Workflow belongs to another Project."));
     if (loaded.status !== "missing") return (await replay(loaded.record)).result;
 
     const now = new Date().toISOString();
@@ -1132,7 +1163,7 @@ export async function openAttachedReviewRound(
         workflowId,
         async (current) => {
             if (!current) throw new Error("workflow_not_found: No Attached Workflow has this workflowId.");
-            if (current.projectRoot !== location.projectRoot) {
+            if (!attachedWorkflowBelongsToLocation(location, current)) {
                 throw new Error("project_moved: This workflow belongs elsewhere.");
             }
             const reconciled = await reconcilePlanPosition(current);
@@ -1206,7 +1237,7 @@ export async function applyAttachedReviewDecision(
         workflowId,
         async (current) => {
             if (!current) throw new Error("workflow_not_found: No Attached Workflow has this workflowId.");
-            if (current.projectRoot !== location.projectRoot) {
+            if (!attachedWorkflowBelongsToLocation(location, current)) {
                 throw new Error("project_moved: This workflow belongs elsewhere.");
             }
             const saved = current.review;
@@ -1329,7 +1360,7 @@ export async function saveAttachedReviewChat(
 ): Promise<void> {
     const location = locateAttachedWorkflows(projectRoot);
     const transaction = await transactAttachedWorkflowRecord(location, workflowId, async (current) => {
-        if (!current || current.projectRoot !== location.projectRoot)
+        if (!current || !attachedWorkflowBelongsToLocation(location, current))
             throw new Error("The Attached workflow cannot be restored.");
         const reconciled = await reconcilePlanPosition(current);
         if (reconciled !== current)
@@ -1403,7 +1434,7 @@ async function reviewReply(
         location,
         envelope.workflowId,
         async (current) => {
-            if (!current || current.projectRoot !== location.projectRoot)
+            if (!current || !attachedWorkflowBelongsToLocation(location, current))
                 return {
                     result: {
                         result: await rejected(
@@ -1588,7 +1619,10 @@ async function readStatusState(
     if (loaded.status === "missing") {
         return await rejected("status", rejection("workflow_not_found", "No Attached Workflow has this workflowId."));
     }
-    const recovery = loaded.status === "moved" ? movedRecovery(location, loaded.record) : null;
+    const recovery =
+        loaded.status === "moved" || !attachedWorkflowBelongsToLocation(location, loaded.record)
+            ? movedRecovery(location, loaded.record)
+            : null;
     const compatibility = envelope.evidence ? assessCompatibility(envelope.evidence) : undefined;
     if (envelope.inspectOnly || (compatibility && isBlockingCompatibility(compatibility))) {
         return {
@@ -1918,7 +1952,8 @@ export async function readAttachedAction(envelope: AttachedActionReadEnvelope) {
     if (isBlockingCompatibility(compatibility)) {
         return { ok: false as const, rejection: rejection(compatibility.status, compatibility.message) };
     }
-    const current = await readStatus(envelope);
+    const documentRead = ["read_plan", "work_record_read", "work_record_search"].includes(envelope.content);
+    const current = await readStatus(documentRead ? { ...envelope, inspectOnly: true } : envelope);
     if (!current.ok) return { ok: false as const, rejection: current.rejection };
     const workflow = current.workflow;
     const action = workflow.nextAction;
@@ -1936,6 +1971,74 @@ export async function readAttachedAction(envelope: AttachedActionReadEnvelope) {
         };
     }
     const identity = { workflowId: workflow.workflowId, revision: workflow.revision, actionId: envelope.actionId };
+    if (documentRead) {
+        try {
+            const cwd = workflow.execution?.executionCwd || envelope.projectRoot;
+            const accessMode = roleForAction(action) === "recorder" ? "all" : "current";
+            let text: string;
+            let planRevision: string | undefined;
+            let canonicalMarkdown: string | undefined;
+            if (envelope.content === "read_plan") {
+                if (!workflow.plan) throw new Error("This action has no selected Plan.");
+                if (currentPackageSelection()) {
+                    const document = await readPlanDocuments(workflow.plan.planId, envelope.resource);
+                    text = document.body;
+                    planRevision = document.revision;
+                } else {
+                    if (envelope.resource && envelope.resource !== "context.md")
+                        throw new Error("This Plan has no separate document.");
+                    const plan = await loadPlan(cwd, workflow.plan.planName);
+                    if (!plan || plan.attrs.planId !== workflow.plan.planId)
+                        throw new Error("The selected Plan is unavailable.");
+                    text = plan.body;
+                    planRevision = plan.revision;
+                }
+            } else if (envelope.content === "work_record_read") {
+                const record = await readWorkRecordById(cwd, envelope.recordId!, { accessMode });
+                text = formatWorkRecordReadResult(record);
+                canonicalMarkdown = record.markdown;
+            } else {
+                const result = await searchWorkRecords(cwd, envelope.query!, {
+                    accessMode,
+                    mnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
+                });
+                text = JSON.stringify({
+                    accessMode,
+                    records: result.records,
+                    staleRecordIds: result.staleRecordIds,
+                });
+            }
+            const documentRevision = createHash("sha256")
+                .update(
+                    JSON.stringify({
+                        content: envelope.content,
+                        resource: envelope.resource || "context.md",
+                        planRevision,
+                        canonicalMarkdown,
+                        text,
+                    }),
+                )
+                .digest("hex");
+            if (envelope.documentRevision && envelope.documentRevision !== documentRevision)
+                return {
+                    ok: false as const,
+                    rejection: rejection("revision_conflict", "The document changed. Restart the read at offset zero."),
+                };
+            return {
+                ok: true as const,
+                ...identity,
+                documentRevision,
+                ...(planRevision && { planRevision, planId: workflow.plan?.planId }),
+                accessMode,
+                ...readTextPage(text, envelope),
+            };
+        } catch (error) {
+            return {
+                ok: false as const,
+                rejection: rejection("invalid_input", error instanceof Error ? error.message : String(error)),
+            };
+        }
+    }
     if (["prompt", "execution_report", "repair_report"].includes(envelope.content)) {
         if (
             (envelope.offsetBytes !== undefined &&
@@ -2187,7 +2290,7 @@ export async function runValidationOperation(
         }
     }
     if (operation === "start_validation" && resume) {
-        resume = await reconcileConsumedHostResume(current.projectRoot, current.plan.planName, resume);
+        resume = await reconcileConsumedHostResume(currentAttachedProjectRoot(current), current.plan.planName, resume);
     }
     if (resume?.kind === "reviewer") {
         try {
@@ -2231,7 +2334,7 @@ export async function runValidationOperation(
     }
     try {
         const result = await continueHostTurnValidation({
-            projectRoot: claimed.projectRoot,
+            projectRoot: currentAttachedProjectRoot(claimed),
             planName: current.plan.planName,
             resume,
             signal: options.signal,
@@ -2357,11 +2460,11 @@ async function validateAttachedReviewerCandidate(
     resume: Extract<import("../workflow/validation-host-contract.ts").ValidationHostResume, { kind: "reviewer" }>,
 ): Promise<void> {
     if (!record.plan) throw new Error("The Plan is missing.");
-    const source = await resolveWorkflowPlanLocation(record.projectRoot, record.plan.planName, {
+    const source = await resolveWorkflowPlanLocation(currentAttachedProjectRoot(record), record.plan.planName, {
         readOnly: true,
     });
     if (!source.plan?.attrs.validationCheckpoint) throw new Error("The validation checkpoint is missing.");
-    const entry = await findActiveByPlanName(record.projectRoot, record.plan.planName);
+    const entry = await findActiveByPlanName(currentAttachedProjectRoot(record), record.plan.planName);
     await assertHostReviewerCandidate({
         cwd: source.documentRoot,
         baseBranch: source.plan.attrs.worktreeBaseBranch || "",

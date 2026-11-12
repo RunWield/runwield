@@ -37,13 +37,26 @@ export type AttachedOperationName =
     | "work_record_completed"
     | AttachedReadOperationName;
 
-export type AttachedReadOperationName = "get_instructions" | "get_artifact" | "get_pending_chat";
+export type AttachedReadOperationName =
+    "get_instructions" | "get_artifact" | "get_pending_chat" | "read_plan" | "work_record_read" | "work_record_search";
 export type AttachedLifecycleOperationName = Exclude<AttachedOperationName, AttachedReadOperationName>;
 
 export interface AttachedActionReadEnvelope extends StatusEnvelope {
     evidence: HostEvidence;
     actionId: string;
-    content: "instructions" | "chat" | "prompt" | "execution_report" | "repair_report";
+    content:
+        | "instructions"
+        | "chat"
+        | "prompt"
+        | "execution_report"
+        | "repair_report"
+        | "read_plan"
+        | "work_record_read"
+        | "work_record_search";
+    resource?: string;
+    recordId?: string;
+    query?: string;
+    documentRevision?: string;
     offsetBytes?: number;
     maxBytes?: number;
 }
@@ -254,6 +267,8 @@ export type AttachedNextAction = (
           kind: "implementation";
           planName: string;
           planPath: string;
+          planRevision?: string;
+          documentAccess?: string;
           executionCwd: string;
           executionMode: string;
           worktreeBranch?: string;
@@ -624,6 +639,12 @@ export function parseAttachedActionReadInput(
             "workflowId",
             "actionId",
             ...(name === "get_artifact" ? ["artifact", "offsetBytes", "maxBytes"] : []),
+            ...(["read_plan", "work_record_read", "work_record_search"].includes(name)
+                ? ["offsetBytes", "maxBytes", "documentRevision"]
+                : []),
+            ...(name === "read_plan" ? ["resource"] : []),
+            ...(name === "work_record_read" ? ["recordId"] : []),
+            ...(name === "work_record_search" ? ["query"] : []),
         ];
         const object = readObject(input, "", keys);
         let content: AttachedActionReadEnvelope["content"] = name === "get_instructions" ? "instructions" : "chat";
@@ -633,6 +654,32 @@ export function parseAttachedActionReadInput(
                 reject("invalid_input", "artifact", "Use prompt, execution_report, or repair_report.");
             }
             content = artifact;
+        }
+        if (name === "read_plan" || name === "work_record_read" || name === "work_record_search") {
+            content = name;
+            if (
+                object.resource !== undefined &&
+                (typeof object.resource !== "string" ||
+                    !["context.md", "validation.md", "manual-qa.md", "integration-report.md"].includes(object.resource))
+            )
+                reject("invalid_input", "resource", "Use a named Plan document.");
+            if (name === "work_record_read") readIdentifier(object, "recordId", "recordId");
+            if (
+                name === "work_record_search" &&
+                (typeof object.query !== "string" || !object.query.trim() || object.query.length > 4096)
+            )
+                reject("invalid_input", "query", "Supply a search query of 1 to 4096 characters.");
+            if (
+                object.documentRevision !== undefined &&
+                (typeof object.documentRevision !== "string" || !/^[a-f0-9]{64}$/.test(object.documentRevision))
+            )
+                reject("invalid_input", "documentRevision", "Use the returned documentRevision.");
+            if (
+                typeof object.offsetBytes === "number" &&
+                object.offsetBytes > 0 &&
+                object.documentRevision === undefined
+            )
+                reject("invalid_input", "documentRevision", "Continuing a document requires its documentRevision.");
         }
         for (const key of ["offsetBytes", "maxBytes"]) {
             const value = object[key];
@@ -651,6 +698,10 @@ export function parseAttachedActionReadInput(
             workflowId: readIdentifier(object, "workflowId", "workflowId"),
             actionId: readIdentifier(object, "actionId", "actionId"),
             content,
+            ...(typeof object.resource === "string" && { resource: object.resource }),
+            ...(typeof object.recordId === "string" && { recordId: object.recordId }),
+            ...(typeof object.query === "string" && { query: object.query }),
+            ...(typeof object.documentRevision === "string" && { documentRevision: object.documentRevision }),
             evidence: readEvidence(object),
             ...(typeof object.offsetBytes === "number" && { offsetBytes: object.offsetBytes }),
             ...(typeof object.maxBytes === "number" && { maxBytes: object.maxBytes }),
@@ -660,7 +711,14 @@ export function parseAttachedActionReadInput(
 }
 
 export function isAttachedReadOperation(name: AttachedOperationName): name is AttachedReadOperationName {
-    return name === "get_instructions" || name === "get_artifact" || name === "get_pending_chat";
+    return (
+        name === "get_instructions" ||
+        name === "get_artifact" ||
+        name === "get_pending_chat" ||
+        name === "read_plan" ||
+        name === "work_record_read" ||
+        name === "work_record_search"
+    );
 }
 
 const IDENTIFIER_SCHEMA = { type: "string", pattern: IDENTIFIER_PATTERN.source };
@@ -1186,3 +1244,48 @@ ATTACHED_OPERATIONS.push(
         },
     },
 );
+
+for (const name of ["read_plan", "work_record_read", "work_record_search"] as const) {
+    ATTACHED_OPERATIONS.push({
+        name,
+        description:
+            name === "read_plan"
+                ? "Read the current action's canonical Plan document through Core, without host filesystem access."
+                : name === "work_record_read"
+                  ? "Read a canonical Work Record by stable recordId in this workflow's Project, with the current role's access mode."
+                  : "Search canonical Work Records in this workflow's Project with the current role's access mode. The paged content is JSON containing records and stale index diagnostics.",
+        inputSchema: {
+            type: "object",
+            additionalProperties: false,
+            required: [
+                "workflowId",
+                "actionId",
+                "evidence",
+                ...(name === "work_record_read" ? ["recordId"] : name === "work_record_search" ? ["query"] : []),
+            ],
+            properties: {
+                workflowId: IDENTIFIER_SCHEMA,
+                actionId: IDENTIFIER_SCHEMA,
+                evidence: EVIDENCE_SCHEMA,
+                ...(name === "read_plan"
+                    ? {
+                          resource: {
+                              type: "string",
+                              enum: ["context.md", "validation.md", "manual-qa.md", "integration-report.md"],
+                          },
+                      }
+                    : {}),
+                ...(name === "work_record_read" ? { recordId: IDENTIFIER_SCHEMA } : {}),
+                ...(name === "work_record_search" ? { query: { type: "string", minLength: 1, maxLength: 4096 } } : {}),
+                documentRevision: {
+                    type: "string",
+                    pattern: "^[a-f0-9]{64}$",
+                    description:
+                        "Return this token on every continuation page. A changed document rejects the read; restart at offset zero.",
+                },
+                offsetBytes: { type: "integer", minimum: 0 },
+                maxBytes: { type: "integer", minimum: 4, maximum: 65536 },
+            },
+        },
+    });
+}

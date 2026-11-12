@@ -34,6 +34,10 @@ test("Codex roles use current host tools and worker language without copied Clau
         ] as const) {
             const text = await resolveAttachedRoleInstructions(root, role, "codex");
             assertStringIncludes(text, "Codex");
+            for (const tool of ["read_plan", "work_record_search", "work_record_read"])
+                assertStringIncludes(text, tool);
+            assertStringIncludes(text, "documentRevision");
+            assertStringIncludes(text, "stop dependent work");
             assertEquals(text.includes("Claude-hosted"), false);
             assertEquals(text.includes("Claude subagent"), false);
             assertEquals(text.includes("RunWield in Claude Code"), false);

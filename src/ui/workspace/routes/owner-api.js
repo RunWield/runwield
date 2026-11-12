@@ -1,3 +1,4 @@
+import { readPlanDocuments, savePlanDocument, readPlanDocumentLink } from "../../../shared/workflow/plan-documents.ts";
 import { loadOwnerUsage } from "../server/owner-usage.ts";
 import { loadUsageSettings, mutateUsageSettings, UsageSettingsError } from "../server/owner-usage-settings.ts";
 import { DirectoryConfirmationRequired } from "../../../shared/project-directory.ts";
@@ -423,6 +424,18 @@ export async function ownerProjectPlanDetailApi(ctx) {
 export async function ownerProjectFileContentApi(ctx) {
     try {
         const root = requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
+        const url = new URL(ctx.req.url);
+        const planId = url.searchParams.get("planId");
+        if (planId) {
+            const document = await readPlanDocumentLink(planId, url.searchParams.get("path") || "");
+            if (document)
+                return ownerJson({
+                    codeFile: true,
+                    contents: document.body,
+                    filepath: document.resource,
+                    planDocument: document,
+                });
+        }
         return await reviewFileContentApi(ctx.req, { cwd: root });
     } catch (error) {
         return ownerErrorJson(error, 404);
@@ -627,5 +640,19 @@ export async function revokeDeviceApi(ctx) {
         return ownerJson({ device }, 200, headers);
     } catch (error) {
         return ownerErrorJson(error);
+    }
+}
+
+/** @param {any} ctx */
+export async function ownerProjectPlanDocumentApi(ctx) {
+    try {
+        requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
+        if (ctx.req.method === "GET") return ownerJson(await readPlanDocuments(ctx.params.planId, ctx.params.document));
+        const body = await readJson(ctx.req);
+        if (typeof body.body !== "string" || typeof body.revision !== "string")
+            return ownerJson({ error: "Document body and revision are required." }, 400);
+        return ownerJson(await savePlanDocument(ctx.params.planId, ctx.params.document, body.revision, body.body));
+    } catch (error) {
+        return ownerErrorJson(error, error instanceof Error && error.name === "StalePlanWriteError" ? 409 : 403);
     }
 }

@@ -7,7 +7,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
 import { configureRemotePersonalResources } from "../remote/personal-resources.ts";
-import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { writeWorkRecord } from "./store.js";
 import { rebuildWorkRecordIndex, runMnemotecaWorkRecordCommand, syncWorkRecordToIndex } from "./index-adapter.ts";
 import { searchWorkRecords } from "./search.ts";
@@ -33,7 +33,11 @@ test("remote Work Record rebuild, search, and sync use only the project-internal
             },
         };
         try {
-            configureRemotePersonalResources({ globalRoot: mount });
+            configureRemotePersonalResources({
+                globalRoot: mount,
+                personalOwner: { kind: "managed-remote", identity: "test-laptop" },
+            });
+            await enterProjectRuntime(root);
             const record = await writeWorkRecord(
                 root,
                 {

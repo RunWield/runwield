@@ -20,7 +20,8 @@ const BUNDLED_PLAN_ADAPTER_KEY = Symbol.for("runwield.workspace.plan-adapter-mod
 /** @type {Promise<typeof import("./project-artifacts.ts")> | undefined} */
 let bundledProjectArtifacts;
 if (!isAstroDevelopmentMode()) {
-    Reflect.set(globalThis, BUNDLED_PLAN_ADAPTER_KEY, import("./plan-adapter.js"));
+    if (!Reflect.has(globalThis, BUNDLED_PLAN_ADAPTER_KEY))
+        Reflect.set(globalThis, BUNDLED_PLAN_ADAPTER_KEY, import("./plan-adapter.js"));
     bundledProjectArtifacts = import("./project-artifacts.ts");
 }
 
@@ -104,7 +105,8 @@ export async function loadOwnerProjectArtifact(projectId, artifactType, sourceId
               "specifier",
               "return import(specifier)",
           )(new URL("./project-artifacts.ts", import.meta.url).href)
-        : await bundledProjectArtifacts;
+        : await (Reflect.get(globalThis, Symbol.for("runwield.workspace.project-artifacts-module")) ||
+              bundledProjectArtifacts);
     return await module.readProjectArtifact(root, artifactType, sourceId);
 }
 

@@ -16,7 +16,7 @@ success, blind replay, or loss of user work.
 
 - Public Plan status separates finished implementation (`implemented`), passed review (`reviewed`), and confirmed
   delivery (`verified`). CI success stays in controller `validationPhase`; it does not add a public status.
-- The sealed execution Plan remains `reviewed`. After merging its candidate into the publication target, RunWield
+- For legacy repository Plans, the sealed execution Plan remains `reviewed`. After merging its candidate into the publication target, RunWield
   finalizes the owned Plan as `verified` and any prepared Work Record as approved in a target metadata commit. Remote
   publication assembles that commit privately, then pushes and proves it before reporting delivery.
 - The matching `.wld/internal/worktrees.json` entry owns intermediate publication progress in one `publication` record.
@@ -31,8 +31,34 @@ success, blind replay, or loss of user work.
   attempt alone never proves delivery. There is no separate Plan `published` status. Non-Git completion verifies in
   place after checks and review.
 
-Runtime checkpoints, receipts, and index retry state remain outside Plan Markdown. The target's verified status is
-portable in Git; the controller receipt supports the local view and recovery. Reopening for review or starting a new
+Explicitly admitted home packages use the same phase machine with a typed retained-input variant. Their immutable
+manifest names owner, repository, Plan, attempt and reviewed candidate, and retains exact documents, metadata,
+family/Tickets, copy policy and destinations. Persistence and validation precede any reference. Empty payloads need no
+artifacts commit; Plan Markdown and prepared Work Record payloads compose into one artifacts-only commit. A subsequent
+delivery may replace a prior copy only when retained delivery evidence proves the same repository/Plan/path, published
+ancestry and unchanged prior bytes. An unchanged proven payload reuses the validated code boundary without an empty
+commit. Externally edited copies refuse replacement until their exact prior bytes are restored. Package
+publication skips the legacy target lifecycle-metadata commit. Fresh Git proof checks the candidate ancestry and exact
+copy bytes, then an atomic package write settles receipt/status and releases the attempt guard before registry pruning.
+The manifest remains Recorder authority after code cleanup, including after live edits or rename. Missing or foreign
+inputs are recoverable refusals, never permission to substitute repository documents. This bounded contract does not
+activate public package selection/copy settings, remote transport or pruning.
+
+For admitted packages, Recorder preparation is a separately retained input to that same publisher. Source and copy
+policy are frozen before the turn; accepted sections and record identity become durable before the final manifest.
+This separation lets ordinary and Attached recording resume without another turn or newer live Plan input. Canonical
+records, native mutation locks, location provenance and the derived index share explicit personal Project ownership;
+Project-level import does not need a dummy Plan. Basename namespaces and repository fallback would create a second
+authority, so neither participates in admitted retrieval.
+
+Default Work Record copies carry pending preparation confidence. Matching fresh publication proof settles the canonical
+record and its relationships, preserving body bytes and later edits, without another repository commit. Imports retain
+that confidence and do not stand in for proof. Recorder failure leaves the retained source for a post-delivery retry;
+a successful late retry creates canonical memory only. Version-1 manifests without recording policy retain their original
+payload and do not acquire default copies retroactively.
+
+Runtime checkpoints, receipts, and index retry state remain outside Plan Markdown. Legacy target verified status is
+portable in Git; a package's verified state lives in its personal metadata. The controller receipt supports recovery. Reopening for review or starting a new
 execution invalidates prior completion evidence. Legacy `validated_ci` resumes as implemented with semantic review
 ready; `validated_reviewer` becomes reviewed. Legacy `validated` means verified only with delivery evidence; an
 unfinished publication or unmerged Epic integration pass remains reviewed.
@@ -49,14 +75,14 @@ deleting unmerged commits.
 
 The record advances monotonically through these proven phases:
 
-| Phase                  | Required evidence                                                                                   |
-| ---------------------- | --------------------------------------------------------------------------------------------------- |
-| `candidate_sealed`     | Reviewed implementation commit and target head observed at sealing                                  |
-| `artifacts_committed`  | Sealed reviewed Plan, candidate evidence, and pending generated delivery artifacts                  |
-| `target_integrated`    | Exact target base and assembled commit with finalized verified Plan and approved prepared artifacts |
-| `target_published`     | Exact local or remote target commit and publication mode                                            |
-| `publication_verified` | A fresh Git read proves the target contains the finalized publication commit                        |
-| `cleanup_complete`     | Execution checkout, branch, and temporary publication clone are settled                             |
+| Phase                  | Required evidence                                                                              |
+| ---------------------- | ---------------------------------------------------------------------------------------------- |
+| `candidate_sealed`     | Reviewed implementation commit and target head observed at sealing                             |
+| `artifacts_committed`  | Legacy sealed Plan/artifacts, or package exact optional copies and validated code boundary     |
+| `target_integrated`    | Exact target base and assembled commit; legacy finalized metadata or package exact code/copies |
+| `target_published`     | Exact local or remote target commit and publication mode                                       |
+| `publication_verified` | A fresh Git read proves the target contains the finalized publication commit                   |
+| `cleanup_complete`     | Execution checkout, branch, and temporary publication clone are settled                        |
 
 Every registry update uses a compare-and-swap revision under the existing registry lock. A stale process cannot
 overwrite newer proof. A failure annotates the current phase without moving it backward.
@@ -71,6 +97,8 @@ RunWield durably records a revalidation request in that publication record, pres
 checkout, resets the execution Plan to `implemented`, clears its candidate/completion evidence and review approval, and
 retires the old record with a revision check. Validation then creates a fresh publication record from the current files.
 The request survives interruption between these operations, including after moving the checkout or resetting the Plan.
+For a package, revalidation first retains the current code candidate and separates only the proven unpublished copies
+commit from its ancestry. The newly reviewed candidate reuses frozen payload policy and receives one copies commit.
 This retires an invalid candidate; it does not move a proven publication phase backward. The current validation owner's
 checkpoint remains claimed while its next phase changes to Mechanical Validation.
 
@@ -83,7 +111,7 @@ already have happened; losing ancestry after publication does not authorize repl
 On restart, RunWield reads the record and current Git facts. It may advance a missing receipt only when Git proves the
 external effect already happened—for example, the saved publication clone contains the candidate and all intended
 finalized Plan/Work Record metadata, or the remote target contains that recorded publication commit. Candidate ancestry
-alone cannot prove metadata finalization. Otherwise it retries the current phase. It never reruns validation or
+alone cannot prove legacy metadata finalization or a package's exact frozen copy payload. Otherwise it retries the current phase. It never reruns validation or
 regenerates committed artifacts merely because publication was interrupted. Prepared records are reused for their exact
 attempt/source identity, and interrupted owned metadata writes are reconciled before ordinary dirty-checkout guards.
 Identity checks do not grant ownership over unrelated Plan or Work Record edits.
@@ -110,7 +138,7 @@ file contents from a published commit or delete the leftovers. Registered checko
 clean-worktree checks. A pre-existing saved copy is never overwritten, and an unrelated repository or the primary
 checkout is not adopted by this recovery path.
 
-`artifactCommit` is the immutable source-branch boundary. Publication does not commit or otherwise advance the source
+`artifactCommit` is the immutable source-branch boundary, or `validatedCommit` for a copyless package. Publication does not commit or otherwise advance the source
 branch after that phase. During cleanup, the normal proof is that the published target contains the source-branch tip.
 Recovery may also delete a source branch that advanced past `artifactCommit` only when Git proves that the artifact is
 published and every later source-branch commit is a single-parent empty commit. Any later commit that changes files or
@@ -124,7 +152,8 @@ primary checkout. It pushes the assembled commit with a lease.
 
 A repository without a remote has no second target authority that a primary checkout can later pull. In that explicit
 local-only mode, RunWield checks the target checkout, preserves unrelated work, merges the candidate locally, and
-commits its finalized lifecycle metadata. Unrelated unsaved tracked changes block that operation; exact RunWield-owned
+commits its finalized lifecycle metadata for legacy Plans. Packages settle personal metadata after local Git proof.
+Unrelated unsaved tracked changes block that operation; exact RunWield-owned
 preparation and interrupted finalization writes are reconciled automatically. Non-overlapping untracked files are
 preserved. This is the sole primary-checkout exception; users who need publication while the checkout contains parallel
 tracked work must configure a remote.

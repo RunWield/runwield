@@ -1,3 +1,18 @@
+import {
+    currentPackageSelection,
+    packageWorkflowLocks,
+    selectedPackage,
+    packageExecutionJournalOwner,
+} from "./package-workflow.ts";
+import { createHash } from "node:crypto";
+import {
+    planPackageJournalDirectory,
+    type PlanPackageMetadata,
+    type PackageWorkflowInput,
+    type PackageAttemptReference,
+    readPlanPackageInput,
+    updatePlanPackageMetadata,
+} from "../plan-package-store.ts";
 import { mkdir as fsMkdir, readdir as fsReaddir, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 /**
  * @module shared/workflow/state-transition
@@ -8,7 +23,11 @@ import { dirname, join, resolve } from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { CLI_BIN } from "../../constants.js";
 import { pickControllerState, type WorkflowControllerState, WORKTREE_CONTEXT_FIELDS } from "./controller-state.ts";
-import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import {
+    enterProjectRuntime,
+    inspectProjectRuntimeReadAccess,
+    resolveProjectRuntimeLayout,
+} from "../project-runtime-layout.ts";
 import {
     controllerStatesEqual,
     restoreOwnControllerWrite,
@@ -115,6 +134,48 @@ interface TransitionOptionsBase {
 }
 
 const activeSemanticTransitions = new AsyncLocalStorage<Set<string>>();
+interface PackageTransitionSource {
+    projectId: string;
+    repositoryId: string;
+    personalOwner: { kind: string; identity: string };
+    planId: string;
+    expectedRevision: number;
+    input?: PackageWorkflowInput;
+    attempt?: PackageAttemptReference;
+}
+interface PackageMetadataWrite {
+    planId: string;
+    beforeRevision: number;
+    beforeMetadata: PlanPackageMetadata;
+    afterRevision: number;
+    metadataHash: string;
+}
+interface PackageJournalScope {
+    projectRoot: string;
+    transitionId: string;
+}
+const packageJournal = new AsyncLocalStorage<PackageJournalScope>();
+/** The active transition records intent before the package owner atomically replaces metadata. */
+export async function journalPackageMetadataWrite(
+    before: PlanPackageMetadata,
+    after: PlanPackageMetadata,
+): Promise<void> {
+    const scope = packageJournal.getStore();
+    if (!scope || !currentPackageSelection()) return;
+    const path = await enteredTransitionJournalPath(scope.projectRoot, scope.transitionId);
+    const record = JSON.parse(await fsReadFile(path, "utf8"));
+    const write: PackageMetadataWrite = {
+        planId: before.planId,
+        beforeRevision: before.revision,
+        beforeMetadata: before,
+        afterRevision: after.revision,
+        metadataHash: createHash("sha256").update(JSON.stringify(after)).digest("hex"),
+    };
+    await writeJournal(scope.projectRoot, scope.transitionId, {
+        ...record,
+        packageWrites: [...(record.packageWrites || []), write],
+    });
+}
 
 function compactError(value: unknown): string {
     return value instanceof Error ? value.message : String(value);
@@ -153,6 +214,22 @@ export async function withOrderedTransitionResources<T>(
     resources: TransitionResource[],
     fn: () => Promise<T>,
 ): Promise<T> {
+    if (currentPackageSelection()) {
+        const names = resources.filter((resource) => resource.kind === "plan").map((resource) => resource.id!);
+        const repositoryResources = resources.filter(
+            (resource) => resource.kind !== "catalog" && resource.kind !== "plan",
+        );
+        return await packageWorkflowLocks(names, () =>
+            withRepositoryTransitionResources(projectRoot, repositoryResources, fn),
+        );
+    }
+    return await withRepositoryTransitionResources(projectRoot, resources, fn);
+}
+async function withRepositoryTransitionResources<T>(
+    projectRoot: string,
+    resources: TransitionResource[],
+    fn: () => Promise<T>,
+): Promise<T> {
     const lockKey = (resource: TransitionResource) =>
         `${transitionResourceKey(resource)}:${resolve(resource.root || projectRoot)}`;
     const ordered = [...new Map(resources.map((resource) => [lockKey(resource), resource])).values()].sort((a, b) =>
@@ -175,6 +252,11 @@ function withTrackedPlanLock<T>(projectRoot: string, planName: string, run: () =
 }
 
 export function getTransitionJournalDir(projectRoot: string): string {
+    const selection = currentPackageSelection();
+    if (selection)
+        return packageExecutionJournalOwner()
+            ? resolveProjectRuntimeLayout(packageExecutionJournalOwner()!).selected.transitionJournalsDir
+            : planPackageJournalDirectory(selection.identity);
     return resolveProjectRuntimeLayout(projectRoot).selected.transitionJournalsDir;
 }
 
@@ -183,6 +265,7 @@ export function getTransitionJournalPath(projectRoot: string, transitionId: stri
 }
 
 async function enteredTransitionJournalDir(projectRoot: string): Promise<string> {
+    if (currentPackageSelection()) return getTransitionJournalDir(projectRoot);
     return (await enterProjectRuntime(projectRoot)).selected.transitionJournalsDir;
 }
 
@@ -193,6 +276,29 @@ async function enteredTransitionJournalPath(projectRoot: string, transitionId: s
 async function writeJournal(projectRoot: string, transitionId: string, record: Record<string, unknown>) {
     const path = await enteredTransitionJournalPath(projectRoot, transitionId);
     await fsMkdir(dirname(path), { recursive: true });
+    if (currentPackageSelection()) {
+        const selection = currentPackageSelection()!;
+        const previous = await fsReadFile(path, "utf8")
+            .then((text) => JSON.parse(text))
+            .catch((error) => {
+                if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
+                throw error;
+            });
+        const current = record.planName ? await selectedPackage(String(record.planName)) : null;
+        record = {
+            ...record,
+            packageSource: previous?.packageSource || {
+                expectedRevision: current?.metadata.revision || selection.expectedRevision,
+                input: current?.metadata.workflow?.readiness,
+                attempt: current?.metadata.workflow?.attempt,
+                projectId: selection.identity.projectId,
+                repositoryId: selection.identity.repositoryId,
+                personalOwner: selection.identity.personalOwner,
+                planId: selection.planId,
+            },
+            ...(previous?.packageWrites && !record.packageWrites ? { packageWrites: previous.packageWrites } : {}),
+        };
+    }
     await atomicWriteTextFile(path, `${JSON.stringify(record, null, 2)}\n`);
 }
 
@@ -237,6 +343,7 @@ async function restoreOwnPlanWrite({
     currentRevision?: string;
 }): Promise<string | null> {
     if (!currentRevision) return null;
+    if (currentPackageSelection()) return null;
     if (
         !(await restoreOwnControllerWrite(projectRoot, { planName, planId: beforePlan.attrs.planId }, beforePlan.attrs))
     )
@@ -743,13 +850,15 @@ async function runSemanticTransition<T>({
                 });
                 try {
                     await writeState("applying");
-                    const value = await apply({
-                        transitionId,
-                        beforePlan,
-                        expectedRevision: beforePlan?.revision,
-                        markEffect,
-                        registerRollback,
-                    });
+                    const value = await packageJournal.run({ projectRoot, transitionId }, () =>
+                        apply({
+                            transitionId,
+                            beforePlan,
+                            expectedRevision: beforePlan?.revision,
+                            markEffect,
+                            registerRollback,
+                        }),
+                    );
                     await writeState("verifying", { proof: value });
                     for (const expectedEffect of expectedEffects) {
                         if (!completedEffects.some((effect) => effect.effect === expectedEffect)) {
@@ -1049,7 +1158,9 @@ async function runPlanTransition<T>({
                     : { missing: true },
                 updatedAt: new Date().toISOString(),
             });
-            const value = await apply({ transitionId, beforePlan });
+            const value = await packageJournal.run({ projectRoot, transitionId }, () =>
+                apply({ transitionId, beforePlan }),
+            );
             await writeJournal(projectRoot, transitionId, {
                 version: 1,
                 transitionId,
@@ -1366,11 +1477,17 @@ export async function writePlanDocumentAndController(opts: PlanDocumentUpdate) {
 
 /** Return unresolved transition journal records for diagnostics. */
 export async function listTransitionRecoveryRecords(projectRoot: string, options: { diagnostic?: boolean } = {}) {
-    const dir = options.diagnostic
-        ? getTransitionJournalDir(projectRoot)
-        : await enteredTransitionJournalDir(projectRoot);
     /** @type {Array<Record<string, unknown>>} */
     const records = [];
+    let dir = getTransitionJournalDir(projectRoot);
+    if (!options.diagnostic && !currentPackageSelection()) {
+        const access = await inspectProjectRuntimeReadAccess(projectRoot);
+        // Adopt legacy journals when needed; reading an adopted store never admits identity or writes.
+        dir =
+            access.kind === "ready" || access.kind === "fresh"
+                ? access.layout.selected.transitionJournalsDir
+                : await enteredTransitionJournalDir(projectRoot);
+    }
     try {
         for await (const entry of await fsReaddir(dir, { withFileTypes: true })) {
             if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
@@ -1521,6 +1638,8 @@ export async function reconcileTransitionRecoveryRecords(
     } = {},
 ): Promise<TransitionReconciliation[]> {
     let records = await listTransitionRecoveryRecords(projectRoot, { diagnostic });
+    const active = activeSemanticTransitions.getStore();
+    if (active) records = records.filter((record) => !active.has(String(record.transitionId || "")));
     if (planName !== undefined) {
         records = records.filter((record) => record.planName === planName);
     }
@@ -1544,6 +1663,129 @@ export async function reconcileTransitionRecoveryRecords(
         if (!transitionId) {
             reconciliations.push({ ...base, resolvable: false, reason: "journal file is unreadable or has no id" });
             continue;
+        }
+        if (currentPackageSelection() && record.packageSource) {
+            const selection = currentPackageSelection()!;
+            const source = record.packageSource as PackageTransitionSource;
+            if (
+                source.projectId !== selection.identity.projectId ||
+                source.personalOwner?.identity !== selection.identity.personalOwner.identity ||
+                source.personalOwner?.kind !== selection.identity.personalOwner.kind ||
+                !Number.isSafeInteger(source.expectedRevision) ||
+                source.expectedRevision < 1 ||
+                (Boolean(packageExecutionJournalOwner()) && source.repositoryId !== selection.identity.repositoryId) ||
+                source.planId !== selection.planId
+            ) {
+                reconciliations.push({
+                    ...base,
+                    resolvable: false,
+                    reason: "package journal belongs to another source owner",
+                });
+                continue;
+            }
+            try {
+                if (source.input) {
+                    for (const input of source.input.inputs) await readPlanPackageInput(selection.identity, input);
+                }
+                if (
+                    source.attempt &&
+                    planName &&
+                    JSON.stringify((await selectedPackage(planName)).metadata.workflow?.attempt) !==
+                        JSON.stringify(source.attempt)
+                )
+                    throw new Error("Recorded package attempt binding changed.");
+            } catch (error) {
+                reconciliations.push({
+                    ...base,
+                    resolvable: false,
+                    reason: error instanceof Error ? error.message : String(error),
+                });
+                continue;
+            }
+            const writes = record.packageWrites as PackageMetadataWrite[] | undefined;
+            if (
+                !writes?.length &&
+                planName &&
+                (operation?.startsWith("plan_review_") || operation?.startsWith("sequence_review_"))
+            ) {
+                const current = await selectedPackage(planName);
+                reconciliations.push({
+                    ...base,
+                    resolvable: current.metadata.revision === source.expectedRevision,
+                    reason: "review recorded no metadata write; current editor documents are preserved",
+                });
+                continue;
+            }
+            if (operation?.startsWith("sequence_review_") && writes?.length && state !== "committed") {
+                const accepted =
+                    Array.isArray(record.completedEffects) &&
+                    record.completedEffects.some(
+                        (effect: JournaledEffect) => effect.effect === "sequence_review_accepted",
+                    );
+                let settled = true;
+                for (const planId of new Set(writes.map((write) => write.planId))) {
+                    const owned = writes.filter((write) => write.planId === planId);
+                    const before = owned[0].beforeMetadata;
+                    const current = await selectedPackage(before.name);
+                    const { revision: _beforeRevision, ...original } = before;
+                    const { revision: _currentRevision, ...present } = current.metadata;
+                    // A prior recovery may have committed compensation and lost its acknowledgement.
+                    if (JSON.stringify(original) === JSON.stringify(present)) continue;
+                    const matching = owned.some(
+                        (write) =>
+                            current.metadata.revision === write.afterRevision &&
+                            createHash("sha256").update(JSON.stringify(current.metadata)).digest("hex") ===
+                                write.metadataHash,
+                    );
+                    if (!matching) {
+                        settled = false;
+                        continue;
+                    }
+                    if (!accepted && apply) {
+                        await updatePlanPackageMetadata(selection.identity, before.planId, current.metadata.revision, {
+                            definition: before.definition,
+                            controller: before.controller,
+                            references: before.references,
+                            workflow: before.workflow,
+                            parentPlanId: before.parentPlanId,
+                            dependencyPlanIds: before.dependencyPlanIds,
+                        });
+                    }
+                }
+                reconciliations.push({
+                    ...base,
+                    resolvable: settled,
+                    reason: accepted
+                        ? "complete package Sequence decision retained"
+                        : "interrupted package Sequence metadata compensated without restoring editor bytes",
+                });
+                continue;
+            }
+            if (
+                writes?.length &&
+                planName &&
+                (!Array.isArray(record.completedEffects) || record.completedEffects.length === 0)
+            ) {
+                const current = await selectedPackage(planName);
+                const last = writes.at(-1)!;
+                const applied =
+                    current.metadata.revision === last.afterRevision &&
+                    createHash("sha256").update(JSON.stringify(current.metadata)).digest("hex") === last.metadataHash;
+                const unchanged = current.metadata.revision === writes[0].beforeRevision;
+                const superseded = current.metadata.revision > last.afterRevision;
+                reconciliations.push({
+                    ...base,
+                    resolvable: applied || unchanged || superseded,
+                    reason: applied
+                        ? "recorded package metadata write committed; editor bytes remain current"
+                        : unchanged
+                          ? "package metadata intent did not land"
+                          : superseded
+                            ? "newer package metadata supersedes this metadata-only intent without replay"
+                            : "package metadata cannot be matched to its recorded intent",
+                });
+                continue;
+            }
         }
         if (state === "committed") {
             reconciliations.push({

@@ -592,3 +592,34 @@ test("development catalog selection is request-local and shared by sidebar and B
     }
     assertEquals(devOwnerSidebar().projects[0].planDiagnostics, undefined);
 });
+
+test("admitted package Board keeps healthy Plans beside diagnostics and ignores repository delivery copies", async () => {
+    const { packageFixture, create, tree } = await import("../../shared/testing/plan-package-fixture.ts");
+    const { withPackageWorkflow } = await import("../../shared/workflow/package-workflow.ts");
+    const { loadBoard } = await import("./server/plan-adapter.js");
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    const f = await packageFixture();
+    try {
+        const p = await create(f.identity, { definition: { classification: "PLANNED_CHANGE", status: "draft" } });
+        await mkdir(join(f.root, "docs/plans"), { recursive: true });
+        await writeFile(join(f.root, "docs/plans/one.md"), "# Stale repository delivery copy\n");
+        const broken = await create(f.identity, { planId: "broken", name: "broken" });
+        await writeFile(join(broken.path, "plan.wld.json"), "{");
+        const before = await tree(f.root);
+        await withPackageWorkflow(
+            f.root,
+            { identity: f.identity, planId: p.metadata.planId, expectedRevision: 1 },
+            async () => {
+                const board = await loadBoard(f.root);
+                assertEquals(board.plans.length, 1);
+                assertEquals(board.plans[0].planId, "plan-one");
+                assertEquals(board.diagnostics.length, 1);
+                const detail = await loadWorkspaceDetail(f.root, "plan-one", { reviewOnly: true });
+                assertStringIncludes(detail.body, "Prose — 世界");
+            },
+        );
+        assertEquals(await tree(f.root), before);
+    } finally {
+        await f.cleanup();
+    }
+});

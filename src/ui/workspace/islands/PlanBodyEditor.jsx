@@ -13,7 +13,7 @@ try {
 }
 const loadWorkspacePlanDocument = /** @type {() => Promise<{ default: import("react").ComponentType<any> }>} */ (
     workspacePlanDocumentModules["../react/WorkspacePlanDocument.tsx"] ||
-    (() => Promise.resolve({ default: WorkspacePlanDocumentFallback }))
+        (() => Promise.resolve({ default: WorkspacePlanDocumentFallback }))
 );
 const WorkspacePlanDocument = lazy(loadWorkspacePlanDocument);
 
@@ -52,17 +52,18 @@ export function restoredDraftExpectedBodyHash(draft) {
  * @typedef {Object} PlanBodyDraft
  * @property {string} body
  * @property {string} baseBodyHash
+ * @property {string} [baseRevision]
  * @property {string} [updatedAt]
  */
 
-/** @param {{ body: string, baseBodyHash: string }} draft */
+/** @param {PlanBodyDraft} draft */
 function serializeDraft(draft) {
-    return JSON.stringify({ body: draft.body, baseBodyHash: draft.baseBodyHash, updatedAt: new Date().toISOString() });
+    return JSON.stringify({ ...draft, updatedAt: new Date().toISOString() });
 }
 
 /**
  * @param {string} key
- * @returns {{ body: string, baseBodyHash: string, updatedAt?: string } | null}
+ * @returns {PlanBodyDraft | null}
  */
 function readDraft(key) {
     try {
@@ -83,6 +84,7 @@ export function PlanBodyEditor({ plan, initialEdit = false }) {
     const [bodyHash, setBodyHash] = useState(plan.bodyHash || "");
     const [expectedBodyHash, setExpectedBodyHash] = useState(plan.bodyHash || "");
     const [expectedRevision, setExpectedRevision] = useState(plan.revision || "");
+    const [savedRevision, setSavedRevision] = useState(plan.revision || "");
     const [message, setMessage] = useState("");
     const [draft, setDraft] = useState(/** @type {PlanBodyDraft | null} */ (null));
     const [saving, setSaving] = useState(false);
@@ -118,8 +120,11 @@ export function PlanBodyEditor({ plan, initialEdit = false }) {
 
     useEffect(() => {
         if (!canEdit || !dirty) return;
-        localStorage.setItem(draftKey, serializeDraft({ body, baseBodyHash: expectedBodyHash }));
-    }, [body, canEdit, dirty, draftKey, expectedBodyHash]);
+        localStorage.setItem(
+            draftKey,
+            serializeDraft({ body, baseBodyHash: expectedBodyHash, baseRevision: expectedRevision }),
+        );
+    }, [body, canEdit, dirty, draftKey, expectedBodyHash, expectedRevision]);
 
     function startEdit() {
         if (!canEdit) return;
@@ -131,6 +136,7 @@ export function PlanBodyEditor({ plan, initialEdit = false }) {
         if (!draft) return;
         setBody(draft.body);
         setExpectedBodyHash(restoredDraftExpectedBodyHash(draft));
+        setExpectedRevision(draft.baseRevision || (plan.documentUrl ? draft.baseBodyHash : ""));
         setMessage(
             draft.baseBodyHash === bodyHash
                 ? "Draft restored. Review before saving."
@@ -149,6 +155,7 @@ export function PlanBodyEditor({ plan, initialEdit = false }) {
         if (dirty && !confirm("Discard unsaved editor changes and local draft?")) return;
         setBody(savedBody);
         setExpectedBodyHash(bodyHash);
+        setExpectedRevision(savedRevision);
         setMode("read");
         if (dirty) discardDraft();
     }
@@ -159,13 +166,25 @@ export function PlanBodyEditor({ plan, initialEdit = false }) {
         try {
             const url = new URL(location.href);
             const token = url.searchParams.get(PLAN_UI_TOKEN_QUERY) || "";
-            const response = await fetch(`/api/plans/${encodeURIComponent(plan.planId)}/body`, {
+            const response = await fetch(plan.documentUrl || `/api/plans/${encodeURIComponent(plan.planId)}/body`, {
                 method: "POST",
                 headers: {
                     "content-type": "application/json",
+                    ...(plan.documentUrl
+                        ? {
+                              "x-runwield-csrf": decodeURIComponent(
+                                  globalThis.document.cookie
+                                      .split("; ")
+                                      .find((entry) => entry.startsWith("rw_owner_csrf="))
+                                      ?.split("=")
+                                      .slice(1)
+                                      .join("=") || "",
+                              ),
+                          }
+                        : {}),
                     ...(token ? { [PLAN_UI_TOKEN_HEADER]: token } : {}),
                 },
-                body: JSON.stringify({ body, expectedBodyHash, expectedRevision }),
+                body: JSON.stringify({ body, expectedBodyHash, expectedRevision, revision: expectedRevision }),
             });
             const payload = await response.json();
             if (response.status === 409) {
@@ -176,8 +195,10 @@ export function PlanBodyEditor({ plan, initialEdit = false }) {
                 setMessage(payload.error || "Unable to save Plan body.");
                 return;
             }
-            const nextHash = payload.bodyHash || payload.plan?.bodyHash || "";
-            setExpectedRevision(payload.plan?.revision || expectedRevision);
+            const nextHash = payload.bodyHash || payload.plan?.bodyHash || payload.revision || "";
+            const nextRevision = payload.revision || payload.plan?.revision || expectedRevision;
+            setExpectedRevision(nextRevision);
+            setSavedRevision(nextRevision);
             setBodyHash(nextHash);
             setExpectedBodyHash(nextHash);
             setSavedBody(body);
@@ -185,64 +206,66 @@ export function PlanBodyEditor({ plan, initialEdit = false }) {
             setDraft(null);
             setMode("read");
             setMessage("Plan body saved.");
+            plan.onSaved?.(payload);
         } finally {
             setSaving(false);
         }
     }
 
     const recovery = draftRecoveryState(draft, bodyHash);
-    const document = clientReady
-        ? (
-            <Suspense fallback={<MarkdownView markdown={mode === "edit" ? body : savedBody} />}>
-                <WorkspacePlanDocument
-                    mode={mode}
-                    markdown={mode === "edit" ? body : savedBody}
-                    documentId={`${plan.planId}:${bodyHash || "initial"}`}
-                    editorHandleRef={editorHandleRef}
-                    onMarkdownChange={setBody}
-                />
-            </Suspense>
-        )
-        : <MarkdownView markdown={savedBody} />;
+    const document = clientReady ? (
+        <Suspense fallback={<MarkdownView markdown={mode === "edit" ? body : savedBody} />}>
+            <WorkspacePlanDocument
+                mode={mode}
+                markdown={mode === "edit" ? body : savedBody}
+                documentId={`${plan.planId}:${bodyHash || "initial"}`}
+                editorHandleRef={editorHandleRef}
+                onMarkdownChange={setBody}
+                resolveLocalLink={plan.resolveLocalLink}
+                fragment={plan.fragment}
+            />
+        </Suspense>
+    ) : (
+        <MarkdownView markdown={savedBody} />
+    );
 
     return (
         <section className="plan-body-editor" data-editor-mode={mode} data-plannotator-workspace-document>
             <div className="editor-toolbar">
-                {mode === "edit"
-                    ? (
-                        <>
-                            <RunWieldButton
-                                type="button"
-                                variant="primary"
-                                disabled={saving || !dirty}
-                                onClick={saveBody}
-                            >
-                                {saving ? <RunWieldThinkingDots label="Saving" /> : "Save"}
-                            </RunWieldButton>
-                            <RunWieldButton type="button" onClick={cancelEdit}>Cancel</RunWieldButton>
-                            <span className={dirty ? "dirty-indicator" : "saved-indicator"}>
-                                {dirty ? "Unsaved changes" : "No changes"}
-                            </span>
-                        </>
-                    )
-                    : canEdit
-                    ? <RunWieldButton type="button" variant="primary" onClick={startEdit}>Edit</RunWieldButton>
-                    : null}
+                {mode === "edit" ? (
+                    <>
+                        <RunWieldButton type="button" variant="primary" disabled={saving || !dirty} onClick={saveBody}>
+                            {saving ? <RunWieldThinkingDots label="Saving" /> : "Save"}
+                        </RunWieldButton>
+                        <RunWieldButton type="button" onClick={cancelEdit}>
+                            Cancel
+                        </RunWieldButton>
+                        <span className={dirty ? "dirty-indicator" : "saved-indicator"}>
+                            {dirty ? "Unsaved changes" : "No changes"}
+                        </span>
+                    </>
+                ) : canEdit ? (
+                    <RunWieldButton type="button" variant="primary" onClick={startEdit}>
+                        Edit
+                    </RunWieldButton>
+                ) : null}
             </div>
             {message ? <p className="notice editor-notice">{message}</p> : null}
-            {canEdit && draft && mode === "read"
-                ? (
-                    <div className={recovery === "changed-on-disk" ? "notice warning" : "notice"}>
-                        {recovery === "changed-on-disk"
-                            ? "A local draft exists, but this Plan changed on disk. Restore only if you want to copy or merge it manually."
-                            : "A local unsaved draft is available for this Plan body."}
-                        <div className="inline-actions">
-                            <RunWieldButton type="button" onClick={restoreDraft}>Restore draft</RunWieldButton>
-                            <RunWieldButton type="button" onClick={discardDraft}>Discard draft</RunWieldButton>
-                        </div>
+            {canEdit && draft && mode === "read" ? (
+                <div className={recovery === "changed-on-disk" ? "notice warning" : "notice"}>
+                    {recovery === "changed-on-disk"
+                        ? "A local draft exists, but this Plan changed on disk. Restore only if you want to copy or merge it manually."
+                        : "A local unsaved draft is available for this Plan body."}
+                    <div className="inline-actions">
+                        <RunWieldButton type="button" onClick={restoreDraft}>
+                            Restore draft
+                        </RunWieldButton>
+                        <RunWieldButton type="button" onClick={discardDraft}>
+                            Discard draft
+                        </RunWieldButton>
                     </div>
-                )
-                : null}
+                </div>
+            ) : null}
             <div className={mode === "edit" ? "workspace-plan-document is-editing" : "workspace-plan-document"}>
                 {document}
             </div>

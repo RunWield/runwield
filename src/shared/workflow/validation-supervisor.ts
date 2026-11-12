@@ -1,3 +1,5 @@
+import { recoverPackageRecordingPreparation } from "./package-publication.ts";
+import { currentPackageSelection, selectedPackage, assertPackageWorkflowInput } from "./package-workflow.ts";
 import { preparePlanController } from "./plan-preparation.ts";
 import { type OutcomeSession, recordWorkflowOutcome } from "./outcome-observations.ts";
 import {
@@ -442,6 +444,18 @@ function pausedResult(
 
 /** Reconcile canonical Plan state, claim one owner, run, and durably settle. */
 export async function runValidationAttempt(args: RunValidationAttemptArgs): Promise<WorkflowValidationResult> {
+    if (currentPackageSelection()) {
+        const plan = await selectedPackage(args.planName);
+        const binding = plan.metadata.workflow?.attempt;
+        if (binding && binding.repositoryRoot !== resolvePrimaryCheckoutRoot(args.projectRoot))
+            throw new Error("Continue package validation in its recorded repository.");
+        if (
+            binding &&
+            !plan.metadata.workflow?.publication &&
+            !(await recoverPackageRecordingPreparation(args.planName))
+        )
+            await assertPackageWorkflowInput(args.planName, binding.input);
+    }
     return await continueValidationAttempt({ ...args, projectRoot: resolvePrimaryCheckoutRoot(args.projectRoot) }, 0);
 }
 

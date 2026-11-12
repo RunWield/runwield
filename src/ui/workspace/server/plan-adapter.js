@@ -1,3 +1,6 @@
+import { capturePackageWorkflowAccess } from "../../../shared/workflow/package-workflow.ts";
+import { currentPackageSelection } from "../../../shared/workflow/package-workflow.ts";
+import { readPlanDocuments } from "../../../shared/workflow/plan-documents.ts";
 /**
  * Server-only Plan adapter for the read-only Workspace.
  */
@@ -508,6 +511,7 @@ export function serializePlanDetail(resource, plans) {
     return {
         ...summary,
         frontMatter: workspaceSafeFrontMatter(resource.attrs),
+        packageDocument: resource.packageDocument,
         body: resource.body || "",
         bodyHash: resource.bodyHash || "",
         revision: resource.revision || summary.revision || "",
@@ -578,7 +582,7 @@ export function serializePlanError(error) {
  * @param {string} cwd
  */
 export async function loadPlanSummaries(cwd) {
-    const resources = await listPlanResources(cwd);
+    const resources = await capturePackageWorkflowAccess()(cwd, () => listPlanResources(cwd));
     return enrichPlanSetDependencies(annotatePlanHierarchy(resources.map(serializePlanSummary)));
 }
 
@@ -587,7 +591,7 @@ export async function loadPlanSummaries(cwd) {
  * @param {string} cwd
  */
 export async function loadPlanSummaryCatalog(cwd) {
-    const { resources, diagnostics } = await readPlanResourceCatalog(cwd);
+    const { resources, diagnostics } = await capturePackageWorkflowAccess()(cwd, () => readPlanResourceCatalog(cwd));
     const plans = enrichPlanSetDependencies(annotatePlanHierarchy(resources.map(serializePlanSummary)));
     return {
         plans,
@@ -629,12 +633,15 @@ export async function loadWorkspaceDetail(cwd, planId, options = {}) {
     const baseResource = options.reviewOnly ? await findPlanEvidenceById(cwd, planId) : await findPlanById(cwd, planId);
     const { assertReadablePlanResource } = await import("./project-artifacts.ts");
     await assertReadablePlanResource(cwd, baseResource);
-    if (options.reviewOnly) return { ...serializePlanDetail(baseResource), path: baseResource.path };
+    const packageDocument = currentPackageSelection() ? await readPlanDocuments(planId) : undefined;
+    if (options.reviewOnly)
+        return { ...serializePlanDetail({ ...baseResource, packageDocument }), path: baseResource.path };
     const resource = isProjectPlan(baseResource.attrs) ? baseResource : await loadPlanBodyById(cwd, planId);
     const summaries = await loadPlanSummaries(cwd);
     return projectWorkspaceDetail(
         {
             ...resource,
+            packageDocument,
             workspaceKey: await sha256Hex(cwd),
             capabilities: {
                 bodyEditing:

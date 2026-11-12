@@ -55,20 +55,30 @@ export async function listRecentResumableSessions(
     sessionStore: FileSessionStore,
 ): Promise<ResumableSessionSummary[]> {
     const listed = await listCatalogSafeRootSessionLocators(cwd, { recentLimit: RECENT_SESSION_LIMIT });
-    const recentLocators = listed.locators.toSorted((left, right) => {
-        const timeDifference = modifiedTime(right.modified || right.headerTimestamp || undefined) -
-            modifiedTime(left.modified || left.headerTimestamp || undefined);
-        return timeDifference || right.sessionPath.localeCompare(left.sessionPath);
-    }).filter((locator) => {
-        const session = sessionStore.findSessionByLocator({ transcriptPath: locator.sessionPath });
-        if (!session) return true;
-        if (session.archivedAt) return false;
-        const isRepairSegment = sessionStore.listSessionTranscriptSegments(session.runwieldSessionId).some(
-            (segment) => segment.transcriptPath === locator.sessionPath && segment.kind === "semantic_repair",
-        );
-        if (isRepairSegment) return false;
-        return sessionStore.inspectSessionActivation(session.runwieldSessionId).activation?.state !== "active";
-    }).slice(0, RECENT_SESSION_LIMIT);
+    const seenSessions = new Set<string>();
+    const recentLocators = listed.locators
+        .toSorted((left, right) => {
+            const timeDifference =
+                modifiedTime(right.modified || right.headerTimestamp || undefined) -
+                modifiedTime(left.modified || left.headerTimestamp || undefined);
+            return timeDifference || right.sessionPath.localeCompare(left.sessionPath);
+        })
+        .filter((locator) => {
+            const session = sessionStore.findSessionByLocator({ transcriptPath: locator.sessionPath });
+            if (!session) return true;
+            if (session.archivedAt) return false;
+            const isRepairSegment = sessionStore
+                .listSessionTranscriptSegments(session.runwieldSessionId)
+                .some(
+                    (segment) => segment.transcriptPath === locator.sessionPath && segment.kind === "semantic_repair",
+                );
+            if (isRepairSegment || seenSessions.has(session.runwieldSessionId)) return false;
+            if (sessionStore.inspectSessionActivation(session.runwieldSessionId).activation?.state === "active")
+                return false;
+            seenSessions.add(session.runwieldSessionId);
+            return true;
+        })
+        .slice(0, RECENT_SESSION_LIMIT);
     const summaries = await mapWithConcurrency(
         recentLocators,
         RESUME_READ_CONCURRENCY,
