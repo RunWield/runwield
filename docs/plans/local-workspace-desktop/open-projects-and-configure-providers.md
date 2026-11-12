@@ -25,8 +25,8 @@ dependencies:
     - "run-a-real-session-in-electron"
 targetBranch: "epic/local-workspace-desktop"
 userVerifiedAt: null
-status: "reviewed"
 validatedCommit: "f7a2a68405365ce7613762032cb35131920f6e10"
+status: "verified"
 ---
 
 # Open Projects and Reuse Provider Configuration
