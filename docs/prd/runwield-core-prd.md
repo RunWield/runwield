@@ -2799,6 +2799,14 @@ Required outcomes:
   resume;
 - intact local Sessions stay usable through TUI and ACP when Workspace registration or pairing is rebuilt.
 
+**Requirement: Resolve project aliases consistently.** Opening a project through a symlink uses the same Session
+identity and history as opening its canonical directory. An exact canonical project match takes precedence over
+registered ancestor directories; genuinely conflicting project identities remain blocked.
+
+Given a registered project and registered parent directories, starting or resuming through a symlink to the project
+selects that project's Sessions without a locator conflict. An unregistered nested directory does not gain access to
+the parent's Sessions through this rule.
+
 **Requirement: Export or share the complete Session.** `/export` writes every committed Session Transcript Segment in
 order, with Session identity, name, project path, timestamps, artifacts, and Plan Associations. HTML is a self-contained
 RunWield page with segment headings, Markdown messages, expandable tools, and collapsed thinking. JSON preserves each

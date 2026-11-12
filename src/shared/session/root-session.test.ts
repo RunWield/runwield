@@ -18,6 +18,7 @@ import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import {
+    classifyRootSessionLocator,
     createRootSessionManager,
     getRootSessionBranchEntries,
     getRunWieldSessionDir,
@@ -30,6 +31,38 @@ import {
     resolveCreatedRootSessionPath,
 } from "./root-session.ts";
 import { encodeCwdForSessionDir } from "../project-directory-key.ts";
+import { openFileSessionStore } from "./file-session-store.ts";
+
+test("root-session resolves a project symlink before considering registered ancestor projects", async () => {
+    const root = await fsRealpath(await fsMkdtemp(join(tmpdir(), "root-session-symlink-")));
+    const cwd = join(root, "web", "project");
+    const alias = join(root, "legacy-web");
+    await fsMkdir(cwd, { recursive: true });
+    await fsSymlink(join(root, "web"), alias, process.platform === "win32" ? "junction" : "dir");
+    const store = openFileSessionStore({ baseDir: join(root, "sessions") });
+    try {
+        store.ensureRuntimeProject({ root });
+        store.ensureRuntimeProject({ root: join(root, "web") });
+        const project = store.ensureRuntimeProject({ root: cwd });
+        for (const enteredRoot of [cwd, join(alias, "project")]) {
+            const classified = await classifyRootSessionLocator({
+                cwd: enteredRoot,
+                ownerCoordinationStore: store,
+            });
+            assertEquals(classified.kind, "managed");
+            assertEquals(classified.project, { projectId: project.projectId, cwd });
+        }
+        const nested = join(cwd, "nested");
+        await fsMkdir(nested);
+        assertEquals(
+            (await classifyRootSessionLocator({ cwd: nested, ownerCoordinationStore: store })).kind,
+            "blocked",
+        );
+    } finally {
+        store.close();
+        await fsRm(root, { recursive: true });
+    }
+});
 
 type SessionMessage = Parameters<SessionManager["appendMessage"]>[0];
 type AssistantTranscriptFields = Pick<AssistantMessage, "role" | "timestamp" | "content">;

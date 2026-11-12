@@ -418,13 +418,17 @@ export async function classifyRootSessionLocator(
     for (const project of projects) {
         const roots = store.listProjectRootEvidence(project.projectId);
         const exactCurrent = roots.some(
-            (root) => root.rootState === "current" && requestedCwd === resolve(root.enteredRoot),
+            (root) =>
+                root.rootState === "current" &&
+                (requestedCwd === resolve(root.enteredRoot) || realCwd === resolve(root.canonicalRoot)),
         );
         const canonicalCurrent = roots.some(
             (root) => root.rootState === "current" && isSameOrInsidePath(realCwd, root.canonicalRoot),
         );
         const exactHistorical = roots.some(
-            (root) => root.rootState === "historical" && requestedCwd === resolve(root.enteredRoot),
+            (root) =>
+                root.rootState === "historical" &&
+                (requestedCwd === resolve(root.enteredRoot) || realCwd === resolve(root.canonicalRoot)),
         );
         const canonicalHistorical = roots.some(
             (root) => root.rootState === "historical" && isSameOrInsidePath(realCwd, root.canonicalRoot),
