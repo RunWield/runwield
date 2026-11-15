@@ -25,7 +25,7 @@ interface Effect {
     version: 1;
     receipt: Receipt;
     path: string;
-    beforeHash: string;
+    beforeHash: string | null;
     after: string;
     afterHash: string;
 }
@@ -107,7 +107,13 @@ export function recoverOperationEffect(directory: string, plans: string): void {
     const metadata: { planId: string } = JSON.parse(readFileSync(metadataPath, "utf8"));
     if (metadata.planId !== retained.planId || effect.receipt.planId !== retained.planId)
         throw new Error("Operation effect belongs to a different Plan.");
-    const observed = operationHash(readFileSync(effect.path, "utf8"));
+    let observed: string | null;
+    try {
+        observed = operationHash(readFileSync(effect.path, "utf8"));
+    } catch (error) {
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+        observed = null;
+    }
     if (observed !== effect.beforeHash && observed !== effect.afterHash)
         throw new Error("Operation effect conflicts with the owner document; recovery remains pending.");
     if (observed === effect.beforeHash) writeTextAtomically(effect.path, effect.after);
@@ -119,7 +125,7 @@ export function recoverOperationEffect(directory: string, plans: string): void {
 /** A named command's final canonical commit retains its exact result before replacing the resource. */
 export function commitOperationEffect(
     path: string,
-    before: string,
+    before: string | null,
     after: string,
     revision: string,
     snapshot?: { inputId: string; digest: string; attemptId: string },
@@ -150,7 +156,7 @@ export function commitOperationEffect(
         version: 1,
         receipt: completed,
         path,
-        beforeHash: operationHash(before),
+        beforeHash: before === null ? null : operationHash(before),
         after,
         afterHash: operationHash(after),
     };

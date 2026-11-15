@@ -1397,7 +1397,14 @@ export async function savePlanPackageDocument(
                 document.name === name ? { ...document, hash: digest(new TextEncoder().encode(text)) } : document,
             ),
         };
-        if (!commitOperationEffect(path, new TextDecoder().decode(live!), text, packageWorkflowRevision(changed)))
+        if (
+            !commitOperationEffect(
+                path,
+                live === null ? null : new TextDecoder().decode(live),
+                text,
+                packageWorkflowRevision(changed),
+            )
+        )
             writeTextAtomically(path, bytes);
         if (!isHomeProjectOwner(identity))
             await requestWorkspaceSearchRefresh(resolvePrimaryCheckoutRoot(identity.checkoutRoot));

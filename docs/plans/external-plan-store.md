@@ -548,6 +548,18 @@ when it is accepted rather than leaving conflicting accepted storage rules. Afte
 requirements are delivered or explicitly deferred into their lasting owners, remove the transient Plan Store PRD and
 repair references. Do not mark these outcomes delivered during planning.
 
+### Integration Notes
+
+Left by the reviewers of individual children for the integration review. These are places to look, not requirements.
+
+<!-- runwield:integration-notes:start child="external-plan-store/serve-laptop-owned-project-state" -->
+
+**external-plan-store/serve-laptop-owned-project-state**
+
+- When activating managed remote ownership, pass and freeze the execution repository's delivery-copy settings before publication. Verify that execution-host Git proof reaches the matching laptop-owned attempt before lifecycle completion or Work Record approval. (Plan 12; src/plan-store/publication.ts and the managed remote execution/publication integration)
+
+<!-- runwield:integration-notes:end child="external-plan-store/serve-laptop-owned-project-state" -->
+
 ## Edge Cases & Considerations
 
 - **Uncoordinated editors:** external writes do not honor Core locks. Snapshot hashes and action-time rechecks must

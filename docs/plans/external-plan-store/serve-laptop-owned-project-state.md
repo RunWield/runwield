@@ -25,7 +25,7 @@ dependencies:
     - "external-plan-store/activate-the-local-home-store"
 targetBranch: "epic/external-plan-store"
 userVerifiedAt: null
-status: "implemented"
+status: "reviewed"
 ---
 
 # Serve Laptop Owned Project State

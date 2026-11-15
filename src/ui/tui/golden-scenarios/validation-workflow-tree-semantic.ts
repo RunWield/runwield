@@ -900,6 +900,9 @@ export const validationTreeSemanticRoundLimitStopScenario = withValidationBranch
             { type: "type", text: "/load-plan semantic-round-limit-stop" },
             { type: "enter" },
             { type: "enter" },
+            // Each repair must make progress within the bound; the scenario still bounds the whole journey.
+            { type: "waitForEventCount", event: "runtime:tool:start:task_completed", count: 1, timeoutMs: 90000 },
+            { type: "waitForEventCount", event: "runtime:tool:start:task_completed", count: 2, timeoutMs: 90000 },
             { type: "waitForEventCount", event: "runtime:tool:start:task_completed", count: 3, timeoutMs: 90000 },
             { type: "waitForScreen", text: "Look once more, read it, or stop.", timeoutMs: 180000 },
             { type: "waitForEvent", event: "runtime:interaction_resolved", timeoutMs: 180000 },

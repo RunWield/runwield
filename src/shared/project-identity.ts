@@ -1006,12 +1006,18 @@ export function assertProjectStoreIdentity(identity: ProjectStoreIdentity): void
             throw new Error("Home Project authority changed.");
         return;
     }
-    const inspected = inspectProjectIdentity(identity.checkoutRoot);
+    const inspected = inspectProjectIdentity(identity.checkoutRoot, {
+        context: {
+            executionAccountHome: identity.executionAccountHome,
+            personalOwner: identity.personalOwner,
+        },
+    });
     if (
         inspected.kind !== "existing" ||
         inspected.identity.projectId !== identity.projectId ||
         inspected.identity.repositoryId !== identity.repositoryId ||
         inspected.identity.checkoutId !== identity.checkoutId ||
+        inspected.identity.personalOwner.kind !== identity.personalOwner.kind ||
         inspected.identity.personalOwner.identity !== identity.personalOwner.identity ||
         inspected.identity.executionAccountHome !== identity.executionAccountHome
     )

@@ -1,6 +1,5 @@
 import {
     assertProjectStoreIdentity,
-    isHomeProjectOwner,
     projectStoreLocation,
     withHomeProjectOwner,
     type HomeProjectOwner,
@@ -366,10 +365,11 @@ export class PreparedProjectStore {
                                         reference.attemptId,
                                         {
                                             mnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
-                                            runRecorderStep: async () => ({
-                                                title: command.title,
-                                                summary: command.summary,
-                                            }),
+                                            runRecorderStep: () =>
+                                                Promise.resolve({
+                                                    title: command.title,
+                                                    summary: command.summary,
+                                                }),
                                         },
                                     ),
                                 );
