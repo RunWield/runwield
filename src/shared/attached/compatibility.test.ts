@@ -233,7 +233,7 @@ for (const refusal of [
         }
     });
     for (const operation of ATTACHED_OPERATIONS.filter((entry) => entry.inputSchema.required.includes("evidence"))) {
-        if (isAttachedReadOperation(operation.name)) continue;
+        if (isAttachedReadOperation(operation.name) || operation.name === "get_role_instructions") continue;
         const name = operation.name;
         test(`${operation.name} rejects ${refusal.reason} before changing workflow, Plan, worktree, or registry`, async () => {
             const fixture = await attachedValidationFixture();

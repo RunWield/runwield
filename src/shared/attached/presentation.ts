@@ -15,6 +15,7 @@ function compactAction(action: AttachedNextAction, workflow: AttachedWorkflowVie
         chatPending: "chat" in action && action.chat !== undefined,
         ...(action.dispatch && { dispatch: action.dispatch }),
     };
+    if (action.kind === "role_handoff") return { ...summary, role: action.role };
     if (action.kind === "triage" || action.kind === "plan") {
         return {
             ...summary,

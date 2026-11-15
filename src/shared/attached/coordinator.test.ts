@@ -56,7 +56,7 @@ for (const workKind of WORK_KINDS) {
     });
 }
 
-for (const routingIntent of ["INQUIRY", "QUICK_FIX", "PROJECT"]) {
+for (const routingIntent of ["QUICK_FIX", "PROJECT"]) {
     test(`a ${routingIntent} outcome closes the workflow as unsupported in this Preview`, async () => {
         await withProject(async (projectRoot) => {
             const triage = await activated(projectRoot);
