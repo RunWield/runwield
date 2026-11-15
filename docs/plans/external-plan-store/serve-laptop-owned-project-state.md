@@ -26,6 +26,7 @@ dependencies:
 targetBranch: "epic/external-plan-store"
 userVerifiedAt: null
 status: "reviewed"
+validatedCommit: "4c2a8efb38d73ccdeaec934f6fdad7657089baac"
 ---
 
 # Serve Laptop Owned Project State
