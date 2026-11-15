@@ -3,7 +3,12 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { lstatSync } from "node:fs";
 import { dirname, join, relative, isAbsolute } from "node:path";
-import { inspectProjectIdentity, type ProjectIdentity } from "../project-identity.ts";
+import {
+    inspectProjectIdentity,
+    assertProjectStoreIdentity,
+    isHomeProjectOwner,
+    type ProjectStoreIdentity as ProjectIdentity,
+} from "../project-identity.ts";
 import { ensurePrivateDir } from "../private-json-file.ts";
 import { openNativeFileLock } from "../native-file-lock.ts";
 
@@ -17,15 +22,7 @@ export function currentWorkRecordOwner(): ProjectIdentity | undefined {
 export function workRecordOwnerLayout() {
     const identity = owners.getStore();
     if (!identity) return undefined;
-    const inspected = inspectProjectIdentity(identity.checkoutRoot);
-    if (
-        inspected.kind !== "existing" ||
-        inspected.identity.projectId !== identity.projectId ||
-        inspected.identity.repositoryId !== identity.repositoryId ||
-        inspected.identity.personalOwner.identity !== identity.personalOwner.identity ||
-        inspected.identity.executionAccountHome !== identity.executionAccountHome
-    )
-        throw new Error("The admitted Work Record owner is unavailable.");
+    assertProjectStoreIdentity(identity);
     const root = join(identity.executionAccountHome, ".wld", "projects", identity.projectId);
     const internal = join(root, "internal", "work-records");
     const key = createHash("sha256").update(identity.personalOwner.identity).digest("hex");
@@ -62,6 +59,10 @@ export async function withWorkRecordOwner<T>(
     identity: ProjectIdentity,
     run: () => Promise<T>,
 ): Promise<T> {
+    if (isHomeProjectOwner(identity)) {
+        assertProjectStoreIdentity(identity);
+        return await owners.run(identity, run);
+    }
     const inspected = inspectProjectIdentity(cwd);
     if (
         identity.personalOwner.kind !== "execution-account" ||

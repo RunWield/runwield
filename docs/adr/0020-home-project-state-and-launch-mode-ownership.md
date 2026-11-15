@@ -164,6 +164,18 @@ metadata, locks, and durable acknowledgements. An SSHFS mount can expose editabl
 authority. Operation IDs and expected revisions permit reconciliation of lost acknowledgements without replaying
 external effects. No permanent daemon, mandatory hosted service, or second saved Plan is required.
 
+The prepared service admits either an ordinary local checkout or a trusted home-only Project/repository registration.
+Home-only authority is revalidated against the current account's `project.wld.json`; it has no synthetic checkout or
+source path. Keeping that identity distinct makes an accidental owner-side Git/registry call an explicit execution-host
+refusal instead of a wrong-machine operation. The owner accepted this admission work in Plan 11; production remote
+startup activation remains Plan 12.
+
+Durable operation identity and canonical effects share the existing native lock boundary. A retained effect intent
+records the bounded replacement before it occurs; recovery verifies the original resource and settles the same effect
+before another writer proceeds. Connection caches cannot prove completion after restart. ID reservations survive lost
+receipts, and immutable snapshot references avoid copying frozen history into acknowledgements. Index reconciliation
+uses the existing canonical Work Record owner and does not manufacture publication proof.
+
 The runtime location change does not move every resource to one logical owner. A Plan reference names an execution
 attempt, while its registry owns the mutable publication phase. Git supplies delivery proof; Plan metadata retains a
 permanent receipt only for established delivery. The same invariant applies when these owners run on different hosts.

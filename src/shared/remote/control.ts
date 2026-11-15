@@ -1,3 +1,5 @@
+import { LaptopProjectStoreService } from "./project-store-service.ts";
+import type { ProjectStoreBinding, HomeProjectOwner } from "../../plan-store/index.ts";
 import { handleBrowserOpen } from "./browser-bridge.ts";
 import { serveHttp } from "../http-server.ts";
 /* Connection-scoped local control and authenticated laptop model bridge. */
@@ -98,6 +100,8 @@ export interface RemoteControlService {
     readonly credential: string;
     status(): RemoteControlStatus;
     /** Trusted laptop registration only. HTTP clients cannot supply writer proofs. */
+    registerProjectStore(cwd: string | HomeProjectOwner): ProjectStoreBinding;
+    unregisterProjectStore(): void;
     registerSessionOperation(operation: string): void;
     unregisterSessionOperation(operation: string): void;
     requestShutdown(): void;
@@ -137,6 +141,7 @@ export function startRemoteControlService(
     const credential = Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) =>
         byte.toString(16).padStart(2, "0"),
     ).join("");
+    let projectStore: LaptopProjectStoreService | undefined;
     const memory = memoryCollection ? new LaptopMemoryService(memoryCollection) : undefined;
     const mcp = new LaptopMcpBridge();
     let connected = false;
@@ -437,6 +442,11 @@ export function startRemoteControlService(
                     return new Response(null, { status: 503 });
                 }
             }
+            if (path === "/project-store") {
+                const selected = projectStore;
+                if (!selected) return new Response(null, { status: 404 });
+                return await selected.handle(request, () => ready && !shutdown && !closed && projectStore === selected);
+            }
             if (path === "/session/control") {
                 if (shutdown || !ready) return new Response(null, { status: 403 });
                 return await sessionControlHandler(request);
@@ -475,6 +485,14 @@ export function startRemoteControlService(
         port: address.port,
         credential,
         status: () => ({ connected, ready, shutdown, remoteCleanupConfirmed, closed }),
+        registerProjectStore(cwd) {
+            if (shutdown || closed || projectStore) throw new Error("Project store registration is unavailable.");
+            projectStore = new LaptopProjectStoreService(cwd);
+            return projectStore.binding;
+        },
+        unregisterProjectStore() {
+            projectStore = undefined;
+        },
         registerSessionOperation(operation) {
             const owner = getRemoteSessionOwner(operation);
             if (shutdown || closed || sessionOwners.has(operation)) {

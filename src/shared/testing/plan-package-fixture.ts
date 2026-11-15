@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
-import { admitProjectIdentity, type ProjectIdentity } from "../project-identity.ts";
+import { admitProjectIdentity, type ProjectStoreIdentity, type ProjectIdentity } from "../project-identity.ts";
 import { createPlanPackage, readPlanPackage } from "../../plan-store/packages.ts";
 import type { CreatePlanPackage, PackageInspection, LoadedPlanPackage } from "../../plan-store/packages.ts";
 
@@ -23,7 +23,7 @@ export function requirePackage(result: PackageInspection): LoadedPlanPackage {
 export async function create(identity: ProjectIdentity, input: Partial<CreatePlanPackage> = {}) {
     return await createPlanPackage(identity, { planId: "plan-one", name: "one", documents, ...input });
 }
-export async function read(identity: ProjectIdentity, planId = "plan-one") {
+export async function read(identity: ProjectStoreIdentity, planId = "plan-one") {
     return requirePackage(await readPlanPackage(identity, { planId }));
 }
 export async function tree(root: string): Promise<Record<string, string>> {

@@ -1,3 +1,4 @@
+import { projectStoreLocation } from "./shared/project-identity.ts";
 /**
  * @typedef {"none"|"ask"|"always"|null} HumanReviewMode
  */
@@ -416,7 +417,8 @@ export function getPlanDocumentRoot(filePath) {
     if (owner) {
         const root = join(owner.executionAccountHome, ".wld", "projects", owner.projectId, "plans");
         const child = relative(root, resolve(filePath));
-        if (child && !child.startsWith("../") && child !== ".." && !isAbsolute(child)) return owner.checkoutRoot;
+        if (child && !child.startsWith("../") && child !== ".." && !isAbsolute(child))
+            return projectStoreLocation(owner);
     }
     if (/^[^:]+:docs\/plans\//.test(filePath)) {
         throw new Error(`Published Plan snapshot is not a writable document path: ${filePath}`);

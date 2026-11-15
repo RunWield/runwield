@@ -1,3 +1,5 @@
+import { currentHomeProjectOwner } from "../shared/project-identity.ts";
+import { packageWorkflowLocks } from "./workflows.ts";
 /** Owner-private lifecycle persistence. Event policy remains in plan-lifecycle.js. */
 import {
     buildPlanEventUpdates,
@@ -178,6 +180,25 @@ export async function recordPlanEvent({
             () => recordPlanEvent({ cwd, planName, event, currentStatus, details, expectedRevision }),
             planName,
         );
+    if (currentHomeProjectOwner()) {
+        if (!["review_approved", "review_feedback", "hold_reset_to_draft"].includes(event))
+            throw new Error("This lifecycle event requires execution-host evidence.");
+        return await packageWorkflowLocks([planName], async () => {
+            const before = await loadPlan(cwd, planName);
+            if (!before) throw new Error("Plan is unavailable.");
+            if (expectedRevision && before.revision !== expectedRevision) throw new Error("Plan revision changed.");
+            if (currentStatus && before.attrs.status !== currentStatus) throw new Error("Plan status changed.");
+            const updates = buildPlanEventUpdates(event, before.attrs.status, { ...details, triageMeta: before.attrs });
+            const selected = await selectedPackage(planName);
+            const workflow = { ...selected.metadata.workflow };
+            if (event === "review_approved") workflow.review = await capturePackageWorkflowInput(planName);
+            if (event === "hold_reset_to_draft") {
+                workflow.review = undefined;
+                workflow.readiness = undefined;
+            }
+            return await updatePackageWorkflowMetadata(planName, updates, before.revision, workflow);
+        });
+    }
     if (currentPackageSelection() && event === "validation_passed") {
         const selected = await selectedPackage(planName);
         const receipt = selected.metadata.workflow?.delivery;

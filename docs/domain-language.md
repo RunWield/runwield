@@ -612,6 +612,14 @@ worktree has its own binding. A non-Git folder preserves both bindings when it a
 including manual SSH, uses its execution account. Managed remote activation names the laptop owner separately from the
 execution account home; a mount path is not ownership evidence.
 
+**Home-only Project admission**: Trusted registration of a personal Project and repository in the current account's
+home identity record, without a source checkout. A prepared connection revalidates this owner binding; HTTP paths,
+mounts and serialized access handles cannot grant it. Remote startup activation is a separate step.
+
+**Store operation receipt**: Retained owner evidence binding one operation ID to its exact request and outcome.
+Reconnection preserves the ID. Missing evidence does not authorize a replacement mutation; pending effects reconcile
+under the native store locks.
+
 **Attention Dashboard**: The Workspace surface aggregating work needing user judgment and active or recent workflow
 state across Projects. It has Needs You, Ready to Continue, In Progress, and Recently Finished groups. _Avoid_: Project
 grid, task board, notifications page

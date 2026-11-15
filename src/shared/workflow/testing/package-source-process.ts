@@ -1,3 +1,4 @@
+import { requireProjectCheckout } from "../../project-identity.ts";
 import { readPlanPackage } from "../../../plan-store/packages.ts";
 import { type PackageWorkflowSelection } from "../../../plan-store/workflows.ts";
 import { withPackageWorkflow } from "../../../plan-store/workflows.ts";
@@ -6,10 +7,10 @@ const selection: PackageWorkflowSelection = JSON.parse(process.argv[2]);
 const current = await readPlanPackage(selection.identity, { planId: selection.planId });
 if (current.kind !== "loaded") throw new Error(current.message);
 const source = await withPackageWorkflow(
-    selection.identity.checkoutRoot,
+    requireProjectCheckout(selection.identity).checkoutRoot,
     { ...selection, expectedRevision: current.metadata.revision },
     async () => {
-        const root = selection.identity.checkoutRoot;
+        const root = requireProjectCheckout(selection.identity).checkoutRoot;
         if (process.argv[3] === "historical")
             return (await readPublishedDeliverySources(root, JSON.parse(process.argv[4]))).delivered;
         if (process.argv[3] === "fail" || process.argv[3] === "retry") {

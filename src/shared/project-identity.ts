@@ -1,4 +1,5 @@
 /** Stable Core identity. Inspection never writes; admission owns all identity mutations. */
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
@@ -903,4 +904,126 @@ export class ProjectIdentityEntryRequired extends Error {
         );
         this.name = "ProjectIdentityEntryRequired";
     }
+}
+
+/** Trusted laptop registration has repository identity but no source checkout. */
+export interface HomeProjectOwner {
+    kind: "home-project";
+    projectId: string;
+    repositoryId: string;
+    personalOwner: ProjectPersonalOwner;
+    executionAccountHome: string;
+    registrationDigest: string;
+}
+export type ProjectStoreIdentity = ProjectIdentity | HomeProjectOwner;
+export interface HomeProjectRegistration {
+    projectId: string;
+    repositoryId: string;
+    displayName: string;
+}
+const homeProjectOwners = new AsyncLocalStorage<HomeProjectOwner>();
+export function currentHomeProjectOwner(): HomeProjectOwner | undefined {
+    return homeProjectOwners.getStore();
+}
+export function isHomeProjectOwner(identity: ProjectStoreIdentity): identity is HomeProjectOwner {
+    return "kind" in identity && identity.kind === "home-project";
+}
+export function projectStoreLocation(identity: ProjectStoreIdentity): string {
+    return isHomeProjectOwner(identity)
+        ? join(identity.executionAccountHome, ".wld", "projects", identity.projectId)
+        : identity.checkoutRoot;
+}
+export function inspectHomeProjectOwner(projectId: string, repositoryId: string): HomeProjectOwner {
+    requireId(repositoryId, "repository ID");
+    const context = contextFor({});
+    if (context.personalOwner.kind !== "execution-account") throw new Error("Home store belongs to this account only.");
+    const record = readRecord(recordPath(context.executionAccountHome, projectId), projectId);
+    if (
+        !record ||
+        record.personalOwner.kind !== context.personalOwner.kind ||
+        record.personalOwner.identity !== context.personalOwner.identity
+    )
+        throw new Error("Home Project owner is unavailable.");
+    const repository = record.repositories.find((entry) => entry.repositoryId === repositoryId);
+    if (!repository) throw new Error("Home Project repository is unavailable.");
+    return {
+        kind: "home-project",
+        projectId,
+        repositoryId,
+        ...context,
+        registrationDigest: createHash("sha256")
+            .update(JSON.stringify({ personalOwner: record.personalOwner, repository }))
+            .digest("hex"),
+    };
+}
+/** Local trusted registration only; a transport request cannot create or select this authority. */
+export async function registerHomeProjectOwner(input: HomeProjectRegistration): Promise<HomeProjectOwner> {
+    requireId(input.projectId, "Project ID");
+    requireId(input.repositoryId, "repository ID");
+    if (!input.displayName.trim() || input.displayName.length > 240) throw new Error("Invalid Project display name.");
+    const context = contextFor({});
+    if (context.personalOwner.kind !== "execution-account")
+        throw new Error("Home store registration belongs to this account only.");
+    const path = recordPath(context.executionAccountHome, input.projectId);
+    ensurePrivateDir(dirname(path));
+    const lock = openNativeFileLock(join(dirname(path), "identity.lock"));
+    try {
+        await lock.lock(true);
+        const record: ProjectRecord = readRecord(path, input.projectId) || {
+            version: 1 as const,
+            projectId: input.projectId,
+            displayName: input.displayName,
+            personalOwner: context.personalOwner,
+            repositories: [],
+        };
+        if (
+            record.personalOwner.kind !== context.personalOwner.kind ||
+            record.personalOwner.identity !== context.personalOwner.identity
+        )
+            throw new Error("Project belongs to another personal owner.");
+        if (!record.repositories.some((entry) => entry.repositoryId === input.repositoryId)) {
+            record.repositories.push({
+                repositoryId: input.repositoryId,
+                remote: null,
+                decision: "new",
+                checkouts: [],
+            });
+            writeJsonAtomically(path, record);
+        }
+        return inspectHomeProjectOwner(input.projectId, input.repositoryId);
+    } finally {
+        lock.close();
+    }
+}
+export function assertProjectStoreIdentity(identity: ProjectStoreIdentity): void {
+    if (isHomeProjectOwner(identity)) {
+        const current = inspectHomeProjectOwner(identity.projectId, identity.repositoryId);
+        if (
+            current.registrationDigest !== identity.registrationDigest ||
+            current.executionAccountHome !== identity.executionAccountHome ||
+            current.personalOwner.identity !== identity.personalOwner.identity
+        )
+            throw new Error("Home Project authority changed.");
+        return;
+    }
+    const inspected = inspectProjectIdentity(identity.checkoutRoot);
+    if (
+        inspected.kind !== "existing" ||
+        inspected.identity.projectId !== identity.projectId ||
+        inspected.identity.repositoryId !== identity.repositoryId ||
+        inspected.identity.checkoutId !== identity.checkoutId ||
+        inspected.identity.personalOwner.identity !== identity.personalOwner.identity ||
+        inspected.identity.executionAccountHome !== identity.executionAccountHome
+    )
+        throw new Error("Project store authority changed.");
+}
+export async function withHomeProjectOwner<T>(owner: HomeProjectOwner, run: () => Promise<T>): Promise<T> {
+    assertProjectStoreIdentity(owner);
+    return await homeProjectOwners.run(owner, run);
+}
+
+/** Execution capabilities require a real checkout, never a home-state directory. */
+export function requireProjectCheckout(identity: ProjectStoreIdentity): ProjectIdentity {
+    if (isHomeProjectOwner(identity)) throw new Error("This operation belongs to the execution host.");
+    return identity;
 }

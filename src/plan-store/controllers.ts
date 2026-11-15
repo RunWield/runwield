@@ -7,7 +7,7 @@ import {
     updatePackageWorkflowMetadata,
 } from "./workflows.ts";
 import { checkedPlanPackageControllerDirectory, type PackageControllerReference } from "./packages.ts";
-import type { ProjectIdentity } from "../shared/project-identity.ts";
+import type { ProjectStoreIdentity as ProjectIdentity } from "../shared/project-identity.ts";
 import { recoverWindowsRename } from "../shared/native-file-replace-windows.ts";
 import { platform } from "node:process";
 import { open as fsOpen } from "node:fs/promises";
