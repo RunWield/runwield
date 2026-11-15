@@ -20,7 +20,7 @@ origin: "internal"
 userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "main"
-status: "implemented"
+status: "reviewed"
 ---
 
 # Ideator and Guide in Connect
