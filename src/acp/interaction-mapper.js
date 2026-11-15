@@ -151,7 +151,11 @@ async function requestBrowserQuestion(options) {
  */
 function buildSchema(interaction) {
     if (interaction.type === RuntimeInteractionTypes.SELECT || interaction.type === RuntimeInteractionTypes.APPROVAL) {
-        const oneOf = (interaction.options || []).map((option) => ({ const: option.value, title: option.label }));
+        const oneOf = (interaction.options || []).map((option) => ({
+            const: option.value,
+            title: option.label,
+            ...(option.description ? { description: option.description } : {}),
+        }));
         return {
             type: "object",
             title: interaction.prompt,
@@ -160,6 +164,7 @@ function buildSchema(interaction) {
                     type: "string",
                     title: "Answer",
                     ...(oneOf.length ? { oneOf } : {}),
+                    ...(interaction.defaultValue !== undefined ? { default: interaction.defaultValue } : {}),
                 },
                 ...(interaction.otherOptionValue
                     ? {
@@ -181,7 +186,7 @@ function buildSchema(interaction) {
             answer: {
                 type: "string",
                 title: "Answer",
-                ...(interaction.defaultValue ? { default: interaction.defaultValue } : {}),
+                ...(interaction.defaultValue !== undefined ? { default: interaction.defaultValue } : {}),
                 ...(interaction.placeholder ? { description: interaction.placeholder } : {}),
             },
         },
@@ -279,7 +284,13 @@ export function createAcpInteractionAdapter({ context, acpSessionId, clientCapab
                     sessionId: acpSessionId,
                     message: interaction.prompt,
                     requestedSchema: buildSchema(interaction),
-                    _meta: { runwield: { interactionId: interaction.id, interactionType: interaction.type } },
+                    _meta: {
+                        runwield: {
+                            interactionId: interaction.id,
+                            interactionType: interaction.type,
+                            ...(interaction.otherOptionValue ? { otherOptionValue: interaction.otherOptionValue } : {}),
+                        },
+                    },
                 },
                 { cancellationSignal: signal },
             );

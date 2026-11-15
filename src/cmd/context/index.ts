@@ -35,30 +35,31 @@ export function renderUsageBar(percent: number | null | undefined, width = 24): 
     return `${"■".repeat(filled)}${"□".repeat(width - filled)} ${percent.toFixed(1)}%`;
 }
 
-export function formatContextReport(report: SessionContextReport): string {
+export function formatContextReport(report: SessionContextReport, plainText = false): string {
+    const bold = (text: string) => (plainText ? text : theme.bold(text));
+    const dim = (text: string) => (plainText ? text : theme.fg("dim", text));
     const lines = [];
     const model = [report.provider, report.model].filter(Boolean).join("/") || "model unavailable";
-    const usageLabel = report.usageState === "last_known"
-        ? "last known"
-        : report.usageState === "unknown_after_compaction"
-        ? "unknown after compaction"
-        : "estimated";
+    const usageLabel =
+        report.usageState === "last_known"
+            ? "last known"
+            : report.usageState === "unknown_after_compaction"
+              ? "unknown after compaction"
+              : "estimated";
 
-    lines.push(theme.bold("Context Usage"));
+    lines.push(bold("Context Usage"));
+    lines.push(`${dim("Agent:")} ${report.agentDisplayName}${report.agentName ? ` (${report.agentName})` : ""}`);
+    lines.push(`${dim("Model:")} ${model}`);
+    lines.push(`${dim("Usage:")} ${renderUsageBar(report.percent)}`);
     lines.push(
-        `${theme.fg("dim", "Agent:")} ${report.agentDisplayName}${report.agentName ? ` (${report.agentName})` : ""}`,
+        `${dim("Tokens:")} ${formatContextTokens(report.usedTokens)}/${formatContextTokens(
+            report.contextWindow,
+        )} (${usageLabel})`,
     );
-    lines.push(`${theme.fg("dim", "Model:")} ${model}`);
-    lines.push(`${theme.fg("dim", "Usage:")} ${renderUsageBar(report.percent)}`);
-    lines.push(
-        `${theme.fg("dim", "Tokens:")} ${formatContextTokens(report.usedTokens)}/${
-            formatContextTokens(report.contextWindow)
-        } (${usageLabel})`,
-    );
-    lines.push(`${theme.fg("dim", "Free space:")} ${formatContextTokens(report.freeTokens)}`);
+    lines.push(`${dim("Free space:")} ${formatContextTokens(report.freeTokens)}`);
     lines.push("");
 
-    lines.push(theme.bold("Estimated usage by category"));
+    lines.push(bold("Estimated usage by category"));
     for (const category of report.categories) {
         const percent = category.percent === null ? "" : ` (${formatPercent(category.percent)})`;
         lines.push(`- ${category.label}: ${formatContextTokens(category.tokens)} tokens${percent}`);
@@ -66,7 +67,7 @@ export function formatContextReport(report: SessionContextReport): string {
     if (report.categories.length === 0) lines.push("- No resident context categories reported.");
     lines.push("");
 
-    lines.push(theme.bold("Instruction files"));
+    lines.push(bold("Instruction files"));
     if (report.instructionFiles.length === 0) {
         lines.push("- None loaded.");
     } else {
@@ -78,7 +79,7 @@ export function formatContextReport(report: SessionContextReport): string {
     }
     lines.push("");
 
-    lines.push(theme.bold("Skills advertised to model"));
+    lines.push(bold("Skills advertised to model"));
     if (report.skills.length === 0) {
         lines.push("- None advertised.");
     } else {
@@ -114,7 +115,14 @@ function groupItemsBySource(items: ContextProjectionItem[]): Array<[string, Cont
 }
 
 /** Handle context usage command. */
-export async function runContextCommand(_argv: string[], options: CommandContext = {}) {
+interface ContextCommandOptions {
+    plainText?: boolean;
+    uiAPI?: Pick<NonNullable<CommandContext["uiAPI"]>, "appendSystemMessage">;
+    sessionRuntime?: CommandContext["sessionRuntime"];
+    sessionId?: string;
+}
+
+export async function runContextCommand(_argv: string[], options: ContextCommandOptions = {}) {
     if (!options?.uiAPI) {
         console.error("The /context command is only available inside an interactive session.");
         return;
@@ -131,5 +139,5 @@ export async function runContextCommand(_argv: string[], options: CommandContext
         return;
     }
 
-    uiAPI.appendSystemMessage(formatContextReport(report));
+    uiAPI.appendSystemMessage(formatContextReport(report, options.plainText));
 }

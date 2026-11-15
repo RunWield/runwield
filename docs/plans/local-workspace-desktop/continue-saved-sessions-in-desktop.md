@@ -33,7 +33,7 @@ dependencies:
     - "open-projects-and-configure-providers"
 userVerifiedAt: null
 targetBranch: "epic/local-workspace-desktop"
-status: "in_progress"
+status: "implemented"
 ---
 
 # Continue Saved Sessions in Desktop

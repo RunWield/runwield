@@ -2768,6 +2768,31 @@ Required outcomes:
   resume;
 - intact local Sessions stay usable through TUI and ACP when Workspace registration or pairing is rebuilt.
 
+Current source desktop and HTTP adapters share Core history and continuation owners. Saved-history reads expose
+verified committed segments and current configuration without provider access or Agent/MCP activation. Initialized
+reads do not claim a writer or modify evidence; generation bootstrap/recovery uses existing Core checks. Each managed
+operation hydrates fresh saved settings before deliberate selections. Reversible archive preserves durable identity,
+transcript, and Plan Associations; opening or continuing archived work does not Unarchive it.
+
+**Local continuation acceptance scenarios (source evidence):**
+
+- Without provider setup, list saved names and page committed history/configuration. A newer committed generation
+  invalidates an older history cursor; refresh instead of mixing generations.
+- Retry an accepted continuation with identical receipt identity/content, including in a later ACP process: the
+  recorded outcome yields one committed user message and one provider turn. Reusing that identity for different input
+  fails. Current Project admission still applies, and preflight refusal does not consume acceptance.
+- With ACP and a separate Runtime process using TUI ownership, continue the same durable Session from each, preserve
+  current Agent/model/thinking and images, and enforce one writer per operation. Cross-owner answer/steer/cancel uses
+  the existing live connection. This harness is not evidence of a manual real-TUI journey.
+- Observe retained Background Tasks after the foreground response. A snapshot gap refreshes committed evidence without
+  repeated prompts or duplicate messages; Stop can settle retained work without a pending foreground Promise.
+
+Client-local queued drafts are unsent intent, not durable accepted work. Window/process recovery remains the desktop
+supervisor target; [Workspace source evidence](../desktop-workbench-contract.md#saved-session-source-evidence) does
+not establish installed-app or headed acceptance. Ordinary local ACP history stays independent of Workspace
+registration/SQLite. Desktop bounds and extension schemas belong to the
+[Session contract](../desktop-workbench-contract.md#workspace-session-protocol-version-1).
+
 **Requirement: Export or share the complete Session.** `/export` writes every committed Session Transcript Segment in
 order, with Session identity, name, project path, timestamps, artifacts, and Plan Associations. HTML is a self-contained
 RunWield page with segment headings, Markdown messages, expandable tools, and collapsed thinking. JSON preserves each

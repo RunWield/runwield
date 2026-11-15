@@ -1,3 +1,4 @@
+import { SessionComposer as SharedSessionComposer } from "../components/SessionComposer.jsx";
 import { submitWorkflowAction } from "../browser/workflow-action.ts";
 import { mergePlanAssociations } from "../../../shared/session/plan-association.ts";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -99,8 +100,14 @@ function asRecord(value) {
 
 /** @param {string} name */
 function ownerCookie(name) {
-    return document.cookie.split("; ").find((value) => value.startsWith(`${name}=`))?.split("=").slice(1).join("=") ||
-        "";
+    return (
+        document.cookie
+            .split("; ")
+            .find((value) => value.startsWith(`${name}=`))
+            ?.split("=")
+            .slice(1)
+            .join("=") || ""
+    );
 }
 
 /** @param {string} url @param {RequestInit} [options] */
@@ -129,9 +136,9 @@ async function ownerFetch(url, options = {}) {
 export async function requestWorkspacePlanReview(projectId, sessionId, generation, isCurrent = () => true) {
     try {
         const result = await ownerFetch(
-            `/api/owner/projects/${encodeURIComponent(projectId)}/sessions/${
-                encodeURIComponent(sessionId)
-            }/plan-review`,
+            `/api/owner/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(
+                sessionId,
+            )}/plan-review`,
             {
                 method: "POST",
                 body: JSON.stringify({
@@ -154,9 +161,10 @@ export async function requestWorkspacePlanReview(projectId, sessionId, generatio
                 `/api/owner/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(sessionId)}/live`,
             );
             const current = live.operation;
-            const reviewUrl = current?.liveInteraction?.request?.type === "plan_review"
-                ? current.liveInteraction.request.reviewUrl
-                : "";
+            const reviewUrl =
+                current?.liveInteraction?.request?.type === "plan_review"
+                    ? current.liveInteraction.request.reviewUrl
+                    : "";
             if (reviewUrl) {
                 workspaceNavigate(reviewUrl);
                 return;
@@ -253,10 +261,16 @@ export function reduceOperationTransientItems(events) {
 }
 
 export function latestLiveWorkflowInteraction(items) {
-    return [...items].reverse().find((item) =>
-        item?.source === "transient" && ["interaction", "plan-review", "code-review"].includes(item.kind) &&
-        item.interactionId
-    ) || null;
+    return (
+        [...items]
+            .reverse()
+            .find(
+                (item) =>
+                    item?.source === "transient" &&
+                    ["interaction", "plan-review", "code-review"].includes(item.kind) &&
+                    item.interactionId,
+            ) || null
+    );
 }
 
 let operationNotificationController = null;
@@ -276,9 +290,12 @@ export function disposeOperationBrowserNotifications() {
 export function observeOperationBrowserNotifications(current, payload, cursorRef) {
     const events = (Array.isArray(payload.events) ? payload.events : [])
         // Tagged events are delivered by the persistent Workspace notification stream.
-        .filter((event) =>
-            !event.notificationSurface && !event.eventId && event.type === "attention_requested" &&
-            event.reason === "agentStopped"
+        .filter(
+            (event) =>
+                !event.notificationSurface &&
+                !event.eventId &&
+                event.type === "attention_requested" &&
+                event.reason === "agentStopped",
         );
     const key = `${current.scopeKey || ""}:${current.operationId}`;
     if (!cursorRef.current || cursorRef.current.key !== key) {
@@ -364,449 +381,36 @@ export function mergeLiveSessionInfo(timeline, sessionInfo) {
 export function activePlanHomeUrl(projectId, runwieldSessionId, snapshot) {
     const planId = activePlanId(snapshot);
     return planId
-        ? `/projects/${encodeURIComponent(projectId)}/plans/${encodeURIComponent(planId)}?session=${
-            encodeURIComponent(runwieldSessionId)
-        }`
+        ? `/projects/${encodeURIComponent(projectId)}/plans/${encodeURIComponent(planId)}?session=${encodeURIComponent(
+              runwieldSessionId,
+          )}`
         : "";
 }
 
 export function activePlanProgressApiUrl(projectId, runwieldSessionId, snapshot) {
     const planId = activePlanId(snapshot);
     return planId
-        ? `/api/owner/projects/${encodeURIComponent(projectId)}/plans/${encodeURIComponent(planId)}/progress?session=${
-            encodeURIComponent(runwieldSessionId)
-        }`
+        ? `/api/owner/projects/${encodeURIComponent(projectId)}/plans/${encodeURIComponent(planId)}/progress?session=${encodeURIComponent(
+              runwieldSessionId,
+          )}`
         : "";
 }
 
-function PaperAirplaneIcon() {
+/** @param {import("react").ComponentProps<typeof SharedSessionComposer>} props */
+export function SessionComposer(props) {
     return (
-        <svg className="rw-session-toolbar-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.5 4.5 20.5 12 3.5 19.5 6 12Zm0 0h7" />
-        </svg>
-    );
-}
-
-function resizeComposerTextArea(textarea) {
-    if (!textarea) return;
-    textarea.style.height = "auto";
-    textarea.style.height = `${textarea.scrollHeight}px`;
-}
-
-export function SessionComposer({
-    id,
-    draft,
-    disabled,
-    controlsDisabled = disabled,
-    canSend,
-    submitting,
-    onDraftChange,
-    onSubmit,
-    onResizeStart = undefined,
-    onResize = undefined,
-    onQueue = undefined,
-    onStop = undefined,
-    sendLabel = "Send",
-    steeringMessages = [],
-    onPaste,
-    onFiles,
-    imageAttachments = [],
-    onRemoveImage,
-    agents = [],
-    models = [],
-    thinkingLevels = [],
-    agentValue,
-    mascotAgent = agentValue || "",
-    mascotParentAgent = undefined,
-    mascotActivity = "idle",
-    mascotVisible = false,
-    modelValue,
-    thinkingValue,
-    onAgentChange,
-    onModelChange,
-    onThinkingChange,
-    agentFallback = null,
-    modelFallback = null,
-    thinkingFallback = null,
-    queuedMessages = [],
-    commands = [],
-    onCommand = undefined,
-    onCommandPickerOpen = undefined,
-    onCommandPickerCancel = undefined,
-}) {
-    const textareaRef = useRef(null);
-    const fileInputRef = useRef(null);
-    const composerRef = useRef(null);
-    const composerAnimation = useRef(null);
-    const previousComposerHeight = useRef(null);
-    const focusInputOnExpand = useRef(false);
-    const [expanded, setExpanded] = useState(false);
-    const hasDraft = Boolean(draft.trim() || imageAttachments.length);
-    const canReopenReview = draft.trim() === "/plan-review";
-    const showStop = Boolean(onStop) && !hasDraft;
-    const primaryLabel = showStop ? "Stop" : submitting ? "Sending" : sendLabel;
-    const selectionSummary = [
-        agents.find((agent) => agent.name === agentValue)?.displayName || agentValue || "Agent",
-        modelValue?.replace("\u001f", "/") || "Project default",
-        thinkingValue || "Default thinking",
-    ].join(" · ");
-    function setComposerExpanded(nextExpanded) {
-        if (nextExpanded === expanded) return;
-        onResizeStart?.();
-        previousComposerHeight.current = composerRef.current?.getBoundingClientRect().height ?? null;
-        composerAnimation.current?.cancel();
-        setExpanded(nextExpanded);
-    }
-    function expandComposer() {
-        focusInputOnExpand.current = true;
-        setComposerExpanded(true);
-    }
-    useLayoutEffect(() => {
-        if (expanded) resizeComposerTextArea(textareaRef.current);
-        const composer = composerRef.current;
-        const previousHeight = previousComposerHeight.current;
-        previousComposerHeight.current = null;
-        if (composer && previousHeight !== null && !globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-            const styles = getComputedStyle(composer);
-            composerAnimation.current = composer.animate([
-                { height: `${previousHeight}px`, overflow: "clip" },
-                { height: `${composer.getBoundingClientRect().height}px`, overflow: "clip" },
-            ], {
-                duration: Number.parseFloat(styles.getPropertyValue("--rw-control-motion-duration")),
-                easing: styles.getPropertyValue("--rw-control-motion-ease").trim(),
-            });
-        }
-        onResize?.();
-        if (expanded && focusInputOnExpand.current) {
-            focusInputOnExpand.current = false;
-            textareaRef.current?.focus({ preventScroll: true });
-        }
-    }, [expanded]);
-    useEffect(() => () => composerAnimation.current?.cancel(), []);
-    const [commandIndex, setCommandIndex] = useState(0);
-    const [dismissedCommandDraft, setDismissedCommandDraft] = useState(null);
-    const commandSuggestions = dismissedCommandDraft === draft ? [] : sessionCommandSuggestions(draft, {
-        commands,
-        agents,
-        models,
-    });
-    const selectedCommandIndex = Math.min(commandIndex, Math.max(0, commandSuggestions.length - 1));
-    const commandListId = `${id}-commands`;
-    useEffect(() => setCommandIndex(0), [draft]);
-    useEffect(() => {
-        document.getElementById(`${commandListId}-${selectedCommandIndex}`)?.scrollIntoView({ block: "nearest" });
-    }, [commandListId, selectedCommandIndex, draft]);
-    async function pickCommand(suggestion) {
-        if (suggestion.kind === "command") {
-            if (["/agent ", "/model "].includes(suggestion.value)) {
-                onCommandPickerOpen?.(suggestion.value.trim().slice(1));
+        <SharedSessionComposer
+            {...props}
+            mascotSlot={
+                props.mascotVisible ? (
+                    <RunWieldMascot
+                        agentName={props.mascotAgent || props.agentValue || ""}
+                        parentAgentName={props.mascotParentAgent}
+                        pose={props.mascotActivity}
+                    />
+                ) : null
             }
-            onDraftChange(suggestion.value);
-        } else {
-            if (controlsDisabled) return;
-            const apply = suggestion.kind === "agent" ? onAgentChange : onModelChange;
-            const applied = await apply(suggestion.value);
-            if (applied !== false) onDraftChange("");
-        }
-        textareaRef.current?.focus();
-    }
-    function submitComposer() {
-        if (draft.startsWith("/") && onCommand?.(draft) === true) return;
-        onSubmit();
-    }
-    useEffect(() => resizeComposerTextArea(textareaRef.current), [draft]);
-    return (
-        <form
-            className="session-composer"
-            ref={composerRef}
-            data-expanded={expanded}
-            onFocusCapture={(event) => {
-                if (!event.target.classList.contains("session-composer-summary")) setComposerExpanded(true);
-            }}
-            onBlurCapture={(event) => {
-                if (!event.currentTarget.contains(event.relatedTarget)) {
-                    setComposerExpanded(false);
-                    onCommandPickerCancel?.();
-                }
-            }}
-            onDragOver={(event) => {
-                if (event.dataTransfer.types.includes("Files")) event.preventDefault();
-            }}
-            onDrop={(event) => {
-                if (!event.dataTransfer.files.length) return;
-                event.preventDefault();
-                if (!disabled) onFiles?.(Array.from(event.dataTransfer.files));
-            }}
-            onSubmit={(event) => {
-                event.preventDefault();
-                submitComposer();
-            }}
-        >
-            {commandSuggestions.length > 0 && (
-                <div
-                    className="rw-command-menu"
-                    hidden={!expanded}
-                    id={commandListId}
-                    role="listbox"
-                    aria-label="Commands"
-                >
-                    {commandSuggestions.map((suggestion, index) => (
-                        <button
-                            key={suggestion.key}
-                            id={`${commandListId}-${index}`}
-                            type="button"
-                            role="option"
-                            aria-selected={index === selectedCommandIndex}
-                            disabled={controlsDisabled && suggestion.kind !== "command"}
-                            tabIndex={-1}
-                            onMouseDown={(event) => event.preventDefault()}
-                            onClick={() => pickCommand(suggestion)}
-                        >
-                            <strong>{suggestion.label}</strong>
-                            <span>{suggestion.description}</span>
-                        </button>
-                    ))}
-                </div>
-            )}
-            {queuedMessages.length
-                ? (
-                    <ol className="session-composer-queue" hidden={!expanded} aria-label="Queued messages">
-                        {queuedMessages.map((item) => (
-                            <li key={item.id}>
-                                <span>{item.text || "Image message"}</span>
-                                {Array.isArray(item.images) && item.images.length
-                                    ? <small>{item.images.length} image{item.images.length === 1 ? "" : "s"}</small>
-                                    : null}
-                            </li>
-                        ))}
-                    </ol>
-                )
-                : null}
-            {steeringMessages.length
-                ? (
-                    <ul className="session-composer-queue" hidden={!expanded} aria-label="Pending steering messages">
-                        {steeringMessages.map((item) => (
-                            <li key={item.id}>
-                                <span>Steering · {item.text}</span>
-                            </li>
-                        ))}
-                    </ul>
-                )
-                : null}
-            <textarea
-                ref={textareaRef}
-                hidden={!expanded}
-                id={id}
-                value={draft}
-                rows={2}
-                disabled={disabled}
-                role="combobox"
-                aria-autocomplete="list"
-                aria-expanded={expanded && commandSuggestions.length > 0}
-                aria-controls={commandSuggestions.length ? commandListId : undefined}
-                aria-activedescendant={commandSuggestions.length
-                    ? `${commandListId}-${selectedCommandIndex}`
-                    : undefined}
-                onPaste={onPaste}
-                onChange={(event) => {
-                    setDismissedCommandDraft(null);
-                    onDraftChange(event.currentTarget.value);
-                    resizeComposerTextArea(event.currentTarget);
-                }}
-                onKeyDown={(event) => {
-                    if (event.nativeEvent.isComposing) return;
-                    if (commandSuggestions.length) {
-                        if (event.key === "Escape") {
-                            event.preventDefault();
-                            setDismissedCommandDraft(draft);
-                            onCommandPickerCancel?.();
-                            return;
-                        }
-                        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                            event.preventDefault();
-                            setCommandIndex(
-                                (selectedCommandIndex + (event.key === "ArrowDown" ? 1 : -1) +
-                                    commandSuggestions.length) % commandSuggestions.length,
-                            );
-                            return;
-                        }
-                        if (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) {
-                            event.preventDefault();
-                            void pickCommand(commandSuggestions[selectedCommandIndex]);
-                            return;
-                        }
-                    }
-                    if (event.key === "Escape" && onStop) {
-                        event.preventDefault();
-                        onStop();
-                    }
-                    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-                        event.preventDefault();
-                        if ((canSend || canReopenReview) && !submitting) submitComposer();
-                    }
-                }}
-                placeholder="Ask RunWield..."
-                aria-label="Message"
-            />
-            {imageAttachments.length
-                ? (
-                    <ul
-                        className="session-image-attachments rw-image-previews"
-                        hidden={!expanded}
-                        aria-label="Attached images"
-                    >
-                        {imageAttachments.map((image) => (
-                            <li key={image.id}>
-                                <img src={`data:${image.mimeType};base64,${image.base64}`} alt={image.name} />
-                                <span>{image.name} · {image.mimeType}</span>
-                                <button type="button" onClick={() => onRemoveImage?.(image.id)}>Remove</button>
-                            </li>
-                        ))}
-                    </ul>
-                )
-                : null}
-            <div className="session-composer-actions" aria-label="Session settings">
-                {mascotVisible && (
-                    <RunWieldMascot agentName={mascotAgent} parentAgentName={mascotParentAgent} pose={mascotActivity} />
-                )}
-                <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/png,image/jpeg,image/gif,image/webp"
-                    multiple
-                    hidden
-                    onChange={(event) => {
-                        onFiles?.(Array.from(event.currentTarget.files || []));
-                        event.currentTarget.value = "";
-                    }}
-                />
-                <button
-                    type="button"
-                    className="rw-toolbar-button session-composer-icon-button session-attach-button"
-                    aria-label="Attach image"
-                    title="Attach image"
-                    disabled={disabled}
-                    onClick={() => fileInputRef.current?.click()}
-                >
-                    <svg
-                        className="rw-session-toolbar-icon"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                        aria-hidden="true"
-                    >
-                        <path strokeLinecap="round" d="M12 5v14M5 12h14" />
-                    </svg>
-                </button>
-                <button
-                    type="button"
-                    className="session-composer-summary"
-                    hidden={expanded}
-                    aria-label={`${hasDraft ? "Continue draft" : "Write a message"} · ${selectionSummary}`}
-                    title={selectionSummary}
-                    disabled={disabled}
-                    onPointerDown={(event) => {
-                        if (event.button !== 0) return;
-                        event.preventDefault();
-                        expandComposer();
-                    }}
-                    onFocus={expandComposer}
-                    onClick={expandComposer}
-                >
-                    <span>{selectionSummary}</span>
-                </button>
-                <select
-                    hidden={!expanded}
-                    aria-label="Agent"
-                    className="rw-toolbar-select"
-                    title={`Agent: ${agents.find((agent) => agent.name === agentValue)?.displayName || agentValue}`}
-                    value={agentValue}
-                    disabled={controlsDisabled || !agents.length}
-                    onChange={(event) => onAgentChange(event.currentTarget.value)}
-                >
-                    {agentFallback}
-                    {agents.map((agent) => (
-                        <option key={agent.name} value={agent.name}>{agent.displayName || agent.name}</option>
-                    ))}
-                </select>
-                <select
-                    hidden={!expanded}
-                    aria-label="Model"
-                    className="rw-toolbar-select session-model-select"
-                    title={`Provider/model: ${modelValue?.replace("\u001f", "/") || "Project default"}`}
-                    value={modelValue}
-                    disabled={controlsDisabled || !models.length}
-                    onChange={(event) => onModelChange(event.currentTarget.value)}
-                >
-                    {modelFallback}
-                    {models.map((model) => (
-                        <option key={`${model.provider}/${model.id}`} value={`${model.provider}\u001f${model.id}`}>
-                            {sessionModelLabel(model)}
-                        </option>
-                    ))}
-                </select>
-                <select
-                    hidden={!expanded}
-                    aria-label="Thinking"
-                    className="rw-toolbar-select"
-                    title={`Thinking: ${thinkingValue}`}
-                    value={thinkingValue}
-                    disabled={controlsDisabled || !thinkingLevels.length}
-                    onChange={(event) => onThinkingChange(event.currentTarget.value)}
-                >
-                    {thinkingFallback}
-                    {thinkingLevels.map((level) => <option key={level} value={level}>{level}</option>)}
-                </select>
-                {onQueue
-                    ? (
-                        <button
-                            type="button"
-                            className="rw-toolbar-button session-composer-icon-button session-queue-button"
-                            hidden={!expanded}
-                            aria-label="Queue"
-                            title="Queue follow-up"
-                            disabled={!canSend || submitting}
-                            onClick={onQueue}
-                        >
-                            <svg
-                                className="rw-session-toolbar-icon"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth={2}
-                                aria-hidden="true"
-                            >
-                                <path strokeLinecap="round" d="M4 6h16M4 12h9M4 18h9m5-5v8m-4-4h8" />
-                            </svg>
-                        </button>
-                    )
-                    : null}
-                <button
-                    type={showStop ? "button" : "submit"}
-                    className="rw-toolbar-button session-composer-icon-button session-send-button"
-                    disabled={!showStop && ((!canSend && !canReopenReview) || submitting)}
-                    onClick={showStop ? onStop : undefined}
-                    aria-label={primaryLabel}
-                    title={primaryLabel}
-                >
-                    {showStop
-                        ? (
-                            <svg
-                                className="rw-session-toolbar-icon"
-                                viewBox="0 0 24 24"
-                                fill="currentColor"
-                                aria-hidden="true"
-                            >
-                                <rect x="6" y="6" width="12" height="12" rx="2" />
-                            </svg>
-                        )
-                        : submitting
-                        ? <RunWieldThinkingDots label="Sending" showLabel={false} />
-                        : <PaperAirplaneIcon />}
-                </button>
-            </div>
-        </form>
+        />
     );
 }
 
@@ -834,7 +438,9 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
             let savedCollapsed = false;
             try {
                 savedCollapsed = localStorage.getItem("runwield:owner:session-context-collapsed") === "true";
-            } catch { /* Sidebar state is optional. */ }
+            } catch {
+                /* Sidebar state is optional. */
+            }
             setContextCollapsed(narrowScreen.matches || savedCollapsed);
         }
         syncContextVisibility();
@@ -849,7 +455,9 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
                     if (!globalThis.matchMedia("(max-width: 900px)").matches) {
                         localStorage.setItem("runwield:owner:session-context-collapsed", String(collapsed));
                     }
-                } catch { /* Sidebar state is optional. */ }
+                } catch {
+                    /* Sidebar state is optional. */
+                }
                 return collapsed;
             });
         });
@@ -864,7 +472,9 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
     const [queuedMessages, setQueuedMessages] = useState(/** @type {WorkspaceQueuedMessage[]} */ ([]));
     const [message, setMessage] = useState("");
     const [operation, setOperation] = useState(
-        /** @type {{ operationId: string, status: string, observed: number, attempts: number, remote?: boolean } | null} */ (null),
+        /** @type {{ operationId: string, status: string, observed: number, attempts: number, remote?: boolean } | null} */ (
+            null
+        ),
     );
     const [steeringMessages, setSteeringMessages] = useState([]);
     const [pendingConfiguration, setPendingConfiguration] = useState(
@@ -932,7 +542,7 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
     const didPinInitialTimelineRef = useRef(false);
     const [, setFollowingLiveEdge] = useState(true);
     const [latestActivityAvailable, setLatestActivityAvailable] = useState(false);
-    const [newSessionStorageId] = useState(() => mode === "new" ? getNewSessionDraftInstanceId(projectId) : "");
+    const [newSessionStorageId] = useState(() => (mode === "new" ? getNewSessionDraftInstanceId(projectId) : ""));
     const sessionStorageId = runwieldSessionId || newSessionStorageId;
 
     const draftKey = sessionStorageId ? sessionDraftKey(projectId, sessionStorageId) : "";
@@ -966,10 +576,9 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
         try {
             const query = new URLSearchParams({ page: String(requestedPage), pageSize: String(SESSION_PAGE_SIZE) });
             if (planId) query.set("plan", planId);
-            const payload = await ownerFetch(
-                `/api/owner/projects/${encodeURIComponent(projectId)}/sessions?${query}`,
-                { method: "GET" },
-            );
+            const payload = await ownerFetch(`/api/owner/projects/${encodeURIComponent(projectId)}/sessions?${query}`, {
+                method: "GET",
+            });
             if (generation === listGeneration.current) {
                 setListData(payload);
                 if (!payload.sessions?.length && requestedPage > 0) setListPage(requestedPage - 1);
@@ -986,10 +595,9 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
         setSessionOptions(null);
         setOptionsError("");
         try {
-            const payload = await ownerFetch(
-                `/api/owner/projects/${encodeURIComponent(projectId)}/session-options`,
-                { method: "GET" },
-            );
+            const payload = await ownerFetch(`/api/owner/projects/${encodeURIComponent(projectId)}/session-options`, {
+                method: "GET",
+            });
             if (!surfaceCurrent.current || generation !== optionsGeneration.current) return;
             setSessionOptions(payload);
             const defaults = asRecord(payload.defaults);
@@ -1134,9 +742,10 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
                 setMessage(`No matching ${name}. Choose an available option from the command picker.`);
                 return true;
             }
-            const finish = pendingPicker.current?.name === name
-                ? pendingPicker.current.finish
-                : beginClientCommandMetric(name, "start", rawName === name ? undefined : rawName);
+            const finish =
+                pendingPicker.current?.name === name
+                    ? pendingPicker.current.finish
+                    : beginClientCommandMetric(name, "start", rawName === name ? undefined : rawName);
             pendingPicker.current = null;
             finish.dispatch();
             if (mode === "new") {
@@ -1145,13 +754,14 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
                 setDraft("");
                 finish();
             } else {
-                const change = name === "agent"
-                    ? { agentName: agent.name }
-                    : { provider: model.provider, model: model.id };
-                void configureSession(change).then((applied) => {
-                    if (applied) setDraft("");
-                    finish(applied ? "succeeded" : "failed");
-                }).catch(() => finish("failed"));
+                const change =
+                    name === "agent" ? { agentName: agent.name } : { provider: model.provider, model: model.id };
+                void configureSession(change)
+                    .then((applied) => {
+                        if (applied) setDraft("");
+                        finish(applied ? "succeeded" : "failed");
+                    })
+                    .catch(() => finish("failed"));
             }
             return true;
         }
@@ -1166,10 +776,12 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
         }[name];
         if (destination) {
             setDraft("");
-            void saveSessionDraft(draftKey, null).then(() => {
-                finish();
-                workspaceNavigate(destination);
-            }).catch(() => finish("failed"));
+            void saveSessionDraft(draftKey, null)
+                .then(() => {
+                    finish();
+                    workspaceNavigate(destination);
+                })
+                .catch(() => finish("failed"));
         } else if (name === "help") {
             setDraft("/");
             finish();
@@ -1190,11 +802,13 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
             // writer is active. The live Session still exposes that generation.
             const generation = Number.isInteger(timelineRef.current?.generation)
                 ? timelineRef.current.generation
-                : (await ownerFetch(
-                    `/api/owner/projects/${encodeURIComponent(projectId)}/sessions/${
-                        encodeURIComponent(sessionId)
-                    }/live`,
-                )).generation;
+                : (
+                      await ownerFetch(
+                          `/api/owner/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(
+                              sessionId,
+                          )}/live`,
+                      )
+                  ).generation;
             if (!Number.isInteger(generation)) {
                 setMessage("Wait for this Session to become available.");
                 return false;
@@ -1219,9 +833,9 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
         if (beforeEventId) qs.set("beforeEventId", beforeEventId);
         else if (existing?.nextCursor) qs.set("cursorEventId", existing.nextCursor);
         else qs.set("latest", "true");
-        const url = `/api/owner/projects/${encodeURIComponent(projectId)}/sessions/${
-            encodeURIComponent(runwieldSessionId)
-        }/timeline`;
+        const url = `/api/owner/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(
+            runwieldSessionId,
+        )}/timeline`;
         let payload = await ownerFetch(`${url}?${qs}`, { method: "GET" });
         if (beforeEventId || !existing?.nextCursor) return payload;
         const events = [...(payload.cursorReset ? [] : existing.events), ...payload.events];
@@ -1357,7 +971,8 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
             setOperation(null);
             const storedRequest = asRecord(readStored(requestKey));
             setRequestUnresolved(
-                storedRequest.status === "network-error" || storedRequest.status === "pending" ||
+                storedRequest.status === "network-error" ||
+                    storedRequest.status === "pending" ||
                     Boolean(storedRequest.operationId),
             );
             setCreationAccepted(Boolean(storedRequest.responseAccepted));
@@ -1369,9 +984,7 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
                     attempts: 0,
                     restored: true,
                 });
-                setMessage(
-                    "Reconnected.",
-                );
+                setMessage("Reconnected.");
             } else if (storedRequest.requestId && storedRequest.status === "network-error") {
                 setMessage("The connection was interrupted. Send again to retry your message.");
             }
@@ -1390,25 +1003,31 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
 
     useEffect(() => {
         if (!attachmentsKey || loadedDraftKey !== draftKey) return;
-        void saveSessionDraft(attachmentsKey, imageAttachments.length ? JSON.stringify(imageAttachments) : null)
-            .then((saved) => {
+        void saveSessionDraft(attachmentsKey, imageAttachments.length ? JSON.stringify(imageAttachments) : null).then(
+            (saved) => {
                 if (!saved && imageAttachments.length) {
                     setMessage("Image kept in this tab. Browser storage is unavailable; send before closing it.");
                 }
-            });
+            },
+        );
     }, [attachmentsKey, imageAttachments, draftKey, loadedDraftKey]);
 
-    const availability = useMemo(() =>
-        deriveSessionAvailability({
-            state: timeline?.state,
-            activeSurface: timeline?.activeSurface,
-            bootstrapRequired: timeline?.bootstrapRequired,
-            generation: timeline?.generation,
-            snapshot: timeline?.snapshot,
-            timelineComplete: timeline?.complete !== false,
-            truncated: timeline?.truncated,
-            localOperationActive: Boolean(operation && !["completed", "failed", "unknown"].includes(operation.status)),
-        }), [listData, timeline, operation]);
+    const availability = useMemo(
+        () =>
+            deriveSessionAvailability({
+                state: timeline?.state,
+                activeSurface: timeline?.activeSurface,
+                bootstrapRequired: timeline?.bootstrapRequired,
+                generation: timeline?.generation,
+                snapshot: timeline?.snapshot,
+                timelineComplete: timeline?.complete !== false,
+                truncated: timeline?.truncated,
+                localOperationActive: Boolean(
+                    operation && !["completed", "failed", "unknown"].includes(operation.status),
+                ),
+            }),
+        [listData, timeline, operation],
+    );
 
     useEffect(() => {
         if (!timeline || !runwieldSessionId) return;
@@ -1425,36 +1044,46 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
     async function createSession() {
         const text = draft;
         if (
-            (!text.trim() && !imageAttachments.length) || submitting || attachingImages || navigationPending ||
-            !sessionOptions || !projects?.some((project) => project.projectId === projectId && project.enabled) ||
+            (!text.trim() && !imageAttachments.length) ||
+            submitting ||
+            attachingImages ||
+            navigationPending ||
+            !sessionOptions ||
+            !projects?.some((project) => project.projectId === projectId && project.enabled) ||
             loadedDraftKey !== draftKey
-        ) return;
+        )
+            return;
         scrollToLiveEdge();
         setSubmitting(true);
         setRequestUnresolved(true);
         setMessage("");
         const [selectedProvider, selectedModel] = selectedModelKey ? selectedModelKey.split("\u001f") : ["", ""];
         const existing = asRecord(readStored(requestKey));
-        const envelope = existing.requestId && existing.status === "network-error" ? existing : {
-            requestId: crypto.randomUUID(),
-            text,
-            images: imageAttachments.map(serializeSessionImageForRequest),
-            agentName: selectedAgent,
-            model: modelExplicitlySelected ? selectedModel || "" : "",
-            provider: modelExplicitlySelected ? selectedProvider || "" : "",
-            thinkingLevel: thinkingExplicitlySelected ? selectedThinking : "default",
-            status: "pending",
-            createdAt: new Date().toISOString(),
-        };
+        const envelope =
+            existing.requestId && existing.status === "network-error"
+                ? existing
+                : {
+                      requestId: crypto.randomUUID(),
+                      text,
+                      images: imageAttachments.map(serializeSessionImageForRequest),
+                      agentName: selectedAgent,
+                      model: modelExplicitlySelected ? selectedModel || "" : "",
+                      provider: modelExplicitlySelected ? selectedProvider || "" : "",
+                      thinkingLevel: thinkingExplicitlySelected ? selectedThinking : "default",
+                      status: "pending",
+                      createdAt: new Date().toISOString(),
+                  };
         await saveSessionDraft(requestKey, JSON.stringify(envelope));
-        setPendingUserMessages([{
-            kind: "message",
-            role: "user",
-            key: `pending-user:${envelope.requestId}`,
-            text: envelope.text,
-            images: envelope.images,
-            source: "transient",
-        }]);
+        setPendingUserMessages([
+            {
+                kind: "message",
+                role: "user",
+                key: `pending-user:${envelope.requestId}`,
+                text: envelope.text,
+                images: envelope.images,
+                source: "transient",
+            },
+        ]);
         try {
             const payload = await ownerFetch(`/api/owner/projects/${encodeURIComponent(projectId)}/sessions`, {
                 method: "POST",
@@ -1485,9 +1114,9 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
                 await saveSessionDraft(requestKey, null);
                 if (!surfaceCurrent.current) return;
                 workspaceNavigate(
-                    `/projects/${encodeURIComponent(projectId)}/sessions/${
-                        encodeURIComponent(payload.runwieldSessionId)
-                    }`,
+                    `/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(
+                        payload.runwieldSessionId,
+                    )}`,
                     "replace",
                 );
                 return;
@@ -1570,9 +1199,9 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
         setMessage("");
         try {
             const result = await ownerFetch(
-                `/api/owner/projects/${encodeURIComponent(projectId)}/sessions/${
-                    encodeURIComponent(runwieldSessionId)
-                }/configure`,
+                `/api/owner/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(
+                    runwieldSessionId,
+                )}/configure`,
                 {
                     method: "POST",
                     body: JSON.stringify({ expectedGeneration: timeline.generation, ...change }),
@@ -1639,9 +1268,9 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
     /** @param {Record<string, any>} envelope */
     async function postContinuation(envelope) {
         return await ownerFetch(
-            `/api/owner/projects/${encodeURIComponent(projectId)}/sessions/${
-                encodeURIComponent(runwieldSessionId)
-            }/continue`,
+            `/api/owner/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(
+                runwieldSessionId,
+            )}/continue`,
             {
                 method: "POST",
                 body: JSON.stringify({
@@ -1675,8 +1304,12 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
         const text = draft;
         const canSubmit = availability.canContinue || ["active", "workspace-running"].includes(availability.key);
         if (
-            (!text.trim() && imageAttachments.length === 0) || !canSubmit || submitting || attachingImages ||
-            loadedDraftKey !== draftKey || !timeline
+            (!text.trim() && imageAttachments.length === 0) ||
+            !canSubmit ||
+            submitting ||
+            attachingImages ||
+            loadedDraftKey !== draftKey ||
+            !timeline
         ) {
             return;
         }
@@ -1690,21 +1323,24 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
             return;
         }
         const existing = asRecord(readStored(requestKey));
-        const envelope = existing.requestId && existing.status === "network-error" ? existing : {
-            requestId: crypto.randomUUID(),
-            expectedGeneration: freshTimeline.generation,
-            text,
-            images: imageAttachments.map(serializeSessionImageForRequest),
-            status: "pending",
-            createdAt: new Date().toISOString(),
-        };
+        const envelope =
+            existing.requestId && existing.status === "network-error"
+                ? existing
+                : {
+                      requestId: crypto.randomUUID(),
+                      expectedGeneration: freshTimeline.generation,
+                      text,
+                      images: imageAttachments.map(serializeSessionImageForRequest),
+                      status: "pending",
+                      createdAt: new Date().toISOString(),
+                  };
         if (freshTimeline.state === "active" || operationRef.current) {
             try {
                 if (!queueOnly && operationRef.current) {
                     const result = await ownerFetch(
-                        `/api/owner/projects/${encodeURIComponent(projectId)}/session-operations/${
-                            encodeURIComponent(operationRef.current.operationId)
-                        }/steer`,
+                        `/api/owner/projects/${encodeURIComponent(projectId)}/session-operations/${encodeURIComponent(
+                            operationRef.current.operationId,
+                        )}/steer`,
                         {
                             method: "POST",
                             body: JSON.stringify({
@@ -1743,7 +1379,7 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
                 queueContinuation(envelope);
                 return;
             }
-            const nextStatus = status === 503 ? "unavailable" : (status === 422 ? "validation-error" : "network-error");
+            const nextStatus = status === 503 ? "unavailable" : status === 422 ? "validation-error" : "network-error";
             await saveSessionDraft(requestKey, JSON.stringify({ ...envelope, status: nextStatus }));
             if (status === 503) await loadTimeline();
             setMessage(errorMessage(error));
@@ -1770,15 +1406,18 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
             const request = payload.liveInteraction.request || {};
             const isPlanReview = request.type === "plan_review";
             const isCodeReview = request.type === "code_review";
-            items = [...items, {
-                kind: isPlanReview ? "plan-review" : isCodeReview ? "code-review" : "interaction",
-                key: `interaction:${payload.liveInteraction.interactionId}`,
-                interactionId: payload.liveInteraction.interactionId,
-                operationId: current.operationId,
-                request,
-                reviewUrl: request.reviewUrl,
-                source: "transient",
-            }];
+            items = [
+                ...items,
+                {
+                    kind: isPlanReview ? "plan-review" : isCodeReview ? "code-review" : "interaction",
+                    key: `interaction:${payload.liveInteraction.interactionId}`,
+                    interactionId: payload.liveInteraction.interactionId,
+                    operationId: current.operationId,
+                    request,
+                    reviewUrl: request.reviewUrl,
+                    source: "transient",
+                },
+            ];
         }
         setTransientItems(items);
         const next = {
@@ -1853,7 +1492,8 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
                     currentOperationId: operationRef.current?.operationId,
                     polledOperationId: current.operationId,
                 })
-            ) return;
+            )
+                return;
             observeOperationBrowserNotifications(
                 { ...current, scopeKey: notificationScopeKey },
                 payload,
@@ -1931,13 +1571,15 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
 
     useEffect(() => {
         if (
-            loadedDraftKey !== draftKey || !shouldRefreshSessionAvailability({
+            loadedDraftKey !== draftKey ||
+            !shouldRefreshSessionAvailability({
                 mode,
                 state: timeline?.state,
                 localOperationActive: Boolean(operation?.operationId),
                 queuedMessageCount: queuedMessages.length,
             })
-        ) return undefined;
+        )
+            return undefined;
         let cancelled = false;
         let refreshing = false;
         const refresh = async () => {
@@ -1945,9 +1587,9 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
             refreshing = true;
             try {
                 const live = await ownerFetch(
-                    `/api/owner/projects/${encodeURIComponent(projectId)}/sessions/${
-                        encodeURIComponent(runwieldSessionId)
-                    }/live`,
+                    `/api/owner/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(
+                        runwieldSessionId,
+                    )}/live`,
                 );
                 if (cancelled) return;
                 if (live.generation !== timelineRef.current?.generation || live.state !== timelineRef.current?.state) {
@@ -1989,9 +1631,8 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
     ]);
 
     useEffect(() => {
-        if (
-            mode !== "detail" || timeline?.state !== "idle" || operation?.operationId || queuedMessages.length === 0
-        ) return undefined;
+        if (mode !== "detail" || timeline?.state !== "idle" || operation?.operationId || queuedMessages.length === 0)
+            return undefined;
         let cancelled = false;
         const sendOldestQueuedMessage = async () => {
             if (cancelled || queuedDispatchActiveRef.current) return;
@@ -2001,9 +1642,7 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
             setSubmitting(true);
             try {
                 const freshTimeline = await loadTimeline();
-                if (
-                    cancelled || !freshTimeline || freshTimeline.state !== "idle"
-                ) return;
+                if (cancelled || !freshTimeline || freshTimeline.state !== "idle") return;
                 const envelope = {
                     requestId: queued.id,
                     expectedGeneration: freshTimeline.generation,
@@ -2159,9 +1798,9 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
     async function answerInteraction(operationId, interactionId, response) {
         try {
             await ownerFetch(
-                `/api/owner/projects/${encodeURIComponent(projectId)}/session-operations/${
-                    encodeURIComponent(operationId)
-                }/interactions/${encodeURIComponent(interactionId)}/answer`,
+                `/api/owner/projects/${encodeURIComponent(projectId)}/session-operations/${encodeURIComponent(
+                    operationId,
+                )}/interactions/${encodeURIComponent(interactionId)}/answer`,
                 {
                     method: "POST",
                     body: JSON.stringify({
@@ -2215,29 +1854,44 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
             ...transientItems.map((item) =>
                 item.kind === "interaction"
                     ? {
-                        ...item,
-                        onAnswer: (response) => answerInteraction(item.operationId, item.interactionId, response),
-                    }
-                    : item
+                          ...item,
+                          onAnswer: (response) => answerInteraction(item.operationId, item.interactionId, response),
+                      }
+                    : item,
             ),
             ...(interruptedOperation ? [{ kind: "interruption", key: "interruption:lost-workspace-operation" }] : []),
         ];
         const availableProjects = projects?.filter((project) => project.enabled && project.projectId);
         const currentProject = availableProjects?.find((project) => project.projectId === projectId);
         const canChangeProject = Boolean(
-            availableProjects && loadedDraftKey === draftKey && !draft.length &&
-                !imageAttachments.length && !attachingImages && !navigationPending && !submitting &&
-                !requestUnresolved && !operation?.operationId,
+            availableProjects &&
+            loadedDraftKey === draftKey &&
+            !draft.length &&
+            !imageAttachments.length &&
+            !attachingImages &&
+            !navigationPending &&
+            !submitting &&
+            !requestUnresolved &&
+            !operation?.operationId,
         );
-        const canSendNew = !submitting && !attachingImages && !navigationPending && !creationAccepted &&
-            loadedDraftKey === draftKey && Boolean(currentProject) && Boolean(sessionOptions) &&
+        const canSendNew =
+            !submitting &&
+            !attachingImages &&
+            !navigationPending &&
+            !creationAccepted &&
+            loadedDraftKey === draftKey &&
+            Boolean(currentProject) &&
+            Boolean(sessionOptions) &&
             !operation?.operationId;
         const changeProject = (event) => {
             const nextId = event.currentTarget.value;
             if (
-                !canChangeProject || navigationInFlight.current || nextId === projectId ||
+                !canChangeProject ||
+                navigationInFlight.current ||
+                nextId === projectId ||
                 !availableProjects.some((project) => project.projectId === nextId)
-            ) return;
+            )
+                return;
             navigationInFlight.current = true;
             setNavigationPending(true);
             workspaceNavigate(`/projects/${encodeURIComponent(nextId)}/sessions/new`, "push", (error) => {
@@ -2255,7 +1909,9 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
                 {optionsError && (
                     <p className="rw-plan-review-dev-notice session-dev-shell-bar" role="status">
                         Session settings could not load: {optionsError}{" "}
-                        <button type="button" onClick={loadSessionOptions}>Retry</button>
+                        <button type="button" onClick={loadSessionOptions}>
+                            Retry
+                        </button>
                     </p>
                 )}
                 <div className="session-detail-layout session-detail-layout--chat-only">
@@ -2265,52 +1921,52 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
                             ref={timelineScrollRef}
                             onScroll={updateScrollFollowState}
                         >
-                            <div className="session-surface-status" aria-live="polite">{message}</div>
+                            <div className="session-surface-status" aria-live="polite">
+                                {message}
+                            </div>
                             <SessionTimeline items={newSessionItems} emptyMessage="" />
                             <div ref={timelineEndRef} aria-hidden="true" />
                         </div>
                         {!creationAccepted && (
                             <div className="session-project-choice">
                                 <label htmlFor="new-session-project">Project</label>
-                                {projectsError
-                                    ? (
-                                        <span role="alert">
-                                            Projects could not load: {projectsError}{" "}
-                                            <button type="button" onClick={loadProjects}>Retry</button>
-                                        </span>
-                                    )
-                                    : availableProjects?.length === 0
-                                    ? (
-                                        <span>
-                                            No available Projects. <a href="/projects">View Projects</a>
-                                        </span>
-                                    )
-                                    : (
-                                        <select
-                                            id="new-session-project"
-                                            className="rw-toolbar-select"
-                                            value={currentProject ? projectId : ""}
-                                            title={currentProject?.displayName || "Project unavailable"}
-                                            disabled={!canChangeProject || availableProjects?.length === 0}
-                                            onChange={changeProject}
-                                        >
-                                            {!currentProject && (
-                                                <option value="">
-                                                    {projects ? "Project unavailable" : "Loading Projects"}
-                                                </option>
-                                            )}
-                                            {availableProjects?.map((project) => (
-                                                <option key={project.projectId} value={project.projectId}>
-                                                    {project.displayName}
-                                                    {availableProjects.filter((entry) =>
-                                                                    entry.displayName === project.displayName
-                                                                ).length > 1 && project.rootLabel
-                                                        ? ` · ${project.rootLabel}`
-                                                        : ""}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    )}
+                                {projectsError ? (
+                                    <span role="alert">
+                                        Projects could not load: {projectsError}{" "}
+                                        <button type="button" onClick={loadProjects}>
+                                            Retry
+                                        </button>
+                                    </span>
+                                ) : availableProjects?.length === 0 ? (
+                                    <span>
+                                        No available Projects. <a href="/projects">View Projects</a>
+                                    </span>
+                                ) : (
+                                    <select
+                                        id="new-session-project"
+                                        className="rw-toolbar-select"
+                                        value={currentProject ? projectId : ""}
+                                        title={currentProject?.displayName || "Project unavailable"}
+                                        disabled={!canChangeProject || availableProjects?.length === 0}
+                                        onChange={changeProject}
+                                    >
+                                        {!currentProject && (
+                                            <option value="">
+                                                {projects ? "Project unavailable" : "Loading Projects"}
+                                            </option>
+                                        )}
+                                        {availableProjects?.map((project) => (
+                                            <option key={project.projectId} value={project.projectId}>
+                                                {project.displayName}
+                                                {availableProjects.filter(
+                                                    (entry) => entry.displayName === project.displayName,
+                                                ).length > 1 && project.rootLabel
+                                                    ? ` · ${project.rootLabel}`
+                                                    : ""}
+                                            </option>
+                                        ))}
+                                    </select>
+                                )}
                             </div>
                         )}
                         <SessionComposer
@@ -2364,10 +2020,10 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
         ...transientItems.map((item) =>
             item.kind === "interaction"
                 ? {
-                    ...item,
-                    onAnswer: (response) => answerInteraction(item.operationId, item.interactionId, response),
-                }
-                : item
+                      ...item,
+                      onAnswer: (response) => answerInteraction(item.operationId, item.interactionId, response),
+                  }
+                : item,
         ),
         ...(interruptedOperation ? [{ kind: "interruption", key: "interruption:lost-workspace-operation" }] : []),
     ]);
@@ -2379,40 +2035,42 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
         : persistedWorkflowContext;
     const activeWorkflowTriageMeta = asRecord(activeExecutionWorkflow.triageMeta || {});
     const workflowEpic = activeExecutionWorkflow.planName
-        ? typeof activeWorkflowTriageMeta.parentPlan === "string" ? activeWorkflowTriageMeta.parentPlan : ""
+        ? typeof activeWorkflowTriageMeta.parentPlan === "string"
+            ? activeWorkflowTriageMeta.parentPlan
+            : ""
         : typeof persistedWorkflowContext.parentPlan === "string"
-        ? persistedWorkflowContext.parentPlan
-        : "";
-    const activeWorkflowPlan = typeof workflowContext.planName === "string"
-        ? workflowContext.planName
-        : typeof workflowContext.planId === "string"
-        ? workflowContext.planId
-        : "";
+          ? persistedWorkflowContext.parentPlan
+          : "";
+    const activeWorkflowPlan =
+        typeof workflowContext.planName === "string"
+            ? workflowContext.planName
+            : typeof workflowContext.planId === "string"
+              ? workflowContext.planId
+              : "";
     const workflowSidebar = buildSessionSidebarProjection({
         workflowPlan: activeWorkflowPlan,
         workflowEpic,
-        workflowIntent: typeof persistedWorkflowContext.routingIntent === "string"
-            ? persistedWorkflowContext.routingIntent
-            : "",
-        workflowStatus: workflowProgress?.overall?.state === "completed"
-            ? "verified"
-            : typeof workflowProgress?.plan?.status === "string"
-            ? workflowProgress.plan.status
-            : "",
-        workflowClassification: typeof workflowProgress?.plan?.classification === "string"
-            ? workflowProgress.plan.classification
-            : "",
+        workflowIntent:
+            typeof persistedWorkflowContext.routingIntent === "string" ? persistedWorkflowContext.routingIntent : "",
+        workflowStatus:
+            workflowProgress?.overall?.state === "completed"
+                ? "verified"
+                : typeof workflowProgress?.plan?.status === "string"
+                  ? workflowProgress.plan.status
+                  : "",
+        workflowClassification:
+            typeof workflowProgress?.plan?.classification === "string" ? workflowProgress.plan.classification : "",
         workflowValidationPhase: workflowProgress?.plan?.validationPhase,
         workflowProgressFacts: Array.isArray(workflowProgress?.progressFacts)
             ? workflowProgress.progressFacts
             : undefined,
         workflowLiveValidationProgress: operation?.status === "running" ? liveValidationProgress : null,
-        workflowDegradedMessage: typeof workflowProgress?.degraded?.message === "string"
-            ? workflowProgress.degraded.message
-            : workflowProgressError,
-        workflowSessionState: typeof workflowProgress?.session?.state === "string"
-            ? workflowProgress.session.state
-            : "",
+        workflowDegradedMessage:
+            typeof workflowProgress?.degraded?.message === "string"
+                ? workflowProgress.degraded.message
+                : workflowProgressError,
+        workflowSessionState:
+            typeof workflowProgress?.session?.state === "string" ? workflowProgress.session.state : "",
         workflowHasWorkingSession: Boolean(workflowProgress?.session?.runwieldSessionId || runwieldSessionId),
         workflowHasLiveQuestion: liveWorkflowInteraction?.kind === "interaction",
         workflowHasPlanReview: liveWorkflowInteraction?.kind === "plan-review",
@@ -2422,22 +2080,22 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
     }).workflow;
     const planHomeFromSnapshot = timeline ? activePlanHomeUrl(projectId, runwieldSessionId, timeline.snapshot) : "";
     const planHomeUrl = planHomeFromSnapshot;
-    const workflowActionUrl = liveWorkflowInteraction?.reviewUrl ||
+    const workflowActionUrl =
+        liveWorkflowInteraction?.reviewUrl ||
         (liveWorkflowInteraction?.interactionId ? `#interaction-${liveWorkflowInteraction.interactionId}` : "") ||
         planHomeUrl;
     async function runWorkflowAction(action) {
-        if (
-            !["run", "resume", "recover", "review_plan", "resume_from_hold", "retry_work_record"].includes(action.kind)
-        ) return;
+        if (!["run", "resume", "recover", "review_plan", "resume_from_hold", "retry_work_record"].includes(action.kind))
+            return;
         const currentTimeline = timelineRef.current;
         const planId = action.planId || activePlanId(currentTimeline?.snapshot);
         if (!planId) {
             throw new Error("Plan workflow evidence is unavailable. Refresh the Session and try again.");
         }
         const result = await submitWorkflowAction(
-            `/api/owner/projects/${encodeURIComponent(projectId)}/sessions/${
-                encodeURIComponent(runwieldSessionId)
-            }/plan-workflow`,
+            `/api/owner/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(
+                runwieldSessionId,
+            )}/plan-workflow`,
             {
                 requestId: crypto.randomUUID(),
                 planId,
@@ -2471,14 +2129,12 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
     const models = Array.isArray(sessionOptions?.models) ? sessionOptions.models : [];
     const thinkingLevels = Array.isArray(sessionOptions?.thinkingLevels) ? sessionOptions.thinkingLevels : [];
     const activeModel = asRecord(timeline?.snapshot?.activeModel || {});
-    const activeProvider = typeof activeModel.provider === "string"
-        ? activeModel.provider
-        : timeline?.snapshot?.provider || "";
+    const activeProvider =
+        typeof activeModel.provider === "string" ? activeModel.provider : timeline?.snapshot?.provider || "";
     const activeModelId = typeof activeModel.model === "string" ? activeModel.model : timeline?.snapshot?.model || "";
     const activeModelKey = activeModelId ? `${activeProvider}\u001f${activeModelId}` : "";
-    const activeThinking = typeof timeline?.snapshot?.thinkingLevel === "string"
-        ? timeline.snapshot.thinkingLevel
-        : "default";
+    const activeThinking =
+        typeof timeline?.snapshot?.thinkingLevel === "string" ? timeline.snapshot.thinkingLevel : "default";
     const hasActivePlan = Boolean(workflowContext.planId || workflowContext.planName || planHomeFromSnapshot);
     const localOperationActive = Boolean(operation && !["completed", "failed", "unknown"].includes(operation.status));
     const canConfigureSession = availability.canContinue || (localOperationActive && !operation?.remote);
@@ -2489,8 +2145,8 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
     const stagedModelKey = pendingConfiguration?.model
         ? `${pendingConfiguration.provider || ""}\u001f${pendingConfiguration.model}`
         : stagedAgentDefaults?.model
-        ? `${stagedAgentDefaults.provider}\u001f${stagedAgentDefaults.model}`
-        : activeModelKey;
+          ? `${stagedAgentDefaults.provider}\u001f${stagedAgentDefaults.model}`
+          : activeModelKey;
     const displayedThinking = liveThinkingLevel || stagedAgentDefaults?.thinkingLevel || activeThinking;
     const canSubmitSession = availability.canContinue || ["active", "workspace-running"].includes(availability.key);
     const sessionSidebar = buildSessionSidebarProjection({
@@ -2504,22 +2160,26 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
     }).session;
     const currentAgent = timeline?.snapshot?.activeAgent || "";
     const sessionFields = sessionSidebarFields(sessionSidebar).filter((field) => field.label !== "Session");
-    sessionFields.unshift({
-        label: "Agent",
-        value: currentAgent
-            ? agents.find((agent) => agent.name === currentAgent)?.displayName || displayAgentName(currentAgent)
-            : "Unknown",
-    }, {
-        label: "Model",
-        value: activeModelId
-            ? activeProvider && !activeModelId.startsWith(`${activeProvider}/`)
-                ? [activeProvider, activeModelId].filter(Boolean).join("/")
-                : activeModelId
-            : "Unknown",
-    }, {
-        label: "Thinking",
-        value: activeThinking,
-    });
+    sessionFields.unshift(
+        {
+            label: "Agent",
+            value: currentAgent
+                ? agents.find((agent) => agent.name === currentAgent)?.displayName || displayAgentName(currentAgent)
+                : "Unknown",
+        },
+        {
+            label: "Model",
+            value: activeModelId
+                ? activeProvider && !activeModelId.startsWith(`${activeProvider}/`)
+                    ? [activeProvider, activeModelId].filter(Boolean).join("/")
+                    : activeModelId
+                : "Unknown",
+        },
+        {
+            label: "Thinking",
+            value: activeThinking,
+        },
+    );
     return (
         <section className="session-surface session-surface-detail" aria-label="RunWield Session chat">
             {timeline && (
@@ -2550,16 +2210,17 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
                                         tabIndex={sessionSidebarTab === tab ? 0 : -1}
                                         onKeyDown={(event) => {
                                             const index = SESSION_SIDEBAR_TABS.indexOf(tab);
-                                            const next = event.key === "ArrowRight"
-                                                ? (index + 1) % SESSION_SIDEBAR_TABS.length
-                                                : event.key === "ArrowLeft"
-                                                ? (index - 1 + SESSION_SIDEBAR_TABS.length) %
-                                                    SESSION_SIDEBAR_TABS.length
-                                                : event.key === "Home"
-                                                ? 0
-                                                : event.key === "End"
-                                                ? SESSION_SIDEBAR_TABS.length - 1
-                                                : -1;
+                                            const next =
+                                                event.key === "ArrowRight"
+                                                    ? (index + 1) % SESSION_SIDEBAR_TABS.length
+                                                    : event.key === "ArrowLeft"
+                                                      ? (index - 1 + SESSION_SIDEBAR_TABS.length) %
+                                                        SESSION_SIDEBAR_TABS.length
+                                                      : event.key === "Home"
+                                                        ? 0
+                                                        : event.key === "End"
+                                                          ? SESSION_SIDEBAR_TABS.length - 1
+                                                          : -1;
                                             if (next < 0) return;
                                             event.preventDefault();
                                             const nextTab = SESSION_SIDEBAR_TABS[next];
@@ -2569,10 +2230,11 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
                                         onClick={() => setSessionSidebarTab(tab)}
                                     >
                                         {tab[0].toUpperCase() + tab.slice(1)}
-                                        {tab === "artifacts" && Array.isArray(timeline.artifacts) &&
-                                                timeline.artifacts.length
-                                            ? <span>{timeline.artifacts.length}</span>
-                                            : null}
+                                        {tab === "artifacts" &&
+                                        Array.isArray(timeline.artifacts) &&
+                                        timeline.artifacts.length ? (
+                                            <span>{timeline.artifacts.length}</span>
+                                        ) : null}
                                     </button>
                                 ))}
                             </div>
@@ -2580,274 +2242,254 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
                     </div>
                 </WorkspaceHeaderActionsPortal>
             )}
-            {loadingDetail && !timeline
-                ? (
-                    <p className="session-list-state" aria-busy="true">
-                        <RunWieldThinkingDots label="Loading conversation" />
-                    </p>
-                )
-                : null}
-            {detailError
-                ? (
-                    <section className="error-panel" role="alert">
-                        <h2>Session failed to load</h2>
-                        <p>{detailError}</p>
-                        <RunWieldButton type="button" onClick={loadTimeline}>Retry</RunWieldButton>
-                    </section>
-                )
-                : null}
-            {timeline
-                ? (
-                    <div
-                        className={`session-detail-layout${
-                            contextCollapsed ? " session-detail-layout--chat-only" : ""
-                        }`}
+            {loadingDetail && !timeline ? (
+                <p className="session-list-state" aria-busy="true">
+                    <RunWieldThinkingDots label="Loading conversation" />
+                </p>
+            ) : null}
+            {detailError ? (
+                <section className="error-panel" role="alert">
+                    <h2>Session failed to load</h2>
+                    <p>{detailError}</p>
+                    <RunWieldButton type="button" onClick={loadTimeline}>
+                        Retry
+                    </RunWieldButton>
+                </section>
+            ) : null}
+            {timeline ? (
+                <div className={`session-detail-layout${contextCollapsed ? " session-detail-layout--chat-only" : ""}`}>
+                    <main
+                        className="session-stream-panel"
+                        aria-label="Session stream"
+                        inert={!contextCollapsed && isNarrowScreen}
                     >
-                        <main
-                            className="session-stream-panel"
-                            aria-label="Session stream"
-                            inert={!contextCollapsed && isNarrowScreen}
+                        <div
+                            className="session-timeline-scroll"
+                            ref={timelineScrollRef}
+                            onScroll={updateScrollFollowState}
                         >
-                            <div
-                                className="session-timeline-scroll"
-                                ref={timelineScrollRef}
-                                onScroll={updateScrollFollowState}
-                            >
-                                {loadingDetail
-                                    ? (
-                                        <div className="session-inline-loader" aria-live="polite" aria-busy="true">
-                                            <RunWieldThinkingDots label="Updating conversation" />
-                                        </div>
-                                    )
-                                    : message
-                                    ? <div className="session-surface-status" aria-live="polite">{message}</div>
-                                    : null}
-                                {latestActivityAvailable
-                                    ? (
-                                        <div className="session-scroll-offer" role="status">
-                                            <span>New activity is available.</span>
-                                            <button type="button" onClick={scrollToLiveEdge}>
-                                                Latest activity
-                                            </button>
-                                        </div>
-                                    )
-                                    : null}
-                                {timeline.previousCursor
-                                    ? (
-                                        <RunWieldButton
-                                            type="button"
-                                            onClick={loadEarlierMessages}
-                                            disabled={loadingEarlier}
-                                        >
-                                            {loadingEarlier
-                                                ? <RunWieldThinkingDots label="Loading earlier messages" />
-                                                : "Load earlier messages"}
-                                        </RunWieldButton>
-                                    )
-                                    : null}
-                                <SessionTimeline
-                                    items={allItems}
-                                    onRetryWorkRecord={(report) =>
-                                        runWorkflowAction({ kind: "retry_work_record", planId: report.planId })}
-                                    sessionPath={`/projects/${encodeURIComponent(projectId)}/sessions/${
-                                        encodeURIComponent(runwieldSessionId)
-                                    }`}
-                                />
-                                <div ref={timelineEndRef} aria-hidden="true" />
-                            </div>
-                            <SessionComposer
-                                id="session-request-text"
-                                onResizeStart={captureHistoryViewport}
-                                onResize={restoreHistoryViewport}
-                                draft={draft}
-                                disabled={!canSubmitSession || submitting || attachingImages ||
-                                    loadedDraftKey !== draftKey}
-                                controlsDisabled={!canConfigureSession}
-                                canSend={canSubmitSession && !attachingImages && loadedDraftKey === draftKey &&
-                                    Boolean(draft.trim() || imageAttachments.length)}
-                                submitting={submitting}
-                                onDraftChange={setDraft}
-                                onSubmit={() => sendRequest()}
-                                onQueue={operation?.operationId ? () => sendRequest(true) : undefined}
-                                onStop={operation?.operationId ? cancelOperation : undefined}
-                                sendLabel={operation?.operationId
-                                    ? "Steer"
-                                    : timeline.state === "active"
-                                    ? "Queue"
-                                    : "Send"}
-                                steeringMessages={steeringMessages}
-                                onPaste={handleComposerPaste}
-                                onFiles={handleComposerFiles}
-                                imageAttachments={imageAttachments}
-                                onRemoveImage={removeImageAttachment}
-                                agents={agents}
-                                models={models}
-                                thinkingLevels={thinkingLevels}
-                                mascotVisible={Boolean(sessionOptions) && sessionOptions.mascot !== false}
-                                agentValue={stagedAgent}
-                                mascotAgent={timeline.snapshot?.activeAgentInfo?.agentName || currentAgent}
-                                mascotParentAgent={currentAgent}
-                                mascotActivity={mascotPose({
-                                    busy: transientItems.some((item) => item.kind === "busy"),
-                                    waiting: Boolean(liveWorkflowInteraction),
-                                    answering: transientItems.filter((item) =>
-                                                item.kind !== "busy"
-                                            ).at(-1)?.kind === "message" &&
-                                        transientItems.filter((item) => item.kind !== "busy").at(-1)?.role ===
-                                            "assistant",
-                                })}
-                                modelValue={stagedModelKey}
-                                thinkingValue={displayedThinking}
-                                onAgentChange={async (agentName) => {
-                                    const applied = await configureSession({ agentName });
-                                    finishCommandPicker("agent", applied);
-                                    return applied;
-                                }}
-                                onModelChange={async (value) => {
-                                    const [provider, model] = value ? value.split("\u001f") : ["", ""];
-                                    const applied = model ? await configureSession({ provider, model }) : false;
-                                    finishCommandPicker("model", applied);
-                                    return applied;
-                                }}
-                                onThinkingChange={(thinkingLevel) => configureSession({ thinkingLevel })}
-                                commands={sessionOptions?.commands || []}
-                                onCommand={handleComposerCommand}
-                                onCommandPickerOpen={openCommandPicker}
-                                onCommandPickerCancel={cancelCommandPicker}
-                                agentFallback={agents.some((agent) => agent.name === timeline.snapshot?.activeAgent)
-                                    ? null
-                                    : (
-                                        <option value={timeline.snapshot?.activeAgent || ""}>
-                                            {timeline.snapshot?.activeAgent || "Agent"}
-                                        </option>
+                            {loadingDetail ? (
+                                <div className="session-inline-loader" aria-live="polite" aria-busy="true">
+                                    <RunWieldThinkingDots label="Updating conversation" />
+                                </div>
+                            ) : message ? (
+                                <div className="session-surface-status" aria-live="polite">
+                                    {message}
+                                </div>
+                            ) : null}
+                            {latestActivityAvailable ? (
+                                <div className="session-scroll-offer" role="status">
+                                    <span>New activity is available.</span>
+                                    <button type="button" onClick={scrollToLiveEdge}>
+                                        Latest activity
+                                    </button>
+                                </div>
+                            ) : null}
+                            {timeline.previousCursor ? (
+                                <RunWieldButton type="button" onClick={loadEarlierMessages} disabled={loadingEarlier}>
+                                    {loadingEarlier ? (
+                                        <RunWieldThinkingDots label="Loading earlier messages" />
+                                    ) : (
+                                        "Load earlier messages"
                                     )}
-                                modelFallback={activeModelKey &&
-                                        !models.some((model) => `${model.provider}\u001f${model.id}` === activeModelKey)
-                                    ? <option value={activeModelKey}>{activeProvider}/{activeModelId}</option>
-                                    : null}
-                                thinkingFallback={thinkingLevels.includes(displayedThinking)
-                                    ? null
-                                    : <option value={displayedThinking}>{displayedThinking}</option>}
-                                queuedMessages={queuedMessages}
+                                </RunWieldButton>
+                            ) : null}
+                            <SessionTimeline
+                                items={allItems}
+                                onRetryWorkRecord={(report) =>
+                                    runWorkflowAction({ kind: "retry_work_record", planId: report.planId })
+                                }
+                                sessionPath={`/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(
+                                    runwieldSessionId,
+                                )}`}
                             />
-                        </main>
-                        <aside
-                            id="session-context-sidebar"
-                            hidden={contextCollapsed}
-                            className="session-workflow-sidebar session-context-sidebar"
-                            aria-label="Session context"
-                        >
-                            <div className="session-context-content">
-                                {sessionSidebarTab === "workflow"
-                                    ? (
-                                        <div
-                                            id="session-context-panel"
-                                            className="session-context-panel"
-                                            role="tabpanel"
-                                            aria-labelledby="session-context-tab-workflow"
-                                        >
-                                            {hasActivePlan
-                                                ? (
-                                                    <WorkflowSidebar
-                                                        presentation={workflowSidebar}
-                                                        payload={{
-                                                            planHref: planHomeUrl,
-                                                            sessionHref: runwieldSessionId
-                                                                ? `/projects/${
-                                                                    encodeURIComponent(projectId)
-                                                                }/sessions/${encodeURIComponent(runwieldSessionId)}`
-                                                                : "",
-                                                            reviewHref: liveWorkflowInteraction?.reviewUrl || "",
-                                                            interactionHref: workflowActionUrl,
-                                                        }}
-                                                        title="Workflow"
-                                                        embedded
-                                                        onAction={runWorkflowAction}
-                                                        onAnswerAgent={() => {
-                                                            setContextCollapsed(true);
-                                                            globalThis.requestAnimationFrame(() => {
-                                                                const target = document.getElementById(
-                                                                    `interaction-${liveWorkflowInteraction?.interactionId}`,
-                                                                );
-                                                                target?.scrollIntoView({ block: "nearest" });
-                                                                (target?.querySelector("textarea, input, button, a") ||
-                                                                    target)?.focus();
-                                                            });
-                                                        }}
-                                                        onOpenSession={() => {
-                                                            setContextCollapsed(true);
-                                                            scrollToLiveEdge();
-                                                        }}
-                                                    />
-                                                )
-                                                : (
-                                                    <p className="session-context-empty">
-                                                        This Session does not have an active Plan workflow.
-                                                    </p>
-                                                )}
-                                        </div>
-                                    )
-                                    : sessionSidebarTab === "session"
-                                    ? (
-                                        <div
-                                            id="session-context-panel"
-                                            className="session-context-panel"
-                                            role="tabpanel"
-                                            aria-labelledby="session-context-tab-session"
-                                        >
-                                            <dl>
-                                                {sessionFields.map((field) => (
-                                                    <div key={field.label}>
-                                                        <dt>{field.label}</dt>
-                                                        <dd>{field.value}</dd>
-                                                    </div>
-                                                ))}
-                                            </dl>
-                                        </div>
-                                    )
-                                    : (
-                                        <div
-                                            id="session-context-panel"
-                                            className="session-context-panel"
-                                            role="tabpanel"
-                                            aria-labelledby="session-context-tab-artifacts"
-                                        >
-                                            {Array.isArray(timeline.artifacts) && timeline.artifacts.length
-                                                ? (
-                                                    <ul className="session-artifact-list">
-                                                        {timeline.artifacts.map((artifact) => (
-                                                            <li key={artifact.artifactId}>
-                                                                <a
-                                                                    href={`/projects/${
-                                                                        encodeURIComponent(projectId)
-                                                                    }/sessions/${
-                                                                        encodeURIComponent(runwieldSessionId)
-                                                                    }/artifacts/${
-                                                                        encodeURIComponent(artifact.artifactId)
-                                                                    }`}
-                                                                >
-                                                                    <span>{artifact.title}</span>
-                                                                    <small>
-                                                                        {sessionArtifactKindLabel(artifact.kind)}
-                                                                    </small>
-                                                                </a>
-                                                            </li>
-                                                        ))}
-                                                    </ul>
-                                                )
-                                                : (
-                                                    <p className="session-context-empty">
-                                                        Meaningful Markdown outputs will appear here when an agent
-                                                        declares them.
-                                                    </p>
-                                                )}
-                                        </div>
+                            <div ref={timelineEndRef} aria-hidden="true" />
+                        </div>
+                        <SessionComposer
+                            id="session-request-text"
+                            onResizeStart={captureHistoryViewport}
+                            onResize={restoreHistoryViewport}
+                            draft={draft}
+                            disabled={!canSubmitSession || submitting || attachingImages || loadedDraftKey !== draftKey}
+                            controlsDisabled={!canConfigureSession}
+                            canSend={
+                                canSubmitSession &&
+                                !attachingImages &&
+                                loadedDraftKey === draftKey &&
+                                Boolean(draft.trim() || imageAttachments.length)
+                            }
+                            submitting={submitting}
+                            onDraftChange={setDraft}
+                            onSubmit={() => sendRequest()}
+                            onQueue={operation?.operationId ? () => sendRequest(true) : undefined}
+                            onStop={operation?.operationId ? cancelOperation : undefined}
+                            sendLabel={
+                                operation?.operationId ? "Steer" : timeline.state === "active" ? "Queue" : "Send"
+                            }
+                            steeringMessages={steeringMessages}
+                            onPaste={handleComposerPaste}
+                            onFiles={handleComposerFiles}
+                            imageAttachments={imageAttachments}
+                            onRemoveImage={removeImageAttachment}
+                            agents={agents}
+                            models={models}
+                            thinkingLevels={thinkingLevels}
+                            mascotVisible={Boolean(sessionOptions) && sessionOptions.mascot !== false}
+                            agentValue={stagedAgent}
+                            mascotAgent={timeline.snapshot?.activeAgentInfo?.agentName || currentAgent}
+                            mascotParentAgent={currentAgent}
+                            mascotActivity={mascotPose({
+                                busy: transientItems.some((item) => item.kind === "busy"),
+                                waiting: Boolean(liveWorkflowInteraction),
+                                answering:
+                                    transientItems.filter((item) => item.kind !== "busy").at(-1)?.kind === "message" &&
+                                    transientItems.filter((item) => item.kind !== "busy").at(-1)?.role === "assistant",
+                            })}
+                            modelValue={stagedModelKey}
+                            thinkingValue={displayedThinking}
+                            onAgentChange={async (agentName) => {
+                                const applied = await configureSession({ agentName });
+                                finishCommandPicker("agent", applied);
+                                return applied;
+                            }}
+                            onModelChange={async (value) => {
+                                const [provider, model] = value ? value.split("\u001f") : ["", ""];
+                                const applied = model ? await configureSession({ provider, model }) : false;
+                                finishCommandPicker("model", applied);
+                                return applied;
+                            }}
+                            onThinkingChange={(thinkingLevel) => configureSession({ thinkingLevel })}
+                            commands={sessionOptions?.commands || []}
+                            onCommand={handleComposerCommand}
+                            onCommandPickerOpen={openCommandPicker}
+                            onCommandPickerCancel={cancelCommandPicker}
+                            agentFallback={
+                                agents.some((agent) => agent.name === timeline.snapshot?.activeAgent) ? null : (
+                                    <option value={timeline.snapshot?.activeAgent || ""}>
+                                        {timeline.snapshot?.activeAgent || "Agent"}
+                                    </option>
+                                )
+                            }
+                            modelFallback={
+                                activeModelKey &&
+                                !models.some((model) => `${model.provider}\u001f${model.id}` === activeModelKey) ? (
+                                    <option value={activeModelKey}>
+                                        {activeProvider}/{activeModelId}
+                                    </option>
+                                ) : null
+                            }
+                            thinkingFallback={
+                                thinkingLevels.includes(displayedThinking) ? null : (
+                                    <option value={displayedThinking}>{displayedThinking}</option>
+                                )
+                            }
+                            queuedMessages={queuedMessages}
+                        />
+                    </main>
+                    <aside
+                        id="session-context-sidebar"
+                        hidden={contextCollapsed}
+                        className="session-workflow-sidebar session-context-sidebar"
+                        aria-label="Session context"
+                    >
+                        <div className="session-context-content">
+                            {sessionSidebarTab === "workflow" ? (
+                                <div
+                                    id="session-context-panel"
+                                    className="session-context-panel"
+                                    role="tabpanel"
+                                    aria-labelledby="session-context-tab-workflow"
+                                >
+                                    {hasActivePlan ? (
+                                        <WorkflowSidebar
+                                            presentation={workflowSidebar}
+                                            payload={{
+                                                planHref: planHomeUrl,
+                                                sessionHref: runwieldSessionId
+                                                    ? `/projects/${encodeURIComponent(
+                                                          projectId,
+                                                      )}/sessions/${encodeURIComponent(runwieldSessionId)}`
+                                                    : "",
+                                                reviewHref: liveWorkflowInteraction?.reviewUrl || "",
+                                                interactionHref: workflowActionUrl,
+                                            }}
+                                            title="Workflow"
+                                            embedded
+                                            onAction={runWorkflowAction}
+                                            onAnswerAgent={() => {
+                                                setContextCollapsed(true);
+                                                globalThis.requestAnimationFrame(() => {
+                                                    const target = document.getElementById(
+                                                        `interaction-${liveWorkflowInteraction?.interactionId}`,
+                                                    );
+                                                    target?.scrollIntoView({ block: "nearest" });
+                                                    (
+                                                        target?.querySelector("textarea, input, button, a") || target
+                                                    )?.focus();
+                                                });
+                                            }}
+                                            onOpenSession={() => {
+                                                setContextCollapsed(true);
+                                                scrollToLiveEdge();
+                                            }}
+                                        />
+                                    ) : (
+                                        <p className="session-context-empty">
+                                            This Session does not have an active Plan workflow.
+                                        </p>
                                     )}
-                            </div>
-                        </aside>
-                    </div>
-                )
-                : null}
+                                </div>
+                            ) : sessionSidebarTab === "session" ? (
+                                <div
+                                    id="session-context-panel"
+                                    className="session-context-panel"
+                                    role="tabpanel"
+                                    aria-labelledby="session-context-tab-session"
+                                >
+                                    <dl>
+                                        {sessionFields.map((field) => (
+                                            <div key={field.label}>
+                                                <dt>{field.label}</dt>
+                                                <dd>{field.value}</dd>
+                                            </div>
+                                        ))}
+                                    </dl>
+                                </div>
+                            ) : (
+                                <div
+                                    id="session-context-panel"
+                                    className="session-context-panel"
+                                    role="tabpanel"
+                                    aria-labelledby="session-context-tab-artifacts"
+                                >
+                                    {Array.isArray(timeline.artifacts) && timeline.artifacts.length ? (
+                                        <ul className="session-artifact-list">
+                                            {timeline.artifacts.map((artifact) => (
+                                                <li key={artifact.artifactId}>
+                                                    <a
+                                                        href={`/projects/${encodeURIComponent(
+                                                            projectId,
+                                                        )}/sessions/${encodeURIComponent(
+                                                            runwieldSessionId,
+                                                        )}/artifacts/${encodeURIComponent(artifact.artifactId)}`}
+                                                    >
+                                                        <span>{artifact.title}</span>
+                                                        <small>{sessionArtifactKindLabel(artifact.kind)}</small>
+                                                    </a>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    ) : (
+                                        <p className="session-context-empty">
+                                            Meaningful Markdown outputs will appear here when an agent declares them.
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </aside>
+                </div>
+            ) : null}
         </section>
     );
 }

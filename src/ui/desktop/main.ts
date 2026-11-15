@@ -11,6 +11,19 @@ import type { SessionClientView } from "../workspace/client/session-client.ts";
 import { DESKTOP_URL, SESSION_CHANNEL, validateDesktopRequest } from "./bridge.ts";
 import { PROJECT_CHANNEL, validateProjectRequest, type DesktopProjectRequest } from "./bridge.ts";
 import type { DesktopRequest } from "./bridge.ts";
+import {
+    SAVED_CHANNEL,
+    SAVED_OPERATIONS,
+    validateSavedRequest,
+    type SavedDesktopRequest,
+} from "./saved-session-bridge.ts";
+import type {
+    WorkspaceProjectContext,
+    WorkspaceHistoryRequest,
+    WorkspaceSnapshotRequest,
+    WorkspaceConfigureRequest,
+    WorkspaceSessionRequest,
+} from "../../acp/workspace-contract.ts";
 import { DARK_BROWSER_THEME } from "../design-system/themes/dark.ts";
 
 function argument(name: string): string {
@@ -159,6 +172,51 @@ async function startDesktop(): Promise<void> {
                     return client.cancel(payload);
                 case "close":
                     return client.close(payload);
+            }
+        });
+    }
+    const readContexts = new Map<string, WorkspaceProjectContext>();
+    for (const operation of SAVED_OPERATIONS) {
+        ipcMain.handle(`${SAVED_CHANNEL}${operation}`, async (event, payload: SavedDesktopRequest) => {
+            trusted(event);
+            validateSavedRequest(operation, payload, view, readContexts);
+            if (view.connection !== "ready") throw new Error("Wait for the runtime connection.");
+            switch (operation) {
+                case "readProject": {
+                    const result = await client.readProject({ projectId: payload.projectId! });
+                    readContexts.set(result.context.projectId, result.context);
+                    return result;
+                }
+                case "listSessions":
+                    return client.listSessions(payload.request!);
+                case "history":
+                    return client.history(payload.request as WorkspaceHistoryRequest);
+                case "snapshot":
+                    return client.snapshot(payload.request as WorkspaceSnapshotRequest);
+                case "sessionOptions":
+                    return client.sessionOptions(payload.context!);
+                case "configure":
+                    return client.configure(payload.request as WorkspaceConfigureRequest);
+                case "archive":
+                    return client.archive(payload.request as WorkspaceSessionRequest, payload.confirmed);
+                case "unarchive":
+                    return client.unarchive(payload.request as WorkspaceSessionRequest);
+                case "stageConfiguration":
+                    return client.stageConfiguration(payload, payload.selection!);
+                case "command":
+                    return client.command(payload, payload.text!);
+                case "sendImages":
+                    return client.sendImages(
+                        payload,
+                        payload.text!,
+                        payload.images!,
+                        payload.requestId,
+                        payload.expectedGeneration,
+                    );
+                case "queue":
+                    return client.queue(payload, payload.draft!);
+                case "removeQueued":
+                    return client.removeQueued(payload, payload.requestId!);
             }
         });
     }

@@ -4,7 +4,7 @@ This inventory maps the local workbench to its runtime owners. It guides the
 [desktop Epic](plans/local-workspace-desktop.md) and its
 [first Session client](plans/local-workspace-desktop/run-a-real-session-in-electron.md).
 It records source-development Project entry, provider configuration reuse, the Session boundary, and later parity
-targets. It defines the implemented Project extension schemas, not future extensions or an installed/released app. Product requirements remain in
+targets. It defines the implemented Project and Session extension schemas, not future extensions or an installed/released app. Product requirements remain in
 [Workspace](prd/runwield-workspace-prd.md#desktop-workspace) and
 [ACP](prd/runwield-acp-protocol-prd.md#workspace-client-access).
 
@@ -22,7 +22,7 @@ The development app opens Projects without an argument. A native picker or optio
 not authorization. Core registers and admits Projects on one persistent connection. Model work reuses existing Core
 credentials and defaults; one Session view remains open at a time. The runtime uses the launcher's explicit Bun executable and this checkout's `src/cli.ts acp`, not a PATH-selected global command.
 Connection identity, Project locator, wire Session ID, durable Session ID, message/tool IDs, and question request
-identity are separate values. A known-ID load is not discovery.
+identity are separate values. Discovery uses standard `session/list`; passive history does not activate model work.
 
 Main validates the owning WebContents, top-level frame, exact origin, payload shape and size, and connection/Project/
 Session binding before dispatch. The ACP client owns pending question identity and rejects stale or duplicate answers.
@@ -39,26 +39,27 @@ Primary sources checked **2026-11-05**:
 - [ACP v1 Session discovery](https://agentclientprotocol.com/protocol/v1/session-list).
 - [ACP v2 migration draft](https://agentclientprotocol.com/protocol/v2/migration).
 
-| Topic                  | Pinned SDK 1.4.0 and current server                                                                                                                                               | Current v1 / v2 comparison                                                                                                         | Client rule                                                                                                                                                                                      |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Connection             | Root SDK exports `client`, `ndJsonStream`, and typed requests. `src/acp/sdk-client-background.test.ts` proves persistent notifications.                                           | SDK experimental v2 is a separate export.                                                                                          | Keep root SDK 1.4.0 and negotiate v1. Register handlers before connecting. No v2 conformance claim.                                                                                              |
-| Initialization         | `createInitializeResponse` in `src/acp/server.js` advertises load, image prompts, close/delete, configuration and private steering in implementation metadata.                    | Current v1 discovery has its own optional capability; v2 reorganizes capability fields.                                            | Check selected version, load/close support and the required implemented-method set before new/load/prompt. Advertise form elicitation only, not filesystem, terminal or provider-auth callbacks. |
-| Session methods        | SDK types include new/load/prompt/cancel/close, list, fork/resume and configuration. Server implements new/load/prompt/cancel/close/delete/configuration and `_session/steering`. | Current v1 requires `sessionCapabilities.list` before list. Server does not advertise list and registers an unimplemented handler. | Discovery is a server gap, not an SDK gap. No SDK upgrade or discovery call is needed for known-ID load.                                                                                         |
-| Replay                 | Server sends `session/update` replay before the load response; response metadata supplies the durable ID.                                                                         | v2 removes load in favor of resume with replay selection.                                                                          | Capture replay during the pending load. Preserve the requested wire ID and returned durable ID. Do not apply v2 resume semantics.                                                                |
-| Turn completion        | v1 prompt returns a stop reason. Existing server can send background output after `end_turn`.                                                                                     | v2 prompt response acknowledges acceptance; foreground completion moves to `state_update`.                                         | A v1 prompt response settles that prompt, not the workflow or subscription. Keep handlers attached. Unknown optional updates cannot imply success.                                               |
-| Updates                | Server mapper supplies message/tool identity in wire updates and metadata.                                                                                                        | v2 makes ID-based upserts uniform and changes tool/plan update variants.                                                           | Reconcile the actual v1 wire data by supplied IDs. Do not merge unrelated messages or duplicate user echoes. Do not assume v2 patch semantics.                                                   |
-| Questions              | SDK supports `elicitation/create`. `src/acp/interaction-mapper.js` emits string text, enum strings and optional `otherAnswer`.                                                    | v2 adds foreground-state and request/session-scoping rules.                                                                        | Reply to the pending request, never an invented answer RPC. Preserve exact strings; Core interprets approval. Reject unsupported schemas visibly.                                                |
-| Cancellation and close | Server accepts cancel as a notification and close as a request. Close releases live resources.                                                                                    | v2 changes settlement reporting and makes close a baseline method.                                                                 | Wait for actual v1 settlement, not a cancel response. Close is not archive/delete, unsubscribe or process termination.                                                                           |
+| Topic                  | Pinned SDK 1.4.0 and current server                                                                                                                                                    | Current v1 / v2 comparison                                                                         | Client rule                                                                                                                                                                                      |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Connection             | Root SDK exports `client`, `ndJsonStream`, and typed requests. `src/acp/sdk-client-background.test.ts` proves persistent notifications.                                                | SDK experimental v2 is a separate export.                                                          | Keep root SDK 1.4.0 and negotiate v1. Register handlers before connecting. No v2 conformance claim.                                                                                              |
+| Initialization         | `createInitializeResponse` in `src/acp/server.js` advertises load, image prompts, close/delete, configuration and private steering in implementation metadata.                         | Current v1 discovery has its own optional capability; v2 reorganizes capability fields.            | Check selected version, load/close support and the required implemented-method set before new/load/prompt. Advertise form elicitation only, not filesystem, terminal or provider-auth callbacks. |
+| Session methods        | SDK types include new/load/prompt/cancel/close, list, fork/resume and configuration. Server implements list/new/load/prompt/cancel/close/delete/configuration and `_session/steering`. | Current v1 requires `sessionCapabilities.list` before list. Server advertises and implements list. | Use standard discovery; no SDK upgrade is required. Known-ID load remains available.                                                                                                             |
+| Replay                 | Ordinary load sends `session/update` replay before its response; negotiated load supplies passive history metadata.                                                                    | v2 removes load in favor of resume with replay selection.                                          | Capture replay during the pending load. Preserve the requested wire ID and returned durable ID. Do not apply v2 resume semantics.                                                                |
+| Turn completion        | v1 prompt returns a stop reason. Existing server can send background output after `end_turn`.                                                                                          | v2 prompt response acknowledges acceptance; foreground completion moves to `state_update`.         | A v1 prompt response settles that prompt, not the workflow or subscription. Keep handlers attached. Unknown optional updates cannot imply success.                                               |
+| Updates                | Server mapper supplies message/tool identity in wire updates and metadata.                                                                                                             | v2 makes ID-based upserts uniform and changes tool/plan update variants.                           | Reconcile the actual v1 wire data by supplied IDs. Do not merge unrelated messages or duplicate user echoes. Do not assume v2 patch semantics.                                                   |
+| Questions              | SDK supports `elicitation/create`. `src/acp/interaction-mapper.js` emits string text, enum strings and optional `otherAnswer`.                                                         | v2 adds foreground-state and request/session-scoping rules.                                        | Reply to the pending form; negotiated cross-owner answers use the versioned Session extension. Preserve exact strings; Core interprets approval. Reject unsupported schemas visibly.             |
+| Cancellation and close | Server accepts cancel as a notification and close as a request. Close releases live resources.                                                                                         | v2 changes settlement reporting and makes close a baseline method.                                 | Wait for actual v1 settlement, not a cancel response. Close is not archive/delete, unsubscribe or process termination.                                                                           |
 
-The server also registers authenticate/logout/provider management, list/fork/resume/mode and NES methods as
+The server also registers authenticate/logout/provider management, fork/resume/mode and NES methods as
 unimplemented. SDK declarations are not proof of server support. Later capabilities below require explicit negotiation;
-future inventory entries publish no callable stubs. The implemented Project group is specified below.
+future inventory entries publish no callable stubs. The implemented Project and Session groups are specified below.
 
 ## Workspace Project protocol version 1
 
 The source runtime accepts `clientCapabilities._meta["dev.runwield/workspace"] = {"version":1}`
 on `initialize`. Unsupported versions and repeated Workspace negotiation fail before mutation. The response
-`_meta["dev.runwield/workspace"]` is `{version:1, connectionId:string, projects:{version:1}}`.
+`_meta["dev.runwield/workspace"]` is `WorkspaceCapability`, including `projects:{version:1}` and
+`sessions:{version:1,historyPageLimit:200,observationEventLimit:500}`.
 Admission remains fixed for that connection. No opt-in means ordinary cwd-based ACP behavior.
 
 All Project methods use prefix `_dev.runwield/workspace/projects/`. They require negotiation.
@@ -82,12 +83,11 @@ absolute paths 1–4096, display names 1–200, confirmation tokens 1–128.
 `{status:"confirmation_required",confirmation:string,message:string}`. Confirmation is bound to the entered and
 canonical root and the runtime process; retry re-inspects the directory. No write precedes consent.
 
-Every Workspace new/load request retains standard `cwd` and supplies
-`_meta["dev.runwield/workspace"] = WorkspaceProjectContext`. All later Session mutations (including
-steering, config, delete, cancel and close) supply the same metadata. Core retains the binding per wire Session.
-`cwd` must equal the admitted canonical root. Load also checks canonical saved-Session membership; a private
-`sessionPath` override is refused on Workspace connections. Cancel/close may settle only that connection's own
-Session with its original binding, even after disable, removal, relink, or filesystem loss.
+Every Workspace new/load request retains standard `cwd` and supplies the admitted context in
+`_meta["dev.runwield/workspace"]`. Standard mutations use `WorkspaceSessionMutationMetadata` below.
+Core retains the binding per wire Session. `cwd` must equal the admitted canonical root. Load checks canonical
+saved-Session membership; a private `sessionPath` override is refused. Cancel/close can settle only the connection's
+own binding, including after disable, removal, relink, or filesystem loss.
 
 Project/admission failures use JSON-RPC `-32602` for `invalid_params`, otherwise `-32002`, with
 `data:{code:string}`. Codes are `workspace_version_unsupported`, `workspace_not_negotiated`,
@@ -96,6 +96,303 @@ Project/admission failures use JSON-RPC `-32602` for `invalid_params`, otherwise
 Messages redact local filesystem errors. Provider prerequisite refusals retain `-32000`, with
 `data:{cwd,code,prerequisite,guidance}`. Codes are `default_model_required` or `provider_prerequisite`;
 guidance directs the user to external `wld login`, then desktop restart. This adds no setup/refresh API.
+
+## Workspace Session protocol version 1
+
+The same opt-in advertises `WorkspaceSessionCapability`. The following named TypeScript schemas are from
+[`src/acp/workspace-contract.ts`](../src/acp/workspace-contract.ts). `WorkspaceProjectContext` is defined above; `WorkspaceProjectCapability` is `{version:1}`;
+`WorkspaceJsonRecord` maps string keys to JSON values or `undefined`. No schema grants filesystem access or exposes
+credentials. Extension requests reject unsupported top-level keys.
+
+```ts
+export type WorkspaceJson = string | number | boolean | null | WorkspaceJson[] | WorkspaceJsonRecord;
+export interface WorkspaceJsonRecord {
+    [key: string]: WorkspaceJson | undefined;
+}
+export interface WorkspaceCapability {
+    version: 1;
+    connectionId: string;
+    projects: WorkspaceProjectCapability;
+    sessions?: WorkspaceSessionCapability;
+}
+export const WORKSPACE_SESSION_PREFIX = "_dev.runwield/workspace/sessions/";
+export const WORKSPACE_SESSION_OPERATIONS = [
+    "history",
+    "snapshot",
+    "options",
+    "command",
+    "configure",
+    "answer",
+    "unarchive",
+] as const;
+export type WorkspaceSessionOperation = (typeof WORKSPACE_SESSION_OPERATIONS)[number];
+export const WORKSPACE_HISTORY_PAGE_LIMIT = 200;
+export const WORKSPACE_OBSERVATION_EVENT_LIMIT = 500;
+export const WORKSPACE_OBSERVATION_BYTE_LIMIT = 2 * 1024 * 1024;
+export interface WorkspaceSessionCapability {
+    version: 1;
+    historyPageLimit: number;
+    observationEventLimit: number;
+}
+export interface WorkspaceSessionRequest {
+    context: WorkspaceProjectContext;
+    sessionId: string;
+}
+export interface WorkspaceMutationIdentity {
+    requestId: string;
+    expectedGeneration: number;
+}
+export interface WorkspaceHistoryRequest extends WorkspaceSessionRequest {
+    cursor?: string;
+    limit?: number;
+}
+export interface WorkspaceConfiguration {
+    agentName: string;
+    model: string;
+    provider: string;
+    thinkingLevel: string;
+}
+export interface WorkspaceHistoryEvent extends WorkspaceJsonRecord {
+    type: string;
+    eventId: string;
+}
+export interface WorkspaceHistoryResult {
+    sessionId: string;
+    generation: number;
+    archivedAt: string | null;
+    events: WorkspaceHistoryEvent[];
+    configuration: WorkspaceConfiguration;
+    previousCursor: string | null;
+    complete: boolean;
+}
+export interface WorkspaceSnapshotRequest extends WorkspaceSessionRequest {
+    /** Required only while the new composer has no durable Session ID. */
+    wireSessionId?: string;
+    cursor?: string;
+}
+export interface WorkspaceSnapshotResult {
+    sessionId: string;
+    generation: number | null;
+    state: string;
+    cursor: string;
+    gap: boolean;
+    operation: WorkspaceJsonRecord | null;
+}
+export interface WorkspaceCommandRequest {
+    context: WorkspaceProjectContext;
+    wireSessionId: string;
+    text: string;
+}
+export interface WorkspaceConfigureRequest extends WorkspaceSessionRequest, WorkspaceMutationIdentity {
+    agentName?: string;
+    model?: string;
+    provider?: string;
+    thinkingLevel?: string;
+}
+export interface WorkspaceAnswerRequest extends WorkspaceSessionRequest {
+    operationId: string;
+    interactionId: string;
+    requestId: string;
+    response: WorkspaceAnswerFields;
+}
+export interface WorkspaceUnarchiveRequest extends WorkspaceSessionRequest {}
+export interface WorkspaceSessionListRequest {
+    context: WorkspaceProjectContext;
+    archiveState?: "active" | "archived" | "all";
+    cursor?: string;
+    limit?: number;
+}
+export interface WorkspaceSavedSession {
+    sessionId: string;
+    title: string;
+    cwd: string;
+    updatedAt: string;
+    archivedAt: string | null;
+    generation: number | null;
+}
+export interface WorkspaceSessionListResult {
+    sessions: WorkspaceSavedSession[];
+    nextCursor: string | null;
+}
+
+/** Metadata on standard negotiated mutation methods. Correlation IDs are not receipt IDs. */
+export interface WorkspaceSessionMutationMetadata extends WorkspaceProjectContext, WorkspaceMutationIdentity {
+    confirmed?: boolean;
+    configuration?: WorkspaceConfigurationSelection;
+}
+export interface WorkspaceOptionsRequest {
+    context: WorkspaceProjectContext;
+}
+export interface WorkspaceAgentOption {
+    name: string;
+    displayName: string;
+    description: string;
+    defaults: WorkspaceModelConfiguration;
+}
+export interface WorkspaceModelConfiguration {
+    model: string;
+    provider: string;
+    thinkingLevel: string;
+}
+export interface WorkspaceModelOption {
+    id: string;
+    name: string;
+    provider: string;
+    providerName: string;
+    executionBackend: string;
+    reasoning: boolean;
+    contextWindow: number;
+}
+export interface WorkspaceCommandOption {
+    name: string;
+    description: string;
+    kind: string;
+}
+export interface WorkspaceOptionsResult {
+    mascot: boolean;
+    defaults: WorkspaceConfiguration;
+    agents: WorkspaceAgentOption[];
+    models: WorkspaceModelOption[];
+    commands: WorkspaceCommandOption[];
+    thinkingLevels: string[];
+}
+export interface WorkspaceConfigureResult {
+    ok: boolean;
+    status: string;
+    generation: number;
+    operationId?: string;
+    pendingConfiguration?: WorkspacePendingConfiguration | null;
+}
+export interface WorkspaceConfigurationSelection extends WorkspacePendingConfiguration {
+    thinkingLevel?: string;
+}
+export interface WorkspacePendingConfiguration {
+    agentName?: string;
+    model?: string;
+    provider?: string;
+}
+export interface WorkspaceAnswerFields {
+    action: "accept" | "decline" | "cancel";
+    answer?: string;
+    otherAnswer?: string;
+}
+export interface WorkspaceAnswerResult {
+    status: string;
+}
+export interface WorkspaceArchiveResult {
+    runwieldSessionId: string;
+    archivedAt: string | null;
+}
+
+export interface WorkspaceSessionListMetadata extends WorkspaceProjectContext {
+    archiveState?: "active" | "archived" | "all";
+    limit?: number;
+}
+```
+
+| Extension suffix | Request                     | Result                     |
+| ---------------- | --------------------------- | -------------------------- |
+| `history`        | `WorkspaceHistoryRequest`   | `WorkspaceHistoryResult`   |
+| `snapshot`       | `WorkspaceSnapshotRequest`  | `WorkspaceSnapshotResult`  |
+| `options`        | `WorkspaceOptionsRequest`   | `WorkspaceOptionsResult`   |
+| `command`        | `WorkspaceCommandRequest`   | `SessionCommandResult`     |
+| `configure`      | `WorkspaceConfigureRequest` | `WorkspaceConfigureResult` |
+| `answer`         | `WorkspaceAnswerRequest`    | `WorkspaceAnswerResult`    |
+| `unarchive`      | `WorkspaceUnarchiveRequest` | `WorkspaceArchiveResult`   |
+
+`command` returns Core's named shapes from
+[`session-input-contract.ts`](../src/shared/session/session-input-contract.ts):
+
+```ts
+export interface SessionCommandSelection {
+    agentName?: string;
+    model?: string;
+    provider?: string;
+    thinkingLevel?: string;
+}
+export interface SessionCommandResult {
+    action: "message" | "new" | "agent" | "model" | "configure";
+    message?: string;
+    selection?: SessionCommandSelection;
+}
+```
+
+The request uses the bound wire ID and admitted context, not a durable receipt identity. Core's
+[`session-commands.ts`](../src/shared/session/session-commands.ts) selects Workspace registry entries with
+`sessionAction`: `/agent`, `/model`, `/new`, `/context`, and `/help`. Use one slash-command line. Agent/model without
+arguments return a picker action; one Agent name or `provider/model` returns a configuration selection. `/new` accepts
+no name. Help/context return plain system text, not model input. Commands require idle work; action commands cannot
+be sent as ordinary prompts or steering. Configuration selections use the existing configure path, not a new command
+receipt mechanism.
+
+`WorkspaceSessionListRequest` and `WorkspaceSessionListResult` are semantic client shapes, not a private list RPC.
+Standard `session/list` uses `cwd`, `cursor`, and `WorkspaceSessionListMetadata` under the Workspace metadata key.
+It returns saved IDs, titles, current generation/archive metadata, and `nextCursor`. Pages default to 30, maximum 100;
+Results are newest-first; archive filtering and visible-empty filtering precede paging. Saved names take priority over first-message fallback.
+Ordinary clients use cwd-based file authority without Workspace registration or SQLite, excluding archived and remote
+Sessions. Workspace can request active, archived, or all Sessions.
+
+History returns the latest page by default, at most 200 events, stable `eventId` values, current committed
+configuration, generation, archive state, and an older-page `previousCursor`. Treat all cursors as opaque. History
+cursors bind Project, Session, and generation; a newer generation requires a fresh history read. List cursors bind the
+Project, filter, and page size, not a frozen list snapshot. Invalid or foreign cursors fail; read errors are not empty
+successful pages.
+
+History is provider-independent. Initialized reads do not activate an Agent/MCP, claim a writer, or change committed
+evidence. Generation bootstrap and recovery use Core's existing model-independent evidence checks and respect a live
+writer. Negotiated `session/load` is also passive: it binds a wire ID and returns history in response metadata without
+model activation. Opening or continuing archived history does not Unarchive it. Standard `session/delete` archives;
+Workspace busy archive requires explicit stop confirmation and durable settlement. Explicit Unarchive preserves ID,
+transcript, and Plan Associations. Close releases live resources, not archive state.
+
+Snapshots carry current operation state, events, and live interaction identity in `operation`. Observation retains at
+most 500 operation events and trims oldest events against a 2 MiB serialized-operation budget. If the first retained
+event has an oversized coalesced `delta`, it keeps its last 32,768 characters before further trimming. This preserves
+new output while canonical history supplies the full text after settlement. With a supplied prior cursor, generation
+changes or truncation report `gap:true`. The semantic client polls while idle and active, reconciles stable
+identities, and refreshes canonical history on generation change or gap instead of replaying work or appending duplicate
+messages. Another process's work uses the existing Core live connection. A v1 prompt response ends its foreground wait,
+not retained Background Tasks or the observation. Process restart/reconnect and supervisor lifetime remain child 4.
+
+Standard new/load/prompt/cancel/close/delete/config methods remain the mapping for their existing semantics;
+`_session/steering` handles eligible active work. Standard mutation metadata separates durable `requestId` and
+`expectedGeneration` from JSON-RPC correlation IDs. New work has Project context and request identity before a durable
+Session ID exists; wire IDs remain separate. Receipt-backed create/continue/configure/steer/answer operations use Core
+hashes and recorded outcomes. Identical retries do not repeat effects; changed input with the same receipt identity is
+refused. Each retry must pass current Project admission. Preflight failures do not consume acceptance receipts.
+Uncertain outcomes require refresh, never automatic replay. Archive/Unarchive/close are not new receipt-backed jobs.
+
+Options expose supported Agents, models, thinking levels, and commands, not provider setup. Before the first send,
+configuration selection stays client-side; opening New Session alone creates no saved history. Configure requires the
+current committed generation. Idle changes apply through Runtime; active local Agent/model changes are staged until
+settlement. Thinking can apply during that operation. `pendingConfiguration` excludes thinking; selecting a new Agent
+replaces earlier pending selections. Another owner's busy configuration is refused. Each managed operation hydrates
+current saved configuration before applying deliberate choices. Answers bind Session, operation, interaction, and
+request identity; exact choice/Other/approval values reach Core. Stale or duplicate answers are refused.
+The shared semantic interface preserves `SessionClientQuestion.defaultValue?:string` and
+`SessionQuestionChoice.description?:string` from forms and observed interactions. Text schema `description` maps to
+`placeholder`; schema `default` maps to `defaultValue`. These fields do not authorize an automatic answer.
+
+`readProject` uses Core's existing Project open admission to obtain an independent read context. It does not change the
+semantic client's selected execution context or bound Session. Sidebar reads for Project B cannot redirect Project A's
+draft, images, queue, or pending answer.
+
+Explicit Queue stores editable/removable **unsent** intent in shared client state. It is not accepted Core work or a
+durable app-exit queue. When available, dispatch retains its request ID and submits once; rejection retains the draft
+and images. Send during eligible work steers; a pending question does not become implicit steering. Ordinary ACP keeps
+its existing cross-writer queued-prompt behavior; there is no new queue-management RPC.
+
+Desktop text is limited to 65,536 characters. Image selection, paste, and drop send bytes only: PNG/JPEG/GIF/WebP,
+7 MiB decoded per file and 10 MiB aggregate base64. Image-only messages, previews, and removal are supported. Shared
+limits live in `session-input-contract.ts` and are checked by UI, privileged bridge, and Core entry. Core validates
+vision prerequisites before acceptance and saves scoped attachment references. History previews share the 10 MiB
+base64 budget and report omitted images. Ordinary ACP input limits are unchanged.
+
+Core owns history naming/paging/projection in `session-history.ts`, and Runtime construction, admission, receipt hashing,
+configuration staging, operation listeners, retained Sessions, background work, and cross-process routing in
+`session-continuation-service.ts`. Both negotiated ACP and the HTTP workbench call these owners through the public
+`session-runtime.ts` interface. The HTTP adapter retains URLs, authorization, CSRF, browser notifications, and
+review-specific presentation/launch behavior. The old HTTP workbench remains operational and does not migrate to ACP.
 
 ## Capability inventory
 
@@ -107,15 +404,16 @@ mapping owned by that child, not a callable endpoint.
 | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
 | `/projects`, Project settings, `/api/owner/projects` and Project actions | `src/shared/owner-coordination/{projects,owner-projects}.ts`; browser `routes/owner-api.js`; ACP `src/acp/workspace-projects.ts` | Implemented version 1 Project group above                                                          | Register, confirm, relink, enable/disable, rescan and remove. A picker supplies a candidate, not trust. Reject a wrong root; removal does not delete the repository.                                                                        | 2                                         |
 | Provider readiness and Session options                                   | Core provider/settings owners through `src/acp/server.js` and `routes/owner-session-api.js`                                      | Existing readiness refusal and configuration reuse; provider setup extension deferred to child 10. | Show the actual missing provider/default-model prerequisite, not Workspace sign-in. Use external `wld login` then restart in child 2; in-app setup belongs to child 10. Never expose credentials.                                           | 2                                         |
-| Session create, known-ID load, prompt and output                         | Core Session runtime through `src/acp/server.js`; current HTTP owner is `server/session-continuation.js`                         | `session/new`, `session/load`, `session/prompt`, `session/update`                                  | A separate runtime streams into the live DOM; closing and loading retains committed history. Bind cwd to Core-admitted Project context on Workspace connections; ordinary ACP remains cwd-based. Refuse incompatible peers before mutation. | 1                                         |
-| Session list, history and live snapshots                                 | Canonical Session owners through `server/session-continuation.js`; `routes/owner-session-api.js`                                 | Standard `session/list`; proposed bounded history/observation extension                            | Discover and read saved history without provider readiness; Archived Sessions settings, paging, open and Unarchive belong here. List is currently absent; do not call it or scan storage from desktop.                                      | 3                                         |
-| Agent/model/thinking selection                                           | Core Session configuration; `routes/owner-session-api.js`, `src/acp/server.js`                                                   | Existing `session/set_config_option`; proposed mapping for remaining options                       | Preserve committed settings rather than UI cache. Reject invalid options and wrong Sessions; do not substitute unimplemented `session/set_mode`.                                                                                            | 3                                         |
+| Session create, known-ID load, prompt and output                         | Core `SessionContinuationService` through negotiated ACP and HTTP; ordinary ACP uses Runtime                                     | `session/new`, `session/load`, `session/prompt`, `session/update`                                  | A separate runtime streams into the live DOM; closing and loading retains committed history. Bind cwd to Core-admitted Project context on Workspace connections; ordinary ACP remains cwd-based. Refuse incompatible peers before mutation. | 1                                         |
+| Session list, history and live snapshots                                 | Core `session-history.ts` and `session-continuation-service.ts`; ACP and HTTP adapters                                           | Standard `session/list`; version 1 `history`/`snapshot`                                            | Discover and read saved history without provider readiness; Archived Sessions settings, paging, open and Unarchive belong here. Desktop reads through the contract, never by scanning storage.                                              | 3                                         |
+| Agent/model/thinking selection                                           | Core Session configuration; `routes/owner-session-api.js`, `src/acp/server.js`                                                   | Standard `session/set_config_option`; version 1 `options`/`configure`                              | Preserve committed settings rather than UI cache. Reject invalid options and wrong Sessions; do not substitute unimplemented `session/set_mode`.                                                                                            | 3                                         |
 | Questions and approvals; HTTP answer route                               | Core interaction owner through `src/acp/interaction-mapper.js`; `routes/owner-session-api.js`                                    | `elicitation/create` response                                                                      | Required text rejects whitespace; optional text permits empty input. Preserve choice plus optional Other text. No silent defaults. Reject stale, duplicate, canceled or wrong-Session answers. Retain no-form external-client fallback.     | 1 basic; 3 parity                         |
 | Attachments, images and resources                                        | Core prompt validation; `routes/owner-session-api.js`, `islands/SessionSurface.jsx`                                              | Standard image/resource prompt blocks where supported; bounded host transfers                      | Select/paste/drop only supported content. Refuse size/type/access violations. No renderer filesystem access. No attachment control in child 1.                                                                                              | 3                                         |
-| Queued input, steering and background output                             | Core live operations; `src/acp/server.js`, current `server/session-continuation.js`                                              | Existing `_session/steering`; proposed queue/observation mapping                                   | Preserve queued intent and delayed results after a prompt ends. Negotiate support; an unknown update is not completed work.                                                                                                                 | 3                                         |
-| Stop, close, archive/unarchive                                           | Core Session lifecycle; `routes/owner-session-api.js`, `src/acp/server.js`                                                       | Standard cancel notification and close request; archive mapping remains proposed                   | Stop a held stream/question, await settlement, then send again. Close retains history. Never substitute delete for archive or close. Dismiss forms and refuse late answers.                                                                 | 1 Stop/close; 3 archive                   |
-| Receipts, writer admission, force recovery and reconnect                 | Core Session/owner-coordination owners; current `server/session-continuation.js`                                                 | Proposed bounded recovery/observation extension                                                    | Preserve locks, generations and durable evidence. Refuse stale/conflicting writers. Connection loss interrupts work; never resubmit uncertain input automatically.                                                                          | 3 services; 4 recovery                    |
-| `/`, sidebar, dashboard APIs and dashboard stream                        | Plan/Session/registry owners aggregated by `server/owner-dashboard.ts`; `routes/owner-api.js`                                    | Proposed dashboard read/observe extension                                                          | Preserve incremental attention sections, Project progress and partial failures. Projection is not authority. An unavailable section is not an empty successful result.                                                                      | 7                                         |
+| Queued input, steering and background output                             | Core continuation/live operations; ACP and HTTP adapters                                                                         | `_session/steering`, version 1 snapshots; client-only unsent queue                                 | Preserve queued intent and delayed results after a prompt ends. Negotiate support; an unknown update is not completed work.                                                                                                                 | 3                                         |
+| Stop, close, archive/unarchive                                           | Core Session lifecycle; `routes/owner-session-api.js`, `src/acp/server.js`                                                       | Standard cancel notification and close request; `session/delete` archive and version 1 `unarchive` | Stop a held stream/question, await settlement, then send again. Close retains history. Delete is reversible archive, never close or transcript deletion. Dismiss forms and refuse late answers.                                             | 1 Stop/close; 3 archive                   |
+| Receipts, writer admission, force recovery and reconnect                 | Core Session/owner-coordination and continuation owners                                                                          | Implemented receipts and snapshots; process recovery remains child 4                               | Preserve locks, generations and durable evidence. Refuse stale/conflicting writers. Connection loss interrupts work; never resubmit uncertain input automatically.                                                                          | 3 services; 4 recovery                    |
+| Project/Session sidebar shell                                            | Core Project admission and Session history; `react/ProjectWorkbench.tsx`, `react/ProjectSidebar.tsx`                             | Project group, standard list, version 1 history                                                    | Five recent Sessions per Project, five-row Show more, independent retry, New Session and settings. Read contexts do not retarget bound work. Preserve expansion/scroll, collapse/resize and narrow overlay.                                 | 3                                         |
+| `/`, dashboard APIs, Plan navigation and dashboard stream                | Plan/Session/registry owners aggregated by `server/owner-dashboard.ts`; `routes/owner-api.js`                                    | Proposed dashboard read/observe extension                                                          | Preserve incremental attention sections, Project progress and partial failures. Projection is not authority. An unavailable section is not an empty successful result.                                                                      | 7                                         |
 | Attention notifications and navigation                                   | Runtime attention evidence; `browser/workspace-notifications.ts`, `browser/session-tab-notifications.ts`                         | Proposed attention observation plus native host adapter                                            | Preserve notification policy and deliberate navigation. Permission denial does not block work. No fabricated completion or automatic external navigation.                                                                                   | 7; 4 lifetime                             |
 | Plan boards, details, closed/on-hold views and progress                  | `src/plan-store.js`, workflow controller and worktree registry; `server/plan-adapter.js`, `server/owner-plan-progress.ts`        | Proposed Plan reads/progress extension                                                             | Show canonical state and evidence-based actions. Refuse unavailable resources and stale references; retain Plan-store abstraction.                                                                                                          | 5 boards; 6 progress                      |
 | Plan actions, edits and workflow launch                                  | `src/shared/workflow/plan-actions.ts`; `server/owner-plan-actions.ts`, `routes/owner-plan-continuation.ts`                       | Proposed revision/generation-bound mutation extension                                              | Preserve request hashes, durable receipts, writer admission and refresh/recovery outcomes. Duplicate requests cannot repeat effects.                                                                                                        | 5 editing; 6 execution                    |
@@ -170,8 +468,7 @@ keeps its binding; close it explicitly before selecting another Project for Sess
 For model work, configure Core credentials and a default model externally with `wld login`, then restart desktop.
 Existing global, Project, and linked-worktree settings are read in place. Missing setup leaves Project management
 available and shows the actual Core prerequisite, not Workspace sign-in. No provider editor or credential import
-exists here; in-app setup belongs to child 10. Provider-independent saved-history browsing and Archived Sessions
-belong to child 3. Local use needs no Workspace account.
+exists here; in-app setup belongs to child 10. Provider-independent saved-history browsing and Archived Sessions are available in the source client. Local use needs no Workspace account.
 `desktop:dev` builds and launches the native app at `runwield://app/`, not an HTTP/HMR server. Main uses the launcher's
 Bun executable and this checkout's source CLI. No global `wld` installation is used. Build output is `dist/desktop/`.
 
@@ -214,8 +511,8 @@ successful Linux run.
 
 The [Session verification plan](plans/local-workspace-desktop/run-a-real-session-in-electron.md#verification-plan)
 and [Project entry verification plan](plans/local-workspace-desktop/open-projects-and-configure-providers.md#verification-plan)
-define the boundary assertions. ADR acceptance records a decision, not delivery evidence. The following focused
-checks passed in this development change; full repository CI remains pending.
+define the boundary assertions. ADR acceptance records a decision, not delivery evidence. The earlier Session/Project checks below record their original slice. Saved-Session evidence follows separately;
+full repository CI remains pending.
 
 | Evidence                                                                                      | What it proves                                                                                                                                                                                                                                                                               | Limit                                                          |
 | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
@@ -243,6 +540,99 @@ Project entry adds these focused checks; child 1 and shared question-form covera
 The dedicated desktop type checks and runtime graph gate also passed. Existing in-process SDK coverage establishes
 wire behavior but cannot alone establish the subprocess or Electron boundary. Retained browser Artifact Review,
 review routes, no-form questions, and background-delivery regression checks pass after building Workspace assets.
+
+### Saved-Session source evidence
+
+Dedicated process and native suites passed in this change. Their assertions cover these boundaries, not installers or
+manual headed acceptance:
+
+| Evidence                                                                                                                                   | Assertions                                                                                                                                                                                                                             | Limit                                                           |
+| ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| [History process tests](../src/acp/workspace-session-history.process.test.ts)                                                              | Provider-free segmented history, names, images/configuration, archive filters, stable IDs, cursor refusal, non-mutating initialized reads, generation bootstrap and writer protection; ordinary cwd listing without Workspace database | Source subprocess                                               |
+| [Parity process tests](../src/acp/workspace-session-parity.process.test.ts)                                                                | Receipt replay/restart, stale generation and image refusals, independent Project reads during a question, unsent queue dispatch, retained background Stop, busy archive, bounded gaps and repeated snapshots                           | Controlled provider                                             |
+| [Cross-process continuity](../src/shared/session/session-continuation-cross-process.integration.test.ts)                                   | Separate Runtime and ACP processes share durable identity/history/configuration and enforce writer exclusion; answer/steer/cancel cross-owner work                                                                                     | Runtime harness using TUI ownership, not a real interactive TUI |
+| [Sidebar DOM tests](../src/ui/workspace/project-sidebar.test.tsx)                                                                          | Independent five-row paging/retry, stable selection, navigation/draft preservation, archived paging/open/Unarchive, confirmation focus                                                                                                 | DOM, not headed layout proof                                    |
+| [Native Session tests](../src/ui/desktop/desktop-session.integration.test.ts)                                                              | Built bridge and real subprocess: images via selection/paste/drop, retained rejected drafts, queue edit/remove/dispatch, pre-create configuration and background Stop                                                                  | Controlled provider, source build                               |
+| [Native entry](../src/ui/desktop/desktop-entry.integration.test.ts) and [security](../src/ui/desktop/desktop-security.integration.test.ts) | Project management without provider setup and fixed Session binding; malformed/oversized/foreign requests refused before effects                                                                                                       | No installed-platform qualification                             |
+
+The saved-Session Plan's [headed acceptance](plans/local-workspace-desktop/continue-saved-sessions-in-desktop.md#headed-acceptance)
+is recorded below. Automated assertions and headed checks provide separate evidence. The earlier Project-entry
+evidence remains separate.
+
+### Saved-Session headed checks: macOS arm64 source build
+
+The parent Agent ran the built native app at `runwield://app/`, CDP port 9328, with a 1440×868 content viewport.
+Without a provider, saved history and configuration were readable; a refused send retained its draft. Two Projects
+showed five recent Sessions each and five more through Show more. Archived duplicate rows were checked; opening a
+row left it archived, and explicit Unarchive refreshed the list. A valid image-only submission was accepted and saved.
+Screenshots: `/tmp/ss9b-provider-free-draft.png`, `/tmp/ss9b-provider-free-archived.png`, and
+`/tmp/ss9b-image-only-accepted.png`.
+
+A real full TUI ran under a PTY on the same durable Session ID, `e8a14975-87a3-4ad3-bfc4-c55a85df24a2`.
+Desktop continued while TUI was idle. After the Core synchronization fix, TUI changed the Agent to Engineer and
+continued. The idle desktop view then showed Engineer and the new content once, while retaining its unsent draft.
+Screenshot: `/tmp/ss9b-real-tui-continuity-fixed.png`.
+
+Further headed checks established:
+
+- Upload, paste-plus-text, drop, and saved image rendering. An oversized image showed `Image exceeds 7 MiB.` without
+  losing the draft. Structured Other and approval responses reached Core without consuming the ordinary draft/image.
+- Foreground steering, queued-intent removal and once-only dispatch, background continuation after the foreground
+  returned, and retained background Stop.
+- A 232-message, two-segment saved conversation opened without provider setup. Loading older history changed the
+  loaded count from 120 to 200 while preserving the reading position. An open tool disclosure remained open through
+  a peer process's next committed generation; the ordinary draft remained intact.
+- Busy archive displayed `Stop and archive` and `Cancel`. Cancel retained the Session and returned focus; confirmation
+  stopped and archived it. Unarchive restored its row without changing the saved identity.
+- At 600×850, the sidebar used an overlay. Escape closed it and returned focus to Show sidebar. The draft remained,
+  and neither that viewport nor 1440×868 had horizontal document overflow. Keyboard resize changed the sidebar from
+  280 to 300 pixels; that width survived settings navigation. Enter opened settings, ArrowRight selected Archived
+  Sessions, and Tab reached its saved row and Unarchive button. Enter opened the archived row and restored it through
+  Unarchive. Each tab owns its content panel; hidden panels retain form state without entering the tab order.
+- A missing second Project showed Retry after refresh while the first Project's loaded rows remained available.
+  Restoring the root and Retry recovered the second Project. Settings navigation preserved the open binding and draft.
+- Saved configuration stayed visible when its model was absent from available options. With a configured reasoning
+  model, native Agent, model, and thinking selections produced a successful continuation and retained the selected
+  `engineer`, `fixture/fixture-alt`, and `medium` configuration. `/help` used no provider turn.
+
+Screenshots include `/tmp/ss9b-question-draft-isolation.png`, `/tmp/ss9b-queue-steer.png`,
+`/tmp/ss9b-older-history-position.png`, `/tmp/ss9b-final-expanded-disclosure.png`,
+`/tmp/ss9b-busy-archive-labels.png`, `/tmp/ss9b-final-narrow-overlay.png`,
+`/tmp/ss9b-final-independent-retry.png`, `/tmp/ss9b-provider-free-model-fixed.png`,
+`/tmp/ss9b-final-configuration-accepted.png`, and `/tmp/ss9b-final-keyboard-archived.png`.
+Final renderer errors were empty; local asset requests succeeded.
+The controlled provider recorded 38 requests and no provider failures.
+
+These checks used the controlled local HTTP provider from `makeSessionProcessFixture`, not a real external provider.
+They establish the recorded journeys on a macOS arm64 source build, not installed qualification. Screenshot paths are
+temporary local evidence, not durable fixtures. The final focused run passed 383 tests across 35 files, with one
+Windows-only test skipped. Desktop and Workspace checks, source type checks, the dependency boundary gate, injection
+seam checks, and documentation link checks passed. Full CI remains pending through RunWield.
+
+### Saved-Session regression compatibility
+
+No test declaration was removed. This change adds 30 source test-case declarations; two negotiation table rows add
+further generated executions. Existing assertions were rewritten for these contracts:
+
+| Existing check                  | Current assertion and retained protection                                                                              |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Unsupported ACP method          | Uses unsupported `session/fork`; `session/list` is implemented.                                                        |
+| Optional text default           | Shows the supplied default; explicit empty submission remains covered.                                                 |
+| Choice default                  | Shows the supplied default without submitting it; a no-default case retains empty native/embedded submission coverage. |
+| Native missing provider         | Refuses deliberate Send, not passive New Session; no provider request occurs.                                          |
+| Native security evidence        | Seeds one legitimate provider turn before attacks; refused requests cannot add turns.                                  |
+| Saved identity lookup           | Uses the durable Session ID, not the Pi locator, in security and Workspace-entry checks.                               |
+| Untrusted IPC                   | Allows the legitimate sidebar registration; untrusted requests cannot add registrations.                               |
+| Lazy saved identity             | New Session has no saved ID until Send; Close/reopen retains the resulting ID.                                         |
+| Empty running composer          | Checks disabled Steer rather than disabled Send.                                                                       |
+| Transcript uniqueness           | Counts the reopened prompt within Conversation, excluding sidebar labels.                                              |
+| Workspace prompt completion     | Reads durable metadata after completion and closes the returned wire binding.                                          |
+| Workspace provider prerequisite | Negotiated `session/new` is passive; deliberate `session/prompt` requires provider setup.                              |
+| Stale browser Plan review       | Checks the shared snapshot's explicit `null` for a cleared interaction.                                                |
+
+The live-review fixture uses a distinct request ID for each new logical turn. Reusing its old fixed ID would correctly
+replay the earlier durable receipt instead of starting a new provider turn. Provider entry is bounded and reports the
+actual operation on failure. Command surface checks wait for the enabled Send control after configuration settles.
 
 ### Manual native checks: macOS arm64 only
 

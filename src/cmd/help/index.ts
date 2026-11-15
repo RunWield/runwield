@@ -15,9 +15,10 @@ interface HelpCommandUi {
 interface HelpCommandOptions {
     uiAPI?: HelpCommandUi;
     slashSurface?: "tui" | "acp" | "workspace";
+    commandNames?: string[];
 }
 
-function formatGlobalHelp(slashSurface?: "tui" | "acp" | "workspace"): string {
+function formatGlobalHelp(slashSurface?: "tui" | "acp" | "workspace", commandNames?: string[]): string {
     const lines = [
         "RunWield — Plan-by-Default Coding Harness",
         "",
@@ -29,7 +30,9 @@ function formatGlobalHelp(slashSurface?: "tui" | "acp" | "workspace"): string {
         "Commands:",
     ];
 
-    const commands = slashSurface ? getSlashCommandDefinitions(slashSurface) : getCliCommandDefinitions();
+    const commands = (slashSurface ? getSlashCommandDefinitions(slashSurface) : getCliCommandDefinitions()).filter(
+        (command) => !commandNames || commandNames.includes(command.name),
+    );
     const nameWidth = Math.max(...commands.map((command) => command.name.length));
     for (const command of commands) lines.push(`  ${command.name.padEnd(nameWidth)} ${command.summary}`);
 
@@ -87,7 +90,9 @@ export async function runHelpCommand(argv: string[], options: HelpCommandOptions
     const [commandName] = parsed._.map(String);
 
     if (options.uiAPI) {
-        const message = commandName ? formatCommandHelp(commandName) : formatGlobalHelp(options.slashSurface);
+        const message = commandName
+            ? formatCommandHelp(commandName)
+            : formatGlobalHelp(options.slashSurface, options.commandNames);
         if (message) {
             options.uiAPI.appendSystemMessage(message);
             return;

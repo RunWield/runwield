@@ -1,3 +1,4 @@
+import { SavedSessionRows } from "./SavedSessionRows.tsx";
 import { useEffect, useRef, useState } from "react";
 import { RunWieldButton, RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 
@@ -65,33 +66,39 @@ export function SessionList({
         setRemoved([]);
         setArchiveOverrides({});
     }, [data]);
-    const sessions = (Array.isArray(data?.sessions) ? data.sessions : []).filter((row) =>
-        !removed.includes(row.runwieldSessionId)
-    ).map((row) =>
-        archiveOverrides[row.runwieldSessionId] === undefined
-            ? row
-            : { ...row, archivedAt: archiveOverrides[row.runwieldSessionId] }
-    );
+    const sessions = (Array.isArray(data?.sessions) ? data.sessions : [])
+        .filter((row) => !removed.includes(row.runwieldSessionId))
+        .map((row) =>
+            archiveOverrides[row.runwieldSessionId] === undefined
+                ? row
+                : { ...row, archivedAt: archiveOverrides[row.runwieldSessionId] },
+        );
     async function changeArchive(session) {
         const id = session.runwieldSessionId;
         if (pendingIds.current.has(id)) return;
         const isArchived = Boolean(session.archivedAt);
         const busy = session.state === "active" || session.state === "busy" || knownBusy.current.has(id);
         if (
-            !isArchived && busy &&
+            !isArchived &&
+            busy &&
             !globalThis.confirm(
                 `Stop current work and archive “${
                     session.displayName || "Untitled Session"
                 }”? The transcript and Plan associations will be kept.`,
             )
-        ) return;
+        )
+            return;
         pendingIds.current.add(id);
         setPending([...pendingIds.current]);
         setActionErrors((errors) => ({ ...errors, [id]: "" }));
         try {
-            const csrf = document.cookie.split("; ").find((value) =>
-                value.startsWith("rw_owner_csrf=")
-            )?.split("=").slice(1).join("=") || "";
+            const csrf =
+                document.cookie
+                    .split("; ")
+                    .find((value) => value.startsWith("rw_owner_csrf="))
+                    ?.split("=")
+                    .slice(1)
+                    .join("=") || "";
             const response = await fetch(
                 `/api/owner/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(id)}/${
                     isArchived ? "unarchive" : "archive"
@@ -131,9 +138,9 @@ export function SessionList({
     const pageSize = Number.isInteger(data?.pageSize) ? data.pageSize : 30;
     const total = Number.isInteger(data?.total)
         ? Math.max(
-            0,
-            data.total - removed.filter((id) => data.sessions?.some((row) => row.runwieldSessionId === id)).length,
-        )
+              0,
+              data.total - removed.filter((id) => data.sessions?.some((row) => row.runwieldSessionId === id)).length,
+          )
         : sessions.length;
     const hasNext = data?.hasNext === true;
     const hasPrevious = page > 0 || data?.hasPrevious === true;
@@ -151,7 +158,11 @@ export function SessionList({
             <section className="error-panel session-list-state" role="alert">
                 <h2>Sessions failed to load</h2>
                 <p>{error}</p>
-                {onRetry ? <RunWieldButton type="button" onClick={onRetry}>Retry</RunWieldButton> : null}
+                {onRetry ? (
+                    <RunWieldButton type="button" onClick={onRetry}>
+                        Retry
+                    </RunWieldButton>
+                ) : null}
             </section>
         );
     }
@@ -159,7 +170,9 @@ export function SessionList({
     const newSessionAction = archived ? null : (
         <section className="session-create-panel" aria-label="Session actions">
             <a className="rw-toolbar-button" href={newSessionHref(projectId)}>
-                <span className="rw-toolbar-plus" aria-hidden="true">+</span>
+                <span className="rw-toolbar-plus" aria-hidden="true">
+                    +
+                </span>
                 <span>New Session</span>
             </a>
         </section>
@@ -176,40 +189,38 @@ export function SessionList({
                             : "Start a new browser Session or run a full Session rescan from the Project card."}
                     </p>
                 </section>
-                {hasPrevious
-                    ? (
-                        <nav className="session-pagination" aria-label="Session pages">
-                            <RunWieldButton
-                                type="button"
-                                disabled={loading || pending.length > 0}
-                                onClick={() => onPageChange?.(page - 1)}
-                            >
-                                Previous
-                            </RunWieldButton>
-                        </nav>
-                    )
-                    : null}
+                {hasPrevious ? (
+                    <nav className="session-pagination" aria-label="Session pages">
+                        <RunWieldButton
+                            type="button"
+                            disabled={loading || pending.length > 0}
+                            onClick={() => onPageChange?.(page - 1)}
+                        >
+                            Previous
+                        </RunWieldButton>
+                    </nav>
+                ) : null}
             </section>
         );
     }
     return (
         <section className="session-list-surface" aria-label="Project Sessions">
             {newSessionAction}
-            {error
-                ? (
-                    <p className="notice warning" role="alert">
-                        {error} <RunWieldButton onClick={onRetry}>Retry</RunWieldButton>
-                    </p>
-                )
-                : null}
-            {diagnostics.length
-                ? (
-                    <details className="notice warning session-diagnostics">
-                        <summary>Catalog diagnostics ({diagnostics.length})</summary>
-                        <ul>{diagnostics.map((item, index) => <li key={index}>{safeDiagnosticText(item)}</li>)}</ul>
-                    </details>
-                )
-                : null}
+            {error ? (
+                <p className="notice warning" role="alert">
+                    {error} <RunWieldButton onClick={onRetry}>Retry</RunWieldButton>
+                </p>
+            ) : null}
+            {diagnostics.length ? (
+                <details className="notice warning session-diagnostics">
+                    <summary>Catalog diagnostics ({diagnostics.length})</summary>
+                    <ul>
+                        {diagnostics.map((item, index) => (
+                            <li key={index}>{safeDiagnosticText(item)}</li>
+                        ))}
+                    </ul>
+                </details>
+            ) : null}
             <section className="session-catalog" aria-label="Existing Sessions">
                 <header className="session-catalog-header">
                     <div>
@@ -217,40 +228,21 @@ export function SessionList({
                     </div>
                     <span>{total} total</span>
                 </header>
-                <div className="session-card-list">
-                    {sessions.map((session) => (
-                        <div
-                            className="session-list-row"
-                            key={session.runwieldSessionId}
-                            aria-busy={pending.includes(session.runwieldSessionId)}
-                        >
-                            <a className="session-list-item" href={sessionHref(projectId, session.runwieldSessionId)}>
-                                <span className="session-list-name">{session.displayName || "Untitled Session"}</span>
-                                <span className="session-list-status">
-                                    {session.archivedAt ? "Archived" : session.state || "unknown"}
-                                </span>
-                            </a>
-                            <RunWieldButton
-                                disabled={pending.includes(session.runwieldSessionId)}
-                                aria-label={`${session.archivedAt ? "Unarchive" : "Archive"} ${
-                                    session.displayName || "Untitled Session"
-                                }`}
-                                onClick={() => changeArchive(session)}
-                            >
-                                {pending.includes(session.runwieldSessionId)
-                                    ? (session.archivedAt ? "Unarchiving…" : "Archiving…")
-                                    : (session.archivedAt ? "Unarchive" : "Archive")}
-                            </RunWieldButton>
-                            {actionErrors[session.runwieldSessionId]
-                                ? (
-                                    <p className="notice warning session-archive-error" role="alert">
-                                        {actionErrors[session.runwieldSessionId]}
-                                    </p>
-                                )
-                                : null}
-                        </div>
-                    ))}
-                </div>
+                <SavedSessionRows
+                    rows={sessions.map((session) => ({
+                        id: session.runwieldSessionId,
+                        title: session.displayName || "Untitled Session",
+                        archived: Boolean(session.archivedAt),
+                        state: session.state || "unknown",
+                        href: sessionHref(projectId, session.runwieldSessionId),
+                        pending: pending.includes(session.runwieldSessionId),
+                        error: actionErrors[session.runwieldSessionId] || "",
+                    }))}
+                    onArchive={(id) => {
+                        const session = sessions.find((row) => row.runwieldSessionId === id);
+                        if (session) void changeArchive(session);
+                    }}
+                />
             </section>
             <nav className="session-pagination" aria-label="Session pages">
                 <span>

@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { mkdir, readFile, readdir, realpath, rename, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { makeSessionProcessFixture } from "./client/testing/session-process-fixture.ts";
+import { makeSessionProcessFixture, waitForSession } from "./client/testing/session-process-fixture.ts";
 import { openOwnerCoordinationStore } from "../shared/owner-coordination/index.ts";
 import {
     WORKSPACE_EXTENSION as key,
@@ -109,7 +109,7 @@ function error(response: RpcResponse, code: string) {
     equal(response.error?.data?.code, code, JSON.stringify(response));
 }
 function meta(context: WorkspaceProjectContext): WorkspaceJsonRecord {
-    return { [key]: { ...context } };
+    return { [key]: { ...context, requestId: crypto.randomUUID(), expectedGeneration: 0 } };
 }
 async function initialize(runtime: ReturnType<typeof launch>) {
     const response = result(
@@ -364,13 +364,13 @@ test(
             result(await runtime.request(prefix + "setEnabled", { projectId: id, enabled: false }));
             error(await runtime.request("session/delete", binding), "project_unavailable");
             runtime.notify("session/cancel", binding);
-            result(await turn);
+            const completed = result(await turn);
             const savedBeforeRemoval = store(fixture);
             let transcriptPath = "";
             try {
-                const saved = savedBeforeRemoval.findSessionByLocator({
-                    piSessionId: row(row(session._meta).runwield).persistedSessionId as string,
-                });
+                const saved = savedBeforeRemoval.getSessionById(
+                    row(row(completed._meta).runwield).persistedSessionId as string,
+                );
                 ok(saved);
                 const segment = savedBeforeRemoval.getCurrentSessionSegment(saved.runwieldSessionId);
                 ok(segment);
@@ -393,7 +393,7 @@ test(
             await mkdir(other);
             const otherId = await register(runtime, other);
             const foreign = await open(runtime, otherId);
-            const durable = row(session._meta).runwield;
+            const durable = row(completed._meta).runwield;
             const persisted = row(durable).persistedSessionId;
             ok(typeof persisted === "string");
             const beforeDeniedLoad = await manifests(fixture);
@@ -416,7 +416,7 @@ test(
                     await restarted.request("session/new", { ...request, _meta: meta(rebound) }),
                     "workspace_binding_invalid",
                 );
-                result(
+                const loaded = result(
                     await restarted.request("session/load", {
                         sessionId: persisted,
                         cwd: fresh.canonicalRoot,
@@ -424,7 +424,7 @@ test(
                         _meta: meta(fresh),
                     }),
                 );
-                result(await restarted.request("session/close", { sessionId: persisted, _meta: meta(fresh) }));
+                result(await restarted.request("session/close", { sessionId: loaded.sessionId, _meta: meta(fresh) }));
             } finally {
                 await restarted.close();
             }
@@ -492,10 +492,17 @@ test(
             await initialize(runtime);
             const id = await register(runtime, fixture.project);
             const context = await open(runtime, id);
-            const response = await runtime.request("session/new", {
-                cwd: context.canonicalRoot,
-                mcpServers: [],
+            const passive = result(
+                await runtime.request("session/new", {
+                    cwd: context.canonicalRoot,
+                    mcpServers: [],
+                    _meta: meta(context),
+                }),
+            );
+            const response = await runtime.request("session/prompt", {
+                sessionId: passive.sessionId,
                 _meta: meta(context),
+                prompt: [{ type: "text", text: "Deliberately start model work." }],
             });
             error(response, "default_model_required");
             ok(response.error?.message.includes("wld login"));
@@ -609,3 +616,92 @@ for (const linked of [false, true]) {
         },
     );
 }
+
+test(
+    "standard negotiated handlers preserve typed refusals without leaking credentials or false success",
+    { timeout: 60000 },
+    async () => {
+        const fixture = await makeSessionProcessFixture();
+        const runtime = launch(fixture);
+        try {
+            await initialize(runtime);
+            const projectId = await register(runtime, fixture.project);
+            const context = await open(runtime, projectId);
+            const wire = result(
+                await runtime.request("session/new", {
+                    cwd: context.canonicalRoot,
+                    mcpServers: [],
+                    _meta: meta(context),
+                }),
+            ).sessionId;
+            ok(typeof wire === "string");
+            const prompt = (text: string, requestId: string, generation: number) =>
+                runtime.request("session/prompt", {
+                    sessionId: wire,
+                    prompt: [{ type: "text", text }],
+                    _meta: { [key]: { ...context, requestId, expectedGeneration: generation } },
+                });
+            fixture.provider.enqueue({ text: "Saved refusal fixture." });
+            const created = result(await prompt("Create saved work.", "create-refusals", 0));
+            const durable = row(row(created._meta).runwield).persistedSessionId;
+            ok(typeof durable === "string");
+            const history = () =>
+                runtime.request("_dev.runwield/workspace/sessions/history", {
+                    context: { ...context },
+                    sessionId: durable,
+                });
+            const generation = result(await history()).generation;
+            ok(typeof generation === "number");
+            const stale = await prompt("Must not run.", "stale-refusal", generation + 100);
+            error(stale, "generation_conflict");
+            equal(stale.error?.code, -32002);
+            const configured = await runtime.request("_dev.runwield/workspace/sessions/configure", {
+                context: { ...context },
+                sessionId: durable,
+                requestId: "stale-configure",
+                expectedGeneration: generation + 100,
+                thinkingLevel: "off",
+            });
+            error(configured, "generation_conflict");
+            const invalid = await prompt("x".repeat(65537), "invalid-refusal", generation);
+            error(invalid, "invalid_input");
+            equal(invalid.error?.code, -32602);
+            fixture.provider.enqueue({ text: "Receipt accepted once." });
+            result(await prompt("Receipt input.", "receipt-refusal", generation));
+            const conflict = await prompt("Different receipt input.", "receipt-refusal", generation);
+            error(conflict, "receipt_conflict");
+            const current = result(await history()).generation;
+            ok(typeof current === "number");
+            fixture.provider.enqueue({ question: { type: "text", prompt: "Pending protocol question?" } });
+            const questioning = prompt("Ask and wait.", "pending-refusal", current);
+            await waitForSession(() => runtime.questions.length === 1);
+            const pending = await runtime.request("_session/steering", {
+                sessionId: wire,
+                prompt: [{ type: "text", text: "Must not bypass the question." }],
+                _meta: meta(context),
+            });
+            error(pending, "interaction_pending");
+            // Do not preflight a snapshot: Core must detect a writer that started after an idle view.
+            const refused = await runtime.request("session/delete", { sessionId: durable, _meta: meta(context) });
+            error(refused, "session_busy_confirmation_required");
+            equal(result(await history()).archivedAt, null);
+            result(
+                await runtime.request("session/delete", {
+                    sessionId: durable,
+                    _meta: { [key]: { ...context, confirmed: true } },
+                }),
+            );
+            result(await questioning);
+            ok(result(await history()).archivedAt);
+            equal(fixture.provider.requests.length, 3);
+            for (const response of [stale, configured, invalid, conflict, pending, refused]) {
+                ok(response.error);
+                ok(!JSON.stringify(response).includes("fixture-key"));
+                ok(!response.result);
+            }
+        } finally {
+            await runtime.close();
+            await fixture.cleanup();
+        }
+    },
+);

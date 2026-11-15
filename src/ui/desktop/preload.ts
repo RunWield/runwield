@@ -3,12 +3,22 @@ import type {
     SessionBinding,
     SessionClientView,
     SessionQuestionAnswer,
-    WorkspaceSessionClient,
+    WorkspaceSavedSessionClient,
 } from "../workspace/client/session-client.ts";
 import type { DesktopProjectClient } from "../workspace/client/project-client.ts";
 import { PROJECT_CHANNEL } from "./bridge.ts";
 import { SESSION_CHANNEL } from "./bridge.ts";
 
+import { SAVED_CHANNEL, type SavedOperation, type SavedDesktopRequest } from "./saved-session-bridge.ts";
+function saved(operation: SavedOperation, request: Partial<SavedDesktopRequest>) {
+    return ipcRenderer.invoke(`${SAVED_CHANNEL}${operation}`, { ...binding(), ...request });
+}
+function reportQueueError(error: Error) {
+    if (current) {
+        current = { ...current, error: error.message };
+        for (const listener of listeners) listener(structuredClone(current));
+    }
+}
 const listeners = new Set<(view: SessionClientView) => void>();
 let current: SessionClientView | null = null;
 function binding(): SessionBinding {
@@ -19,7 +29,32 @@ ipcRenderer.on(`${SESSION_CHANNEL}view`, (_event, view: SessionClientView) => {
     current = view;
     for (const listener of listeners) listener(structuredClone(current));
 });
-const client: WorkspaceSessionClient = {
+const client: WorkspaceSavedSessionClient = {
+    readProject: (request) => saved("readProject", { projectId: request.projectId }),
+    listSessions: (request) => saved("listSessions", { request }),
+    history: (request) => saved("history", { request }),
+    snapshot: (request) => saved("snapshot", { request }),
+    sessionOptions: (context) => saved("sessionOptions", { context }),
+    command: (context, text) => ipcRenderer.invoke(`${SAVED_CHANNEL}command`, { ...context, text }),
+    configure: (request) => saved("configure", { request }),
+    archive: (request, confirmed) => saved("archive", { request, ...(confirmed === undefined ? {} : { confirmed }) }),
+    unarchive: (request) => saved("unarchive", { request }),
+    stageConfiguration: (context, selection) =>
+        ipcRenderer.invoke(`${SAVED_CHANNEL}stageConfiguration`, { ...context, selection }),
+    sendImages: (context, text, images, requestId, expectedGeneration) =>
+        ipcRenderer.invoke(`${SAVED_CHANNEL}sendImages`, {
+            ...context,
+            text,
+            images,
+            ...(requestId === undefined ? {} : { requestId }),
+            ...(expectedGeneration === undefined ? {} : { expectedGeneration }),
+        }),
+    queue: (context, draft) => {
+        void ipcRenderer.invoke(`${SAVED_CHANNEL}queue`, { ...context, draft }).catch(reportQueueError);
+    },
+    removeQueued: (context, requestId) => {
+        void ipcRenderer.invoke(`${SAVED_CHANNEL}removeQueued`, { ...context, requestId }).catch(reportQueueError);
+    },
     create: () => ipcRenderer.invoke(`${SESSION_CHANNEL}create`, binding()),
     load: (knownId: string) => ipcRenderer.invoke(`${SESSION_CHANNEL}load`, { ...binding(), knownId }),
     send: (context: SessionBinding, text: string) => ipcRenderer.invoke(`${SESSION_CHANNEL}send`, { ...context, text }),
@@ -37,6 +72,7 @@ const client: WorkspaceSessionClient = {
     },
 };
 const projects: DesktopProjectClient = {
+    readProject: (request) => client.readProject(request),
     listProjects: () => ipcRenderer.invoke(`${PROJECT_CHANNEL}list`, { connectionId: binding().connectionId }),
     openProject: (request) =>
         ipcRenderer.invoke(`${PROJECT_CHANNEL}open`, { ...request, connectionId: binding().connectionId }),

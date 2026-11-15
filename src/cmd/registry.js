@@ -129,6 +129,7 @@ function requireInteractiveCommandContext(options) {
  * @property {string} summary
  * @property {string[]} usage
  * @property {string[]} [notes]
+ * @property {"new" | "help" | "context" | "agent" | "model"} [sessionAction]
  * @property {CommandHandler} execute
  * @property {("cli" | "slash")[]} surfaces
  * @property {("tui" | "acp" | "workspace")[]} [slashSurfaces]
@@ -256,6 +257,7 @@ export const commandRegistry = {
         getArgumentCompletions: getMcpCompletions,
     },
     [COMMAND_NAMES.AGENT]: {
+        sessionAction: "agent",
         name: COMMAND_NAMES.AGENT,
         aliases: ["agents"],
         displayName: "Agent",
@@ -283,6 +285,7 @@ export const commandRegistry = {
             await (await import("./agents/index.ts")).getAgentCompletions(argumentPrefix),
     },
     [COMMAND_NAMES.MODEL]: {
+        sessionAction: "model",
         name: COMMAND_NAMES.MODEL,
         aliases: ["models"],
         displayName: "Model",
@@ -422,6 +425,7 @@ export const commandRegistry = {
         slashSurfaces: ["tui", "workspace"],
     },
     [COMMAND_NAMES.NEW]: {
+        sessionAction: "new",
         name: COMMAND_NAMES.NEW,
         displayName: "New Session",
         description: "Start a new interactive session",
@@ -455,6 +459,7 @@ export const commandRegistry = {
         slashSurfaces: ["tui", "acp", "workspace"],
     },
     [COMMAND_NAMES.CONTEXT]: {
+        sessionAction: "context",
         name: COMMAND_NAMES.CONTEXT,
         displayName: "Context Usage",
         description: "Show active Agent Session context-window usage",
@@ -633,6 +638,7 @@ export const commandRegistry = {
         slashSurfaces: ["tui", "acp"],
     },
     [COMMAND_NAMES.HELP]: {
+        sessionAction: "help",
         name: COMMAND_NAMES.HELP,
         displayName: "Help",
         description: "Show help information",
