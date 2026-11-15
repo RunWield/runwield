@@ -1,3 +1,4 @@
+import { commitOperationEffect, recoverOperationEffect } from "./operation-receipts.ts";
 import { requestWorkspaceSearchRefresh } from "../shared/workspace-search-refresh.ts";
 import { resolvePrimaryCheckoutRoot } from "../shared/primary-checkout.ts";
 import { parseWorkRecordMarkdown } from "../shared/work-records/markdown.js";
@@ -6,7 +7,13 @@ import fs from "node:fs/promises";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID } from "node:crypto";
 import { dirname, isAbsolute, join, relative } from "node:path";
-import { inspectProjectIdentity, type ProjectIdentity } from "../shared/project-identity.ts";
+import {
+    assertProjectStoreIdentity,
+    requireProjectCheckout,
+    isHomeProjectOwner,
+    projectStoreLocation,
+    type ProjectStoreIdentity as ProjectIdentity,
+} from "../shared/project-identity.ts";
 import { openNativeFileLock, type NativeFileLock } from "../shared/native-file-lock.ts";
 import {
     ensurePrivateDir,
@@ -390,19 +397,7 @@ function normalizeName(name: string): string {
 function layout(identity: ProjectIdentity): PackageLayout {
     if (identity.personalOwner.kind !== "execution-account")
         fail("unavailable", "Managed-remote packages require their personal-store transport.");
-    const inspected = inspectProjectIdentity(identity.checkoutRoot, {
-        context: {
-            executionAccountHome: identity.executionAccountHome,
-            personalOwner: identity.personalOwner,
-        },
-    });
-    if (
-        inspected.kind !== "existing" ||
-        inspected.identity.projectId !== identity.projectId ||
-        inspected.identity.repositoryId !== identity.repositoryId ||
-        inspected.identity.checkoutId !== identity.checkoutId
-    )
-        fail("unavailable", "Package operations require an established Project identity.");
+    assertProjectStoreIdentity(identity);
     const home = join(identity.executionAccountHome, ".wld", "projects", identity.projectId);
     const internal = join(home, "internal", "plan-packages");
     return {
@@ -995,7 +990,7 @@ export async function listPlanPackages(identity: ProjectIdentity, includeArchive
         return catalog;
     } catch (error) {
         if (!(error instanceof Error)) throw error;
-        return { packages: [], issues: [issue(error, identity.checkoutRoot)] };
+        return { packages: [], issues: [issue(error, projectStoreLocation(identity))] };
     }
 }
 async function select(paths: PackageLayout, selector: PackageSelector): Promise<PackageInspection> {
@@ -1049,7 +1044,7 @@ export async function readPlanPackage(
         return await select(layout(identity), selector);
     } catch (error) {
         if (!(error instanceof Error)) throw error;
-        return issue(error, identity.checkoutRoot);
+        return issue(error, projectStoreLocation(identity));
     }
 }
 async function loaded(paths: PackageLayout, planId: string): Promise<LoadedPlanPackage> {
@@ -1231,6 +1226,7 @@ async function mutate<T>(
             await lock.lock(true);
         }
         await recover(paths);
+        recoverOperationEffect(paths.internal, paths.plans);
         if (selected === null) {
             for (const lock of plans.reverse()) lock.close();
             plans.length = 0;
@@ -1336,7 +1332,8 @@ export async function createPlanPackage(
             metadata,
         } satisfies PackageIntent);
         await recover(paths);
-        await requestWorkspaceSearchRefresh(resolvePrimaryCheckoutRoot(identity.checkoutRoot));
+        if (!isHomeProjectOwner(identity))
+            await requestWorkspaceSearchRefresh(resolvePrimaryCheckoutRoot(identity.checkoutRoot));
         return loaded(paths, input.planId);
     });
 }
@@ -1361,8 +1358,20 @@ export async function updatePlanPackageMetadata(
         const next = metadataFrom(
             JSON.parse(JSON.stringify({ ...current.metadata, ...update, revision: revision + 1 })),
         );
-        writeJsonAtomically(join(current.path, "plan.wld.json"), next);
-        await requestWorkspaceSearchRefresh(resolvePrimaryCheckoutRoot(identity.checkoutRoot));
+        const path = join(current.path, "plan.wld.json");
+        if (
+            !commitOperationEffect(
+                path,
+                await fs.readFile(path, "utf8"),
+                `${JSON.stringify(next, null, 2)}\n`,
+                packageWorkflowRevision({ ...current, metadata: next }),
+                next.workflow?.publication,
+                next.workflow?.workRecord?.recordId,
+            )
+        )
+            writeJsonAtomically(path, next);
+        if (!isHomeProjectOwner(identity))
+            await requestWorkspaceSearchRefresh(resolvePrimaryCheckoutRoot(identity.checkoutRoot));
         return next;
     });
 }
@@ -1380,8 +1389,25 @@ export async function savePlanPackageDocument(
         const live = await file(paths.home, join(current.path, name));
         const previous = live ? digest(live) : null;
         if (previous !== expectedHash) throw new StalePlanWriteError(expectedHash ?? "absent", previous ?? "absent");
-        writeTextAtomically(join(current.path, name), bytes);
-        await requestWorkspaceSearchRefresh(resolvePrimaryCheckoutRoot(identity.checkoutRoot));
+        const path = join(current.path, name);
+        const text = typeof bytes === "string" ? bytes : new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+        const changed = {
+            ...current,
+            documents: current.documents.map((document) =>
+                document.name === name ? { ...document, hash: digest(new TextEncoder().encode(text)) } : document,
+            ),
+        };
+        if (
+            !commitOperationEffect(
+                path,
+                live === null ? null : new TextDecoder().decode(live),
+                text,
+                packageWorkflowRevision(changed),
+            )
+        )
+            writeTextAtomically(path, bytes);
+        if (!isHomeProjectOwner(identity))
+            await requestWorkspaceSearchRefresh(resolvePrimaryCheckoutRoot(identity.checkoutRoot));
         return digest(typeof bytes === "string" ? new TextEncoder().encode(bytes) : bytes);
     });
 }
@@ -1826,7 +1852,8 @@ export async function commitPlanPackageBatch(
             };
             writeJsonAtomically(paths.batch, batch);
             await recoverAuthoringBatch(paths, batch);
-            await requestWorkspaceSearchRefresh(resolvePrimaryCheckoutRoot(identity.checkoutRoot));
+            if (!isHomeProjectOwner(identity))
+                await requestWorkspaceSearchRefresh(resolvePrimaryCheckoutRoot(identity.checkoutRoot));
         },
     );
 }
@@ -1861,7 +1888,7 @@ export async function importPlanPackages(identity: ProjectIdentity, selection: s
                 }
             }
             const prepared = await preparePlanPackageImport(
-                identity,
+                requireProjectCheckout(identity),
                 selection,
                 allocations,
                 catalog.packages,
@@ -1887,7 +1914,7 @@ export async function importPlanPackages(identity: ProjectIdentity, selection: s
                     metadataFrom(member.metadata);
                     await assertDestination(paths, member.metadata.name);
                 }
-                await revalidatePlanImport(identity, prepared, catalog.packages, allocations);
+                await revalidatePlanImport(requireProjectCheckout(identity), prepared, catalog.packages, allocations);
                 const recordId = randomUUID();
                 for (const member of prepared.members)
                     member.metadata.references.legacyImport = {
@@ -2295,4 +2322,16 @@ export async function findPlanPackageRecordingPreparation(
         found = reference;
     }
     return found;
+}
+
+/** Revision identity shared by local and connection-bound commands. */
+export function packageWorkflowRevision(plan: LoadedPlanPackage): string {
+    return createHash("sha256")
+        .update(
+            JSON.stringify({
+                revision: plan.metadata.revision,
+                documents: plan.documents.map(({ name, hash }) => ({ name, hash })),
+            }),
+        )
+        .digest("hex");
 }

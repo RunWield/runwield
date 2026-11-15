@@ -10,6 +10,7 @@ import {
 } from "./packages.ts";
 import {
     currentPackageSelection,
+    currentPackageProject,
     loadPackageWorkflowPlan,
     selectedPackage,
     updatePackageWorkflowMetadata,
@@ -217,7 +218,9 @@ export async function readPublishedRecordMarkdown(
         return null;
     }
     if (attempt.packageInput) {
-        const inspected = inspectProjectIdentity(root);
+        const inspected = currentPackageProject()
+            ? { kind: "existing" as const, identity: currentPackageProject()! }
+            : inspectProjectIdentity(root);
         if (inspected.kind !== "existing") throw new Error("Recording owner is unavailable.");
         await packageDeliverySources(root, attempt.packageInput, true);
         const manifest = await readPlanPackagePublication(inspected.identity, attempt.packageInput);
@@ -237,7 +240,9 @@ async function packageRecordingReceipt(
     root: string,
     reference: PackagePublicationReference,
 ): Promise<PackageDeliveryReceipt | undefined> {
-    const inspected = inspectProjectIdentity(root);
+    const inspected = currentPackageProject()
+        ? { kind: "existing" as const, identity: currentPackageProject()! }
+        : inspectProjectIdentity(root);
     if (inspected.kind !== "existing") throw new Error("Recording owner is unavailable.");
     const manifest = await readPlanPackagePublication(inspected.identity, reference);
     const current = await readPlanPackage(inspected.identity, { planId: reference.planId });
@@ -286,7 +291,9 @@ async function packageDeliverySources(
     reference: PackagePublicationReference,
     confirmed: boolean,
 ): Promise<PublishedDeliverySources> {
-    const inspected = inspectProjectIdentity(root);
+    const inspected = currentPackageProject()
+        ? { kind: "existing" as const, identity: currentPackageProject()! }
+        : inspectProjectIdentity(root);
     if (inspected.kind !== "existing") throw new Error("Recording owner is unavailable.");
     const manifest = await readPlanPackagePublication(inspected.identity, reference);
     const proved = await packageRecordingReceipt(root, reference);

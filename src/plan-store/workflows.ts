@@ -1,3 +1,4 @@
+import { packageWorkflowRevision } from "./packages.ts";
 import { retainPlanAccess, type PlanAccess } from "./handles.ts";
 import { continueImportedPackage, readImportedExecutionPlan } from "./legacy.ts";
 import { currentRetainedCheckoutSource } from "./retained-source.ts";
@@ -8,7 +9,13 @@ import { journalPackageMetadataWrite } from "./transitions.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { inspectProjectIdentity, type ProjectIdentity } from "../shared/project-identity.ts";
+import {
+    inspectProjectIdentity,
+    assertProjectStoreIdentity,
+    requireProjectCheckout,
+    isHomeProjectOwner,
+    type ProjectStoreIdentity as ProjectIdentity,
+} from "../shared/project-identity.ts";
 import {
     capturePlanPackageInput,
     savePlanPackageDocument,
@@ -82,7 +89,7 @@ interface PackageWorkflowScope {
 const sources = new AsyncLocalStorage<PackageWorkflowScope>();
 export function packageExecutionJournalOwner(): string | undefined {
     const scope = sources.getStore();
-    return scope?.executionJournals ? scope.identity.checkoutRoot : undefined;
+    return scope?.executionJournals && !isHomeProjectOwner(scope.identity) ? scope.identity.checkoutRoot : undefined;
 }
 export async function withPackageExecutionJournal<T>(run: () => Promise<T>): Promise<T> {
     const scope = sources.getStore();
@@ -102,7 +109,9 @@ export function currentPackageProject(): ProjectIdentity | undefined {
 
 /** Revalidate the account and repository at each request boundary; inspection performs no writes. */
 export async function withPackageProject<T>(cwd: string, identity: ProjectIdentity, run: () => Promise<T>): Promise<T> {
-    const owner = inspectProjectIdentity(cwd);
+    const owner = isHomeProjectOwner(identity)
+        ? (assertProjectStoreIdentity(identity), { kind: "existing" as const, identity })
+        : inspectProjectIdentity(cwd);
     if (
         identity.personalOwner.kind !== "execution-account" ||
         owner.kind !== "existing" ||
@@ -122,7 +131,9 @@ export async function withPackageWorkflow<T>(
     run: () => Promise<T>,
     planName?: string,
 ): Promise<T> {
-    const owner = inspectProjectIdentity(cwd);
+    const owner = isHomeProjectOwner(selection.identity)
+        ? (assertProjectStoreIdentity(selection.identity), { kind: "existing" as const, identity: selection.identity })
+        : inspectProjectIdentity(cwd);
     if (
         owner.kind !== "existing" ||
         owner.identity.projectId !== selection.identity.projectId ||
@@ -148,6 +159,11 @@ export async function withPackageWorkflow<T>(
             sources.run({ identity: selection.identity, selection: admitted }, run),
         );
     };
+    if (isHomeProjectOwner(selection.identity)) {
+        if (selected.metadata.references.legacyImport)
+            throw new Error("Imported execution requires its original execution owner.");
+        return await canonical();
+    }
     return await continueImportedPackage(selection.identity, selected, run, canonical);
 }
 
@@ -360,7 +376,10 @@ export async function releaseSettledPackageAttempt(planName: string): Promise<vo
         await loadPackageWorkflowPlan(planName);
         const plan = await selectedPackage(planName);
         const binding = plan.metadata.workflow?.attempt;
-        const entry = binding ? await findById(binding.repositoryRoot, binding.attemptId) : null;
+        const entry =
+            binding && !isHomeProjectOwner(currentPackageProject()!)
+                ? await findById(binding.repositoryRoot, binding.attemptId)
+                : null;
         if (entry?.status === "abandoned") await updatePackageWorkflowMetadata(planName, {});
     });
 }
@@ -370,15 +389,7 @@ export async function packageController(plan: LoadedPlanPackage): Promise<Workfl
     const evidence = ref ? await readPackageControllerEvidence(currentPackageProject()!, ref) : {};
     return { ...evidence, ...plan.metadata.controller };
 }
-/** The revision and displayed document bytes must come from the same package input. */
-export function packageWorkflowRevision(plan: LoadedPlanPackage): string {
-    return hash(
-        JSON.stringify({
-            revision: plan.metadata.revision,
-            documents: plan.documents.map(({ name, hash }) => ({ name, hash })),
-        }),
-    );
-}
+export { packageWorkflowRevision } from "./packages.ts";
 
 export async function loadPackageWorkflowPlan(
     planName: PackageWorkflowTarget,
@@ -386,13 +397,23 @@ export async function loadPackageWorkflowPlan(
     const plan = await selectedPackage(planName);
 
     const identity = currentPackageProject()!;
-    const imported = await readImportedExecutionPlan(identity, plan);
+    const imported = isHomeProjectOwner(identity) ? null : await readImportedExecutionPlan(identity, plan);
     if (imported) return imported;
     const catalog = await listPlanPackages(identity, true);
     const name = (id: string) => catalog.packages.find((p) => p.metadata.planId === id)?.metadata.name || id;
     const markdown = new TextDecoder().decode(plan.documents.find((doc) => doc.name === "context.md")!.bytes);
     const binding = plan.metadata.workflow?.attempt;
-    if (binding) {
+    if (
+        binding &&
+        isHomeProjectOwner(identity) &&
+        (binding.personalOwner !== identity.personalOwner.identity ||
+            binding.repositoryId !== identity.repositoryId ||
+            !binding.input.inputs.some(
+                (input) => input.planId === plan.metadata.planId && input.projectId === identity.projectId,
+            ))
+    )
+        throw new Error("Package attempt belongs to a different admitted owner or repository.");
+    if (binding && !isHomeProjectOwner(identity)) {
         const boundOwner = inspectProjectIdentity(binding.repositoryRoot);
         if (
             binding.personalOwner !== identity.personalOwner.identity ||
@@ -409,7 +430,8 @@ export async function loadPackageWorkflowPlan(
         )
             throw new Error("Package attempt input belongs to a different Plan.");
     }
-    const attempt = binding ? await findById(binding.repositoryRoot, binding.attemptId) : null;
+    const attempt =
+        binding && !isHomeProjectOwner(identity) ? await findById(binding.repositoryRoot, binding.attemptId) : null;
     if (attempt && (attempt.planId !== plan.metadata.planId || attempt.id !== binding?.attemptId))
         throw new Error("Package attempt evidence belongs to a different Plan.");
     const attrs = {
@@ -487,7 +509,10 @@ export async function updatePackageWorkflowMetadata(
         const workflow = { ...current.metadata.workflow, ...workflowUpdate };
         if (Object.hasOwn(updates, "workRecord")) workflow.workRecord = updates.workRecord;
         const binding = workflow.attempt;
-        const entry = binding ? await findById(binding.repositoryRoot, binding.attemptId) : null;
+        const entry =
+            binding && !isHomeProjectOwner(currentPackageProject()!)
+                ? await findById(binding.repositoryRoot, binding.attemptId)
+                : null;
         if (entry?.status === "abandoned") workflow.attempt = undefined;
         const catalog = await listPlanPackages(currentPackageProject()!, true);
         if (catalog.issues.length) throw new Error(catalog.issues[0].message);
@@ -640,7 +665,8 @@ export async function reservePackageExecution(
             throw new Error("Execution belongs to another personal owner.");
         if (existing.repositoryId !== selection.identity.repositoryId) throw new PackageExecutionContinuation(existing);
         if (
-            existing.repositoryRoot !== resolvePrimaryCheckoutRoot(selection.identity.checkoutRoot) ||
+            existing.repositoryRoot !==
+                resolvePrimaryCheckoutRoot(requireProjectCheckout(selection.identity).checkoutRoot) ||
             existing.attemptId !== attemptId
         )
             throw new Error("Execution attempt binding changed.");
@@ -664,7 +690,7 @@ export async function reservePackageExecution(
                 ...(executionMode ? { executionMode } : {}),
                 personalOwner: selection.identity.personalOwner.identity,
                 repositoryId: selection.identity.repositoryId,
-                repositoryRoot: resolvePrimaryCheckoutRoot(selection.identity.checkoutRoot),
+                repositoryRoot: resolvePrimaryCheckoutRoot(requireProjectCheckout(selection.identity).checkoutRoot),
                 attemptId,
                 input,
             },

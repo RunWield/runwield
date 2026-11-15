@@ -75,3 +75,42 @@ and behavioral tests remain necessary.
 CAS, serialized/cross-Project access, fresh read contexts, and target reservation with immutable execution inputs. It is
 listed in the required isolated runner inventory. Existing package, transition, recovery, consumer and composed browser
 qualification remains necessary: a module boundary alone cannot prove behavior.
+
+## Prepared owner transport
+
+`PreparedProjectStore` executes named commands through this owner. Trusted local code registers it on one
+`startRemoteControlService` connection; HTTP cannot register a path, an owner or a serialized admission handle.
+`registerHomeProjectOwner` records a Project/repository binding in the laptop account's `project.wld.json` without a
+checkout. Its distinct identity has no checkout path. Every operation revalidates that binding; execution APIs still
+require a real execution checkout. The existing cwd registration adapter keeps ordinary local admission checks.
+
+| Wire command                                     | Owner operation                                                                         |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| `read`                                           | `readPlanDocuments`                                                                     |
+| `save-document`, `save-prose`, `save-definition` | Corresponding named document/definition commands                                        |
+| `record-event`                                   | `recordPlanEvent`, restricted to review approval/feedback and reset from hold           |
+| `seal-publication`, `read-frozen`                | `sealPackagePublication` and checked immutable publication/input reads                  |
+| `read-collaboration`                             | Owner-side capability lookup and authenticated Shared Space metadata read               |
+| `save-record`                                    | Retained delivery source, existing Work Record generation/persistence and Plan backlink |
+| `read-record`, `search-records`                  | Canonical record lookup and confidence-filtered owner index search                      |
+| `reconcile-record-index`                         | Existing canonical record/index reconciliation                                          |
+| `reconcile`                                      | Durable operation receipt inspection/recovery                                           |
+
+Publication here seals immutable store evidence. It performs no Git publication, accepts no claim of new delivery,
+and does not export collaboration credentials. Record persistence requires the owner's retained matching delivery
+receipt and source. Execution-host proof collection and remote startup selection remain separate operations.
+
+Requests and replies are limited to 1 MiB; record searches return at most 20 results. The service has no operation
+cache. Durable ID reservations and receipts remain for the life of the owner store; this slice introduces no receipt
+pruning. Deleting or corrupting a receipt does not release its reserved ID. A pending canonical effect retains at most
+16 MiB of bounded replacement evidence until native-lock reconciliation settles it; completed receipts retain only
+identity, request digest, revision and immutable snapshot references. Later writers reconcile pending effects before
+advancing the resource. Record indexing can remain pending after canonical persistence and reconcile from that record.
+
+The client keeps the original operation ID through uncertainty. A fresh authenticated connection can inspect or retry
+that identity. Closing a connection prevents new admission; it does not assert rollback of an admitted mutation.
+Production remote startup does not instantiate this service. Plan 12 owns activation and execution integration.
+
+The process fixture is `src/shared/remote/project-store-process.ts`. Run its bounded save/restart/reconnect scenario
+with `bun scripts/run-tests.js src/shared/remote/project-store.integration.test.ts`; it uses separate owner/client
+processes and client homes, then compares the retained outcome and canonical owner bytes.

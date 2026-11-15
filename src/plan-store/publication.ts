@@ -1,3 +1,4 @@
+import { isHomeProjectOwner, projectStoreLocation } from "../shared/project-identity.ts";
 import type { WorkRecordMnemotecaPort } from "../shared/work-records/mnemoteca-port.ts";
 import { getDeliveryCopyPolicy, shouldAutoGenerateWorkRecordsOnPlanCompletion } from "../shared/settings.js";
 import { preparedPackageRecordCopy, settlePreparedPackageRecord } from "../shared/work-records/package-recording.ts";
@@ -159,7 +160,9 @@ export async function sealPackagePublication(
                     (await capturePlanPackageInput(selection.identity, fresh.metadata.planId));
                 members.push({ metadata: fresh.metadata, controller: await packageController(fresh), input });
             }
-            const policy = getDeliveryCopyPolicy(selection.identity.checkoutRoot);
+            const policy = isHomeProjectOwner(selection.identity)
+                ? { plans: false, workRecords: false }
+                : getDeliveryCopyPolicy(selection.identity.checkoutRoot);
             const planCopies = Boolean(targetBranch) && (selection.deliveryCopies?.plans ?? policy.plans);
             const copies: DeliveryCopy[] = [...(selection.deliveryCopies?.workRecords || [])];
             if (copies.some((copy) => copy.kind !== "work-record"))
@@ -188,7 +191,7 @@ export async function sealPackagePublication(
                           stage: "recording" as const,
                           workRecordCopies: policy.workRecords,
                           autoGenerateRecords: shouldAutoGenerateWorkRecordsOnPlanCompletion(
-                              selection.identity.checkoutRoot,
+                              projectStoreLocation(selection.identity),
                           ),
                       }
                     : {}),
@@ -543,11 +546,11 @@ export async function settlePackageInPlace(planName: string, mnemotecaPort: Work
         },
     });
     await settlePreparedPackageRecord(
-        currentPackageSelection()!.identity.checkoutRoot,
+        projectStoreLocation(currentPackageSelection()!.identity),
         await readPlanPackagePublication(currentPackageSelection()!.identity, source),
         mnemotecaPort,
     );
-    await retainPublishedWorkRecordSource(currentPackageSelection()!.identity.checkoutRoot, {
+    await retainPublishedWorkRecordSource(projectStoreLocation(currentPackageSelection()!.identity), {
         phase: "publication_verified",
         packageInput: source,
         planName,

@@ -1,3 +1,4 @@
+import { requireProjectCheckout } from "../shared/project-identity.ts";
 import { inspectLocalHomeStore, selectLocalPlanWorkflow } from "./access.ts";
 import {
     currentPackageSelection,
@@ -81,7 +82,7 @@ export async function resolveWorkflowPlanLocation(
             return await withPackageProject(cwd, store.identity, async () => {
                 const plan = await loadPackageWorkflowPlan({ planId: selection!.planId });
                 return {
-                    registryRoot: store.identity.checkoutRoot,
+                    registryRoot: requireProjectCheckout(store.identity).checkoutRoot,
                     documentRoot: cwd,
                     plan: plan.attrs.archivedAt ? null : plan,
                     archived: Boolean(plan.attrs.archivedAt),
@@ -109,7 +110,7 @@ async function resolveWorkflowPlanLocationInScope(
     if (currentPackageSelection()) {
         const plan = await loadPackageWorkflowPlan(planName);
         return {
-            registryRoot: currentPackageSelection()!.identity.checkoutRoot,
+            registryRoot: requireProjectCheckout(currentPackageSelection()!.identity).checkoutRoot,
             documentRoot: cwd,
             plan: plan.attrs.archivedAt ? null : plan,
             archived: Boolean(plan.attrs.archivedAt),

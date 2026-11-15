@@ -1,3 +1,4 @@
+import { requireProjectCheckout } from "../project-identity.ts";
 /** Byte-preserving explicit import and durable record locations, independent of the derived index. */
 import fs from "node:fs/promises";
 import { basename, join, relative, resolve, isAbsolute } from "node:path";
@@ -112,7 +113,10 @@ export async function importWorkRecords(cwd: string, selection: string, options:
                 const record =
                     existing[0] ||
                     (await writeWorkRecord(cwd, parsed.attrs, parsed.body, { fileName: basename(path), markdown }));
-                const repoPath = relative(owner.identity.checkoutRoot, path).replaceAll("\\", "/");
+                const repoPath = relative(requireProjectCheckout(owner.identity).checkoutRoot, path).replaceAll(
+                    "\\",
+                    "/",
+                );
                 const contained = !isAbsolute(repoPath) && repoPath !== ".." && !repoPath.startsWith("../");
                 await retainWorkRecordLocation(record.attrs.recordId, {
                     kind: "import",

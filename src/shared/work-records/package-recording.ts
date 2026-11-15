@@ -1,3 +1,4 @@
+import { requireProjectCheckout } from "../project-identity.ts";
 /** Durable Recorder acceptance and canonical settlement for one admitted delivery attempt. */
 import fs from "node:fs/promises";
 import { basename, join } from "node:path";
@@ -49,6 +50,13 @@ async function readPreparation(attemptId: string): Promise<RecordingPreparation 
         throw new Error("Recording preparation identity changed.");
     return state;
 }
+export async function inspectPreparedPackageRecord(attemptId: string) {
+    const state = await readPreparation(attemptId);
+    return state
+        ? { recordId: state.recordId, accepted: Boolean(state.sections), retained: Boolean(state.record) }
+        : null;
+}
+
 export async function preparedPackageRecordCopy(attemptId: string): Promise<DeliveryCopy | undefined> {
     return (await readPreparation(attemptId))?.record;
 }
@@ -130,7 +138,7 @@ export async function settlePreparedPackageRecord(
             )
                 await retainWorkRecordLocation(frozen.attrs.recordId, {
                     kind: "copy",
-                    sourcePath: join(owner.identity.checkoutRoot, copy.path),
+                    sourcePath: join(requireProjectCheckout(owner.identity).checkoutRoot, copy.path),
                     repositoryId: manifest.repositoryId,
                     repositoryPath: copy.path,
                     digest: workRecordDigest(copy.text),

@@ -324,3 +324,17 @@ export { recoverLegacyPlanControllers } from "./runtime-recovery.ts";
 export { renamePlan } from "./names.ts";
 
 export { PlanAccessMismatchError } from "./access.ts";
+
+export {
+    PreparedProjectStore,
+    type ProjectStoreBinding,
+    type ProjectStoreCommand,
+    type ProjectStoreReply,
+    type ProjectStoreDocument,
+} from "./project-service.ts";
+
+export {
+    registerHomeProjectOwner,
+    type HomeProjectOwner,
+    type HomeProjectRegistration,
+} from "../shared/project-identity.ts";

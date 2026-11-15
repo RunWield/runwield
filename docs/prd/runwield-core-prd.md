@@ -2719,6 +2719,24 @@ personal profile. Personal ownership follows [customization](#agent-and-skill-cu
 [Session continuity](#session-continuity); project files, settings, Plans, Work Records, Git, worktrees, and Project
 Runtime State stay remote. Remote source entering prompts or review is not a synchronized laptop checkout.
 
+**Prepared personal-store capability:** An explicitly registered laptop owner can serve Plan documents, definition
+changes, bounded lifecycle events, immutable publication inputs, collaboration metadata and canonical Work Records
+through the authenticated connection. The owner enforces revisions, confidence/provenance and native locks. A saved
+home-only Project/repository binding needs no laptop source checkout. Registration is trusted local work, never a
+request-supplied path, mount or owner. Ordinary remote startup still uses the current placement described above;
+activation of laptop-owned Plans/records belongs to the next launch-ownership slice.
+
+Prepared-service acceptance scenarios:
+
+- Given a registered home-only Project, separate client and owner processes read and edit its canonical documents
+  without a mount or laptop source checkout; the client account remains unchanged.
+- Given an identical operation ID after reply loss, owner restart or a later local edit, the caller receives the retained
+  result. Changed payloads/preconditions under that ID conflict. Missing or contradictory evidence remains unresolved.
+- Given a revoked connection or changed Project/repository binding while a request body is arriving, no mutation is
+  admitted. Already admitted work settles under native owner locks.
+- Given a frozen publication input, reads return its retained documents. A client assertion cannot establish new Git
+  delivery. Work Records keep the [existing evidence and confidence requirements](#work-records).
+
 **Not included:** Unattended execution, source synchronization, a required laptop checkout, multi-user collaboration,
 remote ACP clients, migration of an existing local Session to another checkout, automatic installation of every project
 dependency, or hostile-server isolation. **Deferred/unsupported:** Windows laptops, Claude CLI and Antigravity CLI
