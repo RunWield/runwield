@@ -1,7 +1,7 @@
 ---
 kind: "work_record"
 recordId: "04ef5736-a942-4145-8542-b1aa8d7742b9"
-status: "pending_verification"
+status: "approved"
 scope: "planned_change"
 workKind: "FEATURE"
 origin: "internal"
@@ -11,7 +11,6 @@ provenance:
     sourcePlans:
         - "ad8b3586-b7e9-4b1e-b7fa-c132f48a3ad8"
 ---
-
 # Ideator and Guide conversations in Connect
 
 ## Summary

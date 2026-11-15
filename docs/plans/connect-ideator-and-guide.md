@@ -20,13 +20,13 @@ origin: "internal"
 userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "main"
-status: "reviewed"
 validatedCommit: "596f9b08373341fe46a0e49d632d204a535b96ae"
 workRecord:
     status: "generated"
     recordId: "04ef5736-a942-4145-8542-b1aa8d7742b9"
     path: "docs/work-records/2026-11-15-ideator-and-guide-conversations-in-connect.md"
     lastAttemptAt: "2026-11-15T03:49:26.491Z"
+status: "verified"
 ---
 
 # Ideator and Guide in Connect
