@@ -1,11 +1,53 @@
-“Vigorous writing is concise. A sentence should contain no unnecessary words, a
-paragraph no unnecessary sentences, for the same reason that a drawing should
-have no unnecessary lines and a machine no unnecessary parts. This requires not
-that the writer make all his sentences short, or that he avoid all detail and
-treat his subjects only in outline, but that every word tell.” — Strunk, The
-Elements of Style (1918).
+## Write in plain language
 
-When choosing words, choose simpler terms where possible, when the writing is technical don't loose preciseness but explain things in a simplest possible way without lots of high concepts or abstractions.
+Apply these rules to responses, documentation, plans, PRDs, ADRs, code comments,
+and other prose.
+
+Write for a knowledgeable reader with limited time and attention. Make the text
+easy to understand in one pass. Use a direct, conversational tone.
+
+### Language
+
+- Use everyday words and short, direct sentences. Give each sentence one main idea.
+- Keep technical terms when they are the most precise choice. Explain unfamiliar
+  terms briefly when the intended reader needs that context.
+- Replace business jargon, buzzwords, stock metaphors, and vague abstractions with
+  their concrete meaning. Say who does what, what changes, and why it matters.
+- Remove filler, repetition, slogans, and unnecessary introductions.
+- State facts directly. Avoid rhetorical contrasts such as “X, not Y” or
+  “not A, but B.” Keep contrasts and negations when they explain a real tradeoff,
+  constraint, exclusion, or likely mistake.
+- Use the requested language. When editing, preserve the original language unless
+  asked to translate.
+
+### Structure
+
+- Lead with the main point: the answer, outcome, proposal, or decision the reader
+  needs to understand.
+- Follow with the explanation and evidence needed to assess it. Omit the story of
+  how you arrived there unless that history explains a relevant choice.
+- Use paragraphs for connected reasoning, bullets for parallel facts, numbered
+  lists for ordered steps, and tables for comparisons.
+- Add short, descriptive headings when they help navigation. Keep short texts short.
+- State each fact once where practical. Use links or cross-references instead of
+  repeating whole explanations.
+- Follow the document's required format. Within it, make requirements observable,
+  plan steps actionable, and architectural decisions explicit about their rationale,
+  alternatives, tradeoffs, and consequences.
+
+### Precision
+
+- Simplify the wording without losing meaning. Preserve necessary facts, conditions,
+  qualifications, warnings, questions, and instructions.
+- Keep proposed, implemented, and deferred behavior distinct. Identify assumptions
+  and uncertainty; do not turn them into facts.
+- Preserve exact names, numbers, commands, paths, URLs, identifiers, and error
+  messages. When editing prose, leave code unchanged unless asked to change it.
+- Include enough detail for the reader to act, decide, implement, or verify.
+  Concision must not remove necessary reasoning or evidence.
+
+Before finishing, reread the text. Remove words that add no meaning, replace vague
+claims with concrete statements, and check that the main point is easy to find.
 
 ## Local Type Style
 
@@ -25,11 +67,6 @@ test file its own process, disposable HOME, temporary directory, and
 
 Use Bun 1.4.3 and run `bun run install:locked` before checks. It installs the
 root and docs graphs with separate frozen locks and disabled lifecycle scripts.
-Do not install Deno's dependency graph in this checkout. Legacy release lock
-interoperability belongs to its separate qualification lane. The Bun formatting
-entrypoint is `bun run fmt --write <files>` (pinned Prettier, four-space
-indentation, 120 columns); `bun run fmt:check <files>` checks those files. Pass
-explicit paths to avoid an unrelated repository-wide style rewrite.
 
 Two rules keep tests safe:
 
@@ -38,25 +75,6 @@ Two rules keep tests safe:
   in `src/`, and never cache either in a module-level `const`.
 - Wrap any test that mutates `HOME` or the working directory in
   `withProcessGlobalTestLock` (`src/testing/process-global-lock.ts`).
-
-## Test Seams and Dependency Injection
-
-RunWield has a zero-seam baseline. `bun run seams:check` enforces it and runs in
-`bun run ci`.
-
-An injection seam is a public claim that something is **not ours**. Treat it as
-an architectural decision, not a testing convenience:
-
-- Do not add a seam for RunWield-owned machinery such as Plan writes, lifecycle
-  transitions, registry writes, or locks.
-- Do not write a conditional seam such as `__deps ? fake : real`.
-- Fake the environment instead. Use `defineGitFixture`
-  (`src/shared/git-test-fixture.ts`) for a real Git repository and
-  `makeValidationProjectRoot` for a real Plan project.
-- Use seams only for genuine boundaries: subprocesses, network, agent turns, CI
-  runs, clocks, or other slow and nondeterministic external capabilities.
-
-If `seams:check` fails, fix the code. Do not adopt or re-baseline a new seam.
 
 ## Product and Architecture Documents
 
