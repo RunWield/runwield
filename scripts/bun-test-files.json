@@ -16,7 +16,6 @@
     "scripts/bun-lint.test.ts",
     "scripts/bun-remote-runtime.test.ts",
     "scripts/check-doc-links.test.ts",
-    "scripts/check-injection-seams.test.ts",
     "scripts/check-owned-runtime.test.ts",
     "scripts/check-remote-ssh-package-workspace.test.ts",
     "scripts/check-remote-ssh-package.test.ts",

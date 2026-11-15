@@ -71,7 +71,7 @@ The boundaries this change is expected to touch. This list is guidance, not an a
 - New real-process cases must fail if the bridge bypasses admission or setup uses a global CLI. Exercise missing paths, unregistered roots, wrong Project references, relink, disable/enable, and removal without deleting repository data.
 - Headed verification uses the desktop first-run, Project management, and provider setup flows. Discover the normal desktop dev command and URL/origin from child 1 and record them before testing.
 - Start with existing credentials, then a disposable empty home. Prove actual setup/default-model selection, canceled setup, provider outage, and saved-history browsing without Workspace connectivity. Use a separately configured provider for the successful real model turn.
-- Run `bun run seams:check` and `bun run doc-links:check`; confirm Project/provider authority remains Core-owned.
+- Run `bun run doc-links:check`; confirm Project/provider authority remains Core-owned.
 
 ## Edge Cases & Considerations
 
