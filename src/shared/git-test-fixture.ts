@@ -1,6 +1,6 @@
 import { tmpdir } from "node:os";
 import { captureForegroundProcess } from "./captured-process.ts";
-import { rmSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import process from "node:process";
 import { copyFile, mkdir, mkdtemp, readdir, readlink, symlink, writeFile } from "node:fs/promises";
 /**
@@ -139,7 +139,13 @@ export function defineGitFixture(build: (repoPath: string) => Promise<void>): Gi
             template = template || buildTemplate();
             const source = await template;
             const destination = await mkdtemp(join(tmpdir(), options.prefix || "runwield-git-fixture-"));
-            await copyTree(source, destination);
+            // A template that entered RunWield owns durable state outside its tree.
+            // Copying its Git identity would make independent tests share that authority.
+            if (existsSync(join(source, ".git", "runwield-checkout-id"))) {
+                await git(destination, ["init", "-b", "main"]);
+                await configureFixtureIdentity(destination);
+                await build(destination);
+            } else await copyTree(source, destination);
             return destination;
         },
     };

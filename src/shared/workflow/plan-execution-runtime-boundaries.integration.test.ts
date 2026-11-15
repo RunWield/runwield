@@ -1,3 +1,6 @@
+import { seedPlanState, seedPlan } from "../testing/plan-state-fixture.ts";
+import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
+import { recordPlanEvent } from "./plan-lifecycle.js";
 import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 /**
@@ -23,7 +26,9 @@ import {
 } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { git } from "../git-test-fixture.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { SessionHost } from "../session/session-host.ts";
@@ -102,18 +107,29 @@ async function initializeGitProject(projectRoot: string): Promise<void> {
 async function saveExecutablePlan(
     projectRoot: string,
     planName: string,
-    attrs: Parameters<typeof savePlan>[3] = {},
+    attrs: Parameters<typeof seedPlan>[3] = {},
 ): Promise<void> {
-    await savePlan(projectRoot, planName, `# ${planName}`, {
+    await seedPlan(projectRoot, planName, `# ${planName}`, {
         classification: "PLANNED_CHANGE",
         complexity: "MEDIUM",
         summary: planName,
         affectedPaths: ["implemented.txt"],
-        status: "ready_for_work",
         executionAgent: "engineer",
         planId: `plan-${crypto.randomUUID()}`,
         ...attrs,
+        status: "draft",
     });
+    await withLocalPlanWorkflow(projectRoot, planName, async () => {
+        await recordPlanEvent({ cwd: projectRoot, planName, event: "review_approved", currentStatus: "draft" });
+        await recordPlanEvent({ cwd: projectRoot, planName, event: "readiness_passed", currentStatus: "approved" });
+    });
+    if (attrs.status && attrs.status !== "ready_for_work") {
+        const plan = await loadPlan(projectRoot, planName);
+        assert(plan);
+        await seedPlanState(projectRoot, planName, { status: attrs.status }, plan.attrs, {
+            expectedRevision: plan.revision,
+        });
+    }
 }
 
 const IMPLEMENT_AND_COMPLETE = [
@@ -858,8 +874,8 @@ for (const legacy of [false, true]) {
                         1,
                     );
                     assertEquals(
-                        (await loadPlan(projectRoot, "restored-autonomous"))?.attrs.planDeviations?.length || 0,
-                        0,
+                        (await loadPlan(projectRoot, "restored-autonomous"))?.attrs.planDeviations,
+                        (await loadPlan(workflow.executionCwd, "restored-autonomous"))?.attrs.planDeviations,
                     );
                 } finally {
                     await restored?.closeAllSessionsWhenIdle?.();

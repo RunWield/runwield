@@ -1,16 +1,23 @@
+import { planFixtureJournalPath } from "../testing/plan-state-fixture.ts";
+import { seedPlanState, seedPlan } from "../testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
+
+import { renamePlan } from "../../plan-store/index.ts";
 import { readdirSync as fsReaddirSync, readFileSync as fsReadFileSync } from "node:fs";
 import { test } from "node:test";
 import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import fs from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { getTransitionJournalPath } from "./state-transition.ts";
+
 import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { HostedSession } from "../session/hosted-session.js";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
-import { loadPlan, resolveSiblingChildPlanDependencies, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
-import { applySequenceReviewDecision, prepareSequenceReview } from "./sequence-review.ts";
+
+import { loadPlan, resolveSiblingChildPlanDependencies } from "../../plan-store/index.ts";
+
+import { applySequenceReviewDecision, prepareSequenceReview } from "../../plan-store/index.ts";
 import {
     claimWorkflowToolEvent,
     listPendingWorkflowToolEvents,
@@ -25,16 +32,16 @@ import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 const fixture = defineCommittedGitFixture({ ".gitignore": ".wld/\n" });
 type HostedManager = NonNullable<ConstructorParameters<typeof HostedSession>[0]["sessionManager"]>;
 
-async function setup() {
-    const cwd = await fixture.checkout();
-    await savePlan(cwd, "sequence", "# Search improvements\n\n## Context\n\nIndex then search.", {
+async function setup(root?: string) {
+    const cwd = root || (await fixture.checkout());
+    await seedPlan(cwd, "sequence", "# Search improvements\n\n## Context\n\nIndex then search.", {
         classification: "PROJECT",
         type: "sequence",
         status: "draft",
         affectedPaths: [],
     });
     for (const [index, name] of ["index", "search"].entries()) {
-        await savePlan(cwd, `sequence/${name}`, `# ${name}\n\n## Context\n\nImplement ${name}.`, {
+        await seedPlan(cwd, `sequence/${name}`, `# ${name}\n\n## Context\n\nImplement ${name}.`, {
             classification: "PLANNED_CHANGE",
             status: "draft",
             parentPlan: "sequence",
@@ -202,7 +209,7 @@ test("Sequence preflight rejects omitted children and forward dependencies", asy
             Error,
             "every child",
         );
-        await updatePlanFrontMatter(
+        await seedPlanState(
             cwd,
             "sequence/index",
             { dependencies: ["search"] },
@@ -222,7 +229,7 @@ test("Sibling Plan ID dependency survives a child rename", async () => {
     try {
         const documents = await prepareSequenceReview(cwd, "sequence");
         const first = documents[1];
-        await updatePlanFrontMatter(
+        await seedPlanState(
             cwd,
             "sequence/search",
             { dependencies: [first.planId] },
@@ -231,7 +238,7 @@ test("Sibling Plan ID dependency survives a child rename", async () => {
                 expectedRevision: documents[2].revision,
             },
         );
-        await fs.rename(first.planPath, join(dirname(first.planPath), "renamed.md"));
+        await renamePlan(cwd, first.planId, "sequence/renamed", first.revision);
         const dependencies = await resolveSiblingChildPlanDependencies(cwd, "sequence", [first.planId]);
         assertEquals(dependencies[0].planName, "sequence/renamed");
         assertEquals(dependencies[0].planId, first.planId);
@@ -322,67 +329,70 @@ test("Sequence browser transport preserves the full decision for the workflow ow
 });
 
 test("An interrupted Sequence write blocks child actions until the complete group is restored", async () => {
-    const { cwd } = await setup();
-    try {
-        const documents = await prepareSequenceReview(cwd, "sequence");
-        const { getTransitionJournalPath } = await import("./state-transition.ts");
-        const { getPlanRevisionForText } = await import("../../plan-store.js");
-        const { healSettledTransitionRecords } = await import("./transition-recovery.ts");
-        const { executePlanAction } = await import("./plan-actions.ts");
-        const plans = await Promise.all(
-            documents.map(async (doc) => {
-                const after = doc.plan.replace('status: "draft"', 'status: "ready_for_work"');
-                return {
-                    planName: doc.planName,
-                    before: doc.plan,
-                    beforeRevision: doc.revision,
-                    after,
-                    afterRevision: await getPlanRevisionForText(after),
-                };
-            }),
-        );
-        assertEquals(plans[1].before === plans[1].after, false);
-        const path = getTransitionJournalPath(cwd, "interrupted-sequence");
-        await fsMkdir(path.slice(0, path.lastIndexOf("/")), { recursive: true });
-        await fsWriteFile(
-            path,
-            JSON.stringify({
-                transitionId: "interrupted-sequence",
-                planName: "sequence",
-                operation: "sequence_review_approved",
-                state: "applying",
-                resources: [{ kind: "catalog" }, ...plans.map((plan) => ({ kind: "plan", id: plan.planName }))],
-                completedEffects: [{ effect: "sequence_review_prepared", proof: { plans } }],
-            }),
-        );
-        await fsWriteFile(documents[1].planPath, plans[1].after);
-        assertEquals((await healSettledTransitionRecords(cwd)).remaining.length, 1);
-        const child = await loadPlan(cwd, "sequence/index");
-        assertExists(child);
-        const action = await executePlanAction(cwd, {
-            planId: documents[1].planId,
-            expectedRevision: child.revision,
-            expectedStatus: child.attrs.status,
-            expectedWorktree: { kind: "none" },
-            action: "put_on_hold",
-        });
-        assertEquals(action.kind, "invalid_action");
-        assertEquals((await loadPlan(cwd, "sequence/index"))?.attrs.status, "ready_for_work");
-        await fsWriteFile(documents[1].planPath, `${plans[1].after}\nNew external edit.\n`);
-        assertEquals((await healSettledTransitionRecords(cwd)).remaining.length, 1);
-        assertStringIncludes(await fsReadFile(documents[1].planPath, "utf8"), "New external edit.");
-        await fsWriteFile(documents[1].planPath, plans[1].before);
-        assertEquals((await healSettledTransitionRecords(cwd)).closed.length, 1);
-    } finally {
-        await fsRm(cwd, { recursive: true });
-    }
+    const root = await fixture.checkout();
+    await withRetainedPlanFixture(root, async () => {
+        const { cwd } = await setup(root);
+        try {
+            const documents = await prepareSequenceReview(cwd, "sequence");
+            const { planFixtureJournalPath } = await import("../testing/plan-state-fixture.ts");
+            const { getPlanRevisionForText } = await import("../../plan-format.ts");
+            const { healSettledTransitionRecords } = await import("./transition-recovery.ts");
+            const { executePlanAction } = await import("./plan-actions.ts");
+            const plans = await Promise.all(
+                documents.map(async (doc) => {
+                    const after = doc.plan.replace('status: "draft"', 'status: "ready_for_work"');
+                    return {
+                        planName: doc.planName,
+                        before: doc.plan,
+                        beforeRevision: doc.revision,
+                        after,
+                        afterRevision: await getPlanRevisionForText(after),
+                    };
+                }),
+            );
+            assertEquals(plans[1].before === plans[1].after, false);
+            const path = planFixtureJournalPath(cwd, "interrupted-sequence");
+            await fsMkdir(path.slice(0, path.lastIndexOf("/")), { recursive: true });
+            await fsWriteFile(
+                path,
+                JSON.stringify({
+                    transitionId: "interrupted-sequence",
+                    planName: "sequence",
+                    operation: "sequence_review_approved",
+                    state: "applying",
+                    resources: [{ kind: "catalog" }, ...plans.map((plan) => ({ kind: "plan", id: plan.planName }))],
+                    completedEffects: [{ effect: "sequence_review_prepared", proof: { plans } }],
+                }),
+            );
+            await fsWriteFile(documents[1].planPath, plans[1].after);
+            assertEquals((await healSettledTransitionRecords(cwd)).remaining.length, 1);
+            const child = await loadPlan(cwd, "sequence/index");
+            assertExists(child);
+            const action = await executePlanAction(cwd, {
+                planId: documents[1].planId,
+                expectedRevision: child.revision,
+                expectedStatus: child.attrs.status,
+                expectedWorktree: { kind: "none" },
+                action: "put_on_hold",
+            });
+            assertEquals(action.kind, "invalid_action");
+            assertEquals((await loadPlan(cwd, "sequence/index"))?.attrs.status, "ready_for_work");
+            await fsWriteFile(documents[1].planPath, `${plans[1].after}\nNew external edit.\n`);
+            assertEquals((await healSettledTransitionRecords(cwd)).remaining.length, 1);
+            assertStringIncludes(await fsReadFile(documents[1].planPath, "utf8"), "New external edit.");
+            await fsWriteFile(documents[1].planPath, plans[1].before);
+            assertEquals((await healSettledTransitionRecords(cwd)).closed.length, 1);
+        } finally {
+            await fsRm(cwd, { recursive: true });
+        }
+    });
 });
 
 test("Sequence continuation uses sibling IDs and stops at a held child", async () => {
     const { cwd, hostedSession } = await setup();
     try {
         const docs = await prepareSequenceReview(cwd, "sequence");
-        await updatePlanFrontMatter(
+        await seedPlanState(
             cwd,
             "sequence/search",
             { dependencies: [docs[1].planId] },
@@ -405,7 +415,7 @@ test("Sequence continuation uses sibling IDs and stops at a held child", async (
         });
         const { resolveEpicContinuation } = await import("./epic-continuation.ts");
         const first = await loadPlan(cwd, "sequence/index");
-        await updatePlanFrontMatter(
+        await seedPlanState(
             cwd,
             "sequence/index",
             { status: "verified" },
@@ -418,7 +428,7 @@ test("Sequence continuation uses sibling IDs and stops at a held child", async (
         assertEquals(next.kind, "execute");
         assertEquals(next.childPlanName, "sequence/search");
         const second = await loadPlan(cwd, "sequence/search");
-        await updatePlanFrontMatter(
+        await seedPlanState(
             cwd,
             "sequence/search",
             { status: "on_hold", heldFromStatus: "ready_for_work" },
@@ -455,7 +465,7 @@ for (const failurePoint of ["acceptance", "commit"] as const) {
             });
             try {
                 const documents = await prepareSequenceReview(cwd, "sequence");
-                const journalDir = dirname(getTransitionJournalPath(cwd, "unused"));
+                const journalDir = dirname(planFixtureJournalPath(cwd, "unused"));
                 let failed = false;
                 // Fail the filesystem replacement, keeping real Plan writes, locks and journals.
                 fs.rename = async (from, to) => {
@@ -505,7 +515,9 @@ for (const failurePoint of ["acceptance", "commit"] as const) {
                     "no failed approval may replay from the Session",
                 );
                 for (const doc of documents) {
-                    assertEquals((await loadPlan(cwd, doc.planName))?.revision, doc.revision);
+                    const restored = await loadPlan(cwd, doc.planName);
+                    assertEquals(restored?.markdown, doc.plan);
+                    assertEquals(restored?.attrs, doc.frontmatter);
                 }
                 fs.rename = originalRename;
                 const retry = await applySequenceReviewDecision({
@@ -541,7 +553,7 @@ test("Sequence live consumer sees committed approval before receiving the child 
         signal: abort.signal,
     })
         .then((event) => {
-            const dir = dirname(getTransitionJournalPath(cwd, "unused"));
+            const dir = dirname(planFixtureJournalPath(cwd, "unused"));
             const journals = [...fsReaddirSync(dir, { withFileTypes: true })].filter((entry) =>
                 entry.name.endsWith(".json"),
             );
@@ -641,7 +653,7 @@ for (const editKind of ["none", "formatting", "meaningful"] as const) {
             for (const doc of initial) {
                 const current = await loadPlan(cwd, doc.planName);
                 assertExists(current);
-                await updatePlanFrontMatter(
+                await seedPlanState(
                     cwd,
                     doc.planName,
                     {

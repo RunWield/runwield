@@ -1,3 +1,5 @@
+import { planFixtureJournalPath } from "../testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
@@ -5,6 +7,7 @@ import {
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,
     rm as fsRm,
+    readdir as fsReaddir,
     stat as fsStat,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
@@ -19,7 +22,7 @@ import process from "node:process";
 
 import { join } from "node:path";
 import { healSettledTransitionRecords } from "./transition-recovery.ts";
-import { getTransitionJournalPath } from "./state-transition.ts";
+
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
 
@@ -28,7 +31,7 @@ async function writeJournal(
     record: { transitionId: string; planName: string; state: string; operation?: string },
 ): Promise<string> {
     await enterProjectRuntime(projectRoot);
-    const path = getTransitionJournalPath(projectRoot, record.transitionId);
+    const path = planFixtureJournalPath(projectRoot, record.transitionId);
     await fsMkdir(join(path, ".."), { recursive: true });
     await fsWriteFile(path, `${JSON.stringify(record, null, 2)}\n`);
     return path;
@@ -36,10 +39,10 @@ async function writeJournal(
 
 async function journalExists(projectRoot: string, transitionId: string): Promise<boolean> {
     try {
-        await fsStat(getTransitionJournalPath(projectRoot, transitionId));
+        await fsStat(planFixtureJournalPath(projectRoot, transitionId));
         return true;
     } catch (error) {
-        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return false;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
         throw error;
     }
 }
@@ -55,6 +58,11 @@ test("healing a Plan with no journals returns empty without starting Git", async
             process.env["PATH"] = emptyBin;
             const result = await healSettledTransitionRecords(projectRoot, { planName: "nothing-to-heal" });
             assertEquals(result, { closed: [], remaining: [] });
+            assertEquals(
+                await fsReaddir(projectRoot),
+                [],
+                "A no-op heal must not admit identity or create runtime files",
+            );
         } finally {
             if (previousPath === undefined) delete process.env["PATH"];
             else process.env["PATH"] = previousPath;
@@ -67,32 +75,41 @@ test("healing a Plan with no journals returns empty without starting Git", async
 test("healing one Plan does not remove another Plan's settled journal", async () => {
     const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-heal-isolation-"));
     try {
-        const selectedPath = await writeJournal(projectRoot, {
-            transitionId: "selected-record",
-            planName: "selected-plan",
-            state: "committed",
-            operation: "recovery_reset",
-        });
-        const otherPath = await writeJournal(projectRoot, {
-            transitionId: "other-record",
-            planName: "other-plan",
-            state: "committed",
-            operation: "recovery_reset",
-        });
+        await withRetainedPlanFixture(projectRoot, async () => {
+            const selectedPath = await writeJournal(projectRoot, {
+                transitionId: "selected-record",
+                planName: "selected-plan",
+                state: "committed",
+                operation: "recovery_reset",
+            });
+            const otherPath = await writeJournal(projectRoot, {
+                transitionId: "other-record",
+                planName: "other-plan",
+                state: "committed",
+                operation: "recovery_reset",
+            });
 
-        const result = await healSettledTransitionRecords(projectRoot, {
-            planName: "selected-plan",
-            apply: true,
-        });
+            const result = await healSettledTransitionRecords(projectRoot, {
+                planName: "selected-plan",
+                apply: true,
+            });
 
-        // The selected Plan's settled record is closed...
-        assertEquals(result.closed.map((entry) => entry.transitionId), ["selected-record"]);
-        assertEquals(result.remaining, []);
-        assertEquals(await journalExists(projectRoot, "selected-record"), false, "selected journal should be removed");
-        // ...and the unrelated Plan's journal is untouched, byte for byte.
-        assertEquals(await journalExists(projectRoot, "other-record"), true, "other Plan's journal must survive");
-        assertEquals(typeof selectedPath, "string");
-        assertEquals(typeof otherPath, "string");
+            // The selected Plan's settled record is closed...
+            assertEquals(
+                result.closed.map((entry) => entry.transitionId),
+                ["selected-record"],
+            );
+            assertEquals(result.remaining, []);
+            assertEquals(
+                await journalExists(projectRoot, "selected-record"),
+                false,
+                "selected journal should be removed",
+            );
+            // ...and the unrelated Plan's journal is untouched, byte for byte.
+            assertEquals(await journalExists(projectRoot, "other-record"), true, "other Plan's journal must survive");
+            assertEquals(typeof selectedPath, "string");
+            assertEquals(typeof otherPath, "string");
+        });
     } finally {
         await fsRm(projectRoot, { recursive: true }).catch(() => {});
     }

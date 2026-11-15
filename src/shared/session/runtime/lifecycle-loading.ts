@@ -246,6 +246,7 @@ export class RuntimeLifecycleLoading {
                 if (inspected.generation) {
                     const adopted = this.lifecycle.adoptManagedSession({
                         session: managedSession,
+                        cwd: options.cwd,
                         generation: inspected.generation.generation,
                     });
                     const sync = await this.sync.synchronizeManagedSession(adopted.sessionId, { emitEvents: false });

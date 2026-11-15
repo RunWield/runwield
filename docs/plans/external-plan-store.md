@@ -28,6 +28,7 @@ targetBranch: "epic/external-plan-store"
 createdAt: "2026-11-01"
 status: "draft"
 epicBaseCommit: "b31bece1aeed8e4fdb4ae4289f25a73e9009f9b5"
+planId: "e8e23021-8e58-4f2c-90a4-bd89da42e5c0"
 ---
 
 # External Project State and Plan Store

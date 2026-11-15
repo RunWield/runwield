@@ -1,9 +1,11 @@
+import { seedPlanState } from "../testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { loadPlan, updatePlanFrontMatter } from "../../plan-store.js";
+
+import { loadPlan } from "../../plan-store/index.ts";
 import { listEntries } from "../worktree-registry.js";
 import { executionInput } from "./execution-test-fixture.ts";
 import { recordPlanEvent } from "../workflow/plan-lifecycle.js";
@@ -357,7 +359,7 @@ test("reopening after a controller-only draft update rejects the old browser bas
         const workflow = await submitReview(root);
         const first = await openAttachedReviewRound(root, workflow.workflowId);
         assert(first.kind === "opened");
-        await updatePlanFrontMatter(
+        await seedPlanState(
             root,
             "dark-mode-toggle",
             { failureReason: "New Core evidence." },
@@ -366,7 +368,8 @@ test("reopening after a controller-only draft update rejects the old browser bas
         );
         const second = await openAttachedReviewRound(root, workflow.workflowId);
         assert(second.kind === "opened");
-        assertEquals(second.basis.review.planRevision, first.basis.review.planRevision);
+        assert(second.basis.review.planRevision !== first.basis.review.planRevision);
+        assertEquals(second.basis.markdown, first.basis.markdown);
         assert(second.basis.review.controllerRevision !== first.basis.review.controllerRevision);
         const before = await loadPlan(root, "dark-mode-toggle");
         const record = await readRecordBytes(root, workflow.workflowId);
@@ -390,7 +393,7 @@ test("a controller-only Core update rejects a pinned Attached draft decision wit
         const workflow = await submitReview(root);
         const opened = await openAttachedReviewRound(root, workflow.workflowId);
         assert(opened.kind === "opened");
-        await updatePlanFrontMatter(
+        await seedPlanState(
             root,
             "dark-mode-toggle",
             { failureReason: "New Core evidence." },

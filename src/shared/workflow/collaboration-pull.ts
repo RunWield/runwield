@@ -4,7 +4,7 @@ import { isEpicPlan } from "../project-plan.ts";
 import { AGENTS, CLI_BIN, normalizePlanClassification } from "../../constants.js";
 import { redactSecrets } from "../collaboration/capabilities.ts";
 
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store/index.ts";
 import type { DecryptedReviewCommentPayload } from "../collaboration/protocol.js";
 
 export interface PullReviewComment {
@@ -53,36 +53,38 @@ export interface PullPlanningOutcome {
 
 export function selectPullPlanningAgent(attrs: PullPlanMetadata = {}) {
     return isEpicPlan({
-            classification: String(attrs.classification || ""),
-            type: typeof attrs.type === "string" ? attrs.type : undefined,
-        })
+        classification: String(attrs.classification || ""),
+        type: typeof attrs.type === "string" ? attrs.type : undefined,
+    })
         ? AGENTS.ARCHITECT
         : AGENTS.PLANNER;
 }
 
 export function formatPullCommentsForPrompt(comments: PullReviewComment[]): string {
     if (!comments.length) return "No comments were returned for the latest remote revision.";
-    return comments.map((comment, index) => {
-        if (!comment.readable) {
-            return [
-                `Comment ${index + 1} (${comment.id}) — unreadable`,
+    return comments
+        .map((comment, index) => {
+            if (!comment.readable) {
+                return [
+                    `Comment ${index + 1} (${comment.id}) — unreadable`,
+                    `Created: ${comment.createdAt}`,
+                    `Resolved: ${comment.resolved ? "yes" : "no"}`,
+                    `Error: ${comment.error || "Unable to decrypt comment payload."}`,
+                ].join("\n");
+            }
+            const type = comment.type === "global_comment" ? "global" : "inline";
+            const lines = [
+                `Comment ${index + 1} (${comment.id}) — ${type}`,
+                `Author: ${comment.displayName || "Anonymous reviewer"}`,
                 `Created: ${comment.createdAt}`,
                 `Resolved: ${comment.resolved ? "yes" : "no"}`,
-                `Error: ${comment.error || "Unable to decrypt comment payload."}`,
-            ].join("\n");
-        }
-        const type = comment.type === "global_comment" ? "global" : "inline";
-        const lines = [
-            `Comment ${index + 1} (${comment.id}) — ${type}`,
-            `Author: ${comment.displayName || "Anonymous reviewer"}`,
-            `Created: ${comment.createdAt}`,
-            `Resolved: ${comment.resolved ? "yes" : "no"}`,
-            `Feedback: ${comment.body || "(empty)"}`,
-        ];
-        if (comment.originalText) lines.push(`Selected text: ${comment.originalText}`);
-        if (comment.anchor) lines.push(`Anchor: ${JSON.stringify(comment.anchor)}`);
-        return lines.join("\n");
-    }).join("\n\n");
+                `Feedback: ${comment.body || "(empty)"}`,
+            ];
+            if (comment.originalText) lines.push(`Selected text: ${comment.originalText}`);
+            if (comment.anchor) lines.push(`Anchor: ${JSON.stringify(comment.anchor)}`);
+            return lines.join("\n");
+        })
+        .join("\n\n");
 }
 
 function formatListValue(value: PullPlanMetadata["affectedPaths"]): string {
@@ -126,7 +128,9 @@ export function buildPullRevisionRequest(context: PullRevisionRequest): string {
         context.unreadableCommentCount
             ? `\nUnreadable/tampered comments: ${context.unreadableCommentCount}`
             : undefined,
-    ].filter((line) => line !== undefined).join("\n");
+    ]
+        .filter((line) => line !== undefined)
+        .join("\n");
     return redactSecrets(text);
 }
 

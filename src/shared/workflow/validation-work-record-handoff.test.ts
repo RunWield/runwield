@@ -1,9 +1,11 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, type FauxResponseFactory, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { type RuntimeCommandFixture, withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { savePlan } from "../../plan-store.js";
+
 import { HostedSession } from "../session/hosted-session.js";
 import { getRunWieldSessionDir } from "../session/root-session.js";
 import { listWorkRecords, writeWorkRecord } from "../work-records/store.ts";
@@ -19,87 +21,90 @@ async function runWorkRecordHandoff(
     decision: SupersessionInteractionDecision = "later",
 ) {
     const { projectRoot, setModelResponseFactories } = fixture;
-    await writeWorkRecord(
-        projectRoot,
-        {
-            kind: "work_record",
-            recordId: PREDECESSOR_RECORD_ID,
-            status: "approved",
-            scope: "planned_change",
-            origin: "internal",
-            completionMode: "verified",
-            createdAt: "2026-08-02T00:00:00.000Z",
-            provenance: { sourcePlans: ["older-feature-id"] },
-        },
-        "# Older Feature Outcome\n\n## Summary\n\nThe older implementation.",
-    );
-    await savePlan(projectRoot, "verified-feature", "# Verified Feature\n\n## Plan\n\nShip it.", {
-        planId: "verified-feature-id",
-        classification: "PLANNED_CHANGE",
-        complexity: "LOW",
-        summary: "Verified fixture feature.",
-        affectedPaths: [],
-        createdAt: "2026-08-03T00:00:00.000Z",
-        status: "verified",
-    });
-    const respondToHandoff: FauxResponseFactory = (context) =>
-        JSON.stringify(context).includes("post-verification checklist")
-            ? fauxAssistantMessage(
-                  fauxToolCall("manual_qa_completed", {
-                      checklistMarkdown: "Manual verification steps\n- [ ] Exercise the verified feature.",
-                  }),
-              )
-            : fauxAssistantMessage(
-                  fauxToolCall("work_record_completed", {
-                      title: "Verified Feature Outcome",
-                      summary: "Generated through the real post-verification handoff.",
-                      supersessionProposals: [
-                          {
-                              recordId: PREDECESSOR_RECORD_ID,
-                              reason: "The verified implementation replaces the older implementation.",
-                          },
-                      ],
-                  }),
-              );
-    setModelResponseFactories([respondToHandoff, respondToHandoff]);
-    const mnemotecaPort = createWorkRecordMnemotecaFixture();
-    const ui = makeUi();
-    ui.promptSelect = () => {
-        ui.promptSelections.push(decision === null ? "canceled" : decision);
-        return Promise.resolve(decision);
-    };
-    const sessionManager = SessionManager.create(projectRoot, getRunWieldSessionDir(projectRoot));
-    const sessionManagerPort = {
-        getSessionId: () => sessionManager.getSessionId(),
-        getCwd: () => sessionManager.getCwd(),
-        appendCustomEntry: <T>(customType: string, data: T) => sessionManager.appendCustomEntry(customType, data),
-    };
-    const hostedSession = attachRecorder(
-        new HostedSession({
-            id: "validation-work-record-handoff",
-            cwd: projectRoot,
-            sessionManager: sessionManagerPort,
-        }),
-        ui,
-    );
-
-    try {
-        await runFeaturePostVerificationHandoffs({
-            hostedSession,
-            planName: "verified-feature",
-            planContent: "# Verified Feature",
+    // This completed legacy owner has no package delivery receipt.
+    return await withRetainedPlanFixture(projectRoot, async () => {
+        await writeWorkRecord(
             projectRoot,
-            mnemotecaPort,
+            {
+                kind: "work_record",
+                recordId: PREDECESSOR_RECORD_ID,
+                status: "approved",
+                scope: "planned_change",
+                origin: "internal",
+                completionMode: "verified",
+                createdAt: "2026-08-02T00:00:00.000Z",
+                provenance: { sourcePlans: ["older-feature-id"] },
+            },
+            "# Older Feature Outcome\n\n## Summary\n\nThe older implementation.",
+        );
+        await seedPlan(projectRoot, "verified-feature", "# Verified Feature\n\n## Plan\n\nShip it.", {
+            planId: "verified-feature-id",
+            classification: "PLANNED_CHANGE",
+            complexity: "LOW",
+            summary: "Verified fixture feature.",
+            affectedPaths: [],
+            createdAt: "2026-08-03T00:00:00.000Z",
+            status: "verified",
         });
-        return {
-            records: await listWorkRecords(projectRoot),
-            indexCount: mnemotecaPort.snapshot().length,
-            sessionManager,
-            ui,
+        const respondToHandoff: FauxResponseFactory = (context) =>
+            JSON.stringify(context).includes("post-verification checklist")
+                ? fauxAssistantMessage(
+                      fauxToolCall("manual_qa_completed", {
+                          checklistMarkdown: "Manual verification steps\n- [ ] Exercise the verified feature.",
+                      }),
+                  )
+                : fauxAssistantMessage(
+                      fauxToolCall("work_record_completed", {
+                          title: "Verified Feature Outcome",
+                          summary: "Generated through the real post-verification handoff.",
+                          supersessionProposals: [
+                              {
+                                  recordId: PREDECESSOR_RECORD_ID,
+                                  reason: "The verified implementation replaces the older implementation.",
+                              },
+                          ],
+                      }),
+                  );
+        setModelResponseFactories([respondToHandoff, respondToHandoff]);
+        const mnemotecaPort = createWorkRecordMnemotecaFixture();
+        const ui = makeUi();
+        ui.promptSelect = () => {
+            ui.promptSelections.push(decision === null ? "canceled" : decision);
+            return Promise.resolve(decision);
         };
-    } finally {
-        hostedSession.dispose();
-    }
+        const sessionManager = SessionManager.create(projectRoot, getRunWieldSessionDir(projectRoot));
+        const sessionManagerPort = {
+            getSessionId: () => sessionManager.getSessionId(),
+            getCwd: () => sessionManager.getCwd(),
+            appendCustomEntry: <T>(customType: string, data: T) => sessionManager.appendCustomEntry(customType, data),
+        };
+        const hostedSession = attachRecorder(
+            new HostedSession({
+                id: "validation-work-record-handoff",
+                cwd: projectRoot,
+                sessionManager: sessionManagerPort,
+            }),
+            ui,
+        );
+
+        try {
+            await runFeaturePostVerificationHandoffs({
+                hostedSession,
+                planName: "verified-feature",
+                planContent: "# Verified Feature",
+                projectRoot,
+                mnemotecaPort,
+            });
+            return {
+                records: await listWorkRecords(projectRoot),
+                indexCount: mnemotecaPort.snapshot().length,
+                sessionManager,
+                ui,
+            };
+        } finally {
+            hostedSession.dispose();
+        }
+    });
 }
 
 test("post-verification handoffs run real Work Record machinery through the Mnemoteca port", async () => {

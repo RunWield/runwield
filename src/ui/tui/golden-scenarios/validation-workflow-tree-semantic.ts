@@ -68,8 +68,8 @@ export const validationTreeSemanticRepairIncompleteScenario = withValidationBran
         ],
         actions: [
             {
-                type: "writeProjectFile",
-                path: "docs/plans/plan.md",
+                type: "savePlan",
+                planName: "plan",
                 text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Golden PLANNED_CHANGE\naffectedPaths: []\nstatus: draft\n---\n# Golden PLANNED_CHANGE\n\nDraft content.\n",
             },
             { type: "type", text: "submit the planned change for review" },
@@ -94,6 +94,8 @@ export const validationTreeSemanticRepairIncompleteScenario = withValidationBran
 
 export const validationTreeSemanticReviewerIncompletePauseScenario = withValidationBranches(
     {
+        retainedCheckoutInput: true, // Explicit pre-cutover execution owner and checkout publication evidence.
+
         name: "validation-tree-semantic-reviewer-incomplete-pause-base",
         composedTui: true,
         initialAgentName: "guide",
@@ -141,6 +143,8 @@ export const validationTreeSemanticReviewerIncompletePauseScenario = withValidat
 
 export const validationTreeSemanticProviderErrorRetryScenario = withValidationBranches(
     {
+        retainedCheckoutInput: true, // Explicit pre-cutover execution owner and checkout publication evidence.
+
         name: "validation-tree-semantic-provider-error-retry-base",
         composedTui: true,
         initialAgentName: "guide",
@@ -395,8 +399,8 @@ export const validationTreeSemanticNudgeOmittedPriorFindingScenario = withValida
         ],
         actions: [
             {
-                type: "writeProjectFile",
-                path: "docs/plans/plan.md",
+                type: "savePlan",
+                planName: "plan",
                 text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Golden PLANNED_CHANGE\naffectedPaths: []\nstatus: draft\n---\n# Golden PLANNED_CHANGE\n\nDraft content.\n",
             },
             { type: "type", text: "submit the planned change for review" },
@@ -421,6 +425,8 @@ export const validationTreeNonGitDeliveryScenario = withValidationBranches(
 
 export const validationTreeSemanticNudgeMissingReviewCompleteScenario = withValidationBranches(
     {
+        retainedCheckoutInput: true, // Explicit pre-cutover execution owner and checkout publication evidence.
+
         name: "validation-tree-semantic-nudge-missing-review-complete-base",
         composedTui: true,
         initialAgentName: "guide",
@@ -516,6 +522,8 @@ export const validationTreeSemanticNudgeMissingReviewCompleteScenario = withVali
 
 export const validationTreeSemanticNudgeMissingDiffInspectionScenario = withValidationBranches(
     {
+        retainedCheckoutInput: true, // Explicit pre-cutover execution owner and checkout publication evidence.
+
         name: "validation-tree-semantic-nudge-missing-diff-inspection-base",
         composedTui: true,
         initialAgentName: "guide",
@@ -613,6 +621,8 @@ export const validationTreeSemanticNudgeMissingDiffInspectionScenario = withVali
 
 export const validationTreeSemanticRoundLimitStopScenario = withValidationBranches(
     {
+        retainedCheckoutInput: true, // Explicit pre-cutover execution owner and checkout publication evidence.
+
         name: "validation-tree-semantic-round-limit-stop-base",
         composedTui: true,
         initialAgentName: "guide",
@@ -905,6 +915,8 @@ export const validationTreeSemanticRoundLimitStopScenario = withValidationBranch
 
 export const validationTreeSemanticRoundLimitStopDirectScenario = withValidationBranches(
     {
+        retainedCheckoutInput: true, // Explicit pre-cutover execution owner and checkout publication evidence.
+
         name: "validation-tree-semantic-round-limit-stop-direct-base",
         composedTui: true,
         initialAgentName: "guide",
@@ -1178,6 +1190,8 @@ export const validationTreeSemanticRoundLimitFollowUpScenario = {
 // implementation diff. OPERATION is deliberately not a Plan classification.
 export const validationTreeEmptyDiffSkipScenario = withValidationBranches(
     {
+        retainedCheckoutInput: true, // Explicit pre-cutover execution owner and checkout publication evidence.
+
         name: "validation-tree-empty-diff-skip-base",
         composedTui: true,
         initialAgentName: "guide",
@@ -1217,6 +1231,8 @@ export const validationTreeEmptyDiffSkipScenario = withValidationBranches(
 
 export const validationTreeSemanticRoundModeDiscoveryToVerifyScenario = withValidationBranches(
     {
+        retainedCheckoutInput: true, // Explicit pre-cutover execution owner and checkout publication evidence.
+
         name: "validation-tree-semantic-round-mode-discovery-to-verify-base",
         composedTui: true,
         initialAgentName: "guide",
@@ -1304,6 +1320,8 @@ export const validationTreeSemanticRoundModeDiscoveryToVerifyScenario = withVali
 
 export const validationTreePlanOnlyDiffFailsScenario = withValidationBranches(
     {
+        retainedCheckoutInput: true, // Explicit pre-cutover execution owner and checkout publication evidence.
+
         name: "validation-tree-plan-only-diff-fails-base",
         composedTui: true,
         initialAgentName: "guide",

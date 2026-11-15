@@ -1,3 +1,5 @@
+import { capturePlanReviewInput } from "../../plan-store/index.ts";
+import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";
 import { writeRuntimeExecutableFixture } from "../../testing/runtime-executable-fixture.ts";
 import { delimiter } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -28,7 +30,7 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { AGENTS, SUBAGENTS } from "../../constants.js";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { HostedSession } from "./hosted-session.js";
 import { setCustomSetting } from "../settings.js";
@@ -730,13 +732,6 @@ test("every eligible Agy role invokes its real lifecycle tool through configured
             await fsWriteFile(callsPath, JSON.stringify(calls));
             process.env["RUNWIELD_AGY_EXECUTION_MCP_CALLS"] = callsPath;
         };
-        const writeApprovedPlan = async (planName: string) => {
-            await fsMkdir(join(cwd, "docs", "plans"), { recursive: true });
-            await fsWriteFile(
-                join(cwd, "docs", "plans", `${planName}.md`),
-                `---\nclassification: PLANNED_CHANGE\nworkKind: FEATURE\ncomplexity: MEDIUM\nstatus: approved\naffectedPaths:\n  - src/example.ts\n---\n# ${planName}\n`,
-            );
-        };
         const assertWorkflowEvent = (branchText: string, kind: string, token: string) => {
             assertStringIncludes(branchText, "runwield.workflow_tool_event");
             assertStringIncludes(branchText, `\"kind\":\"${kind}\"`);
@@ -751,19 +746,48 @@ test("every eligible Agy role invokes its real lifecycle tool through configured
             requestInteraction: async (request) => {
                 const reviewedPlanName = String(request._meta?.planName || planName);
                 const reviewed = await loadPlan(cwd, reviewedPlanName);
+                if (!reviewed) throw new Error("Expected the authored Plan for review.");
+                const accepted = await applySharedPlanReviewDecision({
+                    cwd,
+                    planName: reviewedPlanName,
+                    planPath: reviewed.path,
+                    planWithFrontMatter: reviewed.markdown,
+                    planRevision: reviewed.revision,
+                    originalAttrs: reviewed.attrs,
+                    trustedClassification: reviewed.attrs.classification,
+                    packageInput: await capturePlanReviewInput(cwd, reviewedPlanName, reviewed.revision),
+                    decision: {
+                        approved: true,
+                        approvalAction: "run",
+                        executionAgent: "engineer",
+                        collaborationRecommendation: "autonomous",
+                    },
+                });
                 return {
                     outcome: "accepted",
                     _meta: {
-                        approved: true,
                         approvalAction: "run",
                         revision: reviewed?.revision,
+                        documentRevision: reviewed.revision,
+                        ...accepted,
                     },
                 };
             },
             supportsInteraction: () => true,
         });
-        await writeApprovedPlan(planName);
-        await writeCalls("planner", [{ name: "runwield_plan_written", arguments: { planName } }]);
+        await writeCalls("planner", [
+            {
+                name: "runwield_plan_written",
+                arguments: {
+                    planName,
+                    contextMarkdown: `# ${planName}\n\nImplement the example feature.`,
+                    classification: "PLANNED_CHANGE",
+                    workKind: "FEATURE",
+                    complexity: "MEDIUM",
+                    affectedPaths: ["src/example.ts"],
+                },
+            },
+        ]);
         const plannerRoot = (await ensureRootAgentSession({
             hostedSession: plannerSession,
             agentName: AGENTS.PLANNER,

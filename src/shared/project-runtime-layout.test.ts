@@ -10,7 +10,8 @@ import { captureForegroundProcess } from "./captured-process.ts";
 import { getCwd } from "../constants.js";
 import { spawnNativeProcess } from "./foreground-process.ts";
 import { makeTempFile } from "../testing/temp-file.ts";
-import { test } from "node:test";
+import { test, before, after } from "node:test";
+import { configureRemotePersonalResources } from "./remote/personal-resources.ts";
 import {
     chmod as fsChmod,
     lstat as fsLstat,
@@ -48,6 +49,20 @@ import {
     createPublicationAttempt,
     recordPublicationFailure,
 } from "./workflow/publication-attempt.ts";
+
+// The explicitly admitted managed-remote launch keeps the v1 checkout layout until its transport cutover.
+// Ordinary-account ownership and migration are covered by project-runtime-home*.test.ts.
+let managedGlobalRoot: string;
+before(async () => {
+    managedGlobalRoot = await fsMkdtemp(join(tmpdir(), "runtime-managed-personal-"));
+    configureRemotePersonalResources({
+        globalRoot: managedGlobalRoot,
+        personalOwner: { kind: "managed-remote", identity: "fixture-laptop-account" },
+    });
+});
+after(async () => {
+    await fsRm(managedGlobalRoot, { recursive: true, force: true });
+});
 
 const fixture = defineCommittedGitFixture({ "README.md": "# Runtime layout fixture\n" });
 const REPO_ROOT = dirname(dirname(dirname(fromFileUrl(import.meta.url))));

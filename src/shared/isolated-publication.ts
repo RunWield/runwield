@@ -1,14 +1,15 @@
+import {
+    preserveUnpublishedPlanCopies,
+    restoreUnpublishedPlanCopies,
+    type PlanDeliveryBackup,
+} from "../plan-store/index.ts";
+import { assertPackageCopyTargets, assertPackagePublicationCandidate } from "../plan-store/index.ts";
+import type { PackagePublicationReference } from "../plan-store/index.ts";
 import { resolvePublicationUpstream as resolveUpstream } from "./publication-target.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
 import { captureForegroundProcess } from "./captured-process.ts";
-import {
-    mkdir as fsMkdir,
-    readFile as fsReadFile,
-    rm as fsRm,
-    stat as fsStat,
-    writeFile as fsWriteFile,
-} from "node:fs/promises";
+import { mkdir as fsMkdir, rm as fsRm, stat as fsStat } from "node:fs/promises";
 /**
  * Assemble Direct Delivery in a temporary clone and push it when an upstream
  * exists. Local-only projects publish through their checked-out target branch.
@@ -29,7 +30,7 @@ import {
     finalizePublicationLifecycle,
     recoverLocalPublicationLifecycle,
 } from "./publication-lifecycle.ts";
-import { recoverSealedPlanFormatting } from "./publication-plan-formatting.ts";
+import { recoverSealedPlanFormatting } from "../plan-store/index.ts";
 
 interface CommandResult {
     code: number;
@@ -38,6 +39,7 @@ interface CommandResult {
 }
 
 export interface IsolatedPublicationArgs {
+    packageInput?: PackagePublicationReference;
     projectRoot: string;
     executionCwd: string;
     executionBranch: string;
@@ -314,12 +316,20 @@ export async function publishExecutionWorktreeIsolated(
 ): Promise<IsolatedPublicationResult> {
     await enterProjectRuntime(args.projectRoot);
     args.onProgress?.("preparing");
-    await recoverSealedPlanFormatting(args);
+    if (!args.packageInput) await recoverSealedPlanFormatting(args);
     await assertPreMergeCandidateUnchanged({
         worktreePath: args.executionCwd,
         sealedExecutionCommit: args.sealedExecutionCommit,
         allowedPlanPaths: [],
     });
+    if (args.packageInput)
+        await assertPackagePublicationCandidate(
+            args.projectRoot,
+            args.executionCwd,
+            args.packageInput,
+            args.sealedExecutionCommit,
+            args.sealedExecutionCommit,
+        );
     const executionMetadataCommit = args.sealedExecutionCommit;
     args.onProgress?.("reading_target");
     const upstream = await resolveUpstream(args.projectRoot, args.targetBranch);
@@ -327,6 +337,7 @@ export async function publishExecutionWorktreeIsolated(
         args.onProgress?.("using_local_target");
         // The primary index and setup recovery record belong to one publication at a time.
         const internalRoot = resolveProjectRuntimeLayout(args.projectRoot).selected.internalRoot;
+        await fsMkdir(internalRoot, { recursive: true, mode: 0o700 });
         const release = await lockfile.lock(args.projectRoot, {
             lockfilePath: join(internalRoot, "local-publication.lock"),
             retries: { retries: 60, factor: 1, minTimeout: 500, maxTimeout: 500 },
@@ -373,6 +384,13 @@ export async function publishExecutionWorktreeIsolated(
                     upstream.url,
                     `+refs/heads/${upstream.branch}:${publicationTargetRef}`,
                 ]);
+                if (args.packageInput)
+                    await assertPackageCopyTargets(
+                        args.projectRoot,
+                        publicationRoot,
+                        args.packageInput,
+                        targetHeadBeforeMerge,
+                    );
                 const containsRemoteHead = await runGitResult(publicationRoot, [
                     "merge-base",
                     "--is-ancestor",
@@ -444,14 +462,24 @@ export async function publishExecutionWorktreeIsolated(
             const deliveryCommit = await runGit(publicationRoot, ["rev-parse", "HEAD"]);
             await assertNoRuntimePathsInNewHistory(publicationRoot, publicationHistoryBase, deliveryCommit);
             preserveForRecovery = true;
-            const publicationCommit = await commitPublicationMetadata(
-                publicationRoot,
-                args.planName,
-                args.sealedExecutionCommit,
-                args.allowedPlanPaths,
-                upstream.branch,
-            );
+            const publicationCommit = args.packageInput
+                ? deliveryCommit
+                : await commitPublicationMetadata(
+                      publicationRoot,
+                      args.planName,
+                      args.sealedExecutionCommit,
+                      args.allowedPlanPaths,
+                      upstream.branch,
+                  );
             await assertNoRuntimePathsInNewHistory(publicationRoot, publicationHistoryBase, publicationCommit);
+            if (args.packageInput)
+                await assertPackagePublicationCandidate(
+                    args.projectRoot,
+                    publicationRoot,
+                    args.packageInput,
+                    args.sealedExecutionCommit,
+                    publicationCommit,
+                );
             await args.onIntegrated?.({
                 targetBaseCommit: targetHeadBeforeMerge,
                 integrationCommit: publicationCommit,
@@ -572,6 +600,8 @@ export async function publishExecutionWorktreeIsolated(
             }
         }
         const targetHeadBeforeMerge = expectedRemoteHead || sourceTargetHead;
+        if (args.packageInput)
+            await assertPackageCopyTargets(args.projectRoot, publicationRoot, args.packageInput, targetHeadBeforeMerge);
         const publicationHistoryBase = expectedRemoteHead ? targetHeadBeforeMerge : null;
         await runGit(publicationRoot, [
             "branch",
@@ -603,14 +633,24 @@ export async function publishExecutionWorktreeIsolated(
         const deliveryCommit = await runGit(publicationRoot, ["rev-parse", "HEAD"]);
         await assertNoRuntimePathsInNewHistory(publicationRoot, publicationHistoryBase, deliveryCommit);
         preserveForRecovery = true;
-        const publicationCommit = await commitPublicationMetadata(
-            publicationRoot,
-            args.planName,
-            args.sealedExecutionCommit,
-            args.allowedPlanPaths,
-            upstream.branch,
-        );
+        const publicationCommit = args.packageInput
+            ? deliveryCommit
+            : await commitPublicationMetadata(
+                  publicationRoot,
+                  args.planName,
+                  args.sealedExecutionCommit,
+                  args.allowedPlanPaths,
+                  upstream.branch,
+              );
         await assertNoRuntimePathsInNewHistory(publicationRoot, publicationHistoryBase, publicationCommit);
+        if (args.packageInput)
+            await assertPackagePublicationCandidate(
+                args.projectRoot,
+                publicationRoot,
+                args.packageInput,
+                args.sealedExecutionCommit,
+                publicationCommit,
+            );
         await args.onIntegrated?.({
             targetBaseCommit: targetHeadBeforeMerge,
             integrationCommit: publicationCommit,
@@ -669,18 +709,21 @@ async function publishToLocalTarget(
             { mergeFailureKind: "publication_target_changed" },
         );
     }
-    await recoverLocalPublicationLifecycle(args.projectRoot, args.targetBranch, args.sealedExecutionCommit);
+    if (!args.packageInput)
+        await recoverLocalPublicationLifecycle(args.projectRoot, args.targetBranch, args.sealedExecutionCommit);
     const targetHeadBeforeMerge = await runGit(args.projectRoot, ["rev-parse", `refs/heads/${args.targetBranch}`]);
+    if (args.packageInput)
+        await assertPackageCopyTargets(args.projectRoot, args.projectRoot, args.packageInput, targetHeadBeforeMerge);
     const primaryBranch = await runGit(args.projectRoot, ["branch", "--show-current"]);
     const updatedPrimaryCheckout = primaryBranch === args.targetBranch;
-    const savedAuthoritativePlans = new Map<string, Uint8Array>();
+    let savedAuthoritativePlans: PlanDeliveryBackup | undefined;
     try {
         if (updatedPrimaryCheckout) {
             await prepareProjectContextPublication(args.projectRoot, args.executionCwd, args.sealedExecutionCommit);
             const trackedChanges = (await runGitRaw(args.projectRoot, ["diff", "--name-only", "-z", "HEAD", "--"]))
                 .split("\0")
                 .filter((path) => path.length > 0);
-            const allowedPrimaryChanges = new Set(args.allowedPlanPaths);
+            const allowedPrimaryChanges = new Set(args.packageInput ? [] : args.allowedPlanPaths);
             const blockingTrackedChanges = trackedChanges.filter((path) => !allowedPrimaryChanges.has(path));
             if (blockingTrackedChanges.length > 0) {
                 throw new IsolatedPublicationError(
@@ -691,7 +734,7 @@ async function publishToLocalTarget(
                     { mergeFailureKind: "primary_checkout_dirty", blockingPaths: blockingTrackedChanges },
                 );
             }
-            for (const relativePath of args.allowedPlanPaths) {
+            for (const relativePath of args.packageInput ? [] : args.allowedPlanPaths) {
                 const staged = await runGitResult(args.projectRoot, [
                     "diff",
                     "--cached",
@@ -706,26 +749,10 @@ async function publishToLocalTarget(
                     );
                 }
             }
-            for (const relativePath of args.allowedPlanPaths) {
-                const path = join(args.projectRoot, relativePath);
-                const bytes = await fsReadFile(path).catch((error) => {
-                    if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
-                    throw error;
-                });
-                if (!bytes) continue;
-                const changed = await runGitResult(args.projectRoot, ["diff", "--quiet", "--", relativePath]);
-                const tracked = await runGitResult(args.projectRoot, ["ls-files", "--error-unmatch", relativePath]);
-                if (changed.code === 0 && tracked.code === 0) continue;
-                savedAuthoritativePlans.set(relativePath, bytes);
-                if (tracked.code === 0) {
-                    // The staged-change guard above proves this index entry matches
-                    // HEAD. Restoring from the index also refreshes Git's stat cache;
-                    // an explicit HEAD checkout can leave CRLF files falsely dirty.
-                    await runGit(args.projectRoot, ["restore", "--worktree", "--", relativePath]);
-                } else {
-                    await fsRm(path);
-                }
-            }
+            savedAuthoritativePlans = await preserveUnpublishedPlanCopies(
+                args.projectRoot,
+                args.packageInput ? [] : args.allowedPlanPaths,
+            );
         }
         args.onProgress?.("combining_work");
         await assertNoRuntimePathsInNewHistory(args.projectRoot, targetHeadBeforeMerge, args.sealedExecutionCommit);
@@ -741,15 +768,25 @@ async function publishToLocalTarget(
             planDescription: args.planDescription,
         });
         args.onProgress?.("verifying");
-        const publicationCommit = await finalizeLocalPublicationLifecycle(
-            args.projectRoot,
-            args.targetBranch,
-            args.planName,
-            args.sealedExecutionCommit,
-            args.allowedPlanPaths,
-        );
+        const publicationCommit = args.packageInput
+            ? await runGit(args.projectRoot, ["rev-parse", `refs/heads/${args.targetBranch}`])
+            : await finalizeLocalPublicationLifecycle(
+                  args.projectRoot,
+                  args.targetBranch,
+                  args.planName,
+                  args.sealedExecutionCommit,
+                  args.allowedPlanPaths,
+              );
         await assertNoRuntimePathsInNewHistory(args.projectRoot, targetHeadBeforeMerge, publicationCommit);
         if (updatedPrimaryCheckout) await settleProjectContextPublication(args.projectRoot);
+        if (args.packageInput)
+            await assertPackagePublicationCandidate(
+                args.projectRoot,
+                args.projectRoot,
+                args.packageInput,
+                args.sealedExecutionCommit,
+                publicationCommit,
+            );
         await args.onIntegrated?.({
             targetBaseCommit: targetHeadBeforeMerge,
             integrationCommit: publicationCommit,
@@ -791,15 +828,11 @@ async function publishToLocalTarget(
         ]);
         const targetMoved = currentTargetHead.code === 0 && currentTargetHead.stdout !== targetHeadBeforeMerge;
         let restorationError: Error | undefined;
-        if (!targetMoved) {
-            for (const [relativePath, bytes] of savedAuthoritativePlans) {
-                const path = join(args.projectRoot, relativePath);
-                try {
-                    await fsMkdir(dirname(path), { recursive: true });
-                    await fsWriteFile(path, bytes);
-                } catch (restoreError) {
-                    restorationError = restoreError instanceof Error ? restoreError : new Error(String(restoreError));
-                }
+        if (!targetMoved && savedAuthoritativePlans) {
+            try {
+                await restoreUnpublishedPlanCopies(args.projectRoot, savedAuthoritativePlans);
+            } catch (restoreError) {
+                restorationError = restoreError instanceof Error ? restoreError : new Error(String(restoreError));
             }
         }
         try {

@@ -1,13 +1,13 @@
-import { validateSequenceReviewDecision } from "../../../../shared/workflow/sequence-review.ts";
+import { validateSequenceReviewDecision } from "../../../../plan-store/index.ts";
 /** Review decision transport for Workspace-hosted review surfaces. */
 
 import { normalizePlanClassification } from "../../../../constants.js";
 import { readPlanApprovalAction } from "../../../../shared/workflow/plan-approval.ts";
-import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../../plan-store.js";
+import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../../plan-format.ts";
 
 /**
- * @typedef {import("../../../../shared/workflow/sequence-review.ts").SequenceReviewDecision} SequenceReviewDecision
- * @typedef {import("../../../../shared/workflow/sequence-review.ts").SequenceReviewDocument} SequenceReviewDocument
+ * @typedef {import("../../../../plan-store/index.ts").SequenceReviewDecision} SequenceReviewDecision
+ * @typedef {import("../../../../plan-store/index.ts").SequenceReviewDocument} SequenceReviewDocument
  * @typedef {import("../../../../shared/workflow/review-feedback-images.ts").ReviewImageDecision} ReviewImageDecision
  * @typedef {import("../../../../shared/workflow/review-feedback-images.ts").ReviewImageInput} ReviewImageInput
  * @typedef {import("../../../../shared/workflow/review-feedback-images.ts").ReviewAnnotationInput} ReviewAnnotationInput
@@ -36,6 +36,7 @@ import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../..
  * @typedef {Object} ReviewRequestFields
  * @property {string} [executionAgent]
  * @property {string} [collaborationRecommendation]
+ * @property {string} [documentRevision]
  * @property {number} [reviewRevision]
  * @property {string} [approvalAction]
  * @property {"plan" | "code"} [reviewType]
@@ -44,9 +45,10 @@ import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../..
  * @typedef {Omit<ReviewDecision, "executionAgent" | "collaborationRecommendation" | "approvalAction"> & ReviewRequestFields} ReviewRequestBody
  *
  * @typedef {Object} ReviewPayload
+ * @property {string} [documentRevision]
  * @property {number} [reviewRevision]
  * @property {string} [classification]
- * @property {Pick<import("../../../../plan-store.js").PlanFrontMatter, "classification">} [frontmatter]
+ * @property {Pick<import("../../../../plan-store/index.ts").PlanFrontMatter, "classification">} [frontmatter]
  * @property {SequenceReviewDocument[]} [sequenceDocuments]
  *
  * @typedef {Object} ReviewRequestState
@@ -257,6 +259,9 @@ async function resolveFromRequest(ctx, createDecision) {
         body = {};
     }
 
+    const documentRevision = ctx.state?.reviewPayload?.documentRevision;
+    if (documentRevision && body.documentRevision !== documentRevision)
+        return jsonError("stale_plan_review", "Plan documents changed. Refresh the review; your draft was kept.", 409);
     const expectedRevision = ctx.state?.reviewPayload?.reviewRevision;
     if (expectedRevision !== undefined && body?.reviewRevision !== expectedRevision) {
         return jsonError(

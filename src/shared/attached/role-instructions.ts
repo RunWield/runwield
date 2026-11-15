@@ -15,6 +15,9 @@ import { buildBridgedToolPromptAppendix } from "../session/bridged-tools/prompt.
 import type { AttachedHostRole } from "./operations.ts";
 import { ATTACHED_HOSTS, type AttachedHostId } from "./hosts.ts";
 
+const DOCUMENT_ACCESS =
+    "When the workflow has a selected Plan, read it with RunWield MCP read_plan using the current workflowId and actionId before working. Search and read Work Records with work_record_search and work_record_read; Core applies the role's current/all policy. No host home-directory access is needed. Follow nextOffsetBytes until truncated is false, passing documentRevision on every continuation page. Restart at offset zero after revision_conflict. If the host denies these tools and no authorized route remains, stop dependent work and report the denied capability.";
+
 const ENVELOPE_ADDENDUM = [
     "## RunWield in {{HOST_NAME}}",
     "",
@@ -22,7 +25,7 @@ const ENVELOPE_ADDENDUM = [
         "workflow state.",
     "",
     "- Some tools named above exist only in RunWield (for example `code_search`, `memory`, `user_interview`, " +
-        "`background_task`, and `work_record_search`). Use {{HOST_NAME}}'s own tools for the same work, and ask the user " +
+        "`background_task`). Use {{HOST_NAME}}'s own tools for the same work, and ask the user " +
         "questions in plain text.",
     "- Call RunWield lifecycle tools through the RunWield MCP server. Each call wraps the Core arguments in an envelope:",
     "  - `operationId`: a new unique identifier for each new call. Reuse it only to retry a call that returned no result.",
@@ -39,7 +42,7 @@ const WORKER_ADDENDUM = [
     "- You are a fresh {{HOST_LABEL}}-hosted worker. All model calls belong to {{HOST_NAME}}.",
     "- Use only the handed-off execution directory and Plan path. Follow that Plan. Never edit, clean, stash, reset, or relocate the invoking checkout. With recorded non-Git consent, the execution directory is the current checkout.",
     "- Do not create host worktree isolation or another worktree. RunWield owns execution isolation.",
-    "- Do not call any RunWield lifecycle tool, CLI, or TUI, including task_completed. Read-only MCP get_instructions and get_artifact are allowed. This overrides all Core lifecycle and completion-tool instructions above.",
+    "- Do not call any RunWield lifecycle tool, CLI, or TUI, including task_completed. Read-only MCP get_instructions, get_artifact, read_plan, work_record_search and work_record_read are allowed. This overrides all Core lifecycle and completion-tool instructions above.",
     "- Return a concise Markdown bullet-point implementation report to the coordinating conversation, with outcomes and verification results. The coordinator submits task_completed.message. If blocked, return the blocker; do not claim completion.",
 ].join("\n");
 
@@ -47,7 +50,7 @@ const PLANNING_WORKER_ADDENDUM = [
     "## Attached planning worker — overrides lifecycle instructions above when dispatched as a subagent",
     "- Fetch your own current get_instructions and context using the handed-off workflowId and actionId. Follow the issued role contract and canonical request, triage outcome, feedback, image paths and note.",
     "- Work only in the handed-off project directory. Before writing a Plan, return context.projectSetup paths to the coordinator for disclosure to the user. If user input is needed, return the question to the coordinator and wait.",
-    "- Router: return the structured triage_report outcome (routingIntent, complexity, summary, workKind and sessionName when applicable). Planner: write or revise the canonical Plan, then return planName and any executionAgent or collaborationRecommendation fields for plan_written. Browser edits are already saved; do not apply them twice.",
+    "- Router: return the structured triage_report outcome (routingIntent, complexity, summary, workKind and sessionName when applicable). Planner: return Plan prose without YAML in contextMarkdown (and optional validationMarkdown), planName, and any executionAgent or collaborationRecommendation fields for plan_written. For revisions include the current expectedRevision. Browser edits are already saved; do not apply them twice.",
     "- Make no lifecycle calls, commits, merges, pushes or publication actions. The coordinator submits your result and handles the next action. If blocked, return the blocker instead of claiming completion.",
 ].join("\n");
 
@@ -70,7 +73,7 @@ const ROLE_ADDENDUM: Record<AttachedHostRole, string> = {
         "## Attached repair worker — overrides Core lifecycle instructions above",
         "- You are a fresh {{HOST_LABEL}}-hosted repair worker. Use only the handed-off checkout and focused repair packet. Do not repeat the original implementation or create host worktree isolation.",
         "- Never edit, clean, stash, reset, or relocate the invoking checkout. Do not commit, push, merge, or publish.",
-        "- Do not call any RunWield lifecycle tool, CLI, or TUI, including task_completed. Read-only MCP get_instructions and get_artifact are allowed. Return a per-item Markdown bullet report to the coordinating conversation; it submits task_completed.message.",
+        "- Do not call any RunWield lifecycle tool, CLI, or TUI, including task_completed. Read-only MCP get_instructions, get_artifact, read_plan, work_record_search and work_record_read are allowed. Return a per-item Markdown bullet report to the coordinating conversation; it submits task_completed.message.",
         "- A blocked item is not completion. Return its identity, blocker, and needed recovery in plain text.",
     ].join("\n"),
     engineer: WORKER_ADDENDUM,
@@ -82,7 +85,7 @@ const ROLE_ADDENDUM: Record<AttachedHostRole, string> = {
         "- Before you write the Plan, fetch current instructions with `get_instructions` and show the user the returned `context.projectSetup` paths: `plan_written` " +
             "creates them in the repository. When the list is empty, nothing new is created.",
         "- Submit with `plan_written`. Put `planName`, and optionally `executionAgent` and " +
-            "`collaborationRecommendation`, in `payload` next to `actionId`.",
+            "`collaborationRecommendation`, in `payload` next to `actionId`. Create prose through `contextMarkdown` and optional `validationMarkdown`, without YAML. When replacing existing prose include its `expectedRevision`; never write protected plan.wld.json metadata.",
         "- When `workflow.nextAction.kind` is `review`, show `review.url` and wait with MCP `status` using " +
             "`{ workflowId, waitForRevision: <current revision>, timeoutMs: 30000 }`. Repeat with the returned revision while review is pending. Do not use shell sleep or fetch full status.",
         "- When feedback returns a Planner action, fetch its current instructions and `context`; read its feedback, image paths, and note, revise the Plan, then " +
@@ -113,7 +116,7 @@ export async function resolveAttachedRoleInstructions(
     hostId: AttachedHostId = "claude-code",
 ): Promise<string> {
     // The coordinator adds the mode-specific bare reviewer policy before these host transport overrides.
-    if (role === "reviewer") return adaptHostText(ROLE_ADDENDUM.reviewer, hostId);
+    if (role === "reviewer") return adaptHostText(`${ROLE_ADDENDUM.reviewer}\n\n${DOCUMENT_ACCESS}`, hostId);
     const agent = await loadAgentDef(role, projectRoot);
     const bundledAgentDefsPath = await getBundledAgentDefsPath();
     const skills = agent.systemPrompt.includes("{{SKILLS}}") ? await listVisibleSkillCatalog(projectRoot) : [];
@@ -135,6 +138,7 @@ export async function resolveAttachedRoleInstructions(
             ...(role === "engineer" || role === "frontend-engineer" || role === "reviewer-feedback-engineer"
                 ? []
                 : [ENVELOPE_ADDENDUM]),
+            DOCUMENT_ACCESS,
             ROLE_ADDENDUM[role],
             ...(hostId === "codex" && (role === "router" || role === "planner") ? [PLANNING_WORKER_ADDENDUM] : []),
         ].join("\n\n"),

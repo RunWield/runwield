@@ -4,7 +4,7 @@ import { runRootTurnUntilRootWorkflowEvent } from "../session/root-workflow-turn
 import { claimWorkflowToolEvent, settleWorkflowToolEvent } from "./workflow-tool-events.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "../session/hosted-session.js";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store/index.ts";
 import type { AssociationPurpose } from "../session/plan-association.ts";
 
 /**

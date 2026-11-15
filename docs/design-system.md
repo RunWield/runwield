@@ -7,6 +7,14 @@ carry through the rest of Workspace.
 The hierarchy, state meanings, and evidence presentation also guide the TUI. Browser CSS, fonts, and dimensions apply
 only to web surfaces; [terminal adaptation](#terminal-adaptation) describes the corresponding terminal conventions.
 
+## Package document selection
+
+Internally admitted Plan homes reuse the shared artifact reader, Workflow sidebar and body editor. A labelled native
+Document selector and Refresh control use the existing control-height, spacing, surface and border tokens. Selection
+keeps each resource's local draft separate; a stale save preserves the draft and exposes the current revision after
+refresh. Review uses the same document names, with evidence documents read-only beside the context decision surface.
+Controls wrap on phones and retain visible keyboard focus.
+
 ## Principles
 
 ### Use the review surfaces as the blueprint

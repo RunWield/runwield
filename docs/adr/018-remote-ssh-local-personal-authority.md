@@ -6,6 +6,14 @@ status: accepted
 
 Last updated: 2026-10-26 EDT
 
+## Local home-store activation
+
+Ordinary local and manual-SSH Plan and Work Record access now uses the executing account's personal Project store
+under [ADR-0020](0020-home-project-state-and-launch-mode-ownership.md). Project catalog authority is separate from
+revision-checked workflow selection. Explicit import preserves original execution ownership until publication is proven
+or the user deliberately abandons the attempt; it never starts a replacement attempt or weakens publication evidence.
+Session bundle authority and managed-remote personal ownership retain their existing contracts.
+
 ## Context and Constraints
 
 Remote development uses an existing Linux project without a laptop checkout or source synchronization. The owner

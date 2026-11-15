@@ -1,8 +1,12 @@
+import { planFixtureJournalDirectory, planFixtureJournalPath } from "../../shared/testing/plan-state-fixture.ts";
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
+import { relative } from "node:path";
 import { mkdir as fsMkdir, readdir as fsReaddir, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
-import { archivePlan, listArchivedPlans, listPlans, loadArchivedPlan, loadPlan, savePlan } from "../../plan-store.js";
-import { getTransitionJournalDir, getTransitionJournalPath } from "../../shared/workflow/state-transition.ts";
+import { archivePlan, listArchivedPlans, listPlans, loadArchivedPlan, loadPlan } from "../../plan-store/index.ts";
+
 import { runPlansArchiveCommand } from "./archive.ts";
 import { type PlanCommandFixture, withPlanCommandFixture } from "./plans-command-test-fixture.ts";
 
@@ -23,7 +27,7 @@ function archiveTest(name: string, run: (fixture: PlanCommandFixture) => Promise
 }
 
 archiveTest("archive command lists archived fixture Plans", async ({ projectRoot }) => {
-    await savePlan(projectRoot, "done", "# Done\n\nFinished work.", {
+    await seedPlan(projectRoot, "done", "# Done\n\nFinished work.", {
         status: "verified",
         summary: "Done plan",
         planId: "done-id",
@@ -47,7 +51,7 @@ archiveTest("archive command lists archived fixture Plans", async ({ projectRoot
 });
 
 archiveTest("archive command resolves a planId and runs the real archive transaction", async ({ projectRoot }) => {
-    await savePlan(projectRoot, "canonical-plan", "# Draft\n\nKeep this body.", {
+    await seedPlan(projectRoot, "canonical-plan", "# Draft\n\nKeep this body.", {
         status: "draft",
         summary: "Draft plan",
         planId: "plan-id-1",
@@ -61,70 +65,79 @@ archiveTest("archive command resolves a planId and runs the real archive transac
     assertEquals(archived?.attrs.archiveReason, "stale");
     assertEquals(archived?.attrs.archivedFromStatus, "draft");
     assertEquals(
-        logs.some((line) => line.includes("docs/plans/archived/canonical-plan.md")),
+        logs.some((line) => line.includes(relative(projectRoot, archived!.path))),
         true,
     );
-    assertEquals(await fsReaddir(getTransitionJournalDir(projectRoot), { withFileTypes: true }).catch(() => []), []);
+    assertEquals(
+        await fsReaddir(planFixtureJournalDirectory(projectRoot), { withFileTypes: true }).catch(() => []),
+        [],
+    );
 });
 
 archiveTest("archive command cannot bypass a stranded lifecycle transaction", async ({ projectRoot }) => {
-    await savePlan(projectRoot, "blocked", "# Blocked", {
+    await seedPlan(projectRoot, "blocked", "# Blocked", {
         status: "draft",
         planId: "blocked-id",
     });
-    await fsMkdir(getTransitionJournalDir(projectRoot), { recursive: true });
+    await fsMkdir(planFixtureJournalDirectory(projectRoot), { recursive: true });
     await fsWriteFile(
-        getTransitionJournalPath(projectRoot, "stranded-archive"),
+        planFixtureJournalPath(projectRoot, "stranded-archive"),
         JSON.stringify({
             version: 1,
             transitionId: "stranded-archive",
             operation: "plan_archive",
             planName: "blocked",
             state: "needs_recovery",
+            beforeFacts: { plan: { revision: "0".repeat(64) } },
         }),
     );
 
-    await assertRejects(() => runPlansArchiveCommand(["blocked-id", "--force"]), Error, "needs recovery");
+    await assertRejects(
+        () => runPlansArchiveCommand(["blocked-id", "--force"]),
+        Error,
+        "Package transition needs current evidence",
+    );
     assertEquals((await loadPlan(projectRoot, "blocked"))?.body, "# Blocked");
     assertEquals(await loadArchivedPlan(projectRoot, "blocked"), null);
 });
 
 archiveTest("archive command restores archived Plans through the real transaction", async ({ projectRoot }) => {
-    await savePlan(projectRoot, "done", "# Done\n\nPreserved.", {
+    await seedPlan(projectRoot, "done", "# Done\n\nPreserved.", {
         status: "verified",
         planId: "done-id",
     });
     await archivePlan(projectRoot, "done", { reason: "done" });
+    const archived = await loadArchivedPlan(projectRoot, "done");
 
     const logs = await captureLogs(() => runPlansArchiveCommand(["restore", "done-id", "--to", "done-restored"]));
 
     assertEquals(await loadArchivedPlan(projectRoot, "done"), null);
     const restored = await loadPlan(projectRoot, "done-restored");
     assertEquals(restored?.body, "# Done\n\nPreserved.");
-    assertEquals(restored?.attrs.restoredFromPath, "docs/plans/archived/done.md");
+    assertEquals(restored?.attrs.restoredFromPath, archived?.path);
     assertEquals(
-        logs.some((line) => line.includes("Restored done-id to docs/plans/done-restored.md")),
+        logs.some((line) => line.includes(`Restored done-id to ${relative(projectRoot, restored!.path)}`)),
         true,
     );
 });
 
 archiveTest("bulk archive moves matching parents, their children, and standalone Plans", async ({ projectRoot }) => {
-    await savePlan(projectRoot, "epic", "# Epic", {
+    await seedPlan(projectRoot, "epic", "# Epic", {
         classification: "PROJECT",
         status: "verified",
         summary: "Done epic",
     });
-    await savePlan(projectRoot, "epic/01-child", "# Child", {
+    await seedPlan(projectRoot, "epic/01-child", "# Child", {
         classification: "FEATURE",
         parentPlan: "epic",
         status: "draft",
         summary: "Child",
     });
-    await savePlan(projectRoot, "standalone", "# Standalone", {
+    await seedPlan(projectRoot, "standalone", "# Standalone", {
         status: "verified",
         summary: "Done",
     });
-    await savePlan(projectRoot, "keep", "# Keep", { status: "draft" });
+    await seedPlan(projectRoot, "keep", "# Keep", { status: "draft" });
 
     const logs = await captureLogs(() =>
         runPlansArchiveCommand(["--all", "--status", "verified", "--reason", "batch done"]),
@@ -146,7 +159,7 @@ archiveTest("bulk archive moves matching parents, their children, and standalone
 });
 
 archiveTest("archive command reports an empty bulk match without writing Plans", async ({ projectRoot }) => {
-    await savePlan(projectRoot, "keep", "# Keep", { status: "draft" });
+    await seedPlan(projectRoot, "keep", "# Keep", { status: "draft" });
 
     const logs = await captureLogs(() => runPlansArchiveCommand(["--all", "--status", "verified"]));
 
@@ -176,11 +189,13 @@ archiveTest("archive command validates its argument combinations before filesyst
 archiveTest(
     "archive listing retains pending workflow notices for readable local documents",
     async ({ projectRoot }) => {
-        const { join } = await import("node:path");
-        await fsMkdir(join(projectRoot, "docs/plans/archived"), { recursive: true });
-        await fsWriteFile(join(projectRoot, "docs/plans/archived/local.md"), "# Local archived notes\n");
-        const logs = await captureLogs(() => runPlansArchiveCommand([]));
-        assertStringIncludes(logs.join("\n"), "local");
-        assertStringIncludes(logs.join("\n"), "Workflow details pending");
+        await withRetainedPlanFixture(projectRoot, async () => {
+            const { join } = await import("node:path");
+            await fsMkdir(join(projectRoot, "docs/plans/archived"), { recursive: true });
+            await fsWriteFile(join(projectRoot, "docs/plans/archived/local.md"), "# Local archived notes\n");
+            const logs = await captureLogs(() => runPlansArchiveCommand([]));
+            assertStringIncludes(logs.join("\n"), "local");
+            assertStringIncludes(logs.join("\n"), "Workflow details pending");
+        });
     },
 );

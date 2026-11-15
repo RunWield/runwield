@@ -1,4 +1,4 @@
-import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
+import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { prepareWorktreeRegistry } from "../../shared/worktree-registry.js";
 /**
  * @module cmd/plans/unshare
@@ -7,7 +7,7 @@ import { prepareWorktreeRegistry } from "../../shared/worktree-registry.js";
 
 import { parseArgs } from "../../shared/cli-args.ts";
 import { CLI_BIN, getCwd } from "../../constants.js";
-import { clearPlanCollaborationMetadata, listPlans, listPlanResources } from "../../plan-store.js";
+import { clearPlanCollaborationMetadata, listPlans, listPlanResources } from "../../plan-store/index.ts";
 import { redactSecrets } from "../../shared/collaboration/capabilities.ts";
 import {
     CollaborationApiError,
@@ -23,7 +23,7 @@ import {
     resolveCompatibleSecretRecord,
 } from "../../shared/collaboration/secrets.js";
 import { normalizePlanServerUrl } from "../../shared/collaboration/urls.ts";
-import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 
 interface PlansUnshareArgs {
     target?: string;

@@ -1,6 +1,9 @@
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
 import { test } from "node:test";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
-import { archivePlan, loadArchivedPlan, savePlan } from "../../plan-store.js";
+import { archivePlan, loadArchivedPlan } from "../../plan-store/index.ts";
+
 import { runPlansReadCommand } from "./read.ts";
 import { getRunWieldRuntimeDir } from "../../constants.js";
 import { type PlanCommandFixture, withPlanCommandFixture } from "./plans-command-test-fixture.ts";
@@ -13,6 +16,10 @@ interface ReadSurfaceResult {
 
 function readTest(name: string, run: (fixture: PlanCommandFixture) => Promise<void>): void {
     test(name, () => withPlanCommandFixture("runwield-plans-read-command-", run));
+}
+
+function retainedReadTest(name: string, run: (fixture: PlanCommandFixture) => Promise<void>): void {
+    readTest(name, (fixture) => withRetainedPlanFixture(fixture.projectRoot, () => run(fixture)));
 }
 
 async function runReadAndClose(argv: string[]): Promise<ReadSurfaceResult> {
@@ -62,14 +69,14 @@ async function runReadAndClose(argv: string[]): Promise<ReadSurfaceResult> {
     }
 }
 
-readTest("named read keeps raw legacy documents browseable with a pending notice", async ({ projectRoot }) => {
+retainedReadTest("named read keeps raw legacy documents browseable with a pending notice", async ({ projectRoot }) => {
     const { mkdir, readFile, writeFile } = await import("node:fs/promises");
     const { join } = await import("node:path");
     await mkdir(join(projectRoot, "docs/plans"), { recursive: true });
     const controllers = join(getRunWieldRuntimeDir(projectRoot), "controller/plans");
     await mkdir(controllers, { recursive: true });
     const path = join(projectRoot, "docs/plans/legacy.md");
-    const markdown = "---\nplanId: legacy-id\nstatus: draft\n---\n# Legacy document\n";
+    const markdown = "---\nplanId: legacy-id\nstatus: draft\nvalidationCiAttempts: 2\n---\n# Legacy document\n";
     await writeFile(path, markdown);
     await writeFile(join(controllers, "legacy-id.json"), "{}\n");
 
@@ -80,30 +87,33 @@ readTest("named read keeps raw legacy documents browseable with a pending notice
     assertEquals(await readFile(path, "utf8"), markdown);
 });
 
-readTest("read command renders the active Plan when an archived Plan has the same name", async ({ projectRoot }) => {
-    await savePlan(projectRoot, "same", "# Archived Marker", {
-        status: "verified",
-        planId: "archived-same-id",
-    });
-    await archivePlan(projectRoot, "same");
-    await savePlan(projectRoot, "same", "# Active Marker", {
-        status: "draft",
-        planId: "active-same-id",
-    });
+retainedReadTest(
+    "read command renders the active Plan when an archived Plan has the same name",
+    async ({ projectRoot }) => {
+        await seedPlan(projectRoot, "same", "# Archived Marker", {
+            status: "verified",
+            planId: "archived-same-id",
+        });
+        await archivePlan(projectRoot, "same");
+        await seedPlan(projectRoot, "same", "# Active Marker", {
+            status: "draft",
+            planId: "active-same-id",
+        });
 
-    const result = await runReadAndClose(["same", "--no-open"]);
+        const result = await runReadAndClose(["same", "--no-open"]);
 
-    assertStringIncludes(result.html, "artifact-read");
-    assertStringIncludes(result.html, "Active Marker");
-    assertEquals(result.html.includes("Archived Marker"), false);
-    assertEquals(
-        result.logs.some((line) => line.includes("Could not open your browser")),
-        false,
-    );
-});
+        assertStringIncludes(result.html, "artifact-read");
+        assertStringIncludes(result.html, "Active Marker");
+        assertEquals(result.html.includes("Archived Marker"), false);
+        assertEquals(
+            result.logs.some((line) => line.includes("Could not open your browser")),
+            false,
+        );
+    },
+);
 
 readTest("read command resolves explicitly addressed archived Plans in the real store", async ({ projectRoot }) => {
-    await savePlan(projectRoot, "done", "# Archived Body Marker", {
+    await seedPlan(projectRoot, "done", "# Archived Body Marker", {
         status: "verified",
         planId: "archived-id",
     });
@@ -112,11 +122,11 @@ readTest("read command resolves explicitly addressed archived Plans in the real 
     const result = await runReadAndClose(["archived/done", "--no-open"]);
 
     assertStringIncludes(result.html, "Archived Body Marker");
-    assertStringIncludes(result.html, "docs/plans/archived/done.md");
+    assertStringIncludes(result.html, "&quot;title&quot;:[0,&quot;done&quot;]");
 });
 
 readTest("read command resolves archived Plans by durable id", async ({ projectRoot }) => {
-    await savePlan(projectRoot, "archived-match", "# Archived By ID Marker", {
+    await seedPlan(projectRoot, "archived-match", "# Archived By ID Marker", {
         status: "verified",
         planId: "archived-id",
     });
@@ -125,11 +135,11 @@ readTest("read command resolves archived Plans by durable id", async ({ projectR
     const result = await runReadAndClose(["archived-id", "--no-open"]);
 
     assertStringIncludes(result.html, "Archived By ID Marker");
-    assertStringIncludes(result.html, "docs/plans/archived/archived-match.md");
+    assertStringIncludes(result.html, "&quot;title&quot;:[0,&quot;archived-match&quot;]");
 });
 
 readTest("read command resolves active Plans by durable id", async ({ projectRoot }) => {
-    await savePlan(projectRoot, "active-match", "# Active By ID Marker", {
+    await seedPlan(projectRoot, "active-match", "# Active By ID Marker", {
         status: "draft",
         planId: "active-id",
     });
@@ -140,12 +150,12 @@ readTest("read command resolves active Plans by durable id", async ({ projectRoo
     assertStringIncludes(result.html, "active-match");
 });
 
-readTest("read command reports duplicate archived durable ids from fixture Plans", async ({ projectRoot }) => {
-    await savePlan(projectRoot, "archived/first", "# First", {
+retainedReadTest("read command reports duplicate archived durable ids from fixture Plans", async ({ projectRoot }) => {
+    await seedPlan(projectRoot, "archived/first", "# First", {
         status: "verified",
         planId: "duplicate-id",
     });
-    await savePlan(projectRoot, "archived/second", "# Second", {
+    await seedPlan(projectRoot, "archived/second", "# Second", {
         status: "verified",
         planId: "duplicate-id",
     });
@@ -215,7 +225,7 @@ readTest(
                 createdAt: "now",
                 updatedAt: "now",
             });
-            const result = await runReadAndClose(["selected", "--no-open"]);
+            const result = await withRetainedPlanFixture(projectRoot, () => runReadAndClose(["selected", "--no-open"]));
             assertStringIncludes(result.html, "Registered authority");
             assertStringIncludes(result.html, "Workflow details pending");
             assertEquals(result.html.includes("Stale primary"), false);
@@ -225,36 +235,39 @@ readTest(
     },
 );
 
-readTest("explicit archived read preserves an unsafe registered-authority diagnostic", async ({ projectRoot }) => {
-    const { mkdir } = await import("node:fs/promises");
-    const { join } = await import("node:path");
-    const { addEntry } = await import("../../shared/worktree-registry.js");
-    const { RegisteredPlanDocumentUnavailableError } = await import("../../shared/workflow/controller-registry.ts");
-    const path = join(projectRoot, "unowned-directory");
-    await mkdir(path);
-    await addEntry(projectRoot, {
-        id: "unsafe-archive-attempt",
-        planName: "done",
-        planId: "done-id",
-        path,
-        branch: "execution",
-        baseBranch: "main",
-        baseRef: "refs/heads/main",
-        baseCommit: "a".repeat(40),
-        status: "active",
-        createdAt: "2026-09-01T00:00:00.000Z",
-        updatedAt: "2026-09-01T00:00:00.000Z",
-    });
-    await assertRejects(
-        () => runPlansReadCommand(["archived/done", "--no-open"]),
-        RegisteredPlanDocumentUnavailableError,
-        "The primary copy will not be used",
-    );
-});
+retainedReadTest(
+    "explicit archived read preserves an unsafe registered-authority diagnostic",
+    async ({ projectRoot }) => {
+        const { mkdir } = await import("node:fs/promises");
+        const { join } = await import("node:path");
+        const { addEntry } = await import("../../shared/worktree-registry.js");
+        const { RegisteredPlanDocumentUnavailableError } = await import("../../plan-store/index.ts");
+        const path = join(projectRoot, "unowned-directory");
+        await mkdir(path);
+        await addEntry(projectRoot, {
+            id: "unsafe-archive-attempt",
+            planName: "done",
+            planId: "done-id",
+            path,
+            branch: "execution",
+            baseBranch: "main",
+            baseRef: "refs/heads/main",
+            baseCommit: "a".repeat(40),
+            status: "active",
+            createdAt: "2026-09-01T00:00:00.000Z",
+            updatedAt: "2026-09-01T00:00:00.000Z",
+        });
+        await assertRejects(
+            () => runPlansReadCommand(["archived/done", "--no-open"]),
+            RegisteredPlanDocumentUnavailableError,
+            "The primary copy will not be used",
+        );
+    },
+);
 
-readTest("read by id preserves catalog errors instead of reporting a missing Plan", async ({ projectRoot }) => {
-    await savePlan(projectRoot, "first", "# First", { status: "draft", planId: "duplicate-active-id" });
-    await savePlan(projectRoot, "second", "# Second", { status: "draft", planId: "duplicate-active-id" });
+retainedReadTest("read by id preserves catalog errors instead of reporting a missing Plan", async ({ projectRoot }) => {
+    await seedPlan(projectRoot, "first", "# First", { status: "draft", planId: "duplicate-active-id" });
+    await seedPlan(projectRoot, "second", "# Second", { status: "draft", planId: "duplicate-active-id" });
     await assertRejects(
         () => runPlansReadCommand(["duplicate-active-id", "--no-open"]),
         Error,
@@ -262,7 +275,7 @@ readTest("read by id preserves catalog errors instead of reporting a missing Pla
     );
 });
 
-readTest("explicit archived read preserves document parse errors", async ({ projectRoot }) => {
+retainedReadTest("explicit archived read preserves document parse errors", async ({ projectRoot }) => {
     const { mkdir, writeFile } = await import("node:fs/promises");
     const { join } = await import("node:path");
     const path = join(projectRoot, "docs/plans/archived");

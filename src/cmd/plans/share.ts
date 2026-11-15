@@ -1,4 +1,4 @@
-import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
+import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { prepareWorktreeRegistry } from "../../shared/worktree-registry.js";
 /**
  * @module cmd/plans/share
@@ -7,7 +7,8 @@ import { prepareWorktreeRegistry } from "../../shared/worktree-registry.js";
 
 import { parseArgs } from "../../shared/cli-args.ts";
 import { CLI_BIN, getCwd } from "../../constants.js";
-import { ensurePlanIdentity, hashPlanBody, listPlans, updatePlanCollaborationMetadata } from "../../plan-store.js";
+import { hashPlanBody } from "../../plan-format.ts";
+import { ensurePlanIdentity, listPlans, updatePlanCollaborationMetadata } from "../../plan-store/index.ts";
 import {
     generateBearerCapability,
     hashCapability,
@@ -30,7 +31,7 @@ import {
 import { buildCollaborationUrl, redactCollaborationUrl } from "../../shared/collaboration/urls.ts";
 import { getDefaultPlanServerUrl } from "../../shared/settings.js";
 import { normalizePlanServerUrl } from "../../shared/collaboration/urls.ts";
-import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 
 interface PlansShareArgs {
     planServer?: string;

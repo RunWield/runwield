@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { assertEquals, assertExists } from "../../testing/assertions.ts";
 import { createGitPort } from "../git-port.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { continueWorkflowValidation } from "./validation.ts";
 import { makeValidationProjectRoot, NO_ISOLATED_AGENT_PORT } from "./validation-test-helpers.js";

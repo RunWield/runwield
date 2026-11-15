@@ -1,30 +1,7 @@
----
-classification: "PLANNED_CHANGE"
-workKind: "BUG_FIX|FEATURE|REFACTOR|MAINTENANCE|DOCUMENTATION"
-complexity: "LOW|MEDIUM|HIGH"
-# High-signal paths you have evidence for. RunWield uses these for drift warnings and Plan presentation; they are not
-# an exhaustive list and never limit what the executing Engineer may change.
-affectedPaths:
-    - "path/to/file1"
-    - "path/to/file2"
-# Optional: only when the user identifies external demand URLs as Tickets.
-# tickets:
-#     - url: "https://example.com/tickets/ABC-123"
-# Optional: Work Record IDs this Plan will materially replace. Include only after user confirmation during approval.
-# supersedes:
-#     - "<work-record-id>"
-devServerCommand: null
-devServerUrl: null
-devServerHmr: null
-# For a child Plan, set parentPlan and numeric order. Use a descriptive filename and heading without ordinal prefixes.
-# Reorder by changing order, not the filename; keep existing numbered names valid.
-# Optional: source branch and intended onward destination when explicitly requested by the user.
-# targetBranch: "feature/base-branch"
-# RunWield records the actual landing as deliveryBranch during execution preparation; do not author it here.
-# Standalone Plans default to a separate plan/<plan-name> landing unless auto-merge into target is enabled.
-createdAt: "<ISO-8601 date or timestamp>"
-status: "draft"
----
+For local and manual-SSH authoring, submit the Markdown body below as `plan_written.contextMarkdown`, without YAML.
+Use `definition` for summary, workKind, complexity, affectedPaths, Tickets, supersedes and browser dev-server facts. Use `parentPlan`, `order`, `dependencies` and `targetBranch` for applicable relationships.
+Core assigns identity and creation time. Never write `plan.wld.json`. Managed-remote workflows retain their existing
+admitted metadata contract until their separate storage migration.
 
 # <Plan Title>
 

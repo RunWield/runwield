@@ -1,3 +1,4 @@
+import { savePlanDefinition } from "../../plan-store/index.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
 import { captureForegroundProcess } from "../captured-process.ts";
@@ -14,21 +15,16 @@ import { rm as fsRm } from "node:fs/promises";
  */
 
 import { join, relative } from "node:path";
-import {
-    ensurePlanIdentity,
-    findPlansByParent,
-    loadPlan,
-    parsePlanFrontMatter,
-    updatePlanFrontMatter,
-} from "../../plan-store.js";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import { parsePlanFrontMatter } from "../../plan-format.ts";
+import { ensurePlanIdentity, findPlansByParent, loadPlan } from "../../plan-store/index.ts";
+import type { PlanFrontMatter } from "../../plan-store/index.ts";
 import { isPlannedChangeClassification } from "../../constants.js";
 import { projectPlanType } from "../project-plan.ts";
 import { isGitRepository } from "../git.ts";
 import { prepareTargetBranchRef, resolveTargetBranchName } from "../worktree.js";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
-import { resolveWorkflowPlanLocation } from "./plan-location.ts";
-import { listControllerDocumentWorktrees } from "./controller-registry.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
+import { listPlanExecutionDocuments } from "../../plan-store/index.ts";
 import { listEntries as listWorktreeRegistryEntries } from "../worktree-registry.js";
 
 /** Prefix for the branch RunWield names for an Epic when the author did not choose one. */
@@ -136,9 +132,14 @@ async function adoptDefaultEpicBranch(
     const epic = await loadPlan(documentRoot, epicPlanName);
     if (!epic) throw new Error(`Epic not found: ${epicPlanName}`);
     if (!epicTargetBranch(epic.attrs)) {
-        await updatePlanFrontMatter(documentRoot, epicPlanName, { targetBranch: branch }, epic.attrs, {
-            expectedRevision: epic.revision,
-        });
+        await savePlanDefinition(
+            documentRoot,
+            epicPlanName,
+            { targetBranch: branch },
+            {
+                expectedRevision: epic.revision,
+            },
+        );
     }
     await inheritEpicBranch(documentRoot, branch, children);
 }
@@ -154,9 +155,14 @@ async function inheritEpicBranch(
         if (epicTargetBranch(child.attrs)) continue;
         const current = await loadPlan(documentRoot, child.name);
         if (!current || epicTargetBranch(current.attrs)) continue;
-        await updatePlanFrontMatter(documentRoot, child.name, { targetBranch: branch }, current.attrs, {
-            expectedRevision: current.revision,
-        });
+        await savePlanDefinition(
+            documentRoot,
+            child.name,
+            { targetBranch: branch },
+            {
+                expectedRevision: current.revision,
+            },
+        );
     }
 }
 
@@ -294,7 +300,7 @@ async function seedEpicChildren(
 
 /** Child drafts the Epic owns in its document checkout, excluding those already registered elsewhere. */
 async function localEpicChildren(primaryRoot: string, documentRoot: string, epicPlanName: string) {
-    const registered = new Set((await listControllerDocumentWorktrees(primaryRoot)).map((entry) => entry.planName));
+    const registered = new Set((await listPlanExecutionDocuments(primaryRoot)).map((entry) => entry.planName));
     const children = [];
     for (const child of await findPlansByParent(documentRoot, epicPlanName)) {
         if (!isPlannedChangeClassification(child.attrs.classification) || registered.has(child.name)) continue;
@@ -368,9 +374,14 @@ export async function ensureEpicBranch(
         const baseCommit = await refCommit(primaryRoot, `refs/heads/${branch}`);
         const current = await loadPlan(documentRoot, epicPlanName);
         if (baseCommit && current && !current.attrs.epicBaseCommit) {
-            await updatePlanFrontMatter(documentRoot, epicPlanName, { epicBaseCommit: baseCommit }, current.attrs, {
-                expectedRevision: current.revision,
-            });
+            await savePlanDefinition(
+                documentRoot,
+                epicPlanName,
+                { epicBaseCommit: baseCommit },
+                {
+                    expectedRevision: current.revision,
+                },
+            );
         }
     }
 

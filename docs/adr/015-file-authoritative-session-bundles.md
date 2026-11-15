@@ -4,6 +4,14 @@ status: accepted
 
 # ADR-015: File-Authoritative Session Bundles
 
+## Local home-store activation
+
+Ordinary local and manual-SSH Plan and Work Record access now uses the executing account's personal Project store
+under [ADR-0020](0020-home-project-state-and-launch-mode-ownership.md). Project catalog authority is separate from
+revision-checked workflow selection. Explicit import preserves original execution ownership until publication is proven
+or the user deliberately abandons the attempt; it never starts a replacement attempt or weakens publication evidence.
+Session bundle authority and managed-remote personal ownership retain their existing contracts.
+
 ## Context
 
 Personal Workspace serves one owner moving between TUI and browser, including a phone. An open window does not own a
@@ -30,6 +38,28 @@ Every local Session uses a bundle under the Project's encoded `~/.wld/sessions/`
 
 Manifest writes use write-sync-rename-parent-sync replacement. Recovery descriptors are refreshed only after the primary
 manifest commits. They are redundant recovery evidence, not a second authority.
+
+### Stable lookup retains original bundles
+
+The personal Core Project identity record binds verified legacy Session Project IDs and storage directories to repository
+and checkout evidence. Deliberate entry records old-root evidence before replacing the checkout root; explicit clone
+linking can associate several existing stores. Session manifests and transcripts keep their original IDs and historical
+cwd. Current tool execution resolves separately, and active worktree execution retains its existing recovery authority.
+Checkout bindings retain every admitted historical root separately from fixed storage directories, so records created
+between successive moves keep valid cwd evidence without relocating their bundles.
+Adoption without a selected checkout rebinds a Project-root planning segment through verified root evidence; a planning
+segment recorded in a different worktree retains that cwd. Storage membership alone cannot choose its execution checkout.
+
+This mapping is a locator, not a second transcript, generation, or activation authority. Bundles, descriptors, and native
+lock files stay at their original paths, including for new records in this storage generation. Copying bundles or rewriting
+headers would create competing writer identities without improving continuity. Missing or conflicting evidence stays
+unavailable. Passive readers consume committed bindings without migration or repair.
+
+Admission tries original Session writer locks in sorted order before publishing under the identity record lock. If a
+writer is busy, it releases checkout admission locks before waiting and rechecks evidence on retry, so that writer can
+itself enter Project runtime while settling. Workspace registration remains a separate access decision; SQLite loss does
+not remove Core history. Attached Workflows use the same identity owner for their original directory locators while their
+existing per-workflow locks and revisions remain authoritative.
 
 ### One writer uses an OS lock
 
