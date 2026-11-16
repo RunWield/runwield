@@ -14,13 +14,13 @@ origin: "internal"
 userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "main"
-status: "reviewed"
 validatedCommit: "042cdcffc83705bfd98469a1e10f9a66dcd55ac3"
 workRecord:
     status: "generated"
     recordId: "82123c4f-9165-485e-b99b-1c93331132b9"
     path: "docs/work-records/2026-11-16-independent-plannotator-fork-and-contribution-worktrees.md"
     lastAttemptAt: "2026-11-16T22:32:46.218Z"
+status: "verified"
 ---
 
 # Set Up the Plannotator Fork and PR Worktrees

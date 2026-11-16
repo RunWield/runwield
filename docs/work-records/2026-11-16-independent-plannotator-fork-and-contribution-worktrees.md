@@ -1,7 +1,7 @@
 ---
 kind: "work_record"
 recordId: "82123c4f-9165-485e-b99b-1c93331132b9"
-status: "pending_verification"
+status: "approved"
 scope: "planned_change"
 workKind: "MAINTENANCE"
 origin: "internal"
@@ -11,7 +11,6 @@ provenance:
     sourcePlans:
         - "b1af5661-1331-4c06-843c-21857e18c59a"
 ---
-
 # Independent Plannotator fork and contribution worktrees
 
 ## Summary
