@@ -5,7 +5,7 @@ import type {
     WorkspaceSessionClient,
     WorkspaceSavedSessionClient,
 } from "../client/session-client.ts";
-import { SessionComposer } from "../components/SessionComposer.jsx";
+import { SessionComposer } from "../components/SessionComposer.tsx";
 import { useSessionOptions } from "./SessionConfiguration.tsx";
 import {
     validateSessionInput,
@@ -51,6 +51,7 @@ export function SessionClientSurface({ client, projects }: SessionClientSurfaceP
     const [contextOpen, setContextOpen] = useState(false);
     const historyEpoch = useRef(0);
     const historyBinding = useRef("");
+    const oldestEventId = useRef("");
     const filesBusy = useRef(false);
     const mounted = useRef(true);
     useEffect(() => {
@@ -109,15 +110,31 @@ export function SessionClientSurface({ client, projects }: SessionClientSurfaceP
         if (historyBinding.current !== identity) {
             historyBinding.current = identity;
             setHistoryEvents([]);
+            oldestEventId.current = "";
+            setOlderCursor(null);
         }
-        setOlderCursor(null);
         if (saved && context && view?.durableSessionId) {
             void saved
                 .history({ context, sessionId: view.durableSessionId, limit: 200 })
-                .then((history) => {
+                .then(async (history) => {
+                    const oldest = oldestEventId.current;
+                    let events = history.events;
+                    let cursor = history.previousCursor;
+                    while (oldest && cursor && !events.some((event) => event.eventId === oldest)) {
+                        if (historyEpoch.current !== epoch) return;
+                        const page = await saved.history({
+                            context,
+                            sessionId: view.durableSessionId,
+                            cursor,
+                            limit: 200,
+                        });
+                        events = [...page.events, ...events];
+                        cursor = page.previousCursor;
+                    }
                     if (historyEpoch.current !== epoch) return;
-                    setHistoryEvents(history.events);
-                    setOlderCursor(history.previousCursor);
+                    oldestEventId.current = events[0]?.eventId || "";
+                    setHistoryEvents(events);
+                    setOlderCursor(cursor);
                 })
                 .catch((caught: Error) => {
                     if (historyEpoch.current === epoch) setError(caught.message);
@@ -278,6 +295,7 @@ export function SessionClientSurface({ client, projects }: SessionClientSurfaceP
                 limit: 200,
             });
             if (epoch !== historyEpoch.current) return;
+            oldestEventId.current = result.events[0]?.eventId || oldestEventId.current;
             setHistoryEvents((old) => [
                 ...new Map([...result.events, ...old].map((event) => [event.eventId, event])).values(),
             ]);

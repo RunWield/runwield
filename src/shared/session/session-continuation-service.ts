@@ -223,17 +223,24 @@ export class SessionContinuationService<Request extends RuntimeInteractionReques
     closing: Promise<void> | null = null;
     /** Adapter resource cleanup. Core has already settled Runtime work. */
     closeAdapter() {}
-    operationSettled(operationId: string) {}
-    notifyAttention(record: ContinuationOperationRecord<Request>, event: SessionRuntimeEvent) {}
-    async watchRemoteNotifications(operationId: string, operation: ContinuationOperationRecord<Request> | undefined) {}
-    async prepareInteraction(operationId: string, request: RuntimeInteractionRequest) {}
-    interactionAnswered(operationId: string, interactionId: string) {}
+    operationSettled(_operationId: string) {}
+    notifyAttention(_record: ContinuationOperationRecord<Request>, _event: SessionRuntimeEvent) {}
+    watchRemoteNotifications(
+        _operationId: string,
+        _operation: ContinuationOperationRecord<Request> | undefined,
+    ): Promise<void> {
+        return Promise.resolve();
+    }
+    prepareInteraction(_operationId: string, _request: RuntimeInteractionRequest): Promise<void> {
+        return Promise.resolve();
+    }
+    interactionAnswered(_operationId: string, _interactionId: string) {}
     /** Presentation adapters can validate review decisions before Core settles the receipt. */
     async resolveInteractionResponse(
         options: InteractionAnswerRequest,
-        operation: ContinuationOperationRecord<Request>,
+        _operation: ContinuationOperationRecord<Request>,
     ): Promise<RuntimeInteractionResponse | InteractionRecoveryResult> {
-        return normalizeInteractionResponse(options.response);
+        return await normalizeInteractionResponse(options.response);
     }
     registerInteraction(operationId: string, request: RuntimeInteractionRequest, answer: InteractionAnswer) {
         const current = this.operations.get(operationId);
@@ -589,7 +596,7 @@ export class SessionContinuationService<Request extends RuntimeInteractionReques
     }
 
     async listSessions(projectId: string, options: SessionListOptions = {}) {
-        return listSavedSessions(this.store, projectId, options);
+        return await listSavedSessions(this.store, projectId, options);
     }
 
     async adoptIdleManagedSession(runwieldSessionId: string, expectedGeneration: number) {
@@ -706,7 +713,12 @@ export class SessionContinuationService<Request extends RuntimeInteractionReques
             return prior.resultBody as SessionConfigurationResult;
         }
         const inspected = this.store.inspectSessionActivation(options.runwieldSessionId);
-        if (inspected.generation?.generation !== options.expectedGeneration)
+        const activeOperation = this.findActiveWorkspaceOperation(
+            options.runwieldSessionId,
+            options.expectedGeneration,
+        );
+        const creating = activeOperation?.record.createReceipt && !inspected.generation;
+        if (!creating && inspected.generation?.generation !== options.expectedGeneration)
             throw new Error("Configuration requires the exact committed generation.");
         if (
             inspected.activation?.state === "active" &&
@@ -1153,6 +1165,7 @@ export class SessionContinuationService<Request extends RuntimeInteractionReques
                 projectId: options.projectId,
                 events: [],
                 runwieldSessionId: null,
+                expectedGeneration: 0,
                 createReceipt: { requestId: options.requestId, requestHash, deviceId: options.deviceId || null },
             });
             this.runBackgroundOperation(async () => {
@@ -1200,7 +1213,13 @@ export class SessionContinuationService<Request extends RuntimeInteractionReques
                         agentName: launch.agentName,
                         preparedModelOverride,
                     });
-                    const snapshot = this.runtime.getSessionSnapshot(sessionId);
+                    const pendingConfiguration = this.operations.get(operationId)?.pendingConfiguration;
+                    if (result.ok && pendingConfiguration)
+                        await this.applyPendingConfiguration(
+                            result.replacementSessionId || sessionId,
+                            pendingConfiguration,
+                        );
+                    const snapshot = this.runtime.getSessionSnapshot(result.replacementSessionId || sessionId);
                     const runwieldSessionId = snapshot?.managed?.runwieldSessionId || null;
                     const generation = snapshot?.managed?.generation ?? (result.ok ? 1 : 0);
                     this.setOperation(operationId, {

@@ -40,46 +40,42 @@ function compactSessionName(value: string) {
 }
 
 async function readSessionListInfo(transcriptPath: string) {
-    try {
-        const stat = await fsStat(transcriptPath);
-        const cached = sessionListInfoCache.get(transcriptPath);
-        if (
-            cached &&
-            cached.size === stat.size &&
-            cached.mtime === stat.mtime?.getTime() &&
-            cached.ctime === stat.ctime?.getTime()
-        )
-            return cached.info;
-        const entries = [];
-        const transcript = await fs.readFile(transcriptPath, "utf8");
-        for (const line of transcript.split("\n")) {
-            if (!line.trim()) continue;
-            try {
-                const entry = JSON.parse(line);
-                entries.push(entry);
-            } catch {
-                // Use complete records while the active writer appends its next entry.
-            }
+    const stat = await fsStat(transcriptPath);
+    const cached = sessionListInfoCache.get(transcriptPath);
+    if (
+        cached &&
+        cached.size === stat.size &&
+        cached.mtime === stat.mtime?.getTime() &&
+        cached.ctime === stat.ctime?.getTime()
+    )
+        return cached.info;
+    const entries = [];
+    const transcript = await fs.readFile(transcriptPath, "utf8");
+    for (const line of transcript.split("\n")) {
+        if (!line.trim()) continue;
+        try {
+            const entry = JSON.parse(line);
+            entries.push(entry);
+        } catch {
+            // Use complete records while the active writer appends its next entry.
         }
-        const name = summarizeProjectedEntries(entries).name;
-        const info = {
-            name: typeof name === "string" ? compactSessionName(name) : "",
-            firstMessage: compactSessionName(summarizeResumableTranscript(entries).firstMessage || "").slice(0, 100),
-        };
-        sessionListInfoCache.set(transcriptPath, {
-            size: stat.size,
-            mtime: stat.mtime?.getTime(),
-            ctime: stat.ctime?.getTime(),
-            info,
-        });
-        if (sessionListInfoCache.size > 512) {
-            const oldest = sessionListInfoCache.keys().next().value;
-            if (oldest) sessionListInfoCache.delete(oldest);
-        }
-        return info;
-    } catch {
-        return { name: "", firstMessage: "" };
     }
+    const name = summarizeProjectedEntries(entries).name;
+    const info = {
+        name: typeof name === "string" ? compactSessionName(name) : "",
+        firstMessage: compactSessionName(summarizeResumableTranscript(entries).firstMessage || "").slice(0, 100),
+    };
+    sessionListInfoCache.set(transcriptPath, {
+        size: stat.size,
+        mtime: stat.mtime?.getTime(),
+        ctime: stat.ctime?.getTime(),
+        info,
+    });
+    if (sessionListInfoCache.size > 512) {
+        const oldest = sessionListInfoCache.keys().next().value;
+        if (oldest) sessionListInfoCache.delete(oldest);
+    }
+    return info;
 }
 
 export async function readSessionName(transcriptPath: string) {

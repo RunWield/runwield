@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { openFileSessionStore } from "../shared/session/file-session-store.ts";
 import { test } from "node:test";
 import { equal, ok, deepEqual, rejects } from "node:assert/strict";
-import { readFile, writeFile, readdir, stat } from "node:fs/promises";
+import { readFile, writeFile, readdir, stat, rename, mkdir, rmdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
     makeSessionProcessFixture,
@@ -117,6 +117,51 @@ test(
         }
     },
 );
+
+test("saved Session discovery reports transcript read failures and supports retry", { timeout: 60000 }, async () => {
+    const fixture = await makeSessionProcessFixture();
+    try {
+        const runtime = fixture.launch(true);
+        const registered = await runtime.client.registerProject({ root: fixture.project });
+        ok(registered.status === "ok");
+        const { context } = await runtime.client.openProject({ projectId: registered.project.projectId });
+        await runtime.client.create();
+        fixture.provider.enqueue({ text: "Preserved saved response." });
+        await runtime.client.send(runtime.binding(), "Preserve this saved conversation.");
+        const sessionId = runtime.view().durableSessionId;
+        await runtime.client.close(runtime.binding());
+        const store = openFileSessionStore({ baseDir: join(fixture.home, ".wld", "sessions") });
+        const transcriptPath = store.listSessionTranscriptSegments(sessionId)[0].transcriptPath;
+        store.close();
+        const original = await readFile(transcriptPath, "utf8");
+        const listed = await runtime.client.listSessions({ context });
+        deepEqual(
+            listed.sessions.map((session) => session.sessionId),
+            [sessionId],
+        );
+        const backup = `${transcriptPath}.saved`;
+        await rename(transcriptPath, backup);
+        try {
+            await rejects(runtime.client.listSessions({ context }), "a missing transcript is not an empty page");
+            await mkdir(transcriptPath);
+            try {
+                await rejects(
+                    runtime.client.listSessions({ context }),
+                    "an unreadable transcript is not an empty page",
+                );
+            } finally {
+                await rmdir(transcriptPath);
+            }
+        } finally {
+            await rename(backup, transcriptPath);
+        }
+        deepEqual(await runtime.client.listSessions({ context }), listed);
+        equal(await readFile(transcriptPath, "utf8"), original);
+        equal(fixture.provider.requests.length, 1);
+    } finally {
+        await fixture.cleanup();
+    }
+});
 
 test(
     "ordinary session/list uses cwd and file authority without Workspace registration or database",

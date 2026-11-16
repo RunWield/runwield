@@ -76,7 +76,7 @@ test(
                 .getByRole("region", { name: "Conversation", exact: true })
                 .getByText("Saved answer 11.", { exact: true })
                 .waitFor();
-            const selected = await page.evaluate(async () => {
+            const selected = await page.evaluate(() => {
                 const client = (globalThis as SidebarWindow).runwieldSession;
                 return new Promise<string>((resolve) => {
                     const off = client.observe((view) => {
@@ -130,11 +130,13 @@ test(
             deepEqual(desktop.errors, []);
             await sidebar.getByRole("button", { name: "Collapse sidebar", exact: true }).click();
             await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
+            await page.waitForFunction(() => document.activeElement?.textContent === "RunWield");
             equal(
                 await sidebar.getByRole("button", { name: "Project A", exact: true }).getAttribute("aria-expanded"),
                 "true",
             );
             const resizer = sidebar.getByRole("separator", { name: "Sidebar width", exact: true });
+            const previousWidth = Number(await resizer.getAttribute("aria-valuenow"));
             await resizer.focus();
             await page.keyboard.press("ArrowRight");
             await page.waitForFunction(
@@ -143,6 +145,7 @@ test(
                     document.querySelector('[aria-label="Sidebar width"]')?.getAttribute("aria-valuenow"),
             );
             const savedWidth = await resizer.getAttribute("aria-valuenow");
+            equal(Number(savedWidth), previousWidth + 20);
             equal(await page.evaluate(() => localStorage.getItem("runwield:owner:sidebar-width")), savedWidth);
             await page.setViewportSize({ width: 760, height: 700 });
             await page.getByRole("button", { name: "Show sidebar", exact: true }).click();

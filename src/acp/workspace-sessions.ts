@@ -103,6 +103,7 @@ interface BoundSession {
     context: WorkspaceProjectContext;
     durableId: string;
     operationId: string;
+    createRequest?: Pick<MutationMetadata, "requestId" | "configuration">;
 }
 interface MutationMetadata extends WorkspaceProjectContext {
     requestId: string;
@@ -129,7 +130,7 @@ export class WorkspaceSessionConnection {
     private readonly bindings = new Map<string, BoundSession>();
     constructor(private readonly projects: WorkspaceProjectConnection) {}
     async dispatch(operation: string, json: string) {
-        return this.dispatchRequest(operation, json).catch(rethrowWorkspaceError);
+        return await this.dispatchRequest(operation, json).catch(rethrowWorkspaceError);
     }
     private async dispatchRequest(operation: string, json: string) {
         const request = parseWorkspaceRequest(json);
@@ -154,13 +155,13 @@ export class WorkspaceSessionConnection {
         const keys = allowed[operation as keyof typeof allowed];
         if (!keys || Object.keys(request).some((key) => !keys.includes(key)))
             throw new RequestError(-32602, "Unsupported Session request.");
-        if (operation === "history") return this.history(JSON.parse(json));
-        if (operation === "snapshot") return this.snapshot(JSON.parse(json));
-        if (operation === "options") return this.options(JSON.parse(json));
-        if (operation === "command") return this.command(JSON.parse(json));
-        if (operation === "configure") return this.configure(JSON.parse(json));
-        if (operation === "answer") return this.answer(JSON.parse(json));
-        return this.unarchive(JSON.parse(json));
+        if (operation === "history") return await this.history(JSON.parse(json));
+        if (operation === "snapshot") return await this.snapshot(JSON.parse(json));
+        if (operation === "options") return await this.options(JSON.parse(json));
+        if (operation === "command") return await this.command(JSON.parse(json));
+        if (operation === "configure") return await this.configure(JSON.parse(json));
+        if (operation === "answer") return await this.answer(JSON.parse(json));
+        return await this.unarchive(JSON.parse(json));
     }
     private owner(): SessionContinuationService {
         return (this.service ??= new SessionContinuationService({
@@ -339,7 +340,7 @@ export class WorkspaceSessionConnection {
         };
         if (request.cwd !== context.canonicalRoot)
             throw new RequestError(-32002, "Project root does not match.", { code: "workspace_binding_invalid" });
-        return this.list({
+        return await this.list({
             context,
             cursor: request.cursor || undefined,
             archiveState: metadata.archiveState,
@@ -348,12 +349,12 @@ export class WorkspaceSessionConnection {
     }
     async list(request: WorkspaceSessionListRequest): Promise<WorkspaceSessionListResult> {
         const context = this.projects.admitContext(request.context);
-        return listSessionPage(this.owner().store, context.projectId, context.canonicalRoot, request);
+        return await listSessionPage(this.owner().store, context.projectId, context.canonicalRoot, request);
     }
     async options(request: { context: WorkspaceProjectContext }) {
         const context = request.context;
         this.projects.admitContext(context);
-        return this.owner().listSessionOptions(context.projectId, "session-client");
+        return await this.owner().listSessionOptions(context.projectId, "session-client");
     }
     async command(request: import("./workspace-contract.ts").WorkspaceCommandRequest) {
         const binding = this.bindings.get(required(request.wireSessionId));
@@ -364,12 +365,12 @@ export class WorkspaceSessionConnection {
             throw new RequestError(-32002, "Wait for the Session to finish before using commands.");
         if (typeof request.text !== "string" || request.text.length > 65536)
             throw new RequestError(-32602, "Invalid command.");
-        return this.owner().command(request.context.projectId, binding.durableId, request.text);
+        return await this.owner().command(request.context.projectId, binding.durableId, request.text);
     }
     async configure(request: WorkspaceConfigureRequest) {
         this.admit(request);
         required(request.requestId);
-        return this.owner().configureSession({
+        return await this.owner().configureSession({
             ...request,
             projectId: request.context.projectId,
             runwieldSessionId: request.sessionId,
@@ -377,7 +378,7 @@ export class WorkspaceSessionConnection {
     }
     async unarchive(request: WorkspaceSessionRequest) {
         this.admit(request);
-        return this.owner().unarchiveSession({
+        return await this.owner().unarchiveSession({
             projectId: request.context.projectId,
             runwieldSessionId: request.sessionId,
         });
@@ -546,7 +547,10 @@ export class WorkspaceSessionConnection {
                     guidance: "Run wld login and restart desktop.",
                 },
             );
-        const accepted = binding.durableId
+        if (!binding.durableId)
+            binding.createRequest = { requestId: meta.requestId, configuration: meta.configuration };
+        const creating = binding.createRequest?.requestId === meta.requestId;
+        const accepted = !creating
             ? await service.startContinuation({
                   projectId: binding.context.projectId,
                   runwieldSessionId: binding.durableId,
@@ -560,7 +564,7 @@ export class WorkspaceSessionConnection {
                   requestId: meta.requestId,
                   text: message,
                   images,
-                  ...meta.configuration,
+                  ...(meta.configuration ?? binding.createRequest?.configuration),
               });
         binding.operationId = accepted.operationId;
         // A v1 prompt returns on foreground settlement; retained background work remains Core-owned.
@@ -592,6 +596,14 @@ export class WorkspaceSessionConnection {
             }
             if (!["accepted", "running"].includes(operation.status)) {
                 if (operation.status === "failed") throw new Error(operation.error || "Session operation failed.");
+                if (operation.status !== "completed")
+                    throw new RequestError(
+                        -32002,
+                        "Session outcome is unknown. Refresh before retrying. Your draft is retained.",
+                        {
+                            code: "session_outcome_unknown",
+                        },
+                    );
                 return {
                     stopReason: "end_turn" as const,
                     _meta: { runwield: { persistedSessionId: binding.durableId, operationId: accepted.operationId } },
@@ -626,7 +638,7 @@ export class WorkspaceSessionConnection {
         if (binding.operationId) await service.cancelOperation({ operationId: binding.operationId });
     }
     async closeSession(request: StandardRequest) {
-        const binding = this.bound(request, true);
+        this.bound(request, true);
         await this.stop(request);
         this.bindings.delete(request.sessionId!);
         return {};

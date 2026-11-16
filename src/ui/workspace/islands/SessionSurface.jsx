@@ -1,4 +1,4 @@
-import { SessionComposer as SharedSessionComposer } from "../components/SessionComposer.jsx";
+import { SessionComposer as SharedSessionComposer } from "../components/SessionComposer.tsx";
 import { submitWorkflowAction } from "../browser/workflow-action.ts";
 import { mergePlanAssociations } from "../../../shared/session/plan-association.ts";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -30,7 +30,7 @@ import {
 import { createSessionTabNotificationController } from "../browser/session-tab-notifications.ts";
 import { WorkspaceHeaderActionsPortal } from "../react/WorkspaceHeaderActionsPortal.tsx";
 import { loadSessionDrafts, readSessionDraft, saveSessionDraft } from "../browser/session-drafts.ts";
-import { sessionAgentSelection, sessionCommandSuggestions, sessionModelLabel } from "../browser/session-commands.ts";
+import { sessionAgentSelection, sessionModelLabel } from "../browser/session-commands.ts";
 import { RunWieldMascot } from "../../design-system/components/react/RunWieldMascot.tsx";
 import { mascotPose } from "../../mascot/mascot.ts";
 import { WorkflowSidebar } from "../react/WorkflowSidebar.tsx";

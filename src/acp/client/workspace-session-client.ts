@@ -9,7 +9,6 @@ import type {
     WorkspaceConfigureRequest,
     WorkspaceSessionRequest,
     WorkspaceJsonRecord,
-    WorkspaceHistoryEvent,
 } from "../workspace-contract.ts";
 import type { SessionQueuedDraft, WorkspaceSavedSessionClient } from "../../ui/workspace/client/session-client.ts";
 import {
@@ -45,7 +44,6 @@ import type {
     SessionClientQuestion,
     SessionClientView,
     SessionQuestionAnswer,
-    WorkspaceSessionClient,
 } from "../../ui/workspace/client/session-client.ts";
 
 export interface AcpWorkspaceSessionOptions {
@@ -172,6 +170,7 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
     private commandItems: SessionClientView["items"] = [];
     private readonly seenEvents = new Set<string>();
     private readonly rejectedQueued = new Set<string>();
+    private dispatchingQueued = false;
     private readonly queuedDrafts: SessionQueuedDraft[] = [];
 
     constructor(options: AcpWorkspaceSessionOptions) {
@@ -409,7 +408,7 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
     async configure(request: WorkspaceConfigureRequest): Promise<void> {
         await this.ready();
         await this.connection.agent.request("_dev.runwield/workspace/sessions/configure", request);
-        await this.refreshHistory();
+        if (this.view.generation != null) await this.refreshHistory();
     }
     async unarchive(request: WorkspaceSessionRequest): Promise<void> {
         await this.ready();
@@ -607,26 +606,37 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
                 this.emit();
                 if (
                     !this.turn &&
+                    !this.dispatchingQueued &&
                     this.view.phase === "idle" &&
                     this.queuedDrafts.length &&
                     !this.rejectedQueued.has(this.queuedDrafts[0].requestId)
                 ) {
                     const draft = this.queuedDrafts[0];
-                    try {
-                        await this.sendImages(
-                            { connectionId: this.view.connectionId, project: this.view.project, sessionId },
-                            draft.text,
-                            draft.images,
-                            draft.requestId,
-                        );
-                    } catch (error) {
-                        this.rejectedQueued.add(draft.requestId);
-                        throw error;
-                    }
-                    this.removeQueued(
+                    this.dispatchingQueued = true;
+                    void this.sendImages(
                         { connectionId: this.view.connectionId, project: this.view.project, sessionId },
+                        draft.text,
+                        draft.images,
                         draft.requestId,
-                    );
+                    )
+                        .then(
+                            () => {
+                                if (this.view.sessionId !== sessionId) return;
+                                this.removeQueued(
+                                    { connectionId: this.view.connectionId, project: this.view.project, sessionId },
+                                    draft.requestId,
+                                );
+                            },
+                            (error: Error) => {
+                                if (this.view.sessionId !== sessionId) return;
+                                this.rejectedQueued.add(draft.requestId);
+                                this.view.error = error.message;
+                                this.emit();
+                            },
+                        )
+                        .finally(() => {
+                            this.dispatchingQueued = false;
+                        });
                 }
             } catch (error) {
                 this.view.error = error instanceof Error ? error.message : "Observation failed.";

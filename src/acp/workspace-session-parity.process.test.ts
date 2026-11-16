@@ -1,4 +1,6 @@
 import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -33,6 +35,8 @@ test(
             ok(durable);
             ok(generation >= 0, JSON.stringify(runtime.view()));
             equal(fixture.provider.requests.length, 1);
+            await runtime.client.sendImages(runtime.binding(), "", [png], "create-vision", 0);
+            equal(fixture.provider.requests.length, 1, "the initial create receipt replays on its original binding");
             ok(fixture.provider.requests[0].raw.includes("image_url"), fixture.provider.requests[0].raw);
             await rejects(
                 runtime.client.sendImages(
@@ -200,7 +204,10 @@ test(
             ok(registered.status === "ok");
             const { context } = await runtime.client.openProject({ projectId: registered.project.projectId });
             await runtime.client.create();
-            fixture.provider.enqueue({ text: "Held foreground.", hold: true }, { text: "Queued follow-up done." });
+            fixture.provider.enqueue(
+                { text: "Held foreground.", hold: true },
+                { text: "Queued follow-up done.", hold: true },
+            );
             const foreground = runtime.client.send(runtime.binding(), "Hold for local intent.");
             await runtime.wait((view) => Boolean(view.durableSessionId));
             runtime.client.queue(runtime.binding(), {
@@ -217,6 +224,14 @@ test(
             await waitForSession(() => fixture.provider.requests.length === 1);
             fixture.provider.release();
             await foreground;
+            await runtime.wait(
+                (view) =>
+                    view.phase === "streaming" &&
+                    view.items.some((item) => item.text.includes("Queued follow-up done.")),
+            );
+            fixture.provider.emit(" Still live while queued.");
+            await runtime.wait((view) => view.items.some((item) => item.text.includes("Still live while queued.")));
+            fixture.provider.release();
             await runtime.wait(
                 (view) =>
                     view.phase === "idle" &&
@@ -431,3 +446,76 @@ test(
         }
     },
 );
+
+test("first-turn configuration stages in the local owner", { timeout: 60000 }, async () => {
+    const fixture = await makeSessionProcessFixture();
+    try {
+        await writeFile(
+            join(fixture.home, ".wld", "agents", "engineer.md"),
+            "---\nname: Engineer\ndescription: Staged Agent\nsharedPractice: [user-authority]\ntools: []\n---\nFollow the user.\n",
+        );
+        const runtime = fixture.launch(true);
+        const registered = await runtime.client.registerProject({ root: fixture.project });
+        ok(registered.status === "ok");
+        const { context } = await runtime.client.openProject({ projectId: registered.project.projectId });
+        await runtime.client.create();
+        fixture.provider.enqueue({ text: "First turn held.", hold: true });
+        const turn = runtime.client.send(runtime.binding(), "Stage during creation.");
+        await runtime.wait(
+            (view) =>
+                Boolean(view.durableSessionId) && view.items.some((item) => item.text.includes("First turn held.")),
+        );
+        await runtime.client.stageConfiguration(runtime.binding(), { agentName: "engineer" });
+        const live = await runtime.client.snapshot({ context, sessionId: runtime.view().durableSessionId });
+        equal(
+            live.operation?.pendingConfiguration && JSON.stringify(live.operation.pendingConfiguration),
+            JSON.stringify({ agentName: "engineer" }),
+        );
+        fixture.provider.release();
+        await turn;
+        equal(runtime.view().configuration?.agentName.toLowerCase(), "engineer");
+        equal(fixture.provider.requests.length, 1);
+    } finally {
+        await fixture.cleanup();
+    }
+});
+
+test("a lost process receipt cannot acknowledge an uncertain prompt", { timeout: 60000 }, async () => {
+    const fixture = await makeSessionProcessFixture();
+    try {
+        const runtime = fixture.launch(true);
+        const registered = await runtime.client.registerProject({ root: fixture.project });
+        ok(registered.status === "ok");
+        const projectId = registered.project.projectId;
+        await runtime.client.openProject({ projectId });
+        await runtime.client.create();
+        fixture.provider.enqueue({ text: "Committed before process loss." });
+        await runtime.client.send(runtime.binding(), "Save before loss.");
+        const durable = runtime.view().durableSessionId;
+        const generation = runtime.view().generation!;
+        await runtime.client.close(runtime.binding());
+        await runtime.shutdown();
+        // A durable running receipt without a live owner is the process-loss boundary.
+        const orphan = spawnSync(
+            fixture.bunExecutable,
+            [
+                fileURLToPath(new URL("../shared/session/testing/history-runtime-process.ts", import.meta.url)),
+                "orphan-receipt",
+                durable,
+            ],
+            { cwd: fixture.project, env: fixture.env, encoding: "utf8" },
+        );
+        equal(orphan.status, 0, orphan.stderr);
+        const restarted = fixture.launch(true);
+        await restarted.client.openProject({ projectId });
+        await restarted.client.load(durable);
+        await rejects(
+            restarted.client.sendImages(restarted.binding(), "Keep uncertain draft.", [], "lost-receipt", generation),
+            /unknown|uncertain|refresh/i,
+        );
+        equal(fixture.provider.requests.length, 1, "an uncertain receipt must not repeat work");
+        ok(restarted.view().error);
+    } finally {
+        await fixture.cleanup();
+    }
+});

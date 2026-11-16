@@ -305,7 +305,7 @@ export function ProjectSidebar({
             }}
         >
             <header>
-                <button className="project-brand" onClick={onLogo}>
+                <button type="button" className="project-brand" onClick={onLogo}>
                     RunWield
                 </button>
                 <RunWieldButton aria-label="Collapse sidebar" onClick={onCollapse}>
@@ -319,6 +319,7 @@ export function ProjectSidebar({
                     <section className="project-sidebar-group" key={project.projectId}>
                         <div className="project-sidebar-heading">
                             <button
+                                type="button"
                                 className="project-expand"
                                 aria-expanded={expanded.includes(project.projectId)}
                                 title={project.displayName || project.rootLabel}

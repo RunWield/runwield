@@ -58,5 +58,7 @@ export async function executeSessionCommand(
             sessionRuntime: context.runtime,
             sessionId: context.sessionId,
         });
+    // Strip ANSI color escapes from command output for non-terminal clients.
+    // eslint-disable-next-line no-control-regex
     return { action: "message", message: messages.join("\n\n").replace(/\x1b\[[0-9;]*m/g, "") };
 }

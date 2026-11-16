@@ -180,6 +180,7 @@ export function ProjectWorkbench({ projects, sessions }: ProjectWorkbenchProps) 
             />
             {!collapsed && (
                 <button
+                    type="button"
                     className="project-sidebar-backdrop"
                     aria-label="Close navigation"
                     onClick={() => collapse(true)}
@@ -200,6 +201,7 @@ export function ProjectWorkbench({ projects, sessions }: ProjectWorkbenchProps) 
                     <span>{project ? "Project settings" : selected ? "Session" : "Projects"}</span>
                     {view?.sessionId && (
                         <button
+                            type="button"
                             className="secondary-action"
                             onClick={() => {
                                 setSelected(true);
@@ -334,23 +336,17 @@ export function ProjectWorkbench({ projects, sessions }: ProjectWorkbenchProps) 
                                     {
                                         value: "archived",
                                         label: "Archived Sessions",
-                                        children: (
-                                            <>
-                                                {saved && (
-                                                    <ProjectSessionList
-                                                        key={project.projectId}
-                                                        client={saved}
-                                                        project={project}
-                                                        view={view}
-                                                        archived
-                                                        refreshKey={refreshKey}
-                                                        onOpen={(projectId, sessionId) =>
-                                                            void navigate(projectId, sessionId)
-                                                        }
-                                                        onChanged={changed}
-                                                    />
-                                                )}
-                                            </>
+                                        children: saved && (
+                                            <ProjectSessionList
+                                                key={project.projectId}
+                                                client={saved}
+                                                project={project}
+                                                view={view}
+                                                archived
+                                                refreshKey={refreshKey}
+                                                onOpen={(projectId, sessionId) => void navigate(projectId, sessionId)}
+                                                onChanged={changed}
+                                            />
                                         ),
                                     },
                                 ]}

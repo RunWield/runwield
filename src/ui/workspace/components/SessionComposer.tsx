@@ -10,60 +10,71 @@ function PaperAirplaneIcon() {
     );
 }
 
-function resizeComposerTextArea(textarea) {
+function resizeComposerTextArea(textarea: HTMLTextAreaElement | null) {
     if (!textarea) return;
     textarea.style.height = "auto";
     textarea.style.height = `${textarea.scrollHeight}px`;
 }
 
-/**
- * @typedef {Object} SessionComposerProps
- * @property {string} id
- * @property {string} draft
- * @property {boolean} disabled
- * @property {boolean} [controlsDisabled]
- * @property {boolean} [allowImages]
- * @property {boolean} [canQueue]
- * @property {boolean} canSend
- * @property {boolean} submitting
- * @property {(draft: string) => void} onDraftChange
- * @property {() => void} onSubmit
- * @property {number} [maxLength]
- * @property {boolean} [alwaysExpanded]
- * @property {import("react").ReactNode} [mascotSlot]
- * @property {() => void} [onResizeStart]
- * @property {() => void} [onResize]
- * @property {() => void} [onQueue]
- * @property {() => void} [onStop]
- * @property {string} [sendLabel]
- * @property {Array<{id: string, text: string}>} [steeringMessages]
- * @property {import("react").ClipboardEventHandler<HTMLTextAreaElement>} [onPaste]
- * @property {(files: File[]) => void} [onFiles]
- * @property {Array<{id: string, name: string, mimeType: string, base64: string}>} [imageAttachments]
- * @property {(id: string) => void} [onRemoveImage]
- * @property {import("./session-commands.ts").SessionAgentOption[]} [agents]
- * @property {import("./session-commands.ts").SessionModelOption[]} [models]
- * @property {string[]} [thinkingLevels]
- * @property {string} [agentValue]
- * @property {string} [mascotAgent]
- * @property {string} [mascotParentAgent]
- * @property {import("../../mascot/frames.ts").Pose} [mascotActivity]
- * @property {boolean} [mascotVisible]
- * @property {string} [modelValue]
- * @property {string} [thinkingValue]
- * @property {(value: string) => void | boolean | Promise<void | boolean>} [onAgentChange]
- * @property {(value: string) => void | boolean | Promise<void | boolean>} [onModelChange]
- * @property {(value: string) => void | boolean | Promise<void | boolean>} [onThinkingChange]
- * @property {import("react").ReactNode} [agentFallback]
- * @property {import("react").ReactNode} [modelFallback]
- * @property {import("react").ReactNode} [thinkingFallback]
- * @property {Array<{id: string, text: string, images?: import("../../../shared/session/session-input-contract.ts").SessionImageTransfer[]}>} [queuedMessages]
- * @property {import("./session-commands.ts").SessionCommand[]} [commands]
- * @property {(draft: string) => boolean} [onCommand]
- * @property {(command: string) => void} [onCommandPickerOpen]
- * @property {() => void} [onCommandPickerCancel]
- * @param {SessionComposerProps} props
- */
+interface ComposerMessage {
+    id: string;
+    text: string;
+}
+interface ComposerImage {
+    id: string;
+    name: string;
+    mimeType: string;
+    base64: string;
+}
+interface ComposerQueuedMessage extends ComposerMessage {
+    images?: import("../../../shared/session/session-input-contract.ts").SessionImageTransfer[];
+}
+interface SessionComposerProps {
+    id: string;
+    draft: string;
+    disabled: boolean;
+    controlsDisabled?: boolean;
+    allowImages?: boolean;
+    canQueue?: boolean;
+    canSend: boolean;
+    submitting: boolean;
+    onDraftChange: (draft: string) => void;
+    onSubmit: () => void;
+    maxLength?: number;
+    alwaysExpanded?: boolean;
+    mascotSlot?: import("react").ReactNode;
+    onResizeStart?: () => void;
+    onResize?: () => void;
+    onQueue?: () => void;
+    onStop?: () => void;
+    sendLabel?: string;
+    steeringMessages?: ComposerMessage[];
+    onPaste?: import("react").ClipboardEventHandler<HTMLTextAreaElement>;
+    onFiles?: (files: File[]) => void;
+    imageAttachments?: ComposerImage[];
+    onRemoveImage?: (id: string) => void;
+    agents?: import("./session-commands.ts").SessionAgentOption[];
+    models?: import("./session-commands.ts").SessionModelOption[];
+    thinkingLevels?: string[];
+    agentValue?: string;
+    mascotAgent?: string;
+    mascotParentAgent?: string;
+    mascotActivity?: import("../../mascot/frames.ts").Pose;
+    mascotVisible?: boolean;
+    modelValue?: string;
+    thinkingValue?: string;
+    onAgentChange?: (value: string) => void | boolean | Promise<void | boolean>;
+    onModelChange?: (value: string) => void | boolean | Promise<void | boolean>;
+    onThinkingChange?: (value: string) => void | boolean | Promise<void | boolean>;
+    agentFallback?: import("react").ReactNode;
+    modelFallback?: import("react").ReactNode;
+    thinkingFallback?: import("react").ReactNode;
+    queuedMessages?: ComposerQueuedMessage[];
+    commands?: import("./session-commands.ts").SessionCommand[];
+    onCommand?: (draft: string) => boolean;
+    onCommandPickerOpen?: (command: string) => void;
+    onCommandPickerCancel?: () => void;
+}
 export function SessionComposer({
     id,
     maxLength = undefined,
@@ -92,10 +103,6 @@ export function SessionComposer({
     models = [],
     thinkingLevels = [],
     agentValue,
-    mascotAgent = agentValue || "",
-    mascotParentAgent = undefined,
-    mascotActivity = "idle",
-    mascotVisible = false,
     modelValue,
     thinkingValue,
     onAgentChange,
@@ -109,12 +116,12 @@ export function SessionComposer({
     onCommand = undefined,
     onCommandPickerOpen = undefined,
     onCommandPickerCancel = undefined,
-}) {
-    const textareaRef = useRef(null);
-    const fileInputRef = useRef(null);
-    const composerRef = useRef(null);
-    const composerAnimation = useRef(null);
-    const previousComposerHeight = useRef(null);
+}: SessionComposerProps) {
+    const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const composerRef = useRef<HTMLFormElement | null>(null);
+    const composerAnimation = useRef<Animation | null>(null);
+    const previousComposerHeight = useRef<number | null>(null);
     const focusInputOnExpand = useRef(false);
     const [expanded, setExpanded] = useState(alwaysExpanded);
     const hasDraft = Boolean(draft.trim() || imageAttachments.length);
@@ -126,7 +133,7 @@ export function SessionComposer({
         modelValue?.replace("\u001f", "/") || "Project default",
         thinkingValue || "Default thinking",
     ].join(" · ");
-    function setComposerExpanded(nextExpanded) {
+    function setComposerExpanded(nextExpanded: boolean) {
         if (alwaysExpanded || nextExpanded === expanded) return;
         onResizeStart?.();
         previousComposerHeight.current = composerRef.current?.getBoundingClientRect().height ?? null;
@@ -163,7 +170,7 @@ export function SessionComposer({
     }, [expanded]);
     useEffect(() => () => composerAnimation.current?.cancel(), []);
     const [commandIndex, setCommandIndex] = useState(0);
-    const [dismissedCommandDraft, setDismissedCommandDraft] = useState(null);
+    const [dismissedCommandDraft, setDismissedCommandDraft] = useState<string | null>(null);
     const commandSuggestions =
         dismissedCommandDraft === draft
             ? []
@@ -178,7 +185,7 @@ export function SessionComposer({
     useEffect(() => {
         document.getElementById(`${commandListId}-${selectedCommandIndex}`)?.scrollIntoView({ block: "nearest" });
     }, [commandListId, selectedCommandIndex, draft]);
-    async function pickCommand(suggestion) {
+    async function pickCommand(suggestion: import("./session-commands.ts").SessionCommandSuggestion) {
         if (suggestion.kind === "command") {
             if (["/agent ", "/model "].includes(suggestion.value)) {
                 onCommandPickerOpen?.(suggestion.value.trim().slice(1));
@@ -187,7 +194,7 @@ export function SessionComposer({
         } else {
             if (controlsDisabled) return;
             const apply = suggestion.kind === "agent" ? onAgentChange : onModelChange;
-            const applied = await apply(suggestion.value);
+            const applied = await apply?.(suggestion.value);
             if (applied !== false) onDraftChange("");
         }
         textareaRef.current?.focus();
@@ -203,7 +210,8 @@ export function SessionComposer({
             ref={composerRef}
             data-expanded={expanded}
             onFocusCapture={(event) => {
-                if (!event.target.classList.contains("session-composer-summary")) setComposerExpanded(true);
+                if (!(event.target as HTMLElement).classList.contains("session-composer-summary"))
+                    setComposerExpanded(true);
             }}
             onBlurCapture={(event) => {
                 if (!event.currentTarget.contains(event.relatedTarget)) {
@@ -407,7 +415,7 @@ export function SessionComposer({
                     title={`Agent: ${agents.find((agent) => agent.name === agentValue)?.displayName || agentValue}`}
                     value={agentValue}
                     disabled={controlsDisabled || !agents.length}
-                    onChange={(event) => onAgentChange(event.currentTarget.value)}
+                    onChange={(event) => onAgentChange?.(event.currentTarget.value)}
                 >
                     {agentFallback}
                     {agents.map((agent) => (
@@ -423,7 +431,7 @@ export function SessionComposer({
                     title={`Provider/model: ${modelValue?.replace("\u001f", "/") || "Project default"}`}
                     value={modelValue}
                     disabled={controlsDisabled || !models.length}
-                    onChange={(event) => onModelChange(event.currentTarget.value)}
+                    onChange={(event) => onModelChange?.(event.currentTarget.value)}
                 >
                     {modelFallback}
                     {models.map((model) => (
@@ -439,7 +447,7 @@ export function SessionComposer({
                     title={`Thinking: ${thinkingValue}`}
                     value={thinkingValue}
                     disabled={controlsDisabled || !thinkingLevels.length}
-                    onChange={(event) => onThinkingChange(event.currentTarget.value)}
+                    onChange={(event) => onThinkingChange?.(event.currentTarget.value)}
                 >
                     {thinkingFallback}
                     {thinkingLevels.map((level) => (

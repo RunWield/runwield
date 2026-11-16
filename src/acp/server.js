@@ -1601,8 +1601,9 @@ function createRunWieldAcpServer(context) {
                 clientCapabilities,
             });
             return workspaceSessions
-                .prompt(parseStandardRequest(JSON.stringify(context.params)), async (request) =>
-                    adapter.requestInteraction(request),
+                .prompt(
+                    parseStandardRequest(JSON.stringify(context.params)),
+                    async (request) => await adapter.requestInteraction(request),
                 )
                 .catch(rethrowWorkspaceError);
         }
@@ -1879,7 +1880,7 @@ function createRunWieldAcpServer(context) {
     app.onRequest(methods.agent.session.list, async (requestContext) => {
         const request = requestContext.params || {};
         if (workspace.active)
-            return workspaceSessions.listStandard(JSON.stringify(request)).catch(rethrowWorkspaceError);
+            return await workspaceSessions.listStandard(JSON.stringify(request)).catch(rethrowWorkspaceError);
         const cwd = request.cwd || getCwd();
         if (!isAbsolute(cwd)) throwInvalidParams("session/list requires an absolute cwd");
         const project = context.sessionStore.ensureRuntimeProject({ root: cwd });

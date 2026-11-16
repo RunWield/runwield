@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { writeFile, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -24,6 +26,7 @@ async function mountSurface(runtime: SessionProcess, saved = false) {
         HTMLButtonElement: browser.HTMLButtonElement,
         FormData: browser.FormData,
         FileReader: browser.FileReader,
+        requestAnimationFrame: browser.requestAnimationFrame.bind(browser),
         Event: browser.Event,
         SubmitEvent: browser.SubmitEvent,
         IS_REACT_ACT_ENVIRONMENT: true,
@@ -469,7 +472,7 @@ test(
             assert.match(contextMessage.text, /engineer/);
             assert.match(contextMessage.text, /fixture-alt/);
             const commandMessages = runtime.view().items.filter((item) => item.kind === "system");
-            await act(async () => runtime.client.stageConfiguration(runtime.binding(), { thinkingLevel: "off" }));
+            await act(() => runtime.client.stageConfiguration(runtime.binding(), { thinkingLevel: "off" }));
             assert.deepEqual(
                 runtime.view().items.filter((item) => item.kind === "system"),
                 commandMessages,
@@ -605,3 +608,69 @@ test(
         }
     },
 );
+
+test("generation refresh retains paged history and the reader's position", { timeout: 60000 }, async () => {
+    const fixture = await makeSessionProcessFixture();
+    const runtime = fixture.launch(true);
+    let surface: Awaited<ReturnType<typeof mountSurface>> | undefined;
+    try {
+        const registered = await runtime.client.registerProject({ root: fixture.project });
+        assert.ok(registered.status === "ok");
+        const { context } = await runtime.client.openProject({ projectId: registered.project.projectId });
+        const seeded = spawnSync(
+            fixture.bunExecutable,
+            [
+                fileURLToPath(new URL("../../shared/session/testing/history-runtime-process.ts", import.meta.url)),
+                "seed",
+                registered.project.projectId,
+                "450",
+            ],
+            { cwd: fixture.project, env: fixture.env, encoding: "utf8" },
+        );
+        assert.equal(seeded.status, 0, seeded.stderr);
+        const { sessionId }: { sessionId: string } = JSON.parse(seeded.stdout);
+        await runtime.client.load(sessionId);
+        surface = await mountSurface(runtime, true);
+        await surface.waitFor(() => Boolean(surface!.container.textContent?.includes("History message 449.")));
+        await surface.waitFor(() =>
+            [...surface!.container.querySelectorAll("button")].some(
+                (button) => button.textContent === "Load older history",
+            ),
+        );
+        assert.doesNotMatch(surface.container.textContent, /History message 300\./);
+        await surface.click("Load older history");
+        await surface.waitFor(() => Boolean(surface!.container.textContent?.includes("History message 300.")));
+        const panel = surface.container.querySelector<HTMLElement>('[aria-label="Conversation"]')!;
+        // DOM geometry is a browser boundary; model a reader away from the live edge.
+        Object.defineProperty(panel, "scrollHeight", { configurable: true, value: 5000 });
+        Object.defineProperty(panel, "clientHeight", { configurable: true, value: 500 });
+        panel.scrollTop = 123;
+        await act(() => panel.dispatchEvent(new surface!.browser.Event("scroll")));
+        const generation = runtime.view().generation!;
+        await act(() =>
+            runtime.client.configure({
+                context,
+                sessionId,
+                requestId: "history-generation-change",
+                expectedGeneration: generation,
+                thinkingLevel: "off",
+            }),
+        );
+        await surface.waitFor(
+            () => runtime.view().generation! > generation && !surface!.button("Load older history").disabled,
+        );
+        // Wait for the surface's history refresh, not just the client's generation projection.
+        await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 600));
+        });
+        assert.match(surface.container.textContent, /History message 300\./);
+        assert.equal(panel.scrollTop, 123);
+        await surface.click("Load older history");
+        await surface.waitFor(() => Boolean(surface!.container.textContent?.includes("History message 100.")));
+        assert.equal(surface.container.querySelector('[role="alert"]'), null);
+        assert.equal(fixture.provider.requests.length, 0);
+    } finally {
+        await surface?.cleanup();
+        await fixture.cleanup();
+    }
+});
