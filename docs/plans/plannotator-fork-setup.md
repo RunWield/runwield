@@ -14,7 +14,7 @@ origin: "internal"
 userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "main"
-status: "implemented"
+status: "reviewed"
 ---
 
 # Set Up the Plannotator Fork and PR Worktrees
@@ -22,13 +22,16 @@ status: "implemented"
 ## Context
 
 The owner selected repository setup as the first step: fork `backnotprop/plannotator` to `gandazgul/plannotator`, clone it
-under `~/web/`, and make separate worktrees for two focused upstream PRs. The [shared proposal](plannotator-fork-extensions.md)
-and complete feature Plans preserve the agreed behavior:
+under `~/web/`, and make separate worktrees for two focused upstream PRs. The shared proposal and complete feature Plans
+preserve the agreed behavior. These local-file links refer to the separate Plannotator clone:
 
-- [Host restrictions](plannotator-host-html-restrictions.md): extend the existing sandbox with early resource restrictions
-  and non-live bridge enforcement; use self-contained HTML and the inline bridge. Existing callers stay unchanged.
-- [Annotation context](plannotator-annotation-context.md): capture bounded generic labels declared by the prototype and
-  chosen by the host. Target comments capture at selection; global comments capture when the composer opens.
+- [Shared proposal](file:///Users/gandazgul/web/plannotator/docs/plans/plannotator-fork-extensions.md).
+- [Host restrictions](file:///Users/gandazgul/web/plannotator/docs/plans/plannotator-host-html-restrictions.md): extend the
+  existing sandbox with early resource restrictions and non-live bridge enforcement; use self-contained HTML and the
+  inline bridge. Existing callers stay unchanged.
+- [Annotation context](file:///Users/gandazgul/web/plannotator/docs/plans/plannotator-annotation-context.md): capture bounded
+  generic labels declared by the prototype and chosen by the host. Target comments capture at selection; global comments
+  capture when the composer opens.
 
 This session belongs to RunWield, not the new fork. Its workflow cannot be assumed to change projects because a Plan
 names another directory. This setup Plan creates and verifies the destination, then hands off the feature Plans. It does
