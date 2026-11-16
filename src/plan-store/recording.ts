@@ -1,3 +1,18 @@
+import {
+    managedPersonalStoreActive as managedPlanStoreActive,
+    readManagedRecordingContext,
+    managedExecutionRoot,
+    selectManagedPlan,
+    withManagedPlan,
+    generateManagedPreparedRecord,
+    settleManagedPublication,
+    verifyManagedRecording,
+} from "./managed.ts";
+import {
+    generatePreparedPackageRecord as generateLocalPreparedRecord,
+    settlePreparedPackageRecord as settleLocalPreparedRecord,
+    readPreparedPackageRecord,
+} from "../shared/work-records/package-recording.ts";
 import { projectStoreLocation } from "../shared/project-identity.ts";
 /** Plan-side recording evidence. Work Record content and publication remain with their owners. */
 import { currentPackageSelection, selectedPackage, withPackageWorkflow } from "./workflows.ts";
@@ -5,7 +20,18 @@ import { readPlanPackage, readPlanPackagePublication, type PackagePublicationRef
 import { loadPublishedWorkRecordSource, verifyPackageRecordingDelivery } from "./published-source.ts";
 import { getPlanDocumentRoot } from "../plan-store.js";
 
-export async function readPlanRecordingContext(planName: string, automatic: boolean, pendingPublication?: boolean) {
+export interface PlanRecordingContext {
+    preparation?: PackagePublicationReference;
+    autoGenerateRecords?: boolean;
+    publishedReference?: PackagePublicationReference;
+    preparedRecord?: import("../shared/work-records/package-recording.ts").RecordingPreparation;
+}
+export async function readPlanRecordingContext(
+    planName: string,
+    automatic: boolean,
+    pendingPublication?: boolean,
+): Promise<PlanRecordingContext | undefined> {
+    if (managedPlanStoreActive()) return await readManagedRecordingContext(planName, automatic, pendingPublication);
     const selection = currentPackageSelection();
     if (!selection) return undefined;
     const selected = await selectedPackage(planName);
@@ -14,11 +40,18 @@ export async function readPlanRecordingContext(planName: string, automatic: bool
     const publishedReference = !automatic
         ? selected.metadata.workflow?.recordingSource || selected.metadata.workflow?.delivery?.source
         : undefined;
-    return { preparation, autoGenerateRecords: retained?.autoGenerateRecords, publishedReference };
+    const reference = preparation || publishedReference;
+    const preparedRecord = reference
+        ? ((await readPreparedPackageRecord(reference.attemptId)) ?? undefined)
+        : undefined;
+    return { preparation, autoGenerateRecords: retained?.autoGenerateRecords, publishedReference, preparedRecord };
 }
 
 /** Verify receipt and retained source before exposing the publication manifest to the Recorder. */
 export async function readRecordingPublication(cwd: string, planName: string, reference: PackagePublicationReference) {
+    if (managedPlanStoreActive()) {
+        return await verifyManagedRecording(cwd, reference);
+    }
     const selection = currentPackageSelection();
     if (!selection) throw new Error("Recording requires admitted Plan authority.");
     await verifyPackageRecordingDelivery(cwd, reference);
@@ -27,12 +60,14 @@ export async function readRecordingPublication(cwd: string, planName: string, re
 }
 
 export function planRecordingSourceRoot(sourcePath: string): string {
+    if (managedPlanStoreActive()) return managedExecutionRoot();
     const owner = currentPackageSelection()?.identity;
     return owner ? projectStoreLocation(owner) : getPlanDocumentRoot(sourcePath);
 }
 
 /** A Recorder may target a parent; the owner admits that Plan using its current revision. */
 export async function withRecordingPlan<T>(cwd: string, planId: string, run: () => Promise<T>): Promise<T> {
+    if (managedPlanStoreActive()) return await withManagedPlan(cwd, await selectManagedPlan(cwd, planId), run);
     const selection = currentPackageSelection();
     if (!selection) return await run();
     const plan = await readPlanPackage(selection.identity, { planId });
@@ -60,6 +95,8 @@ export async function recordPlanWorkRecord(
     source: PlanRecordingSource,
     workRecord: import("../plan-store.js").PlanFrontMatter["workRecord"],
 ): Promise<void> {
+    const { recordRetainedRecordingBacklink } = await import("./retained-recording.ts");
+    if (await recordRetainedRecordingBacklink(source, workRecord)) return;
     const { withLocalProjectAction } = await import("./access.ts");
     const { withPlanLock, loadPlan, loadArchivedPlan, updateArchivedPlanFrontMatter } =
         await import("../plan-store.js");
@@ -103,4 +140,85 @@ export async function ensureArchivedPlanIdentity(cwd: string, name: string) {
         if (plan.attrs.planId) return plan.attrs;
         return await updateArchivedPlanFrontMatter(cwd, name, { planId: crypto.randomUUID() });
     });
+}
+
+export async function generatePlanPreparedRecord(
+    ...args: Parameters<typeof generateLocalPreparedRecord>
+): ReturnType<typeof generateLocalPreparedRecord> {
+    return managedPlanStoreActive()
+        ? await generateManagedPreparedRecord(...args)
+        : await generateLocalPreparedRecord(...args);
+}
+export async function settlePlanPreparedRecord(
+    ...args: Parameters<typeof settleLocalPreparedRecord>
+): ReturnType<typeof settleLocalPreparedRecord> {
+    if (managedPlanStoreActive()) {
+        const reference = (
+            await readManagedRecordingContext(
+                args[1].members.find((member) => member.metadata.planId === args[1].planId)!.metadata.name,
+                false,
+            )
+        )?.publishedReference;
+        if (!reference) throw new Error("Prepared record has no confirmed delivery.");
+        await settleManagedPublication(args[0], reference);
+        return undefined;
+    }
+    return await settleLocalPreparedRecord(...args);
+}
+
+/** Canonical record retrieval uses the same personal owner as Plans. */
+export async function listOwnedWorkRecords(
+    cwd: string,
+    options: import("../shared/work-records/store.ts").ListWorkRecordsOptions = {},
+) {
+    const { listManagedWorkRecords } = await import("./managed.ts");
+    const { listLocalWorkRecords } = await import("../shared/work-records/store.ts");
+    return managedPlanStoreActive() ? await listManagedWorkRecords(cwd) : await listLocalWorkRecords(cwd, options);
+}
+export async function searchOwnedWorkRecords(
+    cwd: string,
+    query: string,
+    options: import("../shared/work-records/search.ts").WorkRecordSearchOptions,
+) {
+    const { searchManagedWorkRecords } = await import("./managed.ts");
+    const { searchLocalWorkRecords } = await import("../shared/work-records/search.ts");
+    return managedPlanStoreActive()
+        ? await searchManagedWorkRecords(cwd, query, options)
+        : await searchLocalWorkRecords(cwd, query, options);
+}
+
+export async function readOwnedWorkRecord(
+    cwd: string,
+    fileName: string,
+): Promise<import("../shared/work-records/schema.ts").WorkRecordResource> {
+    const { readLocalWorkRecord } = await import("../shared/work-records/store.ts");
+    if (!managedPlanStoreActive()) return await readLocalWorkRecord(cwd, fileName);
+    const { basename } = await import("node:path");
+    if (basename(fileName) !== fileName || !fileName.endsWith(".md"))
+        throw new Error("Work Record requires a flat Markdown filename.");
+    const record = (await listOwnedWorkRecords(cwd)).find((entry) => basename(entry.path) === fileName);
+    if (!record) throw new Error(`Work Record not found: ${fileName}`);
+    return record;
+}
+export async function readOwnedWorkRecordById(
+    cwd: string,
+    recordId: string,
+    options: import("../shared/work-records/search.ts").WorkRecordReadOptions = {},
+): Promise<import("../shared/work-records/search.ts").WorkRecordReadResult> {
+    const { readLocalWorkRecordById, formatHydratedWorkRecord } = await import("../shared/work-records/search.ts");
+    if (!managedPlanStoreActive()) return await readLocalWorkRecordById(cwd, recordId, options);
+    const { findWorkRecordById } = await import("../shared/work-records/store.ts");
+    const { isCurrentWorkRecord } = await import("../shared/work-records/list.ts");
+    const record = await findWorkRecordById(cwd, recordId.trim());
+    if (!record) throw new Error(`Work Record not found: ${recordId}`);
+    const accessMode = options.accessMode || "all";
+    if (accessMode === "current" && !isCurrentWorkRecord(record))
+        throw new Error(`Work Record ${recordId} is not current and cannot be read in current-only mode.`);
+    return {
+        accessMode,
+        ...formatHydratedWorkRecord(record),
+        path: record.path,
+        body: record.body,
+        markdown: record.markdown,
+    };
 }

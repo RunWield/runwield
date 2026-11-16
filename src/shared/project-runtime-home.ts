@@ -311,6 +311,22 @@ async function sourceMappings(identity: ProjectIdentity, identities: ProjectIden
                 )
                     continue;
                 const source = join(base, name);
+                if (
+                    identity.personalOwner.kind === "managed-remote" &&
+                    [
+                        "controller",
+                        "collaboration-secrets.json",
+                        "work-records.sqlite3",
+                        "work-records.sqlite3-wal",
+                        "work-records.sqlite3-shm",
+                        "plan-backups",
+                    ].includes(name)
+                )
+                    refuse(
+                        "authority_conflict",
+                        [source],
+                        "Personal runtime transfer must settle with the laptop owner before execution runtime adoption.",
+                    );
                 const destination =
                     named[name] ??
                     join(
@@ -836,8 +852,6 @@ async function removeEmptyTree(path: string): Promise<void> {
     }
 }
 export async function enterHomeProjectRuntime(identity: ProjectIdentity): Promise<ProjectRuntimeMigrationReadyResult> {
-    if (identity.personalOwner.kind !== "execution-account")
-        throw new Error("Managed remote cannot adopt ordinary home runtime");
     const layout = homeProjectRuntimeLayout(identity);
     await assertSafePath(projectHome(identity), identity.executionAccountHome);
     await assertSafePath(layout.primary.layoutMigrationLockPath, projectHome(identity));

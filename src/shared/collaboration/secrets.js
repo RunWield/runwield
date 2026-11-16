@@ -374,6 +374,11 @@ export function normalizeSecretStore(value) {
  * @param {string} projectRoot
  */
 export async function ensureProjectSecretStoreIgnored(projectRoot) {
+    const owner = currentHomeProjectOwner();
+    if (owner) {
+        assertProjectStoreIdentity(owner);
+        return;
+    }
     const layout = await enterProjectRuntime(projectRoot);
     await fsMkdir(layout.primary.internalRoot, { recursive: true });
     await ensureRunWieldOwnedGitignoreBlock(layout.primary.checkoutRoot);

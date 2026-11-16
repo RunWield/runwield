@@ -39,6 +39,14 @@ Split execution from personal authority:
 - Remote Core owns the TUI, Agent loop, and project tools. Workflow capabilities follow the same execution boundary;
   their product scope is defined in [Core Remote connection](../prd/runwield-core-prd.md#remote-connection).
 - The laptop owns authenticated model requests, personal-data services, and authoritative Session bundles.
+- Managed startup registers a home-only Project owner from trusted remote repository identity. The public Plan owner
+  routes named personal-store operations to that connection. Plans, native mutation locks, controllers, collaboration
+  secrets and Work Records stay laptop-owned without a laptop source checkout. Git registries, publication staging,
+  repair state and execution journals stay under the remote account's home Project tree. Staged adoption preserves
+  exact original attempt ownership; repository Plan and record copies still require explicit import.
+- Publication freezes delivery-copy settings from the execution repository. The laptop independently requests remote
+  Git proof before settling lifecycle or approving records; a request saying publication succeeded is insufficient.
+  Reconnection retains operation IDs and proof. Disconnection never selects remote-account personal storage.
 - OpenSSH supplies terminal transport and forwarding. A connection-scoped laptop service supplies model and personal
   operations; no permanent daemon or hosted Workspace dependency is required.
 - Remote SSHFS mounts the laptop's full `~/.wld` at a fresh private remote path through standard OpenSSH SFTP. Personal

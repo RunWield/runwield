@@ -1,4 +1,8 @@
-import { readLocalHomeStore } from "../../plan-store/index.ts";
+import {
+    readOwnedWorkRecordById as readWorkRecordById,
+    searchOwnedWorkRecords as searchWorkRecords,
+    readLocalHomeStore,
+} from "../../plan-store/index.ts";
 import { currentWorkRecordOwner } from "./owner.ts";
 /**
  * @module shared/work-records/search
@@ -133,7 +137,8 @@ async function ensureSearchBootstrap(cwd: string, options: WorkRecordIndexOption
     return { bootstrapped: true, rebuild, canonical };
 }
 
-export async function searchWorkRecords(
+export { searchWorkRecords };
+export async function searchLocalWorkRecords(
     cwd: string,
     query: string,
     options: WorkRecordSearchOptions,
@@ -211,7 +216,8 @@ async function searchWorkRecordsInOwner(
     };
 }
 
-export async function readWorkRecordById(
+export { readWorkRecordById };
+export async function readLocalWorkRecordById(
     cwd: string,
     recordId: string,
     options: WorkRecordReadOptions = {},

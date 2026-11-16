@@ -1,5 +1,5 @@
 import { loadPackageWorkflowPlan } from "../../plan-store/workflows.ts";
-import { capturePlanAccess } from "../../plan-store/index.ts";
+import { hasCanonicalPlanAccess } from "../../plan-store/index.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { lstat as fsLstat, mkdir as fsMkdir, readFile as fsReadFile } from "node:fs/promises";
 /**
@@ -180,7 +180,7 @@ async function inspectCanonicalParentChain(projectRoot, segments, sourceRelative
  * @returns {Promise<{ kind: "loaded", path: string, relativePath: string, markdown: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter } | ExecutionPlanFileResult>}
  */
 export async function loadCanonicalExecutionPlanSource(projectRoot, planName) {
-    if (capturePlanAccess()) return { ...(await loadPackageWorkflowPlan(planName)), relativePath: "context.md" };
+    if (hasCanonicalPlanAccess()) return { ...(await loadPackageWorkflowPlan(planName)), relativePath: "context.md" };
     const path = getStoredPlanPath(projectRoot, planName);
     const relativePath = projectRelativePath(projectRoot, path);
     const parentRelativePath = dirname(relativePath);
@@ -339,7 +339,7 @@ export async function ensureExecutionPlanFile({
     reconcileFromCanonical = true,
     replaceFromCanonical = false,
 }) {
-    if (capturePlanAccess()) {
+    if (hasCanonicalPlanAccess()) {
         const source = await loadPackageWorkflowPlan(planName);
         return { kind: "present", path: source.path, relativePath: "context.md" };
     }

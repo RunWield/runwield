@@ -1,4 +1,4 @@
-import { capturePlanAccess } from "../plan-store/index.ts";
+import { hasCanonicalPlanAccess } from "../plan-store/index.ts";
 import { isMissingExecutableError } from "./foreground-process.ts";
 import { captureForegroundProcess } from "./captured-process.ts";
 import {
@@ -968,7 +968,7 @@ export async function createWorktreeGitArtifacts({
     const path = join(parent, `${repoName}-${slug}-${id}`);
     const now = new Date().toISOString();
     const resolvedBaseBranch = baseBranch || (await resolveCurrentCheckoutBranch(projectRoot)) || "HEAD";
-    const reserved = capturePlanAccess() ? await findById(projectRoot, id) : null;
+    const reserved = hasCanonicalPlanAccess() ? await findById(projectRoot, id) : null;
     if (
         reserved &&
         (reserved.planId !== planId ||
@@ -995,7 +995,8 @@ export async function createWorktreeGitArtifacts({
         createdAt: reserved?.createdAt || now,
         updatedAt: now,
     };
-    if (capturePlanAccess() && !reserved) await addEntry(projectRoot, { ...entry, creationContext: projectContext });
+    if (hasCanonicalPlanAccess() && !reserved)
+        await addEntry(projectRoot, { ...entry, creationContext: projectContext });
     await fsMkdir(parent, { recursive: true });
     if (reserved && (await pathExists(path))) {
         const registeredPath = findWorktreePathForBranch(
@@ -1019,7 +1020,7 @@ export async function createWorktreeGitArtifacts({
     try {
         await materializeWorktreeProjectContext(path, projectContext, reserved ? baseCommit : undefined);
     } catch (error) {
-        if (capturePlanAccess()) throw error;
+        if (hasCanonicalPlanAccess()) throw error;
         await runGit(projectRoot, ["worktree", "remove", "--force", path]);
         await runGit(projectRoot, ["branch", "-D", branch]);
         throw error;
@@ -1028,7 +1029,7 @@ export async function createWorktreeGitArtifacts({
         await runGit(path, ["submodule", "update", "--init", "--recursive"]);
     }
 
-    if (capturePlanAccess()) {
+    if (hasCanonicalPlanAccess()) {
         await updateEntry(projectRoot, id, { creationContext: undefined });
         return entry;
     }
@@ -1054,7 +1055,7 @@ export async function createWorktreeGitArtifacts({
  * @param {import('./worktree-registry.js').WorktreeRegistryEntry} entry
  */
 export async function settleWorktreeAttempt(projectRoot, entry) {
-    if (capturePlanAccess()) {
+    if (hasCanonicalPlanAccess()) {
         const reserved = await findById(projectRoot, entry.id);
         if (
             reserved &&

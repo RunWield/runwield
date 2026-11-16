@@ -1,3 +1,4 @@
+import { managedPlanStoreActive, readManagedDocument, saveManagedDocument, saveManagedProse } from "./managed.ts";
 import { posix } from "node:path";
 import {
     currentPackageProject,
@@ -6,7 +7,7 @@ import {
     packageController,
     packageWorkflowLocks,
 } from "./workflows.ts";
-import { savePlanPackageDocument, listPlanPackages } from "./packages.ts";
+import { savePlanPackageDocument, listPlanPackages, type PackageResourceRole } from "./packages.ts";
 import { assertSharedPlanWriteAllowed, isSharedPlanLocked } from "../shared/collaboration/lock.ts";
 import { StalePlanWriteError } from "../plan-store.js";
 
@@ -29,8 +30,20 @@ export async function saveReviewedPlanDocument(planName: string, before: string,
     });
 }
 
+export interface PlanDocumentView {
+    planId: string;
+    planName: string;
+    resource: string;
+    revision: string;
+    metadataRevision: number;
+    body: string;
+    writable: boolean;
+    documents: Array<{ name: string; role: PackageResourceRole }>;
+}
+
 /** Document identity is resolved inside the admitted Project, never from a host path. */
-export async function readPlanDocuments(planId: string, name: string = "context.md") {
+export async function readPlanDocuments(planId: string, name: string = "context.md"): Promise<PlanDocumentView> {
+    if (managedPlanStoreActive()) return await readManagedDocument(planId, name);
     const plan = await selectedPackage({ planId });
     const document = plan.documents.find((entry) => entry.name === name);
     if (!document) throw new Error("Plan document not found.");
@@ -47,7 +60,13 @@ export async function readPlanDocuments(planId: string, name: string = "context.
     };
 }
 
-export async function savePlanDocument(planId: string, name: string, revision: string, body: string) {
+export async function savePlanDocument(
+    planId: string,
+    name: string,
+    revision: string,
+    body: string,
+): Promise<PlanDocumentView> {
+    if (managedPlanStoreActive()) return await saveManagedDocument(planId, name, revision, body);
     return await packageWorkflowLocks([{ planId }], async () => {
         const selection = currentPackageProject();
         if (!selection) throw new Error("Plan document access requires Project admission.");
@@ -84,6 +103,7 @@ export interface PlanDocumentIdentity {
 }
 /** Read one Plan resource through its admitted source, including retained execution documents. */
 export async function readPlanResource(cwd: string, identity: PlanDocumentIdentity, resource = "context.md") {
+    if (managedPlanStoreActive()) return await readManagedDocument(identity.planId, resource, cwd);
     const { readLocalHomeStore } = await import("./access.ts");
     return await readLocalHomeStore(
         cwd,
@@ -111,6 +131,7 @@ export async function readPlanResource(cwd: string, identity: PlanDocumentIdenti
 
 /** Replace prose against an observed revision while preserving all owner metadata. */
 export async function savePlanProse(cwd: string, name: string, body: string, expectedRevision: string) {
+    if (managedPlanStoreActive()) return await saveManagedProse(cwd, name, body, expectedRevision);
     const { loadPlan, writePlanMarkdownWithRevisionLocked } = await import("../plan-store.js");
     const { withLocalPlanWorkflow } = await import("./access.ts");
     const { splitPlanMarkdownBody } = await import("../plan-format.ts");

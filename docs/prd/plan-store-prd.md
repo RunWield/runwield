@@ -1,10 +1,10 @@
 # Plan Store
 
-Last updated: 2026-11-04 EST
+Last updated: 2026-11-16 EST
 
 ## Background
 
-RunWield keeps every Plan as a Markdown file in the project's repository, under `docs/plans/`. Each checkout of that
+The earlier implementation kept every Plan as a Markdown file in the project's repository, under `docs/plans/`. Each checkout of that
 repository therefore holds its own copy of every Plan: the primary checkout, every planning and execution worktree, and
 every branch, including Epic branches. RunWield spends a large and growing share of its workflow machinery deciding
 which copy is authoritative and reconciling the others. This proposal moves Plans and Work Records into one
@@ -12,8 +12,9 @@ RunWield-managed store outside the repository. Plan documents stay plain, unencr
 metadata RunWield owns moves into a separate file beside them. Each project chooses separately whether delivered Plans
 and Work Records are also committed to the repository. The full proposal also moves all state currently under
 project `.wld/internal/` into `~/.wld/projects/<projectId>/`. Only local settings and user overrides remain in project
-`.wld/`. Ordinary runtime relocation is current under the Core work-protection capability. Plan/Work Record package
-adoption and managed transport remain target requirements.
+`.wld/`. Home packages, explicit import, ordinary runtime relocation and managed owner transport are current under
+[Core](runwield-core-prd.md#plan-authoring-and-external-adoption). The remaining history and retention requirements stay
+in this proposal until delivered and promoted to their central capabilities.
 
 ## Current Persistence Boundary
 
@@ -29,8 +30,9 @@ attempt retains its original owner. Admitted packages now complete existing vali
 personal-store inputs and settle matching receipts before cleanup. The internal copy policy defaults off; enabled Plan
 Markdown and supplied prepared Work Record payloads share one artifacts-only commit. Frozen bytes and destinations
 survive retry, rename and target advancement; retained family/Ticket sources remain readable after code cleanup.
-Ordinary public discovery still selects repository Plans. Public copy settings, canonical Work Record persistence and
-generation, managed-remote transport and milestone retention remain target journeys below. A captured input alone is
+Public discovery now selects personal home packages. Copy settings and canonical recording are owned by Core; managed
+remote launch uses the initiating laptop store and remote-home execution runtime. Milestone retention remains a target
+journey below. A captured input alone is
 persistence evidence, not approval or delivery evidence.
 
 ## Problem Description
@@ -302,7 +304,8 @@ linking are current; [Core Project initialization](runwield-core-prd.md#project-
 requirements and acceptance scenarios. [Session continuity](runwield-core-prd.md#session-continuity) and
 [Connect recovery](runwield-connect-prd.md#lazy-project-setup-and-recovery) now follow verified original-store bindings
 across moves and accepted clone links. Physical Session bundles and native locks remain in place. Plan/Work Record
-continuity and relocation, runtime relocation, and managed-remote personal-store persistence remain targets.
+continuity and relocation use these same verified identities; managed remote personal persistence uses the initiating
+laptop owner. Later history and retention remain targets.
 
 **Requirement: Plans and Sessions belong to the project, not its folder.** RunWield identifies a project by an identity
 it creates once and keeps with the project's local repository configuration, or in a small file for a folder without a
@@ -422,12 +425,12 @@ no longer in the repository is skipped silently and never stops pruning.
 
 ### Plan import
 
-**Scope and maturity:** Public behavior below remains target. The explicit internal file/folder import capability is
+**Scope and maturity:** Explicit public file/folder import and store-only discovery are
 current under [Core authoring](runwield-core-prd.md#plan-authoring-and-external-adoption) and
 [Core recovery](runwield-core-prd.md#execution-validation-and-recovery): complete batch visibility, durable identity
-allocation, unchanged originals and retained legacy continuation evidence. Public import, path-loading activation,
-store-only discovery, the delivery-copy question and managed-remote transfer remain pending. Their activation replaces
-the existing external-Markdown adoption journey and is a one-time breaking change for existing users.
+allocation, unchanged originals and retained legacy continuation evidence. Managed runtime transfer does not import
+repository documents. Explicit import replaces automatic external-Markdown adoption; original unfinished attempts keep
+their recorded execution owner until settlement or deliberate abandonment.
 
 **Requirement: RunWield lists Plans from the store only.** Nothing outside the store is found, listed, or imported
 automatically. A file in `docs/plans/`, from this project or anyone else's, is an ordinary file until the user imports

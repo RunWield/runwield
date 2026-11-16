@@ -1,3 +1,10 @@
+import {
+    managedPlanStoreActive,
+    managedDocumentRoot,
+    readManagedPlan,
+    readManagedDocument,
+    saveManagedDocument,
+} from "./managed.ts";
 import { mkdir, readFile, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { inspectLocalHomeStore } from "./access.ts";
@@ -46,6 +53,34 @@ function exactEdit(content: string, oldText: string, newText: string, path: stri
 export async function operatePlanFile(cwd: string, command: PlanFileCommand): Promise<PlanFileResult | undefined> {
     const { path, mode } = command;
     if (!path) return;
+    if (managedPlanStoreActive()) {
+        const absolute = isAbsolute(path) ? path : join(cwd, path);
+        const rel = relative(managedDocumentRoot(cwd), absolute).replaceAll("\\", "/");
+        if (rel && rel !== ".." && !rel.startsWith("../") && !isAbsolute(rel)) {
+            const resource = rel.split("/").at(-1)!;
+            if (!["context.md", "validation.md", "manual-qa.md", "integration-report.md"].includes(resource))
+                throw new Error("Core owns Plan metadata. Edit an exposed Markdown document instead.");
+            const name = rel.slice(0, -(resource.length + 1));
+            const plan = await readManagedPlan(cwd, name);
+            if (!plan?.attrs.planId) throw new Error("Create the Plan with plan_written contextMarkdown first.");
+            if (mode === "write")
+                throw new Error("Re-read the Plan and use exact-text edit to preserve concurrent changes.");
+            const document = await readManagedDocument(plan.attrs.planId, resource, cwd);
+            if (mode === "read") return { message: "Read Plan document.", content: document.body };
+            if (command.oldText === undefined || command.newText === undefined)
+                throw new Error("Plan edit requires path, oldText, and newText.");
+            const edited = exactEdit(document.body, command.oldText, command.newText, path);
+            if (/^\ufeff?---\s*\r?\n/.test(edited))
+                throw new Error("Live Plan documents must not contain YAML front matter.");
+            await saveManagedDocument(plan.attrs.planId, resource, document.revision, edited);
+            return { message: `Updated ${resource}.` };
+        }
+        if (isCanonicalPlanMarkdownPath(cwd, path))
+            throw new Error(
+                "Repository Plan documents are import sources or delivery copies. Create canonical Plans with plan_written contextMarkdown.",
+            );
+        return;
+    }
     const store = inspectLocalHomeStore(cwd);
     const checkoutDocument = isCanonicalPlanMarkdownPath(cwd, path);
     if (store.kind === "empty" && checkoutDocument)

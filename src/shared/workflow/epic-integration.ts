@@ -1,5 +1,5 @@
 import { saveEpicIntegrationReview } from "../../plan-store/index.ts";
-import { capturePlanAccess } from "../../plan-store/index.ts";
+import { hasCanonicalPlanAccess } from "../../plan-store/index.ts";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { REVIEW_DIFF_FORMAT_ARGS } from "./git-snapshot.ts";
@@ -956,7 +956,7 @@ export async function runEpicIntegrationGate(
                 epicPlanName,
                 EPIC_INTEGRATION_REPORT_FILE_NAME,
             );
-            const reportRelativePath = capturePlanAccess()
+            const reportRelativePath = hasCanonicalPlanAccess()
                 ? reportPath
                 : `docs/plans/${epicPlanName}/${EPIC_INTEGRATION_REPORT_FILE_NAME}`;
             if (findings.length) {

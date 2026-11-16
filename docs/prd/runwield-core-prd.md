@@ -380,9 +380,30 @@ Local and manual-SSH discovery and selected workflows use this personal home sto
 import sources or optional delivery copies; absence, damage or denial of home storage never selects a checkout copy.
 `wld plans import <file-or-folder>` and explicit Markdown path loading preserve source bytes and import selected
 artifacts. Name lookup never adopts a checkout document. New planning uses Markdown documents and typed definition
-fields through `plan_written`; Core owns protected metadata. Managed-remote ownership activation, history and retention
-remain targets in the [Plan Store proposal](plan-store-prd.md#plan-store). Explicit managed-remote launches retain their
-existing admitted owner and cannot fall back to an execution account's local package store.
+fields through `plan_written`; Core owns protected metadata. Managed remote launch selects the initiating laptop's
+home-only Project store through the same public owner. History and retention remain targets in the
+[Plan Store proposal](plan-store-prd.md#plan-store). Service loss cannot select an execution account's personal store.
+
+**Requirement: Managed Plans retain laptop authority.** A remote-only Project needs no laptop checkout or source sync.
+Trusted startup binds the remote Project and repository to the laptop account. Personal Plan documents, controllers,
+native locks, collaboration capabilities and canonical Work Records use that owner. Git registries, worktrees, repair
+state and publication journals use the remote account home. Passive discovery creates neither registration nor runtime.
+
+**Acceptance: Managed authoring and delivery.** Given a trusted managed connection and no laptop source checkout,
+authoring, browser review and execution use one laptop Plan identity. Publishing changes only the execution repository
+and configured target. Canonical records and searches use the laptop store; the remote checkout gains no personal
+package or `.wld/internal/` fallback.
+
+**Acceptance: Original attempts survive adoption.** Given an unfinished pre-cutover managed attempt, admission verifies
+staged personal bytes and original owner, repository, checkout, attempt, branch and base before source retirement.
+Saved continuation resumes that original attempt. Its controller, publication and recording remain usable without
+silently importing its repository Plan. Missing or conflicting evidence preserves recovery state.
+
+**Acceptance: Publication policy and proof cross hosts.** Given different laptop and execution settings, the attempt
+freezes the execution repository's independent Plan-copy and Work Record-copy choices before publication. Later settings
+changes do not replace them. Lifecycle and record confidence remain pending until an independent execution-host probe
+proves the matching candidate and target. Reconnect reconciles the original operation and proof; it does not repeat Git
+publication or substitute a matching commit string supplied by a caller.
 
 **Requirement: One Plan store owns persistence.** Every surface uses the same Plan operations for authoring, review,
 lifecycle events, imports, resource access and execution input. One owner selects the admitted source and enforces
@@ -1780,7 +1801,8 @@ theme activates only its theme content. See the [theme reference](../user-docume
 **Local storage admission:** Project-level storage authority is independent of selecting a Plan. Local CLI/TUI, Workspace, Connect and ACP reconstruct the same owner at their request boundaries, including empty Projects. Manual SSH uses the account running `wld`. Passive reads never register, repair or import. Settings and user overrides remain in the checkout; personal Plans and runtime state do not.
 
 **Scope and maturity:** Current baseline; compressed Project Brief and further code-intelligence improvements are target
-scope. Remote workflows keep Project Runtime State in the remote project and Session records on the laptop. See
+scope. Managed remote workflows keep Git-effect Project Runtime State under the remote account home and personal
+Project state and Session records on the laptop. See
 [Remote connection](#remote-connection) for location handling, the qualified matrix, and remote workflow placement.
 Connection alone does not initialize a project or create a saved Session.
 
@@ -1841,9 +1863,10 @@ remote personal store. Managed-remote store operations remain target scope.
 - Given manual SSH, ownership remains the remote execution account. Given an explicit managed launch owner, ownership
   remains that owner, never an inference from the mount path or an automatic fallback after disconnection.
 
-Current Plan, Session, runtime, metrics, and worktree locators retain their existing paths. Session and Connect
-continuity uses verified bindings to original stores. Plan continuity, document/runtime relocation, and managed-remote
-Project-store persistence remain targets of the
+Plans and execution runtime use their responsible account’s home Project tree. Managed remote launches retain
+personal Plan authority on the laptop and Git execution authority on the remote account. Adopted original attempts
+continue through verified bindings to their actual execution directories. Session and Connect continuity retain
+verified bindings to their original stores. History and retention remain later outcomes of the
 [External Project State and Plan Store Epic](../plans/external-plan-store.md).
 
 **Requirement: Keep project knowledge correctly scoped.** Keep the remote project locator separate from execution cwd.

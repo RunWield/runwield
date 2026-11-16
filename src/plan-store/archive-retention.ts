@@ -1,3 +1,4 @@
+import { managedPersonalStoreActive } from "./managed.ts";
 import { opendir as fsOpendir, stat as fsStat } from "node:fs/promises";
 import { join } from "node:path";
 import { listArchivedPlans } from "../plan-store.js";
@@ -14,6 +15,7 @@ export type ArchivedPlanUnit = {
 
 /** Home history is retained; only explicitly retained legacy archives participate in pruning. */
 export async function collectArchivedPlanUnits(cwd: string): Promise<ArchivedPlanUnit[]> {
+    if (managedPersonalStoreActive()) return [];
     return await readLocalHomeStore(
         cwd,
         () => (currentPackageProject() ? Promise.resolve([]) : collectLegacyArchivedPlanUnits(cwd)),

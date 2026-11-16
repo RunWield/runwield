@@ -1,3 +1,10 @@
+import {
+    managedPlanStoreActive,
+    captureManagedReview,
+    currentManagedPlanSelection,
+    managedExecutionRoot,
+    readManagedPlan,
+} from "./managed.ts";
 /** Coherent review documents and retained inputs; surfaces never assemble package snapshots. */
 import { loadPlanFileStrict, loadPlan, StalePlanWriteError } from "../plan-store.js";
 import { withLocalPlanWorkflow } from "./access.ts";
@@ -11,6 +18,18 @@ import {
 } from "./workflows.ts";
 
 export async function preparePlanReviewDocument(path: string, expectedRevision?: string) {
+    if (managedPlanStoreActive()) {
+        const selected = currentManagedPlanSelection();
+        const cwd = managedExecutionRoot();
+        const document = await readManagedPlan(cwd, selected?.planId || path);
+        if (!document) throw new Error("Review Plan is unavailable.");
+        const packageInput = await captureManagedReview(
+            cwd,
+            document.attrs.planId!,
+            expectedRevision || document.revision,
+        );
+        return { document, packageInput, access: capturePlanAccess() };
+    }
     const selection = currentPackageSelection();
     if (!selection) {
         const document = await loadPlanFileStrict(path);
@@ -36,6 +55,7 @@ export async function preparePlanReviewDocument(path: string, expectedRevision?:
 
 /** Capture against an already displayed revision; retained legacy review needs no package input. */
 export async function capturePlanReviewInput(cwd: string, planName: string, expectedRevision: string) {
+    if (managedPlanStoreActive()) return await captureManagedReview(cwd, planName, expectedRevision);
     return await withLocalPlanWorkflow(cwd, planName, async () => {
         if (!currentPackageSelection()) return undefined;
         const plan = await loadPlan(cwd, planName);

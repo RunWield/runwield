@@ -1,5 +1,12 @@
-import { packageWorkflowRevision } from "./packages.ts";
-import { retainPlanAccess, type PlanAccess } from "./handles.ts";
+import {
+    managedPlanStoreActive,
+    loadManagedWorkflowPlan,
+    reserveManagedExecution,
+    captureManagedExecution,
+    readManagedExecutionDocuments,
+} from "./managed.ts";
+import { packageWorkflowRevision, type PackageAttemptReference } from "./packages.ts";
+import { retainPlanAccess, retainManagedPlanAccess, type PlanAccess } from "./handles.ts";
 import { continueImportedPackage, readImportedExecutionPlan } from "./legacy.ts";
 import { currentRetainedCheckoutSource } from "./retained-source.ts";
 import { withWorkRecordOwner, withoutWorkRecordOwner } from "../shared/work-records/owner.ts";
@@ -12,7 +19,6 @@ import { join } from "node:path";
 import {
     inspectProjectIdentity,
     assertProjectStoreIdentity,
-    requireProjectCheckout,
     isHomeProjectOwner,
     type ProjectStoreIdentity as ProjectIdentity,
 } from "../shared/project-identity.ts";
@@ -44,6 +50,73 @@ import {
 } from "../shared/workflow/controller-state.ts";
 import { findById } from "../shared/worktree-registry.js";
 import type { PlanFrontMatter } from "../plan-store.js";
+
+export interface PlanExecutionHost {
+    projectId: string;
+    repositoryId: string;
+    checkoutId: string;
+    repositoryRoot: string;
+    checkoutRoot: string;
+    personalOwner: { kind: "managed-remote"; identity: string };
+}
+const executionHosts = new AsyncLocalStorage<PlanExecutionHost>();
+const recoveryEvidence = new AsyncLocalStorage<
+    import("../shared/workflow/execution-recovery-proof.ts").ExecutionRecoveryEvidence
+>();
+export async function withConfirmedExecutionRecovery<T>(
+    planName: string,
+    proof: import("../shared/workflow/execution-recovery-proof.ts").ExecutionRecoveryEvidence,
+    run: () => Promise<T>,
+): Promise<T> {
+    const owner = currentPackageProject();
+    const plan = await selectedPackage(planName);
+    const attempt = plan.metadata.workflow?.attempt;
+    if (
+        !owner ||
+        !isHomeProjectOwner(owner) ||
+        !attempt ||
+        proof.request.projectId !== owner.projectId ||
+        proof.request.repositoryId !== owner.repositoryId ||
+        proof.request.personalOwner !== owner.personalOwner.identity ||
+        proof.request.planId !== plan.metadata.planId ||
+        proof.request.planName !== plan.metadata.name ||
+        proof.request.attemptId !== attempt.attemptId
+    )
+        throw new Error("Execution recovery proof does not match its personal owner.");
+    return await recoveryEvidence.run(proof, run);
+}
+export async function readRecoveryExecution(cwd: string, attemptId: string) {
+    const proof = recoveryEvidence.getStore();
+    if (proof) {
+        if (proof.request.attemptId !== attemptId) throw new Error("Recovery observation belongs to another attempt.");
+        return proof.entry;
+    }
+    return await findById(cwd, attemptId);
+}
+async function observedPackageAttempt(binding: PackageAttemptReference | undefined) {
+    if (!binding) return null;
+    if (isHomeProjectOwner(currentPackageProject()!))
+        return recoveryEvidence.getStore()?.request.attemptId === binding.attemptId
+            ? recoveryEvidence.getStore()!.entry
+            : null;
+    return await findById(binding.repositoryRoot, binding.attemptId);
+}
+
+export async function withPackageExecutionHost<T>(host: PlanExecutionHost, run: () => Promise<T>): Promise<T> {
+    return await executionHosts.run(host, run);
+}
+function executionRepositoryRoot(identity: ProjectIdentity): string {
+    if (!isHomeProjectOwner(identity)) return resolvePrimaryCheckoutRoot(identity.checkoutRoot);
+    const host = executionHosts.getStore();
+    if (
+        !host ||
+        host.projectId !== identity.projectId ||
+        host.repositoryId !== identity.repositoryId ||
+        host.personalOwner.identity !== identity.personalOwner.identity
+    )
+        throw new Error("Home-owned execution requires its authenticated execution host.");
+    return host.repositoryRoot;
+}
 
 export interface PackageDeliveryCopyPolicy {
     plans: boolean;
@@ -160,8 +233,19 @@ export async function withPackageWorkflow<T>(
         );
     };
     if (isHomeProjectOwner(selection.identity)) {
-        if (selected.metadata.references.legacyImport)
-            throw new Error("Imported execution requires its original execution owner.");
+        if (selected.metadata.references.legacyImport && !selected.metadata.workflow?.legacySettlement) {
+            const evidence = await (
+                await import("./packages.ts")
+            ).readPlanImportEvidence(selection.identity, selected.metadata.references.legacyImport);
+            const unfinished = evidence.attempts.some(
+                (attempt) => !["validated", "abandoned"].includes(attempt.status),
+            );
+            const retained = await (
+                await import("./retained-managed-execution.ts")
+            ).readRetainedManagedExecution(selection.identity, selected.metadata.planId);
+            if (unfinished && !retained?.cleanupComplete && !retained?.abandonmentComplete)
+                throw new Error("Imported execution requires its original execution owner.");
+        }
         return await canonical();
     }
     return await continueImportedPackage(selection.identity, selected, run, canonical);
@@ -376,10 +460,7 @@ export async function releaseSettledPackageAttempt(planName: string): Promise<vo
         await loadPackageWorkflowPlan(planName);
         const plan = await selectedPackage(planName);
         const binding = plan.metadata.workflow?.attempt;
-        const entry =
-            binding && !isHomeProjectOwner(currentPackageProject()!)
-                ? await findById(binding.repositoryRoot, binding.attemptId)
-                : null;
+        const entry = await observedPackageAttempt(binding);
         if (entry?.status === "abandoned") await updatePackageWorkflowMetadata(planName, {});
     });
 }
@@ -394,6 +475,8 @@ export { packageWorkflowRevision } from "./packages.ts";
 export async function loadPackageWorkflowPlan(
     planName: PackageWorkflowTarget,
 ): Promise<import("../plan-store.js").PlanTextLoaded> {
+    if (managedPlanStoreActive())
+        return await loadManagedWorkflowPlan(typeof planName === "string" ? planName : planName.planId);
     const plan = await selectedPackage(planName);
 
     const identity = currentPackageProject()!;
@@ -430,8 +513,7 @@ export async function loadPackageWorkflowPlan(
         )
             throw new Error("Package attempt input belongs to a different Plan.");
     }
-    const attempt =
-        binding && !isHomeProjectOwner(identity) ? await findById(binding.repositoryRoot, binding.attemptId) : null;
+    const attempt = await observedPackageAttempt(binding);
     if (attempt && (attempt.planId !== plan.metadata.planId || attempt.id !== binding?.attemptId))
         throw new Error("Package attempt evidence belongs to a different Plan.");
     const attrs = {
@@ -509,10 +591,7 @@ export async function updatePackageWorkflowMetadata(
         const workflow = { ...current.metadata.workflow, ...workflowUpdate };
         if (Object.hasOwn(updates, "workRecord")) workflow.workRecord = updates.workRecord;
         const binding = workflow.attempt;
-        const entry =
-            binding && !isHomeProjectOwner(currentPackageProject()!)
-                ? await findById(binding.repositoryRoot, binding.attemptId)
-                : null;
+        const entry = await observedPackageAttempt(binding);
         if (entry?.status === "abandoned") workflow.attempt = undefined;
         const catalog = await listPlanPackages(currentPackageProject()!, true);
         if (catalog.issues.length) throw new Error(catalog.issues[0].message);
@@ -577,6 +656,7 @@ export interface PlanExecutionReservation {
 
 /** Select, bind the resolved target, and reserve the reviewed input in one owner transaction. */
 export async function reservePlanExecution(planName: string, request: PlanExecutionReservation): Promise<string> {
+    if (managedPlanStoreActive()) return await reserveManagedExecution(planName, request);
     if (!currentPackageSelection())
         return (
             request.suggestedAttemptId || `${request.executionMode ? "non-git-" : ""}${crypto.randomUUID().slice(0, 8)}`
@@ -601,6 +681,14 @@ export interface PlanExecutionContext {
 
 /** Capture a reserved attempt as one coherent continuation value. */
 export async function capturePlanExecutionContext(planName: string): Promise<PlanExecutionContext | undefined> {
+    if (managedPlanStoreActive()) {
+        const { selection, execution } = await captureManagedExecution(planName);
+        return {
+            packageSelection: retainManagedPlanAccess(selection),
+            packageAttemptId: execution.attemptId,
+            packageInput: execution.input,
+        };
+    }
     const selection = currentPackageSelection();
     if (!selection) return undefined;
     return await packageWorkflowLocks([planName], async () => {
@@ -625,6 +713,7 @@ export async function readFrozenPlanExecutionDocuments(
     planName: string,
     input: PackageWorkflowInput | undefined,
 ): Promise<FrozenPlanExecutionDocuments | undefined> {
+    if (managedPlanStoreActive()) return await readManagedExecutionDocuments(planName, input);
     const selection = currentPackageSelection();
     if (!selection) return undefined;
     if (!input) throw new Error("Execution retained input is missing.");
@@ -664,15 +753,16 @@ export async function reservePackageExecution(
         if (existing.personalOwner !== selection.identity.personalOwner.identity)
             throw new Error("Execution belongs to another personal owner.");
         if (existing.repositoryId !== selection.identity.repositoryId) throw new PackageExecutionContinuation(existing);
-        if (
-            existing.repositoryRoot !==
-                resolvePrimaryCheckoutRoot(requireProjectCheckout(selection.identity).checkoutRoot) ||
-            existing.attemptId !== attemptId
-        )
+        if (existing.repositoryRoot !== executionRepositoryRoot(selection.identity) || existing.attemptId !== attemptId)
             throw new Error("Execution attempt binding changed.");
-        const entry = await findById(existing.repositoryRoot, existing.attemptId);
+        const entry = isHomeProjectOwner(selection.identity)
+            ? null
+            : await findById(existing.repositoryRoot, existing.attemptId);
         if (
-            (!entry && !existing.executionMode && plan.metadata.definition.status !== "ready_for_work") ||
+            (!isHomeProjectOwner(selection.identity) &&
+                !entry &&
+                !existing.executionMode &&
+                plan.metadata.definition.status !== "ready_for_work") ||
             (entry && entry.planId !== plan.metadata.planId)
         )
             throw new Error("Recorded package execution attempt is missing or replaced.");
@@ -690,7 +780,7 @@ export async function reservePackageExecution(
                 ...(executionMode ? { executionMode } : {}),
                 personalOwner: selection.identity.personalOwner.identity,
                 repositoryId: selection.identity.repositoryId,
-                repositoryRoot: resolvePrimaryCheckoutRoot(requireProjectCheckout(selection.identity).checkoutRoot),
+                repositoryRoot: executionRepositoryRoot(selection.identity),
                 attemptId,
                 input,
             },
@@ -753,6 +843,7 @@ export async function saveGeneratedManualQaArtifact(
                 ...child.metadata.workflow,
                 generatedArtifact: {
                     attemptId: attempt.attemptId,
+                    operationId: (await import("./operation-receipts.ts")).captureBatchOperation()?.operationId,
                     planId: parent.metadata.planId,
                     name: "manual-qa.md",
                     beforeHash,

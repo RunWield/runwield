@@ -271,6 +271,16 @@ test("home-owned snapshot publication retains frozen documents without touching 
         });
         connection = await connectOwner(registration);
         const service = connection.client;
+        const initial = await service.execute({ kind: "read", planId: "plan-one", resource: "context.md" });
+        ok("revision" in initial.result);
+        await service.execute({
+            kind: "freeze-publication-policy",
+            operationId: randomUUID(),
+            planId: "plan-one",
+            expectedRevision: initial.result.revision!,
+            attemptId: fixture.workflow.worktreeId!,
+            policy: { plans: false, workRecords: false, autoGenerateRecords: false },
+        });
         const before = await service.execute({ kind: "read", planId: "plan-one", resource: "context.md" });
         ok("revision" in before.result);
         await rename(fixture.root, `${fixture.root}-unavailable`);
@@ -496,3 +506,202 @@ async function connectOwner(owner: HomeProjectOwner) {
     }
     return { control, client: new ProjectStoreClient(endpoint, control.credential, binding) };
 }
+
+test("family QA retries recover the child effect and finish the exact parent artifact", async () => {
+    const fixture = await packageFixture();
+    try {
+        const {
+            saveChildFeaturePlans,
+            recordPlanEvent,
+            withLocalPlanWorkflow,
+            reservePlanExecution,
+            readPlanResource,
+        } = await import("./index.ts");
+        await authorLocalPlan(fixture.root, {
+            planName: "family",
+            contextMarkdown: "# Family\n",
+            definition: { classification: "PROJECT", type: "epic" },
+        });
+        await saveChildFeaturePlans(fixture.root, "family", [
+            {
+                title: "Child",
+                summary: "A child",
+                content: "# Child\n",
+                dependencies: [],
+                order: 1,
+                affectedPaths: ["child.ts"],
+                executionAgent: "engineer",
+                collaborationRecommendation: "autonomous",
+            },
+        ]);
+        await recordPlanEvent({
+            cwd: fixture.root,
+            planName: "family/child",
+            event: "review_approved",
+            currentStatus: "draft",
+        });
+        await recordPlanEvent({
+            cwd: fixture.root,
+            planName: "family/child",
+            event: "readiness_passed",
+            currentStatus: "approved",
+        });
+        await withLocalPlanWorkflow(fixture.root, "family/child", () =>
+            reservePlanExecution("family/child", { targetBranch: "main" }),
+        );
+        const parent = (await loadPlan(fixture.root, "family"))!;
+        const child = (await loadPlan(fixture.root, "family/child"))!;
+        const service = new PreparedProjectStore(fixture.root);
+        const command = {
+            kind: "append-epic-qa" as const,
+            planId: parent.attrs.planId!,
+            expectedRevision: parent.revision!,
+            childPlanId: child.attrs.planId!,
+            childRevision: child.revision!,
+            operationId: randomUUID(),
+            childHeading: "Child",
+            checklistMarkdown: "Manual verification steps for family/child\n- [ ] Inspect the child.",
+        };
+        await service.execute(command);
+        const document = await readPlanResource(
+            fixture.root,
+            { planId: parent.attrs.planId!, planName: "family" },
+            "manual-qa.md",
+        );
+        const directory = join(
+            fixture.identity.executionAccountHome,
+            ".wld",
+            "projects",
+            fixture.identity.projectId,
+            "internal",
+            "plan-packages",
+        );
+        const receiptPath = join(directory, "operations", `${command.operationId}.json`);
+        const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
+        const pending = { ...receipt, outcome: { operationId: command.operationId, status: "pending" } };
+        const childMetadataPath = join(child.path, "..", "plan.wld.json");
+        const childMetadata = await readFile(childMetadataPath, "utf8");
+        const childRevision = (await loadPlan(fixture.root, "family/child"))!.controllerRevision;
+        await unlink(join(parent.path, "..", "manual-qa.md"));
+        await writeFile(receiptPath, JSON.stringify(pending));
+        await writeFile(
+            join(directory, "operation-effect.json"),
+            JSON.stringify({
+                version: 1,
+                receipt: pending,
+                path: childMetadataPath,
+                identityPath: childMetadataPath,
+                targetPlanId: child.attrs.planId,
+                beforeHash: hash(childMetadata),
+                after: childMetadata,
+                afterHash: hash(childMetadata),
+            }),
+        );
+        const recovered = await service.execute(command);
+        equal("status" in recovered.result && recovered.result.status, "completed");
+        equal(
+            (await readPlanResource(fixture.root, { planId: parent.attrs.planId!, planName: "family" }, "manual-qa.md"))
+                .body,
+            document.body,
+        );
+        equal((await loadPlan(fixture.root, "family/child"))!.controllerRevision, childRevision);
+    } finally {
+        await fixture.cleanup();
+    }
+});
+
+test("non-Git recovery uses trusted execution inspection without a laptop checkout", async () => {
+    const { withProcessGlobalTestLock } = await import("../testing/process-global-lock.ts");
+    await withProcessGlobalTestLock(async () => {
+        const { mkdtemp, mkdir, chmod, rm } = await import("node:fs/promises");
+        const { tmpdir } = await import("node:os");
+        const { getHomeDir } = await import("../constants.js");
+        const { admitProjectIdentity } = await import("../shared/project-identity.ts");
+        const temporary = await mkdtemp(join(tmpdir(), "managed-non-git-recovery-"));
+        const root = join(temporary, "source");
+        const remoteHome = join(temporary, "remote-home");
+        const bin = join(temporary, "bin");
+        for (const path of [root, remoteHome, bin]) await mkdir(path);
+        const context = {
+            executionAccountHome: remoteHome,
+            personalOwner: { kind: "managed-remote" as const, identity: getHomeDir() },
+        };
+        const admitted = await admitProjectIdentity(root, { context });
+        if (admitted.kind !== "existing") throw new Error("Non-Git execution identity was not admitted.");
+        const owner = await registerHomeProjectOwner({
+            projectId: admitted.identity.projectId,
+            repositoryId: admitted.identity.repositoryId,
+            displayName: "Non-Git remote",
+        });
+        const configuration = {
+            bun: process.execPath,
+            cli: new URL("../cli.ts", import.meta.url).pathname,
+            remoteHome,
+        };
+        await writeFile(
+            join(bin, "ssh"),
+            `#!/usr/bin/env python3
+import json, os, subprocess, sys
+config = json.loads(${JSON.stringify(JSON.stringify(configuration))})
+request = json.loads(sys.stdin.readline())
+env = dict(os.environ, HOME=config['remoteHome'], WLD_TEST_SANDBOX_HOME=config['remoteHome'], MNEMOTECA_DB_PATH=os.path.join(config['remoteHome'], 'mnemoteca.db'))
+result = subprocess.run([config['bun'], config['cli'], '--remote-publication-proof'], input=json.dumps(request['proof']) + '\\n', text=True, env=env)
+sys.exit(result.returncode)
+`,
+        );
+        await chmod(join(bin, "ssh"), 0o700);
+        const beforePath = process.env.PATH;
+        process.env.PATH = `${bin}:${beforePath}`;
+        try {
+            const service = new PreparedProjectStore(
+                owner,
+                {
+                    projectId: owner.projectId,
+                    repositoryId: owner.repositoryId,
+                    checkoutId: admitted.identity.checkoutId,
+                    checkoutRoot: root,
+                    repositoryRoot: root,
+                    personalOwner: context.personalOwner,
+                },
+                { host: "fixture-host", cwd: root, remoteHome, executable: "/verified/runtime/wld" },
+            );
+            const plan = await service.author({ planName: "non-git", contextMarkdown: "# Non-Git recovery\n" });
+            await service.execute({
+                kind: "recover-execution",
+                operationId: randomUUID(),
+                planId: plan.planId,
+                expectedRevision: plan.revision,
+                attemptId: null,
+                action: "non-git",
+                controllerRevision: null,
+            });
+            const current = (await service.execute({ kind: "resolve-plan", reference: plan.planId })).result;
+            if (!("plan" in current) || !current.plan) throw new Error("Recovered owner Plan is unavailable.");
+            equal(current.plan.attrs.executionMode, "non_git_in_place");
+            equal(current.plan.attrs.status, "draft");
+            equal(Boolean(current.plan.attrs.verifiedAt), false);
+            const git = await (
+                await import("../shared/captured-process.ts")
+            ).captureForegroundProcess("git", { cwd: root, args: ["init"] });
+            equal(git.success, true);
+            await rejects(
+                service.execute({
+                    kind: "recover-execution",
+                    operationId: randomUUID(),
+                    planId: plan.planId,
+                    expectedRevision: current.plan.revision,
+                    attemptId: null,
+                    action: "non-git",
+                    controllerRevision: null,
+                }),
+                /proof is unavailable/,
+            );
+            const after = (await service.execute({ kind: "resolve-plan", reference: plan.planId })).result;
+            equal("plan" in after && after.plan?.revision, current.plan.revision);
+        } finally {
+            if (beforePath === undefined) delete process.env.PATH;
+            else process.env.PATH = beforePath;
+            await rm(temporary, { recursive: true, force: true });
+        }
+    });
+});

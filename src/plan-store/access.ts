@@ -1,3 +1,4 @@
+import { managedPlanStoreActive, authorManagedPlan, selectManagedPlan, withManagedPlan } from "./managed.ts";
 import { hasRetainedCheckoutSource } from "./retained-source.ts";
 import { remoteProjectOwner } from "../shared/remote/personal-resources.ts";
 import {
@@ -129,6 +130,7 @@ export async function planDocumentReference(cwd: string, reference: string): Pro
 }
 
 interface LocalPlanWriteOptions {
+    authoredPlanId?: string;
     definition?: PlanAuthoringDefinition;
     expectedRevision?: string;
     validationMarkdown?: string;
@@ -173,7 +175,9 @@ export async function saveLocalHomePlan(
             const catalog = await listPlanPackages(store.identity, true);
             if (catalog.issues.length) throw new Error(catalog.issues[0].message);
             const existing = catalog.packages.find((plan) => plan.metadata.name === name);
-            const planId = existing?.metadata.planId || parsed.attrs.planId || randomUUID();
+            const planId = existing?.metadata.planId || options.authoredPlanId || parsed.attrs.planId || randomUUID();
+            if (options.authoredPlanId && options.authoredPlanId !== planId)
+                throw new Error("Authoring identity changed.");
             return await withPlanPackageLocks(store.identity, [planId], async () => {
                 const current = existing ? await readPlanPackage(store.identity, { planId }) : null;
                 if (current && current.kind !== "loaded") throw new Error(current.message);
@@ -272,6 +276,7 @@ export async function selectLocalPlanWorkflow(
 }
 
 export async function withLocalPlanWorkflow<T>(cwd: string, name: string, run: () => Promise<T>): Promise<T> {
+    if (managedPlanStoreActive()) return await withManagedPlan(cwd, await selectManagedPlan(cwd, name), run);
     const selection = await selectLocalPlanWorkflow(cwd, name);
     if (selection?.planId === currentPackageSelection()?.planId) return await run();
     return selection ? await withPackageWorkflow(cwd, selection, run) : await run();
@@ -380,6 +385,14 @@ export interface PlanAuthoringInput {
 
 /** Agent-facing authoring accepts prose and typed definition facts, never protected JSON or YAML. */
 export async function authorLocalPlan(cwd: string, input: PlanAuthoringInput): Promise<void> {
+    if (managedPlanStoreActive()) return await authorManagedPlan(cwd, input);
+    await authorPackagePlan(cwd, input);
+}
+export async function authorPackagePlan(
+    cwd: string,
+    input: PlanAuthoringInput,
+    authoredPlanId?: string,
+): Promise<void> {
     if (
         /^\ufeff?---\s*\r?\n/.test(input.contextMarkdown) ||
         (input.validationMarkdown && /^\ufeff?---\s*\r?\n/.test(input.validationMarkdown))
@@ -418,7 +431,12 @@ export async function authorLocalPlan(cwd: string, input: PlanAuthoringInput): P
             parentPlan: input.parentPlan,
             dependencies: input.dependencies,
         },
-        { expectedRevision: input.expectedRevision, validationMarkdown: input.validationMarkdown, definition },
+        {
+            expectedRevision: input.expectedRevision,
+            validationMarkdown: input.validationMarkdown,
+            definition,
+            authoredPlanId,
+        },
     );
     if (!path) throw new Error("This launch owner does not support local package authoring.");
 }

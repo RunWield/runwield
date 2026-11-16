@@ -1,3 +1,5 @@
+import { managedPlanStoreActive, authorManagedChildren } from "./managed.ts";
+import { retainChildAuthoringResult } from "./operation-receipts.ts";
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import {
@@ -40,6 +42,7 @@ export async function authorPackageChildren(
     options: PlanWriteOptions = {},
     finalize = false,
 ): Promise<SavedChildFeaturePlan[]> {
+    if (managedPlanStoreActive()) return await authorManagedChildren(cwd, parentName, children, options, finalize);
     if (!currentPackageProject())
         return await withLocalProjectAction(cwd, () =>
             authorPackageChildren(cwd, parentName, children, options, finalize),
@@ -176,7 +179,26 @@ export async function authorPackageChildren(
             });
         }
     }
+    if (writes.length && !writes.some((write) => write.metadata.planId === parent.metadata.planId)) {
+        writes.push({
+            before: { metadata: parent.metadata, documents: documents(parent) },
+            documents: documents(parent),
+            metadata: { ...parent.metadata, revision: parent.metadata.revision + 1 },
+        });
+    }
+    retainChildAuthoringResult(results);
     await commitPlanPackageBatch(identity, writes);
     for (const result of results) await options.onChildPlanWritten?.(result);
     return results;
+}
+
+export async function saveChildFeaturePlans(
+    cwd: string,
+    parentName: string,
+    children: ChildFeaturePlanDescriptor[],
+    options: PlanWriteOptions = {},
+): Promise<SavedChildFeaturePlan[]> {
+    return managedPlanStoreActive()
+        ? await authorManagedChildren(cwd, parentName, children, options, false)
+        : await (await import("../plan-store.js")).saveChildFeaturePlans(cwd, parentName, children, options);
 }

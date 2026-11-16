@@ -1,4 +1,3 @@
-import { remoteProjectOwner } from "./remote/personal-resources.ts";
 import { openNativeFileLock } from "./native-file-lock.ts";
 import { recoverWindowsRename } from "./native-file-replace-windows.ts";
 import { open as fsOpen } from "node:fs/promises";
@@ -488,10 +487,6 @@ export async function withWorktreeRegistryLockAtPath(lockPath, fn) {
 export async function withWorktreeRegistryLock(projectRoot, fn) {
     return await withProjectRuntimeReadScope(async () => {
         const layout = await enterProjectRuntime(projectRoot);
-        if (remoteProjectOwner()?.kind === "managed-remote")
-            return await withWorktreeRegistryLockAtPath(layout.primary.worktreeRegistryLockPath, () =>
-                registryMutation.run(layout, fn),
-            );
         await fsMkdir(dirname(layout.primary.worktreeRegistryLockPath), { recursive: true, mode: 0o700 });
         const lock = openNativeFileLock(layout.primary.worktreeRegistryLockPath);
         await lock.lock(true);

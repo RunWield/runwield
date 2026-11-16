@@ -1,3 +1,4 @@
+import { managedPlanStoreActive, renameManagedPlan } from "./managed.ts";
 import { loadPlan, StalePlanWriteError } from "../plan-store.js";
 import { withLocalPlanWorkflow } from "./access.ts";
 import { currentPackageProject, currentPackageSelection, packageWorkflowLocks, selectedPackage } from "./workflows.ts";
@@ -11,6 +12,7 @@ export async function renamePlan(
     name: string,
     expectedRevision: string,
 ): Promise<void> {
+    if (managedPlanStoreActive()) return await renameManagedPlan(cwd, reference, name, expectedRevision);
     await withLocalPlanWorkflow(cwd, reference, async () => {
         const owner = currentPackageProject();
         if (!owner) throw new Error("Renaming requires a canonical Plan; import the retained document first.");

@@ -36,6 +36,7 @@ export type PublicationFailure = {
 
 export type PublicationAttempt = {
     deliveryMetadataVersion?: 1;
+    retainedPublicationPolicy?: import("../../plan-store/index.ts").ExecutionPublicationPolicy;
     packageInput?: PackagePublicationReference;
     copiesPrepared?: boolean;
     version: 1;
@@ -228,6 +229,13 @@ export function assertPublicationAttempt(value: PublicationAttempt): void {
     ] as const) {
         if (!value[field]) throw new Error(`Publication attempt requires ${field}.`);
     }
+    if (
+        value.retainedPublicationPolicy !== undefined &&
+        (["plans", "workRecords", "autoGenerateRecords"] as const).some(
+            (field) => typeof value.retainedPublicationPolicy?.[field] !== "boolean",
+        )
+    )
+        throw new Error("Invalid retained publication copy policy.");
     if (value.packageInput !== undefined) {
         assertPlanPublicationReference(value.packageInput);
         if (

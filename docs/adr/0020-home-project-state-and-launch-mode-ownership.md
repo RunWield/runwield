@@ -6,8 +6,8 @@ status: proposed
 
 ## Context and Constraints
 
-Local and manual-SSH Plans, ordinary runtime and Sessions live in personal home storage;
-explicit managed-remote runtime retains its admitted checkout layout until its transport cutover. This splits a Project's
+Local and manual-SSH Plans, runtime and Sessions live in personal home storage. Managed remote launch uses the
+laptop personal store and remote-account home execution runtime. This splits a Project's
 workflow across paths that change as work moves between planning, execution, publication, and recovery.
 
 The owner confirmed these target constraints on 2026-11-01:
@@ -19,7 +19,7 @@ The owner confirmed these target constraints on 2026-11-01:
   execution on the remote machine.
 - `wld remote <host>` keeps Plans on the initiating laptop, while code execution stays remote.
 
-This ADR records accepted local/manual-SSH mechanisms alongside the still-proposed managed-remote, history and retention work. Only the explicitly accepted scope below is current guidance. [ADR-015](015-file-authoritative-session-bundles.md),
+This ADR records accepted local, manual-SSH, and managed-remote mechanisms alongside the still-proposed history and retention work. Only the explicitly accepted scope below is current guidance. [ADR-015](015-file-authoritative-session-bundles.md),
 [ADR-016](016-proof-bearing-publication-state-machine.md),
 [ADR-017](017-project-runtime-state-under-wld-internal.md), and
 [ADR-018](018-remote-ssh-local-personal-authority.md) remain the existing decisions until reconciled with an accepted
@@ -30,7 +30,7 @@ configuration, a distinct administrative-directory checkout ID, and `.wld-projec
 identity and verified Session/Attached locator records live under `~/.wld/projects/<projectId>/project.wld.json`. Workspace registration remains optional
 and separate. Explicit managed-remote owner context does not introduce remote-store persistence. This narrow delivery
 does not implement document relocation. Ordinary runtime relocation is now the accepted decision in ADR-017;
-managed transport and the Plan-package decisions below remain proposed. Session/Connect continuation now
+managed launch now uses the owner transport described below. Session/Connect continuation now
 resolves verified original stores after moves and accepted clone links, without relocating bundles or locks, rewriting
 historical evidence, transferring execution attempts, or changing managed-remote ownership. ADR-015 owns that accepted
 Session lookup decision; the broader home-state proposal remains proposed.
@@ -62,8 +62,8 @@ generation marks commitment; passive scans compare it before and after traversal
 checking for an intent at either end would miss a batch that both starts and finishes during traversal. Repeating
 ordinary single-package creation was rejected because interruption could expose half a family. Keeping the immutable
 inputs permits recovery without the original sources, while the committed marker prevents replay over newer edits.
-The import boundary remains explicit selection, not automatic repository migration. Local activation does not accept
-the broader managed-remote ownership proposal below.
+The import boundary remains explicit selection, not automatic repository migration. Managed runtime adoption preserves
+that boundary; transfer of controllers and secrets does not import repository Plan copies.
 
 The bounded internal lifecycle path now uses existing review, readiness, Sequence and Plan Event rules with home package
 metadata. Retained inputs include every required resource and parent context; implementation dispatch and checkpoints
@@ -72,7 +72,7 @@ metadata/family/Tickets and frozen optional delivery copies. Packages complete r
 settle matching personal receipts and release ownership before cleanup; no target metadata-only commit or repository
 Plan is required. Retained Recorder inputs survive code cleanup. Reusing the publication state machine avoids a second
 phase authority, and exact immutable inputs avoid treating a delivery copy as live state. ADR-016 qualifies its legacy
-Git-metadata rule for this internal case. Local selection now uses this contract; managed-remote transport and retention remain outside it. ADR-004 and ADR-017 qualify the accepted lifecycle/runtime
+Git-metadata rule for this internal case. Local and managed selection now use this contract; history retention remains outside it. ADR-004 and ADR-017 qualify the accepted lifecycle/runtime
 decisions; the broader proposal below remains proposed.
 
 The internal Work Record contract now shares personal Project ownership with admitted packages. Explicit record
@@ -80,8 +80,8 @@ admission also supports import/read/index without a Plan. Canonical Markdown and
 of repository binding; private location evidence retains each binding's copies. A stable Project/personal-owner index
 can be rebuilt from canonical records after a move or clone link. General Memory namespaces do not move. Retained
 Recorder preparation supplies the existing single-commit publisher and keeps pending copy confidence distinct from
-proof-approved canonical confidence. These bounded choices are qualified in ADR-016; they do not activate the broader
-public or managed-remote proposal.
+proof-approved canonical confidence. These choices are qualified in ADR-016 and used by managed owner-side recording;
+later history and retention remain proposed.
 
 ## Accepted Local and Manual-SSH Activation
 
@@ -164,11 +164,14 @@ metadata, locks, and durable acknowledgements. An SSHFS mount can expose editabl
 authority. Operation IDs and expected revisions permit reconciliation of lost acknowledgements without replaying
 external effects. No permanent daemon, mandatory hosted service, or second saved Plan is required.
 
-The prepared service admits either an ordinary local checkout or a trusted home-only Project/repository registration.
+The Project-store service admits either an ordinary local checkout or a trusted home-only Project/repository registration.
 Home-only authority is revalidated against the current account's `project.wld.json`; it has no synthetic checkout or
 source path. Keeping that identity distinct makes an accidental owner-side Git/registry call an explicit execution-host
-refusal instead of a wrong-machine operation. The owner accepted this admission work in Plan 11; production remote
-startup activation remains Plan 12.
+refusal instead of a wrong-machine operation. Production managed startup now obtains trusted remote identity, registers
+that home-only owner and binds the public Plan interface before importing workflow consumers. Deliberate admission
+adopts eligible personal runtime; passive discovery remains read-only. Native personal locks and indexes stay on the
+laptop, while remote-home execution journals retain Git-effect evidence. Independent remote proof precedes personal
+lifecycle and record settlement; copy policy is frozen from the execution repository.
 
 Durable operation identity and canonical effects share the existing native lock boundary. A retained effect intent
 records the bounded replacement before it occurs; recovery verifies the original resource and settles the same effect

@@ -1,6 +1,10 @@
+import { PLAN_STATUSES } from "../plan-format-implementation.ts";
+import { isChildFeaturePlan, compareChildPlansByOrder } from "../plan-format.ts";
+import { managedPlanStoreActive, archiveManagedPlan, restoreManagedPlan, readManagedArchive } from "./managed.ts";
 import { rmdir } from "node:fs/promises";
 import { relative } from "node:path";
-import { archivePlan, restoreArchivedPlan, loadArchivedPlan, loadPlan, getPlanDocumentRoot } from "../plan-store.js";
+import { archivePlan, restoreArchivedPlan, loadArchivedPlan, getPlanDocumentRoot } from "../plan-store.js";
+import { loadPlan, listPlans } from "./queries.ts";
 import { runArchiveTransition, type TransitionResult } from "./transitions.ts";
 import { currentPackageProject } from "./workflows.ts";
 import { withLocalProjectAction } from "./access.ts";
@@ -26,6 +30,7 @@ function committedArchive<T>(result: TransitionResult): T {
 
 /** Journal, source resolution, revision preconditions and moves are one owner operation. */
 export async function archiveSavedPlan(cwd: string, name: string, options: ArchivePlanOptions = {}) {
+    if (managedPlanStoreActive()) return await archiveManagedPlan(cwd, name, options);
     return await withLocalProjectAction(cwd, async () => {
         return committedArchive<Awaited<ReturnType<typeof archivePlan>>>(
             await runArchiveTransition({
@@ -40,6 +45,7 @@ export async function archiveSavedPlan(cwd: string, name: string, options: Archi
 }
 
 export async function restoreSavedPlan(cwd: string, reference: string, destination?: string) {
+    if (managedPlanStoreActive()) return await restoreManagedPlan(cwd, reference, destination);
     return await withLocalProjectAction(cwd, async () => {
         const source = await loadArchivedPlan(cwd, reference);
         if (!source) throw new Error(`Archived Plan not found: ${reference}`);
@@ -55,7 +61,9 @@ export async function restoreSavedPlan(cwd: string, reference: string, destinati
 }
 
 export async function archivedPlanProjectRoot(cwd: string, reference: string): Promise<string> {
-    const source = await loadArchivedPlan(cwd, reference);
+    const source = managedPlanStoreActive()
+        ? await readManagedArchive(cwd, reference)
+        : await loadArchivedPlan(cwd, reference);
     return source ? getPlanDocumentRoot(source.path) : cwd;
 }
 
@@ -64,11 +72,12 @@ export async function archiveEpicPlanFamily(cwd: string, epicName: string, child
     return await withLocalProjectAction(cwd, async () => {
         const epic = await loadPlan(cwd, epicName);
         if (!epic) throw new Error(`Epic not found: ${epicName}`);
-        const legacyDirectory = currentPackageProject()
-            ? null
-            : epic.path.endsWith(".md")
-              ? epic.path.slice(0, -3)
-              : `${epic.path}.children`;
+        const legacyDirectory =
+            currentPackageProject() || managedPlanStoreActive()
+                ? null
+                : epic.path.endsWith(".md")
+                  ? epic.path.slice(0, -3)
+                  : `${epic.path}.children`;
         const now = new Date().toISOString();
         const archived: Awaited<ReturnType<typeof archiveSavedPlan>>[] = [];
         for (const child of childNames) archived.push(await archiveSavedPlan(cwd, child, { now, force: true }));
@@ -87,4 +96,73 @@ export async function archiveEpicPlanFamily(cwd: string, epicName: string, child
         }
         return { archived, cleanupMessage };
     });
+}
+
+export async function archivePlansByStatus(
+    cwd: string,
+    status: import("../plan-store.js").PlanFrontMatter["status"],
+    options: ArchivePlanOptions = {},
+): Promise<import("../plan-store.js").BulkArchivePlansResult> {
+    if (!PLAN_STATUSES.has(status)) {
+        throw new Error(`Unknown Plan status for bulk archive: ${status}`);
+    }
+
+    if (!managedPlanStoreActive()) await (await import("../shared/worktree-registry.js")).prepareWorktreeRegistry(cwd);
+    const { preparePlanWorkflow } = await import("./preparation.ts");
+    for (const plan of await listPlans(cwd)) await preparePlanWorkflow(cwd, plan.name);
+    const plans = await listPlans(cwd);
+    const childrenByParent = new Map<string, typeof plans>();
+    for (const plan of plans) {
+        if (!isChildFeaturePlan(plan)) continue;
+        const parentPlan = plan.attrs.parentPlan || "";
+        const children = childrenByParent.get(parentPlan) || [];
+        children.push(plan);
+        childrenByParent.set(parentPlan, children);
+    }
+    for (const children of childrenByParent.values()) children.sort(compareChildPlansByOrder);
+
+    const matchingParentPlans = plans
+        .filter((plan) => !isChildFeaturePlan(plan) && plan.attrs.status === status)
+        .sort((a, b) => a.name.localeCompare(b.name));
+    const matchingPlans = matchingParentPlans.flatMap((plan) => [plan, ...(childrenByParent.get(plan.name) || [])]);
+    const matched = matchingPlans.map((plan) => ({
+        name: plan.name,
+        relativePath: relative(cwd, plan.path).replaceAll("\\", "/"),
+    }));
+    const now = options.now || new Date().toISOString();
+    const archived: import("../plan-store.js").BulkArchivePlansResult["archived"] = [];
+    const failed: import("../plan-store.js").BulkArchivePlansResult["failed"] = [];
+
+    for (const parentPlan of matchingParentPlans) {
+        try {
+            const result = await (managedPlanStoreActive()
+                ? archiveManagedPlan(cwd, parentPlan.name, { ...options, now })
+                : archivePlan(cwd, parentPlan.name, { ...options, now }));
+            archived.push({ name: result.name, relativePath: result.relativePath });
+        } catch (error) {
+            failed.push({
+                name: parentPlan.name,
+                relativePath: relative(cwd, parentPlan.path).replaceAll("\\", "/"),
+                message: error instanceof Error ? error.message : String(error),
+            });
+            continue;
+        }
+
+        for (const childPlan of childrenByParent.get(parentPlan.name) || []) {
+            try {
+                const result = await (managedPlanStoreActive()
+                    ? archiveManagedPlan(cwd, childPlan.name, { ...options, force: true, now })
+                    : archivePlan(cwd, childPlan.name, { ...options, force: true, now }));
+                archived.push({ name: result.name, relativePath: result.relativePath });
+            } catch (error) {
+                failed.push({
+                    name: childPlan.name,
+                    relativePath: relative(cwd, childPlan.path).replaceAll("\\", "/"),
+                    message: error instanceof Error ? error.message : String(error),
+                });
+            }
+        }
+    }
+
+    return { matched, archived, failed };
 }

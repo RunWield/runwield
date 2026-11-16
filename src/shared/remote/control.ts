@@ -1,3 +1,4 @@
+import { resolveManagedProjectStore, type ManagedProjectStoreLaunch } from "./project-store-launch.ts";
 import { LaptopProjectStoreService } from "./project-store-service.ts";
 import type { ProjectStoreBinding, HomeProjectOwner } from "../../plan-store/index.ts";
 import { handleBrowserOpen } from "./browser-bridge.ts";
@@ -136,12 +137,16 @@ export function startRemoteControlService(
     target?: LaptopSessionTarget,
     memoryCollection?: string,
     reviewOrigin = "",
+    projectStoreLaunch?: ManagedProjectStoreLaunch,
 ): RemoteControlService {
     if (!validIdentity(identity)) throw new Error("Invalid remote control identity");
     const credential = Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) =>
         byte.toString(16).padStart(2, "0"),
     ).join("");
     let projectStore: LaptopProjectStoreService | undefined;
+    let projectMutationsAdmitted = !projectStoreLaunch;
+    const projectAdmissionAbort = new AbortController();
+    let projectAdmission: Promise<ProjectStoreBinding> | undefined;
     const memory = memoryCollection ? new LaptopMemoryService(memoryCollection) : undefined;
     const mcp = new LaptopMcpBridge();
     let connected = false;
@@ -442,10 +447,74 @@ export function startRemoteControlService(
                     return new Response(null, { status: 503 });
                 }
             }
+            if (path === "/project-store/inspect") {
+                if (request.method !== "POST") return new Response(null, { status: 405 });
+                if (!ready || shutdown || closed || !projectStoreLaunch) return new Response(null, { status: 403 });
+                if ((await request.text()) !== "") return new Response(null, { status: 400 });
+                if (projectStore) return Response.json(projectStore.binding);
+                try {
+                    const admission = await resolveManagedProjectStore(
+                        projectStoreLaunch,
+                        projectAdmissionAbort.signal,
+                        false,
+                    );
+                    if (!ready || shutdown || closed) return new Response(null, { status: 403 });
+                    if (!admission) return Response.json(null);
+                    projectStore = new LaptopProjectStoreService(
+                        admission.owner,
+                        admission.execution,
+                        projectStoreLaunch,
+                        projectAdmissionAbort.signal,
+                    );
+                    return Response.json(projectStore.binding);
+                } catch {
+                    return new Response(null, { status: 409 });
+                }
+            }
+            if (path === "/project-store/admit") {
+                if (request.method !== "POST") return new Response(null, { status: 405 });
+                if (!ready || shutdown || closed || !projectStoreLaunch) return new Response(null, { status: 403 });
+                // The request selects no identity or path. Only the trusted launcher can admit its target.
+                if ((await request.text()) !== "") return new Response(null, { status: 400 });
+                if (!projectAdmission) {
+                    projectAdmission = resolveManagedProjectStore(
+                        projectStoreLaunch,
+                        projectAdmissionAbort.signal,
+                        true,
+                    )
+                        .then((admission) => {
+                            if (!admission) throw new Error("Managed Project admission is unavailable.");
+                            const { owner, execution } = admission;
+                            if (!ready || shutdown || closed)
+                                throw new Error("Managed connection closed during admission.");
+                            projectStore = new LaptopProjectStoreService(
+                                owner,
+                                execution,
+                                projectStoreLaunch,
+                                projectAdmissionAbort.signal,
+                            );
+                            projectMutationsAdmitted = true;
+                            return projectStore.binding;
+                        })
+                        .catch((error) => {
+                            projectAdmission = undefined;
+                            throw error;
+                        });
+                }
+                try {
+                    return Response.json(await projectAdmission);
+                } catch {
+                    return new Response(null, { status: 409 });
+                }
+            }
             if (path === "/project-store") {
                 const selected = projectStore;
                 if (!selected) return new Response(null, { status: 404 });
-                return await selected.handle(request, () => ready && !shutdown && !closed && projectStore === selected);
+                return await selected.handle(
+                    request,
+                    () => ready && !shutdown && !closed && projectStore === selected,
+                    projectMutationsAdmitted,
+                );
             }
             if (path === "/session/control") {
                 if (shutdown || !ready) return new Response(null, { status: 403 });
@@ -508,6 +577,7 @@ export function startRemoteControlService(
             }
         },
         requestShutdown() {
+            projectAdmissionAbort.abort();
             shutdown = true;
             ready = false;
             stopModels();

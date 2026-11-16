@@ -1,3 +1,4 @@
+import { managedPlanStoreActive, inspectManagedOwner, readManagedRetainedExecution } from "./managed.ts";
 import { currentPackageProject } from "./workflows.ts";
 import { readLocalHomeStore, withLocalProjectAction } from "./index.ts";
 import { listPlanPackages, recoverPlanPackages } from "./packages.ts";
@@ -495,10 +496,12 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
         if (repair) await recoverPlanPackages(owner);
         const catalog = await listPlanPackages(owner, true);
         for (const issue of catalog.issues) issues.push({ kind: "package_integrity_error", message: issue.message });
-    } else await collectPlanIssues(projectRoot, getPlansDir(projectRoot), [], issues, discoveredPlanIds);
-    const archivedPlans = owner
-        ? await listArchivedPlans(projectRoot)
-        : await collectArchivedPlanParseIssues(projectRoot, issues, discoveredPlanIds);
+    } else if (managedPlanStoreActive()) issues.push(...(await inspectManagedOwner(projectRoot, repair)));
+    else await collectPlanIssues(projectRoot, getPlansDir(projectRoot), [], issues, discoveredPlanIds);
+    const archivedPlans =
+        owner || managedPlanStoreActive()
+            ? await listArchivedPlans(projectRoot)
+            : await collectArchivedPlanParseIssues(projectRoot, issues, discoveredPlanIds);
 
     // Read the registry without enforcing invariants first. A violated invariant
     // must not blind the report: the per-entry facts below are what the user needs
@@ -606,6 +609,16 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
     const diagnosticEntries = await Promise.all(
         entries.map(async (entry) => {
             if (entry.status !== "abandoned") return entry;
+            if (managedPlanStoreActive()) {
+                const retained = await readManagedRetainedExecution(
+                    projectRoot,
+                    entry.planId || entry.planName,
+                    entry.id,
+                );
+                return retained?.controller.state.documentWorktreeId === entry.id
+                    ? { ...entry, documentSelected: true }
+                    : entry;
+            }
             const controller = await readControllerRecordAtPath(layout.primary.controllerPlansDir, {
                 planId: entry.planId,
                 planName: entry.planName,
@@ -616,7 +629,7 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
     const identityDocuments = (await inspectPlanIdentityDocuments(projectRoot, diagnosticEntries)).sort((left, right) =>
         left.name.localeCompare(right.name),
     );
-    for (const parent of currentPackageProject() ? [] : [...identityDocuments]) {
+    for (const parent of currentPackageProject() || managedPlanStoreActive() ? [] : [...identityDocuments]) {
         const targetBranch = typeof parent.attrs.targetBranch === "string" ? parent.attrs.targetBranch.trim() : "";
         if (!targetBranch || !isProjectPlan(parent.attrs)) continue;
         let children: Awaited<ReturnType<typeof inspectTargetBranchPlansByParent>>;
@@ -662,7 +675,7 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
         }
     }
     if (repair) {
-        for (const plan of currentPackageProject() ? [] : identityDocuments) {
+        for (const plan of currentPackageProject() || managedPlanStoreActive() ? [] : identityDocuments) {
             const exists = await fsStat(plan.path)
                 .then((stat) => stat.isFile())
                 .catch(() => false);
@@ -690,7 +703,7 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
     }
     const inspectedIdentityDocuments = await Promise.all(
         identityDocuments.map(async (plan) => {
-            if (currentPackageProject()) return { ...plan, pendingControllerRepairs: [] };
+            if (currentPackageProject() || managedPlanStoreActive()) return { ...plan, pendingControllerRepairs: [] };
             const inspected = await inspectPlanFileStrict(plan.path);
             return inspected.kind === "loaded" && "attrs" in inspected
                 ? { ...plan, attrs: inspected.attrs, pendingControllerRepairs: inspected.pendingControllerRepairs }
@@ -705,6 +718,13 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
         ...inspectedIdentityDocuments,
         ...archivedPlans.map((plan) => ({ ...plan, name: `archived/${plan.name}` })),
     ]) {
+        if (
+            managedPlanStoreActive() &&
+            !entries.some(
+                (entry) => entry.planId === plan.attrs.planId && plan.path.startsWith(`${entry.path}/docs/plans/`),
+            )
+        )
+            continue;
         const reviewedCandidate =
             plan.attrs.status === "reviewed" &&
             Boolean(plan.attrs.validatedCommit || plan.attrs.deliveryEvidence?.mode === "worktree_merge");

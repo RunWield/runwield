@@ -212,6 +212,8 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
 
 /** Test-only targets include dependent fixtures, process and Golden qualification drivers. */
 export const PLAN_TEST_SUPPORT = new Set([
+    "src/shared/remote/managed-store-activation-fixture.ts",
+    "src/shared/remote/managed-store-client.ts",
     "src/cmd/load-plan/publication-cleanup-test-helpers.ts",
     "src/shared/attached/attached-test-fixture.ts",
     "src/shared/attached/delivery-recovery-test-fixture.ts",

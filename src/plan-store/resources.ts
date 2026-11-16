@@ -1,3 +1,11 @@
+import {
+    managedPlanStoreActive,
+    currentManagedPlanSelection,
+    readManagedPlan,
+    managedExecutionRoot,
+    readManagedReviewPresentation,
+    readManagedDocument,
+} from "./managed.ts";
 import { projectStoreLocation } from "../shared/project-identity.ts";
 import { planDocumentMarkdown, injectFrontMatter } from "../plan-format.ts";
 /** Authorization of Plan resources belongs to the owner that selected their source. */
@@ -8,7 +16,7 @@ import {
     loadPackageWorkflowPlan,
 } from "./workflows.ts";
 import { realpath as fsRealpath } from "node:fs/promises";
-import { isAbsolute, relative, join } from "node:path";
+import { isAbsolute, relative, join, dirname } from "node:path";
 import { loadTargetPlan } from "../shared/workflow/planning-worktree.ts";
 import { inspectProjectRuntimeReadAccess, ProjectRuntimeEntryRefusedError } from "../shared/project-runtime-layout.ts";
 import { assertControllerDocumentAvailable, listControllerDocumentWorktrees } from "./controllers.ts";
@@ -27,6 +35,14 @@ async function assertContainedProjectPath(root: string, path: string) {
 }
 /** @param {string} root @param {string} path @param {string} planName */
 export async function assertAuthorizedPlanPath(root: string, path: string, planName: string) {
+    if (managedPlanStoreActive()) {
+        const plan = await readManagedPlan(root, planName);
+        if (!plan?.attrs.planId) throw new Error("Managed Plan identity is unavailable.");
+        const documents = await readManagedDocument(plan.attrs.planId, "context.md", root);
+        if (!documents.documents.some((document) => join(dirname(plan.path), document.name) === path))
+            throw new Error("Plan path is not an admitted managed document.");
+        return path;
+    }
     if (currentPackageProject()) {
         const selected = await selectedPackage(planName);
         if (!selected.documents.some((document) => join(selected.path, document.name) === path))
@@ -61,6 +77,11 @@ export async function assertAuthorizedPlanPath(root: string, path: string, planN
  * @param {{ path: string, planName: string }} resource
  */
 export async function assertReadablePlanResource(root: string, resource: PlanResourceReference) {
+    if (managedPlanStoreActive()) {
+        const plan = await readManagedPlan(root, resource.planId || resource.planName);
+        if (!plan || plan.attrs.planId !== resource.planId) throw new Error("Managed resource identity changed.");
+        return await assertAuthorizedPlanPath(root, resource.path, resource.planName);
+    }
     const selection = currentPackageProject();
     if (selection) {
         if ((await fsRealpath(root)) !== (await fsRealpath(projectStoreLocation(selection))))
@@ -83,8 +104,18 @@ export async function assertReadablePlanResource(root: string, resource: PlanRes
 }
 
 /** Present a coherent selected review document without exposing package metadata or bytes. */
-export async function readPlanReviewPresentation(planId?: string) {
-    planId ||= currentPackageSelection()?.planId;
+export interface PlanReviewPresentation {
+    planId: string;
+    plan: string;
+    planName: string;
+    frontmatter: import("../plan-store.js").PlanFrontMatter;
+    classification: import("../plan-store.js").PlanFrontMatter["classification"];
+    documentRevision: string;
+    linkedFiles: Record<string, string>;
+}
+export async function readPlanReviewPresentation(planId?: string): Promise<PlanReviewPresentation | undefined> {
+    planId ||= currentPackageSelection()?.planId || currentManagedPlanSelection()?.planId;
+    if (managedPlanStoreActive() && planId) return await readManagedReviewPresentation(planId);
     if (!currentPackageProject() || !planId) return undefined;
     const plan = await loadPackageWorkflowPlan({ planId });
     const selected = await selectedPackage({ planId });
@@ -103,6 +134,8 @@ export async function readPlanReviewPresentation(planId?: string) {
 
 /** Resolve the review document from admitted authority, including legacy file-backed review. */
 export async function loadReviewPlanDocument(path: string) {
+    if (managedPlanStoreActive())
+        return await readManagedPlan(managedExecutionRoot(), currentManagedPlanSelection()?.planId || path);
     const { currentPackageSelection } = await import("./workflows.ts");
     const selection = currentPackageSelection();
     if (selection) return await loadPackageWorkflowPlan({ planId: selection.planId });
@@ -112,7 +145,7 @@ export async function loadReviewPlanDocument(path: string) {
 
 /** Identity comparison does not disclose the admitted storage record. */
 export function isCurrentPlan(planId: string | undefined): boolean {
-    return Boolean(planId && currentPackageSelection()?.planId === planId);
+    return Boolean(planId && (currentPackageSelection()?.planId || currentManagedPlanSelection()?.planId) === planId);
 }
 
 /** Resolve where a controller write survives execution checkout cleanup. */
@@ -126,15 +159,22 @@ export function renderPlanReviewMarkdown(
     body: string,
     attrs: Partial<import("../plan-store.js").PlanFrontMatter>,
 ): string {
-    return currentPackageSelection() ? body : planDocumentMarkdown(injectFrontMatter(body, attrs));
+    return currentPackageSelection() || currentManagedPlanSelection()
+        ? body
+        : planDocumentMarkdown(injectFrontMatter(body, attrs));
 }
 
 /** Read document and edit capability together, without requiring a surface to select a storage kind. */
 export async function loadPlanDetail(cwd: string, planId: string, reviewOnly = false) {
     const { readLocalHomeStore } = await import("./access.ts");
-    const { findPlanEvidenceById, findPlanById, loadPlanBodyById } = await import("../plan-store.js");
+    const { findPlanEvidenceById, findPlanById, loadPlanBodyById } = await import("./queries.ts");
     const { readPlanDocuments } = await import("./documents.ts");
     const { isProjectPlan } = await import("../shared/project-plan.ts");
+    if (managedPlanStoreActive()) {
+        const resource = reviewOnly ? await findPlanEvidenceById(cwd, planId) : await loadPlanBodyById(cwd, planId);
+        const document = await readPlanDocuments(planId);
+        return { resource, document, bodyEditing: document.writable };
+    }
     return await readLocalHomeStore(
         cwd,
         async () => {

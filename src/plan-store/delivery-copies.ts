@@ -99,12 +99,24 @@ export async function finalizePublicationLifecycle(
     if (!first) return [];
     const source = parsePlanFrontMatter(first).attrs;
     const paths = [firstPath];
+    const attestedParents = new Set<string>();
     if (source.parentPlan && allowedPlanPaths.includes(`docs/plans/${source.parentPlan}.md`)) {
         const parentPath = `docs/plans/${source.parentPlan}.md`;
         const parent = await sealedDocument(cwd, sealedCommit, parentPath);
         if (parent) {
             const attrs = parsePlanFrontMatter(parent).attrs;
             if (attrs.status === "reviewed" && attrs.epicCompletionMode === "done_enough") paths.push(parentPath);
+        }
+    }
+    if (source.parentPlan) {
+        const parentPath = `docs/plans/${source.parentPlan}.md`;
+        const parent = await sealedDocument(cwd, sealedCommit, parentPath);
+        if (parent) {
+            const attrs = parsePlanFrontMatter(parent).attrs;
+            if (attrs.status === "user_verified" && attrs.workRecord?.status === "generated") {
+                paths.push(parentPath);
+                attestedParents.add(parentPath);
+            }
         }
     }
     const writes = new Map<string, string>();
@@ -115,10 +127,14 @@ export async function finalizePublicationLifecycle(
         const current = await fsReadFile(join(cwd, path), "utf8");
         const attrs = parsePlanFrontMatter(current).attrs;
         if (attrs.planId !== expected.planId) throw new Error(`Plan identity changed during publication: ${path}`);
-        if (!["reviewed", "validated", "verified"].includes(attrs.status)) {
+        if (
+            attestedParents.has(path)
+                ? attrs.status !== "user_verified"
+                : !["reviewed", "validated", "verified"].includes(attrs.status)
+        ) {
             throw new Error(`Cannot finalize publication of ${path} at ${attrs.status}.`);
         }
-        if (attrs.status !== "verified") {
+        if (!attestedParents.has(path) && attrs.status !== "verified") {
             writes.set(path, mergeFrontMatterText(current, { status: "verified" }));
         }
         const recordPath = expected.workRecord?.path;

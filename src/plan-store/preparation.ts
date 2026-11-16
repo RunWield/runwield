@@ -1,3 +1,4 @@
+import { managedPlanStoreActive, selectManagedPlan } from "./managed.ts";
 import { selectLocalPlanWorkflow, inspectLocalHomeStore, withLocalPlanWorkflow } from "./access.ts";
 import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
 import { healSettledTransitionRecords } from "../shared/workflow/transition-recovery.ts";
@@ -38,6 +39,11 @@ async function prepareDocument(cwd: string, planName: string, prepareIdentity = 
 
 /** Admit a deliberate Plan action before it selects authority or checks revisions. */
 export async function preparePlanController(projectRoot: string, planName: string): Promise<string> {
+    if (managedPlanStoreActive()) {
+        await selectManagedPlan(projectRoot, planName);
+        await enterProjectRuntime(projectRoot);
+        return projectRoot;
+    }
     if (!currentPackageSelection() && inspectLocalHomeStore(projectRoot).kind === "local")
         return await withLocalPlanWorkflow(projectRoot, planName, () => preparePlanController(projectRoot, planName));
     if (currentPackageSelection()) {
@@ -62,6 +68,10 @@ export async function preparePlanWorkflow(
     planName: string,
     packageSelection?: PackageWorkflowSelection,
 ) {
+    if (managedPlanStoreActive()) {
+        await preparePlanController(projectRoot, planName);
+        return await resolveWorkflowPlanLocation(projectRoot, planName, { readOnly: true });
+    }
     if (!packageSelection && !currentPackageSelection())
         packageSelection = await selectLocalPlanWorkflow(projectRoot, planName);
     if (packageSelection) {

@@ -1,3 +1,4 @@
+import { managedPlanStoreActive, importManagedPlans } from "./managed.ts";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { inspectLocalHomeStore } from "./access.ts";
@@ -10,6 +11,7 @@ import { getExactProjectCustomSetting, setExactProjectCustomSetting } from "../s
 /** Explicit admission and source-preserving import are one store operation. */
 export async function importPlans(cwd: string, selection: string) {
     await enterProjectRuntime(cwd);
+    if (managedPlanStoreActive()) return await importManagedPlans(cwd, resolve(cwd, selection));
     const store = inspectLocalHomeStore(cwd);
     if (store.kind !== "local") throw new Error("Plan import requires the local execution-account store.");
     const result = await importPlanPackages(store.identity, resolve(cwd, selection));
@@ -34,6 +36,29 @@ export async function importedPlanCopyChoice(cwd: string, selection: string, ans
     const selected = await realpath(selectedPath);
     const path = relative(plansRoot, selected);
     if (isAbsolute(path) || path === ".." || path.startsWith(`..${sep}`)) return false;
+    if (managedPlanStoreActive()) {
+        const runtime = await enterProjectRuntime(cwd);
+        const { openNativeFileLock } = await import("../shared/native-file-lock.ts");
+        const { ensurePrivateDir } = await import("../shared/private-json-file.ts");
+        ensurePrivateDir(runtime.selected.transitionJournalsDir);
+        const lock = openNativeFileLock(join(runtime.selected.transitionJournalsDir, "import-copy-choice.lock"));
+        await lock.lock(true);
+        try {
+            const stored = getExactProjectCustomSetting("plans", projectRoot);
+            const settings = stored && typeof stored === "object" && !Array.isArray(stored) ? stored : {};
+            if ("importDeliveryCopiesAnswer" in settings && typeof settings.importDeliveryCopiesAnswer === "boolean")
+                return false;
+            if (answer === undefined) return true;
+            setExactProjectCustomSetting(
+                "plans",
+                { ...settings, deliveryCopies: answer, importDeliveryCopiesAnswer: answer },
+                projectRoot,
+            );
+            return false;
+        } finally {
+            lock.close();
+        }
+    }
     const owner = inspectLocalHomeStore(cwd);
     if (owner.kind !== "local") return false;
     return await withPlanPackageLocks(owner.identity, [], async () => {

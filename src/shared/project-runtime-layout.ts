@@ -2,7 +2,6 @@ import { recoverLegacyPlanControllers } from "../plan-store/index.ts";
 import {
     admitProjectIdentity,
     inspectProjectIdentity,
-    projectLaunchContext,
     ProjectIdentityEntryRequired,
     type ProjectIdentityOptions,
 } from "./project-identity.ts";
@@ -11,7 +10,6 @@ import {
     inspectHomeProjectRuntime,
     enterHomeProjectRuntime,
 } from "./project-runtime-home.ts";
-import { remoteProjectOwner } from "./remote/personal-resources.ts";
 import { recoverWindowsRename } from "./native-file-replace-windows.ts";
 import fsPromises from "node:fs/promises";
 import { open as fsOpen, rmdir as fsRmdir } from "node:fs/promises";
@@ -288,12 +286,9 @@ export function resolveProjectRuntimeLayout(
     selectedCheckoutRoot: string,
     options: ProjectIdentityOptions = {},
 ): ProjectRuntimeLayout {
-    if ((options.context?.personalOwner ?? remoteProjectOwner())?.kind === "managed-remote")
-        return resolveCheckoutRuntimeLayout(selectedCheckoutRoot);
     const inspection = inspectProjectIdentity(selectedCheckoutRoot, options);
     if (inspection.kind === "invalid") throw new ProjectIdentityEntryRequired(inspection);
-    if (inspection.kind === "existing" && inspection.identity.personalOwner.kind === "execution-account")
-        return homeProjectRuntimeLayout(inspection.identity);
+    if (inspection.kind === "existing") return homeProjectRuntimeLayout(inspection.identity);
     return resolveCheckoutRuntimeLayout(selectedCheckoutRoot);
 }
 
@@ -369,11 +364,9 @@ export function inspectProjectRuntimeReadAccess(root: string): Promise<ProjectRu
 }
 
 async function inspectProjectRuntimeReadAccessUncached(root: string): Promise<ProjectRuntimeReadInspection> {
-    const identity =
-        remoteProjectOwner()?.kind === "managed-remote" ? { kind: "fresh" as const } : inspectProjectIdentity(root);
+    const identity = inspectProjectIdentity(root);
     if (identity.kind === "invalid") return block("malformed_migration_evidence", [root], identity.message);
-    if (identity.kind === "existing" && identity.identity.personalOwner.kind === "execution-account")
-        return inspectHomeProjectRuntime(identity.identity);
+    if (identity.kind === "existing") return inspectHomeProjectRuntime(identity.identity);
     const layout = resolveCheckoutRuntimeLayout(root);
     const primary = await canonicalExistingRoot(layout.primary.checkoutRoot);
     const symlinks = await findSymlinkBlocker(layout, primary, [layout.selected.checkoutRoot]);
@@ -464,10 +457,7 @@ export async function inspectProjectRuntimeLayout(root: string): Promise<Project
             layout: access.layout,
             adoptedSelectedCheckoutRoots: access.adoptedSelectedCheckoutRoots,
         };
-    if (
-        inspectProjectIdentity(root).kind === "existing" &&
-        projectLaunchContext().personalOwner.kind === "execution-account"
-    )
+    if (inspectProjectIdentity(root).kind === "existing")
         return { kind: "pending", layout: access.layout, selectedCheckoutRoots: [access.layout.selected.checkoutRoot] };
     const marker = await readLayoutMarker(access.layout);
     if (isBlocked(marker)) return marker;
@@ -536,7 +526,7 @@ async function enterProjectRuntimeUncached(
     if (rootInfo) {
         const admission = await admitProjectIdentity(selectedCheckoutRoot, identityOptions);
         if (admission.kind !== "existing") throw new ProjectIdentityEntryRequired(admission);
-        if (admission.identity.personalOwner.kind === "execution-account") {
+        {
             const { layout } = await enterHomeProjectRuntime(admission.identity);
             await reconcileRuntimeIgnore(layout.primary.checkoutRoot);
             return layout;
@@ -562,7 +552,6 @@ async function reconcileRuntimeIgnore(projectRoot: string): Promise<void> {
 export async function migrateLegacyProjectRuntimeState(
     selectedCheckoutRoot: string,
 ): Promise<ProjectRuntimeMigrationResult> {
-    if (remoteProjectOwner()?.kind === "managed-remote") return migrateCheckoutRuntimeState(selectedCheckoutRoot);
     const admission = await admitProjectIdentity(selectedCheckoutRoot);
     if (admission.kind !== "existing") throw new ProjectIdentityEntryRequired(admission);
     try {

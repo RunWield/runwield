@@ -2,7 +2,7 @@
 import { capturePlanExecutionContext, reservePlanExecution, savePlanDefinition } from "../../plan-store/index.ts";
 import { selectPlanAccess } from "../../plan-store/index.ts";
 import { withPlanExecutionAdmission, type PlanAccess } from "../../plan-store/index.ts";
-import { capturePlanAccess, withPlanAccess } from "../../plan-store/index.ts";
+import { capturePlanAccess, hasCanonicalPlanAccess, withPlanAccess } from "../../plan-store/index.ts";
 import { prepareWorktreeRegistry } from "../worktree-registry.js";
 import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import {
@@ -335,7 +335,7 @@ async function startActiveExecutionWorkflowInScope({
     if (!cwd) throw new Error("startActiveExecutionWorkflow: cwd is required");
     const projectRoot = resolvePrimaryCheckoutRoot(cwd);
     let sourceLocation = await reconcileExecutionPreparationLocation(cwd, planName, { readOnly: true });
-    if (!sourceLocation.resumeInterruptedPreparation && !capturePlanAccess()) {
+    if (!sourceLocation.resumeInterruptedPreparation && !hasCanonicalPlanAccess()) {
         await prepareSessionPlanningWorktree(cwd, planName);
         sourceLocation = await reconcileExecutionPreparationLocation(cwd, planName);
     }
@@ -563,7 +563,9 @@ async function startActiveExecutionWorkflowInScope({
     deliveryBranch = effectiveDeliveryBranch(preflightCanonicalPlanSource.attrs) || targetBranch;
     // Existing attempts retain their recorded landing across setting changes.
     const adoptPlanBranch =
-        !capturePlanAccess() && !reusable && shouldAdoptPlanBranch(projectRoot, preflightCanonicalPlanSource.attrs);
+        !hasCanonicalPlanAccess() &&
+        !reusable &&
+        shouldAdoptPlanBranch(projectRoot, preflightCanonicalPlanSource.attrs);
     const resolvedTargetBranch = reusable
         ? normalizeExecutionTargetBranch(reusable.baseBranch) || (await resolveCurrentBranch(projectRoot))
         : adoptPlanBranch
@@ -602,7 +604,7 @@ async function startActiveExecutionWorkflowInScope({
     // Reconcile cross-worktree planning edits before acquiring the active Plan's
     // transition lock, so simultaneous sibling starts cannot lock each other out.
     const editedSiblingPaths =
-        !capturePlanAccess() && reusable && needsPreparationCheckpoint
+        !hasCanonicalPlanAccess() && reusable && needsPreparationCheckpoint
             ? await prepareEditedSiblingPlans(reusable.path, planName, preflightCanonicalPlanSource.relativePath)
             : [];
     const transition = await runExecutionPreparationTransition({
@@ -613,7 +615,7 @@ async function startActiveExecutionWorkflowInScope({
         planId: stablePlanId,
         worktreeId: attemptId,
         targetRef: resolvedTargetBranch || targetBranch || undefined,
-        expectedRevision: capturePlanAccess()
+        expectedRevision: hasCanonicalPlanAccess()
             ? (await loadPlan(planAuthorityRoot, planName))?.revision
             : canonicalPlanForRevision?.revision,
         expectedPlanEvent: needsExecutionStartedEvent,
@@ -648,7 +650,7 @@ async function startActiveExecutionWorkflowInScope({
                     `Plan ${planName} had its front matter change while preparing execution; reload the Plan and start execution again.`,
                 );
             }
-            if (!capturePlanAccess() && !reusable && standalone) {
+            if (!hasCanonicalPlanAccess() && !reusable && standalone) {
                 if (adoptPlanBranch) {
                     deliveryBranch = (await ensurePlanBranch({ projectRoot, planName, sourceBranch: targetBranch }))
                         .branch;
@@ -753,7 +755,7 @@ async function startActiveExecutionWorkflowInScope({
             if (reusable) await addRunWieldOwnedGitignoreBlock(worktree.path, hostedSession);
             const worktreeBaseBranch = worktree.baseBranch === "HEAD" ? undefined : worktree.baseBranch;
             emitMaterializingPlanInExecutionWorktree(hostedSession);
-            const planFile = capturePlanAccess()
+            const planFile = hasCanonicalPlanAccess()
                 ? { kind: "present", path: canonicalPlanSource.path, relativePath: undefined }
                 : await ensurePlanFile({
                       executionCwd: worktree.path,
@@ -787,7 +789,7 @@ async function startActiveExecutionWorkflowInScope({
                 );
             }
             let relatedPlanPaths = [];
-            if (needsPreparationCheckpoint && !capturePlanAccess()) {
+            if (needsPreparationCheckpoint && !hasCanonicalPlanAccess()) {
                 // A reused planning worktree can contain parent and sibling edits
                 // too. Include the same family on initial preparation and retry;
                 // materialization preserves every already-present Plan verbatim.
@@ -873,7 +875,7 @@ async function startActiveExecutionWorkflowInScope({
             }
             if (needsExecutionStartedEvent) {
                 emitUpdatingPlanStatusToInProgress(hostedSession);
-                if (!capturePlanAccess())
+                if (!hasCanonicalPlanAccess())
                     await recordExecutionSetupLifecycle(
                         worktree.path,
                         planFile.relativePath,
@@ -912,9 +914,9 @@ async function startActiveExecutionWorkflowInScope({
                 // Sibling drafts Planner reshaped while planning this child travel with it.
                 relatedPlanPaths = [
                     ...relatedPlanPaths,
-                    ...(!capturePlanAccess() && reusedWorktree
+                    ...(!hasCanonicalPlanAccess() && reusedWorktree
                         ? editedSiblingPaths
-                        : capturePlanAccess()
+                        : hasCanonicalPlanAccess()
                           ? []
                           : await prepareEditedSiblingPlans(worktree.path, planName, planFile.relativePath)),
                 ];
