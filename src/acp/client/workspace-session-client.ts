@@ -1,3 +1,16 @@
+import { validateSessionInput, type SessionImageTransfer } from "../../shared/session/session-input-contract.ts";
+import type {
+    WorkspaceHistoryRequest,
+    WorkspaceHistoryResult,
+    WorkspaceSnapshotRequest,
+    WorkspaceSnapshotResult,
+    WorkspaceSessionListRequest,
+    WorkspaceSessionListResult,
+    WorkspaceConfigureRequest,
+    WorkspaceSessionRequest,
+    WorkspaceJsonRecord,
+} from "../workspace-contract.ts";
+import type { SessionQueuedDraft, WorkspaceSavedSessionClient } from "../../ui/workspace/client/session-client.ts";
 import {
     WORKSPACE_EXTENSION,
     type WorkspaceCapability,
@@ -26,11 +39,11 @@ import type {
     SessionNotification,
 } from "@agentclientprotocol/sdk";
 import type {
+    SessionClientItem,
     SessionBinding,
     SessionClientQuestion,
     SessionClientView,
     SessionQuestionAnswer,
-    WorkspaceSessionClient,
 } from "../../ui/workspace/client/session-client.ts";
 
 export interface AcpWorkspaceSessionOptions {
@@ -42,7 +55,10 @@ export interface AcpWorkspaceSessionOptions {
 }
 
 interface RunWieldMetadata {
+    otherOptionValue?: string;
     persistedSessionId?: string;
+    operationId?: string;
+    history?: WorkspaceHistoryResult;
     interactionId?: string;
     interactionType?: string;
     implementedMethods?: string[];
@@ -92,7 +108,11 @@ function questionView(params: CreateElicitationRequest, requestId: string): Sess
               if (!choice || typeof choice.const !== "string" || typeof choice.title !== "string") {
                   throw new Error("This question has unsupported choices.");
               }
-              return { value: choice.const, label: choice.title };
+              return {
+                  value: choice.const,
+                  label: choice.title,
+                  ...(typeof choice.description === "string" ? { description: choice.description } : {}),
+              };
           })
         : Array.isArray(plain)
           ? plain.map((value) => {
@@ -121,13 +141,15 @@ function questionView(params: CreateElicitationRequest, requestId: string): Sess
         mode: choices.length ? (meta?.interactionType === "approval" ? "approval" : "select") : "text",
         required: schema.required?.includes("answer") === true,
         placeholder: typeof raw.description === "string" ? raw.description : "",
+        ...(typeof raw.default === "string" ? { defaultValue: raw.default } : {}),
         choices,
         allowOther: Boolean(other),
+        ...(typeof meta?.otherOptionValue === "string" ? { otherOptionValue: meta.otherOptionValue } : {}),
     };
 }
 
 /** A persistent ACP v1 connection. The host supplies stdio, never Core runtime objects. */
-export class AcpWorkspaceSessionClient implements WorkspaceSessionClient, WorkspaceProjectClient {
+export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, WorkspaceProjectClient {
     private readonly connection: ClientConnection;
     private readonly initialized: Promise<void>;
     private readonly listeners = new Set<(view: SessionClientView) => void>();
@@ -139,6 +161,17 @@ export class AcpWorkspaceSessionClient implements WorkspaceSessionClient, Worksp
     private readonly workspaceAdmission: boolean;
     private context: WorkspaceProjectContext | null = null;
     private selecting = false;
+    private polling: ReturnType<typeof setTimeout> | null = null;
+    private observationCursor = "";
+    private launchConfiguration: import("../workspace-contract.ts").WorkspaceConfigurationSelection = {};
+    private committedItems: SessionClientItem[] = [];
+    private committedOperationId = "";
+    private committedEventIds = new Set<string>();
+    private commandItems: SessionClientView["items"] = [];
+    private readonly seenEvents = new Set<string>();
+    private readonly rejectedQueued = new Set<string>();
+    private dispatchingQueued = false;
+    private readonly queuedDrafts: SessionQueuedDraft[] = [];
 
     constructor(options: AcpWorkspaceSessionOptions) {
         if ((!options.workspaceAdmission && !isAbsolute(options.project)) || !options.connectionId)
@@ -215,6 +248,7 @@ export class AcpWorkspaceSessionClient implements WorkspaceSessionClient, Worksp
                 if (
                     workspace?.version !== 1 ||
                     workspace.projects?.version !== 1 ||
+                    workspace.sessions?.version !== 1 ||
                     typeof workspace.connectionId !== "string" ||
                     !workspace.connectionId ||
                     workspace.connectionId.length > 128
@@ -241,8 +275,376 @@ export class AcpWorkspaceSessionClient implements WorkspaceSessionClient, Worksp
         this.emit();
     }
 
-    private metadata() {
-        return this.workspaceAdmission ? { _meta: { [WORKSPACE_EXTENSION]: { ...this.context! } } } : {};
+    private metadata(requestId?: string, expectedGeneration = this.view.generation ?? 0) {
+        return this.workspaceAdmission
+            ? {
+                  _meta: {
+                      [WORKSPACE_EXTENSION]: {
+                          ...this.context!,
+                          ...(requestId
+                              ? {
+                                    requestId,
+                                    expectedGeneration,
+                                    ...(!this.view.durableSessionId ? { configuration: this.launchConfiguration } : {}),
+                                }
+                              : {}),
+                      },
+                  },
+              }
+            : {};
+    }
+    async readProject(request: WorkspaceProjectRequest): Promise<WorkspaceOpenProjectResult> {
+        await this.ready();
+        const result = await this.connection.agent.request<WorkspaceOpenProjectResult>(
+            "_dev.runwield/workspace/projects/open",
+            request,
+        );
+        if (
+            result.context.connectionId !== this.view.connectionId ||
+            result.context.projectId !== request.projectId ||
+            !isAbsolute(result.context.canonicalRoot)
+        )
+            throw new Error("Stale Project context.");
+        return result;
+    }
+    async listSessions(request: WorkspaceSessionListRequest): Promise<WorkspaceSessionListResult> {
+        await this.ready();
+        const result = await this.connection.agent.request<WorkspaceSessionListResult>("session/list", {
+            cwd: request.context.canonicalRoot,
+            cursor: request.cursor,
+            _meta: {
+                [WORKSPACE_EXTENSION]: { ...request.context, archiveState: request.archiveState, limit: request.limit },
+            },
+        });
+        return { sessions: result.sessions, nextCursor: result.nextCursor || null };
+    }
+    async history(request: WorkspaceHistoryRequest): Promise<WorkspaceHistoryResult> {
+        await this.ready();
+        return this.connection.agent.request<WorkspaceHistoryResult>(
+            "_dev.runwield/workspace/sessions/history",
+            request,
+        );
+    }
+    async snapshot(request: WorkspaceSnapshotRequest): Promise<WorkspaceSnapshotResult> {
+        await this.ready();
+        return this.connection.agent.request<WorkspaceSnapshotResult>(
+            "_dev.runwield/workspace/sessions/snapshot",
+            request,
+        );
+    }
+    async stageConfiguration(
+        binding: SessionBinding,
+        selection: import("../workspace-contract.ts").WorkspaceConfigurationSelection,
+    ): Promise<void> {
+        await this.ready();
+        this.binding(binding);
+        if (!this.context) throw new Error("Open a registered Project first.");
+        if (this.view.durableSessionId) {
+            await this.configure({
+                context: this.context,
+                sessionId: this.view.durableSessionId,
+                requestId: crypto.randomUUID(),
+                expectedGeneration: this.view.generation ?? 0,
+                ...selection,
+            });
+        } else {
+            const options = await this.sessionOptions(this.context);
+            if (selection.agentName && !options.agents.some((agent) => agent.name === selection.agentName))
+                throw new Error("Unsupported Agent.");
+            if (
+                selection.model &&
+                !options.models.some((model) => model.id === selection.model && model.provider === selection.provider)
+            )
+                throw new Error("Unsupported model.");
+            if (selection.thinkingLevel && !options.thinkingLevels.includes(selection.thinkingLevel))
+                throw new Error("Unsupported thinking level.");
+            this.launchConfiguration = { ...this.launchConfiguration, ...selection };
+            this.view.configuration = {
+                agentName: selection.agentName || this.view.configuration?.agentName || options.defaults.agentName,
+                model: selection.model || this.view.configuration?.model || options.defaults.model,
+                provider: selection.provider || this.view.configuration?.provider || options.defaults.provider,
+                thinkingLevel:
+                    selection.thinkingLevel || this.view.configuration?.thinkingLevel || options.defaults.thinkingLevel,
+            };
+            this.emit();
+        }
+    }
+    async sessionOptions(
+        context: WorkspaceProjectContext,
+    ): Promise<import("../workspace-contract.ts").WorkspaceOptionsResult> {
+        await this.ready();
+        return this.connection.agent.request("_dev.runwield/workspace/sessions/options", { context });
+    }
+    async command(
+        binding: SessionBinding,
+        text: string,
+    ): Promise<import("../../shared/session/session-input-contract.ts").SessionCommandResult> {
+        this.binding(binding);
+        await this.ready();
+        if (!this.context || this.view.phase !== "idle")
+            throw new Error("Wait for the Session to finish before using commands.");
+        const result = await this.connection.agent.request<
+            import("../../shared/session/session-input-contract.ts").SessionCommandResult
+        >("_dev.runwield/workspace/sessions/command", {
+            context: this.context,
+            wireSessionId: binding.sessionId,
+            text,
+        });
+        this.binding(binding);
+        if (result.action === "new") {
+            await this.close(binding);
+            await this.create();
+        } else if (result.action === "configure" && result.selection)
+            await this.stageConfiguration(binding, result.selection);
+        else if (result.message) {
+            const item = { id: `command:${crypto.randomUUID()}`, kind: "system" as const, text: result.message };
+            this.commandItems.push(item);
+            this.view.items.push(item);
+            this.committedItems = structuredClone(this.view.items);
+            this.emit();
+        }
+        return result;
+    }
+    async configure(request: WorkspaceConfigureRequest): Promise<void> {
+        await this.ready();
+        await this.connection.agent.request("_dev.runwield/workspace/sessions/configure", request);
+        if (this.view.generation != null) await this.refreshHistory();
+    }
+    async unarchive(request: WorkspaceSessionRequest): Promise<void> {
+        await this.ready();
+        await this.connection.agent.request("_dev.runwield/workspace/sessions/unarchive", request);
+        await this.refreshHistory();
+    }
+    async archive(request: WorkspaceSessionRequest, confirmed = false): Promise<void> {
+        await this.ready();
+        await this.connection.agent.request("session/delete", {
+            sessionId: request.sessionId,
+            _meta: { [WORKSPACE_EXTENSION]: { ...request.context, confirmed } },
+        });
+        await this.refreshHistory();
+    }
+    queue(binding: SessionBinding, draft: SessionQueuedDraft): void {
+        this.binding(binding);
+        validateSessionInput(draft.text, draft.images);
+        if (!draft.requestId) throw new Error("A stable request ID is required.");
+        this.rejectedQueued.delete(draft.requestId);
+        const existing = this.queuedDrafts.findIndex((item) => item.requestId === draft.requestId);
+        if (existing >= 0) this.queuedDrafts[existing] = structuredClone(draft);
+        else this.queuedDrafts.push(structuredClone(draft));
+        this.view.queued = structuredClone(this.queuedDrafts);
+        this.emit();
+    }
+    removeQueued(binding: SessionBinding, requestId: string): void {
+        this.binding(binding);
+        this.rejectedQueued.delete(requestId);
+        const index = this.queuedDrafts.findIndex((draft) => draft.requestId === requestId);
+        if (index >= 0) this.queuedDrafts.splice(index, 1);
+        this.view.queued = structuredClone(this.queuedDrafts);
+        this.emit();
+    }
+    private async refreshHistory(): Promise<void> {
+        if (!this.context || !this.view.durableSessionId) return;
+        const history = await this.history({ context: this.context, sessionId: this.view.durableSessionId });
+        this.view.generation = history.generation;
+        this.view.archivedAt = history.archivedAt;
+        this.view.configuration = history.configuration;
+        this.view.items = [];
+        this.seenEvents.clear();
+        this.applyEvents(history.events);
+        this.view.items.push(...structuredClone(this.commandItems));
+        this.committedItems = structuredClone(this.view.items);
+        this.committedEventIds = new Set(this.seenEvents);
+        this.emit();
+    }
+    private applyEvents(events: WorkspaceJsonRecord[]): void {
+        for (let index = 0; index < events.length; index++) {
+            const event = events[index];
+            const identity = String(event.eventId || `${this.view.operationId}:${index}`);
+            if (this.seenEvents.has(identity)) continue;
+            this.seenEvents.add(identity);
+            const type = event.type;
+            const kind =
+                type === "user_message"
+                    ? "user"
+                    : type === "assistant_text_delta"
+                      ? "assistant"
+                      : type === "assistant_thinking_delta"
+                        ? "thinking"
+                        : "system";
+            if (kind !== "system") {
+                const id = `${kind}:${event.messageId || identity}`;
+                const text = String(kind === "user" ? event.text || "" : event.delta || "");
+                const item = this.view.items.find((item) => item.id === id);
+                if (item) item.text += text;
+                else
+                    this.view.items.push({
+                        id,
+                        kind,
+                        text,
+                        ...(kind === "user" && Array.isArray(event.images)
+                            ? {
+                                  images: event.images.flatMap((image) =>
+                                      image &&
+                                      typeof image === "object" &&
+                                      !Array.isArray(image) &&
+                                      typeof image.base64 === "string" &&
+                                      typeof image.mimeType === "string"
+                                          ? [{ base64: image.base64, mimeType: image.mimeType }]
+                                          : [],
+                                  ),
+                              }
+                            : {}),
+                    });
+            } else if (type === "tool_start" || type === "tool_update" || type === "tool_end") {
+                const id = `tool:${event.toolCallId}`;
+                let item = this.view.items.find((item) => item.id === id);
+                if (!item) {
+                    item = { id, kind: "tool", text: "" };
+                    this.view.items.push(item);
+                }
+                item.title = String(event.title || "Tool");
+                item.status = type === "tool_end" ? (event.isError ? "failed" : "completed") : "in_progress";
+                if (event.content) item.text = JSON.stringify(event.content);
+            } else if (type === "system_status" || type === "agent_changed" || type === "terminal_error") {
+                this.view.items.push({
+                    id: identity,
+                    kind: "system",
+                    text: String(event.message || event.agentName || ""),
+                });
+            }
+        }
+    }
+    private startObservation(): void {
+        if (!this.workspaceAdmission || !this.context || this.polling) return;
+        const sessionId = this.view.sessionId;
+        const poll = async () => {
+            this.polling = null;
+            if (this.disposed || this.view.sessionId !== sessionId || !this.context) return;
+            try {
+                const snapshot = await this.snapshot({
+                    context: this.context,
+                    sessionId: this.view.durableSessionId,
+                    wireSessionId: sessionId,
+                    cursor: this.observationCursor || undefined,
+                });
+                if (this.view.sessionId !== sessionId) return;
+                if (
+                    this.view.generation != null &&
+                    (snapshot.generation === null || snapshot.generation < this.view.generation)
+                ) {
+                    this.polling = setTimeout(poll, 250);
+                    return;
+                }
+                const changed = snapshot.generation !== null && snapshot.generation !== this.view.generation;
+                this.observationCursor = snapshot.cursor;
+                const operation = snapshot.operation;
+                if (snapshot.sessionId) this.view.durableSessionId = snapshot.sessionId;
+                if (typeof operation?.runwieldSessionId === "string")
+                    this.view.durableSessionId = operation.runwieldSessionId;
+                if (changed || snapshot.gap) {
+                    await this.refreshHistory();
+                }
+                if (snapshot.generation !== null) this.view.generation = snapshot.generation;
+                if (operation) {
+                    this.view.operationId = String(operation.operationId || "");
+                    if (this.committedOperationId !== this.view.operationId && Array.isArray(operation.events)) {
+                        this.view.items = structuredClone(this.committedItems);
+                        this.seenEvents.clear();
+                        for (const identity of this.committedEventIds) this.seenEvents.add(identity);
+                        this.applyEvents(
+                            operation.events.filter((event): event is WorkspaceJsonRecord =>
+                                Boolean(event && typeof event === "object" && !Array.isArray(event)),
+                            ),
+                        );
+                    }
+                    const interaction = operation.liveInteraction as WorkspaceJsonRecord | null;
+                    const request = interaction?.request as WorkspaceJsonRecord | null;
+                    if (interaction && request && !this.pending) {
+                        const options = Array.isArray(request.options) ? request.options : [];
+                        const choices = options.flatMap((option) =>
+                            option &&
+                            typeof option === "object" &&
+                            !Array.isArray(option) &&
+                            typeof option.value === "string" &&
+                            typeof option.label === "string"
+                                ? [
+                                      {
+                                          value: option.value,
+                                          label: option.label,
+                                          ...(typeof option.description === "string"
+                                              ? { description: option.description }
+                                              : {}),
+                                      },
+                                  ]
+                                : [],
+                        );
+                        this.view.question = {
+                            requestId: String(interaction.interactionId),
+                            interactionId: String(interaction.interactionId),
+                            prompt: String(request.prompt || ""),
+                            mode: request.type === "approval" ? "approval" : choices.length ? "select" : "text",
+                            required: request.allowEmpty !== true,
+                            placeholder: String(request.placeholder || ""),
+                            ...(typeof request.defaultValue === "string" ? { defaultValue: request.defaultValue } : {}),
+                            choices,
+                            allowOther: Boolean(request.otherOptionValue),
+                            ...(typeof request.otherOptionValue === "string"
+                                ? { otherOptionValue: request.otherOptionValue }
+                                : {}),
+                        };
+                        this.view.phase = "awaiting_answer";
+                    } else if (!this.pending) {
+                        this.view.question = null;
+                        if (snapshot.state === "active") this.view.phase = "streaming";
+                    }
+                } else {
+                    // Missing live transport while active is not settlement evidence.
+                    if (snapshot.state === "idle") this.view.operationId = undefined;
+                    this.view.question = null;
+                    if (!this.turn && snapshot.state !== "active") this.view.phase = "idle";
+                }
+                this.emit();
+                if (
+                    !this.turn &&
+                    !this.dispatchingQueued &&
+                    this.view.phase === "idle" &&
+                    this.queuedDrafts.length &&
+                    !this.rejectedQueued.has(this.queuedDrafts[0].requestId)
+                ) {
+                    const draft = this.queuedDrafts[0];
+                    this.dispatchingQueued = true;
+                    void this.sendImages(
+                        { connectionId: this.view.connectionId, project: this.view.project, sessionId },
+                        draft.text,
+                        draft.images,
+                        draft.requestId,
+                    )
+                        .then(
+                            () => {
+                                if (this.view.sessionId !== sessionId) return;
+                                this.removeQueued(
+                                    { connectionId: this.view.connectionId, project: this.view.project, sessionId },
+                                    draft.requestId,
+                                );
+                            },
+                            (error: Error) => {
+                                if (this.view.sessionId !== sessionId) return;
+                                this.rejectedQueued.add(draft.requestId);
+                                this.view.error = error.message;
+                                this.emit();
+                            },
+                        )
+                        .finally(() => {
+                            this.dispatchingQueued = false;
+                        });
+                }
+            } catch (error) {
+                this.view.error = error instanceof Error ? error.message : "Observation failed.";
+                this.emit();
+            }
+            if (!this.disposed && this.view.sessionId === sessionId) this.polling = setTimeout(poll, 250);
+        };
+        this.polling = setTimeout(poll, 0);
     }
     async listProjects(): Promise<WorkspaceListProjectsResult> {
         await this.ready();
@@ -353,19 +755,34 @@ export class AcpWorkspaceSessionClient implements WorkspaceSessionClient, Worksp
             let result: LoadSessionResponse;
             if (sessionId) {
                 result = await this.connection.agent.request("session/load", { ...request, sessionId });
+                if (this.workspaceAdmission && "sessionId" in result && typeof result.sessionId === "string")
+                    this.view.sessionId = result.sessionId;
             } else {
                 const created = await this.connection.agent.request("session/new", request);
                 this.view.sessionId = created.sessionId;
                 result = created;
             }
             const meta = result._meta?.runwield as RunWieldMetadata | undefined;
-            if (!this.view.sessionId || typeof meta?.persistedSessionId !== "string" || !meta.persistedSessionId) {
+            if (
+                !this.view.sessionId ||
+                typeof meta?.persistedSessionId !== "string" ||
+                (!this.workspaceAdmission && !meta.persistedSessionId)
+            ) {
                 throw new Error("The runtime did not return a durable Session identity.");
             }
             if (this.view.connection !== "ready")
                 throw new Error("The runtime disconnected while opening the Session.");
             this.view.durableSessionId = meta.persistedSessionId;
+            if (meta.history) {
+                this.view.generation = meta.history.generation;
+                this.view.configuration = meta.history.configuration;
+                this.view.archivedAt = meta.history.archivedAt;
+                this.applyEvents(meta.history.events);
+                this.committedItems = structuredClone(this.view.items);
+                this.committedEventIds = new Set(this.seenEvents);
+            }
             this.view.phase = "idle";
+            this.startObservation();
         } catch (error) {
             this.view.phase = this.view.connection === "ready" ? "empty" : "interrupted";
             this.view.sessionId = "";
@@ -385,22 +802,70 @@ export class AcpWorkspaceSessionClient implements WorkspaceSessionClient, Worksp
         return this.open(sessionId);
     }
 
-    async send(binding: SessionBinding, text: string): Promise<void> {
+    send(binding: SessionBinding, text: string): Promise<void> {
+        return this.sendImages(binding, text, []);
+    }
+    async sendImages(
+        binding: SessionBinding,
+        text: string,
+        images: SessionImageTransfer[],
+        requestId: string = crypto.randomUUID(),
+        expectedGeneration?: number,
+    ): Promise<void> {
         await this.ready();
         this.binding(binding);
-        if (this.turn || this.view.phase !== "idle") throw new Error("Wait for the current turn to settle.");
-        if (!text.trim() || text.length > 128_000) throw new Error("Enter a message of at most 128,000 characters.");
+        if (this.workspaceAdmission) {
+            validateSessionInput(text, images);
+            if (!this.turn && this.view.phase === "streaming" && this.context && this.view.durableSessionId) {
+                const live = await this.snapshot({ context: this.context, sessionId: this.view.durableSessionId });
+                if (live.state === "idle" && !live.operation) this.view.phase = "idle";
+            }
+            if (!this.turn && this.view.phase === "idle" && expectedGeneration === undefined)
+                await this.refreshHistory();
+        } else if (!text.trim() || text.length > 128_000)
+            throw new Error("Enter a message of at most 128,000 characters.");
+        if (this.turn || this.view.phase !== "idle") {
+            if (this.workspaceAdmission && this.view.phase === "streaming") {
+                await this.connection.agent.request("_session/steering", {
+                    sessionId: binding.sessionId,
+                    ...this.metadata(requestId),
+                    prompt: [
+                        ...(text ? [{ type: "text" as const, text }] : []),
+                        ...images.map((image) => ({
+                            type: "image" as const,
+                            data: image.base64,
+                            mimeType: image.mimeType,
+                        })),
+                    ],
+                });
+                return;
+            }
+            throw new Error("Wait for the current turn to settle.");
+        }
         this.view.error = "";
         this.view.phase = "streaming";
         this.emit();
         const turn = this.connection.agent
-            .request("session/prompt", {
-                ...this.metadata(),
+            .request<import("@agentclientprotocol/sdk").PromptResponse>("session/prompt", {
+                ...this.metadata(requestId, expectedGeneration ?? this.view.generation ?? 0),
                 sessionId: binding.sessionId,
-                prompt: [{ type: "text", text }],
+                prompt: [
+                    ...(text ? [{ type: "text" as const, text }] : []),
+                    ...images.map((image) => ({
+                        type: "image" as const,
+                        data: image.base64,
+                        mimeType: image.mimeType,
+                    })),
+                ],
             })
             .then(
-                () => {
+                async (result) => {
+                    const meta = result._meta?.runwield as RunWieldMetadata | undefined;
+                    if (meta?.persistedSessionId) this.view.durableSessionId = meta.persistedSessionId;
+                    if (this.workspaceAdmission) {
+                        await this.refreshHistory();
+                        this.committedOperationId = meta?.operationId || "";
+                    }
                     if (this.view.connection === "ready") this.view.phase = "idle";
                 },
                 (error: Error) => {
@@ -421,6 +886,35 @@ export class AcpWorkspaceSessionClient implements WorkspaceSessionClient, Worksp
     async answer(binding: SessionBinding, response: SessionQuestionAnswer): Promise<void> {
         await this.ready();
         this.binding(binding);
+        if (this.workspaceAdmission && !this.pending) {
+            const question = this.view.question;
+            if (!question || question.requestId !== response.requestId || !this.context)
+                throw new Error("This question is no longer waiting for an answer.");
+            if (
+                response.action === "accept" &&
+                question.choices.length &&
+                !question.choices.some((choice) => choice.value === response.answer)
+            )
+                throw new Error("Choose one of the listed answers.");
+            if (response.action === "accept" && question.required && !response.answer?.trim())
+                throw new Error("An answer is required.");
+            await this.connection.agent.request("_dev.runwield/workspace/sessions/answer", {
+                context: this.context,
+                sessionId: this.view.durableSessionId,
+                operationId: this.view.operationId,
+                interactionId: question.interactionId,
+                requestId: crypto.randomUUID(),
+                response: {
+                    action: response.action,
+                    ...(response.answer !== undefined ? { answer: response.answer } : {}),
+                    ...(response.otherAnswer !== undefined ? { otherAnswer: response.otherAnswer } : {}),
+                },
+            });
+            this.view.question = null;
+            this.view.phase = "streaming";
+            this.emit();
+            return;
+        }
         const pending = this.pending;
         if (!pending || response.requestId !== pending.view.requestId || this.view.phase !== "awaiting_answer") {
             throw new Error("This question is no longer waiting for an answer.");
@@ -461,7 +955,7 @@ export class AcpWorkspaceSessionClient implements WorkspaceSessionClient, Worksp
         await this.ready();
         this.binding(binding);
         const turn = this.turn;
-        if (!turn) throw new Error("There is no active prompt to stop.");
+        if (!turn && !this.workspaceAdmission) throw new Error("There is no active prompt to stop.");
         this.view.phase = "canceling";
         this.view.question = null;
         this.emit();
@@ -486,8 +980,24 @@ export class AcpWorkspaceSessionClient implements WorkspaceSessionClient, Worksp
             throw error;
         }
         this.dismissQuestion();
+        if (this.polling) clearTimeout(this.polling);
+        this.polling = null;
+        this.observationCursor = "";
+        this.seenEvents.clear();
+        this.committedEventIds.clear();
+        this.committedItems = [];
+        this.commandItems = [];
+        this.launchConfiguration = {};
+        this.committedOperationId = "";
+        this.queuedDrafts.splice(0);
+        this.view.queued = [];
         this.view.sessionId = "";
         this.view.durableSessionId = "";
+        this.view.generation = null;
+        this.view.archivedAt = null;
+        this.view.configuration = undefined;
+        this.view.operationId = undefined;
+        this.rejectedQueued.clear();
         this.view.phase = "empty";
         this.emit();
     }

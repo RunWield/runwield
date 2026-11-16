@@ -1,9 +1,18 @@
+import { parseSessionCommand } from "../shared/session/session-commands.ts";
 /**
  * @module acp/server
  * RunWield ACP stdio server.
  */
 
 import { agent, methods, ndJsonStream, PROTOCOL_VERSION, RequestError } from "@agentclientprotocol/sdk";
+import {
+    WorkspaceSessionConnection,
+    rethrowWorkspaceError,
+    listSessionPage,
+    parseStandardRequest,
+    parseStandardConfigRequest,
+} from "./workspace-sessions.ts";
+import { getCwd } from "../constants.js";
 import { WorkspaceProjectConnection, parseWorkspaceRequest } from "./workspace-projects.ts";
 import { WORKSPACE_EXTENSION, WORKSPACE_PROJECT_PREFIX, WORKSPACE_PROJECT_OPERATIONS } from "./workspace-contract.ts";
 import { isAbsolute } from "node:path";
@@ -105,6 +114,7 @@ function isAuthenticationSetupFailure(message) {
 
 /**
  * @typedef {Object} AcpServerContext
+ * @property {WorkspaceSessionConnection} [workspaceSessions]
  * @property {SessionRuntime} runtime
  * @property {import("../shared/session/file-session-store-types.ts").FileSessionStore} sessionStore
  * @property {AcpSessionMap} sessionMap
@@ -145,10 +155,12 @@ export function createInitializeResponse(request) {
             },
             sessionCapabilities: {
                 close: {},
+                list: {},
                 delete: {},
                 _meta: {
                     runwield: {
                         implementedMethods: [
+                            "session/list",
                             "session/new",
                             "session/load",
                             "session/prompt",
@@ -440,7 +452,7 @@ function extractAcpBuiltinCommand(blocks) {
     if (commandTexts.length > 1) throwInvalidParams("ACP prompts can include only one slash command.");
     const text = commandTexts[0];
     if (/\r?\n/.test(text)) throwInvalidParams("ACP slash command prompts must contain only the command line.");
-    const [name = "", ...args] = text.slice(1).trim().split(/\s+/).filter(Boolean);
+    const { name, args } = parseSessionCommand(text);
     if (!name) throwInvalidParams("Slash command name is required.");
     return { name, args };
 }
@@ -1341,6 +1353,8 @@ function createRunWieldAcpServer(context) {
     let clientCapabilities = null;
 
     const workspace = new WorkspaceProjectConnection();
+    const workspaceSessions = new WorkspaceSessionConnection(workspace);
+    context.workspaceSessions = workspaceSessions;
     app.onRequest(methods.agent.initialize, (context) => {
         clientCapabilities = context.params?.clientCapabilities || null;
         const capability = workspace.initialize(
@@ -1355,6 +1369,10 @@ function createRunWieldAcpServer(context) {
     // the original request so a client never receives a Session missing its tools.
     app.onRequest(methods.agent.session.new, validateNewSessionParams, async (context) => {
         const request = context.params;
+        if (workspace.active)
+            return workspaceSessions
+                .open(parseStandardRequest(JSON.stringify(request)), false)
+                .catch(rethrowWorkspaceError);
         const admission = workspace.active ? workspace.admit(parseWorkspaceRequest(JSON.stringify(request))) : null;
         const readiness = getSelectedDefaultModelAvailability(request.cwd);
         if (!readiness.available) throwAuthenticationRequired(request.cwd);
@@ -1396,6 +1414,10 @@ function createRunWieldAcpServer(context) {
 
     app.onRequest(methods.agent.session.load, validateLoadSessionParams, async (context) => {
         const request = context.params;
+        if (workspace.active)
+            return workspaceSessions
+                .open(parseStandardRequest(JSON.stringify(request)), true)
+                .catch(rethrowWorkspaceError);
         const admission = workspace.active ? workspace.admit(parseWorkspaceRequest(JSON.stringify(request))) : null;
         const persistedSessionId = normalizeAcpSessionIdForLoad(request.sessionId);
         if (workspace.active)
@@ -1472,6 +1494,10 @@ function createRunWieldAcpServer(context) {
     });
 
     app.onRequest(methods.agent.session.setConfigOption, async (context) => {
+        if (workspace.active)
+            return workspaceSessions
+                .setConfig(parseStandardConfigRequest(JSON.stringify(context.params)))
+                .catch(rethrowWorkspaceError);
         if (workspace.active) workspace.checkMutation(parseWorkspaceRequest(JSON.stringify(context.params)));
         const { sessionId, configId, value } = context.params;
         if (typeof sessionId !== "string" || !sessionId) {
@@ -1540,6 +1566,12 @@ function createRunWieldAcpServer(context) {
     });
 
     app.onRequest("_session/steering", validateSteeringParams, async (context) => {
+        if (workspace.active) {
+            const { text, images } = convertAcpPrompt(context.params.prompt);
+            return workspaceSessions
+                .steer({ ...parseStandardRequest(JSON.stringify(context.params)), text, images })
+                .catch(rethrowWorkspaceError);
+        }
         if (workspace.active) workspace.checkMutation(parseWorkspaceRequest(JSON.stringify(context.params)));
         const request = context.params;
         const runtimeSessionId = sessionMap.getRuntimeSessionId(request.sessionId);
@@ -1562,6 +1594,19 @@ function createRunWieldAcpServer(context) {
     });
 
     app.onRequest(methods.agent.session.prompt, async (context) => {
+        if (workspace.active) {
+            const adapter = createAcpInteractionAdapter({
+                context,
+                acpSessionId: context.params.sessionId,
+                clientCapabilities,
+            });
+            return workspaceSessions
+                .prompt(
+                    parseStandardRequest(JSON.stringify(context.params)),
+                    async (request) => await adapter.requestInteraction(request),
+                )
+                .catch(rethrowWorkspaceError);
+        }
         if (workspace.active) workspace.checkMutation(parseWorkspaceRequest(JSON.stringify(context.params)));
         const request = /** @type {import('@agentclientprotocol/sdk').PromptRequest} */ (context.params || {});
         const acpSessionId = request.sessionId;
@@ -1749,6 +1794,10 @@ function createRunWieldAcpServer(context) {
     });
 
     app.onRequest(methods.agent.session.delete, async (requestContext) => {
+        if (workspace.active)
+            return workspaceSessions
+                .archive(parseStandardRequest(JSON.stringify(requestContext.params)))
+                .catch(rethrowWorkspaceError);
         if (workspace.active) workspace.checkMutation(parseWorkspaceRequest(JSON.stringify(requestContext.params)));
         const sessionId = requestContext.params?.sessionId;
         if (typeof sessionId !== "string" || !sessionId) {
@@ -1792,6 +1841,10 @@ function createRunWieldAcpServer(context) {
     });
 
     app.onRequest(methods.agent.session.close, async (context) => {
+        if (workspace.active)
+            return workspaceSessions
+                .closeSession(parseStandardRequest(JSON.stringify(context.params)))
+                .catch(rethrowWorkspaceError);
         if (workspace.active) workspace.checkMutation(parseWorkspaceRequest(JSON.stringify(context.params)), true);
         const request = validateCloseSessionParams(context.params);
         const record = sessionMap.getRecord(request.sessionId);
@@ -1805,6 +1858,10 @@ function createRunWieldAcpServer(context) {
     });
 
     app.onNotification(methods.agent.session.cancel, (context) => {
+        if (workspace.active) {
+            void workspaceSessions.stop(parseStandardRequest(JSON.stringify(context.params))).catch(() => {});
+            return;
+        }
         if (workspace.active) workspace.checkMutation(parseWorkspaceRequest(JSON.stringify(context.params)), true);
         const sessionId = context.params?.sessionId;
         if (!sessionId || typeof sessionId !== "string") return;
@@ -1820,7 +1877,15 @@ function createRunWieldAcpServer(context) {
     registerUnimplementedRequest(app, methods.agent.providers.list);
     registerUnimplementedRequest(app, methods.agent.providers.set);
     registerUnimplementedRequest(app, methods.agent.providers.disable);
-    registerUnimplementedRequest(app, methods.agent.session.list);
+    app.onRequest(methods.agent.session.list, async (requestContext) => {
+        const request = requestContext.params || {};
+        if (workspace.active)
+            return await workspaceSessions.listStandard(JSON.stringify(request)).catch(rethrowWorkspaceError);
+        const cwd = request.cwd || getCwd();
+        if (!isAbsolute(cwd)) throwInvalidParams("session/list requires an absolute cwd");
+        const project = context.sessionStore.ensureRuntimeProject({ root: cwd });
+        return listSessionPage(context.sessionStore, project.projectId, cwd, { cursor: request.cursor || undefined });
+    });
     registerUnimplementedRequest(app, methods.agent.session.fork);
     registerUnimplementedRequest(app, methods.agent.session.resume);
     registerUnimplementedRequest(app, methods.agent.session.setMode);
@@ -1838,6 +1903,13 @@ function createRunWieldAcpServer(context) {
         );
     }
 
+    for (const operation of ["history", "snapshot", "options", "command", "configure", "answer", "unarchive"]) {
+        app.onRequest(
+            "_dev.runwield/workspace/sessions/" + operation,
+            (params) => params,
+            (request) => workspaceSessions.dispatch(operation, JSON.stringify(request.params)),
+        );
+    }
     return app;
 }
 
@@ -1858,7 +1930,8 @@ export function startRunWieldAcpServer(input, output, options = {}) {
     const sessionMap = new AcpSessionMap();
     /** @type {Map<string, ReturnType<typeof createLiveOperation>>} */
     const operations = new Map();
-    const connection = createRunWieldAcpServer({
+    /** @type {AcpServerContext} */
+    const serverContext = {
         runtime,
         sessionStore,
         sessionMap,
@@ -1866,7 +1939,8 @@ export function startRunWieldAcpServer(input, output, options = {}) {
         releasePromptAfterResponse: (requestId, release) => {
             promptReleases.set(requestId, release);
         },
-    }).connect(stream);
+    };
+    const connection = createRunWieldAcpServer(serverContext).connect(stream);
     const closeMachinery = async () => {
         try {
             for (const operation of operations.values()) {
@@ -1874,6 +1948,7 @@ export function startRunWieldAcpServer(input, output, options = {}) {
                 operation.stop();
             }
             operations.clear();
+            await serverContext.workspaceSessions?.close();
             await closeAllMappedSessions(runtime, sessionMap);
         } finally {
             sessionStore.close();

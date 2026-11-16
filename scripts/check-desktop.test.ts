@@ -12,6 +12,16 @@ async function fixture(target: DesktopEntry["target"], source: string, barrel: s
         const entry = join(directory, "entry.ts");
         await writeFile(entry, source);
         await writeFile(join(directory, "innocent.ts"), barrel);
+        await writeFile(
+            join(directory, "tsconfig.json"),
+            JSON.stringify({
+                compilerOptions: {
+                    paths: {
+                        "@fixture/workspace-server": [join(desktopRoot, "src/ui/workspace/server/owner-projects.ts")],
+                    },
+                },
+            }),
+        );
         await checkDesktop([{ target, entry }]);
     } finally {
         await rm(directory, { recursive: true, force: true });
@@ -137,3 +147,30 @@ for (const dependency of ["src/ui/workspace/server.js", "src/ui/workspace/routes
         });
     }
 }
+
+for (const source of [
+    'export * from "@fixture/workspace-server";',
+    'export const load = () => import("@fixture/workspace-server");',
+]) {
+    test(`Core resolves and refuses Workspace server alias: ${source}`, async () => {
+        await assert.rejects(
+            fixture("core", 'export * from "./innocent.ts";', source),
+            /Desktop core runtime dependency refused:/,
+        );
+    });
+}
+
+const numericContract = JSON.stringify(join(desktopRoot, "src/shared/session/session-input-contract.ts"));
+test("only the exact browser-safe numeric contract is admitted, not its execution sibling", async () => {
+    for (const target of ["renderer", "main", "preload"] as const) {
+        await fixture(target, `export * from ${numericContract};`, "");
+        await assert.rejects(
+            fixture(
+                target,
+                `export * from ${JSON.stringify(join(desktopRoot, "src/shared/session/session-history.ts"))};`,
+                "",
+            ),
+            /runtime dependency refused:/,
+        );
+    }
+});

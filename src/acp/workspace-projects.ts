@@ -71,7 +71,12 @@ export class WorkspaceProjectConnection {
             refuse("workspace_version_unsupported", "Workspace version 1 is required.");
         }
         this.rejected = false;
-        return { version: 1, connectionId: this.connectionId, projects: { version: 1 } };
+        return {
+            version: 1,
+            connectionId: this.connectionId,
+            projects: { version: 1 },
+            sessions: { version: 1, historyPageLimit: 200, observationEventLimit: 500 },
+        };
     }
     private store(): OwnerCoordinationStore {
         return openOwnerCoordinationStore();
@@ -118,6 +123,13 @@ export class WorkspaceProjectConnection {
         } finally {
             store.close();
         }
+    }
+    admitContext(context: WorkspaceProjectContext, sessionId?: string): WorkspaceProjectContext {
+        this.requireNegotiated();
+        const request = { cwd: context.canonicalRoot, _meta: { [WORKSPACE_EXTENSION]: { ...context } } };
+        const admitted = this.admit(request)!;
+        if (sessionId) this.checkLoad(request, admitted, sessionId);
+        return admitted;
     }
     checkLoad(request: WorkspaceJsonRecord, context: WorkspaceProjectContext | null, sessionId: string): void {
         if (!context) return;

@@ -381,12 +381,19 @@ export class RuntimeManagedOperations {
         if (session.getRootSessionManager?.()) {
             return { ok: false, error: "managed_operation_in_progress" };
         }
+        // Standalone configuration has no caller-supplied generation. Read the
+        // committed choices before admission; the writer claim still checks that
+        // generation atomically. Explicit runManagedOperation expectations stay strict.
+        if (name === "switch_agent" || name === "set_model" || name === "set_thinking_level") {
+            await this.sync.synchronizeManagedSession(sessionId);
+        }
+        const currentManaged = session.getManagedMetadata?.() || managed;
         return await this.runManagedOperation(
             sessionId,
             {
                 name,
                 options: {
-                    expectedGeneration: managed.generation ?? undefined,
+                    expectedGeneration: currentManaged.generation ?? undefined,
                     emitBusyEvents: name !== "switch_agent",
                 },
                 activateAgent: options.activateAgent === true,

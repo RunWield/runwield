@@ -20,7 +20,8 @@ and semantic-client architecture below. The
 Project-context boundary on the same connection. Acceptance records the decision, not delivery. Packaging tooling, remote
 transport and trust, an always-on service, and hosted identity remain unresolved or separately planned.
 
-Workspace currently combines browser presentation, HTTP handlers, Session orchestration, and direct Core/store calls.
+The browser workbench combines presentation and HTTP adapters with Core/store access. Shared Session history and
+continuation orchestration now live in Core; HTTP retains browser-specific behavior.
 Changing only the window shell would preserve that coupling. The requested ACP boundary must cover the workbench's
 reads and actions as well as chat, while preserving existing Core authority and external-client compatibility.
 
@@ -76,8 +77,9 @@ RunWield-only list method. Preserve existing generic interactions and the negoti
 Expose remaining workbench capabilities through explicitly advertised, versioned ACP extensions: Project admission and
 discovery, richer history/observation, Plan and artifact reads, revision-checked saves and workflow decisions, search,
 usage, and relevant configuration. Group them by capability. Proposed names use `_dev.runwield/workspace/...` methods
-and `dev.runwield/workspace` capability metadata; implemented Project schemas are in the
-[engineering contract](../desktop-workbench-contract.md#workspace-project-protocol-version-1); future schemas belong
+and `dev.runwield/workspace` capability metadata. Implemented
+[Project schemas](../desktop-workbench-contract.md#workspace-project-protocol-version-1) and
+[Session schemas](../desktop-workbench-contract.md#workspace-session-protocol-version-1) are in the engineering contract; future schemas belong
 to their implementation planning. Do not publish
 unimplemented methods or reinterpret a standard method to carry incompatible semantics.
 
@@ -87,8 +89,9 @@ receipts, expected generations/revisions, access checks, and cancellation settle
 Transport request IDs alone do not provide durable mutation deduplication.
 
 The development Session client uses the persistent SDK 1.4.0 root client and ACP v1 over stdio. It implements
-new/load/prompt/cancel/close, form elicitation, and the negotiated version 1 Project group, not Session discovery or
-full-workbench parity. The
+standard list/new/load/prompt/cancel/close/delete/configuration, steering, form elicitation, and negotiated version 1
+Project and Session groups. Saved reads are provider-independent; negotiated load binds history without model
+activation. Full-workbench parity remains separately planned. The
 [engineering contract](../desktop-workbench-contract.md#protocol-baseline) compares that baseline with current v1 and
 v2 drafts and assigns later capabilities to their owners. Where an extension fills an upcoming standard capability,
 use compatible concepts and retain a small translation boundary. A draft does not justify advertising v2 conformance. Older external clients retain their
@@ -100,6 +103,18 @@ missing metadata cannot bypass Workspace admission. Stop/close can settle owned 
 Ordinary ACP clients keep their cwd-based behavior. Management by registration ID keeps missing-root settings usable.
 Shared Project policy belongs to Core; retained standalone browser hosting belongs to `src/shared/browser-host/`, not
 an executable path from ACP back through Workspace server modules.
+
+Shared history naming, paging, and committed projection belong to `src/shared/session/session-history.ts`.
+`session-continuation-service.ts` owns reusable Runtime construction, admission/receipt rules, configuration staging,
+retained Sessions, operation listeners, background work, and cross-process routing. ACP and HTTP adapt those same
+owners through the public Runtime interface in [ADR-010](010-session-runtime-sibling-adapters-and-acp.md).
+HTTP keeps authorization, CSRF, URLs, notifications, and review presentation/launch behavior; it does not migrate to ACP.
+Independent Project read contexts let navigation inspect other Projects without changing a bound execution context.
+Unsent client queues remain client intent, not a second durable work authority. Bounded snapshots reconcile current
+Core evidence without replaying effects. Oversized live deltas retain a bounded tail; canonical settled history owns
+the full text. Semantic commands use Core's Workspace registry and existing configuration authority rather than model
+prompts or renderer-owned command execution. Question defaults and choice descriptions cross the semantic interface
+without authorizing an answer. This does not select process reconnect or supervisor recovery behavior.
 
 Review content and decisions are structured data rendered with the shared review components. Large files and images
 use bounded transfers/resource references tied to the selected runtime, not renderer-side arbitrary filesystem access.

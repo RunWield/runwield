@@ -185,6 +185,8 @@ test(
             await link(desktop, fixture.project);
             await desktop.page.getByRole("button", { name: "Open", exact: true }).click();
             await desktop.page.getByRole("button", { name: "New Session", exact: true }).click();
+            await desktop.page.getByLabel("Message", { exact: true }).fill("Requires configured provider.");
+            await desktop.page.getByRole("button", { name: "Send", exact: true }).click();
             await desktop.page
                 .getByText(/wld login/)
                 .first()
@@ -192,7 +194,7 @@ test(
             const prerequisite = await desktop.page.getByRole("alert").innerText();
             match(prerequisite, /restart/i);
             ok(!prerequisite.includes("Error invoking remote method"));
-            equal((await view(desktop)).sessionId, "");
+            ok((await view(desktop)).sessionId);
             equal(fixture.provider.requests.length, 0);
             await desktop.page.getByRole("button", { name: "Projects", exact: true }).click();
             await desktop.page.getByRole("button", { name: "Settings", exact: true }).click();

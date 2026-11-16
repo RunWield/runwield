@@ -108,7 +108,7 @@ test("owner Plan review refuses approval after real status evidence changes", as
                 assertEquals(staleResponse.outcome, "unsupported");
                 assertStringIncludes(staleResponse.message || "", "Plan Status changed after review opened");
                 assertEquals((await loadPlan(root, "stale"))?.attrs.status, "approved");
-                assertEquals(service.getOperation(reference.operationId).liveInteraction, undefined);
+                assertEquals(service.getOperation(reference.operationId).liveInteraction, null);
             },
         );
     });

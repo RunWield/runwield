@@ -221,6 +221,8 @@ for (const [index, extension] of [
     { version: 2, connectionId: "runtime", projects: { version: 1 } },
     { version: 1, connectionId: "runtime", projects: { version: 2 } },
     { version: 1, connectionId: "", projects: { version: 1 } },
+    { version: 1, connectionId: "runtime", projects: { version: 1 } },
+    { version: 1, connectionId: "runtime", projects: { version: 1 }, sessions: { version: 2 } },
 ].entries()) {
     test(`Workspace opt-in refuses unsupported Project negotiation ${index + 1} without ordinary ACP fallback`, async () => {
         const fixture = await adversePeer(

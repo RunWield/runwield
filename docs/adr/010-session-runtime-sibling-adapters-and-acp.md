@@ -32,7 +32,7 @@ inside its UI host. External clients such as IDEs or chat bridges also reach the
 runtime through ACP. These clients are never children of the TUI. The existing
 in-process Workspace adapter is a migration baseline; the
 [desktop Epic](../plans/local-workspace-desktop.md) tracks its removal, and
-[proposed ADR-020](020-electron-workspace-acp-client.md) details the
+[accepted ADR-020](020-electron-workspace-acp-client.md) details the
 client/process design.
 
 Session-scoped capabilities must attach to a specific `HostedSession`. Shared

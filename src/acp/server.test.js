@@ -39,6 +39,9 @@ import { VERSION } from "../shared/version.js";
 import { mapRuntimeEventToAcpUpdate } from "./event-mapper.ts";
 /** @typedef {import("@agentclientprotocol/sdk").ContentChunk} AcpContentChunk */
 import { assertAcpFrameSchema, assertAcpSchema } from "./schema-conformance.ts";
+import { RequestError } from "@agentclientprotocol/sdk";
+import { SessionArchiveRefusal } from "../shared/session/session-continuation-service.ts";
+import { rethrowWorkspaceError } from "./workspace-sessions.ts";
 import { startRunWieldAcpServer } from "./server.js";
 
 /**
@@ -571,14 +574,14 @@ test("ACP schema checker rejects published numeric and map constraints", () => {
     );
 });
 
-test("ACP server returns structured errors for unimplemented session methods", async () => {
+test("ACP server returns structured errors for unimplemented session fork", async () => {
     const handle = startTestServer();
     try {
         const response = await request(handle, {
             jsonrpc: "2.0",
-            id: "session-list",
-            method: "session/list",
-            params: {},
+            id: "session-fork",
+            method: "session/fork",
+            params: { sessionId: "unsupported-session", cwd: REPO_ROOT },
         });
         assertEquals(response.error.code, -32004);
         assertStringIncludes(response.error.message, "not implemented yet");
@@ -3827,4 +3830,51 @@ test("ACP accumulates priced turns across transcript replay and a continued conv
             unregisterApiProviders("acp-priced-model");
         }
     });
+});
+
+test("negotiated error mapping preserves protocol refusals and hides unexpected credential-bearing failures", () => {
+    const refused = new RequestError(-32002, "Answer the pending question.", { code: "interaction_pending" });
+    try {
+        rethrowWorkspaceError(refused);
+    } catch (error) {
+        assertEquals(error, refused);
+    }
+    const sanitized = assertThrows(
+        () => rethrowWorkspaceError(new Error("Authorization: Bearer fixture-key")),
+        RequestError,
+    );
+    assertEquals(sanitized.message, "Session request failed. Refresh and retry.");
+    assertEquals(sanitized.data, { code: "session_request_failed" });
+});
+
+test("archive refusal codes survive ACP mapping, including writer races", () => {
+    /** @typedef {[import('../shared/session/session-continuation-service.ts').SessionArchiveRefusalCode, string]} ArchiveRefusalCase */
+    /** @type {ArchiveRefusalCase[]} */
+    const cases = [
+        ["session_busy_confirmation_required", "This Session is busy. Confirm to stop its work and archive it."],
+        ["session_archive_changed", "This Session started different work. Refresh and confirm again."],
+        ["session_stop_unavailable", "The Session is still stopping. Try again."],
+    ];
+    for (const [code, message] of cases) {
+        const error = assertThrows(() => rethrowWorkspaceError(new SessionArchiveRefusal(code, message)), RequestError);
+        assertEquals(error.code, -32002);
+        assertEquals(error.message, message);
+        assertEquals(error.data, { code });
+    }
+});
+
+test("expected Session input and identity refusals are not generic failures", () => {
+    for (const [message, code] of [
+        ["Invalid page size.", "invalid_input"],
+        ["An answer is required.", "invalid_input"],
+        ["Unknown wire Session ID.", "workspace_binding_invalid"],
+        ["Invalid cursor.", "history_cursor_invalid"],
+        ["List cursor belongs to another query.", "history_cursor_invalid"],
+        ["No running turn to stop.", "session_not_running"],
+        ["Session not found.", "session_not_found"],
+    ]) {
+        const error = assertThrows(() => rethrowWorkspaceError(new Error(message)), RequestError);
+        assertEquals(error.message, message);
+        assertEquals(error.data, { code });
+    }
 });

@@ -15,6 +15,7 @@ export interface DesktopEntry {
 
 const pureShared = new Set([
     "src/acp/workspace-contract.ts",
+    "src/shared/session/session-input-contract.ts",
     "src/tools/registry.ts",
     "src/shared/session/interaction-values.ts",
     "src/shared/session/session-artifact-types.ts",
@@ -40,7 +41,16 @@ function inspectPath(target: DesktopTarget, path: string): void {
     const contract = name.startsWith("src/ui/workspace/client/");
     const design = name.startsWith("src/ui/design-system/");
     if (target === "preload") {
-        if (contract || name === "src/ui/desktop/preload.ts" || name === "src/ui/desktop/bridge.ts") return;
+        if (
+            contract ||
+            name === "src/shared/session/session-input-contract.ts" ||
+            [
+                "src/ui/desktop/preload.ts",
+                "src/ui/desktop/bridge.ts",
+                "src/ui/desktop/saved-session-bridge.ts",
+            ].includes(name)
+        )
+            return;
     } else if (
         pureShared.has(name) ||
         contract ||

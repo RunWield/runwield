@@ -138,7 +138,7 @@ test("raw required text rejects whitespace and preserves the field for correctio
     }
 });
 
-test("raw optional text accepts an empty answer without substituting the suggested value", async () => {
+test("raw optional text displays its default and permits an explicit empty answer", async () => {
     const answers: SessionQuestionFields[] = [];
     const fixture = await mountQuestion({
         mode: "text",
@@ -149,8 +149,9 @@ test("raw optional text accepts an empty answer without substituting the suggest
         },
     });
     try {
-        assert.equal(fixture.field("answer").value, "");
+        assert.equal(fixture.field("answer").value, "Suggested answer");
         assert.deepEqual(answers, []);
+        await fixture.fill("answer", "");
         await fixture.submit();
         assert.deepEqual(answers, [{ action: "accept", answer: "" }]);
     } finally {
@@ -158,7 +159,7 @@ test("raw optional text accepts an empty answer without substituting the suggest
     }
 });
 
-test("raw choices hide unsupported Other and never silently choose a default", async () => {
+test("raw choices hide unsupported Other and display the supplied default without auto-submission", async () => {
     const answers: SessionQuestionFields[] = [];
     const fixture = await mountQuestion({
         mode: "select",
@@ -174,17 +175,8 @@ test("raw choices hide unsupported Other and never silently choose a default", a
     });
     try {
         assert.equal(fixture.container.querySelector('[name="customAnswer"]'), null);
-        assert.equal(fixture.container.querySelector("input:checked"), null);
-        await fixture.submit();
+        assert.equal(fixture.container.querySelector<HTMLInputElement>("input:checked")?.value, "first");
         assert.deepEqual(answers, []);
-        // Also cover submit events that bypass native constraint validation (for example an embedded host).
-        await act(() =>
-            fixture.container
-                .querySelector("form")
-                ?.dispatchEvent(new SubmitEvent("submit", { bubbles: true, cancelable: true })),
-        );
-        assert.deepEqual(answers, []);
-        assert.match(fixture.container.textContent, /Choose an answer/);
         await fixture.choose("second");
         await fixture.submit();
         assert.deepEqual(answers, [{ action: "accept", answer: "second" }]);
@@ -335,3 +327,29 @@ for (const host of ["browser", "embedded"] as const) {
         }
     });
 }
+
+test("raw required choices without a default reject empty native and embedded submissions", async () => {
+    const answers: SessionQuestionFields[] = [];
+    const fixture = await mountQuestion({
+        mode: "select",
+        allowOther: false,
+        options: [{ value: "first", label: "First" }],
+        onRawResponse: (response) => {
+            answers.push(response);
+        },
+    });
+    try {
+        assert.equal(fixture.container.querySelector("input:checked"), null);
+        await fixture.submit();
+        assert.deepEqual(answers, []);
+        await act(() =>
+            fixture.container
+                .querySelector("form")
+                ?.dispatchEvent(new SubmitEvent("submit", { bubbles: true, cancelable: true })),
+        );
+        assert.deepEqual(answers, []);
+        assert.match(fixture.container.textContent, /Choose an answer/);
+    } finally {
+        await fixture.cleanup();
+    }
+});

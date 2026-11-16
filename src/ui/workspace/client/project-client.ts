@@ -14,6 +14,7 @@ import type {
 /** Semantic Project operations. Hosts own picking; Core owns admission and registration. */
 export interface WorkspaceProjectClient {
     listProjects(): Promise<WorkspaceListProjectsResult>;
+    readProject?(request: WorkspaceProjectRequest): Promise<WorkspaceOpenProjectResult>;
     openProject(request: WorkspaceProjectRequest): Promise<WorkspaceOpenProjectResult>;
     registerProject(request: WorkspaceRegisterProjectRequest): Promise<WorkspaceProjectWriteResult>;
     relinkProject(request: WorkspaceRelinkProjectRequest): Promise<WorkspaceProjectWriteResult>;

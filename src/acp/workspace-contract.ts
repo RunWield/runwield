@@ -31,6 +31,7 @@ export interface WorkspaceCapability {
     version: 1;
     connectionId: string;
     projects: WorkspaceProjectCapability;
+    sessions?: WorkspaceSessionCapability;
 }
 export type WorkspaceListProjectsRequest = Record<string, never>;
 export interface WorkspaceProjectRequest {
@@ -109,4 +110,179 @@ export interface WorkspacePrerequisiteErrorData {
     code: WorkspacePrerequisiteErrorCode;
     prerequisite: string;
     guidance: string;
+}
+
+export const WORKSPACE_SESSION_PREFIX = "_dev.runwield/workspace/sessions/";
+export const WORKSPACE_SESSION_OPERATIONS = [
+    "history",
+    "snapshot",
+    "options",
+    "command",
+    "configure",
+    "answer",
+    "unarchive",
+] as const;
+export type WorkspaceSessionOperation = (typeof WORKSPACE_SESSION_OPERATIONS)[number];
+export const WORKSPACE_HISTORY_PAGE_LIMIT = 200;
+export const WORKSPACE_OBSERVATION_EVENT_LIMIT = 500;
+export const WORKSPACE_OBSERVATION_BYTE_LIMIT = 2 * 1024 * 1024;
+export interface WorkspaceSessionCapability {
+    version: 1;
+    historyPageLimit: number;
+    observationEventLimit: number;
+}
+export interface WorkspaceSessionRequest {
+    context: WorkspaceProjectContext;
+    sessionId: string;
+}
+export interface WorkspaceMutationIdentity {
+    requestId: string;
+    expectedGeneration: number;
+}
+export interface WorkspaceHistoryRequest extends WorkspaceSessionRequest {
+    cursor?: string;
+    limit?: number;
+}
+export interface WorkspaceConfiguration {
+    agentName: string;
+    model: string;
+    provider: string;
+    thinkingLevel: string;
+}
+export interface WorkspaceHistoryEvent extends WorkspaceJsonRecord {
+    type: string;
+    eventId: string;
+}
+export interface WorkspaceHistoryResult {
+    sessionId: string;
+    generation: number;
+    archivedAt: string | null;
+    events: WorkspaceHistoryEvent[];
+    configuration: WorkspaceConfiguration;
+    previousCursor: string | null;
+    complete: boolean;
+}
+export interface WorkspaceSnapshotRequest extends WorkspaceSessionRequest {
+    /** Required only while the new composer has no durable Session ID. */
+    wireSessionId?: string;
+    cursor?: string;
+}
+export interface WorkspaceSnapshotResult {
+    sessionId: string;
+    generation: number | null;
+    state: string;
+    cursor: string;
+    gap: boolean;
+    operation: WorkspaceJsonRecord | null;
+}
+export interface WorkspaceConfigureRequest extends WorkspaceSessionRequest, WorkspaceMutationIdentity {
+    agentName?: string;
+    model?: string;
+    provider?: string;
+    thinkingLevel?: string;
+}
+export interface WorkspaceAnswerRequest extends WorkspaceSessionRequest {
+    operationId: string;
+    interactionId: string;
+    requestId: string;
+    response: WorkspaceAnswerFields;
+}
+export interface WorkspaceUnarchiveRequest extends WorkspaceSessionRequest {}
+export interface WorkspaceSessionListRequest {
+    context: WorkspaceProjectContext;
+    archiveState?: "active" | "archived" | "all";
+    cursor?: string;
+    limit?: number;
+}
+export interface WorkspaceSavedSession {
+    sessionId: string;
+    title: string;
+    cwd: string;
+    updatedAt: string;
+    archivedAt: string | null;
+    generation: number | null;
+}
+export interface WorkspaceSessionListResult {
+    sessions: WorkspaceSavedSession[];
+    nextCursor: string | null;
+}
+
+/** Metadata on standard negotiated mutation methods. Correlation IDs are not receipt IDs. */
+export interface WorkspaceSessionMutationMetadata extends WorkspaceProjectContext, WorkspaceMutationIdentity {
+    confirmed?: boolean;
+    configuration?: WorkspaceConfigurationSelection;
+}
+export interface WorkspaceOptionsRequest {
+    context: WorkspaceProjectContext;
+}
+export interface WorkspaceAgentOption {
+    name: string;
+    displayName: string;
+    description: string;
+    defaults: WorkspaceModelConfiguration;
+}
+export interface WorkspaceModelConfiguration {
+    model: string;
+    provider: string;
+    thinkingLevel: string;
+}
+export interface WorkspaceModelOption {
+    id: string;
+    name: string;
+    provider: string;
+    providerName: string;
+    executionBackend: string;
+    reasoning: boolean;
+    contextWindow: number;
+}
+export interface WorkspaceCommandOption {
+    name: string;
+    description: string;
+    kind: string;
+}
+export interface WorkspaceOptionsResult {
+    mascot: boolean;
+    defaults: WorkspaceConfiguration;
+    agents: WorkspaceAgentOption[];
+    models: WorkspaceModelOption[];
+    commands: WorkspaceCommandOption[];
+    thinkingLevels: string[];
+}
+export interface WorkspaceConfigureResult {
+    ok: boolean;
+    status: string;
+    generation: number;
+    operationId?: string;
+    pendingConfiguration?: WorkspacePendingConfiguration | null;
+}
+export interface WorkspaceConfigurationSelection extends WorkspacePendingConfiguration {
+    thinkingLevel?: string;
+}
+export interface WorkspacePendingConfiguration {
+    agentName?: string;
+    model?: string;
+    provider?: string;
+}
+export interface WorkspaceAnswerFields {
+    action: "accept" | "decline" | "cancel";
+    answer?: string;
+    otherAnswer?: string;
+}
+export interface WorkspaceAnswerResult {
+    status: string;
+}
+export interface WorkspaceArchiveResult {
+    runwieldSessionId: string;
+    archivedAt: string | null;
+}
+
+export interface WorkspaceSessionListMetadata extends WorkspaceProjectContext {
+    archiveState?: "active" | "archived" | "all";
+    limit?: number;
+}
+
+export interface WorkspaceCommandRequest {
+    context: WorkspaceProjectContext;
+    wireSessionId: string;
+    text: string;
 }

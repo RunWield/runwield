@@ -17,6 +17,7 @@ import { createUiApi } from "../../ui/tui/api.js";
 import { SpinnerBlock } from "../../ui/tui/blocks.js";
 import { VirtualTerminal } from "../../ui/tui/testing/virtual-terminal.ts";
 import { runAgentsCommand } from "./index.ts";
+import { runModelsCommand } from "../models/index.ts";
 import type { InteractiveSessionPort } from "../../ui/tui/interactive-session-port.ts";
 
 const decoder = new TextDecoder();
@@ -388,4 +389,101 @@ test("the agent chooser never offers a workflow-only Agent to pick", async () =>
             runtime.closeSession(sessionId);
         }
     });
+});
+
+test("idle Agent picker preserves configuration committed by a sibling Runtime", async () => {
+    await withRuntimeCommandFixture(
+        "agent-sibling-config-",
+        async ({ projectRoot }) => {
+            process.chdir(projectRoot);
+            const runtime = createSessionRuntime({ ownerProcessKind: "tui" });
+            const sibling = createSessionRuntime({ ownerProcessKind: "acp" });
+            const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const sessionId = created.sessionId;
+            const harness = makeTuiHarness();
+            const messages: string[] = [];
+            const append = harness.uiAPI.appendSystemMessage.bind(harness.uiAPI);
+            harness.uiAPI.appendSystemMessage = (message, isError, header) => {
+                messages.push(message);
+                append(message, isError, header);
+            };
+            try {
+                assertEquals((await runtime.switchAgent(sessionId, { agentName: "guide" })).ok, true);
+                const savedId = runtime.getSessionSnapshot(sessionId)!.managed!.runwieldSessionId;
+                const resumed = await sibling.createInteractiveSession({
+                    cwd: projectRoot,
+                    mode: "continue",
+                    resumeSessionId: savedId,
+                });
+                assertEquals((await sibling.switchAgent(resumed.sessionId, { agentName: "engineer" })).ok, true);
+                assertEquals(
+                    (await sibling.reconfigureSessionModel(resumed.sessionId, "newer-model", "runtime-command-fixture"))
+                        .ok,
+                    true,
+                );
+                assertEquals((await sibling.setSessionThinkingLevel(resumed.sessionId, "high")).ok, true);
+                const command = runAgentsCommand([], {
+                    uiAPI: harness.uiAPI,
+                    editor: harness.editor,
+                    tui: harness.tui,
+                    sessionId,
+                    sessionRuntime: runtime,
+                    sessionPort: UNEXPECTED_SESSION_PORT,
+                });
+                for (let attempt = 0; attempt < 100; attempt++) {
+                    await harness.terminal.flush();
+                    if (harness.terminal.getScreenText().includes("Switch agent:")) break;
+                    await new Promise((resolve) => setTimeout(resolve, 1));
+                }
+                assertStringIncludes(harness.terminal.getScreenText(), "Switch agent:");
+                harness.terminal.typeText("engineer");
+                harness.terminal.pressEnter();
+                assertEquals(await command, "succeeded", messages.join("\n"));
+                assertEquals(runtime.getSessionSnapshot(sessionId)?.activeAgent, "engineer");
+                assertEquals(runtime.getSessionSnapshot(sessionId)?.activeModel, {
+                    model: "newer-model",
+                    provider: "runtime-command-fixture",
+                });
+                assertEquals(runtime.getSessionSnapshot(sessionId)?.thinkingLevel, "high");
+
+                // Each owner is idle and stale again before its next config command.
+                assertEquals((await sibling.setSessionThinkingLevel(resumed.sessionId, "low")).ok, true);
+                assertEquals(
+                    await runModelsCommand([FIXTURE_MODEL], {
+                        uiAPI: harness.uiAPI,
+                        editor: harness.editor,
+                        sessionId,
+                        sessionRuntime: runtime,
+                    }),
+                    "succeeded",
+                );
+                assertEquals(runtime.getSessionSnapshot(sessionId)?.activeAgent, "engineer");
+                assertEquals(runtime.getSessionSnapshot(sessionId)?.thinkingLevel, "low");
+                const staleGeneration = runtime.getSessionSnapshot(sessionId)!.managed!.generation;
+                assertEquals(
+                    (await sibling.reconfigureSessionModel(resumed.sessionId, "newer-model", "runtime-command-fixture"))
+                        .ok,
+                    true,
+                );
+                assertEquals((await runtime.setSessionThinkingLevel(sessionId, "high")).ok, true);
+                assertEquals(runtime.getSessionSnapshot(sessionId)?.activeModel, {
+                    model: "newer-model",
+                    provider: "runtime-command-fixture",
+                });
+                assertEquals(runtime.getSessionSnapshot(sessionId)?.activeAgent, "engineer");
+                assertEquals(runtime.getSessionSnapshot(sessionId)?.thinkingLevel, "high");
+                const refused = await runtime.promptManagedSession(sessionId, {
+                    initialRequest: "Stale explicit generation must not run",
+                    expectedGeneration: staleGeneration,
+                });
+                assertEquals(refused.ok, false);
+                assertEquals(refused.error, "refresh_required");
+            } finally {
+                harness.tui.stop();
+                await runtime.closeAllSessionsWhenIdle();
+                await sibling.closeAllSessionsWhenIdle();
+            }
+        },
+        { reasoning: true, additionalModels: [{ id: "newer-model", name: "Newer model", reasoning: true }] },
+    );
 });

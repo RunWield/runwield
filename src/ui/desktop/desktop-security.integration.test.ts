@@ -5,13 +5,13 @@ import { join } from "node:path";
 import { makeSessionProcessFixture } from "../../acp/client/testing/session-process-fixture.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
 import type { DesktopProjectClient } from "../workspace/client/project-client.ts";
-import type { SessionClientView, WorkspaceSessionClient } from "../workspace/client/session-client.ts";
+import type { SessionClientView, WorkspaceSavedSessionClient } from "../workspace/client/session-client.ts";
 import { launchDesktop } from "./testing/desktop-fixture.ts";
 
 type Desktop = Awaited<ReturnType<typeof launchDesktop>>;
 type DesktopWindow = typeof globalThis & DesktopGlobals;
 interface DesktopGlobals {
-    runwieldSession: WorkspaceSessionClient;
+    runwieldSession: WorkspaceSavedSessionClient;
     runwieldProjects: DesktopProjectClient;
     runwieldLinks: { open(href: string): Promise<void> };
     injectionRan?: boolean;
@@ -38,10 +38,15 @@ test(
             desktop = await launchDesktop(fixture);
             await desktop.page.getByRole("button", { name: "New Session", exact: true }).click();
             await desktop.page.getByText("Ready", { exact: true }).waitFor();
+            fixture.provider.enqueue({ text: "Saved boundary evidence." });
+            await desktop.page.getByLabel("Message", { exact: true }).fill("Save before boundary checks.");
+            await desktop.page.getByRole("button", { name: "Send", exact: true }).click();
+            await desktop.page.getByText("Saved boundary evidence.", { exact: true }).waitFor();
+            await desktop.page.getByText("Ready", { exact: true }).waitFor();
             const before = await readView(desktop);
             const store = openFileSessionStore({ baseDir: join(fixture.home, ".wld", "sessions") });
             try {
-                const saved = store.findSessionByLocator({ piSessionId: before.durableSessionId });
+                const saved = store.getSessionById(before.durableSessionId);
                 ok(saved);
                 const manifest = store.readSessionManifest(saved.runwieldSessionId, saved.projectId);
                 ok(manifest);
@@ -58,6 +63,25 @@ test(
                         () => client.send({ ...binding, project: "/another/project" }, "Do not send"),
                         () => client.close({ ...binding, sessionId: "foreign" }),
                         () => client.send(binding, "x".repeat(65537)),
+                        () => client.sendImages(binding, "", [{ mimeType: "image/png", base64: "not bytes" }]),
+                        () =>
+                            client.sendImages({ ...binding, sessionId: "foreign" }, "", [
+                                { mimeType: "image/png", base64: "AAAA" },
+                            ]),
+                        () =>
+                            client.sendImages(binding, "", [{ mimeType: "image/png", base64: "AAAA".repeat(2500000) }]),
+                        () =>
+                            Reflect.apply(client.sendImages, client, [
+                                binding,
+                                "",
+                                [{ mimeType: "image/png", base64: "AAAA", path: "/etc/passwd" }],
+                            ]),
+                        () =>
+                            client.sessionOptions({
+                                connectionId: binding.connectionId,
+                                projectId: "forged",
+                                canonicalRoot: binding.project,
+                            }),
                         () => Reflect.apply(client.send, client, [binding, 42]),
                         () => Reflect.apply(client.cancel, client, [null]),
                         () => client.cancel(unexpected),
@@ -69,6 +93,12 @@ test(
                         () =>
                             Reflect.apply(client.answer, client, [binding, { requestId: "stale", action: "invented" }]),
                     ];
+                    operations.push(
+                        () => client.command({ ...binding, sessionId: "foreign" }, "/new"),
+                        () => client.command(binding, "/help\n/new"),
+                        () => Reflect.apply(client.command, client, [binding, 42]),
+                        () => client.command(unexpected, "/help"),
+                    );
                     const errors: string[] = [];
                     for (const operation of operations) {
                         try {
@@ -80,14 +110,14 @@ test(
                     }
                     return errors;
                 }, before);
-                equal(refusals.length, 12);
+                equal(refusals.length, 21);
                 ok(refusals.every((error) => error !== "ACCEPTED"));
                 match(refusals[0], /does not belong/);
                 match(refusals[3], /65,536/);
-                match(refusals[5], /Invalid Session request/);
-                match(refusals[6], /Unexpected Session request field/);
-                match(refusals[9], /no longer waiting/);
-                equal(fixture.provider.requests.length, 0);
+                match(refusals[10], /Invalid Session request/);
+                match(refusals[11], /Unexpected Session request field/);
+                match(refusals[14], /no longer waiting/);
+                equal(fixture.provider.requests.length, 1);
                 deepEqual(store.readSessionManifest(saved.runwieldSessionId, saved.projectId), manifest);
                 equal((await readView(desktop)).sessionId, before.sessionId);
             } finally {
@@ -125,6 +155,21 @@ test("main refuses a real IPC request from another WebContents", { timeout: 4000
                     const channels = [
                         "desktop:session:create",
                         ...[
+                            "readProject",
+                            "listSessions",
+                            "history",
+                            "snapshot",
+                            "sessionOptions",
+                            "configure",
+                            "archive",
+                            "unarchive",
+                            "stageConfiguration",
+                            "sendImages",
+                            "command",
+                            "queue",
+                            "removeQueued",
+                        ].map((name) => `desktop:saved:${name}`),
+                        ...[
                             "list",
                             "open",
                             "register",
@@ -150,13 +195,17 @@ test("main refuses a real IPC request from another WebContents", { timeout: 4000
             },
             { preload, view: { connectionId: view.connectionId, project: view.project, sessionId: view.sessionId } },
         );
-        equal(result.length, 10);
+        equal(result.length, 23);
         ok(result.every((message) => /Untrusted desktop sender/.test(message)));
         equal(fixture.provider.requests.length, 0);
         equal((await readView(desktop)).sessionId, "");
         const store = openFileSessionStore({ baseDir: join(fixture.home, ".wld", "sessions") });
         try {
-            deepEqual(store.listSessionProjects(), []);
+            equal(
+                store.listSessionProjects().length,
+                1,
+                "sidebar reads admit only the linked Project; untrusted frames cannot add registrations",
+            );
         } finally {
             store.close();
         }

@@ -29,7 +29,9 @@ export interface RecordedProviderRequest {
 }
 export interface ProviderStep {
     text?: string;
+    chunks?: string[];
     question?: InterviewQuestion;
+    background?: string;
     hold?: boolean;
 }
 
@@ -38,6 +40,7 @@ export async function startSessionProvider() {
     const requests: RecordedProviderRequest[] = [];
     const steps: ProviderStep[] = [];
     const held = new Set<() => void>();
+    const streams = new Set<ServerResponse>();
     const failures: string[] = [];
     const server = createServer(async (request, response) => {
         try {
@@ -58,7 +61,7 @@ export async function startSessionProvider() {
             }
             response.writeHead(200, { "content-type": "text/event-stream" });
             const write = (delta: ProviderDelta, finish: string | null = null) => writeChunk(response, delta, finish);
-            if (step.question) {
+            if (step.question || step.background) {
                 write({
                     role: "assistant",
                     tool_calls: [
@@ -67,22 +70,31 @@ export async function startSessionProvider() {
                             id: `interview-${requests.length}`,
                             type: "function",
                             function: {
-                                name: "user_interview",
-                                arguments: JSON.stringify({ question: step.question }),
+                                name: step.background ? "background_task" : "user_interview",
+                                arguments: JSON.stringify(
+                                    step.background
+                                        ? { action: "start", command: step.background }
+                                        : { question: step.question },
+                                ),
                             },
                         },
                     ],
                 });
-            } else write({ role: "assistant", content: step.text ?? "Provider turn complete." });
+            } else {
+                const chunks = step.chunks ?? [step.text ?? "Provider turn complete."];
+                for (const content of chunks) write({ role: "assistant", content });
+            }
             const finish = () => {
                 held.delete(finish);
                 if (!response.destroyed) {
-                    write({}, step.question ? "tool_calls" : "stop");
+                    write({}, step.question || step.background ? "tool_calls" : "stop");
                     response.end("data: [DONE]\n\n");
                 }
             };
             if (step.hold) {
                 held.add(finish);
+                streams.add(response);
+                response.once("close", () => streams.delete(response));
                 response.once("close", () => held.delete(finish));
             } else finish();
         } catch (error) {
@@ -99,6 +111,9 @@ export async function startSessionProvider() {
         failures,
         baseUrl: `http://127.0.0.1:${address.port}/v1`,
         enqueue: (...next: ProviderStep[]) => steps.push(...next),
+        emit: (text: string) => {
+            for (const response of streams) writeChunk(response, { role: "assistant", content: text }, null);
+        },
         release: () => {
             for (const finish of [...held]) finish();
         },
@@ -153,7 +168,7 @@ export async function makeSessionProcessFixture() {
     await mkdir(join(state, "agents"));
     await writeFile(
         join(state, "agents", "router.md"),
-        "---\nname: Router\ndescription: Local provider interview fixture\nsharedPractice: [user-authority]\ntools: [user_interview]\n---\nFollow the user's request. Ask structured questions when needed.\n",
+        "---\nname: Router\ndescription: Local provider interview fixture\nsharedPractice: [user-authority]\ntools: [user_interview, background_task, bash]\n---\nFollow the user's request. Ask structured questions when needed.\n",
     );
     await writeFile(
         join(state, "settings.json"),
@@ -183,7 +198,7 @@ export async function makeSessionProcessFixture() {
                             name: "Fixture",
                             api: "openai-completions",
                             reasoning: false,
-                            input: ["text"],
+                            input: ["text", "image"],
                             contextWindow: 128000,
                             maxTokens: 4096,
                         },
@@ -214,8 +229,8 @@ export async function makeSessionProcessFixture() {
         provider,
         sourceCliPath,
         bunExecutable: process.execPath,
-        launch: () => {
-            const runtime = launchSessionProcess(project, env);
+        launch: (workspaceAdmission = false) => {
+            const runtime = launchSessionProcess(project, env, workspaceAdmission);
             runtimes.push(runtime);
             return runtime;
         },
@@ -230,7 +245,11 @@ export async function makeSessionProcessFixture() {
         },
     };
 }
+interface WireMethod {
+    method?: string;
+}
 export interface SessionProcess {
+    sentMethods: string[];
     child: ChildProcessWithoutNullStreams;
     client: AcpWorkspaceSessionClient;
     view: () => SessionClientView;
@@ -239,7 +258,7 @@ export interface SessionProcess {
     wait: (predicate: (view: SessionClientView) => boolean) => Promise<void>;
     shutdown: () => Promise<void>;
 }
-function launchSessionProcess(project: string, env: NodeJS.ProcessEnv): SessionProcess {
+function launchSessionProcess(project: string, env: NodeJS.ProcessEnv, workspaceAdmission = false): SessionProcess {
     const child = spawn(process.execPath, [sourceCliPath, "acp"], {
         cwd: project,
         env,
@@ -250,8 +269,24 @@ function launchSessionProcess(project: string, env: NodeJS.ProcessEnv): SessionP
         stderr = (stderr + chunk).slice(-16000);
     });
     const exited = new Promise<void>((resolve) => child.once("close", () => resolve()));
+    const sentMethods: string[] = [];
+    let pendingWire = "";
+    const output = new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+            pendingWire += Buffer.from(chunk).toString("utf8");
+            let boundary: number;
+            while ((boundary = pendingWire.indexOf("\n")) >= 0) {
+                const frame: WireMethod = JSON.parse(pendingWire.slice(0, boundary));
+                if (frame.method) sentMethods.push(frame.method);
+                pendingWire = pendingWire.slice(boundary + 1);
+            }
+            controller.enqueue(chunk);
+        },
+    });
+    void output.readable.pipeTo(Writable.toWeb(child.stdin)).catch(() => {});
     const client = new AcpWorkspaceSessionClient({
         connectionId: `process-${child.pid}`,
+        workspaceAdmission,
         project,
         input: new ReadableStream<Uint8Array>({
             start(controller) {
@@ -263,17 +298,18 @@ function launchSessionProcess(project: string, env: NodeJS.ProcessEnv): SessionP
                 child.stdout.destroy();
             },
         }),
-        output: Writable.toWeb(child.stdin),
+        output: output.writable,
     });
     let current: SessionClientView;
     client.observe((view) => {
         current = view;
     });
     return {
+        sentMethods,
         child,
         client,
         view: () => current,
-        binding: () => ({ connectionId: current.connectionId, project, sessionId: current.sessionId }),
+        binding: () => ({ connectionId: current.connectionId, project: current.project, sessionId: current.sessionId }),
         stderr: () => stderr,
         wait: (predicate) =>
             waitForSession(
@@ -291,6 +327,64 @@ function launchSessionProcess(project: string, env: NodeJS.ProcessEnv): SessionP
                 await exited;
                 clearTimeout(timer);
             }
+        },
+    };
+}
+
+interface ContinuationOwnerEnvironment {
+    project: string;
+    env: NodeJS.ProcessEnv;
+    bunExecutable: string;
+}
+interface ContinuationOwnerReply {
+    id: number;
+    value: string;
+}
+/** A second real Core process, not an ACP or tool substitute. */
+export function launchContinuationOwner(fixture: ContinuationOwnerEnvironment) {
+    const pending = new Map<number, (reply: string) => void>();
+    let sequence = 0;
+    const child = spawn(
+        fixture.bunExecutable,
+        [fileURLToPath(new URL("../../../shared/session/testing/continuation-runtime-process.ts", import.meta.url))],
+        {
+            cwd: fixture.project,
+            env: fixture.env,
+            stdio: ["pipe", "pipe", "pipe"],
+        },
+    );
+    let stderr = "";
+    child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
+    let buffer = "";
+    child.stdout.on("data", (chunk: Buffer) => {
+        buffer += chunk.toString();
+        let boundary: number;
+        while ((boundary = buffer.indexOf("\n")) >= 0) {
+            const line = buffer.slice(0, boundary);
+            buffer = buffer.slice(boundary + 1);
+            if (!line.startsWith("RUNTIME:")) continue;
+            const reply: ContinuationOwnerReply = JSON.parse(line.slice(8));
+            pending.get(reply.id)?.(reply.value);
+            pending.delete(reply.id);
+        }
+    });
+    const exited = new Promise<void>((resolve) => child.once("close", () => resolve()));
+    return {
+        command: (action: string, sessionId?: string, text?: string) =>
+            new Promise<string>((resolve, reject) => {
+                const id = ++sequence;
+                const timer = setTimeout(() => reject(new Error(stderr || "Runtime command timed out")), 20000);
+                pending.set(id, (reply) => {
+                    clearTimeout(timer);
+                    resolve(reply);
+                });
+                child.stdin.write(JSON.stringify({ id, action, sessionId, text }) + "\n");
+            }),
+        shutdown: async () => {
+            child.stdin.end();
+            const timer = setTimeout(() => child.kill("SIGKILL"), 3000);
+            await exited;
+            clearTimeout(timer);
         },
     };
 }

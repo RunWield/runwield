@@ -143,7 +143,8 @@ Each capability owns its browser requirements and links to Core for shared behav
 
 **Scope and maturity:** The source-development Electron client opens Projects without an argument, registers and
 manages existing directories through Core, and reuses existing provider settings. A separate source runtime supports
-streamed conversation, structured answers, Stop, controlled shutdown, and known-ID reload/continuation. One Session
+streamed conversation, structured answers, Stop, controlled shutdown, discovery, provider-independent paged history,
+reversible archive, images, configuration, unsent queues, steering, and retained background observations. One Session
 view remains open at a time; Project navigation cannot retarget it. It is not an installed or released application.
 Full-workbench parity and free local installation on Windows, macOS, and Linux remain targets. See accepted
 [ADR-020](../adr/020-electron-workspace-acp-client.md), the
@@ -159,13 +160,14 @@ local Workspace without signing up, subscribing, or connecting to hosted Workspa
 and saved work remain usable. Provider setup is distinct from a Workspace account, and provider usage may carry its
 own costs. A missing provider does not prevent browsing saved local work or configuring the application.
 
-Current scope keeps Project listing/settings available without provider configuration. Model work requires external
+Current scope keeps Project listing/settings, Session discovery, committed history/configuration, and Archived Sessions
+available without provider configuration. Model work requires external
 `wld login` and a desktop restart; credentials and layered defaults stay in Core's existing store. This temporary
 [child 2 journey](../plans/local-workspace-desktop/open-projects-and-configure-providers.md) does not narrow the
-clean-install target. [Child 3](../plans/local-workspace-desktop/continue-saved-sessions-in-desktop.md) owns
-provider-independent saved-history reading and Archived Sessions settings, paging, open, and Unarchive.
+clean-install target. [Child 3](../plans/local-workspace-desktop/continue-saved-sessions-in-desktop.md) supplies
+provider-independent saved-history reading and Archived Sessions settings, paging, open, and Unarchive in source.
 [Child 10](../plans/local-workspace-desktop/configure-model-providers-in-desktop-settings.md) owns in-app provider
-authentication, default selection, and fresh readiness after setup. These remain deferred, not placeholder controls.
+authentication, default selection, and fresh readiness after setup. In-app provider setup remains a target, not a placeholder control.
 
 **Requirement: The installed app owns the workbench.** Desktop supplies the Workspace application and native desktop
 integration, sharing product components and the design system with future hosted SaaS. It controls a
@@ -206,10 +208,27 @@ runtime authority remains in [Core Session continuity](runwield-core-prd.md#sess
 - Answer a listed choice or Other in the shared form; the exact answer reaches the waiting tool and the next provider
   request once. Stop a held stream or question, wait for settlement, then send another prompt.
 - Close the Session and application, launch again, load its known saved ID, and continue with committed history. This
-  does not imply Session discovery, full history parity, or integrated reviews.
+  does not imply integrated reviews or process reconnect.
 - Lose the runtime during a turn: show disconnection, keep the draft in the open view, and do not report success or
   automatically resubmit input. Controlled shutdown settles owned work before process disposal; keeping work alive
   after window close remains a supervisor target.
+- Without provider setup, discover named Sessions, page committed history and read saved configuration/images.
+  Opening an archived conversation leaves it archived; explicit Unarchive keeps its ID, transcript, and associations.
+- Use the mounted Project/Session sidebar across conversation, Projects, and settings. Each Project loads five recent
+  Sessions independently; Show more adds five without duplicates. A failed Project offers retry without blocking others.
+  Settings remains available for unavailable roots without granting history access.
+- Read Project B's sidebar while Project A has a draft, images, queue, or pending answer. The binding and answer
+  destination stay in A. New Session opens an empty composer or Project chooser without saving or sending a turn.
+- Configure supported choices, send images, queue/edit/remove unsent intent, steer eligible work, and Stop retained
+  background work after foreground return. Rejected input retains the draft; a local queue is not durable acceptance.
+
+These saved-Session scenarios have automated source evidence. Headed macOS arm64 source checks also cover
+provider-free history/configuration and draft refusal, two-Project five-row paging, archived open/Unarchive,
+image-only acceptance, and a real full-TUI PTY round trip on the same durable ID. Desktop observed the TUI's Engineer
+selection and new content once while preserving its unsent draft. These checks used a controlled local HTTP provider;
+remaining headed journeys are pending. See the [scoped evidence](../desktop-workbench-contract.md#saved-session-headed-checks-macos-arm64-source-build). Process reconnect,
+window/supervisor lifetime, integrated reviews, dashboard/Plan/attention navigation, in-app provider setup, browser
+retirement, and installed-platform qualification remain with their sibling Plans.
 
 Automated native and shared-DOM evidence and a manual macOS arm64 real-provider check are recorded in the
 [engineering contract](../desktop-workbench-contract.md#acceptance-evidence). They do not qualify installed platforms.
@@ -622,6 +641,14 @@ failure feedback beside their controls. A rejected network request clears pendin
 and restores the controls for an explicit retry. Failures never navigate or claim completion, and a later successful
 attempt replaces the failure message. Pending requests prevent duplicate submission of the same action.
 
+The source desktop now implements the Project/Session part of navigation and headers below: one mounted sidebar,
+independent recent lists, New Session, Project settings, collapse/resize preferences, and narrow overlay behavior.
+The logo returns to the last Session or Projects when none exists. Dashboard, Plan grouping/navigation, and attention
+additions remain the [dashboard child](../plans/local-workspace-desktop/find-and-act-on-work-that-needs-attention.md).
+Desktop Archived Sessions uses General / Archived Sessions tabs and bounded paging. Its single open Session still
+requires explicit Close before switching; sidebar browsing alone never changes execution context. Headed layout and
+keyboard acceptance remain to be checked for this slice.
+
 **Requirement: Restore archived Sessions from Project settings.** Project settings has General and Archived Sessions
 tabs. Archived Sessions lists archived names in pages, links to their conversations, and offers Unarchive. Unarchive
 returns the same Session ID, transcript, and Plan Associations to ordinary history. Opening an archived Session keeps it
@@ -713,6 +740,14 @@ Session. Restored history raises no alerts. Delivery errors are diagnosable and 
 ### Browser Sessions
 
 **Scope and maturity:** Current. Whole-history virtualization and active-turn size limits are deferred.
+
+The desktop source client reuses the composer, timeline, question forms, and saved-list presentation for the
+conversation subset: committed chronology/configuration, Activity/Thinking, supported commands, image bytes/previews,
+unsent queue, steering, Stop, and reversible archive. Failed sends and navigation keep the open draft and images.
+Desktop does not yet promise draft/queue survival after app exit or reconnect; browser refresh behavior below is
+unchanged. Session context shows configuration; integrated Plan/Workflow context and reviews remain sibling work.
+The desktop Project/Session navigation sidebar is separate from this Session context panel. Shared Core extraction
+does not change browser HTTP URLs, authentication, CSRF, notifications, or review launch behavior.
 
 **Requirement: A complete conversation timeline.** The owner creates, reopens, follows, and continues Sessions in
 Workspace with the same conversation, Agent, and model as the TUI. The timeline shows:

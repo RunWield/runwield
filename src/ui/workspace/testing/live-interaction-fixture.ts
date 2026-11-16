@@ -59,10 +59,10 @@ export async function withExistingRuntimeInteraction(
     store.approvePairingRequest(pairing.code);
     const device = store.claimPairingRequest(pairing.proof);
     const release = Promise.withResolvers<void>();
-    const entered = Promise.withResolvers<void>();
+    let providerEntered = false;
     setModelResponseFactory(async (_context, options) => {
         options?.signal?.addEventListener("abort", () => release.resolve(), { once: true });
-        entered.resolve();
+        providerEntered = true;
         await release.promise;
         if (options?.signal?.aborted) throw new DOMException("Canceled provider turn", "AbortError");
         return fauxAssistantMessage(fauxText("Review fixture finished."));
@@ -70,20 +70,28 @@ export async function withExistingRuntimeInteraction(
     let pending: Promise<RuntimeInteractionResult> | undefined;
     try {
         const prepared = await prepareSession?.(service);
+        const requestId = crypto.randomUUID();
         const started = prepared
             ? await service.startContinuation({
                   projectId: project.projectId,
-                  requestId: "fixture-turn",
+                  requestId,
                   text: "Review the current changes.",
                   ...prepared,
               })
             : await service.createSession({
                   projectId: project.projectId,
-                  requestId: "fixture-turn",
+                  requestId,
                   text: "Review the current changes.",
                   agentName: "operator",
               });
-        await entered.promise;
+        for (let attempt = 0; attempt < 500 && !providerEntered; attempt++) {
+            const operation = service.getOperation(started.operationId);
+            if (operation.status !== "running")
+                throw new Error(`Provider was not entered: ${JSON.stringify(operation)}`);
+            await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        if (!providerEntered)
+            throw new Error(`Provider entry timed out: ${JSON.stringify(service.getOperation(started.operationId))}`);
         const runtimeSession = service.runtime.listSessions()[0];
         const operation = service.getOperation(started.operationId);
         if (!runtimeSession || !operation.runwieldSessionId) throw new Error("Workspace Session was not created");

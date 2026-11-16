@@ -32,6 +32,7 @@ type SessionQuestionFormProps = {
     onResponse?: (response: SessionQuestionResponse) => Promise<void> | void;
     onRawResponse?: (response: SessionQuestionFields) => Promise<void> | void;
     allowOther?: boolean;
+    otherOptionValue?: string;
     host?: "browser" | "embedded";
 };
 
@@ -66,6 +67,7 @@ export function SessionQuestionForm({
     onResponse,
     onRawResponse,
     allowOther = true,
+    otherOptionValue,
     host = "browser",
 }: SessionQuestionFormProps) {
     const [currentState, setCurrentState] = useState(state);
@@ -104,7 +106,9 @@ export function SessionQuestionForm({
                         : {
                               action: "accept",
                               answer,
-                              ...(allowOther && !isText ? { otherAnswer: String(form.get("customAnswer") ?? "") } : {}),
+                              ...(allowOther && !isText && (!otherOptionValue || answer === otherOptionValue)
+                                  ? { otherAnswer: String(form.get("customAnswer") ?? "") }
+                                  : {}),
                           },
                 );
                 setCurrentState("completed");
@@ -202,7 +206,7 @@ export function SessionQuestionForm({
                         required={!allowEmpty}
                         disabled={disabled}
                         placeholder={placeholder}
-                        defaultValue={onRawResponse ? "" : value}
+                        defaultValue={value}
                     />
                 </label>
             ) : (
@@ -214,6 +218,7 @@ export function SessionQuestionForm({
                                 type="radio"
                                 name="answer"
                                 value={option.value}
+                                defaultChecked={option.value === value}
                                 required={isApproval || Boolean(onRawResponse && !allowEmpty)}
                             />
                             <span>

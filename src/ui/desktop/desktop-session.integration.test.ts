@@ -48,13 +48,25 @@ test(
             await page.waitForFunction(() => document.activeElement?.id === "session-message", undefined, {
                 timeout: 2000,
             });
-            const savedId = await page.getByLabel("Saved Session ID").inputValue();
-            ok(savedId);
+            equal(
+                await page.getByLabel("Saved Session ID").inputValue(),
+                "",
+                "opening a composer does not save a Session",
+            );
             const prompt = "Remember native token amber-931 for continuation.";
             await page.getByLabel("Message", { exact: true }).fill(prompt);
             await page.getByRole("button", { name: "Send", exact: true }).click();
             const live = page.getByText("Native live first chunk.", { exact: true });
             await live.waitFor();
+            await page.waitForFunction(() => {
+                const panel = document.querySelector('[aria-label="Conversation"]');
+                const message = [...document.querySelectorAll(".session-client-conversation p")].find(
+                    (element) => element.textContent === "Native live first chunk.",
+                );
+                const bounds = panel?.getBoundingClientRect();
+                const content = message?.getBoundingClientRect();
+                return bounds && content && content.top >= bounds.top && content.bottom <= bounds.bottom;
+            });
             const liveBox = await live.boundingBox();
             const conversationBox = await page.getByRole("region", { name: "Conversation", exact: true }).boundingBox();
             ok(
@@ -64,13 +76,29 @@ test(
                     liveBox.y + liveBox.height <= conversationBox.y + conversationBox.height,
                 "the latest streamed chunk is in the visible conversation viewport before completion",
             );
-            equal(await page.getByRole("button", { name: "Send", exact: true }).isDisabled(), true);
+            equal(await page.getByRole("button", { name: "Steer", exact: true }).isDisabled(), true);
             equal(await page.getByRole("button", { name: "Stop", exact: true }).isDisabled(), false);
             equal(fixture.provider.requests.length, 1);
             ok(JSON.stringify(fixture.provider.requests[0].messages).includes(prompt));
             equal(fixture.provider.requests[0].authorization, "Bearer fixture-key");
             fixture.provider.release();
             await page.getByText("Ready", { exact: true }).waitFor();
+            await page.waitForFunction(() =>
+                [...document.querySelectorAll("button")].some(
+                    (button) => button.textContent === "Stop" && button.disabled,
+                ),
+            );
+            for (const command of ["/help", "/context"]) {
+                await page.getByLabel("Message", { exact: true }).fill(command);
+                await page.getByRole("button", { name: "Send", exact: true }).click();
+                await page.waitForFunction(
+                    () => (document.querySelector("#session-message") as HTMLTextAreaElement)?.value === "",
+                );
+                equal(fixture.provider.requests.length, 1, "native commands do not create provider turns");
+            }
+            await page.getByText("Context Usage", { exact: false }).first().waitFor();
+            const savedId = await page.getByLabel("Saved Session ID").inputValue();
+            ok(savedId);
             await page.getByRole("button", { name: "Close Session", exact: true }).click();
             await page.getByText("No Session open", { exact: true }).waitFor();
             await desktop.close();
@@ -80,7 +108,13 @@ test(
             await reopened.page.getByRole("button", { name: "Load", exact: true }).click();
             await reopened.page.getByText("Ready", { exact: true }).waitFor();
             await reopened.page.getByText("Native live first chunk.", { exact: true }).waitFor();
-            equal(await reopened.page.getByText(prompt, { exact: true }).count(), 1);
+            equal(
+                await reopened.page
+                    .getByRole("region", { name: "Conversation", exact: true })
+                    .getByText(prompt, { exact: true })
+                    .count(),
+                1,
+            );
             const canonicalId = await reopened.page.getByLabel("Saved Session ID").inputValue();
             await reopened.page
                 .getByLabel("Message", { exact: true })
@@ -243,10 +277,11 @@ test(
             desktops.push(desktop);
             await desktop.page.getByRole("button", { name: "New Session", exact: true }).click();
             await desktop.page.getByText("Ready", { exact: true }).waitFor();
-            const saved = await desktop.page.getByLabel("Saved Session ID").inputValue();
             await desktop.page.getByLabel("Message", { exact: true }).fill("Ask a question before closing.");
             await desktop.page.getByRole("button", { name: "Send", exact: true }).click();
             await desktop.page.getByRole("heading", { name: "Close while I wait", exact: true }).waitFor();
+            const saved = await desktop.page.getByLabel("Saved Session ID").inputValue();
+            ok(saved);
             await desktop.close();
             equal(
                 fixture.provider.requests.length,
@@ -296,6 +331,224 @@ test(
             equal(fixture.provider.requests.length, 1);
             equal(await page.getByLabel("Message", { exact: true }).inputValue(), "Do not replay this prompt.");
             await desktop.close();
+        } finally {
+            try {
+                await desktop?.close();
+            } finally {
+                await fixture.cleanup();
+            }
+        }
+    },
+);
+
+test(
+    "native shared composer selects, pastes and drops bounded images and retains rejected drafts",
+    { timeout: 60000 },
+    async () => {
+        const fixture = await makeSessionProcessFixture();
+        let desktop: Awaited<ReturnType<typeof launchDesktop>> | undefined;
+        try {
+            fixture.provider.enqueue(
+                { text: "Selected image received." },
+                { text: "Pasted image received." },
+                { text: "Dropped image received." },
+            );
+            desktop = await launchDesktop(fixture);
+            const { page } = desktop;
+            await page.getByRole("button", { name: "New Session", exact: true }).click();
+            await page.getByText("Ready", { exact: true }).waitFor();
+            const png = await readFile(new URL("../workspace/static/pwa/icon-192.png", import.meta.url));
+            const input = page.locator('.session-composer input[type="file"]');
+            await input.setInputFiles({ name: "selected.png", mimeType: "image/png", buffer: png });
+            await page.getByRole("list", { name: "Attached images", exact: true }).getByRole("img").waitFor();
+            equal(await page.getByLabel("Message", { exact: true }).inputValue(), "");
+            await page.getByRole("button", { name: "Send", exact: true }).click();
+            await page.getByText("Selected image received.", { exact: true }).waitFor();
+            await page.getByText("Ready", { exact: true }).waitFor();
+            ok(fixture.provider.requests[0].raw.includes("image_url"));
+            await page.evaluate(
+                (bytes) => {
+                    const transfer = new DataTransfer();
+                    transfer.items.add(new File([Uint8Array.from(bytes)], "pasted.png", { type: "image/png" }));
+                    transfer.setData("text/plain", "Text accompanying paste.");
+                    document
+                        .getElementById("session-message")!
+                        .dispatchEvent(new ClipboardEvent("paste", { bubbles: true, clipboardData: transfer }));
+                },
+                [...png],
+            );
+            await page.getByRole("list", { name: "Attached images", exact: true }).getByRole("img").waitFor();
+            equal(await page.getByLabel("Message", { exact: true }).inputValue(), "Text accompanying paste.");
+            await page.getByRole("button", { name: "Send", exact: true }).click();
+            await page.getByText("Pasted image received.", { exact: true }).waitFor();
+            await page.getByText("Ready", { exact: true }).waitFor();
+            await page.evaluate(
+                (bytes) => {
+                    const transfer = new DataTransfer();
+                    transfer.items.add(new File([Uint8Array.from(bytes)], "dropped.png", { type: "image/png" }));
+                    document
+                        .querySelector(".session-composer")!
+                        .dispatchEvent(new DragEvent("drop", { bubbles: true, dataTransfer: transfer }));
+                },
+                [...png],
+            );
+            await page.getByRole("list", { name: "Attached images", exact: true }).getByRole("img").waitFor();
+            await page.getByLabel("Message", { exact: true }).fill("Keep this draft and valid image.");
+            await input.setInputFiles({
+                name: "oversized.png",
+                mimeType: "image/png",
+                buffer: Buffer.alloc(7 * 1024 * 1024 + 1),
+            });
+            await page.getByRole("alert").filter({ hasText: "7 MiB" }).waitFor();
+            equal(await page.getByLabel("Message", { exact: true }).inputValue(), "Keep this draft and valid image.");
+            equal(await page.getByRole("list", { name: "Attached images", exact: true }).getByRole("img").count(), 1);
+            await page.getByRole("button", { name: "Remove", exact: true }).click();
+            equal(await page.getByRole("list", { name: "Attached images", exact: true }).count(), 0);
+            await input.setInputFiles({ name: "replacement.png", mimeType: "image/png", buffer: png });
+            await page.getByRole("list", { name: "Attached images", exact: true }).getByRole("img").waitFor();
+            await page.getByRole("button", { name: "Send", exact: true }).click();
+            await page.getByText("Dropped image received.", { exact: true }).waitFor();
+            await page.getByText("Ready", { exact: true }).waitFor();
+            equal(fixture.provider.requests.length, 3);
+            equal(fixture.provider.requests.filter((request) => request.raw.includes("image_url")).length, 3);
+            deepEqual(fixture.provider.failures, []);
+            deepEqual(desktop.errors, []);
+        } finally {
+            try {
+                await desktop?.close();
+            } finally {
+                await fixture.cleanup();
+            }
+        }
+    },
+);
+
+test(
+    "native queue stays unsent during a question, supports edit and removal, then dispatches once",
+    { timeout: 60000 },
+    async () => {
+        const fixture = await makeSessionProcessFixture();
+        let desktop: Awaited<ReturnType<typeof launchDesktop>> | undefined;
+        try {
+            fixture.provider.enqueue(
+                { question: { type: "text", prompt: "Answer before queued work" } },
+                { text: "Question settled." },
+                { text: "Queued follow-up ran." },
+            );
+            desktop = await launchDesktop(fixture);
+            const { page } = desktop;
+            await page.getByRole("button", { name: "New Session", exact: true }).click();
+            await page.getByText("Ready", { exact: true }).waitFor();
+            await page.getByLabel("Message", { exact: true }).fill("Ask before queue dispatch.");
+            await page.getByRole("button", { name: "Send", exact: true }).click();
+            await page.getByRole("heading", { name: "Answer before queued work", exact: true }).waitFor();
+            await page.getByLabel("Message", { exact: true }).fill("A removable follow-up");
+            await page.getByRole("button", { name: "Queue", exact: true }).click();
+            const queue = page.getByRole("list", { name: "Unsent follow-ups", exact: true });
+            await queue.getByText("A removable follow-up", { exact: true }).waitFor();
+            equal(fixture.provider.requests.length, 1);
+            await queue.getByRole("button", { name: "Edit", exact: true }).click();
+            equal(await page.getByLabel("Message", { exact: true }).inputValue(), "A removable follow-up");
+            await page.getByLabel("Message", { exact: true }).fill("Remove this edited follow-up");
+            await page.getByRole("button", { name: "Queue", exact: true }).click();
+            await queue.getByText("Remove this edited follow-up", { exact: true }).waitFor();
+            await queue.getByRole("button", { name: "Remove queued message", exact: true }).click();
+            await queue.waitFor({ state: "hidden" });
+            await page.getByLabel("Message", { exact: true }).fill("Dispatch this exact queued follow-up once");
+            await page.getByRole("button", { name: "Queue", exact: true }).click();
+            await queue.getByText("Dispatch this exact queued follow-up once", { exact: true }).waitFor();
+            await page.getByRole("textbox", { name: "Answer", exact: true }).fill("Exact native answer.");
+            await page.getByRole("button", { name: "Submit answer", exact: true }).click();
+            await page.getByText("Queued follow-up ran.", { exact: true }).waitFor();
+            await page.getByText("Ready", { exact: true }).waitFor();
+            equal(fixture.provider.requests.length, 3);
+            const conversation = page.getByRole("region", { name: "Conversation", exact: true });
+            equal(
+                await conversation.getByText("Dispatch this exact queued follow-up once", { exact: true }).count(),
+                1,
+            );
+            equal(await conversation.getByText("Remove this edited follow-up", { exact: true }).count(), 0);
+            deepEqual(fixture.provider.failures, []);
+            deepEqual(desktop.errors, []);
+        } finally {
+            try {
+                await desktop?.close();
+            } finally {
+                await fixture.cleanup();
+            }
+        }
+    },
+);
+
+test(
+    "native configuration stages before creation and background Stop remains available after foreground return",
+    { timeout: 60000 },
+    async () => {
+        const fixture = await makeSessionProcessFixture();
+        let desktop: Awaited<ReturnType<typeof launchDesktop>> | undefined;
+        try {
+            fixture.provider.enqueue(
+                { background: "sleep 30; printf 'must not continue\n'" },
+                { text: "Foreground returned while background runs." },
+            );
+            desktop = await launchDesktop(fixture);
+            const { page } = desktop;
+            await page.getByRole("button", { name: "New Session", exact: true }).click();
+            await page.getByText("Ready", { exact: true }).waitFor();
+            await page.waitForFunction(
+                () =>
+                    !document.querySelector<HTMLSelectElement>('.session-composer select[aria-label="Agent"]')
+                        ?.disabled,
+            );
+            await page.getByRole("combobox", { name: "Agent", exact: true }).selectOption("ideator");
+            await page.waitForFunction(
+                () =>
+                    document.querySelector<HTMLSelectElement>('.session-composer select[aria-label="Agent"]')?.value ===
+                    "ideator",
+            );
+            await page.getByRole("button", { name: "Session context", exact: true }).click();
+            await page
+                .getByRole("complementary", { name: "Session context" })
+                .getByText("ideator", { exact: true })
+                .waitFor();
+            equal(
+                await page.getByLabel("Saved Session ID").inputValue(),
+                "",
+                "staging choices must not save an empty Session",
+            );
+            await page.getByLabel("Message", { exact: true }).fill("Start background work with the chosen Agent.");
+            await page.getByRole("button", { name: "Send", exact: true }).click();
+            await page
+                .getByRole("region", { name: "Conversation", exact: true })
+                .getByText("Foreground returned while background runs.", { exact: true })
+                .waitFor();
+            equal(fixture.provider.requests.length, 2);
+            equal(await page.getByRole("button", { name: "Stop", exact: true }).isEnabled(), true);
+            await page.getByRole("button", { name: "Stop", exact: true }).click();
+            await page.getByText("Ready", { exact: true }).waitFor();
+            await page.waitForFunction(() =>
+                [...document.querySelectorAll<HTMLButtonElement>("button")].some(
+                    (button) => button.textContent === "Stop" && button.disabled,
+                ),
+            );
+            equal(await page.getByRole("button", { name: "Stop", exact: true }).isDisabled(), true);
+            equal(fixture.provider.requests.length, 2);
+            const tool = page.locator("details.session-tool").first();
+            await tool.waitFor();
+            await tool.evaluate((element) => element.setAttribute("data-retention-marker", "expanded-tool"));
+            await tool.locator("summary").focus();
+            await page.keyboard.press("Enter");
+            equal(await tool.getAttribute("open"), "");
+            fixture.provider.enqueue({ text: "Next committed turn preserves expanded evidence." });
+            await page.getByLabel("Message", { exact: true }).fill("Continue without folding earlier evidence.");
+            await page.getByRole("button", { name: "Send", exact: true }).click();
+            await page.getByText("Next committed turn preserves expanded evidence.", { exact: true }).waitFor();
+            await page.getByText("Ready", { exact: true }).waitFor();
+            equal(await tool.getAttribute("data-retention-marker"), "expanded-tool");
+            equal(await tool.getAttribute("open"), "");
+            equal(fixture.provider.requests.length, 3);
+            deepEqual(fixture.provider.failures, []);
+            deepEqual(desktop.errors, []);
         } finally {
             try {
                 await desktop?.close();

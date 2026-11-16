@@ -29,3 +29,17 @@ Manual verification steps for local-workspace-desktop/open-projects-and-configur
 - [ ] With no usable provider default, try to start a Session. Confirm that the app shows guidance to configure `wld` and restart, while Project listing and settings remain available.
 
 <!-- runwield:manual-qa:end child="local-workspace-desktop/open-projects-and-configure-providers" -->
+
+<!-- runwield:manual-qa:start child="local-workspace-desktop/continue-saved-sessions-in-desktop" -->
+
+## Continue Saved Sessions in Desktop
+
+Manual verification steps for local-workspace-desktop/continue-saved-sessions-in-desktop
+
+- [ ] Open saved Project history and an archived Session without provider settings. Confirm the history, images, and saved configuration appear, and that opening the archived Session does not unarchive it.
+- [ ] With a configured provider, create or continue a Session. Try a supported command, an image prompt, a question answer, a queued follow-up, and Stop. Confirm each action and its result appear in the conversation.
+- [ ] In the left sidebar, expand two Projects and show more Sessions. Open a Session by name, then open New Session. Confirm the selected Session stays correct and opening New Session does not create saved history.
+- [ ] Archive a Session, open it from Archived Sessions, and explicitly Unarchive it. Confirm the same Session returns to the active list.
+- [ ] Keep a TUI open on the same Session. Continue work in desktop, then continue from TUI with a changed configuration. Confirm both views show the same Session and current configuration.
+
+<!-- runwield:manual-qa:end child="local-workspace-desktop/continue-saved-sessions-in-desktop" -->
