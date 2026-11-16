@@ -623,7 +623,8 @@ test("ACP session/new requires login and a usable default model", async () => {
                     params: { cwd: fixture.projectRoot, mcpServers: [] },
                 });
                 assertEquals(response.error.code, -32000);
-                assertStringIncludes(response.error.message, "login and default model setup");
+                assertStringIncludes(response.error.message, "wld login outside the app");
+                assertStringIncludes(response.error.message, "No default model is selected.");
             } finally {
                 await closeTestServer(handle);
             }
@@ -2471,7 +2472,8 @@ test("ACP session/load maps a persisted Session with no configured model to auth
                     },
                 });
                 assertEquals(response.error.code, -32000);
-                assertStringIncludes(response.error.message, "login and default model setup");
+                assertStringIncludes(response.error.message, "wld login outside the app");
+                assertStringIncludes(response.error.message, "No default model is selected.");
             } finally {
                 await closeTestServer(handle);
             }

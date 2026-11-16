@@ -9,6 +9,8 @@ if (!import.meta.env.DEV) {
 const mode = Astro.url.searchParams.get("mode") || "select";
 const state = Astro.url.searchParams.get("state") || "pending";
 const error = Astro.url.searchParams.get("error") || "";
+const host = Astro.url.searchParams.get("host") === "embedded" ? "embedded" : "browser";
+const allowOther = Astro.url.searchParams.get("allowOther") !== "false";
 ---
 <WorkspaceLayout title="Session Question" selectedTab="dev" shell="local" url={Astro.url.href}>
     <section class="page-header dev-surface-header">
@@ -17,6 +19,6 @@ const error = Astro.url.searchParams.get("error") || "";
         <p>Standalone browser fallback states for select, text, and approval interactions.</p>
     </section>
     <div class="rw-question-fixture">
-        <SessionQuestionForm client:load mode={mode} state={state} error={error} />
+        <SessionQuestionForm client:load mode={mode} state={state} error={error} host={host} allowOther={allowOther} />
     </div>
 </WorkspaceLayout>

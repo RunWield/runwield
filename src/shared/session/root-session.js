@@ -439,8 +439,11 @@ export async function classifyRootSessionLocator(options) {
         return { kind: "managed", project: { projectId: project.projectId, cwd: realCwd } };
     }
     if (!options.sessionPath && options.sessionId) {
-        const cataloged = store.findSessionByLocator({ projectId: project.projectId, piSessionId: options.sessionId });
+        const cataloged =
+            store.getSessionById(options.sessionId, project.projectId) ||
+            store.findSessionByLocator({ projectId: project.projectId, piSessionId: options.sessionId });
         if (!cataloged) return { kind: "blocked", reason: "session_path_required" };
+        if (cataloged.projectId !== project.projectId) return { kind: "blocked", reason: "locator_conflict" };
         const inspected = store.inspectSessionActivation(cataloged.runwieldSessionId);
         if (!inspected.activation) return { kind: "blocked", reason: "missing_activation_row" };
         return { kind: "managed", session: cataloged, project: { projectId: project.projectId, cwd: realCwd } };

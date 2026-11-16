@@ -1,0 +1,152 @@
+.session-client {
+    max-width: 1440px;
+    height: 100dvh;
+    min-height: 0;
+    font-size: 0.875rem;
+    margin: 0 auto;
+    padding: var(--rw-space-panel);
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+.session-client-header {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.5rem;
+}
+.session-client-header h1 {
+    margin: 0;
+    font-size: 1.25rem;
+}
+.session-client-project {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.session-client-project span {
+    color: var(--rw-text-dim);
+    margin-right: 0.4rem;
+}
+.session-client-project code,
+.session-client-identity code {
+    overflow-wrap: anywhere;
+    font-family: var(--rw-font-mono);
+    font-size: 0.8rem;
+}
+.session-client-status {
+    margin: 0;
+    color: var(--rw-text-muted);
+}
+.session-client-controls {
+    display: flex;
+    align-items: end;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--rw-border);
+}
+.session-client-controls form {
+    display: flex;
+    align-items: end;
+    gap: 0.5rem;
+    flex: 1;
+    min-width: min(100%, 22rem);
+    flex-wrap: wrap;
+}
+.session-client-controls label {
+    flex-basis: 100%;
+    font-size: 0.8rem;
+    color: var(--rw-text-muted);
+}
+.session-client-controls input {
+    flex: 1;
+    min-width: 8rem;
+    font-family: var(--rw-font-mono);
+}
+.session-client input,
+.session-client textarea {
+    background: var(--rw-surface);
+    border: 1px solid var(--rw-border);
+    border-radius: var(--rw-radius-control);
+    color: var(--rw-text);
+    padding: var(--rw-space-control-y) var(--rw-space-control-x);
+    font: inherit;
+    caret-color: var(--rw-accent);
+}
+.session-client input:focus-visible,
+.session-client textarea:focus-visible {
+    outline: 2px solid var(--rw-accent);
+    outline-offset: 2px;
+}
+.session-client input:disabled,
+.session-client textarea:disabled {
+    opacity: 0.6;
+}
+.session-client-identity {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.75rem;
+    margin: 0;
+    font-size: 0.8rem;
+}
+.session-client-identity dt {
+    color: var(--rw-text-dim);
+}
+.session-client-identity dd {
+    margin: 0;
+}
+.session-client-error {
+    color: var(--rw-error);
+    margin: 0;
+}
+.session-client-header,
+.session-client-controls,
+.session-client-identity,
+.session-client-error,
+.session-client-composer {
+    flex-shrink: 0;
+}
+.session-client-conversation {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+    scrollbar-color: var(--rw-border) var(--rw-page-bg);
+}
+.session-client-conversation .empty-state {
+    color: var(--rw-text-muted);
+    padding: 1rem;
+}
+.session-client-question {
+    margin: 1rem 0;
+}
+.session-client-question .rw-question-card {
+    max-width: 100%;
+    margin: 0;
+}
+.session-client-composer {
+    display: grid;
+    gap: 0.5rem;
+    border-top: 1px solid var(--rw-border);
+    padding-top: 1rem;
+}
+.session-client-composer label {
+    font-size: 0.85rem;
+    color: var(--rw-text-muted);
+}
+.session-client-composer textarea {
+    width: 100%;
+    resize: vertical;
+    min-height: 5rem;
+    max-height: 25vh;
+}
+.session-client-composer-actions {
+    display: flex;
+    justify-content: end;
+    gap: 0.5rem;
+}

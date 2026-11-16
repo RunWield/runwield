@@ -2787,6 +2787,11 @@ that segment by its Pi transcript ID from the primary Project root continues the
 must prove the segment belongs to that Project before accepting a cross-root transcript path. An uncataloged transcript
 in another root's Session directory remains rejected.
 
+Given a known managed Session ID returned by ACP load, a later process can load that ID in the same Project without a
+transcript path. The runtime resolves it through the canonical Session store and retains committed history. A request
+for that ID from a different Project is refused. The initial transcript locator and the managed Session ID remain
+separate identities; clients retain the requested wire locator and the returned durable identity.
+
 **Requirement: Preserve local history.** Read remote history offline and reconnect to continue saved work.
 
 Remote history stays laptop-owned but is not offered in local TUI `/resume`, ACP Session lists, Workspace project scans,

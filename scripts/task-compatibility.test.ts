@@ -132,6 +132,11 @@ test("original compound task names preserve argument boundaries and prerequisite
             last: { path: "scripts/run-tests.js", args: ["--fail-fast", "a directory/test.ts"] },
         },
         {
+            task: "test:bun",
+            args: ["a directory/example.test.ts"],
+            last: { path: "scripts/run-bun-tests.ts", args: ["a directory/example.test.ts"] },
+        },
+        {
             task: "workspace:build",
             args: ["--mode", "test mode"],
             last: {
@@ -176,6 +181,8 @@ test("original compound task names preserve argument boundaries and prerequisite
             "scripts/check-bun-runtime.ts",
             "scripts/write-version.ts",
             "scripts/public-docs.ts",
+            "scripts/desktop-setup.ts",
+            "scripts/desktop-build.ts",
         ]),
     ];
     try {
@@ -207,6 +214,22 @@ test("original compound task names preserve argument boundaries and prerequisite
                 .split("\n")
                 .map((line) => JSON.parse(line));
             deepStrictEqual(calls.at(-1), entry.last, entry.task);
+            if (["test", "test:all", "test:bun"].includes(entry.task)) {
+                const paths = calls.map((call) => call.path);
+                const setup = paths.indexOf("scripts/desktop-setup.ts");
+                const build = paths.indexOf("scripts/desktop-build.ts");
+                ok(setup >= 0 && build > setup && build < paths.length - 1, entry.task);
+                for (const failedEntry of ["scripts/desktop-setup.ts", "scripts/desktop-build.ts"]) {
+                    await writeFile(log, "");
+                    const failed = await captureScriptProcess(process.execPath, {
+                        args: ["run", entry.task, ...entry.args],
+                        cwd: root,
+                        env: { FAIL_TASK_ENTRY: failedEntry },
+                    });
+                    strictEqual(failed.code, 7);
+                    ok(!(await readFile(log, "utf8")).includes(JSON.stringify(entry.last.path)));
+                }
+            }
             for (const prior of calls.slice(0, -1)) {
                 ok(!prior.args.includes(entry.args[0]), `${entry.task} arguments leaked to preparation`);
             }

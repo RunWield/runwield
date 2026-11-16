@@ -138,10 +138,9 @@ export class RuntimeLifecycle {
     async closeSessionWhenIdle(sessionId: string) {
         const session = this.services.sessionHost.getSession(sessionId);
         if (!session) return { ok: true, closed: false };
-        if (session.isTurnActive()) {
-            this.turns.cancelSession(session.id);
-            await this.turns.awaitSettlement(session.id);
-        }
+        // Interactions and background tasks can own work without an active agent turn.
+        this.turns.cancelSession(session.id);
+        await this.turns.awaitSettlement(session.id);
         await this.awaitManagedOperationSettlement(session.id);
         await this.events.awaitBusyOperationSettlement(session.id);
         return await this.closeSession(session.id);
