@@ -413,6 +413,15 @@ changes do not replace them. Lifecycle and record confidence remain pending unti
 proves the matching Git candidate and target, or confirms the reserved non-Git execution. Reconnect reconciles the
 original operation and proof; it does not repeat Git publication or substitute a matching commit string supplied by a caller.
 
+**Acceptance: Composed delivery survives cleanup and relocation.** Given imported Epic siblings and a saved external-host
+continuation, editing a sibling is visible to later planning without publication. A fresh host resumes the exact saved
+workflow and reviewed revision. With both delivery-copy settings off, publication changes only implementation files.
+If recording failed, the first successful retry after execution cleanup keeps the reserved record ID and sealed Plan
+prose even when live prose changed. Moving the Project preserves its Session identity and native writer exclusion.
+An eligible parent Epic remains the Work Record owner when a child supplied the sealed delivery; mismatched owners,
+attempts and parent revisions are refused. Replaying a lost settlement acknowledgement preserves one publication and
+one canonical record.
+
 **Requirement: One Plan store owns persistence.** Every surface uses the same Plan operations for authoring, review,
 lifecycle events, imports, resource access and execution input. One owner selects the admitted source and enforces
 identity, revisions, lock ordering and durable writes. Callers do not arrange a sequence of raw reads and writes to
@@ -3051,8 +3060,13 @@ in another root's Session directory remains rejected.
 **Requirement: Preserve local history.** Read remote history offline and reconnect to continue saved work.
 
 Remote history stays laptop-owned but is not offered in local TUI `/resume`, ACP Session lists, Workspace project scans,
-or `/load-plan`. A connected remote `/resume` lists and continues only Sessions whose exact host identity and project
-root match the connection’s [remote project locator](#project-context-and-initialization). Resume restores saved Agent,
+or `/load-plan`. A connected remote `/resume` requires the exact authenticated host identity. A Git Project directory
+can move when trusted inspection matches its previously retained Project, repository, checkout, execution-account
+home and laptop personal-owner identity. This preserves the Session namespace and native writer lock while using the
+current remote cwd. Retain that identity while the original root is authorized, including Guide conversations without
+a laptop Plan owner. Never infer missing historical identity after the original path disappears. Legacy and non-Git
+Sessions without retained identity require the exact [remote project locator](#project-context-and-initialization).
+Resume restores saved Agent,
 model, workflow and tutorial context, and pending segment continuation. It checks remote workflow evidence without
 starting validation, repair, or publication before the user chooses. It never repeats unfinished tool effects.
 
@@ -3086,6 +3100,11 @@ remote project.
   composer, SSH, or a writer lock, and its footer gives the target and reconnect instructions.
 - Given a reconnected target, `/resume` offers only its matching Sessions. Continuing appends to the same Session with
   saved Agent and model context, without a laptop clone or repetition of earlier model requests, tools, or remote edits.
+- Given a saved managed Git conversation with retained identity, renaming its remote Project and reconnecting offers
+  the same Session. A competing writer cannot acquire that Session until its current operation settles. A different
+  host, personal owner, Project, repository or checkout cannot list or continue it.
+- Given a legacy conversation with no retained identity, moving its remote directory does not authorize history at the
+  new path. The transcript remains available offline; reconnecting to its original authorized path remains supported.
 - Given a saved remote Session, local TUI, ACP, Workspace, and `/load-plan` lists omit it and do not inspect its root as
   a laptop directory.
 - Given an image in the macOS laptop clipboard, Ctrl+V in the remote TUI reads that current image. Submission sends its

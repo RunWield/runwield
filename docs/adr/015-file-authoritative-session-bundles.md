@@ -91,6 +91,13 @@ transcript, not a transcript file. A trusted laptop caller registers an operatio
 HTTP clients cannot supply or replace that proof. The existing authenticated remote control service admits ordered,
 immutable requests for that operation and checks the native lock again on every admission.
 
+Managed Session discovery retains authenticated Git Project, repository and checkout identity together with its
+execution-account home and laptop owner before a remote directory moves. A fresh trusted inspection can bind that
+same identity to a new root on the same authenticated host. The original Session namespace and native lock remain
+fixed. Identity inspection is independent of Plan-store admission, so Guide conversations receive the same continuity.
+Dropping the root comparison alone would expose unrelated history. Sessions without historical identity and non-Git
+Sessions retain exact-root lookup; a missing old path cannot supply evidence retroactively.
+
 Persistence and ownership components are product-owned, not injectable ports. The laptop connection constructs its store
 and operation registry. The store constructs remote owners with the same native-lock context that acquired their proofs.
 Remote root managers construct their save bridge from connection data. Callers cannot supply replacement stores,

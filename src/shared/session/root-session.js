@@ -582,7 +582,13 @@ export async function resolvePersistedRootSession(options) {
         if (!options.managedSegmentCwd || canonicalizeCwd(options.managedSegmentCwd) !== canonicalCwd) {
             throw new Error("Cross-root persisted session path requires managed segment evidence");
         }
-        if (basename(sessionDir) !== encodeCwdForSessionDir(canonicalizeCwd(options.managedProjectRoot))) {
+        const projectBindings = inspectProjectStorage(options.managedProjectRoot);
+        const establishedDirectory = projectBindings.some((item) => resolve(item.sessionDirectory) === sessionDir);
+        if (
+            !establishedDirectory &&
+            (projectBindings.length ||
+                basename(sessionDir) !== encodeCwdForSessionDir(canonicalizeCwd(options.managedProjectRoot)))
+        ) {
             throw new Error("Cross-root persisted session directory does not match managed Project evidence");
         }
     }

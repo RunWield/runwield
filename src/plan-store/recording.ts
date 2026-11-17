@@ -142,12 +142,17 @@ export async function ensureArchivedPlanIdentity(cwd: string, name: string) {
     });
 }
 
+type PreparedRecordArguments = [
+    ...Parameters<typeof generateLocalPreparedRecord>,
+    reference: PackagePublicationReference,
+];
 export async function generatePlanPreparedRecord(
-    ...args: Parameters<typeof generateLocalPreparedRecord>
+    ...args: PreparedRecordArguments
 ): ReturnType<typeof generateLocalPreparedRecord> {
+    const [cwd, source, attemptId, options, reference] = args;
     return managedPlanStoreActive()
-        ? await generateManagedPreparedRecord(...args)
-        : await generateLocalPreparedRecord(...args);
+        ? await generateManagedPreparedRecord(cwd, source, attemptId, options, reference)
+        : await generateLocalPreparedRecord(cwd, source, attemptId, options);
 }
 export async function settlePlanPreparedRecord(
     ...args: Parameters<typeof settleLocalPreparedRecord>

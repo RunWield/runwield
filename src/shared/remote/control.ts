@@ -1,4 +1,8 @@
-import { resolveManagedProjectStore, type ManagedProjectStoreLaunch } from "./project-store-launch.ts";
+import {
+    resolveManagedProjectStore,
+    resolveManagedProjectIdentity,
+    type ManagedProjectStoreLaunch,
+} from "./project-store-launch.ts";
 import { LaptopProjectStoreService } from "./project-store-service.ts";
 import type { ProjectStoreBinding, HomeProjectOwner } from "../../plan-store/index.ts";
 import { handleBrowserOpen } from "./browser-bridge.ts";
@@ -249,6 +253,15 @@ export function startRemoteControlService(
         }
         if (shutdown || closed || !ready) return new Response(null, { status: 403 });
         try {
+            if (projectStoreLaunch && input.kind !== "markUncertain") {
+                const identity = await resolveManagedProjectIdentity(
+                    projectStoreLaunch,
+                    projectAdmissionAbort.signal,
+                    false,
+                );
+                if (shutdown || closed || !ready) return new Response(null, { status: 403 });
+                sessions.bindProjectIdentity(identity);
+            }
             const result = await sessions.handle(input);
             if (shutdown || closed || !ready) {
                 stopSessions();

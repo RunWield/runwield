@@ -171,13 +171,13 @@ Journeys:
 
 ## Capability Requirements
 
-These are proposed changes. The owning Core capabilities are linked for each; implementation updates them in the same
-change that delivers the behavior.
+Maturity is stated per capability. The owning Core capabilities define delivered behavior; history and retention
+remain planned extensions.
 
 ### Plan store
 
-**Scope and maturity:** Internal package persistence and explicitly selected lifecycle through validation, publication
-and retained Recorder input are current. Ordinary public activation remains target. Changes
+**Scope and maturity:** Public home-store activation, lifecycle through validation and publication, and retained
+Recorder input are current. Local and managed composed journeys exercise these existing owners. Changes
 [Plan authoring and external adoption](runwield-core-prd.md#plan-authoring-and-external-adoption) and every capability
 that reads Plans from a checkout.
 
@@ -224,7 +224,7 @@ store's copy at every status, from draft through delivery, with no reconciliatio
 **Scope and maturity:** Ordinary local and manual SSH runtime relocation is current; see
 [Work protection](runwield-core-prd.md#work-protection) and
 [Project context and initialization](runwield-core-prd.md#project-context-and-initialization).
-Managed-remote personal transfer remains target. Runtime relocation does not adopt Plan or Work Record packages.
+Managed-remote admission and personal transfer are current. Runtime relocation does not adopt Plan or Work Record packages.
 
 **Requirement: All internal state leaves the project.** Everything currently stored under `.wld/internal/` moves
 under `~/.wld/projects/<projectId>/` on its responsible host. This includes controller state, worktree registries,
@@ -253,7 +253,8 @@ Plan and Work Record import remains separate; moving machine-owned state does no
 
 ### Storage ownership by launch mode
 
-**Scope and maturity:** Target. Extends [Remote connection](runwield-core-prd.md#remote-connection) and
+**Scope and maturity:** Local, manual-SSH and managed owner selection are current. Automated composed journeys
+exercise the owner split; actual platform qualification is recorded separately. Extends [Remote connection](runwield-core-prd.md#remote-connection) and
 [Session continuity](runwield-core-prd.md#session-continuity).
 
 **Requirement: Ordinary execution owns its personal store locally.** Running `wld` directly uses the current
@@ -333,7 +334,7 @@ accident.
 **Scope and maturity:** Explicit internal package validation prepares canonical Work Records and freezes independent
 Plan-off/record-on copy settings. Enabled Markdown shares one artifacts-only commit; empty payloads need none.
 The canonical record is approved only after proof; its repository copy preserves pending preparation confidence.
-Public settings/admission and copy cleanup remain target. Changes
+Public settings, admission and publication copy cleanup are current. Changes
 [Keep Project Runtime State out of repository changes](runwield-core-prd.md#work-protection).
 
 **Requirement: Plan and Work Record copies have separate project settings.** Each project has one setting for Plan
@@ -376,10 +377,10 @@ is used only to tidy up when the item is pruned.
 
 ### Work Record store
 
-**Scope and maturity:** Explicit internal admission now selects personal Project Work Record persistence, import and
+**Scope and maturity:** Public commands select personal Project Work Record persistence, explicit import and
 stable derived retrieval alongside default delivery copies. Import preserves original bytes/status and durable location
-provenance; same-ID conflicting content refuses. Ordinary public commands remain repository-owned until activation.
-Managed-remote transport and retention remain target. The owning confidence and recovery contract is
+provenance; same-ID conflicting content refuses. Managed-remote transport is current. Retention remains target.
+The owning confidence and recovery contract is
 [Work records](runwield-core-prd.md#work-records).
 
 **Requirement: Work Records live in the store.** RunWield writes, lists, searches, and retrieves Work Records from the

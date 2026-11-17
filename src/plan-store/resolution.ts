@@ -1,4 +1,11 @@
-import { managedPlanStoreActive, selectManagedPlan, withManagedPlan, readManagedRetainedExecution } from "./managed.ts";
+import {
+    managedPlanStoreActive,
+    selectManagedPlan,
+    withManagedPlan,
+    readManagedRetainedExecution,
+    readManagedPlan,
+} from "./managed.ts";
+import { importPlans } from "./imports.ts";
 import { retainPlanAccess, withPlanAccess, type PlanAccess } from "./handles.ts";
 import { readPlanPackage, readPlanImportEvidence, listPlanPackages } from "./packages.ts";
 import { importLocalPlanReference, inspectLocalHomeStore } from "./access.ts";
@@ -136,7 +143,16 @@ export async function resolvePlanWithPrimaryRecovery(
     packageSelection?: PlanAccess,
 ): Promise<LoadPlanResolution> {
     if (!packageSelection && managedPlanStoreActive()) {
-        const selected = await selectManagedPlan(projectRoot, planArg);
+        let reference = planArg;
+        if (planArg.endsWith(".md") && !(await readManagedPlan(projectRoot, planArg))) {
+            const retained = await readManagedRetainedExecution(projectRoot, planArg);
+            if (!retained || retained.cleanupComplete || retained.abandonmentComplete) {
+                const imported = await importPlans(projectRoot, planArg);
+                if (imported.planIds.length !== 1) throw new Error("Load one Plan document at a time.");
+                reference = imported.planIds[0];
+            }
+        }
+        const selected = await selectManagedPlan(projectRoot, reference);
         if (selected.retainedAttemptId)
             return await withManagedPlan(projectRoot, selected, () =>
                 resolvePlanWithPrimaryRecovery(projectRoot, selected.planName),

@@ -15,7 +15,11 @@ import {
     inspectSessionProjectRoots,
 } from "../project-identity.ts";
 import { encodeCwdForSessionDir } from "../project-directory-key.ts";
-import type { FileSessionManifest, FileSessionProject } from "./file-session-store-types.ts";
+import type {
+    FileSessionManifest,
+    FileSessionProject,
+    RemoteSessionProjectBinding,
+} from "./file-session-store-types.ts";
 import type { RemoteHostIdentity, RemoteTarget } from "../remote/target.ts";
 
 export const FILE_SESSION_STORE_VERSION = 1;
@@ -234,6 +238,47 @@ export function sameRemoteHost(left: RemoteHostIdentity, right: RemoteHostIdenti
         left.port === right.port &&
         left.hostKeyFingerprint === right.hostKeyFingerprint
     );
+}
+
+/** A missing historical binding never authorizes a different pathname. */
+export function remoteSessionProjectMatches(
+    project: FileSessionProject,
+    target: RemoteTarget & { host: RemoteHostIdentity },
+    binding?: RemoteSessionProjectBinding,
+): boolean {
+    const remote = project.remote;
+    if (!remote || !sameRemoteHost(remote.host, target.host)) return false;
+    if (!remote.binding) return remote.root === remoteProjectRoot(target);
+    return Boolean(
+        binding &&
+        remote.binding.projectId === binding.projectId &&
+        remote.binding.repositoryId === binding.repositoryId &&
+        remote.binding.checkoutId === binding.checkoutId &&
+        remote.binding.personalOwnerIdentity === binding.personalOwnerIdentity &&
+        remote.binding.executionAccountHome === binding.executionAccountHome,
+    );
+}
+
+/** Preserve the Session namespace and writer lock while updating its verified location. */
+export function bindRemoteSessionProject(
+    baseDir: string,
+    project: FileSessionProject,
+    target: RemoteTarget & { host: RemoteHostIdentity },
+    binding: RemoteSessionProjectBinding,
+    targetLabel: string,
+): void {
+    const path = projectPath(sessionDirForProject(baseDir, project));
+    const saved = readJson<FileSessionProject>(path);
+    if (!saved.remote || !remoteSessionProjectMatches(saved, target, binding))
+        throw new Error("Remote Session Project binding changed.");
+    const root = remoteProjectRoot(target);
+    if (saved.remote.binding && saved.remote.root === root && saved.remote.targetLabel === targetLabel) return;
+    saved.remote.binding = binding;
+    saved.remote.root = root;
+    saved.remote.targetLabel = targetLabel;
+    saved.currentRoot = root;
+    saved.updatedAt = isoNow();
+    writeJsonAtomically(path, saved);
 }
 
 /** Retain a host answer without changing the project's canonical identity. */
