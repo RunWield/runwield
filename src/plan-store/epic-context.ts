@@ -1,3 +1,4 @@
+import { managedPlanStoreActive, projectManagedEpic } from "./managed.ts";
 /**
  * @module shared/workflow/epic-review-context
  * What a child's Semantic Review needs from its Epic, and where its notes go.
@@ -74,7 +75,7 @@ function markdownSection(markdown: string, heading: string): string {
 async function epicChildren(primaryRoot: string, epicPlanName: string, epic: PlanFrontMatter) {
     const branch = String(epic.targetBranch || "").trim();
     const family =
-        branch && (await isGitRepository(primaryRoot))
+        !managedPlanStoreActive() && branch && (await isGitRepository(primaryRoot))
             ? await prepareTargetBranchPlansByParent(primaryRoot, branch, epicPlanName).catch(() => null)
             : null;
     return (family || (await findPlansByParent(primaryRoot, epicPlanName)))
@@ -190,6 +191,8 @@ export async function syncEpicChildPlanDeviations(checkoutRoot: string, childPla
     const epic = await loadPlan(checkoutRoot, epicPlanName);
     if (!epic) throw new Error(`Parent Plan ${epicPlanName} is unavailable for the child deviation projection.`);
     if (!isEpicPlan(epic.attrs)) return null;
+    if (managedPlanStoreActive())
+        return await projectManagedEpic(checkoutRoot, epicPlanName, childPlanName, "deviations");
     const next = withChildBlock(
         epic.markdown,
         DEVIATIONS_SECTION,
@@ -222,6 +225,8 @@ export async function recordIntegrationNotes(
     if (!notes || notes.length === 0) return null;
     const epic = await loadPlan(checkoutRoot, epicPlanName);
     if (!epic) return null;
+    if (managedPlanStoreActive())
+        return await projectManagedEpic(checkoutRoot, epicPlanName, childPlanName, "notes", notes);
     const next = withIntegrationNotes(epic.markdown, childPlanName, notes);
     if (next === epic.markdown) return null;
     try {

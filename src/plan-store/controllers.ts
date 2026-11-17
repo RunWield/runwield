@@ -1,3 +1,11 @@
+import {
+    managedPersonalStoreActive,
+    currentManagedRetainedExecution,
+    readManagedRetainedExecution,
+    writeManagedRetainedController,
+    readManagedRelatedController,
+    writeManagedRelatedController,
+} from "./managed.ts";
 import { isValidationCheckpoint } from "../shared/workflow/validation-checkpoint.ts";
 import {
     currentPackageSelection,
@@ -174,6 +182,16 @@ export async function readControllerRecordAtPath(
 }
 
 export async function readControllerRecord(cwd: string, identity: WorkflowIdentity): Promise<ControllerRecord | null> {
+    const retained = currentManagedRetainedExecution();
+    if (retained) {
+        if (retained.planName !== identity.planName || (identity.planId && identity.planId !== retained.planId)) {
+            const other = await readManagedRetainedExecution(cwd, identity.planId || identity.planName);
+            if (other && other.planName === identity.planName) return other.controller;
+            return await readManagedRelatedController(cwd, identity);
+        }
+        return (await readManagedRetainedExecution(cwd, retained.planId, retained.attempt.id))?.controller ?? null;
+    }
+
     if (currentPackageSelection()) {
         const plan = (await selectedPackage(identity.planName))!;
         if (identity.planId && identity.planId !== plan.metadata.planId)
@@ -281,6 +299,11 @@ export async function writeControllerState(
     updates: WorkflowControllerState,
     options: ControllerWriteOptions = {},
 ): Promise<ControllerRecord> {
+    const retained = currentManagedRetainedExecution();
+    if (retained)
+        return retained.planName === identity.planName && (!identity.planId || identity.planId === retained.planId)
+            ? await writeManagedRetainedController(cwd, identity, updates, options)
+            : await writeManagedRelatedController(cwd, identity, updates, options);
     if (currentPackageSelection()) {
         return await packageWorkflowLocks([identity.planName], async () => {
             const before = await readControllerRecord(cwd, identity);
@@ -463,7 +486,9 @@ export async function listControllerDocumentWorktrees(cwd: string) {
             .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
         for (const entry of retired) {
             if (selected.has(entry.planName)) continue;
-            const controller = await readControllerRecord(cwd, { planName: entry.planName, planId: entry.planId });
+            const controller = managedPersonalStoreActive()
+                ? (await readManagedRetainedExecution(cwd, entry.planId || entry.planName, entry.id))?.controller
+                : await readControllerRecord(cwd, { planName: entry.planName, planId: entry.planId });
             if (controller?.state.documentWorktreeId !== entry.id) continue;
             if (await isRolledBackAnonymousCreation(projectRoot(cwd), entry)) continue;
             live.push(entry);
@@ -501,7 +526,9 @@ export async function inspectControllerView(
     const attempt = liveEntry?.status === "planning" ? null : liveEntry;
     const documentEntry =
         liveEntry?.status === "planning" ? null : liveEntry || (lookup.kind === "retired" ? lookup.entry : null);
-    const record = await readControllerRecordAtPath(layout.primary.controllerPlansDir, identity);
+    const record = currentManagedRetainedExecution()
+        ? await readControllerRecord(cwd, identity)
+        : await readControllerRecordAtPath(layout.primary.controllerPlansDir, identity);
     const pendingRepairs: PendingControllerRepair[] = [];
     if ((attempt || lookup.kind === "retired") && record?.recovery) {
         pendingRepairs.push("clear_obsolete_recovery");

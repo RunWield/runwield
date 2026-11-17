@@ -1,3 +1,10 @@
+import {
+    managedPlanStoreActive,
+    prepareManagedSequence,
+    snapshotManagedSequence,
+    applyManagedSequenceDecision,
+} from "./managed.ts";
+import { retainSequenceOperationResult } from "./operation-receipts.ts";
 import { requiresPlanWorkflow } from "./index.ts";
 
 import { withLocalPlanWorkflow } from "./index.ts";
@@ -153,6 +160,7 @@ export async function prepareSequenceReview(
     planName: string,
     inputs?: SequenceChildInput[],
 ): Promise<SequenceReviewDocument[]> {
+    if (managedPlanStoreActive()) return await prepareManagedSequence(cwd, planName, inputs);
     if (requiresPlanWorkflow(cwd))
         return await withLocalPlanWorkflow(cwd, planName, () => prepareSequenceReview(cwd, planName, inputs));
     const members = await sequenceMembers(cwd, planName);
@@ -191,6 +199,7 @@ export async function prepareSequenceReview(
 }
 
 export async function snapshotSequenceReview(cwd: string, planName: string): Promise<SequenceReviewDocument[]> {
+    if (managedPlanStoreActive()) return await snapshotManagedSequence(cwd, planName);
     if (requiresPlanWorkflow(cwd))
         return await withLocalPlanWorkflow(cwd, planName, () => snapshotSequenceReview(cwd, planName));
     return await withProjectRuntimeReadScope(async () => {
@@ -299,7 +308,7 @@ export async function validateSequenceReviewDecision(
     }
 }
 
-interface ApplySequenceReviewOptions {
+export interface ApplySequenceReviewOptions {
     cwd: string;
     documents: SequenceReviewDocument[];
     decision: SequenceReviewDecision;
@@ -315,6 +324,8 @@ export async function applySequenceReviewDecision({
     hostedSession,
     toolCallId,
 }: ApplySequenceReviewOptions): Promise<SequenceReviewResult> {
+    if (managedPlanStoreActive())
+        return await applyManagedSequenceDecision({ cwd, documents, decision, hostedSession, toolCallId });
     if (documents[0] && requiresPlanWorkflow(cwd))
         return await withLocalPlanWorkflow(cwd, documents[0].planName, () =>
             applySequenceReviewDecision({ cwd, documents, decision, hostedSession, toolCallId }),
@@ -591,7 +602,6 @@ export async function applySequenceReviewDecision({
                     await assertPackageWorkflowInput(write.doc.planName, selected.metadata.workflow!.review!);
                 }
             }
-            await markEffect("sequence_review_accepted", { planIds: documents.map((doc) => doc.planId), toolCallId });
             result = {
                 approved: decision.approved === true,
                 ...(decision.conversationTurn && { conversationTurn: true }),
@@ -601,6 +611,8 @@ export async function applySequenceReviewDecision({
                 planAttrs: writes[0].attrs,
                 workflowOutcome: outcome,
             };
+            retainSequenceOperationResult(result);
+            await markEffect("sequence_review_accepted", { planIds: documents.map((doc) => doc.planId), toolCallId });
             return { planNames: documents.map((doc) => doc.planName) };
         },
     });

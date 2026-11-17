@@ -168,7 +168,6 @@ import {
     DEFAULT_FRONT_MATTER,
     KNOWN_FRONT_MATTER_KEYS,
     HIDDEN_PLAN_DIRS,
-    PLAN_STATUSES,
     getDeclaredPlanStatus,
     normalizeOptionalBoolean,
     resolvePlanExecutionPolicy,
@@ -193,7 +192,6 @@ import {
     isHiddenPlanName,
     stripSequencePrefix,
     resolveSiblingChildPlanDependencyStates,
-    isChildFeaturePlan,
 } from "./plan-format-implementation.ts";
 export {
     canonicalizeStoredPlanName,
@@ -2407,67 +2405,7 @@ export async function archivePlan(cwd, planNameOrId, options = {}) {
  * @returns {Promise<BulkArchivePlansResult>}
  */
 export async function archivePlansByStatus(cwd, status, options = {}) {
-    if (!PLAN_STATUSES.has(status)) {
-        throw new Error(`Unknown Plan status for bulk archive: ${status}`);
-    }
-
-    await prepareWorktreeRegistry(cwd);
-    const { preparePlanWorkflow } = await import("./plan-store/preparation.ts");
-    for (const plan of await listPlans(cwd)) await preparePlanWorkflow(cwd, plan.name);
-    const plans = await listPlans(cwd);
-    /** @type {Map<string, Array<{ name: string, path: string, attrs: PlanFrontMatter, readAvailability?: PlanReadAvailability }>>} */
-    const childrenByParent = new Map();
-    for (const plan of plans) {
-        if (!isChildFeaturePlan(plan)) continue;
-        const parentPlan = plan.attrs.parentPlan || "";
-        const children = childrenByParent.get(parentPlan) || [];
-        children.push(plan);
-        childrenByParent.set(parentPlan, children);
-    }
-    for (const children of childrenByParent.values()) children.sort(compareChildPlansByOrder);
-
-    const matchingParentPlans = plans
-        .filter((plan) => !isChildFeaturePlan(plan) && plan.attrs.status === status)
-        .sort((a, b) => a.name.localeCompare(b.name));
-    const matchingPlans = matchingParentPlans.flatMap((plan) => [plan, ...(childrenByParent.get(plan.name) || [])]);
-    const matched = matchingPlans.map((plan) => ({
-        name: plan.name,
-        relativePath: projectRelativePath(cwd, plan.path),
-    }));
-    const now = options.now || new Date().toISOString();
-    /** @type {Array<{ name: string, relativePath: string }>} */
-    const archived = [];
-    /** @type {Array<{ name: string, relativePath: string, message: string }>} */
-    const failed = [];
-
-    for (const parentPlan of matchingParentPlans) {
-        try {
-            const result = await archivePlan(cwd, parentPlan.name, { ...options, now });
-            archived.push({ name: result.name, relativePath: result.relativePath });
-        } catch (error) {
-            failed.push({
-                name: parentPlan.name,
-                relativePath: projectRelativePath(cwd, parentPlan.path),
-                message: formatErrorMessage(error),
-            });
-            continue;
-        }
-
-        for (const childPlan of childrenByParent.get(parentPlan.name) || []) {
-            try {
-                const result = await archivePlan(cwd, childPlan.name, { ...options, force: true, now });
-                archived.push({ name: result.name, relativePath: result.relativePath });
-            } catch (error) {
-                failed.push({
-                    name: childPlan.name,
-                    relativePath: projectRelativePath(cwd, childPlan.path),
-                    message: formatErrorMessage(error),
-                });
-            }
-        }
-    }
-
-    return { matched, archived, failed };
+    return await (await import("./plan-store/archiving.ts")).archivePlansByStatus(cwd, status, options);
 }
 
 /**

@@ -1,3 +1,12 @@
+import {
+    currentManagedRetainedExecution,
+    managedPlanStoreActive,
+    recordManagedDeviation,
+    saveManagedDefinition,
+    saveManagedValidationCheckpoint,
+    recordManagedHumanReview,
+    saveManagedEpicReview,
+} from "./managed.ts";
 import { updatePlanFrontMatter, type PlanFrontMatter } from "../plan-store.js";
 
 const definitionFields = [
@@ -41,6 +50,7 @@ export async function savePlanDefinition(
     for (const field of Object.keys(changes))
         if (!definitionFields.some((allowed) => allowed === field))
             throw new Error(`Plan definition cannot change protected field: ${field}`);
+    if (managedPlanStoreActive()) return await saveManagedDefinition(cwd, name, changes, precondition.expectedRevision);
     return await updatePlanFrontMatter(cwd, name, changes, {}, precondition);
 }
 
@@ -51,6 +61,8 @@ export async function savePlanValidationCheckpoint(
     checkpoint: PlanFrontMatter["validationCheckpoint"],
     precondition: PlanWritePrecondition,
 ) {
+    if (managedPlanStoreActive())
+        return await saveManagedValidationCheckpoint(cwd, name, checkpoint, precondition.expectedRevision);
     return await updatePlanFrontMatter(cwd, name, { validationCheckpoint: checkpoint }, {}, precondition);
 }
 
@@ -61,6 +73,7 @@ export async function saveEpicIntegrationReview(
     review: PlanFrontMatter["epicIntegrationReview"],
     precondition: PlanWritePrecondition,
 ) {
+    if (managedPlanStoreActive()) return await saveManagedEpicReview(cwd, name, review, precondition.expectedRevision);
     return await updatePlanFrontMatter(cwd, name, { epicIntegrationReview: review }, {}, precondition);
 }
 
@@ -74,6 +87,7 @@ export async function recordPlanDeviation(
     proposal: PlanDeviationProposal,
     expectedRevision: string,
 ) {
+    if (managedPlanStoreActive()) return await recordManagedDeviation(cwd, name, proposal, expectedRevision);
     return await withLocalPlanWorkflow(cwd, name, () =>
         withPlanLock(cwd, name, async () => {
             const plan = await loadPlan(cwd, name);
@@ -99,9 +113,10 @@ export async function recordPlanHumanReview(
     planName: string,
     metadata: PlanHumanReviewMetadata,
 ): Promise<void> {
+    if (managedPlanStoreActive()) return await recordManagedHumanReview(cwd, planName, metadata);
     const { runPlanFrontMatterTransition } = await import("./transitions.ts");
     const result = await runPlanFrontMatterTransition({
-        projectRoot: cwd,
+        projectRoot: currentManagedRetainedExecution()?.attempt.path || cwd,
         planName,
         operation: "validation_human_review_metadata",
         updates: {

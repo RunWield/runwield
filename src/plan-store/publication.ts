@@ -1,9 +1,26 @@
-import { isHomeProjectOwner, projectStoreLocation } from "../shared/project-identity.ts";
+import { createHash } from "node:crypto";
+import {
+    managedPlanStoreActive,
+    readManagedPublication,
+    freezeManagedPublicationPolicy,
+    sealManagedPublication,
+    settleManagedPublication,
+    assertManagedPublicationOwner,
+    settleManagedInPlace,
+    loadManagedWorkflowPlan,
+    readManagedExecution,
+    managedExecutionRoot,
+} from "./managed.ts";
+import { isHomeProjectOwner, projectStoreLocation, currentHomeProjectOwner } from "../shared/project-identity.ts";
 import type { WorkRecordMnemotecaPort } from "../shared/work-records/mnemoteca-port.ts";
 import { getDeliveryCopyPolicy, shouldAutoGenerateWorkRecordsOnPlanCompletion } from "../shared/settings.js";
 import { preparedPackageRecordCopy, settlePreparedPackageRecord } from "../shared/work-records/package-recording.ts";
 /** Package input and settlement at the existing publication state-machine boundary. */
-import { retainPublishedWorkRecordSource, readPublishedDeliverySources } from "./published-source.ts";
+import {
+    retainPublishedWorkRecordSource,
+    readPublishedDeliverySources,
+    verifyPackageRecordingDelivery,
+} from "./published-source.ts";
 import fs from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { captureForegroundProcess } from "../shared/captured-process.ts";
@@ -23,6 +40,7 @@ import {
     type PackagePublicationReference,
     type PackagePublicationManifest,
     type DeliveryCopy,
+    type ExecutionPublicationPolicy,
 } from "./packages.ts";
 import {
     currentPackageSelection,
@@ -50,9 +68,52 @@ export async function packagePublicationInput(
     root: string,
     reference: PackagePublicationReference,
 ): Promise<PackagePublicationManifest> {
+    if (managedPlanStoreActive()) return await readManagedPublication(root, reference);
+    const homeOwner = currentHomeProjectOwner();
+    if (homeOwner) return await readPlanPackagePublication(homeOwner, reference);
     const inspected = inspectProjectIdentity(root);
     if (inspected.kind !== "existing") throw new Error("Publication owner is unavailable.");
     return await readPlanPackagePublication(inspected.identity, reference);
+}
+
+/** Retain execution repository settings before sealing documents or preparing a Work Record. */
+export async function freezePlanPublicationPolicy(
+    planName: string,
+    attemptId: string,
+    policy: ExecutionPublicationPolicy,
+): Promise<void> {
+    if (managedPlanStoreActive()) return await freezeManagedPublicationPolicy(planName, attemptId, policy);
+    await packageWorkflowLocks([planName], async () => {
+        const selection = currentPackageSelection();
+        if (!selection) throw new Error("Publication policy requires explicit Plan admission.");
+        const plan = await selectedPackage(planName);
+        const attempt = plan.metadata.workflow?.attempt;
+        if (
+            !attempt ||
+            attempt.attemptId !== attemptId ||
+            attempt.repositoryId !== selection.identity.repositoryId ||
+            attempt.personalOwner !== selection.identity.personalOwner.identity
+        )
+            throw new Error("Publication policy belongs to a different execution attempt.");
+        const retained = plan.metadata.workflow?.publicationPolicy;
+        if (retained?.attemptId === attemptId) return;
+        if (
+            plan.metadata.workflow?.publication?.attemptId === attemptId ||
+            plan.metadata.workflow?.recordingPreparation?.attemptId === attemptId
+        )
+            throw new Error("Publication input was already sealed without this execution policy.");
+        if ([policy.plans, policy.workRecords, policy.autoGenerateRecords].some((value) => typeof value !== "boolean"))
+            throw new Error("Publication policy requires explicit execution settings.");
+        await updatePackageWorkflowMetadata(planName, {}, undefined, {
+            ...plan.metadata.workflow,
+            publicationPolicy: {
+                attemptId,
+                plans: policy.plans,
+                workRecords: policy.workRecords,
+                autoGenerateRecords: policy.autoGenerateRecords,
+            },
+        });
+    });
 }
 
 export async function sealPackagePublication(
@@ -62,6 +123,8 @@ export async function sealPackagePublication(
     targetBranch: string,
     preparation = false,
 ) {
+    if (managedPlanStoreActive())
+        return await sealManagedPublication(planName, attemptId, validatedCommit, targetBranch, preparation);
     const selection = currentPackageSelection();
     if (!selection) throw new Error("Package publication requires explicit admission.");
     const catalog = await listPlanPackages(selection.identity, true);
@@ -160,9 +223,13 @@ export async function sealPackagePublication(
                     (await capturePlanPackageInput(selection.identity, fresh.metadata.planId));
                 members.push({ metadata: fresh.metadata, controller: await packageController(fresh), input });
             }
-            const policy = isHomeProjectOwner(selection.identity)
-                ? { plans: false, workRecords: false }
-                : getDeliveryCopyPolicy(selection.identity.checkoutRoot);
+            const frozenPolicy = workflow?.publicationPolicy;
+            if (isHomeProjectOwner(selection.identity) && frozenPolicy?.attemptId !== attemptId)
+                throw new Error("Execution publication settings must be frozen before sealing a home-owned Plan.");
+            const policy =
+                frozenPolicy?.attemptId === attemptId
+                    ? frozenPolicy
+                    : getDeliveryCopyPolicy(projectStoreLocation(selection.identity));
             const planCopies = Boolean(targetBranch) && (selection.deliveryCopies?.plans ?? policy.plans);
             const copies: DeliveryCopy[] = [...(selection.deliveryCopies?.workRecords || [])];
             if (copies.some((copy) => copy.kind !== "work-record"))
@@ -190,9 +257,12 @@ export async function sealPackagePublication(
                     ? {
                           stage: "recording" as const,
                           workRecordCopies: policy.workRecords,
-                          autoGenerateRecords: shouldAutoGenerateWorkRecordsOnPlanCompletion(
-                              projectStoreLocation(selection.identity),
-                          ),
+                          autoGenerateRecords:
+                              frozenPolicy?.attemptId === attemptId
+                                  ? frozenPolicy.autoGenerateRecords
+                                  : shouldAutoGenerateWorkRecordsOnPlanCompletion(
+                                        projectStoreLocation(selection.identity),
+                                    ),
                       }
                     : {}),
                 members,
@@ -271,10 +341,12 @@ export async function packageArtifactEvidence(
     attempt: PackageCandidateEvidence,
     commit: string,
     gitRoot = root,
+    retainedManifest?: PackagePublicationManifest,
 ): Promise<PublicationPhaseEvidence | null> {
     if (!attempt.packageInput) throw new Error("Package publication input is missing.");
-    const manifest = await packagePublicationInput(root, attempt.packageInput);
+    const manifest = retainedManifest ?? (await packagePublicationInput(root, attempt.packageInput));
     if (
+        createHash("sha256").update(JSON.stringify(manifest)).digest("hex") !== attempt.packageInput.digest ||
         manifest.validatedCommit !== attempt.validatedCommit ||
         manifest.targetBranch !== attempt.targetBranch ||
         manifest.attemptId !== attempt.attemptId ||
@@ -431,6 +503,10 @@ async function settlePackageParent(manifest: PackagePublicationManifest, verifie
 
 /** Called only by publication reconciliation after fresh target proof, before registry pruning. */
 export async function settlePackagePublication(root: string, attempt: PublicationAttempt): Promise<void> {
+    if (managedPlanStoreActive()) {
+        if (!attempt.packageInput) throw new Error("Publication requires its frozen owner input.");
+        return await settleManagedPublication(root, attempt.packageInput);
+    }
     const selection = currentPackageSelection();
     if (
         !selection ||
@@ -506,11 +582,12 @@ export async function packageTargetEvidence(
     gitRoot: string,
     attempt: PackageCandidateEvidence,
     commit: string,
+    retainedManifest?: PackagePublicationManifest,
 ): Promise<boolean> {
     const candidate = attempt.artifactCommit || attempt.validatedCommit;
-    if (!(await packageArtifactEvidence(ownerRoot, attempt, candidate, gitRoot))) return false;
+    if (!(await packageArtifactEvidence(ownerRoot, attempt, candidate, gitRoot, retainedManifest))) return false;
     if ((await git(gitRoot, ["merge-base", "--is-ancestor", candidate, commit])).code !== 0) return false;
-    const manifest = await packagePublicationInput(ownerRoot, attempt.packageInput!);
+    const manifest = retainedManifest ?? (await packagePublicationInput(ownerRoot, attempt.packageInput!));
     for (const copy of manifest.copies) {
         const blob = await captureForegroundProcess("git", { cwd: gitRoot, args: ["show", `${commit}:${copy.path}`] });
         if (blob.code !== 0 || decodePackageMarkdown(blob.stdout) !== copy.text) return false;
@@ -519,37 +596,50 @@ export async function packageTargetEvidence(
 }
 
 export async function settlePackageInPlace(planName: string, mnemotecaPort: WorkRecordMnemotecaPort): Promise<void> {
+    if (managedPlanStoreActive()) return await settleManagedInPlace(planName);
     const selected = await selectedPackage(planName);
     const attemptId = selected.metadata.workflow?.attempt?.attemptId;
-    if (!attemptId) throw new Error("In-place completion requires its bound execution attempt.");
-    const source = await sealPackagePublication(planName, attemptId, "", "");
+    const completed = selected.metadata.workflow?.delivery;
+    if (!attemptId && completed?.mode !== "non_git_in_place")
+        throw new Error("In-place completion requires its bound execution attempt.");
+    const source = attemptId ? await sealPackagePublication(planName, attemptId, "", "") : completed!.source;
     const plan = await selectedPackage(planName);
     const controller = await packageController(plan);
     if (controller.deliveryEvidence?.mode !== "non_git_in_place" || controller.executionMode !== "non_git_in_place")
         throw new Error("In-place completion requires explicit non-Git evidence.");
-    const verifiedAt = new Date().toISOString();
+    const verifiedAt =
+        completed?.source.attemptId === source.attemptId ? completed.verifiedAt : new Date().toISOString();
+    if (!attemptId)
+        await verifyPackageRecordingDelivery(projectStoreLocation(currentPackageSelection()!.identity), source);
     await settlePackageParent(
         await readPlanPackagePublication(currentPackageSelection()!.identity, source),
         verifiedAt,
     );
-    await updatePackageWorkflowMetadata(planName, { status: "verified", verifiedAt }, undefined, {
-        ...plan.metadata.workflow,
-        publication: source,
-        attempt: undefined,
-        delivery: {
-            source,
-            validatedCommit: "",
-            publishedCommit: "",
-            targetBranch: "",
-            mode: "non_git_in_place",
-            verifiedAt,
-        },
-    });
-    await settlePreparedPackageRecord(
+    if (attemptId)
+        await updatePackageWorkflowMetadata(
+            planName,
+            { status: "verified", verifiedAt, validationCheckpoint: null },
+            undefined,
+            {
+                ...plan.metadata.workflow,
+                publication: source,
+                attempt: undefined,
+                delivery: {
+                    source,
+                    validatedCommit: "",
+                    publishedCommit: "",
+                    targetBranch: "",
+                    mode: "non_git_in_place",
+                    verifiedAt,
+                },
+            },
+        );
+    const warning = await settlePreparedPackageRecord(
         projectStoreLocation(currentPackageSelection()!.identity),
         await readPlanPackagePublication(currentPackageSelection()!.identity, source),
         mnemotecaPort,
     );
+    if (warning) throw new Error(warning);
     await retainPublishedWorkRecordSource(projectStoreLocation(currentPackageSelection()!.identity), {
         phase: "publication_verified",
         packageInput: source,
@@ -663,8 +753,13 @@ export async function retirePackageCopies(root: string, attempt: PublicationAtte
 }
 
 /** Refuse an inapplicable package reference before publication can change Git. */
-export async function assertPackagePublicationOwner(attempt: PublicationAttempt): Promise<void> {
+export type PublicationOwnerClaim = Pick<
+    PublicationAttempt,
+    "planName" | "planId" | "attemptId" | "packageInput" | "validatedCommit" | "publishedCommit" | "targetBranch"
+>;
+export async function assertPackagePublicationOwner(attempt: PublicationOwnerClaim): Promise<void> {
     if (!attempt.packageInput) return;
+    if (managedPlanStoreActive()) return await assertManagedPublicationOwner(attempt);
     const selected = await selectedPackage(attempt.planName);
     const workflow = selected.metadata.workflow;
     const binding = workflow?.attempt;
@@ -747,10 +842,49 @@ export async function recoverPackageRecordingPreparation(planName: string): Prom
 
 /** Reserve recording evidence for an in-place completion without exposing its attempt metadata. */
 export async function preparePlanInPlacePublication(planName: string): Promise<boolean> {
+    if (managedPlanStoreActive()) {
+        const root = managedExecutionRoot();
+        const plan = await loadManagedWorkflowPlan(planName);
+        const execution = await readManagedExecution(root, plan.attrs.planId!);
+        if (!execution || plan.attrs.executionMode !== "non_git_in_place")
+            throw new Error("In-place preparation requires its reserved non-Git execution.");
+        await freezePlanPublicationPolicy(planName, execution.attemptId, {
+            ...getDeliveryCopyPolicy(root),
+            autoGenerateRecords: shouldAutoGenerateWorkRecordsOnPlanCompletion(root),
+        });
+        await sealPackagePublication(planName, execution.attemptId, "", "", true);
+        return true;
+    }
     if (!currentPackageSelection()) return false;
     const plan = await selectedPackage(planName);
     const attempt = plan.metadata.workflow?.attempt;
     if (!attempt) throw new Error("In-place publication requires a recorded execution attempt.");
+    if (!isHomeProjectOwner(currentPackageSelection()!.identity)) {
+        const root = projectStoreLocation(currentPackageSelection()!.identity);
+        await freezePlanPublicationPolicy(planName, attempt.attemptId, {
+            ...getDeliveryCopyPolicy(root),
+            autoGenerateRecords: shouldAutoGenerateWorkRecordsOnPlanCompletion(root),
+        });
+    }
     await sealPackagePublication(planName, attempt.attemptId, "", "", true);
     return true;
+}
+
+/** Settle recording through the same personal owner that retains the published Plan. */
+export async function settlePlanPublicationRecording(
+    root: string,
+    attempt: PublicationAttempt,
+    mnemotecaPort: WorkRecordMnemotecaPort,
+): Promise<string | undefined> {
+    if (!attempt.packageInput) return undefined;
+    if (managedPlanStoreActive()) {
+        await settleManagedPublication(root, attempt.packageInput);
+        return undefined;
+    }
+    await retainPublishedWorkRecordSource(root, attempt);
+    return await settlePreparedPackageRecord(
+        root,
+        await packagePublicationInput(root, attempt.packageInput),
+        mnemotecaPort,
+    );
 }

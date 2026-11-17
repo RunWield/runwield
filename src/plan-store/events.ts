@@ -1,3 +1,4 @@
+import { managedPlanStoreActive, mutateManagedPlan, readManagedPlan, readManagedExecution } from "./managed.ts";
 import { currentHomeProjectOwner } from "../shared/project-identity.ts";
 import { packageWorkflowLocks } from "./workflows.ts";
 /** Owner-private lifecycle persistence. Event policy remains in plan-lifecycle.js. */
@@ -163,6 +164,162 @@ async function advanceParentEpicWhenAllChildrenVerified({
  * @param {import("./workflows.ts").PackageWorkflowSelection} [opts.packageSelection]
  * @returns {Promise<import('./index.ts').PlanFrontMatter>}
  */
+async function packageEventWorkflow(planName: string, event: PlanEvent) {
+    const selected = await selectedPackage(planName);
+    const workflow = { ...selected.metadata.workflow };
+    if (event === "readiness_passed" || event === "execution_started") {
+        const input = event === "readiness_passed" ? workflow.review : workflow.readiness;
+        if (!input) throw new Error("Current package review/readiness evidence is required.");
+        await assertPackageWorkflowInput(planName, input);
+    }
+    if (event === "hold_reset_to_draft") {
+        workflow.review = undefined;
+        workflow.readiness = undefined;
+    }
+    if (event === "implementation_finished" && workflow.attempt)
+        await assertPackageWorkflowInput(planName, workflow.readiness || workflow.attempt.input);
+    if (event === "review_approved") workflow.review = await capturePackageWorkflowInput(planName);
+    if (event === "readiness_passed") workflow.readiness = await capturePackageWorkflowInput(planName);
+    return workflow;
+}
+
+export const MANAGED_LIFECYCLE_DECISIONS = [
+    "manual_status_change",
+    "manual_closed_without_verification",
+    "manual_user_verified",
+    "plan_held",
+    "hold_resumed",
+    "validation_invalidated",
+    "recovery_continue",
+    "review_reopened",
+    "epic_done_enough",
+    "epic_children_delivered",
+    "epic_integration_passed",
+    "epic_integration_failed",
+    "epic_integration_stale",
+] as const;
+export interface ManagedLifecycleDecision {
+    event: (typeof MANAGED_LIFECYCLE_DECISIONS)[number];
+    details: Pick<
+        PlanEventDetails,
+        | "manualTargetStatus"
+        | "holdReason"
+        | "closedWithoutVerificationReason"
+        | "closedWithoutVerificationAt"
+        | "userVerificationNote"
+        | "holdStalenessBaseline"
+        | "heldFromStatus"
+        | "epicDoneEnoughSummary"
+        | "epicDeliveryTargetBranch"
+        | "integrationCommit"
+        | "integrationReport"
+        | "failureReason"
+    >;
+}
+export function managedLifecycleDetails(details: PlanEventDetails): ManagedLifecycleDecision["details"] {
+    const {
+        manualTargetStatus,
+        holdReason,
+        closedWithoutVerificationReason,
+        closedWithoutVerificationAt,
+        userVerificationNote,
+        holdStalenessBaseline,
+        heldFromStatus,
+        epicDoneEnoughSummary,
+        epicDeliveryTargetBranch,
+        integrationCommit,
+        integrationReport,
+        failureReason,
+    } = details;
+    return {
+        manualTargetStatus,
+        holdReason,
+        closedWithoutVerificationReason,
+        closedWithoutVerificationAt,
+        userVerificationNote,
+        holdStalenessBaseline,
+        heldFromStatus,
+        epicDoneEnoughSummary,
+        epicDeliveryTargetBranch,
+        integrationCommit,
+        integrationReport,
+        failureReason,
+    };
+}
+export function isManagedLifecycleDecision(event: string): event is ManagedLifecycleDecision["event"] {
+    return MANAGED_LIFECYCLE_DECISIONS.some((allowed) => allowed === event);
+}
+export interface ManagedExecutionCheckpoint {
+    event:
+        | "validation_checkpoint_saved"
+        | "execution_started"
+        | "execution_failed"
+        | "implementation_finished"
+        | "mechanical_validation_failed"
+        | "mechanical_validation_passed"
+        | "semantic_review_feedback"
+        | "semantic_review_passed"
+        | "validation_passed"
+        | "validation_failed";
+    details: Pick<
+        PlanEventDetails,
+        | "failureReason"
+        | "executionReport"
+        | "executionBaselineTree"
+        | "validationCiAttempts"
+        | "validationSemanticRounds"
+        | "mechanicalFailureKind"
+        | "validationCheckpoint"
+        | "humanReviewMode"
+        | "humanReviewDecision"
+        | "humanReviewedAt"
+    >;
+}
+/** Checkpoints retain reserved input; Git publication and non-Git settlement prove completion separately. */
+export async function recordManagedExecutionCheckpoint(
+    cwd: string,
+    planName: string,
+    attemptId: string,
+    expectedRevision: string,
+    checkpoint: ManagedExecutionCheckpoint,
+) {
+    if (!currentHomeProjectOwner()) throw new Error("Managed checkpoint requires its personal owner.");
+    return await packageWorkflowLocks([planName], async () => {
+        const selected = await selectedPackage(planName);
+        if (selected.metadata.workflow?.attempt?.attemptId !== attemptId)
+            throw new Error("Execution checkpoint belongs to another attempt.");
+        if (
+            checkpoint.event === "validation_passed" &&
+            selected.metadata.workflow.attempt.executionMode !== "non_git_in_place"
+        )
+            throw new Error("Managed in-place completion requires its reserved non-Git attempt.");
+        const before = await loadPlan(cwd, planName);
+        if (!before || before.revision !== expectedRevision) throw new Error("Plan revision changed.");
+        if (checkpoint.event === "validation_checkpoint_saved")
+            return await updatePackageWorkflowMetadata(
+                planName,
+                { validationCheckpoint: checkpoint.details.validationCheckpoint },
+                expectedRevision,
+            );
+        const workflow = await packageEventWorkflow(planName, checkpoint.event);
+        const updates = buildPlanEventUpdates(checkpoint.event, before.attrs.status, {
+            ...checkpoint.details,
+            worktreeId: attemptId,
+            worktreeBaseBranch: before.attrs.deliveryBranch || before.attrs.targetBranch,
+            nonGitInPlace: selected.metadata.workflow?.attempt?.executionMode === "non_git_in_place",
+            ...(checkpoint.event === "validation_passed"
+                ? {
+                      executionMode: "non_git_in_place" as const,
+                      deliveryEvidence: { version: 1 as const, mode: "non_git_in_place" as const },
+                      pendingPublication: true,
+                  }
+                : {}),
+            triageMeta: before.attrs,
+        });
+        return await updatePackageWorkflowMetadata(planName, updates, expectedRevision, workflow);
+    });
+}
+
 export async function recordPlanEvent({
     cwd,
     planName,
@@ -172,6 +329,100 @@ export async function recordPlanEvent({
     expectedRevision,
     packageSelection,
 }: RecordPlanEventRequest): Promise<PlanFrontMatter> {
+    if (managedPlanStoreActive()) {
+        if (
+            [
+                "execution_started",
+                "execution_failed",
+                "implementation_finished",
+                "mechanical_validation_failed",
+                "mechanical_validation_passed",
+                "semantic_review_feedback",
+                "semantic_review_passed",
+                "validation_passed",
+                "validation_failed",
+            ].includes(event)
+        ) {
+            const before = await readManagedPlan(cwd, planName);
+            if (!before?.attrs.planId) throw new Error("Managed Plan is unavailable.");
+            const execution = await readManagedExecution(cwd, before.attrs.planId);
+            if (!execution || (details.worktreeId && details.worktreeId !== execution.attemptId))
+                throw new Error("Execution checkpoint belongs to another attempt.");
+            const {
+                failureReason,
+                executionReport,
+                executionBaselineTree,
+                validationCiAttempts,
+                validationSemanticRounds,
+                mechanicalFailureKind,
+                validationCheckpoint,
+                humanReviewMode,
+                humanReviewDecision,
+                humanReviewedAt,
+            } = details;
+            await mutateManagedPlan(cwd, {
+                kind: "execution-checkpoint",
+                operationId: crypto.randomUUID(),
+                planId: before.attrs.planId,
+                expectedRevision: expectedRevision || before.revision,
+                attemptId: execution.attemptId,
+                checkpoint: {
+                    event: event as ManagedExecutionCheckpoint["event"],
+                    details: {
+                        failureReason,
+                        executionReport,
+                        executionBaselineTree,
+                        validationCiAttempts,
+                        validationSemanticRounds,
+                        mechanicalFailureKind,
+                        validationCheckpoint,
+                        humanReviewMode,
+                        humanReviewDecision,
+                        humanReviewedAt,
+                    },
+                },
+            });
+            const after = await readManagedPlan(cwd, before.attrs.planId);
+            if (!after) throw new Error("Managed Plan is unavailable after its checkpoint.");
+            return after.attrs;
+        }
+        if (isManagedLifecycleDecision(event)) {
+            const before = await readManagedPlan(cwd, planName);
+            if (!before?.attrs.planId || (currentStatus && currentStatus !== before.attrs.status))
+                throw new Error("Plan status changed.");
+            await mutateManagedPlan(cwd, {
+                kind: "lifecycle-decision",
+                operationId: crypto.randomUUID(),
+                planId: before.attrs.planId,
+                expectedRevision: expectedRevision || before.revision,
+                decision: { event, details: managedLifecycleDetails(details) },
+            });
+            const after = await readManagedPlan(cwd, before.attrs.planId);
+            if (!after) throw new Error("Lifecycle decision Plan is unavailable.");
+            return after.attrs;
+        }
+        if (
+            event !== "review_approved" &&
+            event !== "review_feedback" &&
+            event !== "hold_reset_to_draft" &&
+            event !== "readiness_passed" &&
+            event !== "epic_readiness_passed"
+        )
+            throw new Error("Managed lifecycle transition requires matched execution evidence.");
+        const before = await readManagedPlan(cwd, planName);
+        if (!before?.attrs.planId) throw new Error("Managed Plan is unavailable.");
+        if (currentStatus && currentStatus !== before.attrs.status) throw new Error("Plan status changed.");
+        await mutateManagedPlan(cwd, {
+            kind: "record-event",
+            event,
+            operationId: crypto.randomUUID(),
+            planId: before.attrs.planId,
+            expectedRevision: expectedRevision || before.revision,
+        });
+        const after = await readManagedPlan(cwd, before.attrs.planId);
+        if (!after) throw new Error("Managed Plan is unavailable after its event.");
+        return after.attrs;
+    }
     if (!packageSelection && !currentPackageSelection()) packageSelection = await selectPlanAccess(cwd, planName);
     if (packageSelection)
         return await withPlanAccess(
@@ -181,7 +432,16 @@ export async function recordPlanEvent({
             planName,
         );
     if (currentHomeProjectOwner()) {
-        if (!["review_approved", "review_feedback", "hold_reset_to_draft"].includes(event))
+        if (
+            !isManagedLifecycleDecision(event) &&
+            ![
+                "review_approved",
+                "review_feedback",
+                "hold_reset_to_draft",
+                "readiness_passed",
+                "epic_readiness_passed",
+            ].includes(event)
+        )
             throw new Error("This lifecycle event requires execution-host evidence.");
         return await packageWorkflowLocks([planName], async () => {
             const before = await loadPlan(cwd, planName);
@@ -189,13 +449,7 @@ export async function recordPlanEvent({
             if (expectedRevision && before.revision !== expectedRevision) throw new Error("Plan revision changed.");
             if (currentStatus && before.attrs.status !== currentStatus) throw new Error("Plan status changed.");
             const updates = buildPlanEventUpdates(event, before.attrs.status, { ...details, triageMeta: before.attrs });
-            const selected = await selectedPackage(planName);
-            const workflow = { ...selected.metadata.workflow };
-            if (event === "review_approved") workflow.review = await capturePackageWorkflowInput(planName);
-            if (event === "hold_reset_to_draft") {
-                workflow.review = undefined;
-                workflow.readiness = undefined;
-            }
+            const workflow = await packageEventWorkflow(planName, event);
             return await updatePackageWorkflowMetadata(planName, updates, before.revision, workflow);
         });
     }
@@ -246,21 +500,7 @@ export async function recordPlanEvent({
         };
         const updates = buildPlanEventUpdates(event, canonicalStatus, canonicalDetails);
         if (currentPackageSelection()) {
-            const selected = await selectedPackage(planName);
-            const workflow = { ...selected.metadata.workflow };
-            if (event === "readiness_passed" || event === "execution_started") {
-                const input = event === "readiness_passed" ? workflow.review : workflow.readiness;
-                if (!input) throw new Error("Current package review/readiness evidence is required.");
-                await assertPackageWorkflowInput(planName, input);
-            }
-            if (event === "hold_reset_to_draft") {
-                workflow.review = undefined;
-                workflow.readiness = undefined;
-            }
-            if (event === "implementation_finished" && workflow.attempt)
-                await assertPackageWorkflowInput(planName, workflow.readiness || workflow.attempt.input);
-            if (event === "review_approved") workflow.review = await capturePackageWorkflowInput(planName);
-            if (event === "readiness_passed") workflow.readiness = await capturePackageWorkflowInput(planName);
+            const workflow = await packageEventWorkflow(planName, event);
             const attrs = await updatePackageWorkflowMetadata(planName, updates, beforePlan.revision, workflow);
             return { attrs, details: canonicalDetails };
         }

@@ -104,11 +104,20 @@ export async function parseRemoteInteractiveConfig(header: string): Promise<Remo
     return config;
 }
 
+/** Activate the verified connection before loading ordinary Plan consumers. */
+export async function activateRemoteProjectOwner(
+    config: Pick<RemoteInteractiveConfig, "cwd" | "resources" | "connection">,
+): Promise<() => void> {
+    const { configureRemotePersonalResources } = await import("./personal-resources.ts");
+    configureRemotePersonalResources(config.resources);
+    const { configureManagedPlanStore } = await import("../../plan-store/index.ts");
+    return configureManagedPlanStore(config.cwd, config.connection);
+}
+
 /** Start the normal remote TUI, then stay alive until its process lifetime ends. */
 export async function runRemoteView(): Promise<void> {
     const config = await parseRemoteInteractiveConfig(await readPrivateHeader());
-    const { configureRemotePersonalResources } = await import("./personal-resources.ts");
-    configureRemotePersonalResources(config.resources);
+    const clearPlanStore = await activateRemoteProjectOwner(config);
     const { configureRemoteSettingsConnection } = await import("./settings-bridge.ts");
     configureRemoteSettingsConnection(config.connection);
     const { configureRemoteMcpConnection } = await import("./mcp-bridge.ts");
@@ -163,6 +172,7 @@ export async function runRemoteView(): Promise<void> {
                 clearGuideRunner?.();
                 clearReviewHost();
                 clearMemory();
+                clearPlanStore();
                 clearModels?.();
                 stopTUI?.();
             } finally {
@@ -171,4 +181,230 @@ export async function runRemoteView(): Promise<void> {
             }
         }
     }
+}
+
+/** Identity admission runs only for a deliberate Project action from the authenticated laptop launcher. */
+export async function runRemoteProjectAdmission(): Promise<void> {
+    const input: { cwd: string; ownerIdentity: string; admit: boolean } = JSON.parse(await readPrivateHeader());
+    if (
+        !input ||
+        typeof input.admit !== "boolean" ||
+        typeof input.cwd !== "string" ||
+        !input.cwd.startsWith("/") ||
+        input.cwd.includes("\0") ||
+        typeof input.ownerIdentity !== "string" ||
+        !input.ownerIdentity ||
+        input.ownerIdentity.includes("\0")
+    )
+        throw new Error("Invalid managed Project admission.");
+    const [{ admitProjectIdentity, inspectProjectIdentity }, { getHomeDir }] = await Promise.all([
+        import("../project-identity.ts"),
+        import("../../constants.js"),
+    ]);
+    const options = {
+        context: {
+            executionAccountHome: getHomeDir(),
+            personalOwner: { kind: "managed-remote" as const, identity: input.ownerIdentity },
+        },
+    };
+    const result = input.admit
+        ? await admitProjectIdentity(input.cwd, options)
+        : inspectProjectIdentity(input.cwd, options);
+    if (!input.admit && (result.kind === "fresh" || result.kind === "pending")) {
+        console.log("null");
+        return;
+    }
+    if (result.kind !== "existing") throw new Error("Managed Project identity admission is unavailable.");
+    const { resolvePrimaryCheckoutRoot } = await import("../primary-checkout.ts");
+    console.log(
+        JSON.stringify({
+            ...result.identity,
+            repositoryRoot: resolvePrimaryCheckoutRoot(result.identity.checkoutRoot),
+        }),
+    );
+}
+
+/** Bulk private probes have a bounded single request and no subsequent interactive stream. */
+async function readPrivateProbeRequest(): Promise<string> {
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    while (size <= 8 * 1024 * 1024) {
+        const buffer = new Uint8Array(64 * 1024);
+        const count = await readStreamInto(process.stdin, buffer);
+        if (count === null) throw new Error("Private probe request is incomplete.");
+        const bytes = buffer.subarray(0, count);
+        const newline = bytes.indexOf(10);
+        const part = newline < 0 ? bytes : bytes.subarray(0, newline);
+        size += part.byteLength;
+        if (size > 8 * 1024 * 1024) throw new Error("Private probe request exceeds its bound.");
+        chunks.push(part);
+        if (newline >= 0) {
+            if (newline !== count - 1) throw new Error("Private probe request has trailing bytes.");
+            const combined = new Uint8Array(size);
+            let offset = 0;
+            for (const chunk of chunks) {
+                combined.set(chunk, offset);
+                offset += chunk.byteLength;
+            }
+            return new TextDecoder("utf-8", { fatal: true }).decode(combined);
+        }
+    }
+    throw new Error("Private probe request exceeds its bound.");
+}
+
+/** Trusted launcher probes current Git; HTTP clients cannot supply a publication verdict. */
+export async function runRemotePublicationProof(): Promise<void> {
+    const input: {
+        cwd: string;
+        ownerIdentity: string;
+        manifest?: import("../../plan-store/index.ts").PackagePublicationManifest;
+        execution?: import("../../plan-store/index.ts").RetainedManagedExecution;
+        family?: import("../../plan-store/index.ts").RetainedFamilyIdentity;
+        recovery?: import("../workflow/execution-recovery-proof.ts").ExecutionRecoveryRequest;
+        importSource?: import("../../plan-store/index.ts").ManagedImportPreparationRequest;
+        nonGit?: import("../workflow/execution-recovery-proof.ts").ManagedExecutionIdentity;
+        candidateOnly?: boolean;
+        requireCleanup?: boolean;
+        recordingSource?: boolean;
+        retained?: import("../workflow/publication-attempt.ts").PublicationAttempt;
+    } = JSON.parse(await readPrivateProbeRequest());
+    const { getHomeDir } = await import("../../constants.js");
+    const { inspectProjectIdentity, withProjectLaunchContext } = await import("../project-identity.ts");
+    if (
+        !input ||
+        typeof input.cwd !== "string" ||
+        !input.cwd.startsWith("/") ||
+        typeof input.ownerIdentity !== "string" ||
+        !input.ownerIdentity
+    )
+        throw new Error("Invalid managed publication probe.");
+    const context = {
+        executionAccountHome: getHomeDir(),
+        personalOwner: { kind: "managed-remote" as const, identity: input.ownerIdentity },
+    };
+    await withProjectLaunchContext(context, async () => {
+        const identity = inspectProjectIdentity(input.cwd);
+        if (input.nonGit) {
+            if (
+                input.manifest ||
+                input.execution ||
+                input.recovery ||
+                input.importSource ||
+                input.nonGit.personalOwner !== input.ownerIdentity
+            )
+                throw new Error("Mixed non-Git recovery request.");
+            await (
+                await import("../workflow/execution-recovery-proof.ts")
+            ).inspectNonGitExecution(input.cwd, input.nonGit);
+            console.log(JSON.stringify({ identity: input.nonGit, executionMode: "non_git_in_place" }));
+            return;
+        }
+        if (input.importSource) {
+            if (
+                input.manifest ||
+                input.execution ||
+                input.recovery ||
+                identity.kind !== "existing" ||
+                input.importSource.personalOwner !== input.ownerIdentity
+            )
+                throw new Error("Invalid import source proof request.");
+            console.log(
+                JSON.stringify(
+                    await (
+                        await import("../../plan-store/index.ts")
+                    ).inspectManagedImportSource(identity.identity, input.importSource),
+                ),
+            );
+            return;
+        }
+        if (input.recovery) {
+            if (input.manifest || input.execution || input.recovery.personalOwner !== input.ownerIdentity)
+                throw new Error("Mixed execution recovery proof request.");
+            const evidence = await (
+                await import("../workflow/execution-recovery-proof.ts")
+            ).inspectExecutionRecoveryEvidence(input.cwd, input.recovery);
+            if (input.family) {
+                const entry = await (
+                    await import("../worktree-registry.js")
+                ).findById(input.cwd, input.recovery.attemptId);
+                if (!entry) throw new Error("Original family execution is unavailable.");
+                console.log(
+                    JSON.stringify({
+                        request: input.recovery,
+                        member: await (
+                            await import("../../plan-store/index.ts")
+                        ).inspectRetainedFamilyMember(entry, input.family),
+                    }),
+                );
+            } else console.log(JSON.stringify(evidence));
+            return;
+        }
+        const expected = input.manifest || input.execution;
+        if (
+            !expected ||
+            Boolean(input.manifest) === Boolean(input.execution) ||
+            identity.kind !== "existing" ||
+            expected.projectId !== identity.identity.projectId ||
+            expected.repositoryId !== identity.identity.repositoryId ||
+            expected.personalOwner !== input.ownerIdentity
+        )
+            throw new Error("Publication probe owner changed.");
+        const { proveManagedPublication, proveRetainedManagedPublication } =
+            await import("../workflow/publication-machine.ts");
+        const proof = input.manifest
+            ? await proveManagedPublication(input.cwd, input.manifest, input.retained)
+            : await proveRetainedManagedPublication(
+                  input.cwd,
+                  input.execution!,
+                  input.retained,
+                  input.candidateOnly === true,
+                  input.requireCleanup === true,
+              );
+        if (input.recordingSource && input.execution) {
+            const { readPublishedDeliverySources } = await import("../../plan-store/index.ts");
+            const sources = await readPublishedDeliverySources(input.cwd, {
+                ...proof,
+                artifactCommit: input.candidateOnly ? proof.validatedCommit : proof.publishedCommit,
+            });
+            const recordPath = sources.workRecordOwner?.attrs.workRecord?.path;
+            const text =
+                !input.candidateOnly && recordPath
+                    ? await (
+                          await import("../../plan-store/index.ts")
+                      ).readPublishedRecordMarkdown(input.cwd, proof, recordPath)
+                    : null;
+            const recordCopy = text && recordPath ? { kind: "work-record", path: recordPath, text } : null;
+            console.log(JSON.stringify({ proof, sources, recordCopy }));
+        } else console.log(JSON.stringify(proof));
+    });
+}
+
+/** Personal runtime moves only through the verified launcher's staged transfer protocol. */
+export async function runRemoteRuntimeTransfer(): Promise<void> {
+    const input: { cwd: string; ownerIdentity: string; retire?: string } = JSON.parse(await readPrivateHeader());
+    if (
+        !input ||
+        typeof input.cwd !== "string" ||
+        !input.cwd.startsWith("/") ||
+        typeof input.ownerIdentity !== "string" ||
+        !input.ownerIdentity ||
+        (input.retire !== undefined && !/^[a-f0-9]{64}$/.test(input.retire))
+    )
+        throw new Error("Invalid managed runtime transfer request.");
+    const { getHomeDir } = await import("../../constants.js");
+    const { inspectProjectIdentity, withProjectLaunchContext } = await import("../project-identity.ts");
+    const context = {
+        executionAccountHome: getHomeDir(),
+        personalOwner: { kind: "managed-remote" as const, identity: input.ownerIdentity },
+    };
+    await withProjectLaunchContext(context, async () => {
+        const inspected = inspectProjectIdentity(input.cwd);
+        if (inspected.kind !== "existing") throw new Error("Runtime transfer requires verified Project identity.");
+        const { stageManagedPersonalRuntime, retireManagedPersonalRuntime } =
+            await import("../project-runtime-managed.ts");
+        if (input.retire) {
+            await retireManagedPersonalRuntime(inspected.identity, input.retire);
+            console.log(JSON.stringify({ retired: input.retire }));
+        } else console.log(JSON.stringify(await stageManagedPersonalRuntime(inspected.identity)));
+    });
 }

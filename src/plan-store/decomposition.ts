@@ -1,8 +1,8 @@
+import { managedPlanStoreActive } from "./managed.ts";
+import { loadPlan, findPlansByParent } from "./queries.ts";
+import { saveChildFeaturePlans } from "./children.ts";
 import { rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import {
-    loadPlan,
-    findPlansByParent,
-    saveChildFeaturePlans,
     resolveChildPlanNames,
     withPlanCatalogLock,
     writePlanMarkdownWithRevision,
@@ -209,7 +209,7 @@ export async function finalizePlanDecomposition(
             alreadyReady: before?.attrs.status === "ready_for_work",
         };
     };
-    return localOwner.kind === "local" || localOwner.kind === "empty"
+    return managedPlanStoreActive() || localOwner.kind === "local" || localOwner.kind === "empty"
         ? await withLocalProjectAction(cwd, canonicalFinalize)
         : await withPlanCatalogLock(cwd, async () => {
               const childDescriptors = descriptors;

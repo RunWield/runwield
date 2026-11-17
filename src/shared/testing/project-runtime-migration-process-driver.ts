@@ -1,4 +1,4 @@
-import { configureRemotePersonalResources } from "../remote/personal-resources.ts";
+import { admitProjectIdentity } from "../project-identity.ts";
 import fsPromises from "node:fs/promises";
 import { type NativeFileLock, openNativeFileLock } from "../native-file-lock.ts";
 import { lstat as fsLstat, mkdir as fsMkdir, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
@@ -42,18 +42,13 @@ type MigrationExitEffect =
     | "recovery-retirement";
 
 const [command, checkoutRoot, extra] = process.argv.slice(2);
-// This driver exercises the versioned managed-remote checkout migration.
-configureRemotePersonalResources({
-    globalRoot: checkoutRoot,
-    personalOwner: { kind: "managed-remote", identity: "fixture-laptop-account" },
-});
-
 if (command === "migrate") {
     const result = await migrateLegacyProjectRuntimeState(checkoutRoot);
     console.log(JSON.stringify(result));
 } else if (command === "inspect") {
     console.log(JSON.stringify(await inspectProjectRuntimeReadAccess(checkoutRoot)));
 } else if (command === "migrate-exit-after-effect") {
+    await admitProjectIdentity(checkoutRoot);
     installExitAfterEffect(checkoutRoot, parseMigrationExitEffect(extra));
     const result = await migrateLegacyProjectRuntimeState(checkoutRoot);
     console.log(JSON.stringify(result));
@@ -197,7 +192,7 @@ function installExitAfterEffect(checkoutRoot: string, effect: MigrationExitEffec
         configurable: true,
         value: async (from: string | URL, to: string | URL): Promise<void> => {
             await originalRename(from, to);
-            if (typeof from === "string" && typeof to === "string" && shouldExitAfterRename(effect, from, to, layout)) {
+            if (typeof from === "string" && typeof to === "string" && shouldExitAfterRename(effect, to, layout)) {
                 process.exit(86);
             }
         },
@@ -207,7 +202,7 @@ function installExitAfterEffect(checkoutRoot: string, effect: MigrationExitEffec
         configurable: true,
         value: async (from: string | URL, to: string | URL): Promise<void> => {
             await originalLink(from, to);
-            if (typeof from === "string" && typeof to === "string" && shouldExitAfterRename(effect, from, to, layout)) {
+            if (typeof from === "string" && typeof to === "string" && shouldExitAfterRename(effect, to, layout)) {
                 process.exit(86);
             }
         },
@@ -225,7 +220,6 @@ function installExitAfterEffect(checkoutRoot: string, effect: MigrationExitEffec
 
 function shouldExitAfterRename(
     effect: MigrationExitEffect,
-    from: string,
     to: string,
     layout: ReturnType<typeof resolveProjectRuntimeLayout>,
 ): boolean {
@@ -235,13 +229,13 @@ function shouldExitAfterRename(
     if (effect === "recovery-registry") return to === layout.primary.worktreeRegistryPath;
     if (effect === "journal-commit") return to === layout.primary.layoutMigrationJournalPath;
     if (effect === "primary-rename") {
-        return from === join(getRunWieldRuntimeDir(layout.primary.checkoutRoot), "controller");
+        return to === join(layout.primary.controllerPlansDir, "plan.json");
     }
     if (effect === "secret-rename") {
-        return from.endsWith("collaboration-secrets.json") && to === layout.primary.projectSecretStorePath;
+        return to === layout.primary.projectSecretStorePath;
     }
     if (effect === "selected-rename") {
-        return from === join(getRunWieldRuntimeDir(layout.selected.checkoutRoot), "plan-transitions");
+        return to === join(layout.selected.transitionJournalsDir, "selected.json");
     }
     return effect === "marker-replacement" && to === layout.primary.layoutMarkerPath;
 }

@@ -15,7 +15,7 @@ Stable Project identity is separate from repository and checkout identity. Linke
 resources; explicitly linked clones share Project identity while retaining separate Git refs and execution attempts.
 Ordinary local and manual-SSH selection uses personal home Plan packages and Work Records. Legacy checkout documents
 are read only for explicit import and continuation of a recorded pre-cutover attempt until proven settlement. Managed
-remote launch ownership remains on its existing contract.
+remote launch selects the laptop personal owner and remote-account execution runtime under ADR-018.
 
 Passive inspection must not admit identity, migrate files, probe writer locks, or reconcile old data. Deliberate
 entry owns those effects. An interrupted transfer must preserve unfinished Git work and the publication proof defined
@@ -37,10 +37,11 @@ Local execution and manual SSH execution use the executing account's home Projec
 ```
 
 The owner segment is a fixed-length digest of explicit owner identity. Paths do not infer ownership from SSH variables,
-a mount name, or the current directory. An explicit managed-remote launch retains its versioned checkout runtime under
-[ADR-018](018-remote-ssh-local-personal-authority.md); ordinary adoption cannot claim its laptop-owned state. The broader
-managed transport and Plan Store proposal remains in
-[ADR-0020](0020-home-project-state-and-launch-mode-ownership.md).
+a mount name, or the current directory. Managed remote launch uses this home execution layout while transferring
+eligible personal runtime to the initiating laptop under [ADR-018](018-remote-ssh-local-personal-authority.md).
+Ordinary adoption cannot claim another personal owner's state. Cross-host transfer stages exact bytes, verifies
+permissions and original attempt identity, then retires only matching sources. Runtime adoption does not import
+repository documents. History and retention remain in [ADR-0020](0020-home-project-state-and-launch-mode-ownership.md).
 
 The shared layout owner resolves these paths from stable identity. Resolving a path grants no read or write authority.
 Registry, controller, sharing, indexing, transition, and diagnostic callers use the shared boundary. Canonical Plans and Work Records use the personal Project store described in

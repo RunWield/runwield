@@ -308,6 +308,7 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
             },
             memoryCollection,
             `http://127.0.0.1:${reviewPort}`,
+            { host, cwd: target.cwd, remoteHome: target.home, executable },
         );
     } catch (error) {
         await sftp.close();

@@ -1,4 +1,10 @@
-import { commitOperationEffect, recoverOperationEffect } from "./operation-receipts.ts";
+import {
+    commitOperationEffect,
+    recoverOperationEffect,
+    captureBatchOperation,
+    settleBatchOperation,
+    type BatchOperationIntent,
+} from "./operation-receipts.ts";
 import { requestWorkspaceSearchRefresh } from "../shared/workspace-search-refresh.ts";
 import { resolvePrimaryCheckoutRoot } from "../shared/primary-checkout.ts";
 import { parseWorkRecordMarkdown } from "../shared/work-records/markdown.js";
@@ -155,6 +161,7 @@ export interface LegacyPackageSettlement {
     commit?: string;
 }
 export interface PackageGeneratedArtifact {
+    operationId?: string;
     attemptId: string;
     planId: string;
     name: "manual-qa.md";
@@ -162,7 +169,16 @@ export interface PackageGeneratedArtifact {
     text: string;
     hash: string;
 }
+export interface ExecutionPublicationPolicy {
+    plans: boolean;
+    workRecords: boolean;
+    autoGenerateRecords: boolean;
+}
+export interface FrozenExecutionPublicationPolicy extends ExecutionPublicationPolicy {
+    attemptId: string;
+}
 export interface PackageWorkflowEvidence {
+    publicationPolicy?: FrozenExecutionPublicationPolicy;
     generatedArtifact?: PackageGeneratedArtifact;
     legacySettlement?: LegacyPackageSettlement;
     workRecord?: import("../plan-store.js").PlanFrontMatter["workRecord"];
@@ -333,8 +349,10 @@ interface ImportBatch {
     members: PackageSelector[];
     record?: ImportRecord;
     authoring?: PlanPackageBatchWrite[];
+    operation?: BatchOperationIntent;
 }
 interface PackageIntent {
+    receipt?: BatchOperationIntent;
     version: 1;
     operation: "create" | "rename";
     planId: string;
@@ -654,6 +672,7 @@ function metadataFrom(value: PlanPackageMetadata): PlanPackageMetadata {
         const workflow = fields(data.workflow, [
             "legacySettlement",
             "generatedArtifact",
+            "publicationPolicy",
             "review",
             "readiness",
             "attempt",
@@ -664,8 +683,23 @@ function metadataFrom(value: PlanPackageMetadata): PlanPackageMetadata {
             "delivery",
             "workRecord",
         ]);
+        if (workflow.publicationPolicy !== undefined) {
+            const policy = fields(workflow.publicationPolicy, [
+                "attemptId",
+                "plans",
+                "workRecords",
+                "autoGenerateRecords",
+            ]);
+            if (
+                typeof policy.attemptId !== "string" ||
+                !policy.attemptId ||
+                ["plans", "workRecords", "autoGenerateRecords"].some((key) => typeof policy[key] !== "boolean")
+            )
+                fail("malformed_metadata", "Invalid frozen execution publication policy.");
+        }
         if (workflow.generatedArtifact !== undefined) {
             const artifact = fields(workflow.generatedArtifact, [
+                "operationId",
                 "attemptId",
                 "planId",
                 "name",
@@ -675,6 +709,8 @@ function metadataFrom(value: PlanPackageMetadata): PlanPackageMetadata {
             ]);
             if (
                 artifact.name !== "manual-qa.md" ||
+                (artifact.operationId !== undefined &&
+                    (typeof artifact.operationId !== "string" || !/^[a-f0-9-]{36}$/.test(artifact.operationId))) ||
                 ["attemptId", "planId", "text", "hash"].some(
                     (key) => typeof artifact[key] !== "string" || !artifact[key],
                 ) ||
@@ -1112,6 +1148,13 @@ async function recover(paths: PackageLayout): Promise<void> {
             await fs.rm(old, { force: true });
             syncParentDirectory(old);
         }
+        if (intent.receipt) {
+            if (intent.receipt.planId !== intent.planId)
+                fail("pending_recovery", "Package operation identity changed.");
+            const committed = await inspectAt(paths, intent.to);
+            if (committed.kind !== "loaded") fail(committed.kind, committed.message);
+            settleBatchOperation(paths.internal, intent.receipt, packageWorkflowRevision(committed));
+        }
         await fs.rm(paths.intent);
         syncParentDirectory(paths.intent);
     }
@@ -1365,7 +1408,12 @@ export async function updatePlanPackageMetadata(
                 await fs.readFile(path, "utf8"),
                 `${JSON.stringify(next, null, 2)}\n`,
                 packageWorkflowRevision({ ...current, metadata: next }),
-                next.workflow?.publication,
+                JSON.stringify(next.workflow?.publication) !== JSON.stringify(current.metadata.workflow?.publication)
+                    ? next.workflow?.publication
+                    : JSON.stringify(next.workflow?.recordingPreparation) !==
+                        JSON.stringify(current.metadata.workflow?.recordingPreparation)
+                      ? next.workflow?.recordingPreparation
+                      : undefined,
                 next.workflow?.workRecord?.recordId,
             )
         )
@@ -1427,6 +1475,7 @@ export async function renamePlanPackage(
         writeJsonAtomically(paths.intent, {
             version: 1,
             operation: "rename",
+            receipt: captureBatchOperation(),
             planId,
             from: current.metadata.name,
             to: name,
@@ -1459,7 +1508,16 @@ export async function archivePlanPackage(
             },
         };
         metadataFrom(metadata);
-        writeJsonAtomically(join(current.path, "plan.wld.json"), metadata);
+        const path = join(current.path, "plan.wld.json");
+        if (
+            !commitOperationEffect(
+                path,
+                await fs.readFile(path, "utf8"),
+                `${JSON.stringify(metadata, null, 2)}\n`,
+                packageWorkflowRevision({ ...current, metadata }),
+            )
+        )
+            writeJsonAtomically(path, metadata);
         return metadata;
     });
 }
@@ -1482,7 +1540,16 @@ export async function restorePlanPackage(
             },
         };
         metadataFrom(metadata);
-        writeJsonAtomically(join(current.path, "plan.wld.json"), metadata);
+        const path = join(current.path, "plan.wld.json");
+        if (
+            !commitOperationEffect(
+                path,
+                await fs.readFile(path, "utf8"),
+                `${JSON.stringify(metadata, null, 2)}\n`,
+                packageWorkflowRevision({ ...current, metadata }),
+            )
+        )
+            writeJsonAtomically(path, metadata);
         return metadata;
     });
 }
@@ -1777,6 +1844,14 @@ async function recoverAuthoringBatch(paths: PackageLayout, batch: ImportBatch): 
         for (const [name, text] of Object.entries(batchBytes(write.metadata, write.documents)))
             writeTextAtomically(join(destination, name), text);
     }
+    if (batch.operation) {
+        if (!writes.some((write) => write.metadata.planId === batch.operation!.planId))
+            fail("pending_recovery", "Authoring receipt belongs to another Plan.");
+        const member = writes.find((write) => write.metadata.planId === batch.operation!.planId)!;
+        const committed = await inspectAt(paths, member.metadata.name);
+        if (committed.kind !== "loaded") fail(committed.kind, committed.message);
+        settleBatchOperation(paths.internal, batch.operation, packageWorkflowRevision(committed));
+    }
     writeJsonAtomically(paths.batch, { ...batch, phase: "committed" } satisfies ImportBatch);
 }
 
@@ -1849,6 +1924,7 @@ export async function commitPlanPackageBatch(
                 phase: "pending",
                 members: writes.map((write) => ({ planId: write.metadata.planId, name: write.metadata.name })),
                 authoring: writes,
+                operation: captureBatchOperation(),
             };
             writeJsonAtomically(paths.batch, batch);
             await recoverAuthoringBatch(paths, batch);
@@ -1859,13 +1935,44 @@ export async function commitPlanPackageBatch(
 }
 
 /** Explicit internal import; ordinary load/save/discovery never calls this operation. */
+interface ManagedImportTransport {
+    launch: import("../shared/remote/project-store-launch.ts").ManagedProjectStoreLaunch;
+    operationId: string;
+    signal?: AbortSignal;
+}
 export async function importPlanPackages(identity: ProjectIdentity, selection: string): Promise<PlanImportResult> {
+    return await importObservedPlanPackages(identity, selection);
+}
+export async function importManagedPlanPackages(
+    identity: ProjectIdentity,
+    selection: string,
+    transport: ManagedImportTransport,
+): Promise<PlanImportResult> {
+    if (!isHomeProjectOwner(identity)) throw new Error("Managed import requires the personal home owner.");
+    return await importObservedPlanPackages(identity, selection, transport);
+}
+async function importObservedPlanPackages(
+    identity: ProjectIdentity,
+    selection: string,
+    transport?: ManagedImportTransport,
+): Promise<PlanImportResult> {
     try {
         return await mutate(identity, null, async (paths) => {
             const catalog = await scan(paths);
             if (catalog.issues.length) fail(catalog.issues[0].kind, catalog.issues[0].message);
             const allocations = await readAllocations(paths);
-            if (!(await stat(selection))) {
+            if (transport && (await file(paths.home, join(paths.imports, transport.operationId, "record.json")))) {
+                const recorded = await importRecord(paths, transport.operationId);
+                if (recorded.prepared.selection !== selection) throw new Error("Import operation selection changed.");
+                const importedPlanIds = recorded.prepared.members.map((member) => member.metadata.planId);
+                return {
+                    kind: "committed",
+                    planIds: [...new Set([...importedPlanIds, ...recorded.prepared.existingPlanIds])],
+                    importedPlanIds,
+                    existingPlanIds: recorded.prepared.existingPlanIds,
+                };
+            }
+            if (!transport && !(await stat(selection))) {
                 const recordedIds = new Set<string>();
                 if (await stat(paths.imports)) {
                     await safe(paths.home, paths.imports);
@@ -1887,20 +1994,56 @@ export async function importPlanPackages(identity: ProjectIdentity, selection: s
                     return { kind: "existing", planIds, importedPlanIds: [], existingPlanIds: planIds };
                 }
             }
-            const prepared = await preparePlanPackageImport(
-                requireProjectCheckout(identity),
+            const request = {
+                projectId: identity.projectId,
+                repositoryId: identity.repositoryId,
+                personalOwner: identity.personalOwner.identity,
                 selection,
                 allocations,
-                catalog.packages,
-                new Date().toISOString(),
-            );
-            if (!prepared.members.length)
+                catalog: catalog.packages.map((plan) => ({
+                    metadata: {
+                        planId: plan.metadata.planId,
+                        name: plan.metadata.name,
+                        definition: plan.metadata.definition,
+                    },
+                })),
+                createdAt: new Date().toISOString(),
+            };
+            const prepared = transport
+                ? await (
+                      await import("../shared/remote/project-store-launch.ts")
+                  ).readManagedImportSource(transport.launch, request, transport.signal)
+                : await preparePlanPackageImport(
+                      requireProjectCheckout(identity),
+                      selection,
+                      allocations,
+                      catalog.packages,
+                      request.createdAt,
+                  );
+            if (!prepared.members.length) {
+                if (transport) {
+                    await (
+                        await import("../shared/remote/project-store-launch.ts")
+                    ).readManagedImportSource(transport.launch, { ...request, prepared }, transport.signal);
+                    const resultRoot = join(paths.imports, transport.operationId);
+                    await directory(paths, resultRoot);
+                    writeJsonAtomically(
+                        join(resultRoot, "record.json"),
+                        validateImportRecord({
+                            version: 1,
+                            recordId: transport.operationId,
+                            projectId: identity.projectId,
+                            prepared,
+                        }),
+                    );
+                }
                 return {
                     kind: "existing",
                     planIds: prepared.existingPlanIds,
                     importedPlanIds: [],
                     existingPlanIds: prepared.existingPlanIds,
                 };
+            }
             const locks: NativeFileLock[] = [];
             try {
                 for (const id of prepared.members.map((member) => member.metadata.planId).sort()) {
@@ -1914,8 +2057,18 @@ export async function importPlanPackages(identity: ProjectIdentity, selection: s
                     metadataFrom(member.metadata);
                     await assertDestination(paths, member.metadata.name);
                 }
-                await revalidatePlanImport(requireProjectCheckout(identity), prepared, catalog.packages, allocations);
-                const recordId = randomUUID();
+                if (transport)
+                    await (
+                        await import("../shared/remote/project-store-launch.ts")
+                    ).readManagedImportSource(transport.launch, { ...request, prepared }, transport.signal);
+                else
+                    await revalidatePlanImport(
+                        requireProjectCheckout(identity),
+                        prepared,
+                        catalog.packages,
+                        allocations,
+                    );
+                const recordId = transport?.operationId || randomUUID();
                 for (const member of prepared.members)
                     member.metadata.references.legacyImport = {
                         recordId,
@@ -2334,4 +2487,18 @@ export function packageWorkflowRevision(plan: LoadedPlanPackage): string {
             }),
         )
         .digest("hex");
+}
+
+export async function readManagedPlanImportResult(
+    identity: ProjectIdentity,
+    operationId: string,
+): Promise<import("./import-source.ts").PlanImportCommitted> {
+    const record = await importRecord(layout(identity), operationId);
+    const importedPlanIds = record.prepared.members.map((member) => member.metadata.planId);
+    return {
+        kind: "committed",
+        planIds: [...new Set([...importedPlanIds, ...record.prepared.existingPlanIds])],
+        importedPlanIds,
+        existingPlanIds: record.prepared.existingPlanIds,
+    };
 }

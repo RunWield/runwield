@@ -32,14 +32,33 @@ const cliArgs = argv.slice(2);
 
 // Keep private runtime entries ahead of helper exposure, browser startup and
 // command-registry imports. Static imports execute before top-level dispatch.
-if (["--remote-preflight", "--remote-view", "--remote-supervisor", "--remote-model-proof"].includes(cliArgs[0])) {
+if (
+    [
+        "--remote-preflight",
+        "--remote-view",
+        "--remote-supervisor",
+        "--remote-model-proof",
+        "--remote-project-admission",
+        "--remote-publication-proof",
+        "--remote-runtime-transfer",
+    ].includes(cliArgs[0])
+) {
     try {
-        const { runRemoteModelProofEntry, runRemotePreflight, runRemoteView } =
-            await import("./shared/remote/entry.ts");
+        const {
+            runRemoteModelProofEntry,
+            runRemotePreflight,
+            runRemoteView,
+            runRemoteProjectAdmission,
+            runRemotePublicationProof,
+            runRemoteRuntimeTransfer,
+        } = await import("./shared/remote/entry.ts");
         if (cliArgs.length !== (cliArgs[0] === "--remote-supervisor" ? 3 : 1)) {
             throw new Error("Unexpected remote entry arguments");
         }
         if (cliArgs[0] === "--remote-preflight") await runRemotePreflight();
+        else if (cliArgs[0] === "--remote-runtime-transfer") await runRemoteRuntimeTransfer();
+        else if (cliArgs[0] === "--remote-publication-proof") await runRemotePublicationProof();
+        else if (cliArgs[0] === "--remote-project-admission") await runRemoteProjectAdmission();
         else if (cliArgs[0] === "--remote-supervisor") {
             const { runRemoteSupervisor } = await import("./shared/remote/supervisor.ts");
             await runRemoteSupervisor();

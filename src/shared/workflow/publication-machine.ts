@@ -1,13 +1,19 @@
+import type { PackagePublicationManifest } from "../../plan-store/index.ts";
+import { getDeliveryCopyPolicy, shouldAutoGenerateWorkRecordsOnPlanCompletion } from "../settings.js";
 import {
     retainPublicationCompletion,
     recordPublicationObservation,
     type RetainedPublicationCompletion,
 } from "../../plan-store/index.ts";
-import { settlePreparedPackageRecord } from "../work-records/package-recording.ts";
-import { retainPublishedWorkRecordSource } from "../../plan-store/index.ts";
-import { capturePlanAccess } from "../../plan-store/index.ts";
+import { settlePlanPublicationRecording } from "../../plan-store/index.ts";
+import {
+    hasCanonicalPlanAccess,
+    settleRetainedExecutionCleanup,
+    settleRetainedExecutionRecording,
+} from "../../plan-store/index.ts";
 import {
     sealPackagePublication,
+    freezePlanPublicationPolicy,
     packageArtifactEvidence,
     packagePublicationInput,
     settlePackagePublication,
@@ -199,6 +205,8 @@ async function integratedEvidence(
 async function publishedEvidence(
     projectRoot: string,
     attempt: PublicationAttempt,
+    retainedManifest?: PackagePublicationManifest,
+    retainedExecution = false,
 ): Promise<PublicationPhaseEvidence | null> {
     const integrationCommit = attempt.integrationCommit;
     const targetBaseCommit = attempt.targetBaseCommit;
@@ -218,6 +226,8 @@ async function publishedEvidence(
     if (!remote) {
         const target = `refs/heads/${attempt.targetBranch}`;
         if (!(await gitAncestor(projectRoot, integrationCommit, target))) return null;
+        if (retainedExecution && !(await retainedCandidateEvidence(projectRoot, attempt, integrationCommit)))
+            return null;
         if (
             attempt.deliveryMetadataVersion &&
             !(await hasFinalizedPublicationLifecycle(
@@ -233,7 +243,7 @@ async function publishedEvidence(
             return null;
         if (
             attempt.packageInput &&
-            !(await packageTargetEvidence(projectRoot, projectRoot, attempt, integrationCommit))
+            !(await packageTargetEvidence(projectRoot, projectRoot, attempt, integrationCommit, retainedManifest))
         )
             return null;
         return {
@@ -247,7 +257,7 @@ async function publishedEvidence(
     if (remoteHead.code !== 0) return null;
     const head = remoteHead.stdout.split(/\s+/)[0] || "";
     if (!head) return null;
-    if (head !== integrationCommit || attempt.deliveryMetadataVersion || attempt.packageInput) {
+    if (head !== integrationCommit || attempt.deliveryMetadataVersion || attempt.packageInput || retainedExecution) {
         // The publication clone may already have been cleaned up. Fetch into an
         // independent bare repository, never the user's checkout or its refs.
         const inspectionRoot = await mkdtemp(join(tmpdir(), "runwield-publication-proof-"));
@@ -265,9 +275,17 @@ async function publishedEvidence(
             if (fetched.code !== 0 || !(await gitAncestor(inspectionRoot, integrationCommit, "FETCH_HEAD"))) {
                 return null;
             }
+            if (retainedExecution && !(await retainedCandidateEvidence(inspectionRoot, attempt, integrationCommit)))
+                return null;
             if (
                 attempt.packageInput &&
-                !(await packageTargetEvidence(projectRoot, inspectionRoot, attempt, integrationCommit))
+                !(await packageTargetEvidence(
+                    projectRoot,
+                    inspectionRoot,
+                    attempt,
+                    integrationCommit,
+                    retainedManifest,
+                ))
             )
                 return null;
             if (
@@ -295,6 +313,102 @@ async function publishedEvidence(
         upstreamRemote: remote.remote,
         upstreamBranch: remote.branch,
     };
+}
+
+async function retainedCandidateEvidence(
+    gitRoot: string,
+    attempt: PublicationAttempt,
+    integrationCommit: string,
+): Promise<boolean> {
+    const candidate = attempt.artifactCommit || attempt.validatedCommit;
+    return (
+        (await gitAncestor(gitRoot, attempt.validatedCommit, candidate)) &&
+        (await gitAncestor(gitRoot, candidate, integrationCommit)) &&
+        Boolean(attempt.targetBaseCommit && (await gitAncestor(gitRoot, attempt.targetBaseCommit, integrationCommit)))
+    );
+}
+/** A legacy continuation retains its original registry identity while Git proves its published candidate. */
+export async function proveRetainedManagedPublication(
+    projectRoot: string,
+    retained: import("../../plan-store/index.ts").RetainedManagedExecution,
+    confirmed?: PublicationAttempt,
+    candidateOnly = false,
+    requireCleanup = false,
+): Promise<PublicationAttempt> {
+    const live = await findById(projectRoot, retained.attempt.id);
+    if (
+        live &&
+        (live.planId !== retained.planId ||
+            live.planName !== retained.planName ||
+            live.path !== retained.attempt.path ||
+            live.branch !== retained.attempt.branch ||
+            live.baseRef !== retained.attempt.baseRef ||
+            live.baseBranch !== retained.attempt.baseBranch ||
+            live.baseCommit !== retained.attempt.baseCommit)
+    )
+        throw new Error("Retained publication execution owner changed.");
+    const attempt =
+        live?.publication || (!live && confirmed?.verifiedAt && confirmed.publishedCommit ? confirmed : undefined);
+    if (
+        !attempt ||
+        attempt.planId !== retained.planId ||
+        attempt.attemptId !== retained.attempt.id ||
+        attempt.executionCwd !== retained.attempt.path ||
+        attempt.executionBranch !== retained.attempt.branch ||
+        attempt.packageInput
+    )
+        throw new Error("Retained publication journal is unavailable or belongs to another attempt.");
+    if (candidateOnly) {
+        if (
+            !live?.publication ||
+            (await git(projectRoot, ["cat-file", "-t", attempt.validatedCommit])).stdout !== "commit" ||
+            !(await gitAncestor(projectRoot, retained.attempt.baseCommit, attempt.validatedCommit)) ||
+            !(await gitAncestor(projectRoot, attempt.validatedCommit, `refs/heads/${retained.attempt.branch}`))
+        )
+            throw new Error("Retained publication candidate is unavailable.");
+        return attempt;
+    }
+    if (
+        requireCleanup &&
+        (attempt.phase !== "cleanup_complete" ||
+            (await fsStat(attempt.executionCwd)
+                .then(() => true)
+                .catch((error) => {
+                    if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
+                    throw error;
+                })) ||
+            (await git(projectRoot, ["show-ref", "--verify", "--quiet", `refs/heads/${attempt.executionBranch}`]))
+                .code === 0)
+    )
+        throw new Error("Retained execution cleanup is not confirmed.");
+    const proof = await publishedEvidence(projectRoot, attempt, undefined, true);
+    if (!proof?.publishedCommit || !proof.publicationMode)
+        throw new Error("Retained Git publication is not confirmed.");
+    return { ...attempt, ...proof, verifiedAt: attempt.verifiedAt || new Date().toISOString() };
+}
+
+/** The trusted execution runtime re-reads its journal and proves Git against the owner's frozen payload. */
+export async function proveManagedPublication(
+    projectRoot: string,
+    manifest: PackagePublicationManifest,
+    retained?: PublicationAttempt,
+): Promise<PublicationAttempt> {
+    const entry = await findById(projectRoot, manifest.attemptId);
+    const attempt =
+        entry?.publication ?? (!entry && retained?.verifiedAt && retained.publishedCommit ? retained : undefined);
+    if (
+        !attempt ||
+        (entry && entry.planId !== manifest.planId) ||
+        !attempt.packageInput ||
+        attempt.packageInput.inputId !== manifest.inputId ||
+        attempt.packageInput.projectId !== manifest.projectId ||
+        attempt.packageInput.repositoryId !== manifest.repositoryId ||
+        attempt.packageInput.personalOwner !== manifest.personalOwner
+    )
+        throw new Error("Remote publication journal does not match the retained owner input.");
+    const proof = await publishedEvidence(projectRoot, attempt, manifest);
+    if (!proof?.publishedCommit || !proof.publicationMode) throw new Error("Remote Git publication is not confirmed.");
+    return { ...attempt, ...proof, verifiedAt: attempt.verifiedAt || new Date().toISOString() };
 }
 
 export function publicationRootForAttempt(projectRoot: string, attemptId: string): string {
@@ -354,14 +468,24 @@ export async function startPublicationAttempt(args: {
         validatedCommit: args.validatedCommit,
         targetHeadAtSeal: args.targetHeadAtSeal,
     });
-    if (capturePlanAccess())
+    if (hasCanonicalPlanAccess()) {
+        await freezePlanPublicationPolicy(args.planName, args.attemptId, {
+            ...getDeliveryCopyPolicy(args.executionCwd),
+            autoGenerateRecords: shouldAutoGenerateWorkRecordsOnPlanCompletion(args.executionCwd),
+        });
         publication.packageInput = await sealPackagePublication(
             args.planName,
             args.attemptId,
             args.validatedCommit,
             args.targetBranch,
         );
-    else publication.deliveryMetadataVersion = 1;
+    } else {
+        publication.deliveryMetadataVersion = 1;
+        publication.retainedPublicationPolicy = {
+            ...getDeliveryCopyPolicy(args.executionCwd),
+            autoGenerateRecords: shouldAutoGenerateWorkRecordsOnPlanCompletion(args.executionCwd),
+        };
+    }
     await updatePublication(args.projectRoot, args.attemptId, null, publication);
     return publication;
 }
@@ -516,6 +640,7 @@ async function settlePublicationIndex(
             throw new Error("Published Work Record source cannot be proven on its target.");
         }
         await retainDeliveryCommit(projectRoot, projectRoot, attempt);
+        if (await settleRetainedExecutionRecording(projectRoot, attempt)) return new Map();
         return await indexPublishedWorkRecords(
             projectRoot,
             projectRoot,
@@ -550,6 +675,7 @@ async function settlePublicationIndex(
         const head = await git(inspection, ["rev-parse", "FETCH_HEAD"]);
         if (head.code !== 0) throw new Error("Published Work Record target cannot be read.");
         await retainDeliveryCommit(projectRoot, inspection, attempt);
+        if (await settleRetainedExecutionRecording(projectRoot, attempt)) return new Map();
         return await indexPublishedWorkRecords(
             projectRoot,
             inspection,
@@ -633,12 +759,7 @@ export async function cleanupStoredPublication(
         if (!(await publishedEvidence(projectRoot, attempt)))
             throw new Error("Package delivery cannot be confirmed on its target.");
         await settlePackagePublication(projectRoot, attempt);
-        await retainPublishedWorkRecordSource(projectRoot, attempt);
-        const warning = await settlePreparedPackageRecord(
-            projectRoot,
-            await packagePublicationInput(projectRoot, attempt.packageInput),
-            workRecordMnemotecaPort,
-        );
+        const warning = await settlePlanPublicationRecording(projectRoot, attempt, workRecordMnemotecaPort);
         if (warning)
             return {
                 complete: false,
@@ -672,6 +793,7 @@ export async function cleanupStoredPublication(
     }
     if (attempt.phase === "cleanup_complete") {
         await observeConfirmedPublication(projectRoot, attempt, completion, planKinds.get(attempt.planId));
+        await settleRetainedExecutionCleanup(projectRoot, attempt);
         await pruneEntry(projectRoot, attempt.attemptId);
         return { complete: true, attempt, worktreeKept: false, branchKept: false, details: [], preservedFiles };
     }
@@ -758,6 +880,7 @@ export async function cleanupStoredPublication(
     attempt = await advanceStoredPublication(projectRoot, attempt, "cleanup_complete", {
         cleanedAt: new Date().toISOString(),
     });
+    await settleRetainedExecutionCleanup(projectRoot, attempt);
     await pruneEntry(projectRoot, attempt.attemptId);
     return { complete: true, attempt, worktreeKept: false, branchKept: false, details: [], preservedFiles };
 }

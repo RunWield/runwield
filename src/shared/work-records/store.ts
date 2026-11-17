@@ -1,4 +1,9 @@
-import { readLocalHomeStore, withLocalProjectAction } from "../../plan-store/index.ts";
+import {
+    readOwnedWorkRecord as readWorkRecord,
+    listOwnedWorkRecords as listWorkRecords,
+    readLocalHomeStore,
+    withLocalProjectAction,
+} from "../../plan-store/index.ts";
 import { currentWorkRecordOwner } from "./owner.ts";
 import { assertWorkRecordPath, workRecordOwnerLayout, withWorkRecordMutation } from "./owner.ts";
 import { recoverWindowsRename } from "../native-file-replace-windows.ts";
@@ -75,7 +80,8 @@ function relativeWorkRecordPath(cwd: string, filePath: string) {
     return relative(workRecordOwnerLayout()?.root || cwd, filePath).replaceAll("\\", "/");
 }
 
-export async function readWorkRecord(cwd: string, fileName: string): Promise<WorkRecordResource> {
+export { readWorkRecord };
+export async function readLocalWorkRecord(cwd: string, fileName: string): Promise<WorkRecordResource> {
     if (!currentWorkRecordOwner())
         return await readLocalHomeStore(
             cwd,
@@ -102,7 +108,8 @@ async function readWorkRecordInOwner(cwd: string, fileName: string): Promise<Wor
     }
 }
 
-export async function listWorkRecords(
+export { listWorkRecords };
+export async function listLocalWorkRecords(
     cwd: string,
     options: ListWorkRecordsOptions = {},
 ): Promise<WorkRecordResource[]> {

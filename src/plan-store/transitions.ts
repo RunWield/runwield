@@ -1,3 +1,5 @@
+import { settleSequenceOperationResult } from "./operation-receipts.ts";
+import { loadPlan, loadPlanStrict, inspectPlanStrict } from "./queries.ts";
 import { inspectLocalHomeStore, withLocalProjectAction } from "./access.ts";
 import {
     currentPackageSelection,
@@ -45,10 +47,7 @@ import {
     getPlanDocumentRoot,
     getRecordedPlanWriteFrontMatterRevision,
     getRecordedPlanWriteRevision,
-    inspectPlanStrict,
     loadArchivedPlan,
-    loadPlan,
-    loadPlanStrict,
     parsePlanFrontMatter,
     splitPlanMarkdownBody,
     updatePlanFrontMatter,
@@ -918,6 +917,25 @@ async function runSemanticTransition<T>({
                         attemptId: worktreeId,
                         outcome: "succeeded",
                     }).catch(() => {});
+                    if (operation.startsWith("sequence_review_")) {
+                        const accepted = completedEffects.find(
+                            (effect) => effect.effect === "sequence_review_accepted",
+                        );
+                        const operationId = accepted?.proof?.toolCallId;
+                        const owner = currentPackageProject();
+                        if (owner && typeof operationId === "string")
+                            settleSequenceOperationResult(
+                                join(
+                                    owner.executionAccountHome,
+                                    ".wld",
+                                    "projects",
+                                    owner.projectId,
+                                    "internal",
+                                    "plan-packages",
+                                ),
+                                operationId,
+                            );
+                    }
                     await removeJournal(projectRoot, transitionId);
                     // The recovery just settled the uncertainty these records
                     // described, so retiring them here is what actually returns
@@ -1859,6 +1877,26 @@ export async function reconcileTransitionRecoveryRecords(
             }
         }
         if (state === "committed") {
+            if (apply && operation?.startsWith("sequence_review_")) {
+                const effects: JournaledEffect[] = Array.isArray(record.completedEffects)
+                    ? record.completedEffects
+                    : [];
+                const operationId = effects.find((effect) => effect.effect === "sequence_review_accepted")?.proof
+                    ?.toolCallId;
+                const owner = currentPackageProject();
+                if (owner && typeof operationId === "string")
+                    settleSequenceOperationResult(
+                        join(
+                            owner.executionAccountHome,
+                            ".wld",
+                            "projects",
+                            owner.projectId,
+                            "internal",
+                            "plan-packages",
+                        ),
+                        operationId,
+                    );
+            }
             reconciliations.push({
                 ...base,
                 resolvable: true,

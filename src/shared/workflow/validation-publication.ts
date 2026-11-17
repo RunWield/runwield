@@ -1,7 +1,12 @@
 import { preparePlanInPlacePublication } from "../../plan-store/index.ts";
 import { preparePlanGeneratedArtifacts } from "../../plan-store/index.ts";
-import { capturePlanAccess } from "../../plan-store/index.ts";
-import { preparePackageCopies, settlePackageInPlace, sealPackagePublication } from "../../plan-store/index.ts";
+import { hasCanonicalPlanAccess } from "../../plan-store/index.ts";
+import {
+    preparePackageCopies,
+    settlePackageInPlace,
+    sealPackagePublication,
+    freezePlanPublicationPolicy,
+} from "../../plan-store/index.ts";
 import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { ProjectRuntimeReadPendingError } from "../project-runtime-layout.ts";
 import { stat as fsStat } from "node:fs/promises";
@@ -18,7 +23,12 @@ import {
 } from "./delivery-evidence.ts";
 import { relative } from "node:path";
 import { buildDeliveryReport } from "./delivery-report.ts";
-import { getCodeReviewMode, getGuidedReviewMode } from "../settings.js";
+import {
+    getCodeReviewMode,
+    getGuidedReviewMode,
+    getDeliveryCopyPolicy,
+    shouldAutoGenerateWorkRecordsOnPlanCompletion,
+} from "../settings.js";
 import {
     readPublishedDeliverySources,
     readPublishedRecordMarkdown,
@@ -347,12 +357,12 @@ async function runLockedPublicationPhase(
         const deliveryEvidence: DeliveryEvidence = context.nonGitInPlace
             ? { version: 1, mode: "non_git_in_place" }
             : null;
-        if (args.hostTurn && !capturePlanAccess())
+        if (args.hostTurn && !hasCanonicalPlanAccess())
             await runPostVerificationHandoffs(args, context.executionCwd || context.projectRoot, true);
         await recordLifecycleEvent(args, context.projectRoot, "validation_passed", "reviewed", undefined, {
             executionMode: context.nonGitInPlace ? "non_git_in_place" : undefined,
             deliveryEvidence,
-            pendingPublication: Boolean(capturePlanAccess()),
+            pendingPublication: Boolean(hasCanonicalPlanAccess()),
             ...humanReviewMetadata,
         });
         if (await preparePlanInPlacePublication(args.planName)) {
@@ -713,7 +723,7 @@ async function runLockedPublicationPhase(
                     }),
             );
             args.session.assertLive();
-            if (capturePlanAccess())
+            if (hasCanonicalPlanAccess())
                 await stageValidationPassedInExecutionWorktree({
                     projectRoot: context.projectRoot,
                     executionCwd: context.executionCwd,
@@ -730,7 +740,11 @@ async function runLockedPublicationPhase(
                         },
                     },
                 });
-            if (capturePlanAccess()) {
+            if (hasCanonicalPlanAccess()) {
+                await freezePlanPublicationPolicy(args.planName, worktreeId, {
+                    ...getDeliveryCopyPolicy(context.executionCwd),
+                    autoGenerateRecords: shouldAutoGenerateWorkRecordsOnPlanCompletion(context.executionCwd),
+                });
                 await sealPackagePublication(args.planName, worktreeId, candidate.executionCommit, targetBranch, true);
                 await runPostVerificationHandoffs(args, context.executionCwd, true);
             }
@@ -960,7 +974,7 @@ export async function runPostVerificationHandoffs(
     projectRoot: string,
     pendingPublication = false,
 ): Promise<void> {
-    if (!isPlannedChangeClassification(args.triageMeta?.classification) && !capturePlanAccess()) return;
+    if (!isPlannedChangeClassification(args.triageMeta?.classification) && !hasCanonicalPlanAccess()) return;
     if (args.hostTurn) return await runHostRecorder(args, projectRoot, pendingPublication);
     await args.session.runPostVerificationHandoffs({
         planName: args.planName,

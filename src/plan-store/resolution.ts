@@ -1,3 +1,4 @@
+import { managedPlanStoreActive, selectManagedPlan, withManagedPlan, readManagedRetainedExecution } from "./managed.ts";
 import { retainPlanAccess, withPlanAccess, type PlanAccess } from "./handles.ts";
 import { readPlanPackage, readPlanImportEvidence, listPlanPackages } from "./packages.ts";
 import { importLocalPlanReference, inspectLocalHomeStore } from "./access.ts";
@@ -134,6 +135,14 @@ export async function resolvePlanWithPrimaryRecovery(
     planArg: string,
     packageSelection?: PlanAccess,
 ): Promise<LoadPlanResolution> {
+    if (!packageSelection && managedPlanStoreActive()) {
+        const selected = await selectManagedPlan(projectRoot, planArg);
+        if (selected.retainedAttemptId)
+            return await withManagedPlan(projectRoot, selected, () =>
+                resolvePlanWithPrimaryRecovery(projectRoot, selected.planName),
+            );
+        return { plan: await resolvePlan(projectRoot, selected.planId) };
+    }
     if (!packageSelection && !currentPackageSelection()) {
         await prepareWorktreeRegistry(projectRoot);
         const local = await importLocalPlanReference(projectRoot, planArg);
@@ -199,6 +208,15 @@ export interface PlanDocumentTarget {
 
 /** Select document authority without recovery, status repair, or activation. */
 export async function discoverPlanDocumentRoot(projectRoot: string, planArg: string): Promise<PlanDocumentTarget> {
+    if (managedPlanStoreActive()) {
+        const retained = await readManagedRetainedExecution(projectRoot, planArg);
+        if (retained && !retained.cleanupComplete)
+            return {
+                path: retained.attempt.path,
+                missingExecutionCheckout: !(await executionWorktreePathExists(retained.attempt.path)),
+            };
+        return { path: projectRoot };
+    }
     const store = inspectLocalHomeStore(projectRoot);
     if (store.kind === "local") {
         const catalog = await listPlanPackages(store.identity, true);

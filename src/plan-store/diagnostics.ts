@@ -1,3 +1,4 @@
+import { managedPlanStoreActive, readManagedRetainedExecution } from "./managed.ts";
 import { currentPackageProject } from "./workflows.ts";
 import { readLocalHomeStore } from "./index.ts";
 import { listPlans } from "./index.ts";
@@ -69,6 +70,23 @@ async function inspectDocumentsInProject(
     projectRoot: string,
     attempts: DiagnosticAttempt[],
 ): Promise<PlanIdentityDocument[]> {
+    if (managedPlanStoreActive()) {
+        const documents: PlanIdentityDocument[] = await listPlans(projectRoot);
+        for (const attempt of attempts) {
+            if (documents.some((plan) => plan.attrs.planId === attempt.planId)) continue;
+            const retained = await readManagedRetainedExecution(
+                projectRoot,
+                attempt.planId || attempt.planName,
+                attempt.id,
+            );
+            if (!retained || retained.attempt.path !== attempt.path) continue;
+            const original = (await readDocuments(attempt.path)).find(
+                (plan) => plan.attrs.planId === retained.planId && plan.name === retained.planName,
+            );
+            if (original) documents.push({ ...original, attrs: { ...original.attrs, ...retained.controller.state } });
+        }
+        return documents;
+    }
     if (currentPackageProject()) return await listPlans(projectRoot);
     const primary = await readDocuments(projectRoot);
     const primaryPaths = new Set(primary.map((plan) => plan.path));

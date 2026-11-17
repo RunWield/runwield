@@ -260,7 +260,8 @@ _Avoid_: Resource sync, copied profile, confined mount
 
 **Project Runtime State**: Machine-owned RunWield state owned by a Project, repository, or checkout. Ordinary local
 and manual SSH execution stores it under the executing account's `~/.wld/projects/<projectId>/`. Explicit
-managed-remote execution retains its admitted versioned checkout layout until managed transport adoption. User settings,
+managed-remote execution stores Git-effect runtime in the remote account home and personal controllers, secrets and
+record state with the initiating laptop owner. User settings,
 Agents, Skills, and prompts are configuration, not runtime. Remote discovery alone creates no runtime state.
 _Avoid_: project settings, project config, all of `.wld/`
 
@@ -613,8 +614,8 @@ including manual SSH, uses its execution account. Managed remote activation name
 execution account home; a mount path is not ownership evidence.
 
 **Home-only Project admission**: Trusted registration of a personal Project and repository in the current account's
-home identity record, without a source checkout. A prepared connection revalidates this owner binding; HTTP paths,
-mounts and serialized access handles cannot grant it. Remote startup activation is a separate step.
+home identity record, without a source checkout. Managed startup registers it from trusted remote identity; each
+connection revalidates the owner binding. HTTP paths, mounts and serialized access handles cannot grant it.
 
 **Store operation receipt**: Retained owner evidence binding one operation ID to its exact request and outcome.
 Reconnection preserves the ID. Missing evidence does not authorize a replacement mutation; pending effects reconcile
@@ -1024,7 +1025,7 @@ _Avoid_: Durable prompt, recoverable continuation, database interaction record
 
 - A **Remote SSH connection** uses Core for ordinary remote project execution, delivery workflows, and review. The
   connection alone is not a saved **Session**. A **Remote personal mount** gives direct access to laptop personal files
-  while project `.wld` and **Project Runtime State** stay remote. The laptop is the authoritative Session writer under
+  while project `.wld` and Git-effect **Project Runtime State** stay remote, with runtime under the remote account home. The laptop is the authoritative Session writer under
   its native **Session Writer Lock**; the mount is not writer authority. Saved context and lineage continue after
   reconnect without automatic replay of uncertain effects.
 - **Project Runtime Inspection** reads checked existing authority; **Project Runtime Entry** admits deliberate

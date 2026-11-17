@@ -22,7 +22,7 @@ import {
 import { resolvePrimaryCheckoutRoot } from "../shared/primary-checkout.ts";
 import { checkedProjectRuntimeLayout } from "../shared/project-runtime-layout.ts";
 import type { ProjectIdentity } from "../shared/project-identity.ts";
-import type { LoadedPlanPackage, PackageDocuments, PlanPackageMetadata, PackageDefinition } from "./packages.ts";
+import type { PackageDocuments, PlanPackageMetadata, PackageDefinition } from "./packages.ts";
 
 export interface ImportAllocation {
     locator: string;
@@ -236,7 +236,7 @@ export async function preparePlanPackageImport(
     identity: ProjectIdentity,
     selection: string,
     allocations: ImportAllocation[],
-    catalog: LoadedPlanPackage[],
+    catalog: ImportCatalogEntry[],
     createdAt: string,
 ): Promise<PreparedPlanImport> {
     if (!hasRetainedCheckoutSource(identity.checkoutRoot))
@@ -568,7 +568,7 @@ export async function preparePlanPackageImport(
 export async function revalidatePlanImport(
     identity: ProjectIdentity,
     prepared: PreparedPlanImport,
-    catalog: LoadedPlanPackage[],
+    catalog: ImportCatalogEntry[],
     allocations: ImportAllocation[],
 ): Promise<void> {
     const current = await preparePlanPackageImport(
@@ -593,4 +593,41 @@ export async function revalidatePlanImport(
                 );
         }
     }
+}
+
+export interface ImportCatalogEntry {
+    metadata: Pick<PlanPackageMetadata, "planId" | "name" | "definition">;
+}
+export interface ManagedImportPreparationRequest {
+    projectId: string;
+    repositoryId: string;
+    personalOwner: string;
+    selection: string;
+    allocations: ImportAllocation[];
+    catalog: ImportCatalogEntry[];
+    createdAt: string;
+    prepared?: PreparedPlanImport;
+}
+/** The trusted execution process observes source bytes; the personal owner commits packages. */
+export async function inspectManagedImportSource(
+    identity: ProjectIdentity,
+    request: ManagedImportPreparationRequest,
+): Promise<PreparedPlanImport> {
+    if (
+        identity.projectId !== request.projectId ||
+        identity.repositoryId !== request.repositoryId ||
+        identity.personalOwner.identity !== request.personalOwner
+    )
+        throw new Error("Import source belongs to another Project or owner.");
+    if (request.prepared) {
+        await revalidatePlanImport(identity, request.prepared, request.catalog, request.allocations);
+        return request.prepared;
+    }
+    return await preparePlanPackageImport(
+        identity,
+        request.selection,
+        request.allocations,
+        request.catalog,
+        request.createdAt,
+    );
 }

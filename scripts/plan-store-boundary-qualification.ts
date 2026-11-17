@@ -172,6 +172,10 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
         reason: "Restart-process fixture resumes a recorded admission and observes real Recorder settlement.",
         modules: ["src/plan-store/packages.ts", "src/plan-store/workflows.ts"],
     },
+    "src/shared/workflow/testing/package-recording-resume-scenario.ts": {
+        reason: "Inspect durable publication manifests across interrupted Work Record recording and settlement recovery.",
+        modules: ["src/plan-store/packages.ts"],
+    },
     "src/shared/workflow/testing/package-source-process.ts": {
         reason: "Restart-process fixture reads sealed delivery sources and resumes failed Recorder work.",
         modules: ["src/plan-store/packages.ts", "src/plan-store/workflows.ts"],
@@ -212,6 +216,8 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
 
 /** Test-only targets include dependent fixtures, process and Golden qualification drivers. */
 export const PLAN_TEST_SUPPORT = new Set([
+    "src/shared/remote/managed-store-activation-fixture.ts",
+    "src/shared/remote/managed-store-client.ts",
     "src/cmd/load-plan/publication-cleanup-test-helpers.ts",
     "src/shared/attached/attached-test-fixture.ts",
     "src/shared/attached/delivery-recovery-test-fixture.ts",
@@ -237,6 +243,7 @@ export const PLAN_TEST_SUPPORT = new Set([
     "src/shared/workflow/testing/package-publication-process.ts",
     "src/shared/workflow/testing/package-recording-fixture.ts",
     "src/shared/workflow/testing/package-recording-process.ts",
+    "src/shared/workflow/testing/package-recording-resume-scenario.ts",
     "src/shared/workflow/testing/package-source-process.ts",
     "src/shared/workflow/testing/plan-document-writer.ts",
     "src/shared/workflow/testing/publication-outcome-fixture.ts",

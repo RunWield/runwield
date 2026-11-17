@@ -1,10 +1,14 @@
 import {
     readPlanRecordingContext,
+    generateRetainedPlanRecord,
     readRecordingPublication,
     planRecordingSourceRoot,
     withRecordingPlan,
 } from "../../plan-store/index.ts";
-import { generatePreparedPackageRecord, settlePreparedPackageRecord } from "./package-recording.ts";
+import {
+    generatePlanPreparedRecord as generatePreparedPackageRecord,
+    settlePlanPreparedRecord as settlePreparedPackageRecord,
+} from "../../plan-store/index.ts";
 import { findWorkRecordById } from "./store.ts";
 import { readPublishedDeliverySources } from "../../plan-store/index.ts";
 
@@ -185,6 +189,11 @@ async function generateTargetedWorkRecord(
     { cwd, planName, mnemotecaPort, signal, pendingPublication, runRecorderStep }: AutoGenerateWorkRecordArgs,
     automatic: boolean,
 ): Promise<WorkRecordAutoGenerationResult> {
+    const retained = await generateRetainedPlanRecord(
+        { cwd, planName, mnemotecaPort, signal, pendingPublication, runRecorderStep },
+        automatic,
+    );
+    if (retained) return retained;
     const recording = await readPlanRecordingContext(planName, automatic, pendingPublication);
     const preparation = recording?.preparation;
     if (

@@ -2,7 +2,8 @@ import { posix } from "node:path";
 import { readFile, realpath } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
 import { PLANS_DIR_NAME } from "../constants.js";
-import { readPlanResourceCatalog } from "../plan-store.js";
+import { readPlanResourceCatalog } from "./queries.ts";
+import { managedPlanStoreActive } from "./managed.ts";
 import { readPlanResource } from "./documents.ts";
 import { readLocalHomeStore } from "./access.ts";
 import { currentPackageProject } from "./workflows.ts";
@@ -41,7 +42,7 @@ export async function readPlanSessionArtifact(cwd: string, requestedPath: string
                 kind === "plan"
                     ? planSessionArtifactReference(plan.name)
                     : `${PLANS_DIR_NAME}/${plan.name}/${resource}`;
-            if (kind === "plan" || currentPackageProject()) {
+            if (kind === "plan" || currentPackageProject() || managedPlanStoreActive()) {
                 const document = await readPlanResource(cwd, { planId: plan.planId, planName: plan.name }, resource);
                 return { relativePath, markdown: document.body };
             }

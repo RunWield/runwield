@@ -10,6 +10,7 @@ export interface OperationOutcome {
     status: "completed" | "unstarted" | "pending" | "unavailable";
     revision?: string;
     recordId?: string;
+    planId?: string;
     snapshotId?: string;
     snapshotDigest?: string;
     attemptId?: string;
@@ -23,6 +24,8 @@ interface Receipt {
 }
 interface Effect {
     version: 1;
+    identityPath?: string;
+    targetPlanId?: string;
     receipt: Receipt;
     path: string;
     beforeHash: string | null;
@@ -103,9 +106,12 @@ export function recoverOperationEffect(directory: string, plans: string): void {
     const retained = readReceipt(directory, effect.receipt.operationId);
     if (!retained || retained.digest !== effect.receipt.digest)
         throw new Error("Operation identity evidence is unavailable.");
-    const metadataPath = join(dirname(effect.path), "plan.wld.json");
-    const metadata: { planId: string } = JSON.parse(readFileSync(metadataPath, "utf8"));
-    if (metadata.planId !== retained.planId || effect.receipt.planId !== retained.planId)
+    const metadataPath = effect.identityPath || join(dirname(effect.path), "plan.wld.json");
+    assertSafePath(plans, metadataPath);
+    const metadata: { planId: string } = JSON.parse(
+        metadataPath === effect.path ? effect.after : readFileSync(metadataPath, "utf8"),
+    );
+    if (metadata.planId !== (effect.targetPlanId || retained.planId) || effect.receipt.planId !== retained.planId)
         throw new Error("Operation effect belongs to a different Plan.");
     let observed: string | null;
     try {
@@ -130,6 +136,7 @@ export function commitOperationEffect(
     revision: string,
     snapshot?: { inputId: string; digest: string; attemptId: string },
     recordId?: string,
+    identityPath = join(dirname(path), "plan.wld.json"),
 ): boolean {
     const scope = operations.getStore();
     if (!scope) return false;
@@ -152,8 +159,12 @@ export function commitOperationEffect(
                 : {}),
         },
     };
+    const identity: { planId: string } = JSON.parse(identityPath === path ? after : readFileSync(identityPath, "utf8"));
+    if (!identity.planId) throw new Error("Operation effect has no Plan identity.");
     const effect: Effect = {
         version: 1,
+        identityPath,
+        targetPlanId: identity.planId,
         receipt: completed,
         path,
         beforeHash: before === null ? null : operationHash(before),
@@ -230,4 +241,168 @@ export async function runReceiptedOperation(
             },
         } satisfies Receipt);
     return inspectOperationReceipt(directory, operationId);
+}
+
+export interface BatchOperationIntent {
+    operationId: string;
+    digest: string;
+    planId: string;
+}
+export function captureBatchOperation(): BatchOperationIntent | undefined {
+    const scope = operations.getStore();
+    return scope
+        ? { operationId: scope.receipt.operationId, digest: scope.receipt.digest, planId: scope.receipt.planId }
+        : undefined;
+}
+/** The authoring journal carries this receipt until its complete generation is visible. */
+export function settleBatchOperation(directory: string, intent: BatchOperationIntent, revision: string): void {
+    const retained = readReceipt(directory, intent.operationId);
+    if (!retained || retained.digest !== intent.digest || retained.planId !== intent.planId)
+        throw new Error("Authoring operation identity is unavailable.");
+    if (retained.outcome.status === "completed") {
+        if (retained.outcome.revision !== revision) throw new Error("Authoring operation result changed.");
+        return;
+    }
+    writeJsonAtomically(receiptPath(directory, intent.operationId), {
+        ...retained,
+        outcome: { operationId: intent.operationId, status: "completed", revision, planId: intent.planId },
+    } satisfies Receipt);
+}
+
+/** Keep the authoring result beside its receipt before the batch can publish any child. */
+export function retainChildAuthoringResult(children: import("../plan-store.js").SavedChildFeaturePlan[]): void {
+    const scope = operations.getStore();
+    if (!scope) return;
+    const path = join(scope.directory, "child-authoring-results", `${scope.receipt.operationId}.json`);
+    assertSafePath(scope.directory, path);
+    writeJsonAtomically(path, children);
+}
+export function readChildAuthoringResult(
+    directory: string,
+    operationId: string,
+    planId: string,
+): import("../plan-store.js").SavedChildFeaturePlan[] {
+    const receipt = inspectOperationReceipt(directory, operationId, planId);
+    if (receipt.status !== "completed") throw new Error("Child authoring has not committed.");
+    const path = join(directory, "child-authoring-results", `${operationId}.json`);
+    assertSafePath(directory, path);
+    return JSON.parse(readFileSync(path, "utf8"));
+}
+
+interface SequenceOperationResult {
+    operationId: string;
+    digest: string;
+    planId: string;
+    result: import("./sequence-review.ts").SequenceReviewResult;
+}
+export function retainSequenceOperationResult(result: import("./sequence-review.ts").SequenceReviewResult): void {
+    const scope = operations.getStore();
+    if (!scope) return;
+    const path = join(scope.directory, "sequence-review-results", `${scope.receipt.operationId}.json`);
+    assertSafePath(scope.directory, path);
+    writeJsonAtomically(path, {
+        operationId: scope.receipt.operationId,
+        digest: scope.receipt.digest,
+        planId: scope.receipt.planId,
+        result,
+    } satisfies SequenceOperationResult);
+}
+/** Called only after the native Sequence transition confirms its complete decision. */
+export function settleSequenceOperationResult(directory: string, operationId: string): void {
+    if (!/^[a-f0-9-]{36}$/.test(operationId)) return;
+    const receipt = readReceipt(directory, operationId);
+    if (!receipt) return;
+    const path = join(directory, "sequence-review-results", `${operationId}.json`);
+    assertSafePath(directory, path);
+    const retained: SequenceOperationResult = JSON.parse(readFileSync(path, "utf8"));
+    if (
+        retained.operationId !== operationId ||
+        retained.digest !== receipt.digest ||
+        retained.planId !== receipt.planId
+    )
+        throw new Error("Sequence operation result changed ownership.");
+    writeJsonAtomically(receiptPath(directory, operationId), {
+        ...receipt,
+        outcome: { operationId, status: "completed", revision: retained.result.revision, planId: retained.planId },
+    } satisfies Receipt);
+}
+export function readSequenceOperationResult(
+    directory: string,
+    operationId: string,
+    planId: string,
+): import("./sequence-review.ts").SequenceReviewResult {
+    if (inspectOperationReceipt(directory, operationId, planId).status !== "completed")
+        throw new Error("Sequence review has not committed.");
+    const path = join(directory, "sequence-review-results", `${operationId}.json`);
+    assertSafePath(directory, path);
+    const retained: SequenceOperationResult = JSON.parse(readFileSync(path, "utf8"));
+    return retained.result;
+}
+
+export function retainCollaborationOperationResult(
+    result: import("./collaboration/operations.ts").CollaborationResult,
+): void {
+    const scope = operations.getStore();
+    if (!scope) return;
+    const path = join(scope.directory, "collaboration-results", `${scope.receipt.operationId}.json`);
+    assertSafePath(scope.directory, path);
+    writeJsonAtomically(path, result);
+}
+export function inspectCollaborationOperationResult(
+    directory: string,
+    operationId: string,
+): import("./collaboration/operations.ts").CollaborationResult | undefined {
+    if (!/^[a-f0-9-]{36}$/.test(operationId)) throw new Error("Invalid collaboration operation identity.");
+    const path = join(directory, "collaboration-results", `${operationId}.json`);
+    assertSafePath(directory, path);
+    return existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : undefined;
+}
+export function readCollaborationOperationResult(
+    directory: string,
+    operationId: string,
+    projectId: string,
+): import("./collaboration/operations.ts").CollaborationResult {
+    if (inspectOperationReceipt(directory, operationId, projectId).status !== "completed")
+        throw new Error("Collaboration operation has not completed.");
+    const result = inspectCollaborationOperationResult(directory, operationId);
+    if (!result) throw new Error("Collaboration result is unavailable.");
+    return result;
+}
+
+interface CollaborationEffectState {
+    started: boolean;
+    mutation?: import("./collaboration/operation-state.ts").CollaborationMutation;
+}
+function collaborationEffectPath(directory: string, operationId: string): string {
+    if (!/^[a-f0-9-]{36}$/.test(operationId)) throw new Error("Invalid collaboration effect identity.");
+    const path = join(directory, "collaboration-effects", `${operationId}.json`);
+    assertSafePath(directory, path);
+    return path;
+}
+export function markCollaborationNetworkEffect(started = true): void {
+    const scope = operations.getStore();
+    if (scope)
+        writeJsonAtomically(collaborationEffectPath(scope.directory, scope.receipt.operationId), {
+            started,
+        } satisfies CollaborationEffectState);
+}
+export function retainCollaborationMutation(
+    mutation: import("./collaboration/operation-state.ts").CollaborationMutation,
+): void {
+    const scope = operations.getStore();
+    if (scope)
+        writeJsonAtomically(collaborationEffectPath(scope.directory, scope.receipt.operationId), {
+            started: true,
+            mutation,
+        } satisfies CollaborationEffectState);
+}
+function collaborationEffect(directory: string, operationId: string): CollaborationEffectState {
+    const path = collaborationEffectPath(directory, operationId);
+    return existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : { started: false };
+}
+export function collaborationNetworkEffectStarted(directory: string, operationId: string): boolean {
+    return collaborationEffect(directory, operationId).started;
+}
+export function inspectCollaborationMutation(directory: string, operationId: string) {
+    return collaborationEffect(directory, operationId).mutation;
 }

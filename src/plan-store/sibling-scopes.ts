@@ -1,4 +1,4 @@
-import { currentPackageSelection } from "./workflows.ts";
+import { hasCanonicalPlanAccess } from "./handles.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
 import { captureForegroundProcess } from "../shared/captured-process.ts";
@@ -113,7 +113,7 @@ export async function prepareEditedSiblingPlans(
     planName: string,
     planRelativePath: string,
 ): Promise<string[]> {
-    if (currentPackageSelection()) return [];
+    if (hasCanonicalPlanAccess()) return [];
     const plan = await loadPlan(worktreePath, planName);
     const epicPlanName = typeof plan?.attrs.parentPlan === "string" ? plan.attrs.parentPlan.trim() : "";
     if (!epicPlanName) return [];

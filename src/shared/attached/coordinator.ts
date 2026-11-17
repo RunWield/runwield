@@ -12,7 +12,7 @@ import type { PackageWorkflowInput } from "../../plan-store/index.ts";
 
 import { readWorkRecordById, searchWorkRecords, formatWorkRecordReadResult } from "../work-records/search.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
-import { capturePlanAccess } from "../../plan-store/index.ts";
+import { hasCanonicalPlanAccess } from "../../plan-store/index.ts";
 /**
  * @module shared/attached/coordinator
  * The Attached Workflow Coordinator: a sibling runtime to `SessionRuntime` (ADR-014).
@@ -249,10 +249,10 @@ async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNe
     if (record.state === "implementing" && record.execution && record.plan && pending) {
         const executionCwd = record.execution.executionCwd || currentAttachedProjectRoot(record);
         const packagePlan = await loadPlan(
-            capturePlanAccess() ? currentAttachedProjectRoot(record) : executionCwd,
+            hasCanonicalPlanAccess() ? currentAttachedProjectRoot(record) : executionCwd,
             record.plan.planName,
         ).catch((error) => {
-            if (!capturePlanAccess() && error instanceof Error && error.message.includes("ENOENT")) return null;
+            if (!hasCanonicalPlanAccess() && error instanceof Error && error.message.includes("ENOENT")) return null;
             throw error;
         });
         return {

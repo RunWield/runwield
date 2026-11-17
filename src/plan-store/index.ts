@@ -12,28 +12,7 @@ export { authorLocalPlan, type PlanAuthoringInput, type PlanAuthoringDefinition 
 export { readPlanDocuments, savePlanDocument, readPlanDocumentLink, saveReviewedPlanDocument } from "./documents.ts";
 export { importPlans, importedPlanCopyChoice } from "./imports.ts";
 export {
-    loadPlan,
-    loadPlanStrict,
-    inspectPlanStrict,
-    listPlans,
-    listPlanDocuments,
-    listPlanResources,
-    readPlanResourceCatalog,
-    findPlanById,
-    findPlanEvidenceById,
-    loadPlanBodyById,
-    savePlanBodyById,
-    findPlansByParent,
-    resolvePlan,
     resolveSiblingChildPlanDependencies,
-    saveChildFeaturePlans,
-    archivePlan,
-    archivePlansByStatus,
-    listArchivedPlans,
-    loadArchivedPlan,
-    restoreArchivedPlan,
-    deleteArchivedPlanUnit,
-    ensurePlanIdentity,
     onboardExternalPlan,
     createPulledCollaborationPlan,
     updatePlanCollaborationMetadata,
@@ -61,7 +40,7 @@ export type {
     PlanDocumentDiagnostic,
     SavedChildFeaturePlan,
 } from "../plan-store.js";
-export { authorPackageChildren } from "./children.ts";
+export { authorPackageChildren, saveChildFeaturePlans } from "./children.ts";
 export { readLocalHomeStore, withLocalPlanWorkflow, withLocalProjectAction } from "./access.ts";
 export { continueMissingPlanExecution } from "./access.ts";
 export { planDocumentReference } from "./access.ts";
@@ -108,6 +87,7 @@ export {
 } from "./published-source.ts";
 export type {
     DeliveryCopy,
+    ExecutionPublicationPolicy,
     PackageAttemptContinuation,
     PackagePublicationManifest,
     PackagePublicationReference,
@@ -126,6 +106,7 @@ export {
     reservePlanExecution,
     readFrozenPlanExecutionDocuments,
     type PlanExecutionReservation,
+    type PlanExecutionHost,
     type FrozenPlanExecutionDocuments,
 } from "./workflows.ts";
 
@@ -172,12 +153,21 @@ export {
     type PublicationCleanupNotice,
     type PlanDocumentTarget,
 } from "./resolution.ts";
-export { capturePlanAccess, selectPlanAccess, withPlanAccess, resumePlanAttempt, type PlanAccess } from "./handles.ts";
+export {
+    capturePlanAccess,
+    hasCanonicalPlanAccess,
+    selectPlanAccess,
+    withPlanAccess,
+    resumePlanAttempt,
+    type PlanAccess,
+} from "./handles.ts";
 export type { TransitionResult } from "./transitions.ts";
 
 export { loadReviewPlanDocument, isCurrentPlan, planControllerRoot } from "./resources.ts";
 export {
     readPlanRecordingContext,
+    generatePlanPreparedRecord,
+    settlePlanPreparedRecord,
     readRecordingPublication,
     planRecordingSourceRoot,
     withRecordingPlan,
@@ -194,10 +184,12 @@ export { runPlansDoctor, type DoctorIssue } from "./doctor.ts";
 export {
     packagePublicationInput,
     sealPackagePublication,
+    freezePlanPublicationPolicy,
     packageArtifactEvidence,
     uncommittedPackageCopyPaths,
     preparePackageCopies,
     settlePackagePublication,
+    settlePlanPublicationRecording,
     packageTargetEvidence,
     settlePackageInPlace,
     assertPackageCopyTargets,
@@ -335,6 +327,94 @@ export {
 
 export {
     registerHomeProjectOwner,
+    findHomeProjectOwner,
     type HomeProjectOwner,
     type HomeProjectRegistration,
 } from "../shared/project-identity.ts";
+
+export { configureManagedPlanStore } from "./managed.ts";
+export { loadPlan, listPlans, loadPlanStrict, inspectPlanStrict } from "./queries.ts";
+
+export { receiveManagedRuntimeTransfer, acknowledgeManagedRuntimeRetirement } from "./runtime-adoption.ts";
+
+export {
+    readOwnedWorkRecord,
+    readOwnedWorkRecordById,
+    listOwnedWorkRecords,
+    searchOwnedWorkRecords,
+} from "./recording.ts";
+
+export { findPlanById, findPlanEvidenceById, loadPlanBodyById } from "./queries.ts";
+
+export {
+    listPlanDocuments,
+    listPlanResources,
+    readPlanResourceCatalog,
+    resolvePlan,
+    findPlansByParent,
+    savePlanBodyById,
+} from "./queries.ts";
+
+export {
+    listArchivedPlans,
+    loadArchivedPlan,
+    archivePlan,
+    restoreArchivedPlan,
+    deleteArchivedPlanUnit,
+} from "./queries.ts";
+
+export { readRetainedManagedExecution, type RetainedManagedExecution } from "./retained-managed-execution.ts";
+
+export { settleRetainedExecutionCleanup } from "./managed.ts";
+
+export { generateManagedRetainedRecord as generateRetainedPlanRecord } from "./managed.ts";
+
+export type { PublishedDeliverySources } from "./published-source.ts";
+
+export { settleRetainedExecutionRecording } from "./managed.ts";
+
+export {
+    sharePlanForReview,
+    parsePlansShareArgs,
+    runPlansShareCommand,
+    type SharePlanForReviewOptions,
+    type SharedPlanReviewLink,
+} from "./collaboration/share.ts";
+export {
+    pushPlanRevision,
+    parsePlansPushArgs,
+    runPlansPushCommand,
+    type PushPlanRevisionOptions,
+    type PushedPlanRevision,
+} from "./collaboration/push.ts";
+export {
+    pullPlanForRevision,
+    parsePlansPullArgs,
+    runPlansPullCommand,
+    type PullPlanForRevisionOptions,
+    type PulledPlanRevision,
+    type RunPlansPullOptions,
+} from "./collaboration/pull.ts";
+export {
+    unsharePlan,
+    parsePlansUnshareArgs,
+    runPlansUnshareCommand,
+    type UnsharePlanOptions,
+    type UnsharedPlan,
+} from "./collaboration/unshare.ts";
+
+export {
+    inspectRetainedFamilyMember,
+    type RetainedFamilyIdentity,
+    type RetainedFamilyMember,
+} from "./retained-family.ts";
+
+export { ensurePlanIdentity } from "./queries.ts";
+
+export {
+    inspectManagedImportSource,
+    type ManagedImportPreparationRequest,
+    type PreparedPlanImport,
+} from "./import-source.ts";
+
+export { archivePlansByStatus } from "./archiving.ts";

@@ -1,3 +1,11 @@
+import {
+    managedPlanStoreActive,
+    readManagedDeliverySources,
+    readManagedRecordingContext,
+    readManagedPlan,
+    settleManagedPublication,
+} from "./managed.ts";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { inspectProjectIdentity } from "../shared/project-identity.ts";
 import {
     readPlanPackage,
@@ -28,6 +36,12 @@ import type { PublicationAttempt } from "../shared/workflow/publication-attempt.
 import { attachEpicChildren, buildActiveWorkRecordSource } from "../shared/work-records/generation.js";
 import { isTerminalWorkRecordParent } from "../shared/work-records/auto-generation.ts";
 
+const confirmedDeliveries = new AsyncLocalStorage<PublicationAttempt>();
+/** Owner-private scope established only after the trusted execution runtime proves current Git. */
+export async function withConfirmedPublication<T>(attempt: PublicationAttempt, run: () => Promise<T>): Promise<T> {
+    return await confirmedDeliveries.run(attempt, run);
+}
+
 type WorkRecordSource = import("../shared/work-records/generation.js").WorkRecordSource;
 
 async function git(root: string, args: string[]): Promise<string> {
@@ -53,6 +67,8 @@ export async function retainPublishedWorkRecordSource(
     if (!["publication_verified", "cleanup_complete"].includes(attempt.phase)) {
         throw new Error("Recording source requires confirmed publication.");
     }
+    if (managedPlanStoreActive() && attempt.packageInput)
+        return await settleManagedPublication(root, attempt.packageInput);
     if (attempt.packageInput) {
         const { workRecordOwner } = await packageDeliverySources(root, attempt.packageInput, true);
         if (!workRecordOwner) return;
@@ -97,6 +113,19 @@ export async function retainPublishedWorkRecordSource(
 
 /** Read the delivered input while preserving a stale or edited primary Plan body. */
 export async function loadPublishedWorkRecordSource(root: string, planName: string): Promise<WorkRecordSource | null> {
+    if (managedPlanStoreActive()) {
+        const reference = (await readManagedRecordingContext(planName, false))?.publishedReference;
+        if (!reference) return null;
+        const source = (await readManagedDeliverySources(root, reference, true)).workRecordOwner;
+        if (!source) return null;
+        const current = await readManagedPlan(root, source.planId);
+        if (!current) throw new Error("Recording owner is unavailable.");
+        return {
+            ...source,
+            documentRevision: current.revision,
+            attrs: { ...source.attrs, workRecord: current.attrs.workRecord },
+        };
+    }
     if (currentPackageSelection()) {
         const selected = await selectedPackage(planName);
         const recordingSource = selected.metadata.workflow?.recordingSource;
@@ -171,6 +200,12 @@ export async function readPublishedDeliverySources(
         "artifactCommit" | "planName" | "planId" | "phase" | "planPaths" | "packageInput"
     >,
 ): Promise<PublishedDeliverySources> {
+    if (managedPlanStoreActive() && attempt.packageInput)
+        return await readManagedDeliverySources(
+            root,
+            attempt.packageInput,
+            ["publication_verified", "cleanup_complete"].includes(attempt.phase),
+        );
     if (attempt.packageInput)
         return await packageDeliverySources(
             root,
@@ -274,6 +309,15 @@ export async function verifyPackageRecordingDelivery(
 ): Promise<void> {
     const receipt = await packageRecordingReceipt(root, reference);
     if (!receipt) throw new Error("Retained source has no matching delivery receipt.");
+    const confirmed = confirmedDeliveries.getStore();
+    if (
+        confirmed &&
+        samePackagePublicationReference(confirmed.packageInput, reference) &&
+        confirmed.publishedCommit === receipt.publishedCommit &&
+        confirmed.verifiedAt &&
+        confirmed.publicationMode === receipt.mode
+    )
+        return;
     if (
         receipt.mode !== "non_git_in_place" &&
         !(await isCommitPublishedToTarget({

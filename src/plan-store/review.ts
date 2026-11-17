@@ -1,3 +1,4 @@
+import { managedPlanStoreActive, applyManagedReview } from "./managed.ts";
 import { withPlanAccess, type PlanAccess } from "./handles.ts";
 import { selectPlanAccess } from "./handles.ts";
 import {
@@ -184,6 +185,7 @@ async function validateReviewEvidence(
 export async function applySharedPlanReviewDecision(
     options: SharedPlanReviewActionOptions,
 ): Promise<SharedPlanReviewActionResult> {
+    if (managedPlanStoreActive()) return await applyManagedReview(options);
     if (!options.packageSelection && !currentPackageSelection()) {
         const selection = await selectPlanAccess(options.cwd, options.planName);
         if (selection) return await applySharedPlanReviewDecision({ ...options, packageSelection: selection });
@@ -212,8 +214,10 @@ async function applySharedPlanReviewDecisionInScope({
     reviewEvidence,
     decision,
 }: SharedPlanReviewActionOptions): Promise<SharedPlanReviewActionResult> {
-    await preparePlanWorkflow(cwd, planName);
-    const location = await resolveWorkflowPlanLocation(cwd, planName);
+    if (!currentPackageSelection()) await preparePlanWorkflow(cwd, planName);
+    const location = currentPackageSelection()
+        ? { plan: await loadPackageWorkflowPlan(planName), documentRoot: cwd }
+        : await resolveWorkflowPlanLocation(cwd, planName);
     if (location.plan && resolve(location.plan.path) === resolve(planPath)) {
         cwd = location.documentRoot;
     } else if (location.plan && resolve(getStoredPlanPath(cwd, planName)) === resolve(planPath)) {
@@ -541,6 +545,20 @@ async function applySharedPlanReviewDecisionInScope({
 
 /** Bind approval, readiness and the returned revision under the same owner locks. */
 export async function applyPlanReviewForExecution(options: SharedPlanReviewActionOptions) {
+    if (managedPlanStoreActive()) {
+        const applied = await applyManagedReview(options);
+        if (!applied.approved) return { ...applied, approvalControllerRevision: undefined };
+        await recordPlanEvent({
+            cwd: options.cwd,
+            planName: options.planName,
+            event: "readiness_passed",
+            expectedRevision: applied.revision,
+        });
+        return {
+            ...applied,
+            approvalControllerRevision: (await loadPlan(options.cwd, options.planName))?.controllerRevision,
+        };
+    }
     const { withOrderedTransitionResources } = await import("./transitions.ts");
     return await withOrderedTransitionResources(
         options.cwd,

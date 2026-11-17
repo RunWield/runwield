@@ -10,7 +10,11 @@ Ordinary local and manual-SSH Plan and Work Record access now uses the executing
 under [ADR-0020](0020-home-project-state-and-launch-mode-ownership.md). Project catalog authority is separate from
 revision-checked workflow selection. Explicit import preserves original execution ownership until publication is proven
 or the user deliberately abandons the attempt; it never starts a replacement attempt or weakens publication evidence.
-Session bundle authority and managed-remote personal ownership retain their existing contracts.
+Managed remote publication uses the same execution-host phase machine. The laptop freezes the remote repository's
+copy and record-generation policy, then independently probes the registered execution runtime for matching Git proof
+before personal lifecycle or Work Record settlement. Proof binds personal owner, Project, repository, attempt,
+immutable input, candidate and target. Cleanup receipts retain that evidence; reconnect does not repeat a proven push.
+Session bundle authority retains its existing contract.
 
 ## Decision
 

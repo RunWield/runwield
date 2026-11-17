@@ -1,9 +1,11 @@
+import { managedPlanStoreActive, recoverManagedExecution, readManagedPlan } from "./managed.ts";
 /** Repairs bind execution evidence through the same Plan owner that persists normal transitions. */
 import { loadPlan, updatePlanFrontMatter, withPlanLock } from "../plan-store.js";
 import { withLocalPlanWorkflow } from "./access.ts";
 import { findById } from "../shared/worktree-registry.js";
 
 export async function restoreNonGitPlanExecution(cwd: string, planName: string, expectedRevision: string) {
+    if (managedPlanStoreActive()) return await recoverManagedExecution(cwd, planName, "non-git", expectedRevision);
     return await withLocalPlanWorkflow(cwd, planName, () =>
         withPlanLock(cwd, planName, async () => {
             return await updatePlanFrontMatter(
@@ -22,6 +24,12 @@ export async function restoreNonGitPlanExecution(cwd: string, planName: string, 
 }
 
 export async function reconcilePlanExecutionBinding(cwd: string, planName: string, worktreeId: string) {
+    if (managedPlanStoreActive()) {
+        const plan = await readManagedPlan(cwd, planName);
+        if (!plan) return { identityRepaired: false, legacyExecutionMode: false };
+        await recoverManagedExecution(cwd, planName, "refresh", plan.revision, worktreeId);
+        return { identityRepaired: false, legacyExecutionMode: plan.attrs.executionMode !== "worktree" };
+    }
     return await withLocalPlanWorkflow(cwd, planName, () =>
         withPlanLock(cwd, planName, async () => {
             const plan = await loadPlan(cwd, planName);

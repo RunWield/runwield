@@ -1,4 +1,4 @@
-import { capturePlanAccess } from "./index.ts";
+import { hasCanonicalPlanAccess } from "./index.ts";
 import { preparePlanWorkflow } from "./index.ts";
 import { captureForegroundProcess } from "../shared/captured-process.ts";
 import { readFile as fsReadFile } from "node:fs/promises";
@@ -9,7 +9,7 @@ import { resolvePrimaryCheckoutRoot } from "../shared/primary-checkout.ts";
 import { listControllerDocumentWorktrees } from "./controllers.ts";
 
 export async function findCompletionSiblings(cwd: string, parentPlan: string) {
-    if (capturePlanAccess()) return await findPlansByParent(cwd, parentPlan);
+    if (hasCanonicalPlanAccess()) return await findPlansByParent(cwd, parentPlan);
     const primaryRoot = resolvePrimaryCheckoutRoot(cwd);
     const primary = await findPlansByParent(primaryRoot, parentPlan);
     if (primaryRoot === cwd) return primary;

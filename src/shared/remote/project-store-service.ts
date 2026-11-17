@@ -1,4 +1,5 @@
-import { PreparedProjectStore, type HomeProjectOwner } from "../../plan-store/index.ts";
+import type { ManagedProjectStoreLaunch } from "./project-store-launch.ts";
+import { PreparedProjectStore, type HomeProjectOwner, type PlanExecutionHost } from "../../plan-store/index.ts";
 import {
     readProjectStoreBody,
     sameProjectStoreBinding,
@@ -9,13 +10,18 @@ import {
 
 export class LaptopProjectStoreService {
     private readonly owner: PreparedProjectStore;
-    constructor(cwd: string | HomeProjectOwner) {
-        this.owner = new PreparedProjectStore(cwd);
+    constructor(
+        cwd: string | HomeProjectOwner,
+        execution?: PlanExecutionHost,
+        launch?: ManagedProjectStoreLaunch,
+        signal?: AbortSignal,
+    ) {
+        this.owner = new PreparedProjectStore(cwd, execution, launch, signal);
     }
     get binding() {
         return this.owner.binding;
     }
-    async handle(request: Request, admitted: () => boolean): Promise<Response> {
+    async handle(request: Request, admitted: () => boolean, mutationsAdmitted = true): Promise<Response> {
         if (!admitted()) return new Response(null, { status: 403 });
         if (request.method !== "POST") return new Response(null, { status: 405 });
         let input: ProjectStoreRequest;
@@ -25,6 +31,13 @@ export class LaptopProjectStoreService {
         } catch {
             return new Response(null, { status: 400 });
         }
+        if (
+            ("operationId" in input.command ||
+                input.command.kind === "capture-review" ||
+                input.command.kind === "sequence-snapshot") &&
+            !mutationsAdmitted
+        )
+            return new Response(null, { status: 403 });
         if (!admitted() || !sameProjectStoreBinding(input.binding, this.owner.binding))
             return new Response(null, { status: 403 });
         try {

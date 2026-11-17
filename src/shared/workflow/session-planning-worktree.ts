@@ -1,4 +1,4 @@
-import { capturePlanAccess } from "../../plan-store/index.ts";
+import { hasCanonicalPlanAccess } from "../../plan-store/index.ts";
 import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { mergeFrontMatterText } from "../../plan-format.ts";
 import { loadPlan } from "../../plan-store/index.ts";
@@ -14,7 +14,7 @@ import { preparePlanningWorktreeForPlan } from "./planning-worktree.ts";
 
 /** Prepare the authoritative Plan document immediately before a workflow session starts. */
 export async function prepareSessionPlanningWorktree(projectRoot: string, planName: string) {
-    if (capturePlanAccess()) return await preparePlanWorkflow(projectRoot, planName);
+    if (hasCanonicalPlanAccess()) return await preparePlanWorkflow(projectRoot, planName);
     await preparePlanWorkflow(projectRoot, planName);
     const registryRoot = resolvePrimaryCheckoutRoot(projectRoot);
     const attempt = await findActiveByPlanName(registryRoot, planName);

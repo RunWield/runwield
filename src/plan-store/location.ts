@@ -1,3 +1,4 @@
+import { managedPlanStoreActive, readManagedPlan, readManagedExecution } from "./managed.ts";
 import { requireProjectCheckout } from "../shared/project-identity.ts";
 import { inspectLocalHomeStore, selectLocalPlanWorkflow } from "./access.ts";
 import {
@@ -46,7 +47,7 @@ type PlanningAttributes = NonNullable<Awaited<ReturnType<typeof loadPlan>>>["att
 
 /** A target-backed unfinished Plan starts or refreshes its isolated document at session start. */
 export function needsSessionPlanningWorktree(attrs: PlanningAttributes): boolean {
-    if (currentPackageProject()) return false;
+    if (currentPackageProject() || managedPlanStoreActive()) return false;
     return Boolean(
         effectiveDeliveryBranch(attrs) &&
         (attrs.parentPlan || attrs.deliveryBranch) &&
@@ -74,6 +75,18 @@ export async function resolveWorkflowPlanLocation(
     planName: string,
     options: ResolveWorkflowPlanLocationOptions = {},
 ): Promise<Awaited<ReturnType<typeof resolveWorkflowPlanLocationInScope>>> {
+    if (managedPlanStoreActive()) {
+        const plan = await readManagedPlan(cwd, planName);
+        const execution = plan?.attrs.planId ? await readManagedExecution(cwd, plan.attrs.planId) : null;
+        return {
+            registryRoot: resolvePrimaryCheckoutRoot(cwd),
+            documentRoot: cwd,
+            plan: plan?.attrs.archivedAt ? null : plan,
+            archived: Boolean(plan?.attrs.archivedAt),
+            packageSelection: undefined,
+            resumeInterruptedPreparation: Boolean(execution),
+        };
+    }
     if (!options.packageSelection && !currentPackageSelection()) {
         const store = inspectLocalHomeStore(cwd);
         if (store.kind === "empty") return { registryRoot: cwd, documentRoot: cwd, plan: null };

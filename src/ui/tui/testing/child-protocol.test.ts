@@ -8,6 +8,55 @@ import { pathToFileURL as toFileUrl } from "node:url";
 import { runGoldenScenarioChildProcess } from "./child-protocol.js";
 import { GOLDEN_CHILD_READY_MARKER } from "./subprocess-runner.ts";
 
+interface CleanupChildFailure extends Error {
+    childPayload?: { ok: boolean; artifactDir: string };
+}
+
+test("Golden children retain cleanup diagnostics and withhold success when cleanup rejects unsupported commands", async () => {
+    const fixtureRoot = await fsMkdtemp(join(tmpdir(), "golden-cleanup-failure-"));
+    const scenarioPath = join(fixtureRoot, "scenario.ts");
+    const assertionMarker = join(fixtureRoot, "assertions-passed");
+    let artifactDir: string | undefined;
+    try {
+        await fsWriteFile(
+            scenarioPath,
+            `import fs from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+export const scenario = {
+    name: "cleanup-failure",
+    actions: [],
+    assertions: [async () => {
+        const call = spawnSync("mnemoteca", ["unsupported-cleanup-probe"]);
+        if (call.status !== 64) throw new Error("Expected the unsupported fixture command to run");
+        await fs.writeFile(${JSON.stringify(assertionMarker)}, "passed");
+    }],
+};
+`,
+        );
+        const error = (await assertRejects(
+            () =>
+                runGoldenScenarioChildProcess({
+                    scenarioModule: toFileUrl(scenarioPath).href,
+                    exportName: "scenario",
+                    timeoutMs: 1000,
+                }),
+            Error,
+            "Unsupported mnemoteca fixture call: unsupported-cleanup-probe",
+        )) as CleanupChildFailure;
+        assertEquals(await fsReadFile(assertionMarker, "utf8"), "passed");
+        artifactDir = error.childPayload?.artifactDir;
+        assertEquals(error.childPayload?.ok, false);
+        assert(artifactDir, "Cleanup failure must preserve the phase artifact");
+        assertEquals(
+            await fsReadFile(join(artifactDir, "startup-phase.txt"), "utf8"),
+            "cleaning isolated environment\n",
+        );
+    } finally {
+        await fsRm(fixtureRoot, { recursive: true, force: true });
+        if (artifactDir) await fsRm(artifactDir, { recursive: true, force: true });
+    }
+});
+
 test("Golden scenarios reject a timeout even after the child reports success", async () => {
     const fixtureRoot = await fsMkdtemp(join(tmpdir(), "golden-success-then-hang-"));
     const scenarioPath = join(fixtureRoot, "hanging-scenario.ts");

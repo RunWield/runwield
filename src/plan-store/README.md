@@ -49,8 +49,8 @@ All implementation files in this directory are private except `index.ts`. Two re
 also belong to the owner: `../plan-store.js` and `../shared/workflow/execution-plan-file.js`. They are not alternate
 public interfaces. Canonical live packages, retained legacy execution documents, explicit import provenance, and Git
 delivery copies are distinct sources inside the module. A missing canonical store never enables checkout fallback.
-Managed-remote admission retains its existing ownership behavior; this consolidation does not activate the later remote
-store transport.
+Managed remote entry selects the initiating laptop service before workflow consumers load. Ordinary local and
+manual-SSH entry selects the execution account. Losing the service never enables another personal store.
 
 `../plan-format.ts` exposes storage-free parsing, normalization and presentation helpers. Actual implementations live in
 `../plan-format-implementation.ts` and `../plan-format/`; they do not import persistence at runtime. The parser retains
@@ -76,7 +76,7 @@ CAS, serialized/cross-Project access, fresh read contexts, and target reservatio
 listed in the required isolated runner inventory. Existing package, transition, recovery, consumer and composed browser
 qualification remains necessary: a module boundary alone cannot prove behavior.
 
-## Prepared owner transport
+## Managed owner transport
 
 `PreparedProjectStore` executes named commands through this owner. Trusted local code registers it on one
 `startRemoteControlService` connection; HTTP cannot register a path, an owner or a serialized admission handle.
@@ -96,11 +96,20 @@ require a real execution checkout. The existing cwd registration adapter keeps o
 | `reconcile-record-index`                         | Existing canonical record/index reconciliation                                          |
 | `reconcile`                                      | Durable operation receipt inspection/recovery                                           |
 
-Publication here seals immutable store evidence. It performs no Git publication, accepts no claim of new delivery,
-and does not export collaboration credentials. Record persistence requires the owner's retained matching delivery
-receipt and source. Execution-host proof collection and remote startup selection remain separate operations.
+Execution reservation, checkpoints, child authoring, Sequence decisions, Epic projections and artifacts, explicit
+imports, archive operations, recovery, doctor repair, and collaboration are named owner commands. Collaboration performs its authenticated external requests on the personal
+owner; capabilities remain there. A completed collaboration request leaves a durable result and receipt. The execution
+host archives its pending pointer after receiving that result, so a later pull can see newer feedback. An ambiguous
+external creation is not retried automatically; this preserves the external Plan Server's existing request semantics.
 
-Requests and replies are limited to 1 MiB; record searches return at most 20 results. The service has no operation
+Publication freezes the execution repository's Plan-copy, Work Record-copy and generation settings. Git publication
+stays on the execution host. Before lifecycle or record settlement, the laptop independently probes the registered
+remote runtime for the exact attempt, candidate and target evidence. Retained proof supports post-cleanup checks;
+a client success claim does not. Original pre-cutover attempts retain their registered checkout and controller identity
+through publication and recording without implicitly importing their repository Plan into the canonical catalog.
+
+Owner HTTP requests and replies are limited to 1 MiB; record searches return at most 20 results. The separate private
+SSH import/proof probe accepts at most 8 MiB for source inventory and prepared imports. The service has no operation
 cache. Durable ID reservations and receipts remain for the life of the owner store; this slice introduces no receipt
 pruning. Deleting or corrupting a receipt does not release its reserved ID. A pending canonical effect retains at most
 16 MiB of bounded replacement evidence until native-lock reconciliation settles it; completed receipts retain only
@@ -109,7 +118,10 @@ advancing the resource. Record indexing can remain pending after canonical persi
 
 The client keeps the original operation ID through uncertainty. A fresh authenticated connection can inspect or retry
 that identity. Closing a connection prevents new admission; it does not assert rollback of an admitted mutation.
-Production remote startup does not instantiate this service. Plan 12 owns activation and execution integration.
+Production remote startup registers the service from independently inspected remote Project and repository identity.
+Passive inspection does not register or adopt state; deliberate admission performs staged runtime adoption. Remote
+Git registries, worktrees, publication staging and effect journals stay under the remote account home. Personal
+controllers and collaboration secrets are activated on the laptop only after exact staged bytes and ownership verify.
 
 The process fixture is `src/shared/remote/project-store-process.ts`. Run its bounded save/restart/reconnect scenario
 with `bun scripts/run-tests.js src/shared/remote/project-store.integration.test.ts`; it uses separate owner/client

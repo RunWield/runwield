@@ -304,7 +304,14 @@ function evidence(path: string): IdentityEvidence {
         remote,
     };
 }
+const trustedLaunchContext = new AsyncLocalStorage<ProjectLaunchContext>();
+/** Private runtime entry supplies verified launcher ownership without changing process-global resources. */
+export async function withProjectLaunchContext<T>(context: ProjectLaunchContext, run: () => Promise<T>): Promise<T> {
+    return await trustedLaunchContext.run(context, run);
+}
 export function projectLaunchContext(): ProjectLaunchContext {
+    const trusted = trustedLaunchContext.getStore();
+    if (trusted) return trusted;
     const executionAccountHome = getHomeDir();
     return {
         executionAccountHome,
@@ -932,6 +939,12 @@ export function projectStoreLocation(identity: ProjectStoreIdentity): string {
     return isHomeProjectOwner(identity)
         ? join(identity.executionAccountHome, ".wld", "projects", identity.projectId)
         : identity.checkoutRoot;
+}
+export function findHomeProjectOwner(projectId: string, repositoryId: string): HomeProjectOwner | null {
+    const context = contextFor({});
+    const record = readRecord(recordPath(context.executionAccountHome, projectId), projectId);
+    if (!record || !record.repositories.some((entry) => entry.repositoryId === repositoryId)) return null;
+    return inspectHomeProjectOwner(projectId, repositoryId);
 }
 export function inspectHomeProjectOwner(projectId: string, repositoryId: string): HomeProjectOwner {
     requireId(repositoryId, "repository ID");

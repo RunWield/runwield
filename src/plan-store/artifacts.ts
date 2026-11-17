@@ -1,4 +1,11 @@
 import {
+    managedPlanStoreActive,
+    readManagedPlan,
+    readManagedDocument,
+    saveManagedEpicArtifact,
+    appendManagedEpicQa,
+} from "./managed.ts";
+import {
     EPIC_MANUAL_QA_FILE_NAME,
     EPIC_INTEGRATION_REPORT_FILE_NAME,
     EPIC_ARTIFACT_FILE_NAMES,
@@ -69,6 +76,12 @@ export async function resolveEpicArtifactPath(
     epicPlanName: string,
     fileName: string,
 ): Promise<string> {
+    if (managedPlanStoreActive()) {
+        if (!EPIC_ARTIFACT_FILE_NAMES.includes(fileName)) throw new Error(`Unknown Epic Artifact: ${fileName}`);
+        const plan = await readManagedPlan(projectRoot, epicPlanName);
+        if (!plan) throw new Error("Managed Epic is unavailable.");
+        return join(dirname(plan.path), fileName);
+    }
     if (!currentPackageSelection()) return getEpicArtifactPath(projectRoot, epicPlanName, fileName);
     if (!EPIC_ARTIFACT_FILE_NAMES.includes(fileName)) throw new Error(`Unknown Epic Artifact: ${fileName}`);
     return join((await selectedPackage(epicPlanName)).path, fileName);
@@ -81,6 +94,7 @@ export async function saveEpicArtifact(
     fileName: string,
     text: string,
 ): Promise<void> {
+    if (managedPlanStoreActive()) return await saveManagedEpicArtifact(projectRoot, epicPlanName, fileName, text);
     const path = await resolveEpicArtifactPath(projectRoot, epicPlanName, fileName);
     const selection = currentPackageSelection();
     if (selection) {
@@ -106,6 +120,20 @@ export async function findEpicManualQaSection(
     childPlanName: string,
 ): Promise<{ exists: boolean; relativePath: string }> {
     const path = await resolveEpicArtifactPath(projectRoot, epicPlanName, EPIC_MANUAL_QA_FILE_NAME);
+    if (managedPlanStoreActive()) {
+        const parent = await readManagedPlan(projectRoot, epicPlanName);
+        const child = await readManagedPlan(projectRoot, childPlanName);
+        if (!parent?.attrs.planId || !child?.attrs.planId || child.attrs.parentPlan !== epicPlanName)
+            throw new Error("QA names another Epic family.");
+        const documents = await readManagedDocument(parent.attrs.planId, "context.md", projectRoot);
+        const existing = documents.documents.some((document) => document.name === EPIC_MANUAL_QA_FILE_NAME)
+            ? (await readManagedDocument(parent.attrs.planId, EPIC_MANUAL_QA_FILE_NAME, projectRoot)).body
+            : null;
+        return {
+            exists: Boolean(existing?.includes(sectionStartMarker(child.attrs.planId))),
+            relativePath: projectRelativePath(projectRoot, path),
+        };
+    }
     const existing = await readTextIfExists(path);
     return {
         exists: Boolean(
@@ -162,6 +190,12 @@ async function writeAtomic(path: string, text: string): Promise<void> {
 export async function appendEpicManualQaSection(
     args: AppendEpicManualQaSectionArgs,
 ): Promise<AppendEpicManualQaSectionResult> {
+    if (managedPlanStoreActive()) {
+        const before = await findEpicManualQaSection(args.projectRoot, args.epicPlanName, args.childPlanName);
+        if (before.exists) return { status: "already_present", relativePath: before.relativePath };
+        await appendManagedEpicQa(args);
+        return { status: "recorded", relativePath: before.relativePath };
+    }
     const epicSegments = assertSafePlanName(args.epicPlanName, "Epic Plan name");
     const childSegments = assertSafePlanName(args.childPlanName, "Child Plan name");
     if (!currentPackageSelection() && epicSegments.length !== 1)
