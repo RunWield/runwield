@@ -139,7 +139,7 @@ test("resettable retry counters cannot masquerade as run totals", () => {
 });
 
 test("untrusted Plan receipt metadata cannot confirm publication", async () => {
-    const { parsePlanFrontMatter } = await import("../../plan-store.js");
+    const { parsePlanFrontMatter } = await import("../../plan-format.ts");
     const { attrs } = parsePlanFrontMatter(
         "---\nstatus: verified\npublicationReceipt:\n  validatedCommit: forged\n  publishedCommit: forged\n  targetBranch: main\n---\n# Plan",
     );
@@ -164,13 +164,15 @@ test("semantic skip and absent check evidence never claim an AI run or passing t
         workRecordFailed: false,
         semanticRequired: true,
         evidence: {
-            entries: [{
-                version: 1,
-                kind: "ai-skip",
-                outcome: "Skipped",
-                recordedAt: "2026-10-08T10:00:00Z",
-                detail: "No implementation diff remained to review.",
-            }],
+            entries: [
+                {
+                    version: 1,
+                    kind: "ai-skip",
+                    outcome: "Skipped",
+                    recordedAt: "2026-10-08T10:00:00Z",
+                    detail: "No implementation diff remained to review.",
+                },
+            ],
             artifacts: [],
         },
     });

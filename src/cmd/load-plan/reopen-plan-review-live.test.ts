@@ -1,3 +1,4 @@
+import { authorLocalPlan, loadPlan } from "../../plan-store/index.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
@@ -7,6 +8,8 @@ import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-in
 
 test("reopening a live review returns its address without opening another review", async () => {
     await withRuntimeCommandFixture("reopen-live-", async ({ homeDir, projectRoot }) => {
+        await authorLocalPlan(projectRoot, { planName: "target", contextMarkdown: "# Target\n" });
+        const plan = await loadPlan(projectRoot, "target");
         const ownerStore = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
         const runtime = createSessionRuntime({ sessionStore: ownerStore, ownerProcessKind: "test" });
         const pending = Promise.withResolvers<{ outcome: "canceled" }>();
@@ -25,7 +28,7 @@ test("reopening a live review returns its address without opening another review
                 type: RuntimeInteractionTypes.PLAN_REVIEW,
                 prompt: "Review target",
                 reviewUrl: "https://example.test/current-review",
-                _meta: { planId: "plan-id", planName: "target", planningAgentName: "planner" },
+                _meta: { planId: plan!.attrs.planId, planName: "target", planningAgentName: "planner" },
             });
             await presented.promise;
             const result = await runtime.reopenPlanReview(sessionId);

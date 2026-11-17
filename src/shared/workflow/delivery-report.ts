@@ -1,7 +1,7 @@
 /** Saved delivery evidence shared by the terminal and Workspace session surfaces. */
 import type { PublicationAttempt } from "./publication-attempt.ts";
 import type { SessionArtifactKind } from "../session/file-session-store-types.ts";
-type PlanAttributes = import("../../plan-store.js").PlanFrontMatter;
+type PlanAttributes = import("../../plan-store/index.ts").PlanFrontMatter;
 export interface DeliveryReportArtifact {
     title: string;
     kind: SessionArtifactKind;
@@ -44,8 +44,12 @@ export function buildDeliveryReport(input: DeliveryReportInput): DeliveryReport 
     const confirmed = Boolean(publication?.verifiedAt && publication.publishedCommit);
     const landingBranch = publication?.targetBranch || attrs.deliveryBranch || attrs.targetBranch;
     const intendedTarget = attrs.targetBranch?.trim();
-    const readyForMerge = confirmed && !attrs.parentPlan && Boolean(attrs.deliveryBranch) &&
-        Boolean(intendedTarget) && landingBranch !== intendedTarget?.replace(/^origin\//, "");
+    const readyForMerge =
+        confirmed &&
+        !attrs.parentPlan &&
+        Boolean(attrs.deliveryBranch) &&
+        Boolean(intendedTarget) &&
+        landingBranch !== intendedTarget?.replace(/^origin\//, "");
     const humanApproved = attrs.humanReviewDecision === "approved" && Boolean(attrs.humanReviewedAt);
     const mode = attrs.humanReviewMode || input.codeReview;
     const skipped = attrs.humanReviewDecision === "skipped" || attrs.humanReviewDecision === "not_required";
@@ -77,34 +81,39 @@ export function buildDeliveryReport(input: DeliveryReportInput): DeliveryReport 
             outcome: !input.semanticRequired
                 ? "Not required"
                 : semantic?.kind === "ai-skip"
-                ? semantic.outcome === "Human takeover" ? "Handed to user" : "Skipped"
-                : semantic?.outcome === "Approved"
-                ? "Passed"
-                : "Evidence unavailable",
+                  ? semantic.outcome === "Human takeover"
+                      ? "Handed to user"
+                      : "Skipped"
+                  : semantic?.outcome === "Approved"
+                    ? "Passed"
+                    : "Evidence unavailable",
             tone: input.semanticRequired && semantic?.outcome === "Approved" ? "success" : "neutral",
-            detail: input.semanticRequired && semantic?.kind === "ai-skip"
-                ? semantic.detail
-                : input.semanticRequired
-                ? `${counts("ai", "ai-repair")} ${
-                    input.evidence?.artifacts.some((a) => a.title === "Reviewer findings")
-                        ? "Reviewer findings attached."
-                        : "Reviewer findings unavailable."
-                }`
-                : "This workflow does not require semantic review. Run and repair totals unavailable.",
+            detail:
+                input.semanticRequired && semantic?.kind === "ai-skip"
+                    ? semantic.detail
+                    : input.semanticRequired
+                      ? `${counts("ai", "ai-repair")} ${
+                            input.evidence?.artifacts.some((a) => a.title === "Reviewer findings")
+                                ? "Reviewer findings attached."
+                                : "Reviewer findings unavailable."
+                        }`
+                      : "This workflow does not require semantic review. Run and repair totals unavailable.",
         },
         {
             label: "Code Review",
             outcome: humanApproved ? "Approved" : skipped ? "Skipped" : "Not recorded",
             tone: humanApproved ? "success" : "warning",
             detail: humanApproved
-                ? `Decision recorded ${attrs.humanReviewedAt}. ${
-                    counts("human", "human-revision", "rounds / revisions started")
-                }`
+                ? `Decision recorded ${attrs.humanReviewedAt}. ${counts(
+                      "human",
+                      "human-revision",
+                      "rounds / revisions started",
+                  )}`
                 : mode === "none"
-                ? "Reason: codereview = Never (stored: none). Rounds and revisions unavailable."
-                : skipped
-                ? "Skipped by user. Rounds and revisions unavailable."
-                : "No recorded user approval. Rounds and revisions unavailable.",
+                  ? "Reason: codereview = Never (stored: none). Rounds and revisions unavailable."
+                  : skipped
+                    ? "Skipped by user. Rounds and revisions unavailable."
+                    : "No recorded user approval. Rounds and revisions unavailable.",
         },
         {
             label: "User verification",
@@ -119,14 +128,14 @@ export function buildDeliveryReport(input: DeliveryReportInput): DeliveryReport 
             outcome: confirmed
                 ? "Confirmed"
                 : attrs.executionMode === "non_git_in_place"
-                ? "Not applicable"
-                : "Evidence unavailable",
+                  ? "Not applicable"
+                  : "Evidence unavailable",
             tone: confirmed ? "success" : "neutral",
             detail: confirmed
                 ? `Published commit confirmed on ${landingBranch}.` +
-                    (readyForMerge
-                        ? ` Merge ${landingBranch} into ${intendedTarget}, or open a PR to ${intendedTarget}.`
-                        : "")
+                  (readyForMerge
+                      ? ` Merge ${landingBranch} into ${intendedTarget}, or open a PR to ${intendedTarget}.`
+                      : "")
                 : "A completed status alone is not proof of a merge.",
         },
         {
@@ -136,8 +145,8 @@ export function buildDeliveryReport(input: DeliveryReportInput): DeliveryReport 
             detail: input.workRecordFailed
                 ? "Retry regenerates this record. wld wr backfill regenerates missing or failed records across completed Plans."
                 : workRecordCreated
-                ? "Generated Work Record attached."
-                : "No generated Work Record backlink is available.",
+                  ? "Generated Work Record attached."
+                  : "No generated Work Record backlink is available.",
         },
     ];
     return {
@@ -152,8 +161,9 @@ export function buildDeliveryReport(input: DeliveryReportInput): DeliveryReport 
         artifacts: [
             ...(input.evidence?.artifacts || []),
             ...(input.planPath ? [{ title: "Plan", kind: "plan" as const, path: input.planPath }] : []),
-            ...(workRecordCreated && attrs.workRecord?.path &&
-                    !input.evidence?.artifacts.some((artifact) => artifact.kind === "work-record")
+            ...(workRecordCreated &&
+            attrs.workRecord?.path &&
+            !input.evidence?.artifacts.some((artifact) => artifact.kind === "work-record")
                 ? [{ title: "Work Record", kind: "work-record" as const, path: attrs.workRecord.path }]
                 : []),
         ],
@@ -171,7 +181,7 @@ export function deliveryRowArtifacts(report: DeliveryReport, label: string): Del
         // Saved delivery reports retain their original row labels.
         "Human code review": ["Review decisions", "Human decisions"],
         "Semantic AI review": ["Reviewer findings"],
-        "Merge": ["Merge confirmation"],
+        Merge: ["Merge confirmation"],
         "Work Record": ["Work Record"],
     };
     return report.artifacts.filter((artifact) => titles[label]?.includes(artifact.title));

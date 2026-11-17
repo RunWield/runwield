@@ -1,3 +1,4 @@
+import { currentHomeProjectOwner, assertProjectStoreIdentity, projectStoreLocation } from "../project-identity.ts";
 import { recoverWindowsRename } from "../native-file-replace-windows.ts";
 import { rename as fsRename } from "node:fs/promises";
 import {
@@ -36,7 +37,8 @@ export function secretRecordKey(planId, spaceId) {
 
 /**
  * @typedef {Object} SecretStoreLocation
- * @property {"global"|"project"} owner
+ * @property {"global"|"project"|"home-project"} owner
+ * @property {import("../project-identity.ts").HomeProjectOwner} [homeOwner]
  * @property {string} path
  * @property {string} [projectRoot]
  */
@@ -62,6 +64,11 @@ export function getGlobalSecretStoreLocation(homeDir = getHomeDir()) {
  * @returns {string}
  */
 export function getProjectSecretStorePath(projectRoot) {
+    const owner = currentHomeProjectOwner();
+    if (owner) {
+        assertProjectStoreIdentity(owner);
+        return join(projectStoreLocation(owner), "internal", "collaboration-secrets.json");
+    }
     return resolveProjectRuntimeLayout(projectRoot).primary.projectSecretStorePath;
 }
 
@@ -70,6 +77,8 @@ export function getProjectSecretStorePath(projectRoot) {
  * @returns {Promise<SecretStoreLocation>}
  */
 export async function getProjectSecretStoreLocation(projectRoot) {
+    const owner = currentHomeProjectOwner();
+    if (owner) return { owner: "home-project", homeOwner: owner, path: getProjectSecretStorePath(projectRoot) };
     const layout = await enterProjectRuntime(projectRoot);
     return { owner: "project", projectRoot, path: layout.primary.projectSecretStorePath };
 }
@@ -80,6 +89,11 @@ export async function getProjectSecretStoreLocation(projectRoot) {
  */
 async function resolveSecretStorePath(location) {
     if (location.owner === "global") return location.path;
+    if (location.owner === "home-project") {
+        if (!location.homeOwner) throw new Error("Home Project secret owner is required.");
+        assertProjectStoreIdentity(location.homeOwner);
+        return join(projectStoreLocation(location.homeOwner), "internal", "collaboration-secrets.json");
+    }
     if (!location.projectRoot) throw new Error("Project secret store location requires a project root.");
     return (await enterProjectRuntime(location.projectRoot)).primary.projectSecretStorePath;
 }

@@ -24,6 +24,9 @@ const EXPECTED_TOOLS = [
     "get_instructions",
     "get_artifact",
     "get_pending_chat",
+    "read_plan",
+    "work_record_read",
+    "work_record_search",
 ].sort();
 function requireCheck(checks: Check[], id: string, condition: boolean, detail: string): void {
     checks.push({ id, outcome: condition ? "pass" : "fail", detail });

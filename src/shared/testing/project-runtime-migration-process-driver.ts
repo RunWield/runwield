@@ -1,3 +1,4 @@
+import { configureRemotePersonalResources } from "../remote/personal-resources.ts";
 import fsPromises from "node:fs/promises";
 import { type NativeFileLock, openNativeFileLock } from "../native-file-lock.ts";
 import { lstat as fsLstat, mkdir as fsMkdir, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
@@ -41,6 +42,11 @@ type MigrationExitEffect =
     | "recovery-retirement";
 
 const [command, checkoutRoot, extra] = process.argv.slice(2);
+// This driver exercises the versioned managed-remote checkout migration.
+configureRemotePersonalResources({
+    globalRoot: checkoutRoot,
+    personalOwner: { kind: "managed-remote", identity: "fixture-laptop-account" },
+});
 
 if (command === "migrate") {
     const result = await migrateLegacyProjectRuntimeState(checkoutRoot);

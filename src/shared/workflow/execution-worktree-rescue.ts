@@ -1,9 +1,11 @@
+import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { lstat as fsLstat } from "node:fs/promises";
 /** Recover a deleted execution checkout from Git evidence left by a manual rescue. */
-import { loadPlan, parsePlanFrontMatter } from "../../plan-store.js";
+import { parsePlanFrontMatter } from "../../plan-format.ts";
+import { loadPlan } from "../../plan-store/index.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
-import { listControllerDocumentWorktrees } from "./controller-registry.ts";
+import { listPlanExecutionDocuments } from "../../plan-store/index.ts";
 import { loadTargetPlan, TargetBranchSnapshotUnavailableError } from "./planning-worktree.ts";
 
 interface GitResult {
@@ -190,6 +192,7 @@ export async function recoverMissingExecutionWorktree(
         await runGit(projectRoot, ["worktree", "prune"]);
         await runGit(projectRoot, ["worktree", "add", attempt.path, attempt.branch]);
         worktreeAdded = true;
+        await enterProjectRuntime(attempt.path);
         const restored = await loadPlan(attempt.path, attempt.planName);
         if (!restored || restored.attrs.planId !== attempt.planId) {
             throw new Error("the restored checkout did not contain the expected Plan");
@@ -212,7 +215,7 @@ export async function recoverMissingExecutionWorktreesForPlanLoading(
 ): Promise<RecoveredExecutionWorktree[]> {
     const registryRoot = resolvePrimaryCheckoutRoot(cwd);
     const recovered: RecoveredExecutionWorktree[] = [];
-    for (const attempt of await listControllerDocumentWorktrees(registryRoot)) {
+    for (const attempt of await listPlanExecutionDocuments(registryRoot)) {
         if (await executionWorktreePathExists(attempt.path)) continue;
         const result = await recoverMissingExecutionWorktree(registryRoot, attempt);
         if (result.recovered) recovered.push({ planName: attempt.planName, branch: attempt.branch });

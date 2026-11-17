@@ -28,6 +28,7 @@ targetBranch: "epic/external-plan-store"
 createdAt: "2026-11-01"
 status: "draft"
 epicBaseCommit: "b31bece1aeed8e4fdb4ae4289f25a73e9009f9b5"
+planId: "e8e23021-8e58-4f2c-90a4-bd89da42e5c0"
 ---
 
 # External Project State and Plan Store
@@ -546,6 +547,18 @@ constraints. Update ADR-015/016/017/018 where ownership changes, reconciling the
 when it is accepted rather than leaving conflicting accepted storage rules. After all proposal
 requirements are delivered or explicitly deferred into their lasting owners, remove the transient Plan Store PRD and
 repair references. Do not mark these outcomes delivered during planning.
+
+### Integration Notes
+
+Left by the reviewers of individual children for the integration review. These are places to look, not requirements.
+
+<!-- runwield:integration-notes:start child="external-plan-store/serve-laptop-owned-project-state" -->
+
+**external-plan-store/serve-laptop-owned-project-state**
+
+- When activating managed remote ownership, pass and freeze the execution repository's delivery-copy settings before publication. Verify that execution-host Git proof reaches the matching laptop-owned attempt before lifecycle completion or Work Record approval. (Plan 12; src/plan-store/publication.ts and the managed remote execution/publication integration)
+
+<!-- runwield:integration-notes:end child="external-plan-store/serve-laptop-owned-project-state" -->
 
 ## Edge Cases & Considerations
 

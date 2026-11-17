@@ -258,6 +258,15 @@ for (const releaseBeforeSettlement of [true, false]) {
             await fsWriteFile(join(fixture.cwd, "marker"), "pass");
             const location = locateAttachedWorkflows(fixture.root);
             const pending = fixture.call("start_validation", await fixture.status());
+            let validationFinished = false;
+            void pending.then(
+                () => {
+                    validationFinished = true;
+                },
+                () => {
+                    validationFinished = true;
+                },
+            );
             let token = "";
             for (let attempt = 0; attempt < 500; attempt++) {
                 const loaded = await loadAttachedWorkflowRecord(location, fixture.workflowId);
@@ -289,15 +298,17 @@ for (const releaseBeforeSettlement of [true, false]) {
                 }
             }
             // Keep a real lock until settlement proves that the final CAS timed out.
-            for (let attempt = 0; attempt < 2000; attempt++) {
+            const settlementPath = join(location.workflowsDir, `validation-${token}.settled`);
+            while (!validationFinished) {
                 try {
-                    await fsStat(join(location.workflowsDir, `validation-${token}.settled`));
+                    await fsStat(settlementPath);
                     break;
                 } catch (error) {
                     if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
                 }
                 await new Promise((resolve) => setTimeout(resolve, 10));
             }
+            await fsStat(settlementPath);
             if (releaseBeforeSettlement) {
                 await fsRm(lockPath);
                 lockPath = "";

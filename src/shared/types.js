@@ -6,6 +6,9 @@
 /**
  * @typedef {Object} ActiveExecutionWorkflow
  * @property {string} planName
+ * @property {import("../plan-store/index.ts").PlanAccess} [packageSelection]
+ * @property {import("../plan-store/index.ts").PackageWorkflowInput} [packageInput]
+ * @property {string} [packageAttemptId] - Retained execution attempt, including in-place execution.
  * @property {import('../tools/plan-written.ts').TriageMeta} triageMeta
  * @property {"engineer"|"frontend-engineer"} executionAgent
  * @property {boolean} [executionStarted]

@@ -1,10 +1,12 @@
 // @ts-nocheck: Owner Workspace routes and projected operations are JavaScript.
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { createOwnerWorkspaceApp } from "./server.js";
@@ -19,7 +21,7 @@ test("owner Workspace reopens an Architect Epic review and projects the revised 
         let ownerApp;
         let operationId;
         try {
-            await savePlan(projectRoot, "epic-review", "# Epic review\n\nFirst architecture proposal.\n", {
+            await seedPlan(projectRoot, "epic-review", "# Epic review\n\nFirst architecture proposal.\n", {
                 planId: "epic-review-id",
                 classification: "PROJECT",
                 type: "epic",
@@ -53,8 +55,7 @@ test("owner Workspace reopens an Architect Epic review and projects the revised 
                 "x-runwield-csrf": "epic-csrf-secret",
                 "content-type": "application/json",
             };
-            const sessionBase =
-                `${origin}/api/owner/projects/${project.projectId}/sessions/${managed.runwieldSessionId}`;
+            const sessionBase = `${origin}/api/owner/projects/${project.projectId}/sessions/${managed.runwieldSessionId}`;
             const post = (url, body) => app(new Request(url, { method: "POST", headers, body: JSON.stringify(body) }));
             const live = () => app(new Request(`${sessionBase}/live`, { headers: { cookie } }));
             const generation = store.inspectSessionActivation(managed.runwieldSessionId).generation?.generation;
@@ -63,7 +64,7 @@ test("owner Workspace reopens an Architect Epic review and projects the revised 
                 modelTurns++;
                 const current = await loadPlan(projectRoot, "epic-review");
                 assertExists(current);
-                await savePlan(
+                await seedPlan(
                     projectRoot,
                     "epic-review",
                     modelTurns === 1
@@ -137,7 +138,8 @@ test("owner Workspace reopens an Architect Epic review and projects the revised 
                 if (
                     secondLive.operation?.liveInteraction?.interactionId !== firstReview.interactionId &&
                     secondLive.operation?.liveInteraction?.request.type === "plan_review"
-                ) break;
+                )
+                    break;
                 await new Promise((resolve) => setTimeout(resolve, 20));
             }
             const secondReview = secondLive?.operation?.liveInteraction;
@@ -178,7 +180,8 @@ test("owner Workspace reopens an Architect Epic review and projects the revised 
                 if (
                     thirdLive.operation?.liveInteraction?.interactionId !== secondReview.interactionId &&
                     thirdLive.operation?.liveInteraction?.request.type === "plan_review"
-                ) break;
+                )
+                    break;
                 await new Promise((resolve) => setTimeout(resolve, 20));
             }
             const thirdReview = thirdLive?.operation?.liveInteraction;

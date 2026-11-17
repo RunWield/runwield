@@ -1,3 +1,4 @@
+import { seedPlanState } from "../testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { writeFile as fsWriteFile, mkdtemp as fsMkdtemp, symlink as fsSymlink, rm as fsRm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -6,7 +7,7 @@ import { assertEquals, assertExists, assertStringIncludes } from "../../testing/
 import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { git } from "../git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { updatePlanFrontMatter } from "../../plan-store.js";
+
 import { recordValidationRepairCompletion } from "./validation-supervisor.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import { captureWorktreeTree } from "./git-snapshot.ts";
@@ -31,7 +32,7 @@ test("host reclaims the existing semantic repair handoff without another check o
             ],
             1,
         ).ledger;
-        await updatePlanFrontMatter(
+        await seedPlanState(
             fixture.cwd,
             "p",
             {
@@ -105,7 +106,7 @@ for (const legacyReceipt of [false, true]) {
             if (!legacyReceipt) assertEquals(pending.repairCompletedOperationId, undefined);
             // The real failed R1 completion saved R2. Restore the crash interval
             // before supervisor settlement, without replacing persistence or CI.
-            await updatePlanFrontMatter(
+            await seedPlanState(
                 fixture.cwd,
                 "p",
                 {

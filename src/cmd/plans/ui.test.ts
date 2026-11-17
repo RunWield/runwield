@@ -1,3 +1,4 @@
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { getCwd } from "../../constants.js";
 import process from "node:process";
 import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
@@ -5,7 +6,7 @@ import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
-import { savePlan } from "../../plan-store.js";
+
 import { type BrowserPort, NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { buildPlansUiUrl, isLoopbackHost, parsePlansUiArgs, runPlansUiCommand } from "./ui.ts";
@@ -21,7 +22,7 @@ async function withPlansUiFixture(run: (projectRoot: string) => Promise<void>): 
         const previousCwd = getCwd();
         const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-plans-ui-"));
         try {
-            await savePlan(
+            await seedPlan(
                 projectRoot,
                 "workspace-fixture",
                 "# Workspace Fixture Plan\n\n## Context\n\nVisible through the real Workspace server\n",
@@ -96,10 +97,7 @@ test("buildPlansUiUrl includes token and loopback URL for wildcard bind", () => 
 });
 
 test("buildPlansUiUrl brackets IPv6 loopback hosts", () => {
-    assertEquals(
-        buildPlansUiUrl({ host: "::1", port: 4321, token: "secret" }),
-        "http://[::1]:4321/?token=secret",
-    );
+    assertEquals(buildPlansUiUrl({ host: "::1", port: 4321, token: "secret" }), "http://[::1]:4321/?token=secret");
 });
 
 test("runPlansUiCommand serves fixture Plans through the authenticated Workspace API", async () => {
@@ -127,12 +125,15 @@ test("runPlansUiCommand serves fixture Plans through the authenticated Workspace
         };
 
         const captured = await captureConsole(() =>
-            runPlansUiCommand(["--port", "0"], { browser, signal: controller.signal })
+            runPlansUiCommand(["--port", "0"], { browser, signal: controller.signal }),
         );
 
         assertStringIncludes(openedUrl, "http://127.0.0.1:");
         assertStringIncludes(openedUrl, "?token=");
-        assertEquals(captured.logs.some((line) => line.includes(openedUrl)), true);
+        assertEquals(
+            captured.logs.some((line) => line.includes(openedUrl)),
+            true,
+        );
     });
 });
 
@@ -145,9 +146,12 @@ test("runPlansUiCommand honors no-open while running the real Workspace server",
         const timer = setTimeout(() => controller.abort(), 25);
         try {
             const captured = await captureConsole(() =>
-                runPlansUiCommand(["--no-open", "--port", "0"], { browser, signal: controller.signal })
+                runPlansUiCommand(["--no-open", "--port", "0"], { browser, signal: controller.signal }),
             );
-            assertEquals(captured.logs.some((line) => line.includes("[RunWield] Workspace: http://127.0.0.1:")), true);
+            assertEquals(
+                captured.logs.some((line) => line.includes("[RunWield] Workspace: http://127.0.0.1:")),
+                true,
+            );
         } finally {
             clearTimeout(timer);
         }
@@ -163,7 +167,7 @@ test("runPlansUiCommand warns for an explicit non-loopback bind", async () => {
                 runPlansUiCommand(["--bind", "0.0.0.0", "--port", "0", "--no-open"], {
                     browser: NO_OPEN_BROWSER_PORT,
                     signal: controller.signal,
-                })
+                }),
             );
             assertEquals(
                 captured.warnings.some((line) => line.includes("Warning") && line.includes("0.0.0.0")),
@@ -177,7 +181,7 @@ test("runPlansUiCommand warns for an explicit non-loopback bind", async () => {
 
 test("runPlansUiCommand reports argument errors and prints real help", async () => {
     const invalid = await captureConsole(() =>
-        runPlansUiCommand(["--port", "70000"], { browser: NO_OPEN_BROWSER_PORT })
+        runPlansUiCommand(["--port", "70000"], { browser: NO_OPEN_BROWSER_PORT }),
     );
     assertStringIncludes(invalid.errors.join("\n"), "Invalid --port value");
     assertStringIncludes(invalid.errors.join("\n"), "wld plans ui --help");

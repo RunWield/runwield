@@ -202,7 +202,9 @@ export async function withRuntimeCommandFixture<T>(
         const previousPath = env.PATH;
         const previousCwd = getCwd();
         const previousExitCode = process.exitCode;
-        const fixtureRoot = await mkdtemp(join(tmpdir(), process.platform === "win32" ? "cmd-" : prefix));
+        const fixtureRoot = await fsRealpath(
+            await mkdtemp(join(tmpdir(), process.platform === "win32" ? "cmd-" : prefix)),
+        );
         const homeDir = join(fixtureRoot, "home");
         const projectRoot = join(fixtureRoot, "project");
         const alternateRoot = join(fixtureRoot, "alternate-project");

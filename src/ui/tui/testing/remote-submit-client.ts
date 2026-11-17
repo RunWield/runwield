@@ -17,6 +17,7 @@ import { VirtualTerminal } from "./virtual-terminal.js";
 export interface RemoteSubmitInput {
     connection: RemoteSessionControlConnection;
     resources: string;
+    laptopHome: string;
     cwd: string;
 }
 export interface RemoteSubmitCommand {
@@ -33,7 +34,10 @@ export interface RemoteSubmitReport {
 }
 const lines = processLines(stdinStream());
 const input: RemoteSubmitInput = JSON.parse((await lines.read()).value || "{}");
-configureRemotePersonalResources({ globalRoot: input.resources });
+configureRemotePersonalResources({
+    globalRoot: input.resources,
+    personalOwner: { kind: "managed-remote", identity: input.laptopHome },
+});
 configureRemoteSettingsConnection(input.connection);
 const clearClipboard = configureRemoteClipboardConnection(input.connection);
 const clearModels = await configureRemoteModelConnection(input.connection);

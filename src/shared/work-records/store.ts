@@ -1,3 +1,6 @@
+import { readLocalHomeStore, withLocalProjectAction } from "../../plan-store/index.ts";
+import { currentWorkRecordOwner } from "./owner.ts";
+import { assertWorkRecordPath, workRecordOwnerLayout, withWorkRecordMutation } from "./owner.ts";
 import { recoverWindowsRename } from "../native-file-replace-windows.ts";
 import fs from "node:fs/promises";
 import { link, open, opendir } from "node:fs/promises";
@@ -19,6 +22,7 @@ export interface ListWorkRecordsOptions {
 
 export interface WriteWorkRecordOptions {
     fileName?: string;
+    markdown?: string;
 }
 
 export class WorkRecordReadError extends Error {
@@ -33,7 +37,9 @@ export class WorkRecordReadError extends Error {
 }
 
 export function getWorkRecordsDir(cwd: string) {
-    return join(cwd, WORK_RECORDS_DIR_NAME);
+    const path = workRecordOwnerLayout()?.records || join(cwd, WORK_RECORDS_DIR_NAME);
+    assertWorkRecordPath(path);
+    return path;
 }
 
 export async function ensureWorkRecordsDir(cwd: string) {
@@ -60,14 +66,27 @@ export function resolveWorkRecordPath(cwd: string, fileName: string) {
     if (!name || name !== fileName || name === "." || name === ".." || !name.endsWith(".md")) {
         throw new Error(`Work Record path must be a flat Markdown filename under ${WORK_RECORDS_DIR_NAME}/.`);
     }
-    return join(getWorkRecordsDir(cwd), name);
+    const path = join(getWorkRecordsDir(cwd), name);
+    assertWorkRecordPath(path);
+    return path;
 }
 
 function relativeWorkRecordPath(cwd: string, filePath: string) {
-    return relative(cwd, filePath).replaceAll("\\", "/");
+    return relative(workRecordOwnerLayout()?.root || cwd, filePath).replaceAll("\\", "/");
 }
 
 export async function readWorkRecord(cwd: string, fileName: string): Promise<WorkRecordResource> {
+    if (!currentWorkRecordOwner())
+        return await readLocalHomeStore(
+            cwd,
+            () => readWorkRecordInOwner(cwd, fileName),
+            () => {
+                throw new Error(`Work Record not found: ${fileName}`);
+            },
+        );
+    return await readWorkRecordInOwner(cwd, fileName);
+}
+async function readWorkRecordInOwner(cwd: string, fileName: string): Promise<WorkRecordResource> {
     const filePath = resolveWorkRecordPath(cwd, fileName);
     const markdown = await fsReadFile(filePath, "utf8");
     try {
@@ -87,6 +106,15 @@ export async function listWorkRecords(
     cwd: string,
     options: ListWorkRecordsOptions = {},
 ): Promise<WorkRecordResource[]> {
+    if (!currentWorkRecordOwner())
+        return await readLocalHomeStore(
+            cwd,
+            () => listWorkRecordsInOwner(cwd, { ...options, createDir: false }),
+            () => [],
+        );
+    return await listWorkRecordsInOwner(cwd, options);
+}
+async function listWorkRecordsInOwner(cwd: string, options: ListWorkRecordsOptions): Promise<WorkRecordResource[]> {
     const dir = options.createDir === false ? getWorkRecordsDir(cwd) : await ensureWorkRecordsDir(cwd);
     if (options.createDir === false) {
         try {
@@ -107,7 +135,7 @@ export async function listWorkRecords(
 
 export async function findWorkRecordById(cwd: string, recordId: string): Promise<WorkRecordResource | null> {
     const identity = String(recordId).toLowerCase();
-    const records = await listWorkRecords(cwd);
+    const records = await listWorkRecords(cwd, { createDir: false });
     return records.find((record) => record.attrs.recordId.toLowerCase() === identity) || null;
 }
 
@@ -141,15 +169,35 @@ export async function writeWorkRecord(
     body: string,
     options: WriteWorkRecordOptions = {},
 ): Promise<WorkRecordResource> {
+    return await withLocalProjectAction(cwd, () =>
+        withWorkRecordMutation(() => writeWorkRecordUnlocked(cwd, attrs, body, options)),
+    );
+}
+
+async function writeWorkRecordUnlocked(
+    cwd: string,
+    attrs: WorkRecordFrontMatter,
+    body: string,
+    options: WriteWorkRecordOptions = {},
+): Promise<WorkRecordResource> {
     const directory = await ensureWorkRecordsDir(cwd);
     const title = body.match(/^#\s+(.+)$/m)?.[1] || attrs.recordId;
     const requestedFileName = options.fileName || buildWorkRecordFileName(title);
     let filePath = resolveWorkRecordPath(cwd, requestedFileName);
-    const markdown = formatWorkRecordMarkdown(attrs, body);
+    const markdown = options.markdown ?? formatWorkRecordMarkdown(attrs, body);
     const validated = parseWorkRecordMarkdown(markdown, {
         path: filePath,
         relativePath: relativeWorkRecordPath(cwd, filePath),
     });
+    if (
+        workRecordOwnerLayout() &&
+        (await listWorkRecords(cwd, { createDir: false })).some(
+            (record) => record.attrs.recordId.toLowerCase() === validated.attrs.recordId.toLowerCase(),
+        )
+    )
+        throw new Error(
+            `Canonical Work Record identity already exists: ${validated.attrs.recordId}. No file was overwritten.`,
+        );
     try {
         await createCanonicalFile(directory, filePath, markdown);
     } catch (error) {
@@ -192,7 +240,13 @@ async function syncDirectory(directory: string) {
 /**
  * Delete one canonical Work Record only when its path and identity still match.
  */
-export async function deleteWorkRecord(cwd: string, currentRecord: WorkRecordResource) {
+export async function deleteWorkRecord(cwd: string, currentRecord: WorkRecordResource): Promise<void> {
+    return await withLocalProjectAction(cwd, () =>
+        withWorkRecordMutation(() => deleteWorkRecordUnlocked(cwd, currentRecord)),
+    );
+}
+
+async function deleteWorkRecordUnlocked(cwd: string, currentRecord: WorkRecordResource) {
     const expectedDir = resolve(getWorkRecordsDir(cwd));
     const currentPath = resolve(currentRecord.path || "");
     if (dirname(currentPath) !== expectedDir || !currentRecord.relativePath || !currentPath.endsWith(".md")) {
@@ -209,6 +263,8 @@ export async function deleteWorkRecord(cwd: string, currentRecord: WorkRecordRes
     if (onDisk.attrs.recordId.toLowerCase() !== currentRecord.attrs.recordId.toLowerCase()) {
         throw new Error("Current Work Record identity does not match the file at its canonical path.");
     }
+    if (workRecordOwnerLayout() && onDisk.markdown !== currentRecord.markdown)
+        throw new Error("Canonical Work Record changed; reload before deleting editor content.");
     await fsRm(currentPath);
     await syncDirectory(expectedDir);
     await requestWorkspaceSearchRefresh(cwd);
@@ -218,6 +274,16 @@ export async function deleteWorkRecord(cwd: string, currentRecord: WorkRecordRes
  * Atomically replace one canonical Work Record without permitting an identity or path change.
  */
 export async function replaceWorkRecord(
+    cwd: string,
+    currentRecord: WorkRecordResource,
+    markdown: string,
+): Promise<WorkRecordResource> {
+    return await withLocalProjectAction(cwd, () =>
+        withWorkRecordMutation(() => replaceWorkRecordUnlocked(cwd, currentRecord, markdown)),
+    );
+}
+
+async function replaceWorkRecordUnlocked(
     cwd: string,
     currentRecord: WorkRecordResource,
     markdown: string,
@@ -243,6 +309,8 @@ export async function replaceWorkRecord(
     if (onDisk.attrs.recordId.toLowerCase() !== currentRecord.attrs.recordId.toLowerCase()) {
         throw new Error("Current Work Record identity does not match the file at its canonical path.");
     }
+    if (workRecordOwnerLayout() && onDisk.markdown !== currentRecord.markdown)
+        throw new Error("Canonical Work Record changed; reload before replacing editor content.");
     const tempPath = join(expectedDir, `.${basename(currentPath)}.${crypto.randomUUID()}.tmp`);
     let file: Awaited<ReturnType<typeof open>> | undefined;
     try {

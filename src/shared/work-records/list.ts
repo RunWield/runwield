@@ -3,6 +3,7 @@
  * Filtering and CLI formatting for canonical Work Records.
  */
 
+import { currentWorkRecordOwner } from "./owner.ts";
 import { formatPlannedWorkLabel } from "../../constants.js";
 import type { WorkRecordResource } from "./schema.ts";
 
@@ -26,8 +27,8 @@ export function filterWorkRecordsForList(
     options: WorkRecordListOptions = {},
 ): WorkRecordResource[] {
     const filtered = options.includeAll ? records : records.filter(isCurrentWorkRecord);
-    return filtered.sort((a, b) =>
-        b.attrs.createdAt.localeCompare(a.attrs.createdAt) || a.title.localeCompare(b.title)
+    return filtered.sort(
+        (a, b) => b.attrs.createdAt.localeCompare(a.attrs.createdAt) || a.title.localeCompare(b.title),
     );
 }
 
@@ -49,9 +50,9 @@ export function workRecordNotices(record: WorkRecordResource): string[] {
     }
     if (record.attrs.supersessionProposal?.candidates.length) {
         notices.push(
-            `NOTICE: supersession proposal pending for ${
-                record.attrs.supersessionProposal.candidates.map((candidate) => candidate.recordId).join(", ")
-            }.`,
+            `NOTICE: supersession proposal pending for ${record.attrs.supersessionProposal.candidates
+                .map((candidate) => candidate.recordId)
+                .join(", ")}.`,
         );
     }
     return notices;
@@ -72,7 +73,7 @@ export function formatWorkRecordListEntry(record: WorkRecordResource): string {
     ];
     if (sourcePlans.length) lines.push(`  sourcePlans: ${sourcePlans.join(", ")}`);
     if (evidence.length) lines.push(`  evidence: ${evidence.map((entry) => entry.path).join(", ")}`);
-    lines.push(`  path: ${record.relativePath}`);
+    lines.push(`  path: ${currentWorkRecordOwner() ? record.path : record.relativePath}`);
     for (const notice of workRecordNotices(record)) lines.push(`  ${notice}`);
     return lines.join("\n");
 }

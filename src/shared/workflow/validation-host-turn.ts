@@ -1,10 +1,14 @@
+import { requiresPlanWorkflow } from "../../plan-store/index.ts";
+
+import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
+import { readPlanPublicationReference } from "../../plan-store/index.ts";
 import { cleanupStoredPublication } from "./publication-machine.ts";
 import { buildVerifiedResult } from "./validation-publication.ts";
-import { readPublishedDeliverySources } from "../work-records/published-source.ts";
+import { readPublishedDeliverySources } from "../../plan-store/index.ts";
 import type { ValidationLoopArgs } from "./validation-types.ts";
 import { completeInPlaceWorkRecord } from "../work-records/in-place-completion.ts";
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
-import { resolveWorkflowPlanLocation } from "./plan-location.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { findActiveByPlanName as findWorktreeByPlanName } from "../worktree-registry.js";
 /** Session-free composition. Validation policy remains in the shared attempt owner and engine. */
 import { runValidationAttempt, type ValidationAttemptClaim } from "./validation-supervisor.ts";
@@ -91,6 +95,8 @@ export function createHostTurnValidationArgs(
 export async function continueHostTurnValidation(
     args: ContinueHostTurnValidationArgs,
 ): Promise<HostTurnValidationResult> {
+    if (requiresPlanWorkflow(args.projectRoot))
+        return await withLocalPlanWorkflow(args.projectRoot, args.planName, () => continueHostTurnValidation(args));
     const source = await resolveWorkflowPlanLocation(args.projectRoot, args.planName, {
         readOnly: true,
     });
@@ -117,12 +123,12 @@ export async function continueHostTurnValidation(
     ) {
         // Cleanup can remove the execution document before saving its final receipt.
         // Resume through the shared machine, using its sealed delivery artifacts.
-        const sealed = await readPublishedDeliverySources(args.projectRoot, publication);
         const cleanup = await cleanupStoredPublication(
             args.projectRoot,
             publication,
             SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
         );
+        const sealed = await readPublishedDeliverySources(args.projectRoot, cleanup.attempt);
         const engineArgs: ValidationLoopArgs = {
             planName: args.planName,
             planContent: sealed.delivered.markdown,
@@ -162,6 +168,7 @@ export async function continueHostTurnValidation(
                         planName: args.planName,
                         planId: source.plan!.attrs.planId!,
                         phase: "publication_verified",
+                        packageInput: await readPlanPublicationReference(args.projectRoot, args.planName),
                     })
                 ).workRecordOwner?.attrs.workRecord,
             };
@@ -199,7 +206,7 @@ export async function continueHostTurnValidation(
  * Only checkpoint evidence of consumption permits dropping the old outcome.
  */
 export async function reconcileConsumedHostResume(projectRoot: string, planName: string, resume: ValidationHostResume) {
-    const { resolveWorkflowPlanLocation } = await import("./plan-location.ts");
+    const { resolveWorkflowPlanLocation } = await import("../../plan-store/index.ts");
     const { sameHostIdentity } = await import("./validation-host-contract.ts");
     const source = await resolveWorkflowPlanLocation(projectRoot, planName, { readOnly: true });
     const checkpoint = source.plan?.attrs.validationCheckpoint;

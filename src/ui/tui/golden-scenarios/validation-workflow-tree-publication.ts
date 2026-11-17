@@ -99,6 +99,8 @@ function isolatedPublicationScenario(
     const deliveredText = `delivered ${name}`;
     return withValidationBranches(
         {
+            retainedCheckoutInput: true, // Explicit pre-cutover execution owner and checkout publication evidence.
+
             name: `${name}-base`,
             composedTui: true,
             initialAgentName: "guide",
@@ -115,45 +117,51 @@ function isolatedPublicationScenario(
                 { type: "select", promptIncludes: "Plan recovery", value: "validate" },
                 ...(options.resumeRepair
                     ? [
-                        { type: "select", promptIncludes: "could not combine", value: "stop" },
-                        { type: "select", promptIncludes: "Plan recovery", value: "validate" },
-                    ]
+                          { type: "select", promptIncludes: "could not combine", value: "stop" },
+                          { type: "select", promptIncludes: "Plan recovery", value: "validate" },
+                      ]
                     : []),
             ],
             script: options.repairConflict
                 ? [
-                    {
-                        id: "stage-publication-conflict-resolution",
-                        agent: "engineer",
-                        phase: "engineer",
-                        ordinal: 1,
-                        requiredTools: ["bash"],
-                        toolCalls: [{
-                            name: "bash",
-                            arguments: {
-                                command:
-                                    `git rev-parse --verify MERGE_HEAD && git diff --name-only --diff-filter=U | grep -Fx '${deliveredPath}' && printf '%s\\n' '${deliveredText}' > '${deliveredPath}' && git add '${deliveredPath}'` +
-                                    (options.agentCommits ? " && git commit --no-edit" : ""),
-                            },
-                        }],
-                    },
-                    {
-                        id: "complete-publication-conflict-repair",
-                        agent: "engineer",
-                        phase: "engineer",
-                        ordinal: 2,
-                        ...(options.resumeRepair ? { text: "The conflict resolution is staged. Pausing here." } : {}),
-                        requiredTools: options.resumeRepair ? [] : ["task_completed"],
-                        toolCalls: options.resumeRepair ? [] : [{
-                            name: "task_completed",
-                            arguments: {
-                                message: options.agentCommits
-                                    ? "Resolved and committed the merge."
-                                    : "Resolved and staged the conflict. No commit made.",
-                            },
-                        }],
-                    },
-                ]
+                      {
+                          id: "stage-publication-conflict-resolution",
+                          agent: "engineer",
+                          phase: "engineer",
+                          ordinal: 1,
+                          requiredTools: ["bash"],
+                          toolCalls: [
+                              {
+                                  name: "bash",
+                                  arguments: {
+                                      command:
+                                          `git rev-parse --verify MERGE_HEAD && git diff --name-only --diff-filter=U | grep -Fx '${deliveredPath}' && printf '%s\\n' '${deliveredText}' > '${deliveredPath}' && git add '${deliveredPath}'` +
+                                          (options.agentCommits ? " && git commit --no-edit" : ""),
+                                  },
+                              },
+                          ],
+                      },
+                      {
+                          id: "complete-publication-conflict-repair",
+                          agent: "engineer",
+                          phase: "engineer",
+                          ordinal: 2,
+                          ...(options.resumeRepair ? { text: "The conflict resolution is staged. Pausing here." } : {}),
+                          requiredTools: options.resumeRepair ? [] : ["task_completed"],
+                          toolCalls: options.resumeRepair
+                              ? []
+                              : [
+                                    {
+                                        name: "task_completed",
+                                        arguments: {
+                                            message: options.agentCommits
+                                                ? "Resolved and committed the merge."
+                                                : "Resolved and staged the conflict. No commit made.",
+                                        },
+                                    },
+                                ],
+                      },
+                  ]
                 : [],
             actions: [
                 {
@@ -170,35 +178,39 @@ function isolatedPublicationScenario(
                     paths: ["user-work.txt", "untracked-user-note.txt", `docs/plans/${name}.md`],
                 },
                 ...(options.advanceRemote
-                    ? [{
-                        type: "advancePlanRemoteTarget",
-                        planName: name,
-                        path: "concurrent-remote-change.txt",
-                        text: "remote work landed first\n",
-                    }]
+                    ? [
+                          {
+                              type: "advancePlanRemoteTarget",
+                              planName: name,
+                              path: "concurrent-remote-change.txt",
+                              text: "remote work landed first\n",
+                          },
+                      ]
                     : []),
                 ...(options.repairConflict
-                    ? [{
-                        type: "advancePlanRemoteTarget",
-                        planName: name,
-                        path: deliveredPath,
-                        text: "upstream edit\n",
-                    }]
+                    ? [
+                          {
+                              type: "advancePlanRemoteTarget",
+                              planName: name,
+                              path: deliveredPath,
+                              text: "upstream edit\n",
+                          },
+                      ]
                     : []),
                 { type: "type", text: `/load-plan ${name}` },
                 { type: "enter" },
                 { type: "enter" },
                 ...(options.resumeRepair
                     ? [
-                        // A stable screen can precede /load-plan dispatch. Restart only after
-                        // the repair has run and the user has chosen to pause publication.
-                        { type: "waitForEvent", event: "runtime:tool:end:bash", timeoutMs: 90000 },
-                        { type: "waitForIdle", timeoutMs: 90000 },
-                        { type: "restartTui" },
-                        { type: "type", text: `/load-plan ${name}` },
-                        { type: "enter" },
-                        { type: "enter" },
-                    ]
+                          // A stable screen can precede /load-plan dispatch. Restart only after
+                          // the repair has run and the user has chosen to pause publication.
+                          { type: "waitForEvent", event: "runtime:tool:end:bash", timeoutMs: 90000 },
+                          { type: "waitForIdle", timeoutMs: 90000 },
+                          { type: "restartTui" },
+                          { type: "type", text: `/load-plan ${name}` },
+                          { type: "enter" },
+                          { type: "enter" },
+                      ]
                     : []),
                 { type: "waitForRemotePlanStatus", planName: name, statuses: ["verified"], timeoutMs: 90000 },
                 { type: "waitForWorktreeRegistryStatus", planName: name, statuses: ["absent"], timeoutMs: 90000 },
@@ -255,6 +267,8 @@ const dirtyPublicationPlanName = "validation-tree-publication-dirty-checkout";
 
 export const validationTreePublicationDirtyCheckoutScenario = withValidationBranches(
     {
+        retainedCheckoutInput: true, // Explicit pre-cutover execution owner and checkout publication evidence.
+
         name: `${dirtyPublicationPlanName}-base`,
         composedTui: true,
         initialAgentName: "guide",
@@ -334,6 +348,8 @@ const restoredPrimaryPlanName = "validation-tree-publication-primary-plan-restor
 
 export const validationTreePublicationPrimaryPlanRestoredScenario = withValidationBranches(
     {
+        retainedCheckoutInput: true, // Explicit pre-cutover execution owner and checkout publication evidence.
+
         name: `${restoredPrimaryPlanName}-base`,
         composedTui: true,
         initialAgentName: "guide",
@@ -411,6 +427,8 @@ const localPublicationPlanName = "validation-tree-publication-local-only";
 
 export const validationTreePublicationLocalOnlyScenario = withValidationBranches(
     {
+        retainedCheckoutInput: true, // Explicit pre-cutover execution owner and checkout publication evidence.
+
         name: `${localPublicationPlanName}-base`,
         composedTui: true,
         initialAgentName: "guide",
@@ -487,6 +505,8 @@ export const validationTreePublicationLocalOnlyScenario = withValidationBranches
 
 export const validationTreePublicationMissingTargetBranchScenario = withValidationBranches(
     {
+        retainedCheckoutInput: true, // Explicit pre-cutover execution owner and checkout publication evidence.
+
         name: "validation-tree-publication-missing-target-branch-base",
         composedTui: true,
         initialAgentName: "guide",
@@ -495,16 +515,19 @@ export const validationTreePublicationMissingTargetBranchScenario = withValidati
         committedProjectFiles: [
             { path: ".wld/settings.json", text: `${JSON.stringify({ verification_command: "true" }, null, 4)}\n` },
         ],
-        initialProjectFiles: [{
-            path: "docs/plans/publication-missing-target-branch.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Publication missing target branch\naffectedPaths: []\nstatus: ready_for_work\nplanId: publication-missing-target-branch-plan\n---\n# Publication missing target branch\n\nDraft content.\n",
-        }],
-        scriptedInteractions: [{
-            type: "select",
-            promptIncludes: "Plan recovery (reviewed)",
-            value: "validate",
-        }],
+        initialProjectFiles: [
+            {
+                path: "docs/plans/publication-missing-target-branch.md",
+                text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Publication missing target branch\naffectedPaths: []\nstatus: ready_for_work\nplanId: publication-missing-target-branch-plan\n---\n# Publication missing target branch\n\nDraft content.\n",
+            },
+        ],
+        scriptedInteractions: [
+            {
+                type: "select",
+                promptIncludes: "Plan recovery (reviewed)",
+                value: "validate",
+            },
+        ],
         actions: [
             {
                 type: "seedActiveWorktree",
