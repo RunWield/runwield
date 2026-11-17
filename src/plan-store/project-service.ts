@@ -51,6 +51,7 @@ import {
     sealPackagePublication,
     settlePackagePublication,
     assertPackagePublicationOwner,
+    settlePackageInPlace,
     type PublicationOwnerClaim,
 } from "./publication.ts";
 import {
@@ -85,6 +86,10 @@ export interface ProjectStoreBinding {
 export interface ProjectStorePublicationSettlement extends PlanMutation {
     kind: "settle-publication";
     reference: PackagePublicationReference;
+}
+export interface ProjectStoreInPlaceSettlement extends PlanMutation {
+    kind: "settle-in-place";
+    attemptId: string;
 }
 export interface ProjectStorePublicationCheck {
     kind: "check-publication-owner";
@@ -544,6 +549,7 @@ export type ProjectStoreCommand =
     | ProjectStoreImport
     | ProjectStoreImportRead
     | ProjectStorePublicationSettlement
+    | ProjectStoreInPlaceSettlement
     | ProjectStorePublicationCheck
     | ProjectStorePublicationRead
     | ProjectStoreExecutionRead
@@ -1106,6 +1112,13 @@ export class PreparedProjectStore {
                 if (command.kind === "verify-recording-delivery") {
                     if (!this.homeOwner || !this.launch || command.reference.planId !== command.planId)
                         throw new Error("Recording proof requires its trusted owner.");
+                    const retained = await readPlanPackagePublication(owner, command.reference);
+                    if (!retained.validatedCommit && !retained.targetBranch) {
+                        await withLocalPlanWorkflow(this.cwd, plan.metadata.name, () =>
+                            verifyPackageRecordingDelivery(this.cwd, command.reference),
+                        );
+                        return { manifest: retained };
+                    }
                     const { proof, manifest } = await confirmManagedPublication(
                         this.homeOwner,
                         this.launch,
@@ -1672,6 +1685,10 @@ export class PreparedProjectStore {
                                 if (current.metadata.workflow?.delivery) {
                                     if (!this.homeOwner || !this.launch)
                                         throw new Error("Recording requires its trusted execution launcher.");
+                                    if (current.metadata.workflow.delivery.mode === "non_git_in_place") {
+                                        await verifyPackageRecordingDelivery(this.cwd, reference);
+                                        return await generate();
+                                    }
                                     const { proof } = await confirmManagedPublication(
                                         this.homeOwner,
                                         this.launch,
@@ -1745,10 +1762,63 @@ export class PreparedProjectStore {
                                 await syncWorkRecordToIndex(this.cwd, record, {
                                     mnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
                                 });
+                            } else if (command.kind === "settle-in-place") {
+                                if (!this.launch || !this.homeOwner)
+                                    throw new Error("In-place completion requires its trusted execution launcher.");
+                                const binding = plan.metadata.workflow?.attempt;
+                                const delivery = plan.metadata.workflow?.delivery;
+                                const settled =
+                                    !binding &&
+                                    delivery?.mode === "non_git_in_place" &&
+                                    delivery.source.attemptId === command.attemptId;
+                                if (
+                                    !settled &&
+                                    (await readPlanDocuments(command.planId)).revision !== command.expectedRevision
+                                )
+                                    throw new Error("Plan revision changed.");
+                                if (
+                                    !settled &&
+                                    (binding?.attemptId !== command.attemptId ||
+                                        binding.executionMode !== "non_git_in_place")
+                                )
+                                    throw new Error("In-place completion belongs to another execution attempt.");
+                                await (
+                                    await import("../shared/remote/project-store-launch.ts")
+                                ).proveManagedNonGitExecution(
+                                    this.launch,
+                                    {
+                                        projectId: owner.projectId,
+                                        repositoryId: owner.repositoryId,
+                                        personalOwner: owner.personalOwner.identity,
+                                    },
+                                    this.signal,
+                                );
+                                await withLocalPlanWorkflow(this.cwd, plan.metadata.name, () =>
+                                    settlePackageInPlace(plan.metadata.name, SYSTEM_WORK_RECORD_MNEMOTECA_PORT),
+                                );
                             } else if (command.kind === "settle-publication") {
                                 if (!this.launch || command.reference.planId !== command.planId)
                                     throw new Error("Publication settlement requires its trusted execution launcher.");
                                 if (!this.homeOwner) throw new Error("Managed publication requires a personal owner.");
+                                const retained = await readPlanPackagePublication(owner, command.reference);
+                                if (!retained.validatedCommit && !retained.targetBranch) {
+                                    await withLocalPlanWorkflow(this.cwd, plan.metadata.name, async () => {
+                                        await verifyPackageRecordingDelivery(this.cwd, command.reference);
+                                        const warning = await settlePreparedPackageRecord(
+                                            this.cwd,
+                                            retained,
+                                            SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
+                                        );
+                                        if (warning) throw new Error(warning);
+                                        await retainPublishedWorkRecordSource(this.cwd, {
+                                            phase: "publication_verified",
+                                            packageInput: command.reference,
+                                            planName: plan.metadata.name,
+                                            planId: command.planId,
+                                        });
+                                    });
+                                    return { revision: (await readPlanDocuments(command.planId)).revision };
+                                }
                                 const { proof, manifest } = await confirmManagedPublication(
                                     this.homeOwner,
                                     this.launch,
@@ -1772,6 +1842,21 @@ export class PreparedProjectStore {
                                     }),
                                 );
                             } else if (command.kind === "execution-checkpoint") {
+                                if (command.checkpoint.event === "validation_passed") {
+                                    if (!this.launch)
+                                        throw new Error("Non-Git validation requires its execution launcher.");
+                                    await (
+                                        await import("../shared/remote/project-store-launch.ts")
+                                    ).proveManagedNonGitExecution(
+                                        this.launch,
+                                        {
+                                            projectId: owner.projectId,
+                                            repositoryId: owner.repositoryId,
+                                            personalOwner: owner.personalOwner.identity,
+                                        },
+                                        this.signal,
+                                    );
+                                }
                                 await withLocalPlanWorkflow(this.cwd, plan.metadata.name, () =>
                                     recordManagedExecutionCheckpoint(
                                         this.cwd,
@@ -1786,9 +1871,9 @@ export class PreparedProjectStore {
                                     const retained = await (
                                         await import("./retained-managed-execution.ts")
                                     ).readRetainedManagedExecution(this.homeOwner, command.planId);
-                                    if (retained && !retained.cleanupComplete)
+                                    if (retained && !retained.cleanupComplete && !retained.abandonmentComplete)
                                         throw new Error(
-                                            "The original retained execution must finish publication and cleanup before replacement.",
+                                            "The original retained execution must finish publication and cleanup or be deliberately abandoned before replacement.",
                                         );
                                 }
                                 if ((await readPlanDocuments(command.planId)).revision !== command.expectedRevision)
@@ -1807,6 +1892,15 @@ export class PreparedProjectStore {
                                 const before = await readPlanDocuments(command.planId);
                                 if (before.revision !== command.expectedRevision)
                                     throw new Error("Plan revision changed.");
+                                if (
+                                    (!command.validatedCommit || !command.targetBranch) &&
+                                    (command.validatedCommit !== "" ||
+                                        command.targetBranch !== "" ||
+                                        plan.metadata.workflow?.attempt?.executionMode !== "non_git_in_place")
+                                )
+                                    throw new Error(
+                                        "Publication requires Git evidence or its reserved non-Git execution.",
+                                    );
                                 const snapshot = await withLocalPlanWorkflow(this.cwd, plan.metadata.name, () =>
                                     sealPackagePublication(
                                         plan.metadata.name,
@@ -1837,6 +1931,7 @@ export class PreparedProjectStore {
                         command.kind === "prepare-record" ||
                             command.kind === "save-record" ||
                             command.kind === "reserve-execution" ||
+                            command.kind === "settle-in-place" ||
                             command.kind === "settle-publication",
                     );
                 });

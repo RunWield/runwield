@@ -259,6 +259,7 @@ export interface ManagedExecutionCheckpoint {
         | "mechanical_validation_passed"
         | "semantic_review_feedback"
         | "semantic_review_passed"
+        | "validation_passed"
         | "validation_failed";
     details: Pick<
         PlanEventDetails,
@@ -269,9 +270,12 @@ export interface ManagedExecutionCheckpoint {
         | "validationSemanticRounds"
         | "mechanicalFailureKind"
         | "validationCheckpoint"
+        | "humanReviewMode"
+        | "humanReviewDecision"
+        | "humanReviewedAt"
     >;
 }
-/** Execution checkpoints retain the reserved input; publication completion requires separate Git proof. */
+/** Checkpoints retain reserved input; Git publication and non-Git settlement prove completion separately. */
 export async function recordManagedExecutionCheckpoint(
     cwd: string,
     planName: string,
@@ -284,6 +288,11 @@ export async function recordManagedExecutionCheckpoint(
         const selected = await selectedPackage(planName);
         if (selected.metadata.workflow?.attempt?.attemptId !== attemptId)
             throw new Error("Execution checkpoint belongs to another attempt.");
+        if (
+            checkpoint.event === "validation_passed" &&
+            selected.metadata.workflow.attempt.executionMode !== "non_git_in_place"
+        )
+            throw new Error("Managed in-place completion requires its reserved non-Git attempt.");
         const before = await loadPlan(cwd, planName);
         if (!before || before.revision !== expectedRevision) throw new Error("Plan revision changed.");
         if (checkpoint.event === "validation_checkpoint_saved")
@@ -298,6 +307,13 @@ export async function recordManagedExecutionCheckpoint(
             worktreeId: attemptId,
             worktreeBaseBranch: before.attrs.deliveryBranch || before.attrs.targetBranch,
             nonGitInPlace: selected.metadata.workflow?.attempt?.executionMode === "non_git_in_place",
+            ...(checkpoint.event === "validation_passed"
+                ? {
+                      executionMode: "non_git_in_place" as const,
+                      deliveryEvidence: { version: 1 as const, mode: "non_git_in_place" as const },
+                      pendingPublication: true,
+                  }
+                : {}),
             triageMeta: before.attrs,
         });
         return await updatePackageWorkflowMetadata(planName, updates, expectedRevision, workflow);
@@ -323,6 +339,7 @@ export async function recordPlanEvent({
                 "mechanical_validation_passed",
                 "semantic_review_feedback",
                 "semantic_review_passed",
+                "validation_passed",
                 "validation_failed",
             ].includes(event)
         ) {
@@ -339,6 +356,9 @@ export async function recordPlanEvent({
                 validationSemanticRounds,
                 mechanicalFailureKind,
                 validationCheckpoint,
+                humanReviewMode,
+                humanReviewDecision,
+                humanReviewedAt,
             } = details;
             await mutateManagedPlan(cwd, {
                 kind: "execution-checkpoint",
@@ -356,6 +376,9 @@ export async function recordPlanEvent({
                         validationSemanticRounds,
                         mechanicalFailureKind,
                         validationCheckpoint,
+                        humanReviewMode,
+                        humanReviewDecision,
+                        humanReviewedAt,
                     },
                 },
             });

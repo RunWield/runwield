@@ -23,7 +23,7 @@ export async function qualifyManagedStoreActivation(
 ): Promise<void> {
     await withProcessGlobalTestLock(async () => {
         const root = await realpath(await gitFixture.checkout());
-        const temporary = await mkdtemp(join(tmpdir(), "managed-store-activation-"));
+        const temporary = await realpath(await mkdtemp(join(tmpdir(), "managed-store-activation-")));
         const remoteHome = join(temporary, "remote-home");
         const bin = join(temporary, "bin");
         await mkdir(remoteHome);
@@ -113,6 +113,7 @@ sys.exit(result.returncode)
                         cwd: root,
                         copyDocuments,
                         recordParent,
+                        remoteTarget,
                         collaborationUrl,
                         connection: { port: control.port, credential: control.credential },
                         resources: {
@@ -236,7 +237,7 @@ sys.exit(result.returncode)
             equal("status" in authored.result && authored.result.status, "completed");
             const listed = await client.execute({ kind: "list-plans" });
             ok("plans" in listed.result);
-            equal(listed.result.plans.length, 9);
+            equal(listed.result.plans.length, recordParent ? 12 : 11);
             ok(listed.result.plans.some((plan) => plan.attrs.planId === planId));
             for (const event of ["review_approved", "readiness_passed"] as const) {
                 const document = await client.execute({ kind: "read", planId, resource: "context.md" });

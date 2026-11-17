@@ -376,6 +376,20 @@ export async function settleManagedPublication(
     });
 }
 
+export async function settleManagedInPlace(planName: string): Promise<void> {
+    if (!active) throw new Error("Managed Plan owner is unavailable.");
+    const plan = await loadManagedWorkflowPlan(planName);
+    const execution = await readManagedExecution(active.cwd, plan.attrs.planId!);
+    if (!execution) throw new Error("In-place completion requires its reserved execution.");
+    await mutateManagedPlan(active.cwd, {
+        kind: "settle-in-place",
+        operationId: randomUUID(),
+        planId: plan.attrs.planId!,
+        expectedRevision: plan.revision,
+        attemptId: execution.attemptId,
+    });
+}
+
 export async function saveManagedValidationCheckpoint(
     cwd: string,
     name: string,
@@ -552,11 +566,13 @@ export async function generateManagedPreparedRecord(
     );
     const sections =
         context?.preparedRecord?.sections ?? (await generateRecorderSections(cwd, source, options, reserved.recordId));
+    const checkpointed = await readManagedPlan(cwd, source.planId);
+    if (!checkpointed) throw new Error("Recording Plan is unavailable after the Recorder turn.");
     const saved = await mutateManagedPlan(cwd, {
         kind: "prepare-record",
         operationId: randomUUID(),
         planId: source.planId,
-        expectedRevision: plan.revision,
+        expectedRevision: checkpointed.revision,
         attemptId,
         sections,
     });

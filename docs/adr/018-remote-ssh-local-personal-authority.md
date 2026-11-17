@@ -45,7 +45,9 @@ Split execution from personal authority:
   repair state and execution journals stay under the remote account's home Project tree. Staged adoption preserves
   exact original attempt ownership; repository Plan and record copies still require explicit import.
 - Publication freezes delivery-copy settings from the execution repository. The laptop independently requests remote
-  Git proof before settling lifecycle or approving records; a request saying publication succeeded is insufficient.
+  Git proof before settling Git delivery or approving its records; a request saying publication succeeded is insufficient.
+  Non-Git completion instead matches the reserved attempt and an independent execution-host identity check. Its durable
+  receipt retains non-Git evidence without a commit or target branch and authorizes recording retries.
   Reconnection retains operation IDs and proof. Disconnection never selects remote-account personal storage.
 - OpenSSH supplies terminal transport and forwarding. A connection-scoped laptop service supplies model and personal
   operations; no permanent daemon or hosted Workspace dependency is required.

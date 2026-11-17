@@ -333,10 +333,20 @@ try {
                     triageMeta: plan.attrs,
                     approvalEvidence: evidence.evidence,
                 };
-                const result =
+                // A real workflow can span several CI and agent turns. Expose its
+                // progress so the harness deadline measures silence, not total work.
+                const unsubscribe = runtime.subscribeSessionEvents(sessionId, (event) => {
+                    if (
+                        event.type === RuntimeEventTypes.WORKFLOW_CONTEXT_CHANGED ||
+                        event.type === RuntimeEventTypes.TOOL_END
+                    )
+                        console.log(JSON.stringify({ kind: "workflow-progress", text: event.type }));
+                });
+                const result = await (
                     command.kind === "workflow-execute"
-                        ? await runtime.executePlan(sessionId, options)
-                        : await runtime.runValidation(sessionId, options);
+                        ? runtime.executePlan(sessionId, options)
+                        : runtime.runValidation(sessionId, options)
+                ).finally(unsubscribe);
                 console.log(
                     JSON.stringify({
                         kind: command.kind,

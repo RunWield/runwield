@@ -76,12 +76,16 @@ export async function resumePlanAttempt<T>(
     const managed = decodeManagedPlanAccess(access);
     if (managed) {
         if (managed.retainedAttemptId) {
+            const retained = await readManagedRetainedExecution(cwd, managed.planId, managed.retainedAttemptId);
             if (
                 managed.retainedAttemptId !== attemptId ||
-                !(await readManagedRetainedExecution(cwd, managed.planId, attemptId))
+                !retained ||
+                retained.cleanupComplete ||
+                retained.abandonmentComplete
             )
                 throw new Error("Retained execution attempt changed.");
             const current = await selectManagedPlan(cwd, managed.planId);
+            if (current.retainedAttemptId !== attemptId) throw new Error("Retained execution attempt changed.");
             if (planName && current.planName !== planName) throw new Error("Retained continuation names another Plan.");
             return await withManagedPlan(cwd, current, run);
         }

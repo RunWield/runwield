@@ -6,13 +6,21 @@ import {
     sealManagedPublication,
     settleManagedPublication,
     assertManagedPublicationOwner,
+    settleManagedInPlace,
+    loadManagedWorkflowPlan,
+    readManagedExecution,
+    managedExecutionRoot,
 } from "./managed.ts";
 import { isHomeProjectOwner, projectStoreLocation, currentHomeProjectOwner } from "../shared/project-identity.ts";
 import type { WorkRecordMnemotecaPort } from "../shared/work-records/mnemoteca-port.ts";
 import { getDeliveryCopyPolicy, shouldAutoGenerateWorkRecordsOnPlanCompletion } from "../shared/settings.js";
 import { preparedPackageRecordCopy, settlePreparedPackageRecord } from "../shared/work-records/package-recording.ts";
 /** Package input and settlement at the existing publication state-machine boundary. */
-import { retainPublishedWorkRecordSource, readPublishedDeliverySources } from "./published-source.ts";
+import {
+    retainPublishedWorkRecordSource,
+    readPublishedDeliverySources,
+    verifyPackageRecordingDelivery,
+} from "./published-source.ts";
 import fs from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { captureForegroundProcess } from "../shared/captured-process.ts";
@@ -588,37 +596,50 @@ export async function packageTargetEvidence(
 }
 
 export async function settlePackageInPlace(planName: string, mnemotecaPort: WorkRecordMnemotecaPort): Promise<void> {
+    if (managedPlanStoreActive()) return await settleManagedInPlace(planName);
     const selected = await selectedPackage(planName);
     const attemptId = selected.metadata.workflow?.attempt?.attemptId;
-    if (!attemptId) throw new Error("In-place completion requires its bound execution attempt.");
-    const source = await sealPackagePublication(planName, attemptId, "", "");
+    const completed = selected.metadata.workflow?.delivery;
+    if (!attemptId && completed?.mode !== "non_git_in_place")
+        throw new Error("In-place completion requires its bound execution attempt.");
+    const source = attemptId ? await sealPackagePublication(planName, attemptId, "", "") : completed!.source;
     const plan = await selectedPackage(planName);
     const controller = await packageController(plan);
     if (controller.deliveryEvidence?.mode !== "non_git_in_place" || controller.executionMode !== "non_git_in_place")
         throw new Error("In-place completion requires explicit non-Git evidence.");
-    const verifiedAt = new Date().toISOString();
+    const verifiedAt =
+        completed?.source.attemptId === source.attemptId ? completed.verifiedAt : new Date().toISOString();
+    if (!attemptId)
+        await verifyPackageRecordingDelivery(projectStoreLocation(currentPackageSelection()!.identity), source);
     await settlePackageParent(
         await readPlanPackagePublication(currentPackageSelection()!.identity, source),
         verifiedAt,
     );
-    await updatePackageWorkflowMetadata(planName, { status: "verified", verifiedAt }, undefined, {
-        ...plan.metadata.workflow,
-        publication: source,
-        attempt: undefined,
-        delivery: {
-            source,
-            validatedCommit: "",
-            publishedCommit: "",
-            targetBranch: "",
-            mode: "non_git_in_place",
-            verifiedAt,
-        },
-    });
-    await settlePreparedPackageRecord(
+    if (attemptId)
+        await updatePackageWorkflowMetadata(
+            planName,
+            { status: "verified", verifiedAt, validationCheckpoint: null },
+            undefined,
+            {
+                ...plan.metadata.workflow,
+                publication: source,
+                attempt: undefined,
+                delivery: {
+                    source,
+                    validatedCommit: "",
+                    publishedCommit: "",
+                    targetBranch: "",
+                    mode: "non_git_in_place",
+                    verifiedAt,
+                },
+            },
+        );
+    const warning = await settlePreparedPackageRecord(
         projectStoreLocation(currentPackageSelection()!.identity),
         await readPlanPackagePublication(currentPackageSelection()!.identity, source),
         mnemotecaPort,
     );
+    if (warning) throw new Error(warning);
     await retainPublishedWorkRecordSource(projectStoreLocation(currentPackageSelection()!.identity), {
         phase: "publication_verified",
         packageInput: source,
@@ -821,6 +842,19 @@ export async function recoverPackageRecordingPreparation(planName: string): Prom
 
 /** Reserve recording evidence for an in-place completion without exposing its attempt metadata. */
 export async function preparePlanInPlacePublication(planName: string): Promise<boolean> {
+    if (managedPlanStoreActive()) {
+        const root = managedExecutionRoot();
+        const plan = await loadManagedWorkflowPlan(planName);
+        const execution = await readManagedExecution(root, plan.attrs.planId!);
+        if (!execution || plan.attrs.executionMode !== "non_git_in_place")
+            throw new Error("In-place preparation requires its reserved non-Git execution.");
+        await freezePlanPublicationPolicy(planName, execution.attemptId, {
+            ...getDeliveryCopyPolicy(root),
+            autoGenerateRecords: shouldAutoGenerateWorkRecordsOnPlanCompletion(root),
+        });
+        await sealPackagePublication(planName, execution.attemptId, "", "", true);
+        return true;
+    }
     if (!currentPackageSelection()) return false;
     const plan = await selectedPackage(planName);
     const attempt = plan.metadata.workflow?.attempt;

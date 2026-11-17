@@ -260,7 +260,7 @@ test("non-Git runtime home remains stable after Git adoption", async () => {
     }
 });
 
-test("explicit managed owner keeps versioned runtime and never adopts ordinary home storage", async () => {
+test("explicit managed owner uses home execution storage isolated from ordinary ownership", async () => {
     const root = await realpath(await fixture.checkout());
     try {
         const context = {
@@ -268,12 +268,14 @@ test("explicit managed owner keeps versioned runtime and never adopts ordinary h
             personalOwner: { kind: "managed-remote" as const, identity: "laptop-account" },
         };
         const layout = await enterProjectRuntime(root, { context });
-        equal(layout.primary.internalRoot, join(getRunWieldRuntimeDir(root), "internal"));
+        ok(layout.primary.worktreeRegistryPath.startsWith(join(getHomeDir(), ".wld", "projects")));
         const identity = inspectProjectIdentity(root, { context });
         ok(identity.kind === "existing");
-        await rejects(() => lstat(join(getHomeDir(), ".wld", "projects", identity.identity.projectId)), {
-            code: "ENOENT",
-        });
+        const ordinary = await enterProjectRuntime(root);
+        ok(ordinary.primary.worktreeRegistryPath !== layout.primary.worktreeRegistryPath);
+        ok(ordinary.primary.controllerPlansDir !== layout.primary.controllerPlansDir);
+        deepEqual(await enterProjectRuntime(root, { context }), layout);
+        await rejects(() => lstat(join(getRunWieldRuntimeDir(root), "internal")), { code: "ENOENT" });
     } finally {
         await rm(root, { recursive: true, force: true });
     }

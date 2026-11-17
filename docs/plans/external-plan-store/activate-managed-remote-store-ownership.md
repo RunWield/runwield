@@ -30,7 +30,7 @@ dependencies:
     - "external-plan-store/serve-laptop-owned-project-state"
 targetBranch: "epic/external-plan-store"
 userVerifiedAt: null
-status: "implemented"
+status: "reviewed"
 ---
 
 # Activate Managed Remote Store Ownership

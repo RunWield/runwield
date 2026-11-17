@@ -77,6 +77,21 @@ export type { ControllerRecord as PlanFixtureController } from "../../plan-store
 import { inspectControllerView } from "../../plan-store/controllers.ts";
 import { assertPackageWorkflowInput } from "../../plan-store/workflows.ts";
 import { planPackageControllerDirectory } from "../../plan-store/packages.ts";
+import { createHash } from "node:crypto";
+import { dirname, join } from "node:path";
+import { openNativeFileLock } from "../native-file-lock.ts";
+
+/** Open existing canonical locks for real contention tests, outside package reentrancy scopes. */
+export async function openPlanFixturePackageLocks(cwd: string, name: string) {
+    const paths = await withLocalPlanWorkflow(cwd, name, async () => {
+        const identity = currentPackageProject()!;
+        const plan = await selectedPackage(name);
+        const directory = join(dirname(planPackageControllerDirectory(identity)), "locks");
+        const key = createHash("sha256").update(plan.metadata.planId).digest("hex");
+        return { plan: join(directory, `${key}.lock`), catalog: join(directory, "catalog.lock") };
+    });
+    return { plan: openNativeFileLock(paths.plan, false), catalog: openNativeFileLock(paths.catalog, false) };
+}
 /** Inspect private controller reconciliation evidence after exercising a public workflow. */
 export async function inspectPlanFixtureView(...args: Parameters<typeof inspectControllerView>) {
     return await inspectControllerView(...args);

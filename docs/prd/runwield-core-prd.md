@@ -398,12 +398,20 @@ package or `.wld/internal/` fallback.
 staged personal bytes and original owner, repository, checkout, attempt, branch and base before source retirement.
 Saved continuation resumes that original attempt. Its controller, publication and recording remain usable without
 silently importing its repository Plan. Missing or conflicting evidence preserves recovery state.
+After proven publication cleanup or deliberate abandonment, explicit import and renewed approval can reserve a new
+attempt for the same Plan. Saved continuations for the completed original attempt cannot enter that replacement,
+including handles saved after managed adoption. Another reservation cannot replace the live new attempt.
+
+**Acceptance: Managed non-Git completion.** Given an approved Plan executed in a non-Git folder, validation and Recorder
+acceptance complete through the laptop owner. The owner checks the reserved attempt and execution-host identity,
+retains non-Git Delivery Evidence, and approves the canonical Work Record without inventing a Git commit or target.
+Recording retries reuse the accepted record. A different attempt cannot settle the Plan or replace its evidence.
 
 **Acceptance: Publication policy and proof cross hosts.** Given different laptop and execution settings, the attempt
 freezes the execution repository's independent Plan-copy and Work Record-copy choices before publication. Later settings
 changes do not replace them. Lifecycle and record confidence remain pending until an independent execution-host probe
-proves the matching candidate and target. Reconnect reconciles the original operation and proof; it does not repeat Git
-publication or substitute a matching commit string supplied by a caller.
+proves the matching Git candidate and target, or confirms the reserved non-Git execution. Reconnect reconciles the
+original operation and proof; it does not repeat Git publication or substitute a matching commit string supplied by a caller.
 
 **Requirement: One Plan store owns persistence.** Every surface uses the same Plan operations for authoring, review,
 lifecycle events, imports, resource access and execution input. One owner selects the admitted source and enforces

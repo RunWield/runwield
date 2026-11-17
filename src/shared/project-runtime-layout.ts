@@ -382,6 +382,9 @@ async function inspectProjectRuntimeReadAccessUncached(root: string): Promise<Pr
         // Partly moved stores are not independent authorities. Preflight checks security,
         // but deliberately does not test whether an inode lock can be acquired.
         const checked = await preflight(layout, primary, marker.marker, { passive: true });
+        // Admission can finish while the legacy reader awaits Git evidence.
+        const admitted = inspectProjectIdentity(root);
+        if (admitted.kind === "existing") return inspectHomeProjectRuntime(admitted.identity);
         if (isBlocked(checked)) {
             // A writer can commit adoption and start using its authorities after
             // our marker read. Refresh changed evidence without taking a write lock.

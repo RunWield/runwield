@@ -13,7 +13,7 @@ import { isLockHolderGone } from "./process-liveness.ts";
 import { getRunWieldRuntimeDir } from "../constants.js";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
-import { basename, dirname, join, relative, isAbsolute } from "node:path";
+import { basename, dirname, join, relative, isAbsolute, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { realpathSync, type Stats } from "node:fs";
 import { admitProjectIdentity, inspectProjectIdentity, type ProjectIdentity } from "./project-identity.ts";
@@ -422,7 +422,13 @@ async function validateLegacyEvidence(
         if (
             name === "layout.json" &&
             (!Array.isArray(saved.adoptedSelectedCheckoutRoots) ||
-                saved.adoptedSelectedCheckoutRoots.some((root) => typeof root !== "string" || !isAbsolute(root)))
+                saved.adoptedSelectedCheckoutRoots.some(
+                    (root, index, all) =>
+                        typeof root !== "string" ||
+                        !isAbsolute(root) ||
+                        resolve(root) !== root ||
+                        (index > 0 && all[index - 1] >= root),
+                ))
         )
             refuse("malformed_migration_evidence", [mapping.source], "Legacy marker checkout roots are invalid.");
         if (name === "layout-migration.json") {
@@ -909,15 +915,20 @@ export async function enterHomeProjectRuntime(identity: ProjectIdentity): Promis
                         m.destination === dirname(layout.primary.controllerPlansDir) ||
                         m.destination === layout.primary.worktreeRegistryPath,
                 )) {
-                    await (
-                        mapping.destination === dirname(layout.primary.controllerPlansDir)
-                            ? recoverLegacyPlanControllers
-                            : recoverLegacyRuntimeFiles
-                    )({
-                        ...mapping,
-                        archiveRoot: join(layout.primary.internalRoot, "legacy-recovery"),
-                        registry: mapping.destination === layout.primary.worktreeRegistryPath,
-                    });
+                    try {
+                        await (
+                            mapping.destination === dirname(layout.primary.controllerPlansDir)
+                                ? recoverLegacyPlanControllers
+                                : recoverLegacyRuntimeFiles
+                        )({
+                            ...mapping,
+                            archiveRoot: join(layout.primary.internalRoot, "legacy-recovery"),
+                            registry: mapping.destination === layout.primary.worktreeRegistryPath,
+                        });
+                    } catch (error) {
+                        if (mapping.destination !== layout.primary.worktreeRegistryPath) throw error;
+                        refuse("malformed_registry", [mapping.source, mapping.destination], String(error));
+                    }
                 }
                 files.length = 0;
                 for (const mapping of mappings) await inventory(mapping, files);

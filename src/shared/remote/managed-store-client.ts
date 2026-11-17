@@ -8,6 +8,7 @@ async function executeManagedFixture() {
     const input: Pick<RemoteInteractiveConfig, "cwd" | "resources" | "connection"> & {
         copyDocuments: boolean;
         recordParent: boolean;
+        remoteTarget: boolean;
         collaborationUrl: string;
     } = JSON.parse((await lines.read()).value || "{}");
     await lines.cancel();
@@ -116,7 +117,19 @@ async function executeManagedFixture() {
         } = await import("../../plan-store/index.ts");
         const before = await listPlans(input.cwd);
         if (before.length) throw new Error("Passive catalog must remain empty before authoring.");
-        const { selectPlanAccess, resumePlanAttempt } = await import("../../plan-store/index.ts");
+        const { selectPlanAccess, resumePlanAttempt, capturePlanAccess } = await import("../../plan-store/index.ts");
+        const savedRetainedAccess: import("../../plan-store/index.ts").PlanAccess = JSON.parse(
+            JSON.stringify(
+                await withLocalPlanWorkflow(input.cwd, "retained", () => Promise.resolve(capturePlanAccess())),
+            ),
+        );
+        const savedAbandonedAccess: import("../../plan-store/index.ts").PlanAccess = JSON.parse(
+            JSON.stringify(
+                await withLocalPlanWorkflow(input.cwd, "abandoned-original", () =>
+                    Promise.resolve(capturePlanAccess()),
+                ),
+            ),
+        );
         const inspectedIdentity = (await import("../project-identity.ts")).inspectProjectIdentity(input.cwd);
         if (inspectedIdentity.kind !== "existing") throw new Error("Original execution identity is unavailable.");
         const historicalAccess: import("../../plan-store/index.ts").PlanAccess = JSON.parse(
@@ -161,7 +174,7 @@ async function executeManagedFixture() {
         let retainedRecordId = "";
         await resumePlanAttempt(
             input.cwd,
-            retainedAccess,
+            savedRetainedAccess,
             retainedAttempt.id,
             async () => {
                 const retained = await loadPlan(input.cwd, "retained");
@@ -480,6 +493,23 @@ async function executeManagedFixture() {
             event: "semantic_review_passed",
             currentStatus: "implemented",
         });
+        let nonGitCompletionRejected = false;
+        try {
+            await recordPlanEvent({
+                cwd: input.cwd,
+                planName: "public-tool",
+                event: "validation_passed",
+                currentStatus: "reviewed",
+                details: {
+                    executionMode: "non_git_in_place",
+                    deliveryEvidence: { version: 1, mode: "non_git_in_place" },
+                },
+            });
+        } catch {
+            nonGitCompletionRejected = true;
+        }
+        if (!nonGitCompletionRejected || (await loadPlan(input.cwd, "public-tool"))?.attrs.status !== "reviewed")
+            throw new Error("Git execution completed without matching publication proof.");
         await withLocalPlanWorkflow(input.cwd, "public-tool", async () => {
             const { startPublicationAttempt, advanceStoredPublication, cleanupStoredPublication } =
                 await import("../workflow/publication-machine.ts");
@@ -1142,6 +1172,106 @@ async function executeManagedFixture() {
             )
         )
             throw new Error(`Managed doctor misrouted Plan identity: ${JSON.stringify(diagnosis)}`);
+        const replacementImport = await importPlans(input.cwd, "docs/plans/abandoned-original.md");
+        if (!replacementImport.planIds.includes(abandonedPlanId))
+            throw new Error("Explicit import changed the abandoned Plan identity.");
+        await withLocalPlanWorkflow(input.cwd, "abandoned-original", async () => {
+            await recordPlanEvent({
+                cwd: input.cwd,
+                planName: "abandoned-original",
+                event: "review_reopened",
+            });
+            for (const [event, currentStatus] of [
+                ["review_approved", "draft"],
+                ["readiness_passed", "approved"],
+            ] as const)
+                await recordPlanEvent({ cwd: input.cwd, planName: "abandoned-original", event, currentStatus });
+            const replacement = await reservePlanExecution("abandoned-original", { targetBranch: "main" });
+            if (replacement === seededAttempts.abandoned.id)
+                throw new Error("Explicitly imported Plan reused its abandoned attempt.");
+            const stillReserved = await reservePlanExecution("abandoned-original", {
+                targetBranch: "main",
+                suggestedAttemptId: crypto.randomUUID(),
+            });
+            if (stillReserved !== replacement) throw new Error("A live replacement reservation was replaced.");
+        });
+        let originalResumeRejected = false;
+        let originalResumed = false;
+        const abandonedHistoricalAccess: import("../../plan-store/index.ts").PlanAccess = JSON.parse(
+            JSON.stringify({ identity: inspectedIdentity.identity, planId: abandonedPlanId, expectedRevision: 1 }),
+        );
+        try {
+            await resumePlanAttempt(
+                input.cwd,
+                abandonedHistoricalAccess,
+                seededAttempts.abandoned.id,
+                () => {
+                    originalResumed = true;
+                    return Promise.resolve();
+                },
+                "abandoned-original",
+            );
+        } catch {
+            originalResumeRejected = true;
+        }
+        if (!originalResumeRejected || originalResumed)
+            throw new Error("Replacement allowed the abandoned original to resume.");
+        let completedSource = "docs/plans/retained.md";
+        if (input.remoteTarget) {
+            await fixtureGit(input.cwd, ["fetch", "origin", "main"]);
+            await seedDirectory(seedPath(input.cwd, "published-import"));
+            completedSource = seedPath(input.cwd, "published-import", "retained.md");
+            const publishedSource = await (
+                await import("../captured-process.ts")
+            ).captureForegroundProcess("git", {
+                cwd: input.cwd,
+                args: ["show", "origin/main:docs/plans/retained.md"],
+            });
+            if (!publishedSource.success) throw new Error("Published import source is unavailable.");
+            await seedFile(completedSource, publishedSource.stdout);
+        }
+        if (input.recordParent) await importPlans(input.cwd, "docs/plans/retained-parent.md");
+        const completedImport = await importPlans(input.cwd, completedSource);
+        if (!completedImport.planIds.includes(retainedPlanId))
+            throw new Error("Explicit import changed the published Plan identity.");
+        await withLocalPlanWorkflow(input.cwd, "retained", async () => {
+            await recordPlanEvent({ cwd: input.cwd, planName: "retained", event: "review_reopened" });
+            for (const [event, currentStatus] of [
+                ["review_approved", "draft"],
+                ["readiness_passed", "approved"],
+            ] as const)
+                await recordPlanEvent({ cwd: input.cwd, planName: "retained", event, currentStatus });
+            const replacement = await reservePlanExecution("retained", { targetBranch: "main" });
+            if (replacement === retainedAttempt.id)
+                throw new Error("Explicitly imported Plan reused its published attempt.");
+        });
+        const invalidResumes: string[] = [];
+        for (const [planName, savedAccess, oldAttemptId] of [
+            ["abandoned-original", savedAbandonedAccess, seededAttempts.abandoned.id],
+            ["retained", savedRetainedAccess, retainedAttempt.id],
+        ] as const) {
+            const beforeResume = await loadPlan(input.cwd, planName);
+            let rejected = false;
+            let resumed = false;
+            try {
+                await resumePlanAttempt(
+                    input.cwd,
+                    savedAccess,
+                    oldAttemptId,
+                    () => {
+                        resumed = true;
+                        return Promise.resolve();
+                    },
+                    planName,
+                );
+            } catch {
+                rejected = true;
+            }
+            if (!rejected || resumed || (await loadPlan(input.cwd, planName))?.revision !== beforeResume?.revision)
+                invalidResumes.push(planName);
+        }
+        if (invalidResumes.length)
+            throw new Error(`Saved managed continuation entered replacement attempts: ${invalidResumes.join(", ")}`);
         const { resolveProjectRuntimeLayout } = await import("../project-runtime-layout.ts");
         const finalResult = {
             retainedRecordId,

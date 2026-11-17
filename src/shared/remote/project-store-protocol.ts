@@ -60,6 +60,7 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
         "check-publication-owner": ["kind", "planId", "claim"],
         "read-publication": ["kind", "planId", "reference"],
         "settle-publication": [...common, "reference"],
+        "settle-in-place": [...common, "attemptId"],
         "read-execution-documents": ["kind", "planId", "input"],
         "author-plan": ["kind", "operationId", "planId", "input"],
         "resolve-plan": ["kind", "reference"],
@@ -223,12 +224,15 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
     if (
         command.kind === "seal-publication" &&
         (!identity(command.attemptId) ||
-            !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(command.validatedCommit) ||
+            (!(command.validatedCommit === "" && command.targetBranch === "") &&
+                !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(command.validatedCommit)) ||
             typeof command.targetBranch !== "string" ||
             command.targetBranch.length > 255 ||
             command.targetBranch.includes(".."))
     )
         throw new Error("Invalid publication input.");
+    if (command.kind === "settle-in-place" && !identity(command.attemptId))
+        throw new Error("Invalid in-place execution identity.");
     if (
         command.kind === "freeze-publication-policy" &&
         (!identity(command.attemptId) ||
@@ -267,6 +271,7 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
                 "mechanical_validation_passed",
                 "semantic_review_feedback",
                 "semantic_review_passed",
+                "validation_passed",
                 "validation_failed",
             ].includes(command.checkpoint.event) ||
             !command.checkpoint.details ||
@@ -282,6 +287,9 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
             "validationSemanticRounds",
             "mechanicalFailureKind",
             "validationCheckpoint",
+            "humanReviewMode",
+            "humanReviewDecision",
+            "humanReviewedAt",
         ];
         if (
             Object.keys(command.checkpoint).some((key) => !["event", "details"].includes(key)) ||
