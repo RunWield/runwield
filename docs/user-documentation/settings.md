@@ -190,19 +190,26 @@ Type: object.
 
 Defines named groups of agent overrides. RunWield includes these presets without requiring a `modelPresets` setting:
 
-| Preset         | Model assignments                                                                                              | Required access                |
-| -------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| `codex`        | GPT-6 Luna for Router/Operator; GPT-6.1 Sol for execution; GPT-6 Astra for planning/review                     | Codex account                  |
-| `agy`          | Gemini 3.8 Flash for execution; Gemini 3.1 Pro for Router, Slicer, planning/review                             | Antigravity CLI sign-in        |
-| `opencode`     | GPT-6 Luna for Router/Operator; GPT-6.1 Sol for execution; GLM 5.3 for Slicer/planning; GPT-6 Astra for review | OpenCode Zen API key           |
-| `claude-mixed` | Sonnet for Router/execution; Opus for planning/review                                                          | Claude Code sign-in            |
-| `claude-opus`  | Opus for every Agent, including Router                                                                         | Claude Code sign-in            |
-| `codex-claude` | Codex Luna/Sol for Router/execution; Claude Opus for planning/review                                           | Codex and Claude Code accounts |
+| Preset         | Model assignments                                                                                              | Required access                                 |
+| -------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `codex`        | GPT-6 Luna for Router/Operator; GPT-6.1 Sol for execution; GPT-6 Astra for planning/review                     | Codex account                                   |
+| `agy`          | Gemini 3.8 Flash for execution; Gemini 4 Argon for Router, Slicer, planning/review                             | Antigravity sign-in with Argon and Flash access |
+| `opencode`     | GPT-6 Luna for Router/Operator; GPT-6.1 Sol for execution; GLM 5.3 for Slicer/planning; GPT-6 Astra for review | OpenCode Zen API key                            |
+| `claude-mixed` | Sonnet for Router/execution; Opus for planning/review                                                          | Claude Code sign-in                             |
+| `claude-opus`  | Opus for every Agent, including Router                                                                         | Claude Code sign-in                             |
+| `codex-claude` | Codex Luna/Sol for Router/execution; Claude Opus for planning/review                                           | Codex and Claude Code accounts                  |
 
 Planning means Ideator, Planner, and Architect; review means Reviewer. Execution includes Guide, Engineer, Frontend
 Engineer, and Init. Slicer uses Sol in the Codex presets and Sonnet in `claude-mixed`. Operator uses Flash in `agy`,
 Sonnet in `claude-mixed`, and Opus in `claude-opus`. Validation Repair Engineer inherits Engineer's model and thinking
 level unless separately configured.
+
+The bundled `agy` preset replaces Pro with Argon for Router, Slicer, Architect, Planner, Ideator, and Reviewer.
+Thinking levels stay unchanged: Router and Reviewer use medium; the other Argon Agents use high. Flash assignments
+stay unchanged. Argon medium thinking sends medium effort, while Pro medium thinking sends high. The preset requires
+Argon access; RunWield does not choose a version-specific preset or fall back to another family. Saved Pro selections
+and personal or project presets stay unchanged. If Argon is unavailable, explicitly select Pro where upstream supports
+it or use a personal preset. See [Antigravity CLI](providers.md#antigravity-cli) for all five families and effort mapping.
 
 Select a preset in `/settings` → **Model Presets**, or set `activeModelPreset` to its name. Nothing is activated
 automatically. Configure the listed provider access before using its models; selecting a preset does not sign you in.
@@ -437,9 +444,10 @@ an accepted alias for `codex-cli/<model>`.
 }
 ```
 
-Install `agy` and sign in to Antigravity. Supported models are `agy-cli/gemini-3.8-flash` and `agy-cli/gemini-3.1-pro`.
-`thinkingLevel` maps to Antigravity effort as in the [Antigravity CLI](providers.md#antigravity-cli) table.
-`temperature` is not supported. Antigravity picks the image model itself.
+Install `agy` and sign in to Antigravity. Select a supervising model from the five
+[Antigravity CLI families](providers.md#antigravity-cli). Catalog inclusion alone does not establish native image
+support for each family; generation depends on your CLI and account. `thinkingLevel` uses the same effort mapping as
+chat, shown in that table. `temperature` is not supported. Antigravity picks the image model itself.
 
 #### Where to set it
 

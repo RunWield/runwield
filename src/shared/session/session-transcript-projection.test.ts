@@ -461,6 +461,38 @@ test("projection summary keeps the latest valid Agy execution backend fact", () 
     });
 });
 
+test("Agy replay excludes incomplete, base-only, conflicting and invalid new-family facts", () => {
+    const valid = {
+        backend: "agy-cli",
+        provider: "agy-cli",
+        model: "gemini-4-hydrogen",
+        thinkingLevel: "xhigh",
+        effort: "xhigh",
+        backendModel: "gemini-4-hydrogen-xhigh",
+    };
+    for (const data of [
+        { ...valid, provider: "" },
+        { ...valid, thinkingLevel: "" },
+        { ...valid, thinkingLevel: "invalid" },
+        { ...valid, thinkingLevel: undefined },
+        { ...valid, effort: "" },
+        { ...valid, effort: "high" },
+        { ...valid, effort: "high", backendModel: "gemini-4-hydrogen-high" },
+        { ...valid, thinkingLevel: "medium", effort: "low", backendModel: "gemini-4-hydrogen-low" },
+        { ...valid, model: "gemini-4-carbon", backendModel: "gemini-4-carbon-xhigh" },
+        { ...valid, backendModel: "gemini-4-hydrogen" },
+        { ...valid, backendModel: "gemini-4-hydrogen-high" },
+        { ...valid, backendModel: "gemini-4-carbon-xhigh" },
+        { ...valid, model: "claude-opus-5-5" },
+    ]) {
+        assertEquals(
+            summarizeProjectedEntries([{ type: "custom", customType: "runwield.execution_backend", data }])
+                .executionBackend,
+            null,
+        );
+    }
+});
+
 test("projection cursor selection fails closed when the prior cursor is absent", () => {
     const events = [{ type: "user_message", eventId: "one" }];
     assertThrows(

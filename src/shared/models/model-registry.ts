@@ -1,3 +1,4 @@
+import { AGY_CLI_DISPLAY_NAMES, AGY_CLI_MODEL_IDS } from "./agy-cli-catalog.ts";
 import type { FetchRequest } from "../fetch-request.ts";
 import { chmodSync, copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { readFileSync as fsReadFileSync, statSync as fsStatSync } from "node:fs";
@@ -135,12 +136,6 @@ const CLAUDE_CLI_DISPLAY_NAMES: Record<(typeof CLAUDE_CLI_ALIASES)[number], stri
     haiku: "Claude CLI Haiku",
     fable: "Claude CLI Fable",
 };
-const AGY_CLI_MODEL_IDS = ["gemini-3.8-flash", "gemini-3.1-pro"] as const;
-const AGY_CLI_DISPLAY_NAMES: Record<(typeof AGY_CLI_MODEL_IDS)[number], string> = {
-    "gemini-3.8-flash": "Antigravity CLI Gemini 3.8 Flash",
-    "gemini-3.1-pro": "Antigravity CLI Gemini 3.1 Pro",
-};
-
 interface ExternalCliProviderDefinition {
     provider: ExternalCliExecutionBackend;
     displayName: string;

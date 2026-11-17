@@ -55,14 +55,14 @@ RunWield can assign different models to different agents:
         "router": {
             "model": "openai/gpt-5-mini",
             "thinkingLevel": "minimal",
-            "temperature": 0.1
+            "temperature": 0.1,
         },
         "engineer": {
             "model": "anthropic/claude-sonnet-4-5",
             "thinkingLevel": "high",
-            "temperature": 0.4
-        }
-    }
+            "temperature": 0.4,
+        },
+    },
 }
 ```
 
@@ -75,8 +75,25 @@ Antigravity models run through the `agy` CLI using your Antigravity sign-in, so 
 **Set up:**
 
 1. Install `agy` and sign in to Antigravity.
-2. Select `agy-cli/gemini-3.8-flash` or `agy-cli/gemini-3.1-pro` with `/model` or in your settings.
+2. Select one of the families below with `/model` or in your settings.
 3. On first use, RunWield asks before installing the Antigravity agent and MCP configuration it needs.
+
+| Family   | Model selection             |
+| -------- | --------------------------- |
+| Argon    | `agy-cli/gemini-4-argon`    |
+| Hydrogen | `agy-cli/gemini-4-hydrogen` |
+| Carbon   | `agy-cli/gemini-4-carbon`   |
+| Flash    | `agy-cli/gemini-3.8-flash`  |
+| Pro      | `agy-cli/gemini-3.1-pro`    |
+
+These are the five supported base families. Set thinking separately; do not append an effort suffix to the selection.
+RunWield uses a bundled catalog, without CLI-version discovery or account filtering. Carbon stays listed even when
+it is unavailable to your account. Access to each family depends on your CLI version and account; listing a family
+is not proof of a successful live request or image-generation support.
+
+Saved Pro selections and historical model names stay unchanged. Pro remains selectable where upstream supports it;
+RunWield cannot guarantee continued upstream access. If a model is unavailable, the failure stays visible. RunWield
+never silently switches families. Select another available family explicitly or configure a personal preset.
 
 > **Warning:** Antigravity can't ask you to approve actions while RunWield runs it in the background. During execution,
 > RunWield therefore starts it with `--dangerously-skip-permissions`, which approves every command and file change the
@@ -89,11 +106,20 @@ If Antigravity blocks an action, RunWield shows what was blocked.
 
 **Thinking level** sets Antigravity's effort:
 
-| Thinking level    | Flash effort | Pro effort |
-| ----------------- | ------------ | ---------- |
-| off, minimal, low | low          | low        |
-| medium            | medium       | high       |
-| high, xhigh, max  | high         | high       |
+| Thinking level    | Argon / Carbon / Flash effort | Hydrogen effort | Pro effort |
+| ----------------- | ----------------------------- | --------------- | ---------- |
+| off, minimal, low | low                           | low             | low        |
+| medium            | medium                        | medium          | high       |
+| high              | high                          | high            | high       |
+| xhigh, max        | high                          | xhigh           | high       |
+
+Omitted thinking defaults to off, which sends low effort. Invalid thinking values fail before execution. The Session
+keeps your original thinking level and records the verified backend effort for history and replay.
+
+The bundled [`agy` preset](settings.md#modelpresets) uses Argon for Router, Slicer, Architect, Planner, Ideator, and
+Reviewer; other Agents keep Flash. Thinking levels are unchanged. Router and Reviewer use medium thinking, which now
+sends medium effort with Argon rather than Pro's high effort. The preset requires Argon access and does not change by
+CLI version or fall back automatically. Personal and project selections remain unchanged.
 
 **Limitations:**
 
