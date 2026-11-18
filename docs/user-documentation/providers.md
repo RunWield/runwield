@@ -43,6 +43,12 @@ or from the CLI:
 wld model <provider>/<model_id>
 ```
 
+In the local TUI model picker, select **Refresh catalog** with the arrow keys and press **Enter**, or press **Ctrl+R**.
+This refreshes the Pi model catalog from the network without waiting for its cache to expire. The list updates in place
+and keeps your search text. A refresh stops after 15 seconds. If it
+fails or times out, the picker reports the error and keeps the cached models. Opening `/model` uses the existing cache;
+it does not force a network update. Remote SSH catalogs remain laptop-owned and require a new control connection.
+
 RunWield expects strict `provider/model_id` references for explicit model settings and per-agent overrides.
 
 ## Agent model overrides
@@ -55,14 +61,14 @@ RunWield can assign different models to different agents:
         "router": {
             "model": "openai/gpt-5-mini",
             "thinkingLevel": "minimal",
-            "temperature": 0.1
+            "temperature": 0.1,
         },
         "engineer": {
             "model": "anthropic/claude-sonnet-4-5",
             "thinkingLevel": "high",
-            "temperature": 0.4
-        }
-    }
+            "temperature": 0.4,
+        },
+    },
 }
 ```
 

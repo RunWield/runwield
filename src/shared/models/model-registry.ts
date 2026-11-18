@@ -12,6 +12,7 @@ import type {
     Credential,
     CredentialInfo,
     Model,
+    ModelsRefreshOptions,
     Provider,
 } from "@earendil-works/pi-ai";
 import { dirname, join } from "node:path";
@@ -597,11 +598,16 @@ export class RunWieldModelRegistry {
         await runtime.logout(providerId);
     }
 
-    async refresh(): Promise<void> {
+    async refresh(options: ModelsRefreshOptions = {}): Promise<void> {
         if (this.remote) throw new Error("Remote model catalog requires a new control connection");
-        const runtime = await (this.runtimePromise || getModelRuntime());
-        this.runtime = runtime;
-        await runtime.refresh();
+        const runtime = await this.getRuntime();
+        const result = await runtime.refresh(options);
+        if (result.aborted) throw new Error("Model catalog refresh was cancelled or timed out.");
+        if (result.errors.size > 0) {
+            throw new Error(
+                Array.from(result.errors, ([provider, error]) => `${provider}: ${error.message}`).join("; "),
+            );
+        }
     }
 
     getError(): string | undefined {

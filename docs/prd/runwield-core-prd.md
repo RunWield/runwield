@@ -2077,14 +2077,19 @@ Trusted-host file access is not confinement; see the [connection notice](#remote
 
 **Requirement: Layered Agent definitions.** Bundled Agents are Router, Guide, Ideator, Operator, Planner, Architect,
 Engineer, Frontend Engineer, Recorder, Tester, the workflow-only Slicer and Reviewer, and the Init pseudo-Agent. Agent
-definitions are Markdown files with YAML front matter, layered in this order:
+definitions are Markdown files, layered in this order:
 
 1. project: `./.wld/agents/<agent>.md`
 2. home: `~/.wld/agents/<agent>.md`
 3. bundled defaults
 
-Scalar front matter follows precedence. Prompt bodies append unless `promptOverride: true` is set. User-facing labels
-use the effective `name`; the filename is the internal ID for selection, routing, and persistence.
+The first definition for an Agent requires YAML front matter. Overrides can use plain Markdown to add prompt
+instructions and inherit metadata. Scalar front matter follows precedence. Prompt bodies append unless
+`promptOverride: true` is set. User-facing labels use the effective `name`. The filename is the internal ID for
+selection, routing, and persistence.
+
+Given plain Markdown overrides for an existing Agent at home and in a project, Agent discovery and activation load
+the inherited metadata and append the home prompt followed by the project prompt.
 
 #### Metrics exporter approval
 
@@ -2333,6 +2338,14 @@ Updates keep personal and project settings, and bundled presets stay selectable 
 - Antigravity CLI offers its Flash and Pro families and thinking levels.
 - Vision fallback covers text-only models.
 - Prompt-cache warming stays off; a user-facing warming setting is deferred.
+- The local TUI model picker offers an explicit catalog refresh that enables network access and bypasses Pi's cache.
+  Normal picker opening remains cache-based. Refresh keeps the search text and updates the list in place. Errors and a
+  15-second timeout keep cached models selectable and show the failure. Remote catalogs remain laptop-owned.
+
+**Catalog refresh acceptance scenario:** Given a fresh cached catalog and a newly published model, the user opens
+`/model` and selects **Refresh catalog** or presses Ctrl+R. The model appears without restarting the Session or
+upgrading Pi. If the provider fails
+or the refresh times out, the picker shows the failure, keeps the search text, and retains the cached choices.
 
 **Acceptance scenario:** Given a fresh installation, OpenAI subscription sign-in reaches the browser authorization
 prompt with a valid agent host UUID. Repeating sign-in after a restart uses the same UUID; another installation uses
