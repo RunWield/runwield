@@ -8,9 +8,9 @@ import { join } from "node:path";
 import { argv, env } from "node:process";
 import { createInterface } from "node:readline";
 import { openNativeFileLock } from "../src/shared/native-file-lock.ts";
-import { requirePinnedBun } from "./check-bun-runtime.ts";
+import { requireSupportedBun } from "./check-bun-runtime.ts";
 
-requirePinnedBun();
+requireSupportedBun();
 const deno = argv[2];
 if (!deno || argv.length !== 3) throw new Error("Usage: check-lock-interoperability.ts <deno-executable>");
 const home = await mkdtemp(join(tmpdir(), "runwield-lock-interop-"));
@@ -33,28 +33,32 @@ try {
     const owner = openNativeFileLock(path);
     try {
         owner.lockSync(true);
-        const attempt = spawnSync(deno, [
-            "eval",
-            "--no-config",
-            `${open} console.log(file.tryLockSync(true)); file.close();`,
-        ], { encoding: "utf8", timeout: 10_000, env: childEnv, cwd: home });
+        const attempt = spawnSync(
+            deno,
+            ["eval", "--no-config", `${open} console.log(file.tryLockSync(true)); file.close();`],
+            { encoding: "utf8", timeout: 10_000, env: childEnv, cwd: home },
+        );
         equal(attempt.status, 0, attempt.stderr);
         equal(attempt.stdout.trim(), "false", "Deno must respect Bun ownership");
     } finally {
         owner.close();
     }
     for (const exit of ["close", "crash"]) {
-        const child = spawn(deno, [
-            "eval",
-            "--no-config",
-            `${open}
+        const child = spawn(
+            deno,
+            [
+                "eval",
+                "--no-config",
+                `${open}
 file.lockSync(true); console.log("held");
 await Deno.stdin.read(new Uint8Array(1)); file.close(); console.log("released");
 await Deno.stdin.read(new Uint8Array(1));`,
-        ], { stdio: ["pipe", "pipe", "pipe"], env: childEnv, cwd: home });
+            ],
+            { stdio: ["pipe", "pipe", "pipe"], env: childEnv, cwd: home },
+        );
         const finished = once(child, "close");
         let errors = "";
-        child.stderr.setEncoding("utf8").on("data", (chunk: string) => errors += chunk);
+        child.stderr.setEncoding("utf8").on("data", (chunk: string) => (errors += chunk));
         const lines = createInterface({ input: child.stdout });
         const held = once(lines, "line", { signal: AbortSignal.timeout(10_000) });
         const contender = openNativeFileLock(path);

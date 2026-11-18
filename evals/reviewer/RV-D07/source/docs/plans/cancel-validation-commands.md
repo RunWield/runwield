@@ -19,4 +19,4 @@ Validation users need to stop an active command and receive a cancelled result a
 
 ## Validation
 
-Use Bun 1.4.3. Run `bun run test`.
+Use Bun ^1.4.0. Run `bun run test`.

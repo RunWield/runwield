@@ -57,7 +57,7 @@ tool calls before triage, and repeated or forbidden tool attempts.
 #### Semantic Reviewer
 
 **Current requirement: Evaluate the production Reviewer on every admitted discovery package.** The interim
-`bun scripts/run-reviewer-benchmark.ts` runner evaluates 33 admitted discovery cases in 17 synthetic Bun 1.4.3
+`bun scripts/run-reviewer-benchmark.ts` runner evaluates 33 admitted discovery cases in 17 synthetic Bun ^1.4.0
 TypeScript packages: RV-D01–D16 A/B and RV-M01 A. `--scenarios all` discovers every package containing `scenario.yaml`, ordered by scenario
 ID then variant. The original nine-case `--scenarios smoke` set is unchanged. The runner uses the effective Reviewer
 model, production prompt, tools, inspection gate, nudges, and `review_complete` through `runReviewerRound`, with
@@ -66,8 +66,8 @@ round 1 and an empty ledger. It does not run outer workflow lifecycle or Deliver
 The [one-trial baseline](../evaluation/reviewer-benchmark-results/2026-10-baseline-smoke.md) completed RV-D04 A/B,
 RV-D05 A/B, RV-D12 A/B, RV-D13 A/B, and RV-M01 A: nine complete rounds, mechanical decisions 7/9, and clean approval
 2/4. The owner accepted all 13 findings; under the historical scoring rules, the original oracle needed corrections
-before semantic scoring. Seven fixture packages are now revision 2 and RV-D08 is revision 3 after repairs; the paid baseline measures revision 1
-only. The [full discovery report](../evaluation/reviewer-benchmark-results/2026-10-discovery-pairs.md) records one
+before semantic scoring. The paid baseline measures revision 1 only. Later fixture revisions widened Bun compatibility.
+Each run records its exact Bun version and fixture hashes. The [full discovery report](../evaluation/reviewer-benchmark-results/2026-10-discovery-pairs.md) records one
 trial on all 33 cases before the revision-2 repairs to RV-D06–D08 and RV-D10. Current fixtures retain their planted A
 defects while checking conflicting authority hints, truthful cancellation settlement, recorded completion delivery, and
 fresh retry diagnostics. RV-D08 revision 3 checks exactly one validation-owned consumption and transition for

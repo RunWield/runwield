@@ -1,3 +1,4 @@
+import { HISTORY_PAGE_CHARS } from "../shared/remote/project-store-protocol.ts";
 import { listPlanPackages } from "./packages.ts";
 import type { RetainedFamilyRequest, RetainedFamilyCheckpoint } from "./retained-family.ts";
 import { readPlanRecordingContext, type PlanRecordingContext } from "./recording.ts";
@@ -160,6 +161,23 @@ export interface ProjectStoreDocumentWrite extends PlanMutation {
     kind: "save-document";
     resource: string;
     body: string;
+}
+interface ProjectStoreHistoryRestore extends PlanMutation {
+    kind: "restore-history";
+    version: string;
+}
+interface HistoryCursor {
+    offset: number;
+    snapshot: string;
+}
+interface ProjectStoreHistoryList extends HistoryCursor {
+    kind: "list-history";
+    reference: string;
+}
+interface ProjectStoreHistoryShow extends HistoryCursor {
+    kind: "show-history";
+    reference: string;
+    version: string;
 }
 export interface ProjectStoreProseWrite extends PlanMutation {
     kind: "save-prose";
@@ -615,6 +633,9 @@ export type ProjectStoreCommand =
     | ProjectStoreDocumentsRead
     | ProjectStoreRead
     | ProjectStoreDocumentWrite
+    | ProjectStoreHistoryRestore
+    | ProjectStoreHistoryList
+    | ProjectStoreHistoryShow
     | ProjectStoreProseWrite
     | ProjectStoreDefinitionWrite
     | ProjectStoreCheckpoint
@@ -635,6 +656,7 @@ export interface ProjectStoreReply {
         | ProjectStorePublication
         | ProjectStoreExecution
         | ProjectStoreExecutionDocuments
+        | { historyPage: { text: string; snapshot: string; complete: boolean } }
         | ProjectStoreDocumentView
         | ProjectStoreDocument
         | OperationOutcome
@@ -1008,6 +1030,40 @@ export class PreparedProjectStore {
                             )) ?? null,
                     };
                 }
+                if (command.kind === "list-history" || command.kind === "show-history") {
+                    const { listPlanHistory, showPlanMilestone } = await import("./history.ts");
+                    const serialized = JSON.stringify(
+                        command.kind === "list-history"
+                            ? await listPlanHistory(this.cwd, command.reference)
+                            : await showPlanMilestone(this.cwd, command.reference, command.version),
+                    );
+                    const snapshot = operationHash(serialized);
+                    if ((command.offset && snapshot !== command.snapshot) || command.offset >= serialized.length)
+                        throw new Error("Plan history changed during inspection.");
+                    const text = serialized.slice(command.offset, command.offset + HISTORY_PAGE_CHARS);
+                    return {
+                        historyPage: { text, snapshot, complete: command.offset + text.length === serialized.length },
+                    };
+                }
+                if (command.kind === "restore-history")
+                    return await withPlanPackageCatalogDiscovery(owner, () =>
+                        runReceiptedOperation(
+                            directory,
+                            command.operationId,
+                            operationDigest(JSON.stringify({ binding: this.binding, command })),
+                            command.planId,
+                            async () => ({
+                                revision: await (
+                                    await import("./history.ts")
+                                ).restorePlanMilestone(
+                                    this.cwd,
+                                    command.planId,
+                                    command.version,
+                                    command.expectedRevision,
+                                ),
+                            }),
+                        ),
+                    );
                 if (command.kind === "archive-catalog")
                     return { archives: await (await import("../plan-store.js")).listArchivedPlans(this.cwd) };
                 if (command.kind === "read-archive")

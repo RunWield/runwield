@@ -6,7 +6,7 @@ import { planPackageJournalDirectory } from "../../plan-store/packages.ts";
 import { importPlanPackages } from "../../plan-store/packages.ts";
 import { addEntry } from "../worktree-registry.js";
 
-import { preparePlanWorkflow } from "../../plan-store/index.ts";
+import { listPlanHistory, showPlanMilestone, preparePlanWorkflow } from "../../plan-store/index.ts";
 import { currentPackageSelection } from "../../plan-store/workflows.ts";
 import { hasRetainedCheckoutSource, withRetainedCheckoutSource } from "../../plan-store/retained-source.ts";
 import type { ValidationCheckpoint } from "./validation-checkpoint.ts";
@@ -20,7 +20,7 @@ import fs from "node:fs/promises";
 import { join } from "node:path";
 import { create, read, driver, packageFixture, startDriver } from "../testing/plan-package-fixture.ts";
 
-for (const boundary of ["lifecycle-intent", "metadata"]) {
+for (const boundary of ["lifecycle-intent", "staged-package", "metadata"]) {
     test(`fresh-process recovery settles ${boundary} without replacing an editor's bytes`, async () => {
         const f = await packageFixture();
         try {
@@ -32,7 +32,28 @@ for (const boundary of ["lifecycle-intent", "metadata"]) {
             const restarted = await driver({ identity: f.identity, command: "recover-lifecycle" });
             equal(restarted.code, 0, restarted.output + restarted.errors);
             equal((await read(f.identity)).metadata.definition.status, boundary === "metadata" ? "approved" : "draft");
+            const history = await listPlanHistory(f.root, p.metadata.planId);
+            equal(history.milestones.length, boundary === "metadata" ? 1 : 0);
+            if (history.milestones.length)
+                equal(
+                    (await showPlanMilestone(f.root, p.metadata.planId, history.milestones[0].version))["context.md"],
+                    "# A Plan\n\nProse — 世界\n",
+                );
             equal(await fs.readFile(join(p.path, "context.md"), "utf8"), edited);
+            if (boundary === "staged-package") {
+                await recordPlanEvent({
+                    cwd: f.root,
+                    planName: "one",
+                    event: "review_approved",
+                    currentStatus: "draft",
+                });
+                const retried = await listPlanHistory(f.root, p.metadata.planId);
+                equal(retried.milestones.length, 1);
+                equal(
+                    (await showPlanMilestone(f.root, p.metadata.planId, retried.milestones[0].version))["context.md"],
+                    edited,
+                );
+            }
             const journals = join(
                 f.identity.executionAccountHome,
                 ".wld/projects",
@@ -308,6 +329,7 @@ test("interrupted Sequence metadata compensates without restoring old editor doc
         });
         equal(stopped.code, 86, stopped.output + stopped.errors);
         await fs.writeFile(join(p.path, "context.md"), "# New Sequence editor work\n");
+        equal((await listPlanHistory(f.root, "sequence")).milestones.length, 0);
         const restarted = await driver({ identity: f.identity, command: "recover-lifecycle", planId: "sequence" });
         equal(restarted.code, 0, restarted.output + restarted.errors);
         equal((await read(f.identity, "sequence")).metadata.definition.status, "draft");

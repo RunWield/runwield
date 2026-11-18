@@ -3,6 +3,7 @@
  * No runtime client, recovery API, publication receipt writer, or personal HOME is used.
  * Artifacts and all scratch evidence are retained. A failed assertion is never a pass.
  */
+import { requireSupportedBun } from "../../../scripts/check-bun-runtime.ts";
 import { equal, ok } from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -379,7 +380,7 @@ async function cleaned(driver: Driver, owned: OwnedRemote, sleeper: number): Pro
 }
 
 export async function qualifyRemoteCliWorkflows(archivesInput: string, version: string): Promise<void> {
-    equal(process.versions.bun, "1.4.3");
+    requireSupportedBun();
     equal(process.platform, "darwin", "This qualification covers the macOS laptop only");
     const archives = resolve(archivesInput);
     const evidence = await mkdtemp(join(tmpdir(), "wld-cli-workflows-"));

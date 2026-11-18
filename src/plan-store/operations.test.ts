@@ -8,7 +8,8 @@ import {
     withLocalPlanWorkflow,
     operatePlanFile,
 } from "./index.ts";
-import { packageFixture } from "../shared/testing/plan-package-fixture.ts";
+import { seedPlanState } from "../shared/testing/plan-state-fixture.ts";
+import { packageFixture, tree } from "../shared/testing/plan-package-fixture.ts";
 
 test("competing authoring commands preserve one complete context and validation generation", async () => {
     const fixture = await packageFixture();
@@ -295,6 +296,185 @@ test("rename preserves identity and refuses a stale definition without replacing
         equal(renamed.body, before.body);
         await rejects(renamePlan(fixture.root, "new", "lost", before.revision), /changed|stale|revision/i);
         equal((await findPlanById(fixture.root, before.attrs.planId!)).name, "new");
+    } finally {
+        await fixture.cleanup();
+    }
+});
+
+import { listPlanHistory, restorePlanMilestone, showPlanMilestone } from "./index.ts";
+import { mkdtemp, rm, writeFile, readFile, access } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, dirname } from "node:path";
+import { deepEqual, notEqual } from "node:assert/strict";
+
+test("history list and show leave an admitted local Project with no Plans untouched", async () => {
+    const fixture = await packageFixture();
+    try {
+        const { executionAccountHome, projectId } = fixture.identity;
+        const store = join(executionAccountHome, ".wld", "projects", projectId);
+        const before = await tree(store);
+        await rejects(listPlanHistory(fixture.root, "missing"), /requires an admitted Plan/);
+        deepEqual(await tree(store), before);
+        await rejects(showPlanMilestone(fixture.root, "missing", "version"), /requires an admitted Plan/);
+        deepEqual(await tree(store), before);
+    } finally {
+        await fixture.cleanup();
+    }
+});
+
+test("non-Git history freezes the approved package and restores its membership against a whole-package revision", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "plan-history-"));
+    try {
+        await authorLocalPlan(cwd, {
+            planName: "proposal",
+            contextMarkdown: "# Original\n",
+            validationMarkdown: "Original checks\n",
+        });
+        const plan = (await loadPlan(cwd, "proposal"))!;
+        const folder = dirname(plan.path);
+        const id = plan.attrs.planId!;
+        equal((await listPlanHistory(cwd, id)).milestones.length, 0);
+        await writeFile(join(folder, "manual-qa.md"), "\ufeffOriginal QA\n");
+        await recordPlanEvent({ cwd, planName: "proposal", event: "review_approved", currentStatus: "draft" });
+        const history = await listPlanHistory(cwd, "proposal");
+        deepEqual(
+            history.milestones.map((entry) => entry.milestone),
+            ["approved"],
+        );
+        const version = history.milestones[0].version;
+        await writeFile(join(folder, "validation.md"), "Live checks");
+        await rejects(restorePlanMilestone(cwd, id, version, history.revision), /[Ss]tale|changed/);
+        equal(await readFile(join(folder, "validation.md"), "utf8"), "Live checks");
+        await writeFile(join(folder, "integration-report.md"), "Later report");
+        await rm(join(folder, "manual-qa.md"));
+        const frozen = await showPlanMilestone(cwd, id, version);
+        equal(frozen["manual-qa.md"], "\ufeffOriginal QA\n");
+        equal(frozen["validation.md"], "Original checks\n");
+        const before = await listPlanHistory(cwd, id);
+        const revision = await restorePlanMilestone(cwd, id, version, before.revision);
+        notEqual(revision, before.revision);
+        equal((await loadPlan(cwd, "proposal"))!.attrs.status, "draft");
+        equal(await readFile(join(folder, "manual-qa.md"), "utf8"), "\ufeffOriginal QA\n");
+        await rejects(access(join(folder, "integration-report.md")), /ENOENT/);
+        await recordPlanEvent({ cwd, planName: "proposal", event: "review_approved", currentStatus: "draft" });
+        await recordPlanEvent({
+            cwd,
+            planName: "proposal",
+            event: "manual_user_verified",
+            currentStatus: "approved",
+            details: { userVerificationNote: "Accepted by owner" },
+        });
+        const milestones = (await listPlanHistory(cwd, id)).milestones;
+        deepEqual(
+            milestones.map((entry) => entry.milestone),
+            ["approved", "approved", "closed"],
+        );
+        equal(milestones[2].reason, "Accepted by owner");
+        notEqual(milestones[0].version, milestones[1].version);
+        await recordPlanEvent({ cwd, planName: "proposal", event: "review_reopened", currentStatus: "user_verified" });
+        const reopened = (await loadPlan(cwd, "proposal"))!;
+        await restorePlanMilestone(cwd, id, milestones[2].version, reopened.revision!);
+        const restored = (await loadPlan(cwd, "proposal"))!;
+        equal(restored.attrs.status, "draft");
+        equal(restored.attrs.userVerifiedAt, reopened.attrs.userVerifiedAt);
+        equal(restored.attrs.publicationReceipt, reopened.attrs.publicationReceipt);
+        equal(restored.attrs.worktreeId, reopened.attrs.worktreeId);
+        await seedPlanState(cwd, "proposal", {
+            collaborationState: "remote_canonical",
+            collaborationServerUrl: "https://example.test",
+            collaborationSpaceId: "space",
+        });
+        const shared = await listPlanHistory(cwd, id);
+        await rejects(restorePlanMilestone(cwd, id, version, shared.revision), /shared Plan is remote-canonical/);
+        equal((await listPlanHistory(cwd, id)).revision, shared.revision);
+    } finally {
+        await rm(cwd, { recursive: true, force: true });
+    }
+});
+
+test("an interrupted restore preserves an intervening edit and resumes one complete generation", async () => {
+    const fixture = await packageFixture();
+    try {
+        await authorLocalPlan(fixture.root, {
+            planName: "proposal",
+            contextMarkdown: "# Approved\n",
+            validationMarkdown: "Checks\n",
+        });
+        await recordPlanEvent({
+            cwd: fixture.root,
+            planName: "proposal",
+            event: "review_approved",
+            currentStatus: "draft",
+        });
+        const { planId, milestones } = await listPlanHistory(fixture.root, "proposal");
+        const folder = dirname((await loadPlan(fixture.root, "proposal"))!.path);
+        await writeFile(join(folder, "context.md"), "# Before restore\n");
+        await writeFile(join(folder, "validation.md"), "Before checks\n");
+        const before = await listPlanHistory(fixture.root, planId);
+        const revision = await restorePlanMilestone(fixture.root, planId, milestones[0].version, before.revision);
+        const batchPath = join(
+            fixture.identity.executionAccountHome,
+            ".wld",
+            "projects",
+            fixture.identity.projectId,
+            "internal",
+            "plan-packages",
+            "batch.json",
+        );
+        const batch = JSON.parse(await readFile(batchPath, "utf8"));
+        // Reopen the durable restore intent after one document landed and an editor changed another.
+        await writeFile(batchPath, JSON.stringify({ ...batch, phase: "pending" }));
+        await writeFile(
+            join(folder, "plan.wld.json"),
+            JSON.stringify(batch.authoring[0].before.metadata, null, 2) + "\n",
+        );
+        await writeFile(join(folder, "validation.md"), "External work\n");
+        await rejects(listPlanHistory(fixture.root, planId), /changed during authoring/);
+        equal(await readFile(join(folder, "validation.md"), "utf8"), "External work\n");
+        equal(await readFile(join(folder, "context.md"), "utf8"), "# Approved\n");
+        await writeFile(join(folder, "validation.md"), "Before checks\n");
+        equal((await listPlanHistory(fixture.root, planId)).revision, revision);
+        equal(await readFile(join(folder, "validation.md"), "utf8"), "Checks\n");
+        equal((await loadPlan(fixture.root, "proposal"))?.attrs.status, "draft");
+    } finally {
+        await fixture.cleanup();
+    }
+});
+
+test("Epic publication keeps only the Markdown retained by its integration gate", async () => {
+    const fixture = await packageFixture();
+    try {
+        for (const name of ["legacy", "current"]) {
+            await authorLocalPlan(fixture.root, {
+                planName: name,
+                contextMarkdown: "# Integrated\n",
+                definition: { classification: "PROJECT", type: "epic" },
+            });
+            await seedPlanState(fixture.root, name, { status: name === "legacy" ? "reviewed" : "implemented" });
+            if (name === "current")
+                await recordPlanEvent({
+                    cwd: fixture.root,
+                    planName: name,
+                    event: "epic_integration_passed",
+                    details: { integrationCommit: "abc" },
+                });
+            const live = (await loadPlan(fixture.root, name))!;
+            await writeFile(join(dirname(live.path), "context.md"), "# Later edit\n");
+            await recordPlanEvent({ cwd: fixture.root, planName: name, event: "epic_publication_confirmed" });
+            equal((await loadPlan(fixture.root, name))?.attrs.status, "verified");
+            const history = await listPlanHistory(fixture.root, name);
+            if (name === "legacy") deepEqual(history.milestones, []);
+            else {
+                deepEqual(
+                    history.milestones.map((entry) => entry.milestone),
+                    ["delivered"],
+                );
+                equal(
+                    (await showPlanMilestone(fixture.root, name, history.milestones[0].version))["context.md"],
+                    "# Integrated\n",
+                );
+            }
+        }
     } finally {
         await fixture.cleanup();
     }

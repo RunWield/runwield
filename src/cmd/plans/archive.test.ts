@@ -199,3 +199,48 @@ archiveTest(
         });
     },
 );
+
+archiveTest(
+    "renamed Epics retain readable archived versions and keep their new name after content restore",
+    async ({ projectRoot }) => {
+        const {
+            authorLocalPlan,
+            recordPlanEvent,
+            listPlanHistory,
+            showPlanMilestone,
+            restorePlanMilestone,
+            renamePlan,
+        } = await import("../../plan-store/index.ts");
+        await authorLocalPlan(projectRoot, {
+            planName: "original",
+            contextMarkdown: "# Epic\n",
+            definition: { classification: "PROJECT", type: "epic" },
+        });
+        await recordPlanEvent({
+            cwd: projectRoot,
+            planName: "original",
+            event: "review_approved",
+            currentStatus: "draft",
+        });
+        const approved = await listPlanHistory(projectRoot, "original");
+        await renamePlan(projectRoot, approved.planId, "renamed", approved.revision);
+        await captureLogs(() => runPlansArchiveCommand(["renamed", "--force", "--reason", "Shelved"]));
+        const archived = await listPlanHistory(projectRoot, approved.planId);
+        assertEquals(
+            archived.milestones.map((entry) => entry.milestone),
+            ["approved", "archived"],
+        );
+        assertEquals(archived.milestones[1].reason, "Shelved");
+        const version = approved.milestones[0].version;
+        assertEquals((await showPlanMilestone(projectRoot, approved.planId, version))["context.md"], "# Epic\n");
+        await assertRejects(
+            () => restorePlanMilestone(projectRoot, approved.planId, version, archived.revision),
+            Error,
+            "archived Plan",
+        );
+        await captureLogs(() => runPlansArchiveCommand(["restore", approved.planId]));
+        const live = await listPlanHistory(projectRoot, approved.planId);
+        await restorePlanMilestone(projectRoot, approved.planId, version, live.revision);
+        assertEquals((await loadPlan(projectRoot, "renamed"))?.attrs.planId, approved.planId);
+    },
+);

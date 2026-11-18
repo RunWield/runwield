@@ -4,6 +4,8 @@ import {
     validateProjectStoreRequest,
     validateProjectStoreReply,
 } from "./project-store-protocol.ts";
+export class ProjectStorePreconditionError extends Error {}
+
 /** Caller retains operation IDs across timeouts/reconnects. No retry or fallback owner is inferred. */
 export class ProjectStoreClient {
     constructor(
@@ -20,6 +22,7 @@ export class ProjectStoreClient {
             body: JSON.stringify(request),
             signal,
         });
+        if (response.status === 412) throw new ProjectStorePreconditionError("Plan revision changed before restore.");
         if (!response.ok)
             throw new Error(`Project store request refused (${response.status}); retain its operation identity.`);
         const reply: ProjectStoreReply = JSON.parse(await readProjectStoreBody(response));

@@ -9,7 +9,7 @@ import { setExactProjectCustomSetting } from "../settings.js";
 import { recordPlanEvent } from "./plan-lifecycle.js";
 import { loadPublicationAttempt } from "./publication-machine.ts";
 import { readPlanPackage, readPlanPackagePublication } from "../../plan-store/packages.ts";
-import { readPublishedDeliverySources } from "../../plan-store/index.ts";
+import { listPlanHistory, showPlanMilestone, readPublishedDeliverySources } from "../../plan-store/index.ts";
 
 for (const boundary of ["artifact_effect", "copy_write"]) {
     test(`validation restart reconciles ${boundary} before deciding whether code changed`, async () => {
@@ -25,9 +25,21 @@ for (const boundary of ["artifact_effect", "copy_write"]) {
             equal(attempt.artifactCommit, undefined);
             const copiesCommit = await git(f.workflow.executionCwd!, ["rev-parse", "HEAD"]);
             await fs.writeFile(join(f.p.path, "context.md"), "# Keep concurrent editor work\n");
+            equal(
+                (await listPlanHistory(f.root, "one")).milestones.some((entry) => entry.milestone === "delivered"),
+                false,
+            );
             const resumed = await f.drive(undefined, "validate");
             equal(resumed.code, 0, resumed.text);
             const receipt = (await read(f.identity)).metadata.workflow!.delivery!;
+            const delivered = (await listPlanHistory(f.root, "one")).milestones.filter(
+                (entry) => entry.milestone === "delivered",
+            );
+            equal(delivered.length, 1);
+            equal(
+                (await showPlanMilestone(f.root, "one", delivered[0].version))["context.md"],
+                "# A Plan\n\nProse — 世界\n",
+            );
             equal(receipt.source.inputId, attempt.packageInput.inputId);
             equal(receipt.validatedCommit, attempt.validatedCommit);
             equal(await git(f.remote, ["show", "main:docs/plans/one/context.md"]), "# A Plan\n\nProse — 世界");

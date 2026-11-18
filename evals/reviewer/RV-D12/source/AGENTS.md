@@ -8,4 +8,4 @@ CatalogPort is the required external network boundary. A deterministic catalog i
 Clocks and subprocesses may also be external ports when needed. They do not make registry operations external.
 
 Run `bun run test` and `bun run seams:check`. The seam baseline is zero. Fix new seams; do not relax the checker.
-Use Bun 1.4.3. Do not change HOME or the process working directory.
+Use Bun ^1.4.0. Do not change HOME or the process working directory.

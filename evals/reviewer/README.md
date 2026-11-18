@@ -1,6 +1,6 @@
 # Reviewer fixtures
 
-These synthetic Bun 1.4.3 projects define 33 discovery cases in 17 packages. Mechanical admission runs before any
+These synthetic Bun ^1.4.0 projects define 33 discovery cases in 17 packages. Mechanical admission runs before any
 model calls. After the paid run, the owner judges each fixture's Plan, patch, proof, and oracle together with the
 Reviewer's result. Fixture approval is not a pre-run requirement.
 
@@ -47,8 +47,8 @@ materialized project, then remove them in `finally`. Run `bun run test` inside a
 
 ## Fixture revisions after owner adjudication
 
-The recorded October baseline evaluated revision 1. RV-D04, RV-D06, RV-D07, RV-D10, RV-D12, RV-D13, and RV-M01
-are now revision 2. RV-D08 is revision 3. RV-D01–D03, RV-D05, RV-D09, RV-D11, and RV-D14–D16 remain revision 1. The
+All 17 current fixtures accept the project Bun range. RV-D04, RV-D06, RV-D07, RV-D10, RV-D12, RV-D13, and RV-M01
+are revision 3. RV-D08 is revision 4. RV-D01–D03, RV-D05, RV-D09, RV-D11, and RV-D14–D16 are revision 2. The
 [full discovery report](../../docs/evaluation/reviewer-benchmark-results/2026-10-discovery-pairs.md)
 records 33 cases before the RV-D06–D08 and RV-D10 repairs; it does not measure their revision-2 fixtures.
 
@@ -77,7 +77,7 @@ fixture hashes prevent resume against that run; scoring its saved records still 
 
 ## Run and score
 
-Use Bun 1.4.3 and install the repository dependencies with `bun run install:locked`. Run the whole admitted corpus:
+Use Bun ^1.4.0 and install the repository dependencies with `bun run install:locked`. Run the whole admitted corpus:
 
 ```bash
 bun scripts/run-reviewer-benchmark.ts run --scenarios all

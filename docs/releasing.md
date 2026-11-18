@@ -55,8 +55,9 @@ bash install.sh vX.Y.Z-rc.N
 Release operators need:
 
 - `git` with push access to this repository.
-- Bun matching `.bun-version` (1.4.3) for source, Golden, executable and package qualification;
-  run `bun run install:locked` first.
+- Bun `^1.4.0` (at least 1.4.0 and below 2.0.0) for local release commands and checks;
+  run `bun run install:locked` first. CI and release builds use the exact version in `.bun-version`
+  for repeatable artifacts. Local commands do not require that exact version.
 - `gh` authenticated to GitHub with permission to read releases before tagging, verify Candidate releases during
   promotion, and edit release notes after CI publishes assets (`gh auth status` should pass for the target account).
 

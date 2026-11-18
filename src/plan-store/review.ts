@@ -111,6 +111,12 @@ const reviewMarkdown = new Marked({
     },
 });
 
+export function sameReviewedMarkdown(left: string, right: string): boolean {
+    return (
+        left === right || reviewMarkdown.parse(left, { async: false }) === reviewMarkdown.parse(right, { async: false })
+    );
+}
+
 /**
  * Compare what the user reviewed with the current human-owned Plan document.
  *
@@ -127,10 +133,10 @@ export function reviewSourceStillMatches(
 ): boolean {
     const canonicalAttrs = (attrs: PlanFrontMatter) =>
         planDocumentMarkdown(injectFrontMatter("", stripRuntimeFields(attrs)));
-    const bodyMatches =
-        current.body === originalBody ||
-        reviewMarkdown.parse(current.body, { async: false }) === reviewMarkdown.parse(originalBody, { async: false });
-    return bodyMatches && canonicalAttrs(current.attrs) === canonicalAttrs(originalAttrs);
+    return (
+        sameReviewedMarkdown(current.body, originalBody) &&
+        canonicalAttrs(current.attrs) === canonicalAttrs(originalAttrs)
+    );
 }
 
 function validatedClassification(
@@ -335,10 +341,16 @@ async function applySharedPlanReviewDecisionInScope({
                           reviewMarkdown.parse(right, { async: false }),
                 );
                 if (!conversationTurn)
-                    await updatePackageWorkflowMetadata(planName, nextAttrs, writeRevision, {
-                        review: approved ? retained : undefined,
-                        readiness: undefined,
-                    });
+                    await updatePackageWorkflowMetadata(
+                        planName,
+                        nextAttrs,
+                        writeRevision,
+                        {
+                            review: approved ? retained : undefined,
+                            readiness: undefined,
+                        },
+                        approved ? "approved" : undefined,
+                    );
                 return await loadPackageWorkflowPlan(planName);
             },
         });

@@ -86,6 +86,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import {
     commitPlanPackageBatch,
+    packageDocumentText,
     listPlanPackages,
     readPlanPackage,
     withPlanPackageLocks,
@@ -214,12 +215,12 @@ export async function saveLocalHomePlan(
                     overrides.dependencies === undefined && options.definition && current
                         ? current.metadata.dependencyPlanIds
                         : (parsed.attrs.dependencies || []).map(related);
-                const documents: PackageDocuments = {
-                    "context.md": "",
-                    "validation.md": "# Validation\n\nSee the Verification Plan in [context.md](context.md).\n",
-                };
-                for (const document of current?.documents || [])
-                    documents[document.name] = new TextDecoder().decode(document.bytes);
+                const documents: PackageDocuments = current
+                    ? packageDocumentText(current.documents)
+                    : {
+                          "context.md": "",
+                          "validation.md": "# Validation\n\nSee the Verification Plan in [context.md](context.md).\n",
+                      };
                 await commitPlanPackageBatch(store.identity, [
                     {
                         before: current ? { metadata: current.metadata, documents } : null,

@@ -418,3 +418,5 @@ export {
 } from "./import-source.ts";
 
 export { archivePlansByStatus } from "./archiving.ts";
+
+export { listPlanHistory, showPlanMilestone, restorePlanMilestone, type PlanHistory } from "./history.ts";

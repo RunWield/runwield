@@ -25,7 +25,28 @@ try {
         readPublishedDeliverySources,
         readPublishedRecordMarkdown,
     } = await import("../../plan-store/index.ts");
-    if (command === "managed-route-import") {
+    if (command.startsWith("managed-history-")) {
+        const { runPlansCommand } = await import("../../cmd/plans/index.ts");
+        const { authorLocalPlan, listPlanHistory } = await import("../../plan-store/index.ts");
+        if (command === "managed-history-missing") {
+            await rejects(runPlansCommand(["history", "missing"]), /requires an admitted Plan/);
+            await rejects(
+                runPlansCommand(["history", "show", "missing", crypto.randomUUID()]),
+                /requires an admitted Plan/,
+            );
+        } else if (command === "managed-history-seed") {
+            await authorLocalPlan(input.cwd, { planName: "proposal", contextMarkdown: "# Original\n" });
+            await recordPlanEvent({ cwd: input.cwd, planName: "proposal", event: "review_approved" });
+            const history = await listPlanHistory(input.cwd, "proposal");
+            console.log(JSON.stringify(history));
+        } else if (command === "managed-history-restore") {
+            await runPlansCommand(["history", "restore", "proposal", input.attemptId!]);
+        } else if (command === "managed-history-list") {
+            await runPlansCommand(["history", "proposal"]);
+        } else {
+            await runPlansCommand(["history", "show", "proposal", input.attemptId!]);
+        }
+    } else if (command === "managed-route-import") {
         const { resolvePlanWithPrimaryRecovery } = await import("../../plan-store/index.ts");
         const selected = join(input.cwd, "docs/plans/explicit.md");
         const original =

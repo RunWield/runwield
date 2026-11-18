@@ -29,3 +29,16 @@ test("streamed request bounds apply without Content-Length", async () => {
     });
     await rejects(readProjectStoreBody(new Response(body)), /too large/);
 });
+
+test("history requires a version identifier and restore accepts only an observed package revision", () => {
+    const command = {
+        kind: "restore-history" as const,
+        planId: "plan-one",
+        operationId: crypto.randomUUID(),
+        version: crypto.randomUUID(),
+        expectedRevision: "f".repeat(64),
+    };
+    validateProjectStoreRequest({ binding, command });
+    throws(() => validateProjectStoreRequest({ binding, command: { ...command, version: "../../other" } }), /version/);
+    throws(() => validateProjectStoreRequest({ binding, command: { ...command, expectedRevision: "" } }), /revision/);
+});

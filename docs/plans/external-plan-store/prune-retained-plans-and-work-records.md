@@ -18,6 +18,7 @@ affectedPaths:
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-11-01"
+status: "ready_for_work"
 origin: "internal"
 parentPlan: "external-plan-store"
 order: 15
@@ -25,9 +26,8 @@ dependencies:
   - "external-plan-store/move-work-records-with-delivery-copies"
   - "external-plan-store/activate-managed-remote-store-ownership"
   - "external-plan-store/keep-and-restore-plan-milestone-history"
-targetBranch: "epic/external-plan-store"
-status: "ready_for_work"
 userVerifiedAt: null
+targetBranch: "epic/external-plan-store"
 ---
 
 # Prune Retained Plans and Work Records

@@ -25,5 +25,5 @@ validation and exclusive access to the repair workspace and attempt file.
 
 ## Validation
 
-Use Bun 1.4.3. Run `bun run test`. Temporary remotes, repair workspaces, and other writers must live outside this project
+Use Bun ^1.4.0. Run `bun run test`. Temporary remotes, repair workspaces, and other writers must live outside this project
 and be removed after each test.

@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import type { PlanHistory, ProjectStoreBinding, ProjectStoreReply } from "../../plan-store/index.ts";
 import { deepEqual, equal, ok, rejects } from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { composedRemoteFixture } from "./composed-store-fixture.ts";
@@ -89,6 +90,197 @@ test("managed load-plan path imports explicitly while name lookup leaves checkou
             const result: { planId: string } = JSON.parse(await fixture.run("managed-route-import"));
             equal(result.planId, "explicit-id");
         } finally {
+            await fixture.cleanup();
+        }
+    }));
+
+test("managed history inspection leaves a fresh Project unadmitted", () =>
+    withProcessGlobalTestLock(async () => {
+        const fixture = await composedRemoteFixture();
+        try {
+            await fixture.run("managed-history-missing");
+            const response = await fetch(`${fixture.endpoint}/project-store/inspect`, {
+                method: "POST",
+                headers: fixture.headers,
+            });
+            equal(response.status, 200);
+            equal(await response.json(), null);
+        } finally {
+            await fixture.cleanup();
+        }
+    }));
+
+test("retrying the restore CLI after a lost reply preserves an intervening edit", () =>
+    withProcessGlobalTestLock(async () => {
+        const fixture = await composedRemoteFixture();
+        let lost: ProjectStoreRequest | undefined;
+        let receipt: ProjectStoreReply | undefined;
+        const proxy = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
+            const url = new URL(request.url);
+            const bytes = await request.text();
+            const input: ProjectStoreRequest | undefined =
+                url.pathname === "/project-store" ? JSON.parse(bytes) : undefined;
+            const response = await fetch(`${fixture.endpoint}${url.pathname}`, {
+                method: request.method,
+                headers: request.headers,
+                body: bytes || undefined,
+            });
+            if (!lost && input?.command.kind === "restore-history" && response.ok) {
+                lost = input;
+                receipt = await response.json();
+                return new Response(null, { status: 503 });
+            }
+            return response;
+        });
+        try {
+            const history: PlanHistory = JSON.parse(await fixture.run("managed-history-seed"));
+            const version = history.milestones[0].version;
+            const interrupted = await fixture.runRaw("managed-history-restore", proxy.addr.port, version);
+            ok(interrupted.code !== 0);
+            ok(
+                lost && receipt && "revision" in receipt.result && receipt.result.revision,
+                new TextDecoder().decode(interrupted.stderr),
+            );
+            const firstRevision = receipt.result.revision;
+            const client = new ProjectStoreClient(fixture.endpoint, fixture.input.connection.credential, lost.binding);
+            const later = (
+                await client.execute({
+                    kind: "save-prose",
+                    planId: history.planId,
+                    expectedRevision: firstRevision,
+                    operationId: crypto.randomUUID(),
+                    body: "# Later edit\n",
+                })
+            ).result;
+            ok("revision" in later);
+            equal(
+                await fixture.run("managed-history-restore", undefined, version),
+                `Restored ${version} to Plan ${history.planId} at revision ${firstRevision}.`,
+            );
+            const after = (await client.execute({ kind: "resolve-plan", reference: history.planId })).result;
+            ok("plan" in after && after.plan);
+            equal(after.plan.body, "# Later edit\n");
+            equal(after.plan.revision, later.revision);
+            await fixture.run("managed-history-restore", undefined, version);
+            const deliberate = (await client.execute({ kind: "resolve-plan", reference: history.planId })).result;
+            ok("plan" in deliberate && deliberate.plan);
+            equal(deliberate.plan.body, "# Original\n");
+        } finally {
+            await proxy.shutdown();
+            await fixture.cleanup();
+        }
+    }));
+
+test("managed history CLI reads large catalogs and multi-document milestones across reply boundaries", () =>
+    withProcessGlobalTestLock(async () => {
+        const fixture = await composedRemoteFixture();
+        try {
+            const history: PlanHistory = JSON.parse(await fixture.run("managed-history-seed"));
+            const binding: ProjectStoreBinding = await (
+                await fetch(`${fixture.endpoint}/project-store/admit`, { method: "POST", headers: fixture.headers })
+            ).json();
+            const client = new ProjectStoreClient(fixture.endpoint, fixture.input.connection.credential, binding);
+            const { planId } = history;
+            let revision = history.revision;
+            const context = "📚".repeat(155000) + "\n";
+            const validation = "Ω".repeat(310000) + "\n";
+            for (const [resource, body] of [
+                ["context.md", context],
+                ["validation.md", validation],
+            ]) {
+                const saved = (
+                    await client.execute({
+                        kind: "save-document",
+                        planId,
+                        expectedRevision: revision,
+                        operationId: crypto.randomUUID(),
+                        resource,
+                        body,
+                    })
+                ).result;
+                ok("revision" in saved && saved.revision);
+                revision = saved.revision;
+            }
+            const reason = "R".repeat(600000);
+            const closed = (
+                await client.execute({
+                    kind: "lifecycle-decision",
+                    planId,
+                    expectedRevision: revision,
+                    operationId: crypto.randomUUID(),
+                    decision: {
+                        event: "manual_closed_without_verification",
+                        details: { closedWithoutVerificationReason: reason },
+                    },
+                })
+            ).result;
+            ok("revision" in closed && closed.revision);
+            const archived = (
+                await client.execute({
+                    kind: "archive-plan",
+                    planId,
+                    expectedRevision: closed.revision,
+                    operationId: crypto.randomUUID(),
+                    reason,
+                    force: false,
+                    now: "",
+                })
+            ).result;
+            ok("revision" in archived && archived.revision);
+            const lines = (await fixture.run("managed-history-list")).split("\n");
+            equal(lines.length, 3);
+            const [version, milestone, , why] = lines[1].split("\t");
+            equal(milestone, "closed");
+            equal(why, reason);
+            equal(lines[2].split("\t")[3], reason);
+            equal(
+                await fixture.run("managed-history-show", undefined, version),
+                `# context.md\n\n${context}\n# validation.md\n\n${validation}`.trim(),
+            );
+        } finally {
+            await fixture.cleanup();
+        }
+    }));
+
+test("a restore rejected before commit can retry against a fresh revision", () =>
+    withProcessGlobalTestLock(async () => {
+        const fixture = await composedRemoteFixture();
+        let edited = false;
+        const proxy = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
+            const path = new URL(request.url).pathname;
+            const body = await request.text();
+            const input: ProjectStoreRequest | undefined = path === "/project-store" ? JSON.parse(body) : undefined;
+            if (!edited && input?.command.kind === "restore-history") {
+                const owner = new ProjectStoreClient(
+                    fixture.endpoint,
+                    fixture.input.connection.credential,
+                    input.binding,
+                );
+                await owner.execute({
+                    kind: "save-prose",
+                    planId: input.command.planId,
+                    expectedRevision: input.command.expectedRevision,
+                    operationId: crypto.randomUUID(),
+                    body: "# Concurrent\n",
+                });
+                edited = true;
+            }
+            return await fetch(`${fixture.endpoint}${path}`, {
+                method: request.method,
+                headers: request.headers,
+                body: body || undefined,
+            });
+        });
+        try {
+            const history: PlanHistory = JSON.parse(await fixture.run("managed-history-seed"));
+            const version = history.milestones[0].version;
+            const stale = await fixture.runRaw("managed-history-restore", proxy.addr.port, version);
+            ok(stale.code !== 0);
+            ok(new TextDecoder().decode(stale.stderr).includes("Plan revision changed before restore"));
+            ok(edited);
+            ok((await fixture.run("managed-history-restore", undefined, version)).startsWith(`Restored ${version}`));
+        } finally {
+            await proxy.shutdown();
             await fixture.cleanup();
         }
     }));

@@ -12,6 +12,7 @@
  * Use headed agent-browser --session remote-reviews-df8a7ec8 for browser checks.
  * Only the HTTP model provider is synthetic; the compiled launcher and supervisor are unchanged.
  */
+import { requireSupportedBun } from "../../../scripts/check-bun-runtime.ts";
 import { equal, ok } from "node:assert/strict";
 import { spawn, execFile, execFileSync } from "node:child_process";
 import { createServer } from "node:http";
@@ -56,7 +57,7 @@ interface ProviderRequest {
 if (import.meta.main) await main();
 async function main(): Promise<void> {
     equal(process.platform, "darwin", "This pilot is macOS-only; Windows is deferred.");
-    equal(process.versions.bun, "1.4.3");
+    requireSupportedBun();
     const args = process.argv.slice(2);
     let archives: string | undefined;
     if (args[0] === "--archives") {
