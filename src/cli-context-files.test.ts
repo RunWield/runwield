@@ -2,6 +2,7 @@ import { runtimeSourceArgs } from "./testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "./shared/captured-process.ts";
 import { test } from "node:test";
 import {
+    realpath as fsRealpath,
     lstat as fsLstat,
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,
@@ -18,7 +19,7 @@ import { fileURLToPath as fromFileUrl } from "node:url";
 const REPO_ROOT = dirname(dirname(fromFileUrl(import.meta.url)));
 
 async function makeTempDir(prefix: string): Promise<string> {
-    return await fsMkdtemp(join(tmpdir(), prefix));
+    return await fsRealpath(await fsMkdtemp(join(tmpdir(), prefix)));
 }
 
 async function removeTempDir(path: string): Promise<void> {
@@ -34,7 +35,7 @@ async function pathExists(path: string): Promise<boolean> {
         await fsLstat(path);
         return true;
     } catch (error) {
-        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return false;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
         throw error;
     }
 }
@@ -74,6 +75,19 @@ test("CLI commands leave repository CONTEXT files untouched", async () => {
         await fsWriteFile(join(projectRoot, "CONTEXT-MAP.md"), rootMap);
         await fsWriteFile(join(projectRoot, "nested", "CONTEXT.md"), nestedContext);
 
+        const imported = await captureForegroundProcess(process.execPath, {
+            args: runtimeSourceArgs([
+                "run",
+                "-A",
+                join(REPO_ROOT, "src", "cli.ts"),
+                "plans",
+                "import",
+                join(projectRoot, "docs/plans/context-preservation.md"),
+            ]),
+            cwd: projectRoot,
+            env: { HOME: homeDir, MNEMOTECA_DB_PATH: join(homeDir, "m.db") },
+        });
+        assertEquals(imported.code, 0, new TextDecoder().decode(imported.stderr));
         const output = await captureForegroundProcess(process.execPath, {
             args: runtimeSourceArgs(["run", "-A", join(REPO_ROOT, "src", "cli.ts"), "plans"]),
             cwd: projectRoot,

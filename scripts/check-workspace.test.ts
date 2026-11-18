@@ -20,7 +20,11 @@ async function fixture() {
     const manifest = JSON.parse(await readFile(join(repositoryRoot, "package.json"), "utf8"));
     await writeFile(
         join(root, "package.json"),
-        JSON.stringify({ type: "module", scripts: { "workspace:check": manifest.scripts["workspace:check"] } }),
+        JSON.stringify({
+            type: "module",
+            engines: manifest.engines,
+            scripts: { "workspace:check": manifest.scripts["workspace:check"] },
+        }),
     );
     await writeFile(
         join(root, "tsconfig.json"),

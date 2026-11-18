@@ -1,4 +1,5 @@
 import { stat as fsStat } from "node:fs/promises";
+import { inspectProjectStorage } from "../../project-identity.ts";
 import { restoreExecutionWorkflow } from "../execution-workflow-recovery.ts";
 import {
     readPersistedActiveAgentName,
@@ -12,7 +13,7 @@ import { captureTranscriptEvidence, syncTranscriptFileAndParent } from ".././ses
 import { openLiveSessionConnection } from ".././live-session-connection.ts";
 import { recordSegmentLineageEvidence } from ".././workflow-context-session.js";
 import { parseProviderModel } from "../../models/model-validation.ts";
-import { sessionDirForRoot } from ".././file-session-storage.ts";
+import { sessionDirForCheckout } from ".././file-session-storage.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import {
@@ -732,7 +733,7 @@ export class RuntimeManagedOperations {
                 ? this.services.sessionStore.requireSessionProjectRoot(managed.projectId)
                 : null;
             const transcriptProjectSessionDir = transcriptProjectRoot
-                ? sessionDirForRoot(this.services.sessionStore.path, transcriptProjectRoot)
+                ? sessionDirForCheckout(this.services.sessionStore.path, transcriptProjectRoot)
                 : "";
             const transcriptPath = generationSegment?.transcriptPath || managed.transcriptPath;
             const managedProjectSessionDir =
@@ -741,8 +742,15 @@ export class RuntimeManagedOperations {
                 isPathInside(transcriptPath, transcriptProjectSessionDir)
                     ? transcriptProjectSessionDir
                     : undefined;
+            const currentPlanningBinding =
+                generationSegment?.kind === "planning" &&
+                inspectProjectStorage(hostedSession.cwd).some(
+                    (binding) =>
+                        (binding.historicalRoots ?? [binding.root]).includes(generationSegment.transcriptCwd) &&
+                        isPathInside(transcriptPath, binding.sessionDirectory),
+                );
             const { sessionManager } = await openPersistedRootSession({
-                cwd: generationSegment?.transcriptCwd || hostedSession.cwd,
+                cwd: currentPlanningBinding ? hostedSession.cwd : generationSegment?.transcriptCwd || hostedSession.cwd,
                 sessionId: generationSegment?.piSessionId || managed.piSessionId,
                 sessionPath: transcriptPath,
                 sessionDir: managedProjectSessionDir,

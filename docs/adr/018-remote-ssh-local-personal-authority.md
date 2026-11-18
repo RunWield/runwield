@@ -6,6 +6,14 @@ status: accepted
 
 Last updated: 2026-10-26 EDT
 
+## Local home-store activation
+
+Ordinary local and manual-SSH Plan and Work Record access now uses the executing account's personal Project store
+under [ADR-0020](0020-home-project-state-and-launch-mode-ownership.md). Project catalog authority is separate from
+revision-checked workflow selection. Explicit import preserves original execution ownership until publication is proven
+or the user deliberately abandons the attempt; it never starts a replacement attempt or weakens publication evidence.
+Session bundle authority and managed-remote personal ownership retain their existing contracts.
+
 ## Context and Constraints
 
 Remote development uses an existing Linux project without a laptop checkout or source synchronization. The owner
@@ -31,6 +39,16 @@ Split execution from personal authority:
 - Remote Core owns the TUI, Agent loop, and project tools. Workflow capabilities follow the same execution boundary;
   their product scope is defined in [Core Remote connection](../prd/runwield-core-prd.md#remote-connection).
 - The laptop owns authenticated model requests, personal-data services, and authoritative Session bundles.
+- Managed startup registers a home-only Project owner from trusted remote repository identity. The public Plan owner
+  routes named personal-store operations to that connection. Plans, native mutation locks, controllers, collaboration
+  secrets and Work Records stay laptop-owned without a laptop source checkout. Git registries, publication staging,
+  repair state and execution journals stay under the remote account's home Project tree. Staged adoption preserves
+  exact original attempt ownership; repository Plan and record copies still require explicit import.
+- Publication freezes delivery-copy settings from the execution repository. The laptop independently requests remote
+  Git proof before settling Git delivery or approving its records; a request saying publication succeeded is insufficient.
+  Non-Git completion instead matches the reserved attempt and an independent execution-host identity check. Its durable
+  receipt retains non-Git evidence without a commit or target branch and authorizes recording retries.
+  Reconnection retains operation IDs and proof. Disconnection never selects remote-account personal storage.
 - OpenSSH supplies terminal transport and forwarding. A connection-scoped laptop service supplies model and personal
   operations; no permanent daemon or hosted Workspace dependency is required.
 - Remote SSHFS mounts the laptop's full `~/.wld` at a fresh private remote path through standard OpenSSH SFTP. Personal

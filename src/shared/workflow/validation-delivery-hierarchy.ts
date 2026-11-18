@@ -5,8 +5,9 @@ import { readFile as fsReadFile } from "node:fs/promises";
  * takes its before-facts from.
  */
 
-import { findPlansByParent, getPlanRevisionForText, loadPlan } from "../../plan-store.js";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import { getPlanRevisionForText } from "../../plan-format.ts";
+import { findPlansByParent, loadPlan } from "../../plan-store/index.ts";
+import type { PlanFrontMatter } from "../../plan-store/index.ts";
 
 /** One sibling as captured before a publication, for later comparison. */
 export interface SiblingPlanSnapshot {
@@ -33,8 +34,9 @@ export function hasDirectDeliveryEvidence(attrs: PlanFrontMatter): boolean {
     if (attrs.status !== "validated" && attrs.status !== "verified") return true;
     const evidence = attrs.deliveryEvidence;
     return Boolean(
-        evidence && typeof evidence === "object" &&
-            (evidence.mode === "worktree_merge" || evidence.mode === "non_git_in_place"),
+        evidence &&
+        typeof evidence === "object" &&
+        (evidence.mode === "worktree_merge" || evidence.mode === "non_git_in_place"),
     );
 }
 

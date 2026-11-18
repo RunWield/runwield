@@ -1,3 +1,5 @@
+import { getLockHostname } from "./process-liveness.ts";
+import { admitProjectIdentity } from "./project-identity.ts";
 import { Buffer } from "node:buffer";
 import { createRequire } from "node:module";
 import { toNamespacedPath } from "node:path";
@@ -31,7 +33,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertExists, assertRejects } from "../testing/assertions.ts";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
-import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME, RUNWIELD_DIR_NAME } from "../constants.js";
+import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "../constants.js";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
 import {
@@ -49,10 +51,11 @@ import {
     recordPublicationFailure,
 } from "./workflow/publication-attempt.ts";
 
+// Legacy inputs are adopted through ordinary account ownership.
 const fixture = defineCommittedGitFixture({ "README.md": "# Runtime layout fixture\n" });
 const REPO_ROOT = dirname(dirname(dirname(fromFileUrl(import.meta.url))));
 
-test("runtime entry refreshes authority after another writer completes adoption", async () => {
+test("runtime entry serializes concurrent adoption and preserves subsequent writer state", async () => {
     await withProcessGlobalTestLock(async () => {
         const root = await fixture.checkout({ prefix: "runwield-runtime-concurrent-adoption-" });
         const binDir = await fsMkdtemp(join(tmpdir(), "runwield-runtime-adoption-bin-"));
@@ -69,7 +72,9 @@ test("runtime entry refreshes authority after another writer completes adoption"
                 if (performance.now() > deadline) throw new Error("Migration did not reach the Git barrier.");
                 await new Promise((resolveTimer) => setTimeout(resolveTimer, 5));
             }
-            const adopted = await migrateLegacyProjectRuntimeState(root);
+            const adoption = migrateLegacyProjectRuntimeState(root);
+            await fsWriteFile(release, "release");
+            const adopted = await adoption;
             assertEquals(adopted.kind, "ready");
             const layout = resolveProjectRuntimeLayout(root);
             const planLock = join(layout.selected.planLocksDir, "concurrent.lock");
@@ -77,6 +82,7 @@ test("runtime entry refreshes authority after another writer completes adoption"
             await fsWriteFile(release, "release");
             const result: ProjectRuntimeMigrationResult = JSON.parse(await readChildStdout(child));
             assertEquals(result.kind, "ready");
+            assertEquals((await migrateLegacyProjectRuntimeState(root)).kind, "ready");
             assertEquals(await fsReadFile(planLock, "utf8"), "current writer lock");
         } finally {
             await fsWriteFile(release, "release");
@@ -93,7 +99,7 @@ for (const adoption of ["fresh", "selected"] as const) {
         await withProcessGlobalTestLock(async () => {
             const project = await makeMigrationProject();
             const root = adoption === "fresh" ? project.primaryRoot : project.selectedRoot;
-            const layout = resolveProjectRuntimeLayout(root);
+            let layout = resolveProjectRuntimeLayout(root);
             const binDir = await fsMkdtemp(join(tmpdir(), "runwield-runtime-passive-adoption-bin-"));
             const ready = join(binDir, "ready");
             const release = join(binDir, "release");
@@ -102,17 +108,9 @@ for (const adoption of ["fresh", "selected"] as const) {
             try {
                 if (adoption === "selected") {
                     assertEquals((await migrateLegacyProjectRuntimeState(project.primaryRoot)).kind, "ready");
-                    // Pause a reader after it sees the primary-only marker and an
-                    // unfinished selected-checkout adoption journal.
                     await writeText(
-                        layout.primary.layoutMigrationJournalPath,
-                        JSON.stringify({
-                            version: 1,
-                            primaryCheckoutRoot: project.primaryRoot,
-                            selectedCheckoutRoots: [project.primaryRoot, project.selectedRoot].sort(),
-                            operations: [],
-                            updatedAt: new Date().toISOString(),
-                        }),
+                        join(getRunWieldRuntimeDir(project.selectedRoot), "plan-transitions", "returning.json"),
+                        "returning transition\n",
                     );
                 }
                 await writeGitWrapper(binDir, originalPath, { pauseListReady: ready, pauseListRelease: release });
@@ -124,6 +122,7 @@ for (const adoption of ["fresh", "selected"] as const) {
                     await new Promise((resolveTimer) => setTimeout(resolveTimer, 5));
                 }
                 await prepareWorktreeRegistry(root);
+                layout = resolveProjectRuntimeLayout(root);
                 const planLock = join(layout.selected.planLocksDir, "concurrent.lock");
                 await writeText(planLock, "current writer lock");
                 const before = await snapshotTree(layout.primary.internalRoot);
@@ -134,7 +133,6 @@ for (const adoption of ["fresh", "selected"] as const) {
                 assertEquals(await fsReadFile(planLock, "utf8"), "current writer lock");
                 assertEquals(await snapshotTree(layout.primary.internalRoot), before);
                 assertEquals(await snapshotTree(layout.selected.internalRoot), selectedBefore);
-                await assertMissing(layout.primary.layoutMigrationLockPath);
                 await assertMissing(layout.primary.layoutMigrationJournalPath);
             } finally {
                 await fsWriteFile(release, "release");
@@ -167,11 +165,9 @@ test("passive runtime access keeps unmatched current authorities blocked", async
 
 test("project runtime layout resolves normal primary and selected internal roots", async () => {
     await withProcessGlobalTestLock(async () => {
-        const originalSandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
         const primaryCheckout = await fixture.checkout({ prefix: "runwield-runtime-layout-primary-" });
         const selectedCheckout = await fsMkdtemp(join(tmpdir(), "runwield-runtime-layout-selected-"));
         try {
-            delete process.env["WLD_TEST_SANDBOX_HOME"];
             await git(primaryCheckout, [
                 "worktree",
                 "add",
@@ -184,13 +180,11 @@ test("project runtime layout resolves normal primary and selected internal roots
             const resolvedPrimaryCheckout = await fsRealpath(primaryCheckout);
             const resolvedSelectedCheckout = await fsRealpath(selectedCheckout);
             const primaryInternalRoot = join(
-                resolvedPrimaryCheckout,
-                RUNWIELD_DIR_NAME,
+                getRunWieldRuntimeDir(resolvedPrimaryCheckout),
                 PROJECT_INTERNAL_RUNTIME_DIR_NAME,
             );
             const selectedInternalRoot = join(
-                resolvedSelectedCheckout,
-                RUNWIELD_DIR_NAME,
+                getRunWieldRuntimeDir(resolvedSelectedCheckout),
                 PROJECT_INTERNAL_RUNTIME_DIR_NAME,
             );
 
@@ -229,8 +223,6 @@ test("project runtime layout resolves normal primary and selected internal roots
                 join(selectedInternalRoot, "work-record-supersession-recovery.lock"),
             );
         } finally {
-            if (originalSandboxHome === undefined) delete process.env["WLD_TEST_SANDBOX_HOME"];
-            else process.env["WLD_TEST_SANDBOX_HOME"] = originalSandboxHome;
             await fsRm(selectedCheckout, { recursive: true }).catch(() => {});
             await fsRm(primaryCheckout, { recursive: true }).catch(() => {});
         }
@@ -346,9 +338,9 @@ test("legacy migration adopts primary and selected runtime leaves once", async (
         await assertMissing(join(primaryBase, "controller"));
         await assertMissing(join(selectedBase, "plan-transitions"));
         const marker = JSON.parse(await fsReadFile(layout.primary.layoutMarkerPath, "utf8"));
-        assertEquals(marker.version, 1);
-        assertEquals(marker.primaryCheckoutRoot, project.primaryRoot);
-        assertEquals(marker.adoptedSelectedCheckoutRoots, [project.primaryRoot, project.selectedRoot].sort());
+        assertEquals(marker.version, 2);
+        assertEquals(layout.primary.checkoutRoot, project.primaryRoot);
+        assertEquals(marker.roots, [project.primaryRoot, project.selectedRoot].sort());
 
         const before = await snapshotTree(layout.primary.internalRoot);
         const again = await migrateLegacyProjectRuntimeState(project.selectedRoot);
@@ -453,7 +445,10 @@ test("legacy migration adopts a later selected secret after the first marker", a
         const result = await migrateLegacyProjectRuntimeState(laterRoot);
         if (result.kind !== "ready") throw new Error(`Expected ready, got ${JSON.stringify(result)}`);
         assertEquals(await fsReadFile(result.layout.primary.projectSecretStorePath, "utf8"), "later secret\n");
-        assertEquals(result.adoptedSelectedCheckoutRoots, [...result.adoptedSelectedCheckoutRoots].sort());
+        assertEquals(
+            result.adoptedSelectedCheckoutRoots.slice().sort(),
+            [project.primaryRoot, project.selectedRoot, laterRoot].sort(),
+        );
         assert(result.adoptedSelectedCheckoutRoots.includes(laterRoot));
     } finally {
         await git(project.primaryRoot, ["worktree", "remove", "--force", laterCheckout]).catch(() => {});
@@ -503,6 +498,7 @@ test("runtime entry reuses Git answers only while repository evidence is unchang
             await settleGitEvidence();
 
             assertEquals((await migrateLegacyProjectRuntimeState(project.selectedRoot)).kind, "ready");
+            await migrateLegacyProjectRuntimeState(project.selectedRoot);
             await settleGitEvidence();
             await fsWriteFile(log, "");
             assertEquals((await migrateLegacyProjectRuntimeState(project.selectedRoot)).kind, "ready");
@@ -591,7 +587,7 @@ test("legacy migration refuses symlinked current runtime and publication checkou
 test("legacy migration resumes when a journaled rename already reached its destination", async () => {
     const project = await makeMigrationProject();
     try {
-        const layout = resolveProjectRuntimeLayout(project.selectedRoot);
+        let layout = resolveProjectRuntimeLayout(project.selectedRoot);
         const primaryBase = getRunWieldRuntimeDir(project.primaryRoot);
         await writeText(join(layout.primary.internalRoot, "controller", "plans", "plan.json"), "controller\n");
         await writeText(
@@ -619,13 +615,14 @@ test("legacy migration resumes when a journaled rename already reached its desti
 
         const result = await migrateLegacyProjectRuntimeState(project.selectedRoot);
         if (result.kind !== "ready") throw new Error(`Expected ready, got ${result.kind}`);
+        layout = result.layout;
         assertEquals(
             await fsReadFile(join(layout.primary.internalRoot, "controller", "plans", "plan.json"), "utf8"),
             "controller\n",
         );
         await assertMissing(layout.primary.layoutMigrationJournalPath);
         const marker = JSON.parse(await fsReadFile(layout.primary.layoutMarkerPath, "utf8"));
-        assertEquals(marker.adoptedSelectedCheckoutRoots, [project.primaryRoot, project.selectedRoot].sort());
+        assertEquals(marker.roots, [project.primaryRoot, project.selectedRoot].sort());
     } finally {
         await project.cleanup();
     }
@@ -636,8 +633,8 @@ test("legacy migration blocks when a completed journal receipt has two authoriti
     try {
         const layout = resolveProjectRuntimeLayout(project.selectedRoot);
         const primaryBase = getRunWieldRuntimeDir(project.primaryRoot);
-        await writeText(join(primaryBase, "controller", "plans", "legacy.json"), "legacy\n");
-        await writeText(join(layout.primary.internalRoot, "controller", "plans", "internal.json"), "internal\n");
+        await writeText(join(primaryBase, "controller", "plans", "plan.json"), "legacy\n");
+        await writeText(join(layout.primary.internalRoot, "controller", "plans", "plan.json"), "internal\n");
         await writeText(
             layout.primary.layoutMigrationJournalPath,
             `${JSON.stringify(
@@ -664,9 +661,9 @@ test("legacy migration blocks when a completed journal receipt has two authoriti
         const result = await migrateLegacyProjectRuntimeState(project.selectedRoot);
         if (result.kind !== "blocked") throw new Error(`Expected blocked, got ${result.kind}`);
         assertEquals(result.reason, "authority_conflict");
-        assertEquals(await fsReadFile(join(primaryBase, "controller", "plans", "legacy.json"), "utf8"), "legacy\n");
+        assertEquals(await fsReadFile(join(primaryBase, "controller", "plans", "plan.json"), "utf8"), "legacy\n");
         assertEquals(
-            await fsReadFile(join(layout.primary.internalRoot, "controller", "plans", "internal.json"), "utf8"),
+            await fsReadFile(join(layout.primary.internalRoot, "controller", "plans", "plan.json"), "utf8"),
             "internal\n",
         );
     } finally {
@@ -702,11 +699,17 @@ test("legacy migration preserves orphan publication staging without blocking ent
 
         const result = await migrateLegacyProjectRuntimeState(project.selectedRoot);
         if (result.kind !== "ready") throw new Error(`Expected ready, got ${result.kind}`);
-        assertEquals(await fsReadFile(stagingPath, "utf8"), "receipt\n");
-        await assertMissing(resolveProjectRuntimeLayout(project.selectedRoot).primary.publicationStagingRoot);
+        assertEquals(
+            await fsReadFile(join(result.layout.primary.publicationStagingRoot, "orphan", "receipt.json"), "utf8"),
+            "receipt\n",
+        );
+        await assertMissing(stagingPath);
         const repeated = await migrateLegacyProjectRuntimeState(project.selectedRoot);
         assertEquals(repeated.kind, "ready");
-        assertEquals(await fsReadFile(stagingPath, "utf8"), "receipt\n");
+        assertEquals(
+            await fsReadFile(join(result.layout.primary.publicationStagingRoot, "orphan", "receipt.json"), "utf8"),
+            "receipt\n",
+        );
     } finally {
         await project.cleanup();
     }
@@ -752,143 +755,140 @@ test("legacy migration classifies current secret files and temps as tracked secr
 });
 
 test("legacy migration preserves unfinished publication and repair receipts", async () => {
-    await withProcessGlobalTestLock(async () => {
-        const originalSandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
-        try {
-            delete process.env["WLD_TEST_SANDBOX_HOME"];
-            const unfinished = await makeMigrationProject();
-            try {
-                const candidate = createPublicationAttempt({
-                    attemptId: unfinished.registryEntry.id,
-                    planId: "plan-demo",
-                    planName: unfinished.registryEntry.planName,
-                    targetBranch: "main",
-                    executionBranch: unfinished.registryEntry.branch,
-                    executionCwd: unfinished.selectedRoot,
-                    publicationRoot: join(
-                        getRunWieldRuntimeDir(unfinished.primaryRoot),
-                        "plan-staging",
-                        unfinished.registryEntry.id,
-                    ),
-                    validatedCommit: unfinished.registryEntry.baseCommit,
-                    targetHeadAtSeal: unfinished.registryEntry.baseCommit,
-                });
-                await writeText(
-                    join(getRunWieldRuntimeDir(unfinished.primaryRoot), "worktrees.json"),
-                    JSON.stringify({
-                        version: 2,
-                        entries: [
-                            {
-                                ...unfinished.registryEntry,
-                                planId: "plan-demo",
-                                status: "validated",
-                                publication: candidate,
-                            },
-                        ],
-                    }),
-                );
+    const unfinished = await makeMigrationProject();
+    try {
+        const candidate = createPublicationAttempt({
+            attemptId: unfinished.registryEntry.id,
+            planId: "plan-demo",
+            planName: unfinished.registryEntry.planName,
+            targetBranch: "main",
+            executionBranch: unfinished.registryEntry.branch,
+            executionCwd: unfinished.selectedRoot,
+            publicationRoot: join(
+                getRunWieldRuntimeDir(unfinished.primaryRoot),
+                "plan-staging",
+                unfinished.registryEntry.id,
+            ),
+            validatedCommit: unfinished.registryEntry.baseCommit,
+            targetHeadAtSeal: unfinished.registryEntry.baseCommit,
+        });
+        await writeText(
+            join(getRunWieldRuntimeDir(unfinished.primaryRoot), "worktrees.json"),
+            JSON.stringify({
+                version: 2,
+                entries: [
+                    {
+                        ...unfinished.registryEntry,
+                        planId: "plan-demo",
+                        status: "validated",
+                        publication: candidate,
+                    },
+                ],
+            }),
+        );
 
-                const repaired = recordPublicationFailure(candidate, {
-                    kind: "needs_repair",
-                    message: "repair",
-                    repairRoot: join(
-                        getRunWieldRuntimeDir(unfinished.primaryRoot),
-                        "plan-staging",
-                        unfinished.registryEntry.id,
-                    ),
-                });
-                await writeText(
-                    join(getRunWieldRuntimeDir(unfinished.primaryRoot), "worktrees.json"),
-                    JSON.stringify({
-                        version: 2,
-                        entries: [
-                            {
-                                ...unfinished.registryEntry,
-                                planId: "plan-demo",
-                                status: "validated",
-                                publication: repaired,
-                            },
-                        ],
-                    }),
-                );
-                const repairFile = join(repaired.publicationRoot, "resolution.txt");
-                await writeText(repairFile, "Keep the Engineer's resolution\n");
-                const ready = await migrateLegacyProjectRuntimeState(unfinished.selectedRoot);
-                if (ready.kind !== "ready") throw new Error(`Expected ready, got ${ready.kind}`);
-                const migrated = JSON.parse(await fsReadFile(ready.layout.primary.worktreeRegistryPath, "utf8"));
-                assertEquals(migrated.entries[0].publication, repaired);
-                assertEquals(await fsReadFile(repairFile, "utf8"), "Keep the Engineer's resolution\n");
-                await assertMissing(join(getRunWieldRuntimeDir(unfinished.primaryRoot), "worktrees.json"));
-                assertEquals((await migrateLegacyProjectRuntimeState(unfinished.selectedRoot)).kind, "ready");
-                assertEquals(
-                    repaired.failure?.repairRoot,
-                    join(getRunWieldRuntimeDir(unfinished.primaryRoot), "plan-staging", unfinished.registryEntry.id),
-                );
-            } finally {
-                await unfinished.cleanup();
-            }
+        const repaired = recordPublicationFailure(candidate, {
+            kind: "needs_repair",
+            message: "repair",
+            repairRoot: join(
+                getRunWieldRuntimeDir(unfinished.primaryRoot),
+                "plan-staging",
+                unfinished.registryEntry.id,
+            ),
+        });
+        await writeText(
+            join(getRunWieldRuntimeDir(unfinished.primaryRoot), "worktrees.json"),
+            JSON.stringify({
+                version: 2,
+                entries: [
+                    {
+                        ...unfinished.registryEntry,
+                        planId: "plan-demo",
+                        status: "validated",
+                        publication: repaired,
+                    },
+                ],
+            }),
+        );
+        const repairFile = join(repaired.publicationRoot, "resolution.txt");
+        await writeText(repairFile, "Keep the Engineer's resolution\n");
+        const ready = await migrateLegacyProjectRuntimeState(unfinished.selectedRoot);
+        if (ready.kind !== "ready") throw new Error(`Expected ready, got ${ready.kind}`);
+        const migrated = JSON.parse(await fsReadFile(ready.layout.primary.worktreeRegistryPath, "utf8"));
+        const movedRoot = join(ready.layout.primary.publicationStagingRoot, unfinished.registryEntry.id);
+        assertEquals(migrated.entries[0].publication, {
+            ...repaired,
+            publicationRoot: movedRoot,
+            failure: { ...repaired.failure, repairRoot: movedRoot },
+        });
+        assertEquals(await fsReadFile(join(movedRoot, "resolution.txt"), "utf8"), "Keep the Engineer's resolution\n");
+        await assertMissing(repairFile);
+        await assertMissing(join(getRunWieldRuntimeDir(unfinished.primaryRoot), "worktrees.json"));
+        assertEquals((await migrateLegacyProjectRuntimeState(unfinished.selectedRoot)).kind, "ready");
+        assertEquals(
+            repaired.failure?.repairRoot,
+            join(getRunWieldRuntimeDir(unfinished.primaryRoot), "plan-staging", unfinished.registryEntry.id),
+        );
+    } finally {
+        await unfinished.cleanup();
+    }
 
-            const complete = await makeMigrationProject();
-            try {
-                const candidate = createPublicationAttempt({
-                    attemptId: complete.registryEntry.id,
-                    planId: "plan-demo",
-                    planName: complete.registryEntry.planName,
-                    targetBranch: "main",
-                    executionBranch: complete.registryEntry.branch,
-                    executionCwd: complete.selectedRoot,
-                    publicationRoot: join(
-                        getRunWieldRuntimeDir(complete.primaryRoot),
-                        "plan-staging",
-                        complete.registryEntry.id,
-                    ),
-                    validatedCommit: complete.registryEntry.baseCommit,
-                    targetHeadAtSeal: complete.registryEntry.baseCommit,
-                });
-                const artifacts = advancePublicationAttempt(candidate, "artifacts_committed", {
-                    artifactCommit: complete.registryEntry.baseCommit,
-                    planPaths: ["docs/plans/demo.md"],
-                });
-                const integrated = advancePublicationAttempt(artifacts, "target_integrated", {
-                    targetBaseCommit: complete.registryEntry.baseCommit,
-                    integrationCommit: complete.registryEntry.baseCommit,
-                });
-                const published = advancePublicationAttempt(integrated, "target_published", {
-                    publicationMode: "local",
-                    publishedCommit: complete.registryEntry.baseCommit,
-                });
-                const verified = advancePublicationAttempt(published, "publication_verified", {
-                    verifiedAt: "2026-01-01T00:01:00.000Z",
-                });
-                const cleaned = advancePublicationAttempt(verified, "cleanup_complete", {
-                    cleanedAt: "2026-01-01T00:02:00.000Z",
-                });
-                await writeText(
-                    join(getRunWieldRuntimeDir(complete.primaryRoot), "worktrees.json"),
-                    JSON.stringify({
-                        version: 2,
-                        entries: [
-                            {
-                                ...complete.registryEntry,
-                                planId: "plan-demo",
-                                status: "validated",
-                                publication: cleaned,
-                            },
-                        ],
-                    }),
-                );
+    const complete = await makeMigrationProject();
+    try {
+        const candidate = createPublicationAttempt({
+            attemptId: complete.registryEntry.id,
+            planId: "plan-demo",
+            planName: complete.registryEntry.planName,
+            targetBranch: "main",
+            executionBranch: complete.registryEntry.branch,
+            executionCwd: complete.selectedRoot,
+            publicationRoot: join(
+                getRunWieldRuntimeDir(complete.primaryRoot),
+                "plan-staging",
+                complete.registryEntry.id,
+            ),
+            validatedCommit: complete.registryEntry.baseCommit,
+            targetHeadAtSeal: complete.registryEntry.baseCommit,
+        });
+        const artifacts = advancePublicationAttempt(candidate, "artifacts_committed", {
+            artifactCommit: complete.registryEntry.baseCommit,
+            planPaths: ["docs/plans/demo.md"],
+        });
+        const integrated = advancePublicationAttempt(artifacts, "target_integrated", {
+            targetBaseCommit: complete.registryEntry.baseCommit,
+            integrationCommit: complete.registryEntry.baseCommit,
+        });
+        const published = advancePublicationAttempt(integrated, "target_published", {
+            publicationMode: "local",
+            publishedCommit: complete.registryEntry.baseCommit,
+        });
+        const verified = advancePublicationAttempt(published, "publication_verified", {
+            verifiedAt: "2026-01-01T00:01:00.000Z",
+        });
+        const cleaned = advancePublicationAttempt(verified, "cleanup_complete", {
+            cleanedAt: "2026-01-01T00:02:00.000Z",
+        });
+        await writeText(
+            join(getRunWieldRuntimeDir(complete.primaryRoot), "worktrees.json"),
+            JSON.stringify({
+                version: 2,
+                entries: [
+                    {
+                        ...complete.registryEntry,
+                        planId: "plan-demo",
+                        status: "validated",
+                        publication: cleaned,
+                    },
+                ],
+            }),
+        );
 
-                const result = await migrateLegacyProjectRuntimeState(complete.selectedRoot);
-                if (result.kind !== "ready") throw new Error(`Expected ready, got ${result.kind}`);
-                assertEquals(result.migrated, true);
-            } finally {
-                await complete.cleanup();
-            }
-        } finally {
-            if (originalSandboxHome === undefined) delete process.env["WLD_TEST_SANDBOX_HOME"];
-            else process.env["WLD_TEST_SANDBOX_HOME"] = originalSandboxHome;
-        }
-    });
+        const result = await migrateLegacyProjectRuntimeState(complete.selectedRoot);
+        if (result.kind !== "ready") throw new Error(`Expected ready, got ${result.kind}`);
+        assertEquals(result.migrated, true);
+    } finally {
+        await complete.cleanup();
+    }
 });
 
 test("legacy migration treats a held controller inode lock as an active writer", async () => {
@@ -967,7 +967,7 @@ test("legacy migration rejects a journal that retires an unbounded lock path", a
     }
 });
 
-test("legacy migration rejects an existing journal that omits required operations", async () => {
+test("legacy migration inventories all legacy bytes when an old journal omits operations", async () => {
     const project = await makeMigrationProject();
     try {
         const layout = resolveProjectRuntimeLayout(project.selectedRoot);
@@ -987,16 +987,10 @@ test("legacy migration rejects an existing journal that omits required operation
             )}\n`,
         );
         const result = await migrateLegacyProjectRuntimeState(project.selectedRoot);
-        if (result.kind !== "blocked") throw new Error(`Expected blocked, got ${result.kind}`);
-        assertEquals(result.reason, "malformed_migration_evidence");
-        await assertMissing(layout.primary.layoutMarkerPath);
-        assertEquals(
-            await fsReadFile(
-                join(getRunWieldRuntimeDir(project.primaryRoot), "controller", "plans", "plan.json"),
-                "utf8",
-            ),
-            "x\n",
-        );
+        if (result.kind !== "ready") throw new Error(JSON.stringify(result));
+        await assertMissing(layout.primary.layoutMigrationJournalPath);
+        await assertMissing(join(getRunWieldRuntimeDir(project.primaryRoot), "controller"));
+        assertEquals(await fsReadFile(join(result.layout.primary.controllerPlansDir, "plan.json"), "utf8"), "x\n");
     } finally {
         await project.cleanup();
     }
@@ -1033,13 +1027,18 @@ test("legacy migration cleans completed journal and migration lock after marker 
                 2,
             )}\n`,
         );
+        const exited = spawnNativeProcess(process.execPath, {
+            cwd: project.primaryRoot,
+            args: ["-e", "process.exit(0)"],
+            stdout: "null",
+            stderr: "null",
+            stdin: "null",
+        });
+        await exited.status;
         await writeText(
             layout.primary.layoutMigrationLockPath,
-            JSON.stringify({ pid: -1, createdAtMs: 0, updatedAtMs: 0 }),
+            JSON.stringify({ pid: exited.pid, hostname: getLockHostname(), createdAtMs: 0, updatedAtMs: 0 }),
         );
-        // Zero timestamps fall back to the real file mtime. This fixture is stale
-        // already; do not wait for a freshly written file to age for 30 seconds.
-        await fsUtimes(layout.primary.layoutMigrationLockPath, 0, 0);
         const result = await migrateLegacyProjectRuntimeState(project.selectedRoot);
         if (result.kind !== "ready") throw new Error(`Expected ready, got ${result.kind}`);
         await assertMissing(layout.primary.layoutMigrationJournalPath);
@@ -1056,7 +1055,7 @@ test("legacy migration resumes selected-root adoption after the registry was alr
         const laterBranch = `runtime-migration-later-${crypto.randomUUID()}`;
         await git(project.primaryRoot, ["worktree", "add", "-b", laterBranch, laterSelected]);
         const laterRoot = await fsRealpath(laterSelected);
-        const layout = resolveProjectRuntimeLayout(project.selectedRoot);
+        let layout = resolveProjectRuntimeLayout(project.selectedRoot);
         await writeText(
             layout.primary.worktreeRegistryPath,
             JSON.stringify({ version: 1, entries: [project.registryEntry] }),
@@ -1107,6 +1106,7 @@ test("legacy migration resumes selected-root adoption after the registry was alr
         );
         const result = await migrateLegacyProjectRuntimeState(project.selectedRoot);
         if (result.kind !== "ready") throw new Error(`Expected ready, got ${JSON.stringify(result)}`);
+        layout = result.layout;
         assertEquals(await fsReadFile(join(layout.selected.transitionJournalsDir, "first.json"), "utf8"), "first\n");
         assertEquals(
             await fsReadFile(
@@ -1154,7 +1154,7 @@ test("legacy migration rejects a stale lock retirement when the lock proof chang
         );
         const result = await migrateLegacyProjectRuntimeState(project.selectedRoot);
         if (result.kind !== "blocked") throw new Error(`Expected blocked, got ${result.kind}`);
-        assertEquals(result.reason, "malformed_migration_evidence");
+        assertEquals(result.reason, "active_legacy_writer");
         assertEquals(await fsReadFile(lockPath, "utf8"), "new stale lock\n");
     } finally {
         await project.cleanup();
@@ -1183,18 +1183,19 @@ test("legacy migration retires stale Plan locks before moving the Plan lock dire
 test("legacy migration allows an empty destination directory during adoption", async () => {
     const project = await makeMigrationProject();
     try {
-        const layout = resolveProjectRuntimeLayout(project.selectedRoot);
+        let layout = resolveProjectRuntimeLayout(project.selectedRoot);
         await writeText(join(getRunWieldRuntimeDir(project.primaryRoot), "controller", "plans", "plan.json"), "x\n");
         await fsMkdir(join(layout.primary.internalRoot, "controller"), { recursive: true });
         const result = await migrateLegacyProjectRuntimeState(project.selectedRoot);
         if (result.kind !== "ready") throw new Error(`Expected ready, got ${result.kind}`);
+        layout = result.layout;
         assertEquals(await fsReadFile(join(layout.primary.controllerPlansDir, "plan.json"), "utf8"), "x\n");
     } finally {
         await project.cleanup();
     }
 });
 
-test("legacy migration refuses populated project-local worktrees without effects", async () => {
+test("legacy migration relocates populated project-local worktrees without losing work", async () => {
     const project = await makeMigrationProject();
     const fallbackRoot = join(getRunWieldRuntimeDir(project.primaryRoot), "worktrees");
     const fallbackCheckout = join(fallbackRoot, "legacy-attempt");
@@ -1217,22 +1218,25 @@ test("legacy migration refuses populated project-local worktrees without effects
             }),
         );
         const layout = resolveProjectRuntimeLayout(project.selectedRoot);
-        const worktreesBefore = await git(project.primaryRoot, ["worktree", "list", "--porcelain"]);
         const statusBefore = await git(fallbackCheckout, ["status", "--short"]);
         const primaryStatusBefore = await git(project.primaryRoot, ["status", "--short"]);
         const indexBefore = await git(project.primaryRoot, ["diff", "--cached", "--binary"]);
         const registryBefore = await fsReadFile(registryPath, "utf8");
 
         const result = await migrateLegacyProjectRuntimeState(project.selectedRoot);
-        if (result.kind !== "blocked") throw new Error(`Expected blocked, got ${result.kind}`);
-        assertEquals(result.reason, "unsupported_filesystem_move");
-        assertEquals(await git(project.primaryRoot, ["worktree", "list", "--porcelain"]), worktreesBefore);
-        assertEquals(await git(fallbackCheckout, ["status", "--short"]), statusBefore);
+        if (result.kind !== "ready") throw new Error(JSON.stringify(result));
+        const relocated = join(result.layout.primary.fallbackWorktreesRoot, "legacy-attempt");
+        assert((await git(project.primaryRoot, ["worktree", "list", "--porcelain"])).includes(relocated));
+        assertEquals(await git(relocated, ["status", "--short"]), statusBefore);
         assertEquals(await git(project.primaryRoot, ["status", "--short"]), primaryStatusBefore);
         assertEquals(await git(project.primaryRoot, ["diff", "--cached", "--binary"]), indexBefore);
-        assertEquals(await fsReadFile(registryPath, "utf8"), registryBefore);
-        assertEquals(await fsReadFile(join(fallbackCheckout, "README.md"), "utf8"), "dirty tracked work\n");
-        assertEquals(await fsReadFile(join(fallbackCheckout, "untracked.txt"), "utf8"), "untracked work\n");
+        assertEquals(
+            JSON.parse(await fsReadFile(result.layout.primary.worktreeRegistryPath, "utf8")).entries,
+            JSON.parse(registryBefore).entries.map((entry: { path: string }) => ({ ...entry, path: relocated })),
+        );
+        await assertMissing(registryPath);
+        assertEquals(await fsReadFile(join(relocated, "README.md"), "utf8"), "dirty tracked work\n");
+        assertEquals(await fsReadFile(join(relocated, "untracked.txt"), "utf8"), "untracked work\n");
         await assertMissing(layout.primary.internalRoot);
     } finally {
         await git(project.primaryRoot, ["worktree", "remove", "--force", fallbackCheckout]).catch(() => {});
@@ -1247,14 +1251,14 @@ test("legacy migration allows an empty project-local worktrees directory", async
         await fsMkdir(fallbackRoot, { recursive: true });
         const result = await migrateLegacyProjectRuntimeState(project.selectedRoot);
         if (result.kind !== "ready") throw new Error(`Expected ready, got ${JSON.stringify(result)}`);
-        assertEquals((await fsLstat(fallbackRoot)).isDirectory(), true);
+        await assertMissing(fallbackRoot);
         await assertMissing(result.layout.primary.fallbackWorktreesRoot);
     } finally {
         await project.cleanup();
     }
 });
 
-test("legacy migration rejects an old journaled project-local worktree rename", async () => {
+test("legacy migration preserves payload from an old journaled project-local worktree rename", async () => {
     const project = await makeMigrationProject();
     try {
         const layout = resolveProjectRuntimeLayout(project.selectedRoot);
@@ -1284,9 +1288,12 @@ test("legacy migration rejects an old journaled project-local worktree rename", 
             )}\n`,
         );
         const result = await migrateLegacyProjectRuntimeState(project.selectedRoot);
-        if (result.kind !== "blocked") throw new Error(`Expected blocked, got ${result.kind}`);
-        assertEquals(result.reason, "malformed_migration_evidence");
-        assertEquals(await fsReadFile(file, "utf8"), "preserve\n");
+        if (result.kind !== "ready") throw new Error(JSON.stringify(result));
+        assertEquals(
+            await fsReadFile(join(result.layout.primary.fallbackWorktreesRoot, "preserve.txt"), "utf8"),
+            "preserve\n",
+        );
+        await assertMissing(file);
         await assertMissing(layout.primary.fallbackWorktreesRoot);
     } finally {
         await project.cleanup();
@@ -1319,7 +1326,8 @@ test("legacy migration resumes RC.1 empty staging rename journals", async () => 
         );
         const result = await migrateLegacyProjectRuntimeState(project.selectedRoot);
         assertEquals(result.kind, "ready");
-        await fsStat(layout.primary.publicationStagingRoot);
+        await assertMissing(layout.primary.publicationStagingRoot);
+        assertEquals((await migrateLegacyProjectRuntimeState(project.selectedRoot)).kind, "ready");
         await assertMissing(source);
         await assertMissing(layout.primary.layoutMigrationJournalPath);
     } finally {
@@ -1333,10 +1341,7 @@ test("legacy migration preserves hidden publication staging entries", async () =
         await writeText(join(getRunWieldRuntimeDir(project.primaryRoot), "plan-staging", ".hidden"), "x\n");
         const result = await migrateLegacyProjectRuntimeState(project.selectedRoot);
         if (result.kind !== "ready") throw new Error(`Expected ready, got ${result.kind}`);
-        assertEquals(
-            await fsReadFile(join(getRunWieldRuntimeDir(project.primaryRoot), "plan-staging", ".hidden"), "utf8"),
-            "x\n",
-        );
+        assertEquals(await fsReadFile(join(result.layout.primary.publicationStagingRoot, ".hidden"), "utf8"), "x\n");
     } finally {
         await project.cleanup();
     }
@@ -1620,7 +1625,7 @@ test("legacy migration blocks active Plan locks in the primary checkout when ent
     }
 });
 
-test("legacy migration rechecks registry after waiting for the legacy registry lock", async () => {
+test("legacy migration rechecks registry after the active legacy registry writer releases its lock", async () => {
     const project = await makeMigrationProject();
     let lockHolder: NativeProcess | undefined;
     try {
@@ -1628,18 +1633,16 @@ test("legacy migration rechecks registry after waiting for the legacy registry l
         await writeText(registryPath, JSON.stringify({ version: 1, entries: [project.registryEntry] }));
         lockHolder = spawnDriver("hold-registry-lock", project.primaryRoot);
         await readReadyLine(lockHolder.stdout);
-        const migration = spawnDriver("migrate", project.selectedRoot);
-        const migrationLockPath = resolveProjectRuntimeLayout(project.selectedRoot).primary.layoutMigrationLockPath;
-        const deadline = Date.now() + 10_000;
-        while (!(await fsLstat(migrationLockPath).catch(() => null))) {
-            assert(Date.now() < deadline, "migration should reach the held registry lock");
-            await new Promise((resolveTimer) => setTimeout(resolveTimer, 5));
-        }
+        const blocked = await migrateLegacyProjectRuntimeState(project.selectedRoot);
+        assertEquals(blocked.kind, "blocked");
+        if (blocked.kind !== "blocked") throw new Error("Expected a live-writer refusal");
+        assertEquals(blocked.reason, "active_legacy_writer");
+        assertEquals(JSON.parse(await fsReadFile(registryPath, "utf8")).entries, [project.registryEntry]);
         await fsWriteFile(registryPath, "not json\n");
         lockHolder.kill("SIGKILL");
         await lockHolder.status.catch(() => {});
         lockHolder = undefined;
-        const result = JSON.parse(await readChildStdout(migration)) as ProjectRuntimeMigrationResult;
+        const result = await migrateLegacyProjectRuntimeState(project.selectedRoot);
         if (result.kind !== "blocked") throw new Error(`Expected blocked, got ${result.kind}`);
         assertEquals(result.reason, "malformed_registry");
     } finally {
@@ -1653,7 +1656,7 @@ test("legacy migration waits while another migration initializes its lock record
     const project = await makeMigrationProject();
     let lockHolder: NativeProcess | undefined;
     try {
-        const layout = resolveProjectRuntimeLayout(project.selectedRoot);
+        let layout = resolveProjectRuntimeLayout(project.selectedRoot);
         const signalPath = join(project.primaryRoot, ".migration-lock-test-started");
         await writeText(join(getRunWieldRuntimeDir(project.primaryRoot), "controller", "plans", "plan.json"), "x\n");
         lockHolder = spawnDriver("hold-initializing-migration-locks", project.primaryRoot, signalPath);
@@ -1661,6 +1664,7 @@ test("legacy migration waits while another migration initializes its lock record
         await writeText(signalPath, "start\n");
         const result = await migrateLegacyProjectRuntimeState(project.selectedRoot);
         if (result.kind !== "ready") throw new Error(JSON.stringify(result));
+        layout = result.layout;
         assertEquals(await fsReadFile(join(layout.primary.controllerPlansDir, "plan.json"), "utf8"), "x\n");
         await lockHolder.status;
         lockHolder = undefined;
@@ -1674,6 +1678,7 @@ test("legacy migration waits while another migration initializes its lock record
 test("legacy migration lock serializes concurrent stale-lock recovery", async () => {
     const project = await makeMigrationProject();
     try {
+        await admitProjectIdentity(project.selectedRoot);
         const layout = resolveProjectRuntimeLayout(project.selectedRoot);
         await writeText(join(getRunWieldRuntimeDir(project.primaryRoot), "controller", "plans", "plan.json"), "x\n");
         await writeText(
@@ -1818,10 +1823,15 @@ test("adopted runtime reconciles every returning non-secret data location", asyn
         const result = await migrateLegacyProjectRuntimeState(project.selectedRoot);
         assertEquals(result.kind, "ready", JSON.stringify(result));
         for (const [root, relative] of locations) {
-            assertEquals(
-                await fsReadFile(join(getRunWieldRuntimeDir(root), "internal", relative), "utf8"),
-                `preserved ${relative}\n`,
-            );
+            const layout = resolveProjectRuntimeLayout(root);
+            const destinations: Record<string, string> = {
+                "controller/plans/returning.json": join(layout.primary.controllerPlansDir, "returning.json"),
+                "debug/returning.log": join(layout.primary.debugRoot, "returning.log"),
+                "worktree-registry-migration-issues.json": layout.primary.worktreeRegistryMigrationIssuesPath,
+                "plan-backups/returning.md": join(layout.selected.planBackupsDir, "returning.md"),
+                "plan-transitions/returning.json": join(layout.selected.transitionJournalsDir, "returning.json"),
+            };
+            assertEquals(await fsReadFile(destinations[relative], "utf8"), `preserved ${relative}\n`);
             await assertMissing(join(getRunWieldRuntimeDir(root), relative));
         }
     } finally {
@@ -1971,8 +1981,8 @@ test("adopted runtime does not recover directories authorized only by old marker
         assertEquals((await migrateLegacyProjectRuntimeState(project.selectedRoot)).kind, "ready");
         const layout = resolveProjectRuntimeLayout(project.selectedRoot);
         const marker = JSON.parse(await fsReadFile(layout.primary.layoutMarkerPath, "utf8"));
-        marker.adoptedSelectedCheckoutRoots.push(other);
-        marker.adoptedSelectedCheckoutRoots.sort();
+        marker.roots.push(other);
+        marker.roots.sort();
         await fsWriteFile(layout.primary.layoutMarkerPath, JSON.stringify(marker));
         const oldPath = join(getRunWieldRuntimeDir(other), "plan-backups", "keep.md");
         await writeText(oldPath, "Do not move this unrelated checkout's files.\n");
@@ -2022,27 +2032,31 @@ test("adopted runtime resumes recovery after process death at each durable bound
     }
 });
 
-test("legacy migration reports EXDEV without retiring the source authority", async () => {
+test("home transfer preserves the source after a publication move fails and resumes", async () => {
     const project = await makeMigrationProject();
     const originalRename = fsPromises.rename;
+    const source = join(getRunWieldRuntimeDir(project.primaryRoot), "controller", "plans", "plan.json");
+    let interrupted = false;
     try {
-        const source = join(getRunWieldRuntimeDir(project.primaryRoot), "controller");
-        await writeText(join(source, "plans", "plan.json"), "x\n");
+        await writeText(source, "x\n");
         Object.defineProperty(fsPromises, "rename", {
             configurable: true,
-            value: async (from: string, to: string): Promise<void> => {
-                if (from === source) {
-                    const error = new Error("cross-device rename");
-                    Object.defineProperty(error, "code", { value: "EXDEV" });
-                    throw error;
+            value: async (...args: Parameters<typeof fsPromises.rename>): Promise<void> => {
+                if (String(args[0]).endsWith("plan.json.runtime-copy")) {
+                    interrupted = true;
+                    throw Object.assign(new Error("cross-device publication move"), { code: "EXDEV" });
                 }
-                await originalRename(from, to);
+                await originalRename(...args);
             },
         });
+        await assertRejects(() => migrateLegacyProjectRuntimeState(project.selectedRoot));
+        assert(interrupted, "The real transfer must reach the failed publication boundary");
+        assertEquals(await fsReadFile(source, "utf8"), "x\n");
+        Object.defineProperty(fsPromises, "rename", { configurable: true, value: originalRename });
         const result = await migrateLegacyProjectRuntimeState(project.selectedRoot);
-        if (result.kind !== "blocked") throw new Error(`Expected blocked, got ${result.kind}`);
-        assertEquals(result.reason, "unsupported_filesystem_move");
-        assertEquals(await fsReadFile(join(source, "plans", "plan.json"), "utf8"), "x\n");
+        if (result.kind !== "ready") throw new Error(JSON.stringify(result));
+        assertEquals(await fsReadFile(join(result.layout.primary.controllerPlansDir, "plan.json"), "utf8"), "x\n");
+        await assertMissing(source);
     } finally {
         Object.defineProperty(fsPromises, "rename", { configurable: true, value: originalRename });
         await project.cleanup();
@@ -2155,14 +2169,14 @@ async function assertInterruptedMigrationEffect(
         await assertMissing(layout.primary.layoutMarkerPath);
     } else if (effect === "primary-rename") {
         await fsLstat(join(layout.primary.internalRoot, "controller", "plans", "plan.json"));
-        await assertMissing(join(primaryBase, "controller"));
+        await fsLstat(join(primaryBase, "controller", "plans", "plan.json"));
         await assertMissing(layout.primary.layoutMarkerPath);
     } else if (effect === "secret-rename") {
         assertEquals(await fsReadFile(layout.primary.projectSecretStorePath, "utf8"), "linked secret\n");
-        await assertMissing(join(selectedBase, "collaboration-secrets.json"));
+        assertEquals(await fsReadFile(join(selectedBase, "collaboration-secrets.json"), "utf8"), "linked secret\n");
         const journal = JSON.parse(await fsReadFile(layout.primary.layoutMigrationJournalPath, "utf8"));
         assert(
-            journal.operations.some(
+            journal.files.some(
                 (operation: { source: string }) =>
                     operation.source === join(selectedBase, "collaboration-secrets.json"),
             ),
@@ -2170,7 +2184,7 @@ async function assertInterruptedMigrationEffect(
         await assertMissing(layout.primary.layoutMarkerPath);
     } else if (effect === "selected-rename") {
         await fsLstat(join(layout.selected.transitionJournalsDir, "selected.json"));
-        await assertMissing(join(selectedBase, "plan-transitions"));
+        assertEquals(await fsReadFile(join(selectedBase, "plan-transitions", "selected.json"), "utf8"), "selected\n");
         await assertMissing(layout.primary.layoutMarkerPath);
     } else if (effect === "stale-lock-retirement") {
         await assertMissing(join(selectedBase, "plan-locks", "demo.lock"));
@@ -2191,7 +2205,6 @@ async function assertCompletedMigrationEffect(
     const layout = resolveProjectRuntimeLayout(project.selectedRoot);
     await fsLstat(layout.primary.layoutMarkerPath);
     await assertMissing(layout.primary.layoutMigrationJournalPath);
-    await assertMissing(layout.primary.layoutMigrationLockPath);
     await assertMissing(join(getRunWieldRuntimeDir(project.primaryRoot), "worktrees.lock"));
     if (effect === "secret-rename") {
         assertEquals(await fsReadFile(layout.primary.projectSecretStorePath, "utf8"), "linked secret\n");

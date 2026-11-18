@@ -34,6 +34,10 @@ test("Codex roles use current host tools and worker language without copied Clau
         ] as const) {
             const text = await resolveAttachedRoleInstructions(root, role, "codex");
             assertStringIncludes(text, "Codex");
+            for (const tool of ["read_plan", "work_record_search", "work_record_read"])
+                assertStringIncludes(text, tool);
+            assertStringIncludes(text, "documentRevision");
+            assertStringIncludes(text, "stop dependent work");
             assertEquals(text.includes("Claude-hosted"), false);
             assertEquals(text.includes("Claude subagent"), false);
             assertEquals(text.includes("RunWield in Claude Code"), false);
@@ -68,7 +72,8 @@ test("Codex planning workers return structured outcomes and leave lifecycle subm
             assertStringIncludes(worker, "Fetch your own current get_instructions and context");
             assertStringIncludes(worker, "return context.projectSetup paths to the coordinator");
             assertStringIncludes(worker, "structured triage_report outcome");
-            assertStringIncludes(worker, "return planName");
+            assertStringIncludes(worker, "contextMarkdown");
+            assertStringIncludes(worker, "planName");
             assertStringIncludes(worker, "Make no lifecycle calls");
             assertStringIncludes(worker, "The coordinator submits your result");
             assertEquals(

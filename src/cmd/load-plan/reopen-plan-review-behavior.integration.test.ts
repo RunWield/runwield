@@ -1,3 +1,5 @@
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
+import { capturePlanReviewInput } from "../../plan-store/index.ts";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
@@ -8,13 +10,14 @@ import {
     getCurrentSystemPrompt,
     type TranscriptContext,
 } from "@earendil-works/pi-ai";
-import { ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.js";
+import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
+
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";
-import { applySharedPlanReviewDecision } from "../../shared/workflow/plan-review-actions.ts";
+import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
-import type { SequenceReviewDocument } from "../../shared/workflow/sequence-review.ts";
+import type { SequenceReviewDocument } from "../../plan-store/index.ts";
 
 const image = {
     base64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
@@ -41,7 +44,7 @@ test("reopened ordinary feedback sends its image to the saved planning Agent in 
     await withRuntimeCommandFixture(
         "reopen-feedback-agent-",
         async ({ homeDir, projectRoot, setModelResponseFactory }) => {
-            await savePlan(projectRoot, "target", "# Target\n\n## Context\n\nRevise the proposal.\n", {
+            await seedPlan(projectRoot, "target", "# Target\n\n## Context\n\nRevise the proposal.\n", {
                 classification: "PLANNED_CHANGE",
                 status: "draft",
                 affectedPaths: [],
@@ -68,6 +71,7 @@ test("reopened ordinary feedback sends its image to the saved planning Agent in 
                             cwd: projectRoot,
                             planName: "target",
                             planPath: current.path,
+                            packageInput: await capturePlanReviewInput(projectRoot, "target", current.revision),
                             planWithFrontMatter: current.markdown,
                             planRevision: current.revision,
                             originalAttrs: current.attrs,
@@ -96,7 +100,7 @@ test("reopened ordinary feedback sends its image to the saved planning Agent in 
 
 test("reopened ordinary approval and run starts the saved Plan", async () => {
     await withRuntimeCommandFixture("reopen-approve-run-", async ({ homeDir, projectRoot, setModelMessages }) => {
-        await savePlan(projectRoot, "target", "# Target\n\n## Context\n\nImplement this.\n", {
+        await seedPlan(projectRoot, "target", "# Target\n\n## Context\n\nImplement this.\n", {
             classification: "PLANNED_CHANGE",
             status: "draft",
             affectedPaths: [],
@@ -123,6 +127,7 @@ test("reopened ordinary approval and run starts the saved Plan", async () => {
                         cwd: projectRoot,
                         planName: "target",
                         planPath: current.path,
+                        packageInput: await capturePlanReviewInput(projectRoot, "target", current.revision),
                         planWithFrontMatter: current.markdown,
                         planRevision: current.revision,
                         originalAttrs: current.attrs,
@@ -154,7 +159,7 @@ test("reopened PROJECT Epic approval starts decomposition in the same Session", 
     await withRuntimeCommandFixture(
         "reopen-epic-decompose-",
         async ({ homeDir, projectRoot, setModelResponseFactory }) => {
-            await savePlan(projectRoot, "epic", "# Epic\n\n## Context\n\nSplit the work.\n", {
+            await seedPlan(projectRoot, "epic", "# Epic\n\n## Context\n\nSplit the work.\n", {
                 classification: "PROJECT",
                 status: "draft",
                 affectedPaths: [],
@@ -179,6 +184,7 @@ test("reopened PROJECT Epic approval starts decomposition in the same Session", 
                             cwd: projectRoot,
                             planName: "epic",
                             planPath: current.path,
+                            packageInput: await capturePlanReviewInput(projectRoot, "epic", current.revision),
                             planWithFrontMatter: current.markdown,
                             planRevision: current.revision,
                             originalAttrs: current.attrs,
@@ -205,14 +211,14 @@ test("reopened Sequence combines child feedback and then approves and runs the f
     await withRuntimeCommandFixture(
         "reopen-sequence-decisions-",
         async ({ homeDir, projectRoot, setModelResponseFactory }) => {
-            await savePlan(projectRoot, "sequence", "# Sequence\n\n## Context\n\nDeliver both.\n", {
+            await seedPlan(projectRoot, "sequence", "# Sequence\n\n## Context\n\nDeliver both.\n", {
                 classification: "PROJECT",
                 type: "sequence",
                 status: "draft",
                 affectedPaths: [],
             });
             for (const [index, name] of ["first", "second"].entries()) {
-                await savePlan(projectRoot, `sequence/${name}`, `# ${name}\n\n## Context\n\nBuild ${name}.\n`, {
+                await seedPlan(projectRoot, `sequence/${name}`, `# ${name}\n\n## Context\n\nBuild ${name}.\n`, {
                     classification: "PLANNED_CHANGE",
                     status: "draft",
                     parentPlan: "sequence",

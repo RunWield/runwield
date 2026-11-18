@@ -1,3 +1,6 @@
+import { seedPlanState } from "../testing/plan-state-fixture.ts";
+import { inspectProjectIdentity } from "../project-identity.ts";
+import { planFixtureEvidenceDirectory } from "../testing/plan-state-fixture.ts";
 import type { HostValidationMetric } from "./testing/validation-host-fixture.ts";
 import {
     realpath as fsRealpath,
@@ -10,7 +13,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { basename, dirname, join } from "node:path";
 import { getHomeDir } from "../../constants.js";
-import { updatePlanFrontMatter } from "../../plan-store.js";
+
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { getWorkspaceSearchRefreshMarker } from "../workspace-search-refresh.ts";
 import { getWorkflowMetricsFilePath } from "./metrics.js";
@@ -45,7 +48,7 @@ test("fresh network-denied host turns validate real work without a Session or hi
         // One prior discovery round makes this discovery round 2, followed by verify round 3.
         // Core deliberately keeps two discovery rounds; this fixture does not change that policy.
         const plan = await fixture.plan();
-        await updatePlanFrontMatter(
+        await seedPlanState(
             fixture.cwd,
             "p",
             {
@@ -62,7 +65,10 @@ test("fresh network-denied host turns validate real work without a Session or hi
             { expectedRevision: plan.revision, expectedControllerRevision: plan.controllerRevision },
         );
         const layout = resolveProjectRuntimeLayout(fixture.root);
-        const originalControllers = await files(layout.primary.controllerPlansDir);
+        const identity = inspectProjectIdentity(fixture.root);
+        assert(identity.kind === "existing");
+        const controllerEvidenceRoot = await canonicalPath(planFixtureEvidenceDirectory(identity.identity));
+        const metadataPath = await canonicalPath(join(dirname(plan.path), "plan.wld.json"));
         const metricsPath = await canonicalPath(getWorkflowMetricsFilePath(fixture.root));
         const metricsFiles = new Set([
             metricsPath,
@@ -94,7 +100,8 @@ test("fresh network-denied host turns validate real work without a Session or hi
                     !(
                         path.startsWith(canonicalCwd + "/") ||
                         path.startsWith(deliveryEvidenceRoot + "/") ||
-                        originalControllers.has(path) ||
+                        path === metadataPath ||
+                        path.startsWith(controllerEvidenceRoot + "/") ||
                         metricsFiles.has(path) ||
                         path === settingsPath ||
                         path === searchRefreshMarker

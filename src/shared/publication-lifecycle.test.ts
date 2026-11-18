@@ -1,10 +1,13 @@
+import { admitProjectIdentity } from "./project-identity.ts";
+import { withWorkRecordOwner } from "./work-records/owner.ts";
+import { writeWorkRecord } from "./work-records/store.ts";
 import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
 import { join } from "node:path";
 import { defineGitFixture, git } from "./git-test-fixture.ts";
-import { parsePlanFrontMatter } from "../plan-store.js";
+import { parsePlanFrontMatter } from "../plan-format.ts";
 import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "./work-records/markdown.js";
 import {
     finalizeLocalPublicationLifecycle,
@@ -312,3 +315,45 @@ for (const edited of [false, true]) {
         }
     });
 }
+
+test("publication supersession reads sealed checkout copies without touching the personal owner", async () => {
+    const root = await fixture.checkout();
+    try {
+        const admitted = await admitProjectIdentity(root);
+        assert(admitted.kind === "existing");
+        const predecessorId = "33333333-3333-4333-8333-333333333333";
+        const successor = parseWorkRecordMarkdown(await fsReadFile(join(root, recordPath), "utf8"));
+        const priorAttrs = { ...successor.attrs, recordId: predecessorId, status: "approved" as const };
+        await fsWriteFile(
+            join(root, "docs/work-records/prior.md"),
+            formatWorkRecordMarkdown(
+                priorAttrs,
+                "# Published predecessor\n\n## Summary\n\nDelivered before this change.\n",
+            ),
+        );
+        await fsWriteFile(
+            join(root, recordPath),
+            formatWorkRecordMarkdown({ ...successor.attrs, supersedes: predecessorId }, successor.body),
+        );
+        await git(root, ["add", "docs/work-records"]);
+        await git(root, ["commit", "-m", "Seal successor and predecessor"]);
+        const candidate = await git(root, ["rev-parse", "HEAD"]);
+        await withWorkRecordOwner(root, admitted.identity, async () => {
+            const personal = await writeWorkRecord(
+                root,
+                priorAttrs,
+                "# Personal predecessor stays unchanged\n\n## Summary\n\nIndependent personal owner.\n",
+                { fileName: "prior.md" },
+            );
+            const before = await fsReadFile(personal.path, "utf8");
+            await finalizePublicationLifecycle(root, "feature", candidate, [planPath]);
+            assertEquals(await fsReadFile(personal.path, "utf8"), before);
+        });
+        const predecessor = parseWorkRecordMarkdown(await fsReadFile(join(root, "docs/work-records/prior.md"), "utf8"));
+        assertEquals(predecessor.attrs.status, "superseded");
+        assertEquals(predecessor.attrs.supersededBy, recordId);
+        assertStringIncludes(predecessor.body, "Published predecessor");
+    } finally {
+        await fsRm(root, { recursive: true });
+    }
+});

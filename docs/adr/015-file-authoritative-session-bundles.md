@@ -4,6 +4,14 @@ status: accepted
 
 # ADR-015: File-Authoritative Session Bundles
 
+## Local home-store activation
+
+Ordinary local and manual-SSH Plan and Work Record access now uses the executing account's personal Project store
+under [ADR-0020](0020-home-project-state-and-launch-mode-ownership.md). Project catalog authority is separate from
+revision-checked workflow selection. Explicit import preserves original execution ownership until publication is proven
+or the user deliberately abandons the attempt; it never starts a replacement attempt or weakens publication evidence.
+Session bundle authority and managed-remote personal ownership retain their existing contracts.
+
 ## Context
 
 Personal Workspace serves one owner moving between TUI and browser, including a phone. An open window does not own a
@@ -30,6 +38,28 @@ Every local Session uses a bundle under the Project's encoded `~/.wld/sessions/`
 
 Manifest writes use write-sync-rename-parent-sync replacement. Recovery descriptors are refreshed only after the primary
 manifest commits. They are redundant recovery evidence, not a second authority.
+
+### Stable lookup retains original bundles
+
+The personal Core Project identity record binds verified legacy Session Project IDs and storage directories to repository
+and checkout evidence. Deliberate entry records old-root evidence before replacing the checkout root; explicit clone
+linking can associate several existing stores. Session manifests and transcripts keep their original IDs and historical
+cwd. Current tool execution resolves separately, and active worktree execution retains its existing recovery authority.
+Checkout bindings retain every admitted historical root separately from fixed storage directories, so records created
+between successive moves keep valid cwd evidence without relocating their bundles.
+Adoption without a selected checkout rebinds a Project-root planning segment through verified root evidence; a planning
+segment recorded in a different worktree retains that cwd. Storage membership alone cannot choose its execution checkout.
+
+This mapping is a locator, not a second transcript, generation, or activation authority. Bundles, descriptors, and native
+lock files stay at their original paths, including for new records in this storage generation. Copying bundles or rewriting
+headers would create competing writer identities without improving continuity. Missing or conflicting evidence stays
+unavailable. Passive readers consume committed bindings without migration or repair.
+
+Admission tries original Session writer locks in sorted order before publishing under the identity record lock. If a
+writer is busy, it releases checkout admission locks before waiting and rechecks evidence on retry, so that writer can
+itself enter Project runtime while settling. Workspace registration remains a separate access decision; SQLite loss does
+not remove Core history. Attached Workflows use the same identity owner for their original directory locators while their
+existing per-workflow locks and revisions remain authoritative.
 
 ### One writer uses an OS lock
 
@@ -60,6 +90,13 @@ The laptop remains the only Session writer when Pi runs remotely. The remote man
 transcript, not a transcript file. A trusted laptop caller registers an operation with its actual native writer proof;
 HTTP clients cannot supply or replace that proof. The existing authenticated remote control service admits ordered,
 immutable requests for that operation and checks the native lock again on every admission.
+
+Managed Session discovery retains authenticated Git Project, repository and checkout identity together with its
+execution-account home and laptop owner before a remote directory moves. A fresh trusted inspection can bind that
+same identity to a new root on the same authenticated host. The original Session namespace and native lock remain
+fixed. Identity inspection is independent of Plan-store admission, so Guide conversations receive the same continuity.
+Dropping the root comparison alone would expose unrelated history. Sessions without historical identity and non-Git
+Sessions retain exact-root lookup; a missing old path cannot supply evidence retroactively.
 
 Persistence and ownership components are product-owned, not injectable ports. The laptop connection constructs its store
 and operation registry. The store constructs remote owners with the same native-lock context that acquired their proofs.

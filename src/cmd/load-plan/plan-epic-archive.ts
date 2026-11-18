@@ -1,4 +1,4 @@
-import { rmdir as fsRmdir } from "node:fs/promises";
+import { archiveEpicPlanFamily } from "../../plan-store/index.ts";
 /**
  * @module cmd/load-plan/plan-epic-archive
  * Archive a terminal Epic with its child Plans.
@@ -6,19 +6,14 @@ import { rmdir as fsRmdir } from "node:fs/promises";
 
 import { CLI_BIN } from "../../constants.js";
 import {
-    archivePlan,
     compareChildPlansByOrder,
-    findPlansByParent,
     isRecoverableWorktreeStatus,
     isTerminalArchivableStatus,
-    loadPlan,
-} from "../../plan-store.js";
-import { runArchiveTransition } from "../../shared/workflow/state-transition.ts";
+} from "../../plan-format.ts";
+import { findPlansByParent, loadPlan } from "../../plan-store/index.ts";
 import { startBackgroundArchive } from "./archive-background.ts";
 import { formatEpicProgressSummary } from "./plan-epic-children.ts";
-import { transitionFailureError } from "./transition-failure.ts";
-import { relative } from "node:path";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store/index.ts";
 import type { UiAPI } from "../../ui/tui/types.js";
 
 export interface ArchiveEpicPlanRef {
@@ -38,71 +33,8 @@ interface ListedPlanForArchive {
     attrs: PlanFrontMatter;
 }
 
-interface ArchivedPlanResult {
-    name: string;
-    relativePath: string;
-    artifacts?: Array<{ fileName: string; relativePath: string }>;
-}
-
-function relativeProjectPath(projectRoot: string, path: string): string {
-    return relative(projectRoot, path).replaceAll("\\", "/");
-}
-
-function activeEpicChildDirectory(epicPath: string): string {
-    return epicPath.endsWith(".md") ? epicPath.slice(0, -3) : `${epicPath}.children`;
-}
-
 function blockingWorktreePlans(plans: ListedPlanForArchive[]): ListedPlanForArchive[] {
     return plans.filter((entry) => isRecoverableWorktreeStatus(entry.attrs.worktreeStatus));
-}
-
-async function archiveOnePlan(
-    projectRoot: string,
-    planName: string,
-    now: string,
-    force: boolean,
-): Promise<ArchivedPlanResult> {
-    const loaded = await loadPlan(projectRoot, planName);
-    if (!loaded) throw new Error(`Plan not found: ${planName}`);
-    let archived: ArchivedPlanResult | null = null;
-    const transition = await runArchiveTransition({
-        projectRoot,
-        planName,
-        action: "archive",
-        expectedRevision: loaded.revision,
-        move: async () => {
-            const result = await archivePlan(projectRoot, planName, force ? { force: true, now } : { now });
-            archived = { name: result.name, relativePath: result.relativePath, artifacts: result.artifacts };
-            return result.relativePath;
-        },
-    });
-    if (transition.status !== "committed") {
-        throw transitionFailureError(transition, `Archive transaction failed for ${planName}.`);
-    }
-    if (!archived) throw new Error(`Archive transaction did not return a result for ${planName}.`);
-    return archived;
-}
-
-async function removeActiveEpicChildDirectory(projectRoot: string, epicChildDirectory: string, uiAPI: UiAPI) {
-    const relativePath = relativeProjectPath(projectRoot, epicChildDirectory);
-    try {
-        await fsRmdir(epicChildDirectory);
-    } catch (error) {
-        if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-            uiAPI.appendSystemMessage(
-                `Active Epic child directory was already absent: ${relativePath}`,
-                false,
-                "RunWield",
-            );
-            return;
-        }
-        const reason = error instanceof Error ? error.message : String(error);
-        uiAPI.appendSystemMessage(
-            `Active Epic child directory was left in place because it is missing protected cleanup preconditions or is not empty: ${relativePath}. ${reason}`,
-            false,
-            "RunWield",
-        );
-    }
 }
 
 export async function archiveEpicWithChildren({ projectRoot, plan, uiAPI }: ArchiveEpicOptions): Promise<boolean> {
@@ -120,7 +52,6 @@ export async function archiveEpicWithChildren({ projectRoot, plan, uiAPI }: Arch
         uiAPI.appendSystemMessage(`Epic not found: ${plan.planName}`, true, "RunWield");
         return false;
     }
-    const epicChildDirectory = activeEpicChildDirectory(loadedEpic.path);
     const epicEntry: ListedPlanForArchive = { name: plan.planName, path: loadedEpic.path, attrs: loadedEpic.attrs };
     const children = (await findPlansByParent(projectRoot, plan.planName)).sort(compareChildPlansByOrder);
     const allPlans = [epicEntry, ...children];
@@ -156,14 +87,12 @@ export async function archiveEpicWithChildren({ projectRoot, plan, uiAPI }: Arch
         planName: plan.planName,
         uiAPI,
         archive: async () => {
-            const now = new Date().toISOString();
-            const archived: ArchivedPlanResult[] = [];
-            for (const child of children) {
-                archived.push(await archiveOnePlan(projectRoot, child.name, now, true));
-            }
-            archived.push(await archiveOnePlan(projectRoot, plan.planName, now, false));
-
-            await removeActiveEpicChildDirectory(projectRoot, epicChildDirectory, uiAPI);
+            const { archived, cleanupMessage } = await archiveEpicPlanFamily(
+                projectRoot,
+                plan.planName,
+                children.map((child) => child.name),
+            );
+            if (cleanupMessage) uiAPI.appendSystemMessage(cleanupMessage, false, "RunWield");
 
             const archivedList = archived.map((entry) => `- ${entry.name}: ${entry.relativePath}`).join("\n");
             const archivedArtifacts = archived.flatMap((entry) => entry.artifacts || []);

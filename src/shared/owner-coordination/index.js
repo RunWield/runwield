@@ -171,10 +171,13 @@ export function openOwnerCoordinationStore(options = {}) {
         findSessionByLocator: (locator) => sessionStore.findSessionByLocator(locator),
         getSessionById: (runwieldSessionId, projectId) => {
             const runtimeProject = projectId ? resolveSessionProject(projectId) : null;
+            if (projectId && !runtimeProject) return null;
             return sessionStore.getSessionById(runwieldSessionId, runtimeProject?.projectId);
         },
-        readSessionManifest: (runwieldSessionId, projectId) =>
-            sessionStore.readSessionManifest(runwieldSessionId, projectId),
+        readSessionManifest: (runwieldSessionId, projectId) => {
+            const project = resolveSessionProject(projectId);
+            return project ? sessionStore.readSessionManifest(runwieldSessionId, project.projectId) : null;
+        },
         archiveSession: (runwieldSessionId, projectId) => {
             const project = projectId ? resolveSessionProject(projectId) : null;
             if (projectId && !project) throw new Error("Session project is unavailable");
@@ -220,14 +223,22 @@ export function openOwnerCoordinationStore(options = {}) {
             return sessionStore.getLastPlanReview(runwieldSessionId, runtimeProject?.projectId);
         },
         getCurrentSessionSegment: (runwieldSessionId) => sessionStore.getCurrentSessionSegment(runwieldSessionId),
-        appendSessionTranscriptSegment: (segment) => sessionStore.appendSessionTranscriptSegment(segment),
+        appendSessionTranscriptSegment: (segment) => {
+            const project = resolveSessionProject(segment.projectId);
+            if (!project) throw new Error("Session project is unavailable");
+            return sessionStore.appendSessionTranscriptSegment({ ...segment, projectId: project.projectId });
+        },
         validateSuccessorSegmentLocator: (locator) => {
             const project = resolveSessionProject(locator.projectId);
             if (!project) throw new Error("Session project is unavailable");
             return sessionStore.validateSuccessorSegmentLocator({ ...locator, projectId: project.projectId });
         },
         sealSessionTranscriptSegment: (segmentOptions) => sessionStore.sealSessionTranscriptSegment(segmentOptions),
-        findOrphanRolloverCandidates: (orphanOptions) => sessionStore.findOrphanRolloverCandidates(orphanOptions),
+        findOrphanRolloverCandidates: (orphanOptions) => {
+            const project = resolveSessionProject(orphanOptions.projectId);
+            if (!project) throw new Error("Session project is unavailable");
+            return sessionStore.findOrphanRolloverCandidates({ ...orphanOptions, projectId: project.projectId });
+        },
         inspectSegmentRolloverRecovery: (rolloverOptions) =>
             sessionStore.inspectSegmentRolloverRecovery(rolloverOptions),
         discardOrphanRolloverCandidate: (orphanOptions) => sessionStore.discardOrphanRolloverCandidate(orphanOptions),

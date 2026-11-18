@@ -21,7 +21,9 @@ import {
     readProjectContextRevision,
 } from "./worktree-project-context.ts";
 
-const PATHS = [...PROJECT_CONTEXT_PATHS, ".gitignore"];
+function publicationPaths(): string[] {
+    return [...PROJECT_CONTEXT_PATHS, ".gitignore"];
+}
 interface IndexEntry {
     mode: string;
     oid: string;
@@ -84,7 +86,7 @@ export async function prepareProjectContextPublication(
     await settleProjectContextPublication(root);
     const head = (await git(root, ["rev-parse", "HEAD"])).trim();
     const files: SavedFile[] = [];
-    for (const path of PATHS) {
+    for (const path of publicationPaths()) {
         const content = await readProjectContextFile(root, path);
         if (content === null) continue;
         const headContent = await readProjectContextRevision(root, head, path);
@@ -149,7 +151,7 @@ export async function settleProjectContextPublication(root: string): Promise<voi
         if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
         throw error;
     }
-    if (!Array.isArray(journal.files) || journal.files.some((file) => !PATHS.includes(file.path))) {
+    if (!Array.isArray(journal.files) || journal.files.some((file) => !publicationPaths().includes(file.path))) {
         throw new Error("Invalid project-context publication recovery record.");
     }
     const head = (await git(root, ["rev-parse", "HEAD"])).trim();

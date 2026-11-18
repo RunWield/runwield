@@ -1,9 +1,15 @@
+import { legacyPlanFixturePath } from "../../shared/testing/plan-state-fixture.ts";
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
 import process from "node:process";
 import { rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { getCwd } from "../../constants.js";
-import { savePlan, getStoredPlanPath, loadPlan, PlanFrontMatterParseError } from "../../plan-store.js";
+
+import { PlanFrontMatterParseError } from "../../plan-format.ts";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { getLoadPlanCompletions } from "./getArgumentCompletions.ts";
@@ -16,7 +22,7 @@ test("Plan completion suggests partial names and leaves an exact name ready to s
         const previousCwd = getCwd();
         try {
             for (const name of ["ship", "ship-next"]) {
-                await savePlan(root, name, `# ${name}\n`, {
+                await seedPlan(root, name, `# ${name}\n`, {
                     classification: "PLANNED_CHANGE",
                     status: "draft",
                 });
@@ -38,14 +44,16 @@ test("malformed Plan autocomplete stays quiet while loading still reports the pa
         const root = await repository.checkout();
         const previousCwd = getCwd();
         try {
-            await savePlan(root, "broken", "# Broken\n", { status: "draft", classification: "PLANNED_CHANGE" });
-            await fsWriteFile(
-                await getStoredPlanPath(root, "broken"),
-                "---\nsummary: [broken\nstatus: draft\n---\n# Broken\n",
-            );
-            process.chdir(root);
-            assertEquals(await getLoadPlanCompletions("bro"), []);
-            await assertRejects(() => loadPlan(root, "broken"), PlanFrontMatterParseError);
+            await withRetainedPlanFixture(root, async () => {
+                await seedPlan(root, "broken", "# Broken\n", { status: "draft", classification: "PLANNED_CHANGE" });
+                await fsWriteFile(
+                    await legacyPlanFixturePath(root, "broken"),
+                    "---\nsummary: [broken\nstatus: draft\n---\n# Broken\n",
+                );
+                process.chdir(root);
+                assertEquals(await getLoadPlanCompletions("bro"), []);
+                await assertRejects(() => loadPlan(root, "broken"), PlanFrontMatterParseError);
+            });
         } finally {
             process.chdir(previousCwd);
             await fsRm(root, { recursive: true });
@@ -58,12 +66,13 @@ test("child completions use numeric order across mixed names and statuses", asyn
         const root = await repository.checkout();
         const previousCwd = getCwd();
         try {
+            await seedPlan(root, "epic", "# Epic\n", { classification: "PROJECT", status: "draft" });
             for (const [name, order, status] of [
                 ["99-first", 1, "draft"],
                 ["middle", 2, "ready_for_work"],
                 ["01-last", 10, "failed"],
             ] as const) {
-                await savePlan(root, `epic/${name}`, `# ${name}`, { parentPlan: "epic", order, status });
+                await seedPlan(root, `epic/${name}`, `# ${name}`, { parentPlan: "epic", order, status });
             }
             process.chdir(root);
             assertEquals(

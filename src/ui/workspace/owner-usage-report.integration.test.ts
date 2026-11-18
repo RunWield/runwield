@@ -1,3 +1,6 @@
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
+import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
+
 import process from "node:process";
 import { getCwd } from "../../constants.js";
 import { spawnNativeProcess } from "../../shared/foreground-process.ts";
@@ -244,12 +247,11 @@ test("usage links use managed Session and Plan IDs and omit missing or foreign t
         });
         store.registerProject({ root: foreign.projectRoot });
         const planId = crypto.randomUUID();
-        const planPath = join(projectRoot, "docs", "plans", "usage-example.md");
-        await fsMkdir(dirname(planPath), { recursive: true });
-        await fsWriteFile(
-            planPath,
-            `---\nplanId: "${planId}"\nstatus: draft\nclassification: PLANNED_CHANGE\n---\n# Usage Example\n`,
-        );
+        const planPath = await seedPlan(projectRoot, "usage-example", "# Usage Example\n", {
+            planId,
+            status: "draft",
+            classification: "PLANNED_CHANGE",
+        });
         await journal(store.requireEnabledProjectRoot(fixture.project.projectId), [
             usage({ managedSessionId: fixture.session.runwieldSessionId, planId }),
             usage({ managedSessionId: "missing-session", planId: "missing-plan" }),
@@ -326,6 +328,8 @@ test("shared history links resolve targets in a second authorized worktree", asy
             0,
         );
         const store = openOwnerCoordinationStore({ dbPath: join(homeDir, "owner.sqlite3") });
+        await enterProjectRuntime(primary);
+        await enterProjectRuntime(worktree);
         const primaryProject = store.registerProject({ root: primary, displayName: "Primary" });
         const fixture = await makeManagedSessionFixture({
             home: homeDir,
@@ -333,12 +337,11 @@ test("shared history links resolve targets in a second authorized worktree", asy
             dbPath: join(homeDir, "owner.sqlite3"),
         });
         const planId = crypto.randomUUID();
-        const planPath = join(worktree, "docs", "plans", "worktree-only.md");
-        await fsMkdir(dirname(planPath), { recursive: true });
-        await fsWriteFile(
-            planPath,
-            `---\nplanId: "${planId}"\nstatus: draft\nclassification: PLANNED_CHANGE\n---\n# Worktree-only Plan\n`,
-        );
+        await seedPlan(worktree, "worktree-only", "# Worktree-only Plan\n", {
+            planId,
+            status: "draft",
+            classification: "PLANNED_CHANGE",
+        });
         await journal(store.requireEnabledProjectRoot(primaryProject.projectId), [
             usage({ managedSessionId: fixture.session.runwieldSessionId, planId }),
         ]);
@@ -351,7 +354,7 @@ test("shared history links resolve targets in a second authorized worktree", asy
             assertEquals(result.projects[0].aliases.length, 2);
             assertEquals(result.totals.tokens.value, 19);
             const link = result.projects[0].links[0];
-            const prefix = `/projects/${fixture.project.projectId}`;
+            const prefix = `/projects/${primaryProject.projectId}`;
             assertEquals(link.sessionHref, `${prefix}/sessions/${fixture.session.runwieldSessionId}`);
             assertEquals(link.planHref, `${prefix}/plans/${planId}`);
         } finally {

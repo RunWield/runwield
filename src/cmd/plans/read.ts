@@ -3,16 +3,11 @@
  * Open active or archived Plan markdown in a read-only browser view.
  */
 
-import { CLI_BIN, getCwd, PLANS_DIR_NAME } from "../../constants.js";
-import {
-    findPlanById,
-    listArchivedPlans,
-    loadArchivedPlan,
-    PlanNotFoundError,
-    type PlanReadAvailability,
-} from "../../plan-store.js";
+import { CLI_BIN, getCwd } from "../../constants.js";
+import { type PlanReadAvailability } from "../../plan-store/index.ts";
+import { findPlanById, listArchivedPlans, loadArchivedPlan, PlanNotFoundError } from "../../plan-store/index.ts";
 import { NO_OPEN_BROWSER_PORT, SYSTEM_BROWSER_PORT } from "../../shared/browser-port.ts";
-import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { startArtifactReadSurface } from "../../ui/review/review-launcher.ts";
 
 interface ResolvedPlanReadArtifact {
@@ -91,7 +86,7 @@ export async function runPlansReadCommand(argv: string[]): Promise<void> {
     if (archived) {
         await openPlanReadSurface(
             {
-                title: `${PLANS_DIR_NAME}/archived/${archived.name}.md`,
+                title: archived.name,
                 path: archived.path,
                 markdown: archived.markdown,
                 readAvailability: archived.readAvailability,
@@ -110,7 +105,7 @@ export async function runPlansReadCommand(argv: string[]): Promise<void> {
         if (loaded) {
             await openPlanReadSurface(
                 {
-                    title: `${PLANS_DIR_NAME}/archived/${loaded.name}.md`,
+                    title: loaded.name,
                     path: loaded.path,
                     markdown: loaded.markdown,
                     readAvailability: loaded.readAvailability,

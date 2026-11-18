@@ -5,7 +5,6 @@ import {
     mkdtemp as fsMkdtemp,
     readdir as fsReaddir,
     readFile as fsReadFile,
-    realpath as fsRealpath,
     rm as fsRm,
     stat as fsStat,
     writeFile as fsWriteFile,
@@ -17,7 +16,7 @@ import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { PROJECT_SECRET_STORE_RELATIVE_PATH } from "../../constants.js";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import type { LocalSecretRecord } from "./protocol.js";
 import {
@@ -61,10 +60,13 @@ function secretRecord() {
 test("secret store paths keep global home storage and route project storage through primary runtime layout", async () => {
     assertEquals(getGlobalSecretStorePath("/home/user"), join("/home/user", ".wld", "collaboration-secrets.json"));
     await withProcessGlobalTestLock(async () => {
+        const originalHome = process.env.HOME;
+        const identityHome = await fsMkdtemp(join(tmpdir(), "secret-identity-home-"));
         const originalSandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
         const primaryCheckout = await gitFixture.checkout({ prefix: "runwield-secrets-primary-" });
         const selectedCheckout = await fsMkdtemp(join(tmpdir(), "runwield-secrets-linked-"));
         try {
+            process.env.HOME = identityHome;
             delete process.env["WLD_TEST_SANDBOX_HOME"];
             await git(primaryCheckout, [
                 "worktree",
@@ -73,13 +75,16 @@ test("secret store paths keep global home storage and route project storage thro
                 `secrets-path-test-${crypto.randomUUID()}`,
                 selectedCheckout,
             ]);
-            const layout = resolveProjectRuntimeLayout(selectedCheckout);
+            const layout = await enterProjectRuntime(selectedCheckout);
             assertEquals(getProjectSecretStorePath(selectedCheckout), layout.primary.projectSecretStorePath);
             assertEquals(
-                getProjectSecretStorePath(selectedCheckout).startsWith(await fsRealpath(primaryCheckout)),
+                getProjectSecretStorePath(selectedCheckout).startsWith(join(identityHome, ".wld", "projects")),
                 true,
             );
         } finally {
+            if (originalHome === undefined) delete process.env.HOME;
+            else process.env.HOME = originalHome;
+            await fsRm(identityHome, { recursive: true, force: true });
             if (originalSandboxHome === undefined) delete process.env["WLD_TEST_SANDBOX_HOME"];
             else process.env["WLD_TEST_SANDBOX_HOME"] = originalSandboxHome;
             await fsRm(selectedCheckout, { recursive: true }).catch(() => {});
@@ -111,10 +116,13 @@ test("secret stores read missing files as empty documents and write atomically",
 
 test("project secret writes from linked checkouts populate only the primary internal store", async () => {
     await withProcessGlobalTestLock(async () => {
+        const originalHome = process.env["HOME"];
+        const identityHome = await fsMkdtemp(join(tmpdir(), "runwield-identity-home-"));
         const originalSandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
         const primaryCheckout = await gitFixture.checkout({ prefix: "runwield-secrets-write-primary-" });
         const selectedCheckout = await fsMkdtemp(join(tmpdir(), "runwield-secrets-write-linked-"));
         try {
+            process.env["HOME"] = identityHome;
             delete process.env["WLD_TEST_SANDBOX_HOME"];
             await git(primaryCheckout, [
                 "worktree",
@@ -123,8 +131,8 @@ test("project secret writes from linked checkouts populate only the primary inte
                 `secrets-write-test-${crypto.randomUUID()}`,
                 selectedCheckout,
             ]);
-            const primaryLayout = resolveProjectRuntimeLayout(primaryCheckout);
             const selectedLocation = await getProjectSecretStoreLocation(selectedCheckout);
+            const primaryLayout = resolveProjectRuntimeLayout(primaryCheckout);
             const selectedPath = selectedLocation.path;
             await putSecretRecord(selectedLocation, "plan-1:space-1", secretRecord());
 
@@ -149,6 +157,9 @@ test("project secret writes from linked checkouts populate only the primary inte
                 "ENOENT",
             );
         } finally {
+            if (originalHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = originalHome;
+            await fsRm(identityHome, { recursive: true }).catch(() => {});
             if (originalSandboxHome === undefined) delete process.env["WLD_TEST_SANDBOX_HOME"];
             else process.env["WLD_TEST_SANDBOX_HOME"] = originalSandboxHome;
             await fsRm(selectedCheckout, { recursive: true }).catch(() => {});
@@ -435,10 +446,13 @@ test("secret store rejects corrupt schema with redacted actionable errors", asyn
 
 test("ensureProjectSecretStoreIgnored protects the primary managed runtime block from linked checkouts", async () => {
     await withProcessGlobalTestLock(async () => {
+        const originalHome = process.env["HOME"];
+        const identityHome = await fsMkdtemp(join(tmpdir(), "runwield-identity-home-"));
         const originalSandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
         const primaryCheckout = await gitFixture.checkout({ prefix: "runwield-gitignore-primary-" });
         const selectedCheckout = await fsMkdtemp(join(tmpdir(), "runwield-gitignore-linked-"));
         try {
+            process.env["HOME"] = identityHome;
             delete process.env["WLD_TEST_SANDBOX_HOME"];
             await fsWriteFile(join(primaryCheckout, ".gitignore"), "node_modules/\n");
             await git(primaryCheckout, [
@@ -480,6 +494,9 @@ test("ensureProjectSecretStoreIgnored protects the primary managed runtime block
                 await assertRejects(() => git(primaryCheckout, ["check-ignore", path]));
             }
         } finally {
+            if (originalHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = originalHome;
+            await fsRm(identityHome, { recursive: true }).catch(() => {});
             if (originalSandboxHome === undefined) delete process.env["WLD_TEST_SANDBOX_HOME"];
             else process.env["WLD_TEST_SANDBOX_HOME"] = originalSandboxHome;
             await fsRm(selectedCheckout, { recursive: true }).catch(() => {});

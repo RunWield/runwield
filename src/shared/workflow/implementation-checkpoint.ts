@@ -1,12 +1,16 @@
 // @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
-import { getPlanRevisionForText, loadPlan } from "../../plan-store.js";
+import { withPlanImplementationCompletion } from "../../plan-store/index.ts";
+import { capturePlanAccess } from "../../plan-store/index.ts";
+import { resumePlanAttempt } from "../../plan-store/index.ts";
+import { getPlanRevisionForText } from "../../plan-format.ts";
+import { loadPlan } from "../../plan-store/index.ts";
 import { checkpointExecutionWorktree } from "../worktree.js";
 import { acknowledgeTaskCompletion, claimPendingTaskCompletion } from "../session/task-completion-session.ts";
 import { updateEntry as updateWorktreeRegistryEntry } from "../worktree-registry.js";
 import { isInValidation, recordPlanEvent } from "./plan-lifecycle.js";
-import { restoreExecutionPlanFromBaseline } from "./execution-plan-file.js";
+import { restoreExecutionPlanFromBaseline } from "../../plan-store/index.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
-import { runImplementationCheckpointTransition, withOrderedTransitionResources } from "./state-transition.ts";
+import { runImplementationCheckpointTransition } from "../../plan-store/index.ts";
 
 interface FinalizePlanImplementationOptions {
     projectRoot: string;
@@ -29,6 +33,15 @@ interface FinalizePlanImplementationOptions {
  */
 export async function finalizePlanImplementation(options: FinalizePlanImplementationOptions) {
     const { executionContext, projectRoot, planName } = options;
+    if (executionContext?.packageSelection && !capturePlanAccess()) {
+        const selection = executionContext.packageSelection;
+        return await resumePlanAttempt(
+            projectRoot,
+            selection,
+            executionContext.packageAttemptId || executionContext.worktreeId,
+            () => finalizePlanImplementation(options),
+        );
+    }
     if (!executionContext) {
         throw new Error(`Cannot complete ${planName}: durable execution context is missing.`);
     }
@@ -36,9 +49,13 @@ export async function finalizePlanImplementation(options: FinalizePlanImplementa
         executionContext.executionMode === "worktree" && executionContext.executionCwd
             ? executionContext.executionCwd
             : projectRoot;
-    const resources = [{ kind: "plan", id: planName }];
-    if (executionContext.worktreeId) resources.push({ kind: "attempt", id: executionContext.worktreeId });
-    return await withOrderedTransitionResources(planCwd, resources, () => finalizeLockedImplementation(options));
+    return await withPlanImplementationCompletion(
+        planCwd,
+        planName,
+        executionContext.worktreeId,
+        executionContext.packageInput,
+        () => finalizeLockedImplementation(options),
+    );
 }
 
 async function finalizeLockedImplementation({

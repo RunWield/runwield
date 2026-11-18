@@ -1,3 +1,5 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import process from "node:process";
 import { writeFileSync as fsWriteFileSync } from "node:fs";
 import { test } from "node:test";
@@ -15,7 +17,8 @@ import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { HostedSession } from "../session/hosted-session.js";
 import { createValidationSessionPort } from "./validation-session-adapter.ts";
 import { attachRecorder, makeUi, makeValidationProjectRoot, runValidationLoop } from "./validation-test-helpers.js";
@@ -35,48 +38,50 @@ test("publication repair completion never creates a validation checkpoint in eit
     const repairRoot = await fsMkdtemp(join(tmpdir(), "publication-repair-receipt-"));
     const hostedSession = new HostedSession({ id: crypto.randomUUID(), cwd: projectRoot });
     try {
-        await savePlan(projectRoot, "p", "# Publication repair\n", {
-            classification: "PLANNED_CHANGE",
-            status: "validated",
-            planId: "publication-repair-plan",
-        });
-        await runGit(projectRoot, ["add", "docs/plans/p.md"]);
-        await runGit(projectRoot, ["commit", "-m", "Validated source"]);
-        await runGit(projectRoot, ["clone", projectRoot, repairRoot]);
-        hostedSession.setActiveExecutionWorkflow({
-            planName: "p",
-            projectRoot,
-            executionCwd: projectRoot,
-            executionMode: "worktree",
-            executionAgent: "engineer",
-            triageMeta: { classification: "PLANNED_CHANGE", status: "validated" },
-            validationRepairGeneration: "stale-code-review-repair",
-        });
-        const port = createValidationSessionPort(hostedSession, {
-            semanticReviewPort: {
-                runIsolatedAgentSession: async (options) => {
-                    await executeWorkflowTestTools(options, [
-                        {
-                            name: "task_completed",
-                            arguments: { message: "Conflicts staged." },
-                        },
-                    ]);
-                    return [];
+        await withRetainedPlanFixture(projectRoot, async () => {
+            await seedPlan(projectRoot, "p", "# Publication repair\n", {
+                classification: "PLANNED_CHANGE",
+                status: "validated",
+                planId: "publication-repair-plan",
+            });
+            await runGit(projectRoot, ["add", "docs/plans/p.md"]);
+            await runGit(projectRoot, ["commit", "-m", "Validated source"]);
+            await runGit(projectRoot, ["clone", projectRoot, repairRoot]);
+            hostedSession.setActiveExecutionWorkflow({
+                planName: "p",
+                projectRoot,
+                executionCwd: projectRoot,
+                executionMode: "worktree",
+                executionAgent: "engineer",
+                triageMeta: { classification: "PLANNED_CHANGE", status: "validated" },
+                validationRepairGeneration: "stale-code-review-repair",
+            });
+            const port = createValidationSessionPort(hostedSession, {
+                semanticReviewPort: {
+                    runIsolatedAgentSession: async (options) => {
+                        await executeWorkflowTestTools(options, [
+                            {
+                                name: "task_completed",
+                                arguments: { message: "Conflicts staged." },
+                            },
+                        ]);
+                        return [];
+                    },
                 },
-            },
+            });
+            const outcome = await port.runIndependentRepairTurn({
+                kind: "publication",
+                agentName: "engineer",
+                cwd: repairRoot,
+                userRequest: "Resolve the publication conflict and stage the files.",
+            });
+            assertEquals(outcome, { completed: true, report: "Conflicts staged." });
+            for (const cwd of [projectRoot, repairRoot]) {
+                const plan = await withRetainedPlanFixture(cwd, () => loadPlan(cwd, "p"));
+                assertEquals(plan?.attrs.status, "reviewed");
+                assertEquals(plan?.attrs.validationCheckpoint ?? null, null);
+            }
         });
-        const outcome = await port.runIndependentRepairTurn({
-            kind: "publication",
-            agentName: "engineer",
-            cwd: repairRoot,
-            userRequest: "Resolve the publication conflict and stage the files.",
-        });
-        assertEquals(outcome, { completed: true, report: "Conflicts staged." });
-        for (const cwd of [projectRoot, repairRoot]) {
-            const plan = await loadPlan(cwd, "p");
-            assertEquals(plan?.attrs.status, "reviewed");
-            assertEquals(plan?.attrs.validationCheckpoint ?? null, null);
-        }
     } finally {
         hostedSession.dispose();
         await fsRm(repairRoot, { recursive: true });
@@ -131,54 +136,15 @@ test("verified Epic-child publication leaves the removed worktree before continu
         const planName = `${parentPlan}/01-published-follow-up`;
         const nextPlanName = `${parentPlan}/02-frontend-follow-up`;
         try {
-            await savePlan(projectRoot, parentPlan, `# ${parentPlan}\n\nEpic fixture\n`, {
-                classification: "PROJECT",
-                status: "ready_for_work",
-                summary: "Epic fixture",
-                affectedPaths: [],
-                planId: "published-epic-plan",
-            });
-            await savePlan(projectRoot, planName, `# ${planName}\n\nvalidation fixture\n`, {
-                classification: "PLANNED_CHANGE",
-                status: "reviewed",
-                summary: "validation fixture",
-                affectedPaths: ["published-marker.txt"],
-                planId: "published-follow-up-plan",
-                parentPlan,
-                order: 1,
-                executionAgent: "engineer",
-                executionMode: "worktree",
-                humanReviewMode: "none",
-            });
-            await savePlan(projectRoot, nextPlanName, `# ${nextPlanName}\n\nfrontend fixture\n`, {
-                classification: "PLANNED_CHANGE",
-                status: "ready_for_work",
-                summary: "frontend fixture",
-                affectedPaths: [],
-                planId: "frontend-follow-up-plan",
-                parentPlan,
-                order: 2,
-                executionAgent: "frontend-engineer",
-                executionMode: "non_git_in_place",
-                humanReviewMode: "none",
-            });
-            await runGit(projectRoot, ["add", "."]);
-            await runGit(projectRoot, ["commit", "-m", "add plan"]);
-            const baseTree = await runGit(projectRoot, ["rev-parse", "HEAD^{tree}"]);
-            const worktree = await createTestWorktreeAttempt({
-                projectRoot,
-                planName,
-                planId: "published-follow-up-plan",
-                worktreeRoot,
-                attemptId: "attempt-1",
-            });
-            const worktreePlan = await loadPlan(worktree.path, planName);
-            if (!worktreePlan) throw new Error("worktree Plan fixture disappeared");
-            await savePlan(
-                worktree.path,
-                planName,
-                `# ${planName}\n\nvalidation fixture\n`,
-                {
+            await withRetainedPlanFixture(projectRoot, async () => {
+                await seedPlan(projectRoot, parentPlan, `# ${parentPlan}\n\nEpic fixture\n`, {
+                    classification: "PROJECT",
+                    status: "ready_for_work",
+                    summary: "Epic fixture",
+                    affectedPaths: [],
+                    planId: "published-epic-plan",
+                });
+                await seedPlan(projectRoot, planName, `# ${planName}\n\nvalidation fixture\n`, {
                     classification: "PLANNED_CHANGE",
                     status: "reviewed",
                     summary: "validation fixture",
@@ -189,112 +155,153 @@ test("verified Epic-child publication leaves the removed worktree before continu
                     executionAgent: "engineer",
                     executionMode: "worktree",
                     humanReviewMode: "none",
-                    executionBaselineTree: baseTree,
+                });
+                await seedPlan(projectRoot, nextPlanName, `# ${nextPlanName}\n\nfrontend fixture\n`, {
+                    classification: "PLANNED_CHANGE",
+                    status: "ready_for_work",
+                    summary: "frontend fixture",
+                    affectedPaths: [],
+                    planId: "frontend-follow-up-plan",
+                    parentPlan,
+                    order: 2,
+                    executionAgent: "frontend-engineer",
+                    executionMode: "non_git_in_place",
+                    humanReviewMode: "none",
+                });
+                await runGit(projectRoot, ["add", "."]);
+                await runGit(projectRoot, ["commit", "-m", "add plan"]);
+                const baseTree = await runGit(projectRoot, ["rev-parse", "HEAD^{tree}"]);
+                const worktree = await createTestWorktreeAttempt({
+                    projectRoot,
+                    planName,
+                    planId: "published-follow-up-plan",
+                    worktreeRoot,
+                    attemptId: "attempt-1",
+                });
+                const worktreePlan = await loadPlan(worktree.path, planName);
+                if (!worktreePlan) throw new Error("worktree Plan fixture disappeared");
+                await seedPlan(
+                    worktree.path,
+                    planName,
+                    `# ${planName}\n\nvalidation fixture\n`,
+                    {
+                        classification: "PLANNED_CHANGE",
+                        status: "reviewed",
+                        summary: "validation fixture",
+                        affectedPaths: ["published-marker.txt"],
+                        planId: "published-follow-up-plan",
+                        parentPlan,
+                        order: 1,
+                        executionAgent: "engineer",
+                        executionMode: "worktree",
+                        humanReviewMode: "none",
+                        executionBaselineTree: baseTree,
+                        worktreeId: worktree.id,
+                        worktreePath: worktree.path,
+                        worktreeBranch: worktree.branch,
+                        worktreeBaseBranch: "main",
+                    },
+                    { expectedRevision: worktreePlan.revision },
+                );
+                await fsWriteFile(join(worktree.path, "published-marker.txt"), "from worktree\n");
+                const hostedSession = new HostedSession({ id: crypto.randomUUID(), cwd: worktree.path });
+                await switchActiveAgent(hostedSession, { agentName: "planner", cwd: worktree.path });
+                hostedSession.setActiveExecutionWorkflow({
+                    planName,
+                    triageMeta: { classification: "PLANNED_CHANGE", status: "reviewed", parentPlan },
+                    executionAgent: "engineer",
+                    projectRoot,
+                    executionCwd: worktree.path,
+                    executionMode: "worktree",
+                    baselineTree: baseTree,
                     worktreeId: worktree.id,
-                    worktreePath: worktree.path,
                     worktreeBranch: worktree.branch,
                     worktreeBaseBranch: "main",
-                },
-                { expectedRevision: worktreePlan.revision },
-            );
-            await fsWriteFile(join(worktree.path, "published-marker.txt"), "from worktree\n");
-            const hostedSession = new HostedSession({ id: crypto.randomUUID(), cwd: worktree.path });
-            await switchActiveAgent(hostedSession, { agentName: "planner", cwd: worktree.path });
-            hostedSession.setActiveExecutionWorkflow({
-                planName,
-                triageMeta: { classification: "PLANNED_CHANGE", status: "reviewed", parentPlan },
-                executionAgent: "engineer",
-                projectRoot,
-                executionCwd: worktree.path,
-                executionMode: "worktree",
-                baselineTree: baseTree,
-                worktreeId: worktree.id,
-                worktreeBranch: worktree.branch,
-                worktreeBaseBranch: "main",
-            });
+                });
 
-            const result = await runWorkflowValidationToStableBoundary({
-                hostedSession,
-                planName,
-                planContent: `# ${planName}`,
-                triageMeta: { classification: "PLANNED_CHANGE", status: "reviewed", parentPlan },
-                git: createGitPort(),
-                localCI: {
-                    run: () => {
-                        throw new Error("Publication regression should not run CI");
+                const result = await runWorkflowValidationToStableBoundary({
+                    hostedSession,
+                    planName,
+                    planContent: `# ${planName}`,
+                    triageMeta: { classification: "PLANNED_CHANGE", status: "reviewed", parentPlan },
+                    git: createGitPort(),
+                    localCI: {
+                        run: () => {
+                            throw new Error("Publication regression should not run CI");
+                        },
                     },
-                },
-                workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
-            });
+                    workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
+                });
 
-            assertEquals(result.kind, "verified");
-            assertEquals(
-                await fsStat(worktree.path)
-                    .then(() => true)
-                    .catch(() => false),
-                false,
-            );
-            assertEquals(hostedSession.getActiveExecutionWorkflow(), null);
-            assertEquals(hostedSession.getRootAgentName(), "engineer");
-            const canonicalProjectRoot = await fsRealpath(projectRoot);
-            assertEquals(hostedSession.cwd, canonicalProjectRoot);
-            const rootAgentSession = hostedSession.getRootAgentSession() as AgentSession | null;
-            if (!rootAgentSession) throw new Error("Root Agent session was not rebuilt");
-            assertEquals(__getRootSessionMetadataForTests(rootAgentSession)?.cwd, canonicalProjectRoot);
-            const events: Array<{ type?: string; output?: string }> = [];
-            hostedSession.setEventSink((event: { type?: string; output?: string }) => events.push(event));
-            setModelResponseFactories([
-                () =>
-                    fauxAssistantMessage(
-                        fauxToolCall("bash", {
-                            command:
-                                process.platform === "win32"
-                                    ? 'cygpath -m "$PWD" && git branch --show-current && cat published-marker.txt'
-                                    : "pwd && git branch --show-current && cat published-marker.txt",
-                        }),
-                    ),
-                () => fauxAssistantMessage(fauxText("Tool checked.")),
-            ]);
-            await runActiveAgentTurn({
-                hostedSession,
-                agentName: "engineer",
-                userRequest: "Check the rebuilt root tools.",
+                assertEquals(result.kind, "verified");
+                assertEquals(
+                    await fsStat(worktree.path)
+                        .then(() => true)
+                        .catch(() => false),
+                    false,
+                );
+                assertEquals(hostedSession.getActiveExecutionWorkflow(), null);
+                assertEquals(hostedSession.getRootAgentName(), "engineer");
+                const canonicalProjectRoot = await fsRealpath(projectRoot);
+                assertEquals(hostedSession.cwd, canonicalProjectRoot);
+                const rootAgentSession = hostedSession.getRootAgentSession() as AgentSession | null;
+                if (!rootAgentSession) throw new Error("Root Agent session was not rebuilt");
+                assertEquals(__getRootSessionMetadataForTests(rootAgentSession)?.cwd, canonicalProjectRoot);
+                const events: Array<{ type?: string; output?: string }> = [];
+                hostedSession.setEventSink((event: { type?: string; output?: string }) => events.push(event));
+                setModelResponseFactories([
+                    () =>
+                        fauxAssistantMessage(
+                            fauxToolCall("bash", {
+                                command:
+                                    process.platform === "win32"
+                                        ? 'cygpath -m "$PWD" && git branch --show-current && cat published-marker.txt'
+                                        : "pwd && git branch --show-current && cat published-marker.txt",
+                            }),
+                        ),
+                    () => fauxAssistantMessage(fauxText("Tool checked.")),
+                ]);
+                await runActiveAgentTurn({
+                    hostedSession,
+                    agentName: "engineer",
+                    userRequest: "Check the rebuilt root tools.",
+                });
+                const shellOutput =
+                    events.find((event) => event.type === "tool_end" && event.output?.includes("from worktree"))
+                        ?.output || "";
+                assertStringIncludes(
+                    shellOutput.replaceAll("\\", "/"),
+                    canonicalProjectRoot.replaceAll("\\", "/"),
+                    `Root tool events: ${JSON.stringify(events.filter((event) => event.type === "tool_end"))}`,
+                );
+                assertStringIncludes(shellOutput, "main");
+                assertStringIncludes(shellOutput, "from worktree");
+                const continuation = result.epicContinuation;
+                if (!continuation?.resolution) {
+                    throw new Error("Epic continuation resolution was not captured before cleanup");
+                }
+                assertEquals(continuation.completedPlanName, planName);
+                assertEquals(continuation.projectRoot, canonicalProjectRoot);
+                assertEquals(continuation.resolution.parentPlanName, parentPlan);
+                assertEquals(continuation.resolution.childPlanName, nextPlanName);
+                assertEquals(continuation.resolution.kind, "execute");
+                setModelResponseFactories([() => fauxAssistantMessage(fauxText("Need more work."))]);
+                const continuationResult = await runEpicChildContinuation({
+                    hostedSession,
+                    resolution: continuation.resolution,
+                });
+                assertEquals(continuationResult, null);
+                assertEquals(hostedSession.getRootAgentName(), "frontend-engineer");
+                const nextExecutionCwd = hostedSession.getActiveExecutionWorkflow()?.executionCwd;
+                assertEquals(hostedSession.cwd, nextExecutionCwd);
+                assertEquals(hostedSession.cwd === worktree.path, false);
+                assertEquals(hostedSession.getActiveExecutionWorkflow()?.planName, nextPlanName);
+                assertEquals(hostedSession.getActiveExecutionWorkflow()?.executionAgent, "frontend-engineer");
+                const continuationRootSession = hostedSession.getRootAgentSession() as AgentSession | null;
+                if (!continuationRootSession) throw new Error("Continuation root Agent session was not retained");
+                assertEquals(__getRootSessionMetadataForTests(continuationRootSession)?.cwd, nextExecutionCwd);
+                hostedSession.dispose();
             });
-            const shellOutput =
-                events.find((event) => event.type === "tool_end" && event.output?.includes("from worktree"))?.output ||
-                "";
-            assertStringIncludes(
-                shellOutput.replaceAll("\\", "/"),
-                canonicalProjectRoot.replaceAll("\\", "/"),
-                `Root tool events: ${JSON.stringify(events.filter((event) => event.type === "tool_end"))}`,
-            );
-            assertStringIncludes(shellOutput, "main");
-            assertStringIncludes(shellOutput, "from worktree");
-            const continuation = result.epicContinuation;
-            if (!continuation?.resolution) {
-                throw new Error("Epic continuation resolution was not captured before cleanup");
-            }
-            assertEquals(continuation.completedPlanName, planName);
-            assertEquals(continuation.projectRoot, canonicalProjectRoot);
-            assertEquals(continuation.resolution.parentPlanName, parentPlan);
-            assertEquals(continuation.resolution.childPlanName, nextPlanName);
-            assertEquals(continuation.resolution.kind, "execute");
-            setModelResponseFactories([() => fauxAssistantMessage(fauxText("Need more work."))]);
-            const continuationResult = await runEpicChildContinuation({
-                hostedSession,
-                resolution: continuation.resolution,
-            });
-            assertEquals(continuationResult, null);
-            assertEquals(hostedSession.getRootAgentName(), "frontend-engineer");
-            const nextExecutionCwd = hostedSession.getActiveExecutionWorkflow()?.executionCwd;
-            assertEquals(hostedSession.cwd, nextExecutionCwd);
-            assertEquals(hostedSession.cwd === worktree.path, false);
-            assertEquals(hostedSession.getActiveExecutionWorkflow()?.planName, nextPlanName);
-            assertEquals(hostedSession.getActiveExecutionWorkflow()?.executionAgent, "frontend-engineer");
-            const continuationRootSession = hostedSession.getRootAgentSession() as AgentSession | null;
-            if (!continuationRootSession) throw new Error("Continuation root Agent session was not retained");
-            assertEquals(__getRootSessionMetadataForTests(continuationRootSession)?.cwd, nextExecutionCwd);
-            hostedSession.dispose();
         } finally {
             await fsRm(projectRoot, { recursive: true }).catch(() => {});
             await fsRm(worktreeRoot, { recursive: true }).catch(() => {});
@@ -308,7 +315,7 @@ test("paused validation keeps the execution Agent and worktree cwd", async () =>
         const worktreeRoot = await fsMkdtemp(join(tmpdir(), "runwield-paused-worktree-"));
         const planName = "paused-context";
         try {
-            await savePlan(projectRoot, planName, `# ${planName}\n`, {
+            await seedPlan(projectRoot, planName, `# ${planName}\n`, {
                 classification: "PLANNED_CHANGE",
                 status: "reviewed",
                 summary: "paused fixture",
@@ -331,7 +338,7 @@ test("paused validation keeps the execution Agent and worktree cwd", async () =>
             });
             const worktreePlan = await loadPlan(worktree.path, planName);
             if (!worktreePlan) throw new Error("worktree Plan fixture disappeared");
-            await savePlan(
+            await seedPlan(
                 worktree.path,
                 planName,
                 worktreePlan.markdown || `# ${planName}\n`,

@@ -2,14 +2,14 @@ schemaVersion: 1
 scenarioId: RV-D14
 track: discovery
 group: plan-adherence
-fixtureRevision: 1
+fixtureRevision: 2
 planPath: docs/plans/prune-history.md
 baselineRef: main
 candidateRef: change
 language: typescript
 runtime:
     name: bun
-    version: 1.4.3
+    version: ^1.4.0
 sourcePath: source
 tags:
     - approved-plan-deviation

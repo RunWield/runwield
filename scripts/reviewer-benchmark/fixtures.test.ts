@@ -12,6 +12,9 @@ for (const id of corpusIds) {
         const fixture = await loadFixture(join(corpusPath, id));
         assert.equal(fixture.manifest.scenarioId, id);
         assert.ok(FIXTURE_GROUPS.includes(fixture.manifest.group));
+        const sourcePackage = JSON.parse(await readFile(join(fixture.sourceDir, "package.json"), "utf8"));
+        assert.equal(sourcePackage.engines.bun, fixture.manifest.runtime.version);
+        assert.ok(Bun.semver.satisfies(Bun.version, fixture.manifest.runtime.version));
         assert.equal(fixture.oracle.variants.A!.expectedDecision, "reject");
         assert.equal(fixture.oracle.variants.B?.expectedDecision, id === "RV-M01" ? undefined : "approve");
         assert.ok(Object.keys(fixture.oracle.proofs).length > 0);
@@ -26,6 +29,13 @@ interface InvalidInput {
     error: RegExp;
 }
 const invalidInputs: InvalidInput[] = [
+    {
+        name: "fixture restricts compatible Bun patches",
+        file: "scenario.yaml",
+        from: "version: ^1.4.0",
+        to: "version: 1.4.3",
+        error: /unsupported runtime/,
+    },
     {
         name: "missing coverage group",
         file: "scenario.yaml",

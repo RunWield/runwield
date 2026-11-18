@@ -507,6 +507,9 @@ export const commandRegistry = {
         usage: [
             `${bin("plans")}`,
             `${bin("plans read <plan-name-or-id> [--help]")}`,
+            `${bin("plans history <plan-name-or-id>")}`,
+            `${bin("plans history show <plan-name-or-id> <version>")}`,
+            `${bin("plans history restore <plan-name-or-id> <version>")}`,
             `${bin("plans doctor [--repair] [--help]")}`,
             `${bin("plans share <plan-name-or-id> [--plan-server <url>] [--project-secrets] [--help]")}`,
             `${bin(

@@ -63,7 +63,7 @@ for (const evidenceAvailable of [true, false]) {
                     from: join(f.remoteProject, "docs/plans/remote-delivery.md"),
                     to: join(f.remoteHome, "lost-plan.md"),
                 });
-                const runtimeRoot = join(f.remoteHome, "project-runtime");
+                const runtimeRoot = join(f.remoteHome, ".wld", "projects");
                 for (const entry of await snapshotProjectTree(runtimeRoot)) {
                     if (
                         entry.kind === "file" &&
@@ -255,7 +255,7 @@ test("transport loss during active validation resumes with uncertainty, without 
 
 async function readOnlyEvidenceSnapshot(project: string, home: string) {
     const trees = [];
-    for (const root of [project, join(home, "project-runtime"), join(home, ".wld/worktrees")]) {
+    for (const root of [project, join(home, ".wld", "projects"), join(home, ".wld/worktrees")]) {
         trees.push({
             root,
             entries: await snapshotProjectTree(root).catch((error: NodeJS.ErrnoException) => {

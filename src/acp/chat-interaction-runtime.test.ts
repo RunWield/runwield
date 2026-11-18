@@ -1,4 +1,5 @@
-import { savePlan } from "../plan-store.js";
+import { seedPlan } from "../shared/testing/plan-state-fixture.ts";
+
 import { test } from "node:test";
 import { assertEquals } from "../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
@@ -16,7 +17,7 @@ for (const type of ["select", "text", "approval", "plan_review"] as const) {
                 const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot });
                 const planId = crypto.randomUUID();
                 if (type === "plan_review")
-                    await savePlan(projectRoot, "review-chat-boundary", "# Review", {
+                    await seedPlan(projectRoot, "review-chat-boundary", "# Review", {
                         planId,
                         status: "draft",
                         classification: "PLANNED_CHANGE",

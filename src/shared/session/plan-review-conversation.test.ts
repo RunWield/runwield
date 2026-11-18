@@ -1,3 +1,4 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
@@ -15,7 +16,10 @@ test("Plan review captures only the selected Architect and keeps the same conver
     try {
         const conversation = session.planReviewConversations.select("epic-a", "architect");
         const events = conversation.events;
-        for (const [agentName, delta] of [["Architect", "First reply"], ["Planner", "Other reply"]]) {
+        for (const [agentName, delta] of [
+            ["Architect", "First reply"],
+            ["Planner", "Other reply"],
+        ]) {
             emitHostedSessionRuntimeEvent(session, {
                 type: RuntimeEventTypes.ASSISTANT_TEXT_DELTA,
                 agentName,
@@ -24,7 +28,10 @@ test("Plan review captures only the selected Architect and keeps the same conver
                 messageKind: "assistant",
             });
         }
-        assertEquals(conversation.events.map((event) => event.delta), ["First reply"]);
+        assertEquals(
+            conversation.events.map((event) => event.delta),
+            ["First reply"],
+        );
         session.dehydrateManagedSession();
         assertStrictEquals(session.planReviewConversations.select("epic-a", "architect"), conversation);
         assertStrictEquals(conversation.events, events);
@@ -40,7 +47,10 @@ test("Plan review captures only the selected Architect and keeps the same conver
             messageKind: "assistant",
         });
         assertEquals(unrelated.events, []);
-        assertEquals(conversation.events.map((event) => event.delta), ["First reply"]);
+        assertEquals(
+            conversation.events.map((event) => event.delta),
+            ["First reply"],
+        );
     } finally {
         await session.dispose();
         await other.dispose();
@@ -52,6 +62,7 @@ test("Plan review keeps the planning reply after final feedback and grouped Sequ
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     const session = new HostedSession({ id: crypto.randomUUID(), cwd });
     try {
+        await seedPlan(cwd, "plan", "# Review Plan", { planId: "review-id" });
         const answers: Array<import("./session-runtime-interactions.js").RuntimeInteractionResponse> = [
             { outcome: "selected", _meta: { approved: false, feedback: "Revise the Epic." } },
             { outcome: "accepted", _meta: { approved: false, sequenceDecision: {}, feedback: "Revise the group." } },
@@ -86,11 +97,10 @@ test("Plan review keeps the planning reply after final feedback and grouped Sequ
         });
         reply("Reply to Sequence chat");
         const conversation = session.getPlanReviewConversation({ planId: "review-id", planningAgentName: "planner" });
-        assertEquals(conversation.events.map((event) => event.delta), [
-            "Reply to final feedback",
-            "Reply to Sequence feedback",
-            "Reply to Sequence chat",
-        ]);
+        assertEquals(
+            conversation.events.map((event) => event.delta),
+            ["Reply to final feedback", "Reply to Sequence feedback", "Reply to Sequence chat"],
+        );
         await requestHostedSessionInteraction(session, {
             type: RuntimeInteractionTypes.PLAN_REVIEW,
             prompt: "Review Plan",

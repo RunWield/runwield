@@ -69,9 +69,19 @@ export interface RegisterSessionArtifactOptions {
     now?: () => string;
 }
 
+export interface RemoteSessionProjectBinding {
+    projectId: string;
+    repositoryId: string;
+    checkoutId: string;
+    personalOwnerIdentity: string;
+    executionAccountHome: string;
+}
+
 export interface RemoteProjectLocator {
     host: import("../remote/target.ts").RemoteHostIdentity;
     root: string;
+    /** Retained only from authenticated inspection while this root was authorized. */
+    binding?: RemoteSessionProjectBinding;
     /** Display and reconnect command only; not an identity field. */
     targetLabel?: string;
     /** Identities the user confirmed are this project's server. */

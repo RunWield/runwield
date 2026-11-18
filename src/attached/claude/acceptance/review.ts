@@ -48,6 +48,14 @@ export class ReviewPage {
             status: null,
         };
         try {
+            if (payload && phase.startsWith("plan-")) {
+                const html = await (await fetch(this.page, { signal: AbortSignal.timeout(30_000) })).text();
+                const embedded = html.match(/<script[^>]*data-review-payload[^>]*>([\s\S]*?)<\/script>/)?.[1];
+                if (!embedded) throw new Error("Missing browser review payload");
+                const revision = jsonMap(JSON.parse(embedded));
+                if (!revision) throw new Error("Invalid browser review payload");
+                payload = { ...payload, documentRevision: revision.documentRevision };
+            }
             const response = await fetch(String(row.url), {
                 method: String(row.method),
                 headers: { "content-type": "application/json" },

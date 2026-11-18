@@ -1,3 +1,5 @@
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
+
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { test } from "node:test";
 import { rm as fsRm, mkdtemp as fsMkdtemp, mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
@@ -152,6 +154,9 @@ test("the CLI and MCP return equal lifecycle results for the same mutation input
                 "get_instructions",
                 "get_artifact",
                 "get_pending_chat",
+                "read_plan",
+                "work_record_read",
+                "work_record_search",
             ],
         );
         for (const tool of tools.tools) {
@@ -266,8 +271,10 @@ for (const adapterContract of [undefined, 0, 1])
                 const ids = pendingTriage(activation);
                 const triaged = await call("triage_report", triageReportInput(ids));
                 assert(triaged.ok && triaged.workflow.nextAction.kind === "plan");
-                await fsMkdir(join(projectRoot, "docs", "plans"), { recursive: true });
-                await fsWriteFile(join(projectRoot, "docs", "plans", "dark-mode-toggle.md"), "# Toggle\n");
+                await seedPlan(projectRoot, "dark-mode-toggle", "# Toggle\n", {
+                    status: "draft",
+                    classification: "PLANNED_CHANGE",
+                });
                 const result = await call(
                     "plan_written",
                     planWrittenInput({

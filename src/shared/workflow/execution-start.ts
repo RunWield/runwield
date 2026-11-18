@@ -1,6 +1,10 @@
 // @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
+import { capturePlanExecutionContext, reservePlanExecution, savePlanDefinition } from "../../plan-store/index.ts";
+import { selectPlanAccess } from "../../plan-store/index.ts";
+import { withPlanExecutionAdmission, type PlanAccess } from "../../plan-store/index.ts";
+import { capturePlanAccess, hasCanonicalPlanAccess, withPlanAccess } from "../../plan-store/index.ts";
 import { prepareWorktreeRegistry } from "../worktree-registry.js";
-import { preparePlanWorkflow } from "./plan-preparation.ts";
+import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import {
     prepareExecutionSetup,
     readExecutionSetup,
@@ -12,15 +16,10 @@ import {
 import { isMissingExecutableError } from "../foreground-process.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { stat as fsStat } from "node:fs/promises";
-import { prepareEditedSiblingPlans } from "./epic-sibling-drafts.ts";
+import { prepareEditedSiblingPlans } from "../../plan-store/index.ts";
 import { CLI_BIN } from "../../constants.js";
-import {
-    ensurePlanIdentity,
-    findPlansByParent,
-    getPlanFrontMatterRevisionForText,
-    loadPlan,
-    updatePlanFrontMatter,
-} from "../../plan-store.js";
+import { getPlanFrontMatterRevisionForText } from "../../plan-format.ts";
+import { ensurePlanIdentity, findPlansByParent, loadPlan } from "../../plan-store/index.ts";
 import {
     defaultPlanBranchName,
     effectiveDeliveryBranch,
@@ -52,7 +51,7 @@ import {
     updateEntry as updateWorktreeRegistryEntry,
 } from "../worktree-registry.js";
 import { captureWorktreeTree } from "./git-snapshot.ts";
-import { ensureExecutionPlanFile, loadCanonicalExecutionPlanSource } from "./execution-plan-file.js";
+import { ensureExecutionPlanFile, loadCanonicalExecutionPlanSource } from "../../plan-store/index.ts";
 import {
     emitCreatedExecutionWorktree,
     emitCreatingExecutionWorktree,
@@ -68,12 +67,12 @@ import {
 } from "./execution-preparation-progress.ts";
 import { recordPlanEvent, buildPlanEventUpdates } from "./plan-lifecycle.js";
 import { recordWorkflowMetric } from "./metrics.js";
-import { listTransitionRecoveryRecords, runExecutionPreparationTransition } from "./state-transition.ts";
+import { listTransitionRecoveryRecords, runExecutionPreparationTransition } from "../../plan-store/index.ts";
 import { healSettledTransitionRecords } from "./transition-recovery.ts";
 import { CollaborationStyles, resolveExecutionOwner } from "./execution-collaboration.ts";
 import { ensureRunWieldOwnedGitignoreBlock } from "../runwield-owned-paths.ts";
 import { emitSystemStatus } from "../session/session-runtime-events.js";
-import { resolveWorkflowPlanLocation } from "./plan-location.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 
@@ -287,8 +286,9 @@ export async function reconcileExecutionPreparationLocation(
 }
 
 interface ExecutionStartOptions {
+    packageSelection?: PlanAccess;
     planName: string;
-    triageMeta: Partial<import("../../plan-store.js").PlanFrontMatter>;
+    triageMeta: Partial<import("../../plan-store/index.ts").PlanFrontMatter>;
     currentStatus: import("./plan-lifecycle.js").PlanStatus;
     cwd?: string;
     existingExecution?: import("../session/hosted-session.js").ActiveExecutionWorkflow | null;
@@ -302,7 +302,25 @@ interface ExecutionStartOptions {
  * @param {ExecutionStartOptions} opts
  * @returns {Promise<import('../session/hosted-session.js').ActiveExecutionWorkflow>}
  */
-export async function startActiveExecutionWorkflow({
+export async function startActiveExecutionWorkflow(
+    options: ExecutionStartOptions,
+): Promise<import("../session/hosted-session.js").ActiveExecutionWorkflow> {
+    const cwd = options.cwd || options.hostedSession?.cwd;
+    if (!cwd) throw new Error("Execution requires its launch directory.");
+    if (!options.packageSelection && !capturePlanAccess()) {
+        const selection = await selectPlanAccess(cwd, options.planName);
+        if (selection) return await startActiveExecutionWorkflow({ ...options, packageSelection: selection });
+    }
+    if (options.packageSelection)
+        return await withPlanAccess(
+            cwd,
+            options.packageSelection,
+            () => startActiveExecutionWorkflow({ ...options, packageSelection: undefined }),
+            options.planName,
+        );
+    return await withPlanExecutionAdmission(cwd, options.planName, () => startActiveExecutionWorkflowInScope(options));
+}
+async function startActiveExecutionWorkflowInScope({
     planName,
     triageMeta,
     currentStatus,
@@ -317,7 +335,7 @@ export async function startActiveExecutionWorkflow({
     if (!cwd) throw new Error("startActiveExecutionWorkflow: cwd is required");
     const projectRoot = resolvePrimaryCheckoutRoot(cwd);
     let sourceLocation = await reconcileExecutionPreparationLocation(cwd, planName, { readOnly: true });
-    if (!sourceLocation.resumeInterruptedPreparation) {
+    if (!sourceLocation.resumeInterruptedPreparation && !hasCanonicalPlanAccess()) {
         await prepareSessionPlanningWorktree(cwd, planName);
         sourceLocation = await reconcileExecutionPreparationLocation(cwd, planName);
     }
@@ -386,7 +404,10 @@ export async function startActiveExecutionWorkflow({
             );
         }
         emitPreparingInPlaceExecution(hostedSession);
-        const attemptId = triageMeta.worktreeId || `non-git-${crypto.randomUUID().slice(0, 8)}`;
+        const attemptId = await reservePlanExecution(planName, {
+            suggestedAttemptId: triageMeta.worktreeId,
+            executionMode: "non_git_in_place",
+        });
         const canonicalPlan = await loadPlan(projectRoot, planName);
         if (!canonicalPlan) throw new Error(`Plan not found: ${planName}`);
         await healSettledTransitionRecords(projectRoot, { planName, evidenceProjectRoot: projectRoot });
@@ -409,6 +430,7 @@ export async function startActiveExecutionWorkflow({
                     executionCwd: projectRoot,
                     executionMode: /** @type {const} */ "non_git_in_place",
                     nonGitInPlace: true,
+                    ...(await capturePlanExecutionContext(planName)),
                 };
                 if (needsExecutionStartedEvent) {
                     emitUpdatingPlanStatusToInProgress(hostedSession);
@@ -540,13 +562,19 @@ export async function startActiveExecutionWorkflow({
     }
     deliveryBranch = effectiveDeliveryBranch(preflightCanonicalPlanSource.attrs) || targetBranch;
     // Existing attempts retain their recorded landing across setting changes.
-    const adoptPlanBranch = !reusable && shouldAdoptPlanBranch(projectRoot, preflightCanonicalPlanSource.attrs);
+    const adoptPlanBranch =
+        !hasCanonicalPlanAccess() &&
+        !reusable &&
+        shouldAdoptPlanBranch(projectRoot, preflightCanonicalPlanSource.attrs);
     const resolvedTargetBranch = reusable
         ? normalizeExecutionTargetBranch(reusable.baseBranch) || (await resolveCurrentBranch(projectRoot))
         : adoptPlanBranch
           ? defaultPlanBranchName(planName)
-          : deliveryBranch;
-    const attemptId = reusable?.id || triageMeta.worktreeId || crypto.randomUUID().slice(0, 8);
+          : deliveryBranch || (await resolveCurrentBranch(projectRoot));
+    const attemptId = await reservePlanExecution(planName, {
+        targetBranch: resolvedTargetBranch,
+        suggestedAttemptId: reusable?.id || triageMeta.worktreeId,
+    });
     const authorityStatus = canonicalPlanForRevision?.attrs.status || currentStatus;
     const reusableBaseRef = reusable && (reusable.baseCommit || reusable.baseTree);
     const reusableHasExecutionChanges =
@@ -576,7 +604,7 @@ export async function startActiveExecutionWorkflow({
     // Reconcile cross-worktree planning edits before acquiring the active Plan's
     // transition lock, so simultaneous sibling starts cannot lock each other out.
     const editedSiblingPaths =
-        reusable && needsPreparationCheckpoint
+        !hasCanonicalPlanAccess() && reusable && needsPreparationCheckpoint
             ? await prepareEditedSiblingPlans(reusable.path, planName, preflightCanonicalPlanSource.relativePath)
             : [];
     const transition = await runExecutionPreparationTransition({
@@ -587,7 +615,9 @@ export async function startActiveExecutionWorkflow({
         planId: stablePlanId,
         worktreeId: attemptId,
         targetRef: resolvedTargetBranch || targetBranch || undefined,
-        expectedRevision: canonicalPlanForRevision?.revision,
+        expectedRevision: hasCanonicalPlanAccess()
+            ? (await loadPlan(planAuthorityRoot, planName))?.revision
+            : canonicalPlanForRevision?.revision,
         expectedPlanEvent: needsExecutionStartedEvent,
         resumeInterrupted: sourceLocation.resumeInterruptedPreparation === true,
         prepare: async ({ beforePlan, markEffect, registerRollback }) => {
@@ -620,16 +650,15 @@ export async function startActiveExecutionWorkflow({
                     `Plan ${planName} had its front matter change while preparing execution; reload the Plan and start execution again.`,
                 );
             }
-            if (!reusable && standalone) {
+            if (!hasCanonicalPlanAccess() && !reusable && standalone) {
                 if (adoptPlanBranch) {
                     deliveryBranch = (await ensurePlanBranch({ projectRoot, planName, sourceBranch: targetBranch }))
                         .branch;
                 }
-                await updatePlanFrontMatter(
+                await savePlanDefinition(
                     planAuthorityRoot,
                     planName,
                     { targetBranch, deliveryBranch },
-                    canonicalPlanSource.attrs,
                     { expectedRevision: beforePlan.revision },
                 );
                 Object.assign(effectiveTriageMeta, { targetBranch, deliveryBranch });
@@ -726,18 +755,20 @@ export async function startActiveExecutionWorkflow({
             if (reusable) await addRunWieldOwnedGitignoreBlock(worktree.path, hostedSession);
             const worktreeBaseBranch = worktree.baseBranch === "HEAD" ? undefined : worktree.baseBranch;
             emitMaterializingPlanInExecutionWorktree(hostedSession);
-            const planFile = await ensurePlanFile({
-                executionCwd: worktree.path,
-                planName,
-                canonicalSource: canonicalPlanSource,
-                reconcileFromCanonical: !continuingReusableWorktree,
-                // Before the first Engineer turn, the locked primary Plan is the
-                // complete authority. A new worktree starts from the target branch,
-                // whose committed Plan may be older than a just-approved revision.
-                // Once execution begins, the execution copy becomes authoritative and
-                // this replacement is deliberately disabled.
-                replaceFromCanonical: !continuingReusableWorktree,
-            });
+            const planFile = hasCanonicalPlanAccess()
+                ? { kind: "present", path: canonicalPlanSource.path, relativePath: undefined }
+                : await ensurePlanFile({
+                      executionCwd: worktree.path,
+                      planName,
+                      canonicalSource: canonicalPlanSource,
+                      reconcileFromCanonical: !continuingReusableWorktree,
+                      // Before the first Engineer turn, the locked primary Plan is the
+                      // complete authority. A new worktree starts from the target branch,
+                      // whose committed Plan may be older than a just-approved revision.
+                      // Once execution begins, the execution copy becomes authoritative and
+                      // this replacement is deliberately disabled.
+                      replaceFromCanonical: !continuingReusableWorktree,
+                  });
             if (planFile.kind === "restored") emitRestoredPlanInExecutionWorktree(hostedSession);
             if (planFile.kind === "reconciled") emitReconciledPlanInExecutionWorktree(hostedSession);
             if (planFile.kind !== "present" && planFile.kind !== "restored" && planFile.kind !== "reconciled") {
@@ -758,7 +789,7 @@ export async function startActiveExecutionWorkflow({
                 );
             }
             let relatedPlanPaths = [];
-            if (needsPreparationCheckpoint) {
+            if (needsPreparationCheckpoint && !hasCanonicalPlanAccess()) {
                 // A reused planning worktree can contain parent and sibling edits
                 // too. Include the same family on initial preparation and retry;
                 // materialization preserves every already-present Plan verbatim.
@@ -808,6 +839,7 @@ export async function startActiveExecutionWorkflow({
                 executionAgent,
                 executionStarted: false,
                 ...collaborationState,
+                ...(await capturePlanExecutionContext(planName)),
                 executionMode: /** @type {const} */ "worktree",
                 baselineTree,
                 projectRoot,
@@ -843,19 +875,20 @@ export async function startActiveExecutionWorkflow({
             }
             if (needsExecutionStartedEvent) {
                 emitUpdatingPlanStatusToInProgress(hostedSession);
-                await recordExecutionSetupLifecycle(
-                    worktree.path,
-                    planFile.relativePath,
-                    buildPlanEventUpdates("execution_started", authorityStatus, {
-                        triageMeta: executionPlan.attrs,
-                        executionBaselineTree: baselineTree,
-                        worktreeId: worktree.id,
-                        worktreePath: worktree.path,
-                        worktreeBranch: worktree.branch,
-                        worktreeBaseBranch,
-                        worktreeStatus: "active",
-                    }),
-                );
+                if (!hasCanonicalPlanAccess())
+                    await recordExecutionSetupLifecycle(
+                        worktree.path,
+                        planFile.relativePath,
+                        buildPlanEventUpdates("execution_started", authorityStatus, {
+                            triageMeta: executionPlan.attrs,
+                            executionBaselineTree: baselineTree,
+                            worktreeId: worktree.id,
+                            worktreePath: worktree.path,
+                            worktreeBranch: worktree.branch,
+                            worktreeBaseBranch,
+                            worktreeStatus: "active",
+                        }),
+                    );
                 await recordPlanEvent({
                     cwd: worktree.path,
                     planName,
@@ -881,9 +914,11 @@ export async function startActiveExecutionWorkflow({
                 // Sibling drafts Planner reshaped while planning this child travel with it.
                 relatedPlanPaths = [
                     ...relatedPlanPaths,
-                    ...(reusedWorktree
+                    ...(!hasCanonicalPlanAccess() && reusedWorktree
                         ? editedSiblingPaths
-                        : await prepareEditedSiblingPlans(worktree.path, planName, planFile.relativePath)),
+                        : hasCanonicalPlanAccess()
+                          ? []
+                          : await prepareEditedSiblingPlans(worktree.path, planName, planFile.relativePath)),
                 ];
                 const preparationToken = await recordExecutionSetupCheckpoint(worktree.path);
                 const preparation = await checkpointExecutionPreparation({

@@ -1,22 +1,7 @@
----
-classification: "PROJECT"
-complexity: "LOW|MEDIUM|HIGH"
-# High-signal paths you have evidence for. RunWield uses these for drift warnings and Plan presentation; they are not
-# an exhaustive list and never limit what a child Plan may change.
-affectedPaths:
-    - "path/to/file1"
-    - "path/to/file2"
-# Optional: only when the user identifies external demand URLs as Tickets.
-# tickets:
-#     - url: "https://example.com/tickets/ABC-123"
-devServerCommand: null
-devServerUrl: null
-devServerHmr: null
-# Required: the Epic branch. Children deliver here; RunWield creates it from the latest primary branch.
-targetBranch: "epic/<epic-plan-name>"
-createdAt: "<ISO-8601 date or timestamp>"
-status: "draft"
----
+For local and manual-SSH authoring, submit the Markdown body below as `plan_written.contextMarkdown`, without YAML.
+Use `planType: epic`, `targetBranch`, and typed `definition` facts including summary, complexity, affectedPaths and Tickets. Core supplies classification and lifecycle fields.
+Core assigns identity and creation time. Never write `plan.wld.json`. Managed-remote workflows retain their existing
+admitted metadata contract until their separate storage migration.
 
 # <Plan Title>
 
