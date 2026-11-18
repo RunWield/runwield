@@ -20,8 +20,8 @@ Run `/reload` after editing anything here so the current Session picks it up.
 
 ## Agents
 
-An Agent is a Markdown file with YAML front matter. The front matter sets its name, tools, and behavior; the body is its
-prompt. Put a file in `.wld/agents/` or `~/.wld/agents/` to change a bundled Agent or to add a new one.
+An Agent definition is a Markdown file. Its YAML front matter sets its name, tools, and behavior. The body is its prompt.
+Put a file in `.wld/agents/` or `~/.wld/agents/` to change a bundled Agent or to add a new one.
 
 The file name is the Agent's ID: `.wld/agents/reviewer.md` defines the `reviewer` Agent, which you start with
 `/agent reviewer` or `wld agent reviewer`. IDs use lowercase letters, numbers, and hyphens. A file with the same name as a
@@ -43,8 +43,8 @@ the bundled default up to your project, and merges them:
 | `sharedPractice`      | Replaces the whole list from the layer below.                                                            |
 | `bashAllowedCommands` | A non-empty list adds to the list below. See [Limiting shell commands](#limiting-shell-commands).        |
 
-So a file that contains only a body adds instructions to the bundled Agent and keeps everything else. Front matter is
-still required, even if it's empty (`---` on two lines).
+To add instructions to an existing Agent, write plain Markdown in the override file. RunWield appends the instructions
+and inherits the Agent's metadata. The first definition for a new Agent requires YAML front matter.
 
 `promptOverride` applies only to the layers below the file that sets it. If `~/.wld/agents/guide.md` sets it and
 `.wld/agents/guide.md` doesn't, the project body is added after your personal one, and the bundled body is dropped.
