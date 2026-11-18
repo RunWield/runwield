@@ -1,4 +1,5 @@
 import { readLocalHomeStore } from "../../plan-store/index.ts";
+import { runPlansHistoryCommand } from "./history.ts";
 import { runPlansImportCommand } from "./import.ts";
 /**
  * @module cmd/plans
@@ -91,6 +92,7 @@ export async function runPlansCommand(argv: string[]): Promise<void> {
 }
 async function runPlansCommandInStore(argv: string[]): Promise<void> {
     const [subcommand] = argv;
+    if (subcommand === "history") return await runPlansHistoryCommand(argv.slice(1));
     if (subcommand === "import") {
         await runPlansImportCommand(argv.slice(1));
         return;

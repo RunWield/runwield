@@ -74,6 +74,9 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
         "checkpoint-retained-execution": [...common, "attemptId", "updates", "options"],
         "read-retained-execution": ["kind", "reference", "attemptId"],
         "archive-catalog": ["kind"],
+        "list-history": ["kind", "reference"],
+        "show-history": ["kind", "reference", "version"],
+        "restore-history": [...common, "version"],
         "read-archive": ["kind", "reference"],
         "archive-plan": [...common, "reason", "force", "now"],
         "restore-plan": [...common],
@@ -131,6 +134,8 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
     if (
         (command.kind === "resolve-plan" ||
             command.kind === "read-archive" ||
+            command.kind === "list-history" ||
+            command.kind === "show-history" ||
             command.kind === "read-retained-execution") &&
         (typeof command.reference !== "string" || !command.reference || command.reference.length > 1024)
     )
@@ -163,6 +168,11 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
         (typeof command.selection !== "string" || !command.selection.startsWith("/") || command.selection.length > 4096)
     )
         throw new Error("Invalid import selection.");
+    if (
+        (command.kind === "show-history" || command.kind === "restore-history") &&
+        (typeof command.version !== "string" || !/^[a-f0-9-]{36}$/.test(command.version))
+    )
+        throw new Error("Invalid history version.");
     if ("operationId" in command && !/^[a-f0-9-]{36}$/.test(command.operationId))
         throw new Error("Invalid operation identity.");
     if ("expectedRevision" in command && !/^[a-f0-9]{64}$/.test(command.expectedRevision))
@@ -445,6 +455,8 @@ export function validateProjectStoreReply(reply: ProjectStoreReply, request: Pro
     if ("children" in result) allowed = ["children"];
     if ("retainedRecording" in result) allowed = ["retainedRecording"];
     if ("retainedExecution" in result) allowed = ["retainedExecution"];
+    if ("history" in result) allowed = ["history"];
+    if ("milestoneDocuments" in result) allowed = ["milestoneDocuments"];
     if ("archives" in result) allowed = ["archives"];
     if ("archived" in result) allowed = ["archived"];
     if ("resourceCatalog" in result) allowed = ["resourceCatalog"];
@@ -507,6 +519,35 @@ export function validateProjectStoreReply(reply: ProjectStoreReply, request: Pro
                     (request.command.attemptId && result.retainedExecution.attempt.id !== request.command.attemptId)))
         )
             throw new Error("Invalid retained execution reply.");
+    } else if (request.command.kind === "list-history") {
+        if (
+            !("history" in result) ||
+            !identity(result.history?.planId) ||
+            !/^[a-f0-9]{64}$/.test(result.history.revision) ||
+            !Array.isArray(result.history.milestones) ||
+            result.history.milestones.some(
+                (entry) =>
+                    !entry ||
+                    !/^[a-f0-9-]{36}$/.test(entry.version) ||
+                    !["approved", "delivered", "closed", "archived"].includes(entry.milestone) ||
+                    typeof entry.at !== "string" ||
+                    typeof entry.reason !== "string" ||
+                    !/^[a-f0-9]{64}$/.test(entry.digest),
+            )
+        )
+            throw new Error("Invalid Plan history reply.");
+    } else if (request.command.kind === "show-history") {
+        if (
+            !("milestoneDocuments" in result) ||
+            typeof result.milestoneDocuments?.["context.md"] !== "string" ||
+            typeof result.milestoneDocuments["validation.md"] !== "string" ||
+            Object.entries(result.milestoneDocuments).some(
+                ([name, value]) =>
+                    !["context.md", "validation.md", "manual-qa.md", "integration-report.md"].includes(name) ||
+                    typeof value !== "string",
+            )
+        )
+            throw new Error("Invalid milestone documents reply.");
     } else if (request.command.kind === "archive-catalog") {
         if (!("archives" in result) || !Array.isArray(result.archives)) throw new Error("Invalid archive catalog.");
     } else if (request.command.kind === "read-archive") {

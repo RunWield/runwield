@@ -23,7 +23,7 @@ dependencies:
     - "external-plan-store/activate-managed-remote-store-ownership"
 targetBranch: "epic/external-plan-store"
 userVerifiedAt: null
-status: "in_progress"
+status: "implemented"
 ---
 
 # Keep and Restore Plan Milestone History

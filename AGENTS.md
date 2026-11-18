@@ -19,7 +19,7 @@ isolated runner and preload guard give every test file its own process, disposab
 `MNEMOTECA_DB_PATH`. `bun run ci` includes the full source and Golden portfolio; `bun run test:bun` runs the explicit
 inventory in `scripts/bun-test-files.json`.
 
-Use Bun 1.4.3 and run `bun run install:locked` before checks. It installs the root and docs graphs with separate frozen
+Use Bun `^1.4.0` for local commands. CI and release builds use the exact version in `.bun-version`. Run `bun run install:locked` before checks. It installs the root and docs graphs with separate frozen
 locks and disabled lifecycle scripts. Do not install Deno's dependency graph in this checkout. Legacy release lock
 interoperability belongs to its separate qualification lane. The Bun formatting entrypoint is
 `bun run fmt --write <files>` (pinned Prettier, four-space indentation, 120 columns);

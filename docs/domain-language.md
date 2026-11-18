@@ -455,6 +455,10 @@ file-level code evidence when constructed from existing code. _Avoid_: Line refe
 `closed_without_verification`, or `on_hold`.
 _Avoid_: Phase, stage, read availability
 
+**Plan History**: The frozen Markdown versions of a Plan kept at approval, delivery, closure and archive. Versions
+belong to the stable Plan ID. Restoring one writes its documents as a new edit while preserving current identity and
+workflow evidence. Private attempt inputs remain independently retained. _Avoid_: backups, Plan revisions
+
 **Plan Lifecycle**: The state machine that decides how Plan Events change Plan Status and recovery metadata; see
 `docs/plan-lifecycle.md`. _Avoid_: Status helper, plan status logic
 

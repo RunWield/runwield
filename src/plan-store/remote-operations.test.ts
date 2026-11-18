@@ -705,3 +705,40 @@ sys.exit(result.returncode)
         }
     });
 });
+
+test("managed milestone replay returns the first committed revision after later edits", async () => {
+    const fixture = await packageFixture();
+    try {
+        await authorLocalPlan(fixture.root, { planName: "proposal", contextMarkdown: "# Approved\n" });
+        const plan = (await loadPlan(fixture.root, "proposal"))!;
+        const service = new PreparedProjectStore(fixture.root);
+        const planId = plan.attrs.planId!;
+        await service.execute({
+            kind: "record-event",
+            event: "review_approved",
+            planId,
+            operationId: randomUUID(),
+            expectedRevision: plan.revision!,
+        });
+        const listed = (await service.execute({ kind: "list-history", reference: planId })).result;
+        if (!("history" in listed)) throw new Error("Missing history.");
+        const version = listed.history.milestones[0].version;
+        const shown = (await service.execute({ kind: "show-history", reference: "proposal", version })).result;
+        equal("milestoneDocuments" in shown && shown.milestoneDocuments["context.md"], "# Approved\n");
+        const expectedRevision = await savePlanProse(fixture.root, "proposal", "# Changed\n", listed.history.revision);
+        const command = {
+            kind: "restore-history" as const,
+            version,
+            operationId: randomUUID(),
+            planId,
+            expectedRevision,
+        };
+        const restored = await service.execute(command);
+        if (!("revision" in restored.result) || !restored.result.revision) throw new Error("Missing restore outcome.");
+        await savePlanProse(fixture.root, "proposal", "# Next\n", restored.result.revision);
+        deepEqual(await service.execute(command), restored);
+        equal((await loadPlan(fixture.root, "proposal"))!.body, "# Next\n");
+    } finally {
+        await fixture.cleanup();
+    }
+});

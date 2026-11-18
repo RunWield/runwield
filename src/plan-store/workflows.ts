@@ -31,6 +31,7 @@ import {
     readPlanPackageInput,
     readPlanPackagePublication,
     updatePlanPackageMetadata,
+    stagePackageMilestone,
     withPlanPackageLocks,
     packageDefinitionStrings,
     packageControllerStrings,
@@ -41,6 +42,7 @@ import {
     type PackageDefinition,
     type PackageControllerState,
     type PackageWorkflowEvidence,
+    type PackageInputReference,
 } from "./packages.ts";
 import { readPackageControllerEvidence, writePackageControllerEvidence } from "./controllers.ts";
 import {
@@ -560,10 +562,10 @@ export async function loadPackageWorkflowPlan(
     };
 }
 
-export async function updatePackageWorkflowMetadata(
-    planName: PackageWorkflowTarget,
+export async function preparePackageWorkflowUpdate(
+    current: LoadedPlanPackage,
+    attrs: PlanFrontMatter,
     updates: Partial<PlanFrontMatter>,
-    expectedRevision?: string,
     workflowUpdate?: PackageWorkflowEvidence,
 ) {
     const scalarFields = [
@@ -583,61 +585,117 @@ export async function updatePackageWorkflowMetadata(
         "planDeviations",
         ...packageDefinitionStrings,
     ];
+    const workflow = { ...current.metadata.workflow, ...workflowUpdate };
+    if (Object.hasOwn(updates, "workRecord")) workflow.workRecord = updates.workRecord;
+    const binding = workflow.attempt;
+    const entry = await observedPackageAttempt(binding);
+    if (entry?.status === "abandoned") workflow.attempt = undefined;
+    const catalog = await listPlanPackages(currentPackageProject()!, true);
+    if (catalog.issues.length) throw new Error(catalog.issues[0].message);
+    const related = (reference: string) => resolvePlanPackageReference(catalog.packages, reference, attrs.parentPlan);
+    const relations = {
+        parentPlanId: Object.hasOwn(updates, "parentPlan")
+            ? updates.parentPlan
+                ? related(updates.parentPlan)
+                : null
+            : current.metadata.parentPlanId,
+        dependencyPlanIds: Object.hasOwn(updates, "dependencies")
+            ? (updates.dependencies || []).map(related)
+            : current.metadata.dependencyPlanIds,
+    };
+    const definition: PackageDefinition = { ...current.metadata.definition };
+    const controller: PackageControllerState = { ...current.metadata.controller };
+    const state = { ...(await packageController(current)), ...pickControllerState(updates) };
+    for (const [key, value] of Object.entries(updates)) {
+        if (definitionFields.includes(key)) Object.assign(definition, { [key]: value ?? undefined });
+        if (scalarFields.includes(key)) Object.assign(controller, { [key]: value });
+    }
+    const evidence: WorkflowControllerState = {};
+    for (const key of CONTROLLER_STATE_FIELDS) {
+        if (!scalarFields.includes(key) && state[key] !== undefined) Object.assign(evidence, { [key]: state[key] });
+    }
+    const ref = await writePackageControllerEvidence(currentPackageProject()!, current.metadata.planId, evidence);
+    return { ...relations, definition, controller, workflow: { ...workflow, controller: ref } };
+}
+
+export async function updatePackageWorkflowMetadata(
+    planName: PackageWorkflowTarget,
+    updates: Partial<PlanFrontMatter>,
+    expectedRevision?: string,
+    workflowUpdate?: PackageWorkflowEvidence,
+    milestone?: "approved" | { delivered: PackageInputReference | undefined },
+) {
     return await packageWorkflowLocks([planName], async () => {
         const current = (await selectedPackage(planName))!;
         const view = (await loadPackageWorkflowPlan(planName))!;
         if (expectedRevision !== undefined && view.revision !== expectedRevision)
             throw new Error("Package input changed before the metadata write.");
-        const workflow = { ...current.metadata.workflow, ...workflowUpdate };
-        if (Object.hasOwn(updates, "workRecord")) workflow.workRecord = updates.workRecord;
-        const binding = workflow.attempt;
-        const entry = await observedPackageAttempt(binding);
-        if (entry?.status === "abandoned") workflow.attempt = undefined;
-        const catalog = await listPlanPackages(currentPackageProject()!, true);
-        if (catalog.issues.length) throw new Error(catalog.issues[0].message);
-        const related = (reference: string) =>
-            resolvePlanPackageReference(catalog.packages, reference, view.attrs.parentPlan);
-        const relations = {
-            parentPlanId: Object.hasOwn(updates, "parentPlan")
-                ? updates.parentPlan
-                    ? related(updates.parentPlan)
-                    : null
-                : current.metadata.parentPlanId,
-            dependencyPlanIds: Object.hasOwn(updates, "dependencies")
-                ? (updates.dependencies || []).map(related)
-                : current.metadata.dependencyPlanIds,
+        const identity = currentPackageProject()!;
+        const metadataUpdate = await preparePackageWorkflowUpdate(current, view.attrs, updates, workflowUpdate);
+        const { definition, controller, workflow } = metadataUpdate;
+        const eventPackage = {
+            ...current,
+            metadata: { ...current.metadata, ...metadataUpdate, revision: current.metadata.revision + 1 },
         };
-        const definition: PackageDefinition = { ...current.metadata.definition };
-        const controller: PackageControllerState = { ...current.metadata.controller };
-        const state = { ...(await packageController(current)), ...pickControllerState(updates) };
-        for (const [key, value] of Object.entries(updates)) {
-            if (definitionFields.includes(key)) Object.assign(definition, { [key]: value ?? undefined });
-            if (scalarFields.includes(key)) Object.assign(controller, { [key]: value });
+        let history = current.metadata.history;
+        const ownReview = workflow.review?.inputs.find((input) => input.planId === current.metadata.planId);
+        const delivery = workflow.delivery;
+        if (milestone === "approved") {
+            if (!ownReview) throw new Error("Approval requires retained Plan documents.");
+            history = await stagePackageMilestone(
+                identity,
+                eventPackage,
+                "approved",
+                controller.updatedAt || new Date().toISOString(),
+                "",
+                ownReview,
+            );
+        } else if (milestone) {
+            history = await stagePackageMilestone(
+                identity,
+                eventPackage,
+                "delivered",
+                controller.verifiedAt || new Date().toISOString(),
+                "Confirmed publication",
+                milestone.delivered,
+            );
+        } else if (delivery && delivery.source.inputId !== current.metadata.workflow?.delivery?.source.inputId) {
+            const manifest = await readPlanPackagePublication(identity, delivery.source);
+            const member = manifest.members.find((member) => member.metadata.planId === current.metadata.planId);
+            if (!member) throw new Error("Delivery omits its Plan input.");
+            history = await stagePackageMilestone(
+                identity,
+                eventPackage,
+                "delivered",
+                delivery.verifiedAt,
+                delivery.mode,
+                member.input,
+            );
+        } else if (
+            definition.status !== current.metadata.definition.status &&
+            ["user_verified", "closed_without_verification"].includes(definition.status)
+        ) {
+            history = await stagePackageMilestone(
+                identity,
+                eventPackage,
+                "closed",
+                definition.userVerifiedAt ||
+                    definition.closedWithoutVerificationAt ||
+                    definition.epicDoneEnoughAt ||
+                    new Date().toISOString(),
+                definition.status === "user_verified"
+                    ? definition.userVerificationNote || definition.status
+                    : definition.closedWithoutVerificationReason ||
+                          definition.epicDoneEnoughSummary ||
+                          definition.status,
+            );
         }
-        const evidence: WorkflowControllerState = {};
-        for (const key of CONTROLLER_STATE_FIELDS) {
-            if (!scalarFields.includes(key) && state[key] !== undefined) Object.assign(evidence, { [key]: state[key] });
-        }
-        const ref = await writePackageControllerEvidence(currentPackageProject()!, current.metadata.planId, evidence);
+        const update = { ...metadataUpdate, history };
         await journalPackageMetadataWrite(
             current.metadata,
-            JSON.parse(
-                JSON.stringify({
-                    ...current.metadata,
-                    revision: current.metadata.revision + 1,
-                    ...relations,
-                    definition,
-                    controller,
-                    workflow: { ...workflow, controller: ref },
-                }),
-            ),
+            JSON.parse(JSON.stringify({ ...eventPackage.metadata, history })),
         );
-        await updatePlanPackageMetadata(currentPackageProject()!, current.metadata.planId, current.metadata.revision, {
-            ...relations,
-            definition,
-            controller,
-            workflow: { ...workflow, controller: ref },
-        });
+        await updatePlanPackageMetadata(identity, current.metadata.planId, current.metadata.revision, update);
         return (await loadPackageWorkflowPlan(planName))!.attrs;
     });
 }

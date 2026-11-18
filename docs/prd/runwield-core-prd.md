@@ -381,7 +381,7 @@ import sources or optional delivery copies; absence, damage or denial of home st
 `wld plans import <file-or-folder>` and explicit Markdown path loading preserve source bytes and import selected
 artifacts. Name lookup never adopts a checkout document. New planning uses Markdown documents and typed definition
 fields through `plan_written`; Core owns protected metadata. Managed remote launch selects the initiating laptop's
-home-only Project store through the same public owner. History and retention remain targets in the
+home-only Project store through the same public owner. Retention and pruning remain targets in the
 [Plan Store proposal](plan-store-prd.md#plan-store). Service loss cannot select an execution account's personal store.
 
 **Requirement: Managed Plans retain laptop authority.** A remote-only Project needs no laptop checkout or source sync.
@@ -590,6 +590,21 @@ atomically without modifying Markdown; YAML-looking prose cannot assign status o
 Sequence review read live package documents without Git transport. Local and manual-SSH discovery use the canonical
 home store described in [Plan authoring and external adoption](#plan-authoring-and-external-adoption).
 An unfinished imported legacy attempt continues through its revalidated original owner.
+
+**Requirement: Keep and restore Plan History.** Approval, confirmed delivery, manual closure and archive each keep
+a frozen version of the Plan's Markdown under its stable ID. Each approved Sequence member has its own version.
+Delivery uses the publication's retained documents, even after later edits or execution cleanup. Manual closure
+keeps the owner's reason. A Plan can start with empty history. Reading history creates no milestones.
+
+**Acceptance: Inspect and restore a milestone.** Given a renamed or archived Plan, its ID still resolves its history.
+The user can inspect the named documents and restore the complete set on an editable Plan. Restore checks the
+observed revision of every document and records one new revision. A meaningful edit to approved or ready content
+returns the Plan to draft for review. The current name, relationships, execution binding and delivery evidence come
+from the live Plan. Archived Plans require archive restore before editing. A stale restore preserves newer edits.
+
+**Acceptance: Keep one version per event.** Given an interruption, retry exposes a complete version once. A later
+approval gets a distinct version even when the documents repeat. Local and non-Git Projects use their personal
+store. A managed remote Project uses its initiating laptop and can retry a restore after losing the acknowledgement.
 
 **Requirement: Conversation is not a Plan Status.** Review chat alone does not change status or write Plan front
 matter. Legacy `feedback` and `in_review` Plans read as `draft` in every surface, including Epic, Sequence, dependency,
@@ -1177,7 +1192,7 @@ validation. Reports separate completed focused checks from pending full validati
 publication.
 
 **Requirement: Required checks fail closed.** A required check returns failure when its checker or prerequisites cannot
-load, as well as when diagnostics fail. Workspace checking resolves its project root consistently under the pinned Bun
+load, as well as when diagnostics fail. Workspace checking resolves its project root consistently under the supported Bun
 runtime and cannot report success without running the Astro checker.
 
 **Requirement: Validation progress is accurate.** Interrupted validation shows as paused and keeps its continuation.
@@ -1883,7 +1898,7 @@ remote personal store. Managed-remote store operations remain target scope.
 Plans and execution runtime use their responsible account’s home Project tree. Managed remote launches retain
 personal Plan authority on the laptop and Git execution authority on the remote account. Adopted original attempts
 continue through verified bindings to their actual execution directories. Session and Connect continuity retain
-verified bindings to their original stores. History and retention remain later outcomes of the
+verified bindings to their original stores. Retention and pruning remain later outcomes of the
 [External Project State and Plan Store Epic](../plans/external-plan-store.md).
 
 **Requirement: Keep project knowledge correctly scoped.** Keep the remote project locator separate from execution cwd.
@@ -2605,6 +2620,13 @@ provider support documented in terms of current configuration.
 - Given an Antigravity Engineer turn, it runs a test command and creates a file in the execution workspace.
 
 ### Installation and updates
+
+**Requirement: Supported development runtime.** Local source, test, build, and release commands accept the Bun
+range in `package.json` (`^1.4.0`: at least 1.4.0 and below 2.0.0). CI and release artifacts use the exact
+`.bun-version` pin for repeatable builds.
+
+- Given Bun 1.4.4 or another stable version in the supported range, the runtime check permits local commands.
+- Given Bun below 1.4.0, Bun 2.x, or another runtime, the check stops with the required range and detected runtime.
 
 **Scope and maturity:** Current Linux/macOS shell installation and Candidate release baseline. The public macOS tap
 provides RunWield and Mnemoteca packages. Windows releases and checks, including WinGet manifest preparation and

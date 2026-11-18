@@ -161,6 +161,19 @@ export interface ProjectStoreDocumentWrite extends PlanMutation {
     resource: string;
     body: string;
 }
+interface ProjectStoreHistoryRestore extends PlanMutation {
+    kind: "restore-history";
+    version: string;
+}
+interface ProjectStoreHistoryList {
+    kind: "list-history";
+    reference: string;
+}
+interface ProjectStoreHistoryShow {
+    kind: "show-history";
+    reference: string;
+    version: string;
+}
 export interface ProjectStoreProseWrite extends PlanMutation {
     kind: "save-prose";
     body: string;
@@ -615,6 +628,9 @@ export type ProjectStoreCommand =
     | ProjectStoreDocumentsRead
     | ProjectStoreRead
     | ProjectStoreDocumentWrite
+    | ProjectStoreHistoryRestore
+    | ProjectStoreHistoryList
+    | ProjectStoreHistoryShow
     | ProjectStoreProseWrite
     | ProjectStoreDefinitionWrite
     | ProjectStoreCheckpoint
@@ -635,6 +651,8 @@ export interface ProjectStoreReply {
         | ProjectStorePublication
         | ProjectStoreExecution
         | ProjectStoreExecutionDocuments
+        | { history: import("./history.ts").PlanHistory }
+        | { milestoneDocuments: import("./packages.ts").PackageDocuments }
         | ProjectStoreDocumentView
         | ProjectStoreDocument
         | OperationOutcome
@@ -1008,6 +1026,35 @@ export class PreparedProjectStore {
                             )) ?? null,
                     };
                 }
+                if (command.kind === "list-history")
+                    return {
+                        history: await (await import("./history.ts")).listPlanHistory(this.cwd, command.reference),
+                    };
+                if (command.kind === "show-history")
+                    return {
+                        milestoneDocuments: await (
+                            await import("./history.ts")
+                        ).showPlanMilestone(this.cwd, command.reference, command.version),
+                    };
+                if (command.kind === "restore-history")
+                    return await withPlanPackageCatalogDiscovery(owner, () =>
+                        runReceiptedOperation(
+                            directory,
+                            command.operationId,
+                            operationDigest(JSON.stringify({ binding: this.binding, command })),
+                            command.planId,
+                            async () => ({
+                                revision: await (
+                                    await import("./history.ts")
+                                ).restorePlanMilestone(
+                                    this.cwd,
+                                    command.planId,
+                                    command.version,
+                                    command.expectedRevision,
+                                ),
+                            }),
+                        ),
+                    );
                 if (command.kind === "archive-catalog")
                     return { archives: await (await import("../plan-store.js")).listArchivedPlans(this.cwd) };
                 if (command.kind === "read-archive")

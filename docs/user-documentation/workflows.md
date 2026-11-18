@@ -198,3 +198,25 @@ Use the document paths exposed by RunWield or its browser editor for Plan prose.
 `plan_written` with Markdown content and typed definition fields. Do not edit `plan.wld.json` or add lifecycle YAML to
 live Markdown. Existing recorded execution attempts continue through their original owner until delivered or deliberately
 abandoned; importing does not replace or discard their work.
+
+## Plan history
+
+Run `wld plans history <plan-name-or-id>` to list the version ID, milestone, time and reason. An approval, confirmed
+delivery, manual closure or archive adds a version. Plans created before history was enabled can have an empty list.
+
+```sh
+wld plans history proposal
+wld plans history show proposal <version>
+wld plans history restore proposal <version>
+```
+
+Show prints the named Markdown documents. Restore makes their complete contents current, including optional
+documents added or removed since the milestone. Core keeps the Plan's current name, relationships and workflow
+evidence. A meaningful change to an approved or ready Plan requires fresh review. If another editor changes any
+document during restore, inspect the live documents before retrying.
+
+A Plan ID continues to work after rename or archive. Use `wld plans archive restore <plan-id>` before restoring
+content to an archived Plan. You can also copy one historical Markdown document into the live package as an ordinary
+edit. The frozen files live under the personal Project’s `history/` directory. History works without Git. In a managed
+remote session the initiating laptop owns the versions. The history
+and live documents share a disk, so losing that disk also loses its history. Keep a separate backup.

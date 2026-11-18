@@ -1,6 +1,6 @@
 import { settleSequenceOperationResult } from "./operation-receipts.ts";
 import { loadPlan, loadPlanStrict, inspectPlanStrict } from "./queries.ts";
-import { inspectLocalHomeStore, withLocalProjectAction } from "./access.ts";
+import { inspectLocalHomeStore, withLocalProjectAction, withLocalPlanWorkflow } from "./access.ts";
 import {
     currentPackageSelection,
     currentPackageProject,
@@ -994,6 +994,7 @@ async function runSemanticTransition<T>({
                                     id,
                                     current.metadata.revision,
                                     {
+                                        history: before.history,
                                         definition: before.definition,
                                         controller: before.controller,
                                         references: before.references,
@@ -1564,6 +1565,24 @@ export async function writePlanDocumentAndController(opts: PlanDocumentUpdate) {
     }
 }
 
+/** A crashed Sequence review can leave individual member writes ahead of the family decision. */
+export async function settleSequenceHistory(cwd: string, planId: string): Promise<void> {
+    const records = await listTransitionRecoveryRecords(cwd);
+    for (const record of records) {
+        const writes = record.packageWrites as PackageMetadataWrite[] | undefined;
+        if (record.operation !== "sequence_review_approved" || !writes?.some((write) => write.planId === planId))
+            continue;
+        const name = String(record.planName);
+        await withLocalPlanWorkflow(cwd, name, () =>
+            packageWorkflowLocks([name], async () => {
+                const outcomes = await reconcileTransitionRecoveryRecords(cwd, { planName: name, apply: true });
+                if (outcomes.some((result) => !result.resolved))
+                    throw new Error("The Sequence decision requires recovery.");
+            }),
+        );
+    }
+}
+
 /** Return unresolved transition journal records for diagnostics. */
 export async function listTransitionRecoveryRecords(projectRoot: string, options: { diagnostic?: boolean } = {}) {
     /** @type {Array<Record<string, unknown>>} */
@@ -1795,13 +1814,22 @@ export async function reconcileTransitionRecoveryRecords(
             if (
                 !writes?.length &&
                 planName &&
-                (operation?.startsWith("plan_review_") || operation?.startsWith("sequence_review_"))
+                (operation?.startsWith("plan_review_") ||
+                    operation?.startsWith("sequence_review_") ||
+                    ([
+                        "plan_event:review_approved",
+                        "plan_event:manual_closed_without_verification",
+                        "plan_event:manual_user_verified",
+                        "plan_event:epic_done_enough",
+                        "plan_event:epic_publication_confirmed",
+                    ].includes(operation || "") &&
+                        !record.completedEffects?.length))
             ) {
                 const current = await selectedPackage(planName);
                 reconciliations.push({
                     ...base,
                     resolvable: current.metadata.revision === source.expectedRevision,
-                    reason: "review recorded no metadata write; current editor documents are preserved",
+                    reason: "the decision recorded no metadata write; current editor documents are preserved",
                 });
                 continue;
             }
@@ -1832,6 +1860,7 @@ export async function reconcileTransitionRecoveryRecords(
                     }
                     if (!accepted && apply) {
                         await updatePlanPackageMetadata(selection.identity, before.planId, current.metadata.revision, {
+                            history: before.history,
                             definition: before.definition,
                             controller: before.controller,
                             references: before.references,

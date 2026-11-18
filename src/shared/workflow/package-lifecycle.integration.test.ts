@@ -1,5 +1,5 @@
 import { seedPlanController, inspectPlanFixtureController } from "../testing/plan-state-fixture.ts";
-import { selectPlanAccess } from "../../plan-store/index.ts";
+import { listPlanHistory, showPlanMilestone, selectPlanAccess } from "../../plan-store/index.ts";
 import { resolvePlanWithPrimaryRecovery } from "../../plan-store/index.ts";
 import { loadPlanActionEvidence } from "./plan-actions.ts";
 import { loadPlanBodyById, savePlanBodyById } from "../../plan-store/index.ts";
@@ -271,6 +271,17 @@ test("Sequence review follows package IDs and approves the complete ordered fami
                     },
                 });
                 equal(result.approved, true, result.feedback || "Sequence approval");
+                for (const document of documents) {
+                    const history = await listPlanHistory(f.root, document.planId);
+                    deepEqual(
+                        history.milestones.map((entry) => entry.milestone),
+                        ["approved"],
+                    );
+                    equal(
+                        (await showPlanMilestone(f.root, document.planId, history.milestones[0].version))["context.md"],
+                        document.plan,
+                    );
+                }
                 equal((await loadPackageWorkflowPlan("another-name")).attrs.status, "ready_for_work");
             },
         );

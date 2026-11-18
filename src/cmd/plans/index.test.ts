@@ -402,3 +402,27 @@ plansTest("Plans list and read preserve unimported sources without live discover
         false,
     );
 });
+
+plansTest("plans history lists and shows the approved documents and restores their prose", async ({ projectRoot }) => {
+    const { authorLocalPlan, recordPlanEvent, savePlanProse, listPlanHistory } =
+        await import("../../plan-store/index.ts");
+    await authorLocalPlan(projectRoot, {
+        planName: "proposal",
+        contextMarkdown: "# Approved\n",
+        validationMarkdown: "Check it\n",
+    });
+    assertStringIncludes(
+        (await captureOutput(() => runPlansCommand(["history", "proposal"]))).join("\n"),
+        "No milestones",
+    );
+    await recordPlanEvent({ cwd: projectRoot, planName: "proposal", event: "review_approved", currentStatus: "draft" });
+    const history = await listPlanHistory(projectRoot, "proposal");
+    const version = history.milestones[0].version;
+    assertStringIncludes((await captureOutput(() => runPlansCommand(["history", history.planId]))).join("\n"), version);
+    await savePlanProse(projectRoot, "proposal", "# Changed\n", history.revision);
+    const shown = (await captureOutput(() => runPlansCommand(["history", "show", "proposal", version]))).join("\n");
+    assertStringIncludes(shown, "validation.md");
+    assertStringIncludes(shown, "# Approved");
+    await captureOutput(() => runPlansCommand(["history", "restore", history.planId, version]));
+    assertEquals((await loadPlan(projectRoot, "proposal"))!.body, "# Approved\n");
+});

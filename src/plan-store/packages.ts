@@ -182,6 +182,7 @@ export interface PackageWorkflowEvidence {
     generatedArtifact?: PackageGeneratedArtifact;
     legacySettlement?: LegacyPackageSettlement;
     workRecord?: import("../plan-store.js").PlanFrontMatter["workRecord"];
+    integration?: PackageWorkflowInput;
     review?: PackageWorkflowInput;
     readiness?: PackageWorkflowInput;
     attempt?: PackageAttemptReference;
@@ -238,7 +239,15 @@ export interface PackageDeliveryReceipt {
     mode: "local" | "remote" | "non_git_in_place";
     verifiedAt: string;
 }
+export interface PlanMilestone {
+    version: string;
+    milestone: "approved" | "delivered" | "closed" | "archived";
+    at: string;
+    reason: string;
+    digest: string;
+}
 export interface PlanPackageMetadata {
+    history?: PlanMilestone[];
     version: 1;
     planId: string;
     name: string;
@@ -263,6 +272,7 @@ export interface CreatePlanPackage {
     dependencyPlanIds?: string[];
 }
 export interface PackageMetadataUpdate {
+    history?: PlanMilestone[];
     workflow?: PackageWorkflowEvidence;
     definition?: PackageDefinition;
     controller?: PackageControllerState;
@@ -559,6 +569,7 @@ function metadataFrom(value: PlanPackageMetadata): PlanPackageMetadata {
         "controller",
         "references",
         "archive",
+        "history",
         "workflow",
     ]);
     if (data.version !== 1) fail("unsupported_metadata", "Unsupported Plan package metadata version.");
@@ -572,6 +583,23 @@ function metadataFrom(value: PlanPackageMetadata): PlanPackageMetadata {
         !strings(data.dependencyPlanIds)
     )
         fail("malformed_metadata", "Invalid package identity, revision, or relationships.");
+    if (
+        data.history !== undefined &&
+        (!Array.isArray(data.history) ||
+            data.history.some((item) => {
+                const entry = fields(item, ["version", "milestone", "at", "reason", "digest"]);
+                return (
+                    typeof entry.version !== "string" ||
+                    !/^[0-9a-f-]{36}$/.test(entry.version) ||
+                    !["approved", "delivered", "closed", "archived"].includes(String(entry.milestone)) ||
+                    typeof entry.at !== "string" ||
+                    typeof entry.reason !== "string" ||
+                    typeof entry.digest !== "string" ||
+                    !/^[0-9a-f]{64}$/.test(entry.digest)
+                );
+            }))
+    )
+        fail("malformed_metadata", "Invalid Plan History reference.");
     requireId(data.planId);
     normalizeName(data.name);
     if (data.parentPlanId !== null) requireId(data.parentPlanId);
@@ -673,6 +701,7 @@ function metadataFrom(value: PlanPackageMetadata): PlanPackageMetadata {
             "legacySettlement",
             "generatedArtifact",
             "publicationPolicy",
+            "integration",
             "review",
             "readiness",
             "attempt",
@@ -771,7 +800,7 @@ function metadataFrom(value: PlanPackageMetadata): PlanPackageMetadata {
             )
                 fail("malformed_metadata", "Invalid package delivery receipt.");
         }
-        for (const key of ["review", "readiness"]) {
+        for (const key of ["integration", "review", "readiness"]) {
             if (workflow[key] !== undefined) validateWorkflowInput(workflow[key], data.planId);
         }
         if (workflow.attempt !== undefined) {
@@ -1391,6 +1420,7 @@ export async function updatePlanPackageMetadata(
         expectedRevision(current.metadata, revision);
         // Validate update keys before merging: identity, location and archive are dedicated operations.
         fields(JSON.parse(JSON.stringify(update)), [
+            "history",
             "workflow",
             "definition",
             "controller",
@@ -1507,6 +1537,13 @@ export async function archivePlanPackage(
                 fromPath: join(current.path, "context.md"),
             },
         };
+        metadata.history = await stagePackageMilestone(
+            identity,
+            { ...current, metadata },
+            "archived",
+            archivedAt,
+            reason,
+        );
         metadataFrom(metadata);
         const path = join(current.path, "plan.wld.json");
         if (
@@ -1553,6 +1590,64 @@ export async function restorePlanPackage(
         return metadata;
     });
 }
+function milestoneDigest(documents: PackageDocument[]): string {
+    return createHash("sha256")
+        .update(JSON.stringify(documents.map(({ name, hash }) => [name, hash])))
+        .digest("hex");
+}
+
+function historyDirectory(paths: PackageLayout, planId: string): string {
+    const portable = /^[a-z0-9_-]{1,128}$/.test(planId) && !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/.test(planId);
+    const segment = portable ? planId : "~" + createHash("sha256").update(planId).digest("hex");
+    return join(dirname(paths.plans), "history", segment);
+}
+
+/** Only a reference in committed package metadata makes a staged milestone visible. */
+export async function stagePackageMilestone(
+    identity: ProjectIdentity,
+    plan: LoadedPlanPackage,
+    milestone: PlanMilestone["milestone"],
+    at: string,
+    reason: string,
+    input?: PackageInputReference,
+): Promise<PlanMilestone[]> {
+    const paths = layout(identity);
+    const documents = input ? (await readPlanPackageInput(identity, input)).documents : plan.documents;
+    const version = randomUUID();
+    const destination = join(historyDirectory(paths, plan.metadata.planId), version);
+    const stage = join(paths.stages, version);
+    await directory(paths, stage);
+    for (const document of documents) writeTextAtomically(join(stage, document.name), document.bytes);
+    const { history: _history, ...metadata } = plan.metadata;
+    writeJsonAtomically(join(stage, "plan.wld.json"), metadata);
+    const digest = milestoneDigest(documents);
+    if (!input && milestoneDigest(await readDocuments(paths, plan.path)) !== digest)
+        fail("changed_input", "Plan documents changed during milestone capture.");
+    await directory(paths, dirname(destination));
+    await fs.rename(stage, destination);
+    syncParentDirectory(destination);
+    return [...(plan.metadata.history || []), { version, milestone, at, reason, digest }];
+}
+
+export async function readPackageMilestone(
+    identity: ProjectIdentity,
+    plan: LoadedPlanPackage,
+    version: string,
+): Promise<PackageDocuments> {
+    const entry = plan.metadata.history?.find((item) => item.version === version);
+    if (!entry) fail("missing", "Plan history version is unavailable.");
+    const paths = layout(identity);
+    const documents = await readDocuments(paths, join(historyDirectory(paths, plan.metadata.planId), entry.version));
+    if (milestoneDigest(documents) !== entry.digest) fail("changed_input", "Frozen milestone documents changed.");
+    return packageDocumentText(documents);
+}
+
+export function packageDocumentText(documents: PackageDocument[]): PackageDocuments {
+    const result: PackageDocuments = { "context.md": "", "validation.md": "" };
+    for (const document of documents) result[document.name] = decodePackageMarkdown(document.bytes);
+    return result;
+}
+
 export async function capturePlanPackageInput(
     identity: ProjectIdentity,
     planId: string,
@@ -1807,6 +1902,20 @@ export interface PlanPackageBatchWrite {
 function batchBytes(metadata: PlanPackageMetadata, documents: PackageDocuments): Record<string, string> {
     return { ...documents, "plan.wld.json": JSON.stringify(metadata, null, 2) + "\n" };
 }
+async function batchResourceNeedsWrite(
+    paths: PackageLayout,
+    path: string,
+    before: string | undefined,
+    after: string | undefined,
+): Promise<boolean> {
+    const bytes = await file(paths.home, path);
+    const current = bytes ? decodePackageMarkdown(bytes) : undefined;
+    if (current === after) return false;
+    if (current !== before)
+        fail("pending_recovery", "A package changed during authoring; preserving both generations.");
+    return true;
+}
+
 async function recoverAuthoringBatch(paths: PackageLayout, batch: ImportBatch): Promise<void> {
     const writes = batch.authoring!;
     if (
@@ -1821,28 +1930,34 @@ async function recoverAuthoringBatch(paths: PackageLayout, batch: ImportBatch): 
         if (write.before) metadataFrom(write.before.metadata);
         const after = batchBytes(write.metadata, write.documents);
         const before = write.before ? batchBytes(write.before.metadata, write.before.documents) : {};
-        for (const name of resources) {
-            if (!(name in after) && (await file(paths.home, join(paths.plans, write.metadata.name, name))))
-                fail(
-                    "pending_recovery",
-                    "An unexpected package resource appeared during authoring; preserving both generations.",
-                );
-        }
-        for (const name of Object.keys(after)) {
-            if (name !== "plan.wld.json" && !resources.includes(name as PackageResource))
-                fail("pending_recovery", "Invalid batch resource.");
-            const path = join(paths.plans, write.metadata.name, name);
-            const bytes = await file(paths.home, path);
-            const current = bytes ? new TextDecoder().decode(bytes) : undefined;
-            if (current !== before[name] && current !== after[name])
-                fail("pending_recovery", "A package changed during authoring; preserving both generations.");
+        if (
+            Object.keys(write.documents).some((name) => !resources.includes(name as PackageResource)) ||
+            typeof write.documents["context.md"] !== "string" ||
+            typeof write.documents["validation.md"] !== "string"
+        )
+            fail("pending_recovery", "Invalid batch resources.");
+        for (const name of [...resources, "plan.wld.json"]) {
+            await batchResourceNeedsWrite(
+                paths,
+                join(paths.plans, write.metadata.name, name),
+                before[name],
+                after[name],
+            );
         }
     }
     for (const write of writes) {
         const destination = join(paths.plans, write.metadata.name);
         await directory(paths, destination);
-        for (const [name, text] of Object.entries(batchBytes(write.metadata, write.documents)))
-            writeTextAtomically(join(destination, name), text);
+        const after = batchBytes(write.metadata, write.documents);
+        const before = write.before ? batchBytes(write.before.metadata, write.before.documents) : {};
+        for (const name of [...resources, "plan.wld.json"]) {
+            const path = join(destination, name);
+            if (!(await batchResourceNeedsWrite(paths, path, before[name], after[name]))) continue;
+            if (after[name] === undefined) {
+                await fs.unlink(path);
+                syncParentDirectory(path);
+            } else writeTextAtomically(path, after[name]);
+        }
     }
     if (batch.operation) {
         if (!writes.some((write) => write.metadata.planId === batch.operation!.planId))
@@ -1883,13 +1998,6 @@ export async function commitPlanPackageBatch(
                     Object.values(write.documents).some((value) => typeof value !== "string")
                 )
                     fail("missing_document", "Invalid authored package document.");
-                if (
-                    write.before &&
-                    Object.keys(write.before.documents).some(
-                        (name) => write.documents[name as PackageResource] === undefined,
-                    )
-                )
-                    fail("changed_input", "Authoring cannot remove existing package resources.");
                 const current = catalog.packages.find((plan) => plan.metadata.planId === write.metadata.planId);
                 if (write.before) {
                     if (
@@ -1901,7 +2009,7 @@ export async function commitPlanPackageBatch(
                     if (write.metadata.revision !== current.metadata.revision + 1)
                         fail("changed_input", "An authored Plan requires the next metadata revision.");
                     const observed = Object.fromEntries(
-                        current.documents.map((doc) => [doc.name, new TextDecoder().decode(doc.bytes)]),
+                        current.documents.map((doc) => [doc.name, decodePackageMarkdown(doc.bytes)]),
                     );
                     if (
                         Object.keys(observed).length !== Object.keys(write.before.documents).length ||

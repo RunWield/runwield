@@ -1433,3 +1433,22 @@ export async function settleRetainedExecutionAbandonment(cwd: string, name: stri
         expectedRevision: operationHash(JSON.stringify(current.controller)),
     });
 }
+
+export async function readManagedPlanHistory(
+    cwd: string,
+    reference: string,
+): Promise<import("./history.ts").PlanHistory> {
+    const { result } = await (await client(cwd, true)).execute({ kind: "list-history", reference });
+    if (!("history" in result)) throw new Error("Managed Plan history is unavailable.");
+    return result.history;
+}
+
+export async function showManagedPlanMilestone(
+    cwd: string,
+    reference: string,
+    version: string,
+): Promise<import("./packages.ts").PackageDocuments> {
+    const { result } = await (await client(cwd, true)).execute({ kind: "show-history", reference, version });
+    if (!("milestoneDocuments" in result)) throw new Error("Managed Plan milestone is unavailable.");
+    return result.milestoneDocuments;
+}

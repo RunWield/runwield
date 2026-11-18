@@ -542,10 +542,16 @@ export async function applySequenceReviewDecision({
                         original.packageInput!,
                         matchesReviewedDocument,
                     );
-                    await updatePackageWorkflowMetadata(write.doc.planName, write.attrs, writeRevision, {
-                        review: decision.approved ? input : undefined,
-                        readiness: decision.approved ? input : undefined,
-                    });
+                    await updatePackageWorkflowMetadata(
+                        write.doc.planName,
+                        write.attrs,
+                        writeRevision,
+                        {
+                            review: decision.approved ? input : undefined,
+                            readiness: decision.approved ? input : undefined,
+                        },
+                        decision.approved ? "approved" : undefined,
+                    );
                     write.revision = (await loadPlan(cwd, write.doc.planName))!.revision;
                 }
                 await markEffect("sequence_review_prepared", {

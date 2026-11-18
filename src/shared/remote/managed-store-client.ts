@@ -107,6 +107,9 @@ async function executeManagedFixture() {
             authorLocalPlan,
             loadPlan,
             listPlans,
+            listPlanHistory,
+            showPlanMilestone,
+            restorePlanMilestone,
             recordPlanEvent,
             withLocalPlanWorkflow,
             reservePlanExecution,
@@ -653,6 +656,27 @@ async function executeManagedFixture() {
         await restoreSavedPlan(input.cwd, plan.attrs.planId, "public-tool");
         if ((await listArchivedPlans(input.cwd)).length || !(await loadPlan(input.cwd, "public-tool")))
             throw new Error("Archive restoration did not preserve identity.");
+        const history = await listPlanHistory(input.cwd, plan.attrs.planId);
+        const approvedVersion = history.milestones.find((item) => item.milestone === "approved");
+        if (!approvedVersion || !history.milestones.some((item) => item.milestone === "delivered"))
+            throw new Error("The laptop did not retain the reviewed and delivered inputs.");
+        const frozen = await showPlanMilestone(input.cwd, plan.attrs.planId, approvedVersion.version);
+        const edit = await savePlanProse(input.cwd, "public-tool", "# Later live edit\n", history.revision);
+        const restoredRevision = await restorePlanMilestone(
+            input.cwd,
+            plan.attrs.planId,
+            approvedVersion.version,
+            edit,
+        );
+        const replay = await restorePlanMilestone(input.cwd, plan.attrs.planId, approvedVersion.version, edit);
+        const restoredDocument = await loadPlan(input.cwd, "public-tool");
+        if (
+            restoredRevision !== replay ||
+            restoredDocument?.revision !== restoredRevision ||
+            restoredDocument.body !== frozen["context.md"] ||
+            restoredDocument.attrs.status !== delivered.attrs.status
+        )
+            throw new Error("Managed history replay changed the restore outcome or current lifecycle state.");
         await authorLocalPlan(input.cwd, {
             planName: "managed-sequence",
             contextMarkdown: "# Sequence\n",
@@ -1294,6 +1318,13 @@ async function executeManagedFixture() {
             closedRejected = true;
         }
         if (!closedRejected) throw new Error("Closed owner connection fell back to local data.");
+        let historyUnavailable = false;
+        try {
+            await listPlanHistory(input.cwd, plan.attrs.planId);
+        } catch {
+            historyUnavailable = true;
+        }
+        if (!historyUnavailable) throw new Error("Disconnected history read selected the execution account.");
         const reconnected = await (
             await import("../captured-process.ts")
         ).captureForegroundProcess(process.execPath, {
