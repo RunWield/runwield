@@ -2463,7 +2463,9 @@ provider support documented in terms of current configuration.
 
 **Requirement: Supported development runtime.** Local source, test, build, and release commands accept the Bun
 range in `package.json` (`^1.4.0`: at least 1.4.0 and below 2.0.0). CI and release artifacts use the exact
-`.bun-version` pin for repeatable builds.
+`.bun-version` pin for repeatable builds. Release source checks install the real Stable Mnemoteca with
+checksum-verified native dependencies; an unavailable dependency download fails setup rather than skipping
+Work Record integration checks.
 
 - Given Bun 1.4.4 or another stable version in the supported range, the runtime check permits local commands.
 - Given Bun below 1.4.0, Bun 2.x, or another runtime, the check stops with the required range and detected runtime.

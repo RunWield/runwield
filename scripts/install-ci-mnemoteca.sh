@@ -29,4 +29,6 @@ bin="$RUNNER_TEMP/runwield-ci-bin"
 mkdir -p "$bin"
 tar -xzf "$download/$asset" -C "$bin" mnemoteca
 "$bin/mnemoteca" --version
+# The pinned GitHub runtime archives are unavailable; use the same version's verified PyPI native libraries.
+bun "$(dirname "$0")/install-ci-onnxruntime.ts" "${XDG_DATA_HOME:-$HOME/.local/share}/mnemoteca/lib"
 "$bin/mnemoteca" setup
