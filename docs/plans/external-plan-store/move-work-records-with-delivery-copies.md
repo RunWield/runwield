@@ -46,8 +46,8 @@ recording and package cleanup skips record approval/index settlement. `store.ts`
 `getWorkRecordIndexCollectionName` still uses a folder basename, and `runWorkRecordsCommand` has no import action.
 Runtime index files already have a home location; that alone does not move the canonical records or stabilize lookup.
 
-Owning requirements: [Work Record store](../../prd/plan-store-prd.md#work-record-store),
-[Delivery copies](../../prd/plan-store-prd.md#repository-footprint-and-delivery-copies), and
+Owning requirements: [Work Record store](../../prd/runwield-core-prd.md#work-records),
+[Delivery copies](../../prd/runwield-core-prd.md#delivery-and-publication), and
 [Work records](../../prd/runwield-core-prd.md#work-records). This child adds the internal home-record/import contract,
 default Work Record copies, independent copy policy and stable retrieval. Preserve truthful completion confidence,
 recoverable best-effort recording, current-record filtering and explicit supersession. Public activation, surface work,

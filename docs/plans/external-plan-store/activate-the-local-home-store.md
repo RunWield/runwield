@@ -48,7 +48,7 @@ status: "verified"
 This draft implements one slice of the [External Project State and Plan Store Epic](../external-plan-store.md).
 The preceding slices supply the persistence, workflow and user-surface contracts, including browser review used by ordinary CLI workflows. Public startup must switch those consumers as one supported format, not expose half-built new storage or retain a permanent alternate live backend.
 
-Owning requirements: [Plan import](../../prd/plan-store-prd.md#plan-import); [Plan store](../../prd/plan-store-prd.md#plan-store); [Launch mode](../../prd/plan-store-prd.md#storage-ownership-by-launch-mode); [Plan authoring](../../prd/runwield-core-prd.md#plan-authoring-and-external-adoption). These are target changes; preserve the existing behavior named below.
+Owning requirements: [Plan import](../../prd/runwield-core-prd.md#plan-authoring-and-external-adoption); [Plan store](../../prd/runwield-core-prd.md#plan-authoring-and-external-adoption); [Launch mode](../../prd/runwield-core-prd.md#remote-connection); [Plan authoring](../../prd/runwield-core-prd.md#plan-authoring-and-external-adoption). These are target changes; preserve the existing behavior named below.
 
 ### Prepared-branch findings
 

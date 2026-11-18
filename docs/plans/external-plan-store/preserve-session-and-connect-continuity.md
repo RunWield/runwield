@@ -62,7 +62,7 @@ Current constraints verified in source:
 Owning requirements: add move/link continuity to [Session continuity](../../prd/runwield-core-prd.md#session-continuity)
 and [Connect recovery](../../prd/runwield-connect-prd.md#lazy-project-setup-and-recovery), using the first child's
 [stable identity](../../prd/runwield-core-prd.md#project-context-and-initialization). This delivers only the Session and
-Connect portion of [Project identity](../../prd/plan-store-prd.md#project-identity). Preserve private history,
+Connect portion of [Project identity](../../prd/runwield-core-prd.md#project-context-and-initialization). Preserve private history,
 operation-scoped writer authority, registration access decisions, and request ownership. Plan/Work Record relocation
 and managed-remote Project-store persistence remain targets.
 

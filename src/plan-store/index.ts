@@ -420,3 +420,10 @@ export {
 export { archivePlansByStatus } from "./archiving.ts";
 
 export { listPlanHistory, showPlanMilestone, restorePlanMilestone, type PlanHistory } from "./history.ts";
+
+export * from "./retention-selection.ts";
+export { previewPlanRetention, previewRecordRetention, confirmRetention } from "./retention.ts";
+
+export { readExecutionRetention, type RetentionContext } from "./retention.ts";
+
+export { pendingPruneRequest, confirmPruneRequest } from "./prune-requests.ts";

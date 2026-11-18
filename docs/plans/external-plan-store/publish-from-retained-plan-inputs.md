@@ -49,13 +49,13 @@ settlement together; removing only the pause would enter the legacy document pat
 
 Owning requirements and proposed changes:
 
-- [Delivery copies](../../prd/plan-store-prd.md#repository-footprint-and-delivery-copies): implement the internal
+- [Delivery copies](../../prd/runwield-core-prd.md#delivery-and-publication): implement the internal
   package contract for optional Plan copies, frozen copy policy, remembered destination paths and one copies commit.
   Preserve the rule that copies are never live authority.
-- [Plan store](../../prd/plan-store-prd.md#plan-store) and
+- [Plan store](../../prd/runwield-core-prd.md#plan-authoring-and-external-adoption) and
   [Execution and recovery](../../prd/runwield-core-prd.md#execution-validation-and-recovery): complete an admitted
   package only after applicable proof; recover lost acknowledgements without repeating publication or overwriting prose.
-- [Work Record store](../../prd/plan-store-prd.md#work-record-store) and
+- [Work Record store](../../prd/runwield-core-prd.md#work-records) and
   [Work records](../../prd/runwield-core-prd.md#work-records): retain exact Recorder source and pending evidence after
   code checkout removal, preserving provenance, completion confidence and Epic Ticket aggregation.
 

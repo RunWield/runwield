@@ -1,4 +1,10 @@
-import { readLocalHomeStore, withLocalProjectAction } from "../../plan-store/index.ts";
+import {
+    previewRecordRetention,
+    pendingPruneRequest,
+    confirmPruneRequest,
+    readLocalHomeStore,
+    withLocalProjectAction,
+} from "../../plan-store/index.ts";
 import { importWorkRecords } from "../../shared/work-records/import.ts";
 /**
  * @module cmd/wr
@@ -147,6 +153,34 @@ async function runWorkRecordsCommandInOwner(argv: string[], options: WorkRecordC
     const mnemotecaPort = options.mnemotecaPort;
     const subcommand = argv[0] && !argv[0].startsWith("-") ? argv[0] : "list";
     const rest = subcommand === "list" ? (argv[0] === "list" ? argv.slice(1) : argv) : argv.slice(1);
+
+    if (subcommand === "prune") {
+        const flags = parseArgs(rest, { boolean: ["dry-run", "yes"] });
+        rejectUnknownFlags(flags, ["yes", "dry-run"]);
+        if (flags._.length) throw new Error("Usage: wld wr prune [--dry-run] [--yes]");
+        let approved = await pendingPruneRequest(getCwd(), "records");
+        if (approved)
+            console.log(`[RunWield] Interrupted prune has ${approved.length} approved Work Record(s) remaining.`);
+        else {
+            const { due, policy } = await previewRecordRetention(getCwd());
+            console.log(
+                `[RunWield] Work Record retention keeps the newest ${policy.keepLast} and records within ${policy.retentionDays} days. Due: ${due.length}`,
+            );
+            for (const record of due) console.log(`  ${record.recordId}  ${record.title}`);
+            approved = due.map(({ token, recordId }) => ({ token, label: recordId }));
+        }
+        if (flags["dry-run"] || !approved.length) return;
+        if (
+            !flags.yes &&
+            !/^(yes|y)$/i.test(prompt("Delete these Work Records? Type yes to continue:")?.trim() || "")
+        ) {
+            console.log("[RunWield] Work Record prune canceled.");
+            return;
+        }
+        const { deleted, skipped } = await confirmPruneRequest(getCwd(), "records", approved, mnemotecaPort);
+        console.log(`[RunWield] Pruned ${deleted.length} Work Record(s). Skipped ${skipped.length}.`);
+        return;
+    }
 
     if (subcommand === "import") {
         if (rest.length !== 1 || rest[0].startsWith("-")) throw new Error("Usage: wld wr import <path>");
@@ -369,4 +403,10 @@ async function runWorkRecordsCommandInOwner(argv: string[], options: WorkRecordC
     rejectUnknownFlags(parsed, ["all"]);
     if (parsed._.length) throw new Error("Usage: wld wr list [--all]");
     console.log(formatWorkRecordList(await listWorkRecords(getCwd()), { includeAll: Boolean(parsed.all) }));
+    try {
+        const { due } = await previewRecordRetention(getCwd());
+        if (due.length) console.log(`[RunWield] ${due.length} Work Record(s) past retention · run \`wld wr prune\``);
+    } catch (error) {
+        console.warn(`Work Record retention warning: ${error instanceof Error ? error.message : String(error)}`);
+    }
 }

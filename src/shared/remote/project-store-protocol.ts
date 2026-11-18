@@ -29,6 +29,9 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
     const common = ["kind", "planId", "operationId", "expectedRevision"];
     const recordingReference = "reference" in command && command.reference !== undefined ? ["reference"] : [];
     const commandFields = {
+        "preview-retention": ["kind", "offset", "snapshot"],
+        "settle-prune-copies": ["kind", "target", "token"],
+        "confirm-retention": ["kind", "target", "token"],
         "inspect-owner": ["kind"],
         "repair-owner": ["kind", "operationId"],
         "import-plans": ["kind", "operationId", "selection"],
@@ -176,12 +179,17 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
     )
         throw new Error("Invalid history version.");
     if (
-        (command.kind === "list-history" || command.kind === "show-history") &&
+        (command.kind === "list-history" || command.kind === "show-history" || command.kind === "preview-retention") &&
         (!Number.isSafeInteger(command.offset) ||
             command.offset < 0 ||
             (command.offset === 0 ? command.snapshot !== "" : !/^[a-f0-9]{64}$/.test(command.snapshot)))
     )
         throw new Error("Invalid history cursor.");
+    if (
+        (command.kind === "confirm-retention" || command.kind === "settle-prune-copies") &&
+        (!["plans", "records"].includes(command.target) || !/^[a-f0-9]{64}$/.test(command.token))
+    )
+        throw new Error("Invalid prune confirmation.");
     if ("operationId" in command && !/^[a-f0-9-]{36}$/.test(command.operationId))
         throw new Error("Invalid operation identity.");
     if ("expectedRevision" in command && !/^[a-f0-9]{64}$/.test(command.expectedRevision))
@@ -464,6 +472,8 @@ export function validateProjectStoreReply(reply: ProjectStoreReply, request: Pro
     if ("children" in result) allowed = ["children"];
     if ("retainedRecording" in result) allowed = ["retainedRecording"];
     if ("retainedExecution" in result) allowed = ["retainedExecution"];
+    if ("retentionPage" in result) allowed = ["retentionPage"];
+    if ("pruneResult" in result) allowed = ["pruneResult"];
     if ("historyPage" in result) allowed = ["historyPage"];
     if ("archives" in result) allowed = ["archives"];
     if ("archived" in result) allowed = ["archived"];
@@ -474,7 +484,14 @@ export function validateProjectStoreReply(reply: ProjectStoreReply, request: Pro
     if ("recordResources" in result) allowed = ["recordResources"];
     if ("recordSearch" in result) allowed = ["recordSearch"];
     if (Object.keys(result).some((key) => !allowed.includes(key))) throw new Error("Unsupported reply result fields.");
-    if (request.command.kind === "inspect-owner") {
+    if (request.command.kind === "confirm-retention" || request.command.kind === "settle-prune-copies") {
+        if (
+            !("pruneResult" in result) ||
+            typeof result.pruneResult.deleted !== "boolean" ||
+            !Array.isArray(result.pruneResult.copies)
+        )
+            throw new Error("Invalid prune result.");
+    } else if (request.command.kind === "inspect-owner") {
         if (!("ownerDiagnostics" in result) || !Array.isArray(result.ownerDiagnostics))
             throw new Error("Invalid owner diagnostics.");
     } else if (request.command.kind === "read-import-result") {
@@ -527,9 +544,15 @@ export function validateProjectStoreReply(reply: ProjectStoreReply, request: Pro
                     (request.command.attemptId && result.retainedExecution.attempt.id !== request.command.attemptId)))
         )
             throw new Error("Invalid retained execution reply.");
-    } else if (request.command.kind === "list-history" || request.command.kind === "show-history") {
-        if (!("historyPage" in result)) throw new Error("Missing Plan history page.");
-        const page = result.historyPage;
+    } else if (
+        request.command.kind === "list-history" ||
+        request.command.kind === "show-history" ||
+        request.command.kind === "preview-retention"
+    ) {
+        const page =
+            request.command.kind === "preview-retention"
+                ? "retentionPage" in result && result.retentionPage
+                : "historyPage" in result && result.historyPage;
         if (
             !page ||
             typeof page.text !== "string" ||

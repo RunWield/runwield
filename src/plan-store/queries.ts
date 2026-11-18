@@ -137,8 +137,7 @@ export async function restoreArchivedPlan(
 export async function deleteArchivedPlanUnit(
     ...args: Parameters<typeof import("../plan-store.js").deleteArchivedPlanUnit>
 ): ReturnType<typeof import("../plan-store.js").deleteArchivedPlanUnit> {
-    if (managedPlanStoreActive())
-        throw new Error("Personal Plan history retention is not enabled; archived home packages remain available.");
+    if (managedPlanStoreActive()) throw new Error("Pruning home Plans requires a confirmed retention preview.");
     return await (await import("../plan-store.js")).deleteArchivedPlanUnit(...args);
 }
 

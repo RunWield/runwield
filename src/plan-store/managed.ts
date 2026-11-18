@@ -1458,17 +1458,25 @@ export async function settleRetainedExecutionAbandonment(cwd: string, name: stri
 async function readHistoryPages(cwd: string, reference: string, version?: string) {
     const owner = await client(cwd);
     if (!owner) throw new Error("Plan history requires an admitted Plan.");
+    return await readPagedStoreText(owner, (offset, snapshot) =>
+        version === undefined
+            ? { kind: "list-history", reference, offset, snapshot }
+            : { kind: "show-history", reference, version, offset, snapshot },
+    );
+}
+type PagedCommand = Extract<ProjectStoreCommand, { kind: "list-history" | "show-history" | "preview-retention" }>;
+async function readPagedStoreText(
+    owner: ProjectStoreClient,
+    request: (offset: number, snapshot: string) => PagedCommand,
+) {
     const chunks: string[] = [];
-    let offset = 0;
-    let snapshot = "";
+    let offset = 0,
+        snapshot = "";
     while (true) {
-        const command =
-            version === undefined
-                ? { kind: "list-history" as const, reference, offset, snapshot }
-                : { kind: "show-history" as const, reference, version, offset, snapshot };
-        const { result } = await owner.execute(command);
-        if (!("historyPage" in result)) throw new Error("Missing Plan history page.");
-        const page = result.historyPage;
+        const { result } = await owner.execute(request(offset, snapshot));
+        const page =
+            "historyPage" in result ? result.historyPage : "retentionPage" in result ? result.retentionPage : null;
+        if (!page) throw new Error("Missing Project store page.");
         chunks.push(page.text);
         if (page.complete) {
             const text = chunks.join("");
@@ -1486,4 +1494,43 @@ export async function readManagedPlanHistory(cwd: string, reference: string) {
 
 export async function showManagedPlanMilestone(cwd: string, reference: string, version: string) {
     return parseMilestoneDocuments(await readHistoryPages(cwd, reference, version));
+}
+
+type PreviewRetentionCommand = { kind: "preview-retention" };
+type ConfirmRetentionCommand = Extract<ProjectStoreCommand, { kind: "confirm-retention" | "settle-prune-copies" }>;
+export function requestManagedRetention(
+    cwd: string,
+    command: PreviewRetentionCommand,
+): Promise<import("./retention.ts").RetentionPreview>;
+export function requestManagedRetention(
+    cwd: string,
+    command: ConfirmRetentionCommand,
+): Promise<import("./retention.ts").PruneResult>;
+export async function requestManagedRetention(cwd: string, command: PreviewRetentionCommand | ConfirmRetentionCommand) {
+    const owner = command.kind === "preview-retention" ? await client(cwd) : await client(cwd, true);
+    if (!owner) {
+        const policy = (await import("./retention.ts")).retentionPolicies(cwd);
+        return {
+            plans: {
+                policy: policy.plans,
+                units: [],
+                due: [],
+                ineligible: [],
+                sparedByKeepLast: [],
+                withinRetention: [],
+            },
+            records: { policy: policy.records, due: [] },
+        };
+    }
+    if (command.kind === "preview-retention") {
+        const preview: import("./retention.ts").RetentionPreview = JSON.parse(
+            await readPagedStoreText(owner, (offset, snapshot) => ({ kind: "preview-retention", offset, snapshot })),
+        );
+        if (!Array.isArray(preview.plans?.due) || !Array.isArray(preview.records?.due))
+            throw new Error("Invalid prune preview.");
+        return preview;
+    }
+    const { result } = await owner.execute(command);
+    if ("pruneResult" in result) return result.pruneResult;
+    throw new Error("Missing retention result from the Project owner.");
 }

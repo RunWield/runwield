@@ -1,7 +1,7 @@
 # Composed Plan store migration evidence
 
 This records Plan 13 qualification on 2026-11-17. Automated integration results and actual SSH observations are separate.
-History and retention remain the work of Plans 14 and 15. This report does not accept the proposed architecture ADR.
+Plans 14 and 15 cover history and retention separately. This report does not accept the proposed architecture ADR.
 
 ## Automated integration
 

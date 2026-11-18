@@ -49,7 +49,7 @@ separate controller files, and checkout-scoped transition locks.
 
 Owning requirements and proposed changes:
 
-- [Plan store](../../prd/plan-store-prd.md#plan-store): implement **Every Plan has one live copy**, **RunWield metadata
+- [Plan store](../../prd/runwield-core-prd.md#plan-authoring-and-external-adoption): implement **Every Plan has one live copy**, **RunWield metadata
   lives beside the documents**, and **Recovery reads the one copy** for explicitly admitted internal package workflows.
 - [Plan lifecycle](../../prd/runwield-core-prd.md#plan-lifecycle) and
   [Plan review](../../prd/runwield-core-prd.md#plan-review): preserve existing events, review policy and readiness while

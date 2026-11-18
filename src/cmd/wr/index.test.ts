@@ -410,3 +410,55 @@ test("wld wr retry regenerates only its completed Plan and is idempotent", async
         assertEquals((await listWorkRecords(projectRoot)).length, 1);
     });
 });
+
+test("listing, preview and decline preserve an imported record and its committed copy until confirmation", async () => {
+    await withRuntimeCommandFixture("wr-prune-", async ({ projectRoot }) => {
+        process.chdir(projectRoot);
+        const { join } = await import("node:path");
+        const fs = await import("node:fs/promises");
+        const { git } = await import("../../shared/git-test-fixture.ts");
+        const { setCustomSetting } = await import("../../shared/settings.js");
+        const { formatWorkRecordMarkdown } = await import("../../shared/work-records/markdown.js");
+        const { admitProjectIdentity } = await import("../../shared/project-identity.ts");
+        await git(projectRoot, ["init", "-q"]);
+        await admitProjectIdentity(projectRoot);
+        await setCustomSetting("workRecords", { retentionDays: 0, retentionKeepLast: 0 }, "project", projectRoot);
+        const path = join(projectRoot, "delivered.md");
+        const bytes = formatWorkRecordMarkdown(
+            recordAttrs(CURRENT_RECORD_ID, "old-plan"),
+            "# Delivered\n\n## Summary\n\nDistinct outcome.",
+        );
+        await fs.writeFile(path, bytes);
+        await git(projectRoot, ["add", "delivered.md"]);
+        await git(projectRoot, [
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.test",
+            "commit",
+            "-m",
+            "Record",
+        ]);
+        const options = { mnemotecaPort: createWorkRecordMnemotecaFixture() };
+        await captureCommand(["import", path], options);
+        assertStringIncludes(await captureCommand([], options), "wld wr prune");
+        assertStringIncludes(await captureCommand(["prune", "--dry-run"], options), "Due: 1");
+        const original = globalThis.prompt;
+        try {
+            globalThis.prompt = () => "no";
+            assertStringIncludes(await captureCommand(["prune"], options), "canceled");
+        } finally {
+            globalThis.prompt = original;
+        }
+        assertEquals(await fs.readFile(path, "utf8"), bytes);
+        assertEquals((await findWorkRecordById(projectRoot, CURRENT_RECORD_ID))?.markdown, bytes);
+        assertStringIncludes(await captureCommand(["prune", "--yes"], options), "Pruned 1");
+        assertEquals(await findWorkRecordById(projectRoot, CURRENT_RECORD_ID), null);
+        assertEquals(await fs.stat(path).catch(() => null), null);
+        assertStringIncludes(await git(projectRoot, ["status", "--short", "--", "delivered.md"]), "D delivered.md");
+        assertEquals(options.mnemotecaPort.snapshot().length, 0);
+        assertEquals((await captureCommand(["search", "Distinct"], options)).includes(CURRENT_RECORD_ID), false);
+        await captureCommand(["index", "rebuild"], options);
+        assertEquals((await captureCommand(["search", "Distinct"], options)).includes(CURRENT_RECORD_ID), false);
+    });
+});

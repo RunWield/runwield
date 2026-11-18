@@ -1018,9 +1018,24 @@ async function readBatch(paths: PackageLayout): Promise<ImportBatch | null> {
 async function scan(paths: PackageLayout): Promise<PackageCatalog> {
     for (let retry = 0; retry < 3; retry++) {
         const before = await readBatch(paths);
+        const pruneBefore = await readPruneJournal(paths);
         const catalog = await scanOnce(paths);
         const after = await readBatch(paths);
-        if (JSON.stringify(before) !== JSON.stringify(after)) continue;
+        const pruneAfter = await readPruneJournal(paths);
+        if (
+            JSON.stringify(before) !== JSON.stringify(after) ||
+            JSON.stringify(pruneBefore) !== JSON.stringify(pruneAfter)
+        )
+            continue;
+        if (pruneAfter && pruneAfter.phase !== "committed") {
+            const affected = new Set(pruneAfter.members.map((member) => member.planId));
+            catalog.packages = catalog.packages.filter((plan) => !affected.has(plan.metadata.planId));
+            catalog.issues.push({
+                kind: "pending_recovery",
+                path: join(paths.internal, "pruning.json"),
+                message: "An archived Plan family is pending prune recovery.",
+            });
+        }
         if (after?.phase === "pending") {
             catalog.packages = catalog.packages.filter(
                 (p) =>
@@ -1308,6 +1323,7 @@ async function mutate<T>(
             plans.push(lock);
             await lock.lock(true);
         }
+        await resumePackagePrune(paths);
         await recover(paths);
         recoverOperationEffect(paths.internal, paths.plans);
         if (selected === null) {
@@ -2620,4 +2636,169 @@ export async function readManagedPlanImportResult(
         importedPlanIds,
         existingPlanIds: record.prepared.existingPlanIds,
     };
+}
+
+interface PruneMember {
+    planId: string;
+    name: string;
+    metadataDigest: string;
+    documents: { name: string; hash: string }[];
+    versions: string[];
+}
+interface PruneJournal {
+    phase: "staging" | "restoring" | "committed";
+    members: PruneMember[];
+}
+async function restorePruneTree(paths: PackageLayout, staged: string, path: string): Promise<void> {
+    await safe(paths.home, path);
+    const original = await fs.lstat(staged);
+    if (original.isDirectory()) {
+        if (!(await stat(path))) {
+            await fs.rename(staged, path);
+        } else {
+            for (const name of await fs.readdir(staged))
+                await restorePruneTree(paths, join(staged, name), join(path, name));
+            await fs.rmdir(staged);
+        }
+    } else {
+        // An editor may have saved newer bytes at this name while the family was detached.
+        try {
+            await fs.link(staged, path);
+        } catch (error) {
+            if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
+        }
+        await fs.unlink(staged);
+    }
+    syncParentDirectory(path);
+    syncParentDirectory(staged);
+}
+async function readPruneJournal(paths: PackageLayout): Promise<PruneJournal | null> {
+    const bytes = await file(paths.home, join(paths.internal, "pruning.json"));
+    if (!bytes) return null;
+    const stored: PruneJournal | PruneMember[] = JSON.parse(new TextDecoder().decode(bytes));
+    const journal: PruneJournal = Array.isArray(stored) ? { phase: "staging", members: stored } : stored;
+    if (!["staging", "restoring", "committed"].includes(journal.phase)) throw new Error("Invalid prune journal.");
+    return journal;
+}
+async function resumePackagePrune(paths: PackageLayout, freshlyApproved = false): Promise<boolean> {
+    const intentPath = join(paths.internal, "pruning.json");
+    const journal = await readPruneJournal(paths);
+    if (!journal) return false;
+    // An interrupted staging pass has lost the retention and Recorder locks. Restore it before checking eligibility again.
+    if (journal.phase === "staging" && !freshlyApproved) {
+        journal.phase = "restoring";
+        writeJsonAtomically(intentPath, journal);
+    }
+    const stage = join(paths.internal, "prune-staging");
+    await directory(paths, stage);
+    const names = journal.members.map((member) => normalizeName(member.name));
+    const roots = names
+        .filter((name) => !names.some((other) => name.startsWith(other + "/")))
+        .map((name, i) => ({
+            name,
+            path: join(paths.plans, name),
+            staged: join(stage, String(i)),
+        }));
+    const members = journal.members.map((member) => {
+        const id = requireId(member.planId);
+        const root = roots.find((root) => root.name === member.name || member.name.startsWith(root.name + "/"))!;
+        const directory = join(root.staged, relative(root.path, join(paths.plans, member.name)));
+        if (
+            member.documents.some((doc) => !resources.includes(doc.name as PackageResource)) ||
+            member.versions.some((version) => !/^[a-f0-9-]{36}$/.test(version))
+        )
+            throw new Error("Invalid approved Plan resources.");
+        return { ...member, directory, history: historyDirectory(paths, id) };
+    });
+    if (journal.phase === "staging") {
+        let matches = true;
+        try {
+            // Detach each subtree before checking its contents. A pathname save can no longer replace a checked document.
+            for (const root of roots) {
+                await safe(paths.home, root.path);
+                await safe(paths.home, root.staged);
+                if (!(await stat(root.staged))) {
+                    if (!(await stat(root.path))) {
+                        matches = false;
+                        break;
+                    }
+                    await fs.rename(root.path, root.staged);
+                    syncParentDirectory(root.path);
+                    syncParentDirectory(root.staged);
+                }
+                if (await stat(root.path)) matches = false;
+            }
+            for (const member of members) {
+                const metadata = await file(paths.home, join(member.directory, "plan.wld.json"));
+                if (
+                    !metadata ||
+                    digest(metadata) !== member.metadataDigest ||
+                    parseMetadata(metadata).planId !== member.planId
+                )
+                    matches = false;
+                for (const name of resources) {
+                    const approved = member.documents.find((doc) => doc.name === name);
+                    const current = await file(paths.home, join(member.directory, name));
+                    if ((current ? digest(current) : undefined) !== approved?.hash) matches = false;
+                }
+            }
+        } catch (error) {
+            journal.phase = "restoring";
+            writeJsonAtomically(intentPath, journal);
+            await resumePackagePrune(paths);
+            throw error;
+        }
+        journal.phase = matches ? "committed" : "restoring";
+        writeJsonAtomically(intentPath, journal);
+    }
+    if (journal.phase === "committed") {
+        for (const member of members) {
+            for (const name of ["plan.wld.json", ...member.documents.map((doc) => doc.name)]) {
+                const path = join(member.directory, name);
+                await safe(paths.home, path);
+                await fs.rm(path, { force: true });
+            }
+            for (const version of member.versions) {
+                const path = join(member.history, version);
+                await safe(paths.home, path);
+                await fs.rm(path, { recursive: true, force: true });
+            }
+            for (const path of [member.directory, member.history]) {
+                await safe(paths.home, path);
+                await fs.rmdir(path).catch((error: NodeJS.ErrnoException) => {
+                    if (!["ENOENT", "ENOTEMPTY", "EEXIST"].includes(error.code || "")) throw error;
+                });
+            }
+        }
+    }
+    // Restore the family on a mismatch, or return unrelated files after committing the exact approved set.
+    for (const root of roots) if (await stat(root.staged)) await restorePruneTree(paths, root.staged, root.path);
+    await fs.rmdir(stage);
+    await fs.unlink(intentPath);
+    syncParentDirectory(intentPath);
+    return journal.phase === "committed";
+}
+/** Catalog lock serializes replay before another writer can reuse an approved name. */
+export async function prunePackageFamily(identity: ProjectIdentity, family: LoadedPlanPackage[]) {
+    return await mutate(
+        identity,
+        family.map((plan) => plan.metadata.planId),
+        async (paths) => {
+            const members: PruneMember[] = [];
+            for (const { metadata, documents, path } of family.toSorted((a, b) => b.path.length - a.path.length)) {
+                const bytes = await file(paths.home, join(path, "plan.wld.json"));
+                if (!bytes || JSON.stringify(parseMetadata(bytes)) !== JSON.stringify(metadata))
+                    throw new Error("Approved Plan identity changed.");
+                members.push({
+                    planId: metadata.planId,
+                    name: metadata.name,
+                    metadataDigest: digest(bytes),
+                    documents: documents.map(({ name, hash }) => ({ name, hash })),
+                    versions: (metadata.history || []).map((h) => h.version),
+                });
+            }
+            writeJsonAtomically(join(paths.internal, "pruning.json"), { phase: "staging", members });
+            return await resumePackagePrune(paths, true);
+        },
+    );
 }

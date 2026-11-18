@@ -495,17 +495,17 @@ planning worktree for an Epic child does not make the Plan In Progress. _Avoid_:
 **On-Hold Plan**: A deferred non-verified Plan that preserves its prior Plan Status and staleness baseline for a future
 Resume Check. _Avoid_: Archived plan, canceled plan, completed plan
 
-**Archived Plan**: A terminal or force-archived Plan moved under `docs/plans/archived/` as short-lived staging before
-Archive Prune removes it after a Work Record exists and retention policy allows removal. _Avoid_: Current spec,
-permanent knowledge source, Work Record
+**Archived Plan**: A Plan retained by its personal owner after it leaves the active catalog. Its documents and milestone
+history remain available until the user restores it or confirms eligible pruning.
 
-**Plan Archive Retention**: The repository-owned policy in `.wld/settings.json` that controls when archived Plans become
-eligible for Archive Prune and how many recent eligible Plans stay spared. _Avoid_: User preference, global setting,
-automatic deletion
+**Plan Archive Retention**: Project settings that keep recent archived Plan families. A family needs Work Record
+coverage before it can be pruned. Unfinished publication and recording protect required evidence.
 
-**Archive Prune**: The explicit `wld plans prune` action that deletes eligible Archived Plans from the working tree for
-reviewable commit. It never deletes a Plan without Work Record coverage. _Avoid_: Auto-cleanup, Work Record pruning,
-archiving
+**Archive Prune**: The confirmed removal of eligible archived Plan families and their milestone history from the personal
+store. Recorded repository copies can be removed from the bound working tree for the user to commit.
+
+**Work Record Retention**: Independent Project settings that keep the newest Work Records and those inside the recent
+window. Records covering retained archived Plans or needed for unfinished recording or publication remain available.
 
 **Resume Check**: The pre-resume inspection for an On-Hold Plan that checks staleness and worktree risk before restoring
 the held Plan Status. _Avoid_: Workflow Validation, plan validation, verify-and-resume

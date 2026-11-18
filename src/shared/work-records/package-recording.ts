@@ -44,10 +44,18 @@ export async function readPreparedPackageRecord(attemptId: string): Promise<Reco
         if (error.code === "ENOENT") return null;
         throw error;
     });
-    if (!text) return null;
+    if (text === null) return null;
+    if (!text.trim()) throw new Error("Recording preparation is empty.");
     const state: RecordingPreparation = JSON.parse(text);
-    if (state.version !== 1 || state.attemptId !== attemptId)
+    if (
+        state.version !== 1 ||
+        state.attemptId !== attemptId ||
+        typeof state.recordId !== "string" ||
+        !/^[a-f0-9-]{36}$/i.test(state.recordId) ||
+        (state.settled !== undefined && typeof state.settled !== "boolean")
+    )
         throw new Error("Recording preparation identity changed.");
+    if (state.sections !== undefined) normalizeRecorderOutput(state.sections);
     return state;
 }
 export async function inspectPreparedPackageRecord(attemptId: string) {
@@ -225,4 +233,34 @@ export async function settlePreparedRecord(
         return `Delivery is confirmed. Work Record index synchronization can retry: ${error instanceof Error ? error.message : String(error)}`;
     }
     return undefined;
+}
+
+/** An accepted preparation can outlive the selected package or the execution checkout. */
+export async function unfinishedRecordingPins() {
+    const records = new Set<string>();
+    const plans = new Set<string>();
+    const attempts = new Set<string>();
+    const owner = workRecordOwnerLayout();
+    if (!owner) return { records, plans, attempts };
+    const dir = join(owner.internal, "preparations");
+    assertWorkRecordPath(dir);
+    const files = await fs.readdir(dir).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return [];
+        throw error;
+    });
+    for (const file of files.filter((name) => name.endsWith(".json"))) {
+        const state = await readPreparedPackageRecord(file.slice(0, -5));
+        if (!state) throw new Error("Cannot verify Recorder pins for a missing preparation.");
+        if (state.settled) continue;
+        attempts.add(state.attemptId);
+        records.add(state.recordId.toLowerCase());
+        for (const proposal of state.sections?.supersessionProposals || [])
+            records.add(proposal.recordId.toLowerCase());
+        if (state.record) {
+            const { attrs } = parseWorkRecordMarkdown(state.record.text);
+            for (const id of attrs.provenance?.sourcePlans || []) plans.add(id);
+            for (const id of [attrs.supersedes || []].flat()) records.add(id.toLowerCase());
+        }
+    }
+    return { records, plans, attempts };
 }

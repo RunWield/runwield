@@ -650,9 +650,9 @@ async function executeManagedFixture() {
         try {
             await deleteArchivedPlanUnit(input.cwd, "renamed-public-tool");
         } catch (error) {
-            retained = error instanceof Error && error.message.includes("history retention is not enabled");
+            retained = error instanceof Error && error.message.includes("requires a confirmed retention preview");
         }
-        if (!retained) throw new Error("Later history deletion was unexpectedly activated.");
+        if (!retained) throw new Error("Name-only deletion bypassed the retention preview.");
         await restoreSavedPlan(input.cwd, plan.attrs.planId, "public-tool");
         if ((await listArchivedPlans(input.cwd)).length || !(await loadPlan(input.cwd, "public-tool")))
             throw new Error("Archive restoration did not preserve identity.");

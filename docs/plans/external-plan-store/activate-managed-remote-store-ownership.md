@@ -47,7 +47,7 @@ Owning central capabilities are Core [Remote connection](../../prd/runwield-core
 [Execution, validation, and recovery](../../prd/runwield-core-prd.md#execution-validation-and-recovery), and
 [Work Records](../../prd/runwield-core-prd.md#work-records). This child changes launch ownership and managed runtime
 placement, preserving lifecycle, evidence, connected-only work and ordinary local/manual-SSH behavior.
-The transient [Plan Store proposal](../../prd/plan-store-prd.md#storage-ownership-by-launch-mode) supplies the accepted
+The transient [Plan Store proposal](../../prd/runwield-core-prd.md#remote-connection) supplies the accepted
 target intent; promote delivered requirements into those central capabilities without claiming later history/retention work.
 
 Plan 11 delivered `PreparedProjectStore`, `ProjectStoreClient`, authenticated registration and trusted

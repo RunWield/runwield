@@ -952,6 +952,16 @@ export function getPlanArchiveRetentionPolicy(projectRoot) {
     return { retentionDays, keepLast };
 }
 
+/** @param {string} projectRoot */
+export function getWorkRecordRetentionPolicy(projectRoot) {
+    const records = getCustomSetting("workRecords", "project", projectRoot);
+    const setting = (/** @type {string} */ key, /** @type {number} */ fallback) =>
+        records && Object.hasOwn(records, key)
+            ? validateNonNegativeIntegerSetting(records[key], `workRecords.${key}`)
+            : fallback;
+    return { keepLast: setting("retentionKeepLast", 100), retentionDays: setting("retentionDays", 90) };
+}
+
 /**
  * Resolve the optional human code review gate mode.
  *

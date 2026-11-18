@@ -51,7 +51,7 @@ the legacy continuation authorities. `resolveWorkflowPlanLocation`, `inspectCont
 already distinguish active execution, registered planning documents and locally available target-branch snapshots.
 Normal `loadPlan` and `savePlan` still use repository Markdown.
 
-The target [Plan import](../../prd/plan-store-prd.md#plan-import) requirements supply identity/status/relationship
+The target [Plan import](../../prd/runwield-core-prd.md#plan-authoring-and-external-adoption) requirements supply identity/status/relationship
 preservation, unchanged originals, plain-Markdown drafts and repeat safety. This child adds their internal import
 capability to [Core authoring](../../prd/runwield-core-prd.md#plan-authoring-and-external-adoption), with recovery governed
 by [Core execution and recovery](../../prd/runwield-core-prd.md#execution-validation-and-recovery). Public import,

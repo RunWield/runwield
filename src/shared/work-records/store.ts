@@ -205,6 +205,9 @@ async function writeWorkRecordUnlocked(
         throw new Error(
             `Canonical Work Record identity already exists: ${validated.attrs.recordId}. No file was overwritten.`,
         );
+    // A new incarnation of this UUID has its own imports and delivery copies.
+    if (workRecordOwnerLayout())
+        await (await import("./import.ts")).forgetWorkRecordLocations(validated.attrs.recordId);
     try {
         await createCanonicalFile(directory, filePath, markdown);
     } catch (error) {

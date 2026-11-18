@@ -92,7 +92,7 @@ test("archive and restore use canonical metadata and preserve document identity 
         await updateArchivedPlanFrontMatter(fixture.root, "retained", { summary: "Archived definition updated" });
         equal((await loadArchivedPlan(fixture.root, "retained"))?.body, "# Keep the bytes\n");
         equal((await loadArchivedPlan(fixture.root, "retained"))?.attrs.summary, "Archived definition updated");
-        await rejects(deleteArchivedPlanUnit(fixture.root, "retained"), /history retention is not enabled/);
+        await rejects(deleteArchivedPlanUnit(fixture.root, "retained"), /requires a confirmed retention preview/);
         await restoreArchivedPlan(fixture.root, "retained", { to: "restored" });
         deepEqual(await listArchivedPlans(fixture.root), []);
         const restored = await resolvePlan(fixture.root, "restored");

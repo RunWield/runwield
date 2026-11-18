@@ -220,3 +220,29 @@ content to an archived Plan. You can also copy one historical Markdown document 
 edit. The frozen files live under the personal Project’s `history/` directory. History works without Git. In a managed
 remote session the initiating laptop owns the versions. The history
 and live documents share a disk, so losing that disk also loses its history. Keep a separate backup.
+
+## Prune archived Plans and Work Records
+
+Preview the eligible items before deleting from personal storage.
+
+```sh
+wld plans prune --dry-run
+wld wr prune --dry-run
+```
+
+Run the same command without `--dry-run` to confirm interactively. Use `--yes` to confirm without a prompt.
+Archiving a Plan or listing Work Records may show a reminder. Neither action deletes anything.
+
+| Project setting                 | Default | What stays                                                  |
+| ------------------------------- | ------: | ----------------------------------------------------------- |
+| `plans.archiveKeepLast`         |      10 | Newest eligible archived families with Work Record coverage |
+| `plans.archiveRetentionDays`    |      14 | Archived families inside the recent window                  |
+| `workRecords.retentionKeepLast` |     100 | Newest Work Records                                         |
+| `workRecords.retentionDays`     |      90 | Work Records inside the recent window                       |
+
+Both protections apply. Set days to zero to use the count alone. A retained archived Plan keeps the records that cover it.
+Unfinished delivery or recording also keeps the evidence it needs. Pruning a family removes its milestone history.
+
+A confirmed prune removes matching copies from their recorded paths in the bound working tree. Use `git status` to
+inspect those deletions before committing them. Missing, renamed and edited copies are skipped. In a managed remote
+session, the laptop removes the canonical items and the execution host handles the repository copies.
