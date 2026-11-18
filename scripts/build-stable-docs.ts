@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import process from "node:process";
 import { isDeepStrictEqual } from "node:util";
-import { requirePinnedBun } from "./check-bun-runtime.ts";
+import { requireSupportedBun } from "./check-bun-runtime.ts";
 import { prepareDocsDependencies } from "./docs-dependencies.ts";
 import { stagePublicDocs } from "./public-docs.ts";
 import { checkPublicDocs } from "./check-public-docs.ts";
@@ -19,7 +19,7 @@ interface DocsPackage {
 }
 
 export async function prepareStableDocs(root: string): Promise<void> {
-    requirePinnedBun();
+    requireSupportedBun();
     const current: DocsPackage = JSON.parse(
         await readFile(new URL("../docs-site/package.json", import.meta.url), "utf8"),
     );
@@ -41,7 +41,7 @@ export async function prepareStableDocs(root: string): Promise<void> {
 }
 
 export async function buildStableDocs(root: string): Promise<void> {
-    requirePinnedBun();
+    requireSupportedBun();
     await stagePublicDocs(root, join(root, "docs-site/src/content/docs"));
     const astro = join(root, "docs-site/node_modules/astro/bin/astro.mjs");
     for (const command of ["check", "build"]) {

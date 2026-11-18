@@ -1029,7 +1029,7 @@ increases; they do not alone prove deadlock. Missing reports after a timeout rem
 guidance, not an additional runtime admission gate; existing validation commands and repair limits remain unchanged.
 
 **Requirement: Required checks fail closed.** A required check returns failure when its checker or prerequisites cannot
-load, as well as when diagnostics fail. Workspace checking resolves its project root consistently under the pinned Bun
+load, as well as when diagnostics fail. Workspace checking resolves its project root consistently under the supported Bun
 runtime and cannot report success without running the Astro checker.
 
 **Requirement: Repair the latest observed CI failure.** After repair exhaustion, Engineer follow-up retains the latest
@@ -2460,6 +2460,13 @@ provider support documented in terms of current configuration.
   before an Antigravity process starts and does not overwrite the active model.
 
 ### Installation and updates
+
+**Requirement: Supported development runtime.** Local source, test, build, and release commands accept the Bun
+range in `package.json` (`^1.4.0`: at least 1.4.0 and below 2.0.0). CI and release artifacts use the exact
+`.bun-version` pin for repeatable builds.
+
+- Given Bun 1.4.4 or another stable version in the supported range, the runtime check permits local commands.
+- Given Bun below 1.4.0, Bun 2.x, or another runtime, the check stops with the required range and detected runtime.
 
 **Scope and maturity:** Current Linux/macOS shell installation and Candidate release baseline. The public macOS tap
 provides RunWield and Mnemoteca packages. Windows releases and checks, including WinGet manifest preparation and

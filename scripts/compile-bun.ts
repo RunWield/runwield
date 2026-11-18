@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { argv, versions } from "node:process";
 import { fileURLToPath } from "node:url";
-import { requirePinnedBun } from "./check-bun-runtime.ts";
+import { requireSupportedBun } from "./check-bun-runtime.ts";
 import { BUILD_METADATA_SCHEMA, computeBuildIdentity, REMOTE_PROTOCOL_VERSION, sha256File } from "./build-metadata.ts";
 import { resolveBuildVersion, writeBuildIdentityFile, writeVersionFile } from "./write-version.ts";
 
@@ -109,7 +109,7 @@ export async function compileBun(
     expectedBuildId?: string,
     entrypoint = "src/cli.ts",
 ): Promise<void> {
-    requirePinnedBun();
+    requireSupportedBun();
     const entry = resolve(ROOT, entrypoint);
     const relativeEntry = relative(ROOT, entry);
     if (relativeEntry.startsWith("..") || !relativeEntry)
