@@ -11,14 +11,19 @@ export type ArchivedPlanUnit = {
     planId: string | undefined;
     archivedAt: string | null | undefined;
     paths: string[];
+    token?: string;
+    protected?: boolean;
 };
 
-/** Home history is retained; only explicitly retained legacy archives participate in pruning. */
+/** Resolves archived units in the current personal or explicitly retained checkout owner. */
 export async function collectArchivedPlanUnits(cwd: string): Promise<ArchivedPlanUnit[]> {
-    if (managedPersonalStoreActive()) return [];
+    if (managedPersonalStoreActive()) return (await (await import("./retention.ts")).previewPlanRetention(cwd)).units;
     return await readLocalHomeStore(
         cwd,
-        () => (currentPackageProject() ? Promise.resolve([]) : collectLegacyArchivedPlanUnits(cwd)),
+        async () =>
+            currentPackageProject()
+                ? (await (await import("./retention.ts")).previewPlanRetention(cwd)).units
+                : collectLegacyArchivedPlanUnits(cwd),
         () => Promise.resolve([]),
     );
 }

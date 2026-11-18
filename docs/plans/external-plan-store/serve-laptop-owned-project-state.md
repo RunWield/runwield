@@ -36,7 +36,7 @@ status: "verified"
 This draft implements one slice of the [External Project State and Plan Store Epic](../external-plan-store.md).
 Managed remote execution cannot safely obtain laptop-native lock or SQLite authority by pointing remote code at an SSHFS path. The personal store must execute authoritative mutations on its owner.
 
-Owning requirements: [Launch ownership](../../prd/plan-store-prd.md#storage-ownership-by-launch-mode); [Remote connection](../../prd/runwield-core-prd.md#remote-connection). These are target changes; preserve the existing behavior named below.
+Owning requirements: [Launch ownership](../../prd/runwield-core-prd.md#remote-connection); [Remote connection](../../prd/runwield-core-prd.md#remote-connection). These are target changes; preserve the existing behavior named below.
 
 Plan 10 delivered the single owning [Plan-store interface](../../../src/plan-store/README.md) at
 `src/plan-store/index.ts`. It already hides storage selection, identity, revisions, locks and durable writes.

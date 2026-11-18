@@ -38,6 +38,8 @@ export class LaptopProjectStoreService {
         }
         if (
             ("operationId" in input.command ||
+                input.command.kind === "confirm-retention" ||
+                input.command.kind === "settle-prune-copies" ||
                 input.command.kind === "capture-review" ||
                 input.command.kind === "sequence-snapshot") &&
             !mutationsAdmitted

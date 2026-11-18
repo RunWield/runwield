@@ -381,8 +381,7 @@ import sources or optional delivery copies; absence, damage or denial of home st
 `wld plans import <file-or-folder>` and explicit Markdown path loading preserve source bytes and import selected
 artifacts. Name lookup never adopts a checkout document. New planning uses Markdown documents and typed definition
 fields through `plan_written`; Core owns protected metadata. Managed remote launch selects the initiating laptop's
-home-only Project store through the same public owner. Retention and pruning remain targets in the
-[Plan Store proposal](plan-store-prd.md#plan-store). Service loss cannot select an execution account's personal store.
+home-only Project store through the same public owner. Service loss cannot select an execution account's personal store.
 
 **Requirement: Managed Plans retain laptop authority.** A remote-only Project needs no laptop checkout or source sync.
 Trusted startup binds the remote Project and repository to the laptop account. Personal Plan documents, controllers,
@@ -458,7 +457,7 @@ ambiguous relationships and unavailable evidence publish no selected member. Exp
 may use its local target snapshot; import does not expand the selection to unrelated siblings or fetch remote refs.
 Original repository-relative paths remain available for later pruning; this operation performs no pruning or delivery
 copy setup inside the import transaction. Public local commands expose explicit import and store-only discovery; the
-separate post-import folder choice controls delivery copies.
+separate post-import folder choice controls delivery copies. After importing a repository folder, Core offers that choice once with Yes preselected. The upgrade announcement directs existing users to run `wld plans import docs/plans/` once per Project.
 
 **Requirement: External Markdown Plans are first-class.** An external Markdown file becomes a canonical draft through
 explicit `wld plans import <file-or-folder>` or pathname `/load-plan`. Import preserves the source bytes and records its
@@ -590,6 +589,17 @@ atomically without modifying Markdown; YAML-looking prose cannot assign status o
 Sequence review read live package documents without Git transport. Local and manual-SSH discovery use the canonical
 home store described in [Plan authoring and external adoption](#plan-authoring-and-external-adoption).
 An unfinished imported legacy attempt continues through its revalidated original owner.
+
+**Requirement: Confirm archived Plan pruning.** The personal Plan store groups an archived Epic with its children.
+Only units with Work Record coverage through `provenance.sourcePlans` qualify. The Project keeps the newest
+`plans.archiveKeepLast` eligible units (default 10) and those within `plans.archiveRetentionDays` (default 14).
+Zero days applies only the count floor. The archive reminder and `wld plans prune --dry-run` show eligibility.
+Confirmation rechecks stable identities, family membership, current policy and unfinished workflow inputs.
+Pruning an approved family removes its packages and milestone versions. Active children keep the family intact.
+
+**Acceptance:** Given a due, covered archived Epic beside an uncovered Plan, confirmed pruning removes the
+Epic and child histories. The uncovered Plan and its history remain readable. If a family member becomes
+needed for recovery after preview, the whole family stays.
 
 **Requirement: Keep and restore Plan History.** Approval, confirmed delivery, manual closure and archive each keep
 a frozen version of the Plan's Markdown under its stable ID. Each approved Sequence member has its own version.
@@ -1878,7 +1888,7 @@ on retry.
 **Requirement: Explicit owner context.** Ordinary `wld`, including manual SSH, uses the execution account regardless of
 SSH environment variables. Verified managed-remote activation can supply a different personal owner while retaining the
 remote execution account home. That context does not authorize registry writes through the laptop mount or a replacement
-remote personal store. Managed-remote store operations remain target scope.
+remote personal store. Managed operations use the initiating laptop's registered owner.
 
 **Stable identity acceptance scenarios:**
 
@@ -1901,8 +1911,7 @@ remote personal store. Managed-remote store operations remain target scope.
 Plans and execution runtime use their responsible account’s home Project tree. Managed remote launches retain
 personal Plan authority on the laptop and Git execution authority on the remote account. Adopted original attempts
 continue through verified bindings to their actual execution directories. Session and Connect continuity retain
-verified bindings to their original stores. Retention and pruning remain later outcomes of the
-[External Project State and Plan Store Epic](../plans/external-plan-store.md).
+verified bindings to their original stores.
 
 **Requirement: Keep project knowledge correctly scoped.** Keep the remote project locator separate from execution cwd.
 
@@ -2176,8 +2185,20 @@ or Session. Failures, text-only output, malformed bytes, cancellation, and timeo
 
 **Acceptance:** With stale repository copies and a current personal record, read/search returns the personal record. An empty canonical store does not discover repository records.
 
-**Scope and maturity:** Current local/manual-SSH personal-store generation, retrieval and explicit import. Managed-remote
-ownership activation, richer authorship and retention remain follow-up scope.
+**Scope and maturity:** Personal-store generation, retrieval, import and retention are current in local, manual SSH and managed launches. Richer authorship remains follow-up scope.
+
+**Requirement: Confirm Work Record pruning.** The personal owner keeps the newest `workRecords.retentionKeepLast`
+records (default 100) by creation time, using record ID to break ties. It also keeps records within
+`workRecords.retentionDays` (default 90). Zero days applies the count floor alone. Every unpruned archived
+Plan protects the records that cover it. Unfinished publication or recording protects its required inputs.
+Ordinary listing can remind the user. Both prune commands require confirmation and support a read-only dry run.
+When a confirmed item has an unchanged repository copy at a recorded path in the bound checkout, Core removes
+the file and leaves the deletion uncommitted. A missing, moved, edited or unavailable copy leaves the canonical
+outcome intact. Managed pruning acts on laptop records and cleans copies on the execution host.
+
+**Acceptance:** With default settings, 30 year-old records all stay, as do 400 records created in the last month.
+After confirmation a pruned record disappears from list, read and search, including after rebuilding the derived
+index. Declining leaves both the canonical record and its repository copy intact.
 
 **Requirement: Preserve outcomes with truthful completion confidence.** Work Records are concise Markdown accounts of permanent facts: the delivered outcome, recorded Plan Deviations, out-of-scope facts, and durable
 lessons. They keep source Plan and Ticket links, not validation receipts, delivery status, run events, to-dos, or known
@@ -2227,8 +2248,7 @@ retain their original policy.
 Conflicting same-ID content refuses without overwriting either source. Core retains source/copy paths and digests by
 record ID independently of the derived index. External origins remain provenance, never repository-delete authority.
 Admitted retrieval hydrates canonical files by ID, uses stable Project/personal-owner index identity, and returns home
-paths. Linked clones share records while retaining distinct repository destinations. Managed-remote ownership activation
-and pruning remain target.
+paths. Linked clones share records while retaining distinct repository destinations.
 
 **Personal store acceptance scenarios:**
 

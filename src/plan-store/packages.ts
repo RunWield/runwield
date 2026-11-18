@@ -1308,6 +1308,7 @@ async function mutate<T>(
             plans.push(lock);
             await lock.lock(true);
         }
+        await resumePackagePrune(paths);
         await recover(paths);
         recoverOperationEffect(paths.internal, paths.plans);
         if (selected === null) {
@@ -2620,4 +2621,76 @@ export async function readManagedPlanImportResult(
         importedPlanIds,
         existingPlanIds: record.prepared.existingPlanIds,
     };
+}
+
+interface PruneMember {
+    planId: string;
+    name: string;
+    metadataDigest: string;
+    documents: { name: string; hash: string }[];
+    versions: string[];
+}
+async function resumePackagePrune(paths: PackageLayout) {
+    const intentPath = join(paths.internal, "pruning.json");
+    const bytes = await file(paths.home, intentPath);
+    if (!bytes) return;
+    const members: PruneMember[] = JSON.parse(new TextDecoder().decode(bytes));
+    for (const member of members) {
+        const id = requireId(member.planId);
+        const directory = join(paths.plans, normalizeName(member.name));
+        const metadata = join(directory, "plan.wld.json");
+        const current = await file(paths.home, metadata);
+        if (current) {
+            if (digest(current) !== member.metadataDigest || parseMetadata(current).planId !== id) continue;
+            for (const document of member.documents) {
+                if (!resources.includes(document.name as PackageResource))
+                    throw new Error("Invalid approved Plan document.");
+                const path = join(directory, document.name);
+                const actual = await file(paths.home, path);
+                if (!actual) continue;
+                // A later external edit is no longer an approved file. Leave those bytes at their location.
+                if (digest(actual) !== document.hash) continue;
+                await fs.unlink(path);
+            }
+            await fs.unlink(metadata);
+            syncParentDirectory(metadata);
+        }
+        for (const version of member.versions) {
+            if (!/^[a-f0-9-]{36}$/.test(version)) throw new Error("Invalid approved milestone.");
+            const path = join(historyDirectory(paths, id), version);
+            await safe(paths.home, path);
+            await fs.rm(path, { recursive: true, force: true });
+        }
+        for (const path of [directory, historyDirectory(paths, id)]) {
+            await safe(paths.home, path);
+            await fs.rmdir(path).catch((error: NodeJS.ErrnoException) => {
+                if (!["ENOENT", "ENOTEMPTY", "EEXIST"].includes(error.code || "")) throw error;
+            });
+        }
+    }
+    await fs.unlink(intentPath);
+}
+/** Catalog lock serializes replay before another writer can reuse an approved name. */
+export async function prunePackageFamily(identity: ProjectIdentity, family: LoadedPlanPackage[]) {
+    await mutate(
+        identity,
+        family.map((plan) => plan.metadata.planId),
+        async (paths) => {
+            const members: PruneMember[] = [];
+            for (const { metadata, documents, path } of family.toSorted((a, b) => b.path.length - a.path.length)) {
+                const bytes = await file(paths.home, join(path, "plan.wld.json"));
+                if (!bytes || JSON.stringify(parseMetadata(bytes)) !== JSON.stringify(metadata))
+                    throw new Error("Approved Plan identity changed.");
+                members.push({
+                    planId: metadata.planId,
+                    name: metadata.name,
+                    metadataDigest: digest(bytes),
+                    documents: documents.map(({ name, hash }) => ({ name, hash })),
+                    versions: (metadata.history || []).map((h) => h.version),
+                });
+            }
+            writeJsonAtomically(join(paths.internal, "pruning.json"), members);
+            await resumePackagePrune(paths);
+        },
+    );
 }

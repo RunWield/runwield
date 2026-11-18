@@ -45,7 +45,7 @@ The prepared workspace includes delivered child 3 at `8ae28f1bf8b53ebdd8fc11ac59
 - `getPlansDir`, `loadPlan`, and `savePlan` still use repository Markdown and front matter. Controller preparation is
   a separate runtime operation. Runtime relocation has not imported a Plan or created a canonical package.
 
-The target [Plan store requirements](../../prd/plan-store-prd.md#plan-store) supply **one live copy**, **plain Markdown**,
+The target [Plan store requirements](../../prd/runwield-core-prd.md#plan-authoring-and-external-adoption) supply **one live copy**, **plain Markdown**,
 **metadata beside documents**, and **recovery from that copy**. This child proves their persistence foundation through
 internal package operations, without claiming those user journeys are active. The current
 [Core body ownership and passive-read requirements](../../prd/runwield-core-prd.md#plan-authoring-and-external-adoption)

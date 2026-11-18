@@ -25,7 +25,25 @@ try {
         readPublishedDeliverySources,
         readPublishedRecordMarkdown,
     } = await import("../../plan-store/index.ts");
-    if (command.startsWith("managed-history-")) {
+    if (command === "manual-prune-seed" || command === "managed-prune" || command === "manual-prune-list") {
+        const { runWorkRecordsCommand } = await import("../../cmd/wr/index.ts");
+        const { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } = await import("../work-records/mnemoteca-port.ts");
+        const { setExactProjectCustomSetting } = await import("../settings.js");
+        if (!managed) process.env.SSH_CONNECTION = "192.0.2.2 54321 192.0.2.1 22";
+        if (command === "manual-prune-seed") {
+            const { writeWorkRecord } = await import("../work-records/store.ts");
+            const { recordAttrs, recordBody } = await import("../work-records/test-fixtures/package-records.ts");
+            await writeWorkRecord(
+                input.cwd,
+                recordAttrs({ recordId: "aaaa1111-1111-4111-8111-111111111111" }),
+                recordBody,
+            );
+            setExactProjectCustomSetting("workRecords", { retentionDays: 0, retentionKeepLast: 0 }, input.cwd);
+        } else if (managed) {
+            await runWorkRecordsCommand(["prune", "--yes"], { mnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT });
+        } else
+            console.log(JSON.stringify((await listOwnedWorkRecords(input.cwd)).map((record) => record.attrs.recordId)));
+    } else if (command.startsWith("managed-history-")) {
         const { runPlansCommand } = await import("../../cmd/plans/index.ts");
         const { authorLocalPlan, listPlanHistory } = await import("../../plan-store/index.ts");
         if (command === "managed-history-missing") {

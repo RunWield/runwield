@@ -263,6 +263,7 @@ export async function runRemotePublicationProof(): Promise<void> {
         recovery?: import("../workflow/execution-recovery-proof.ts").ExecutionRecoveryRequest;
         importSource?: import("../../plan-store/index.ts").ManagedImportPreparationRequest;
         nonGit?: import("../workflow/execution-recovery-proof.ts").ManagedExecutionIdentity;
+        retention?: import("../../plan-store/index.ts").ProjectStoreBinding;
         candidateOnly?: boolean;
         requireCleanup?: boolean;
         recordingSource?: boolean;
@@ -284,6 +285,19 @@ export async function runRemotePublicationProof(): Promise<void> {
     };
     await withProjectLaunchContext(context, async () => {
         const identity = inspectProjectIdentity(input.cwd);
+        if (input.retention) {
+            const { createHash } = await import("node:crypto");
+            if (
+                identity.kind !== "existing" ||
+                identity.identity.projectId !== input.retention.projectId ||
+                identity.identity.repositoryId !== input.retention.repositoryId ||
+                createHash("sha256").update(input.ownerIdentity).digest("hex") !== input.retention.ownerId
+            )
+                throw new Error("Retention probe belongs to another execution repository.");
+            const context = await (await import("../../plan-store/index.ts")).readExecutionRetention(input.cwd);
+            console.log(JSON.stringify({ binding: input.retention, context }));
+            return;
+        }
         if (input.nonGit) {
             if (
                 input.manifest ||

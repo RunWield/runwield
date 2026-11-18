@@ -47,7 +47,7 @@ Current code binds tools and context in `buildAgentSession`. `switchActiveAgent`
 public runtime entry rejects active turns. Continuation reads the segment's `transcriptCwd`; rebinding the live Session
 alone does not save a move. Git prompt context currently reports branch and clean/dirty state only.
 
-The separate [Plan Store proposal](../prd/plan-store-prd.md#plan-store) remains out of scope. Moving to an Epic worktree
+The separate [Plan Store proposal](../prd/runwield-core-prd.md#plan-authoring-and-external-adoption) remains out of scope. Moving to an Epic worktree
 selects its code; it does not guarantee discovery of a new uncommitted child Plan under current branch-local storage.
 
 ## Objective

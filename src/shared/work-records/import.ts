@@ -139,3 +139,8 @@ export async function importWorkRecords(cwd: string, selection: string, options:
     }
     return results;
 }
+
+/** Called under the record mutation lock after pruning the canonical identity. */
+export async function forgetWorkRecordLocations(recordId: string) {
+    await fs.rm(locationPath(recordId), { force: true });
+}

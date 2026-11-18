@@ -34,7 +34,7 @@ status: "verified"
 This draft implements one slice of the [External Project State and Plan Store Epic](../external-plan-store.md).
 Core already retains reviewed and delivered inputs for execution, publication and recording. Users need a separate way to find a milestone by Plan ID, read its Markdown and make it current again, including in a Project without Git. The next child owns pruning.
 
-Owning requirements: [Plan history](../../prd/plan-store-prd.md#plan-history); [Plan lifecycle](../../prd/runwield-core-prd.md#plan-lifecycle). These are target changes; preserve the existing behavior named below.
+Owning requirements: [Plan history](../../prd/runwield-core-prd.md#plan-lifecycle); [Plan lifecycle](../../prd/runwield-core-prd.md#plan-lifecycle). These are target changes; preserve the existing behavior named below.
 
 ## Objective
 

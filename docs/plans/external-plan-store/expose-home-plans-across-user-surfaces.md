@@ -41,7 +41,7 @@ status: "verified"
 This draft implements one slice of the [External Project State and Plan Store Epic](../external-plan-store.md).
 The browser and external hosts currently consume file/path assumptions from repository Plans. Surface parity is required so a store migration does not leave a working CLI with inaccessible review or stale search.
 
-Owning requirements: [Plan access](../../prd/plan-store-prd.md#plan-store); [Workspace Plans](../../prd/runwield-workspace-prd.md#local-plan-management); [Shared collaboration](../../prd/runwield-workspace-prd.md#shared-plan-collaboration); [Connect outcomes](../../prd/runwield-connect-prd.md#shared-plan-and-verification-outcomes); [ACP workflow](../../prd/runwield-acp-protocol-prd.md#chat-workflow-access). These are target changes; preserve the existing behavior named below.
+Owning requirements: [Plan access](../../prd/runwield-core-prd.md#plan-authoring-and-external-adoption); [Workspace Plans](../../prd/runwield-workspace-prd.md#local-plan-management); [Shared collaboration](../../prd/runwield-workspace-prd.md#shared-plan-collaboration); [Connect outcomes](../../prd/runwield-connect-prd.md#shared-plan-and-verification-outcomes); [ACP workflow](../../prd/runwield-acp-protocol-prd.md#chat-workflow-access). These are target changes; preserve the existing behavior named below.
 
 ### Prepared-branch findings
 

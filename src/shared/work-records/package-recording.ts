@@ -226,3 +226,31 @@ export async function settlePreparedRecord(
     }
     return undefined;
 }
+
+/** An accepted preparation can outlive the selected package or the execution checkout. */
+export async function unfinishedRecordingPins() {
+    const records = new Set<string>();
+    const plans = new Set<string>();
+    const attempts = new Set<string>();
+    const owner = workRecordOwnerLayout();
+    if (!owner) return { records, plans, attempts };
+    const dir = join(owner.internal, "preparations");
+    assertWorkRecordPath(dir);
+    const files = await fs.readdir(dir).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return [];
+        throw error;
+    });
+    for (const file of files.filter((name) => name.endsWith(".json"))) {
+        const state = await readPreparedPackageRecord(file.slice(0, -5));
+        if (!state || state.settled) continue;
+        attempts.add(state.attemptId);
+        records.add(state.recordId);
+        for (const proposal of state.sections?.supersessionProposals || []) records.add(proposal.recordId);
+        if (state.record) {
+            const { attrs } = parseWorkRecordMarkdown(state.record.text);
+            for (const id of attrs.provenance?.sourcePlans || []) plans.add(id);
+            for (const id of [attrs.supersedes || []].flat()) records.add(id);
+        }
+    }
+    return { records, plans, attempts };
+}

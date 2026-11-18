@@ -9,7 +9,7 @@ inspect the current checkout or move the Session, plus harness-supplied checkout
 **Status: Proposed.** The requirements below are agreed target behavior, not claims of delivery. Core's
 [Session continuity](runwield-core-prd.md#session-continuity) and
 [Project context and initialization](runwield-core-prd.md#project-context-and-initialization) are the intended lasting
-owners. This proposal does not replace the separate [Plan Store proposal](plan-store-prd.md#plan-store).
+owners. This proposal does not replace the separate [Core Plan store requirements](runwield-core-prd.md#plan-authoring-and-external-adoption).
 
 ## Problem Description
 
@@ -21,7 +21,7 @@ commands, and applicable instructions to follow the selected package or checkout
 
 **Plans can be stranded on a branch.** The owner described adding an Epic child while in another worktree. Moving to
 the Epic worktree can improve the code context, but it does not guarantee discovery of an uncommitted child Plan today.
-The Plan Store proposal addresses Plan storage and discovery; this proposal addresses the Session's working location.
+The Core Plan store requirements address Plan storage and discovery; this proposal addresses the Session's working location.
 
 Goals:
 
@@ -193,8 +193,8 @@ under the repository's PRD policy. No implementing Plan exists yet.
 - [Epic child discovery](../../src/shared/workflow/planning-worktree.ts): `readTargetBranchPlansByParent` can read the
   committed target branch instead of uncommitted files in a separate Epic worktree. The reported incident was not
   reproduced; the code supports the failure path.
-- [Plan Store proposal](plan-store-prd.md#plan-store): proposes one live Plan copy shared by all Sessions and worktrees.
-  It does not select the code checkout that Planner should inspect.
+- [Core Plan store requirements](runwield-core-prd.md#plan-authoring-and-external-adoption) require one live Plan copy shared by all Sessions and worktrees.
+  They do not select the code checkout that Planner should inspect.
 
 ## Risks and Mitigations
 

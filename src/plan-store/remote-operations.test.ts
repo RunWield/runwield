@@ -747,3 +747,52 @@ test("managed milestone replay returns the first committed revision after later 
         await fixture.cleanup();
     }
 });
+
+test("managed pruning changes laptop records and bound execution copies while manual SSH retains execution-account records", async () => {
+    const { withProcessGlobalTestLock } = await import("../testing/process-global-lock.ts");
+    const { composedRemoteFixture } = await import("../shared/remote/composed-store-fixture.ts");
+    await withProcessGlobalTestLock(async () => {
+        const f = await composedRemoteFixture();
+        try {
+            await f.run("manual-prune-seed");
+            const admission = await fetch(f.endpoint + "/project-store/admit", { method: "POST", headers: f.headers });
+            equal(admission.status, 200);
+            const binding: import("./index.ts").ProjectStoreBinding = await admission.json();
+            const { inspectHomeProjectOwner, withHomeProjectOwner, projectStoreLocation } =
+                await import("../shared/project-identity.ts");
+            const owner = inspectHomeProjectOwner(binding.projectId, binding.repositoryId);
+            const cwd = projectStoreLocation(owner);
+            const { readLocalHomeStore } = await import("./index.ts");
+            const { writeWorkRecord, listWorkRecords } = await import("../shared/work-records/store.ts");
+            const { recordAttrs, recordBody } = await import("../shared/work-records/test-fixtures/package-records.ts");
+            const { retainWorkRecordLocation, workRecordDigest } = await import("../shared/work-records/import.ts");
+            const copy = join(f.root, "delivered-record.md");
+            await withHomeProjectOwner(owner, () =>
+                readLocalHomeStore(
+                    cwd,
+                    async () => {
+                        const record = await writeWorkRecord(cwd, recordAttrs(), recordBody);
+                        await writeFile(copy, record.markdown);
+                        await retainWorkRecordLocation(record.attrs.recordId, {
+                            kind: "copy",
+                            sourcePath: copy,
+                            repositoryPath: "delivered-record.md",
+                            repositoryId: binding.repositoryId,
+                            digest: workRecordDigest(record.markdown),
+                        });
+                    },
+                    () => {
+                        throw new Error("Missing laptop store.");
+                    },
+                ),
+            );
+            const result = await f.run("managed-prune");
+            equal(result.includes("Pruned 1 Work Record"), true, result);
+            await rejects(readFile(copy), { code: "ENOENT" });
+            await withHomeProjectOwner(owner, async () => equal((await listWorkRecords(cwd)).length, 0));
+            deepEqual(JSON.parse(await f.run("manual-prune-list")), ["aaaa1111-1111-4111-8111-111111111111"]);
+        } finally {
+            await f.cleanup();
+        }
+    });
+});

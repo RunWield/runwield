@@ -31,7 +31,7 @@ status: "verified"
 This Plan implements one slice of the [External Project State and Plan Store Epic](../external-plan-store.md).
 Existing local Session identity and several home directory keys derive from filesystem paths. Home Project storage needs a stable identity before any data moves.
 
-Owning requirements: [Project identity](../../prd/plan-store-prd.md#project-identity); [Project initialization](../../prd/runwield-core-prd.md#project-context-and-initialization). The proposed additions are stable identity, explicit owner/execution bindings, and remembered clone linking. Plan and Session continuity remain later-child targets; preserve existing locators and the current directory-consent and remote-host-verification behavior.
+Owning requirements: [Project identity](../../prd/runwield-core-prd.md#project-context-and-initialization); [Project initialization](../../prd/runwield-core-prd.md#project-context-and-initialization). The proposed additions are stable identity, explicit owner/execution bindings, and remembered clone linking. Plan and Session continuity remain later-child targets; preserve existing locators and the current directory-consent and remote-host-verification behavior.
 
 ## Objective
 

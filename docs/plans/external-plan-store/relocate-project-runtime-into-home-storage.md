@@ -38,7 +38,7 @@ status: "verified"
 This draft implements one slice of the [External Project State and Plan Store Epic](../external-plan-store.md).
 `project-runtime-layout.ts` currently owns primary and selected-checkout paths, including registries, staging, secrets, locks, journals and indexes. Moving only Plans leaves that checkout-bound machinery behind.
 
-Owning requirements: [Project runtime](../../prd/plan-store-prd.md#project-runtime-outside-checkouts),
+Owning requirements: [Project runtime](../../prd/runwield-core-prd.md#work-protection),
 [Project initialization](../../prd/runwield-core-prd.md#project-context-and-initialization),
 [Work protection](../../prd/runwield-core-prd.md#work-protection), and
 [Execution recovery](../../prd/runwield-core-prd.md#execution-validation-and-recovery).

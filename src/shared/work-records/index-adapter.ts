@@ -311,3 +311,17 @@ export async function rebuildWorkRecordIndex(
     }
     return { collection, total: records.length, added, failed: failures.length, failures };
 }
+
+/** Numeric IDs are selected by the stable record tag inside this owner's collection. */
+export async function pruneWorkRecordIndex(
+    cwd: string,
+    recordId: string,
+    options: WorkRecordIndexOptions,
+): Promise<string | undefined> {
+    try {
+        for (const id of await findIndexedDocumentIdsByRecordId(cwd, recordId, options))
+            await runMnemotecaWorkRecordCommand(cwd, ["delete", String(id)], options);
+    } catch (error) {
+        return `Work Record was pruned. ${REBUILD_GUIDANCE} ${error instanceof Error ? error.message : String(error)}`;
+    }
+}

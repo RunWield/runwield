@@ -100,3 +100,90 @@ pruneTest("plans prune honors repository retention and keepLast settings", async
     assertStringIncludes(output, "archiveRetentionDays=14, archiveKeepLast=1");
     assertStringIncludes(output, "Spared by keepLast: 1");
 });
+
+test("canonical archived families retain records and remove only confirmed, covered milestone histories", async () => {
+    await withPlanCommandFixture("prune-canonical-family-", async ({ projectRoot }) => {
+        const { admitProjectIdentity } = await import("../../shared/project-identity.ts");
+        const { create } = await import("../../shared/testing/plan-package-fixture.ts");
+        const { listPlanHistory, previewRecordRetention, previewPlanRetention, confirmRetention } =
+            await import("../../plan-store/index.ts");
+        const admission = await admitProjectIdentity(projectRoot);
+        if (admission.kind !== "existing") throw new Error("Project fixture needs a stable identity.");
+        await setCustomSetting("plans", { archiveKeepLast: 0, archiveRetentionDays: 0 }, "project", projectRoot);
+        await setCustomSetting("workRecords", { retentionKeepLast: 0, retentionDays: 0 }, "project", projectRoot);
+        const identity = admission.identity;
+        await create(identity, {
+            name: "family",
+            planId: "family",
+            definition: { classification: "PROJECT", type: "epic", status: "verified" },
+        });
+        await create(identity, { name: "family/child", planId: "member", parentPlanId: "family" });
+        await create(identity, { name: "uncovered", planId: "uncovered" });
+        for (const name of ["family/child", "family", "uncovered"])
+            await archivePlan(projectRoot, name, { force: true });
+        await writeRecord(projectRoot, "33333333-1111-4111-8111-111111111111", "family");
+        const preview = await previewPlanRetention(projectRoot);
+        assertEquals(
+            preview.due.map((p) => p.name),
+            ["family"],
+        );
+        assertEquals((await previewRecordRetention(projectRoot)).due, []);
+        assertStringIncludes(await captureLogs(() => runPlansPruneCommand(["--dry-run"])), "Due: 1");
+        const before = await listPlanHistory(projectRoot, "uncovered");
+        assertEquals(before.milestones.length, 1);
+        const { readLocalHomeStore } = await import("../../plan-store/index.ts");
+        const { workRecordOwnerLayout } = await import("../../shared/work-records/owner.ts");
+        const { formatWorkRecordMarkdown } = await import("../../shared/work-records/markdown.js");
+        const { mkdir, writeFile, unlink, stat } = await import("node:fs/promises");
+        const { join } = await import("node:path");
+        const pinPath = await readLocalHomeStore(
+            projectRoot,
+            async () => {
+                const dir = join(workRecordOwnerLayout()!.internal, "preparations");
+                await mkdir(dir, { recursive: true });
+                return join(dir, "unfinished.json");
+            },
+            () => {
+                throw new Error("Missing fixture owner.");
+            },
+        );
+        const attrs = recordAttrs("33333333-1111-4111-8111-222222222222", "member");
+        await writeFile(
+            pinPath,
+            JSON.stringify({
+                version: 1,
+                attemptId: "unfinished",
+                recordId: attrs.recordId,
+                createdAt: attrs.createdAt,
+                record: {
+                    kind: "work-record",
+                    path: "docs/work-records/member.md",
+                    text: formatWorkRecordMarkdown(attrs, "# Member\n\n## Summary\n\nRetained input."),
+                },
+            }),
+        );
+        assertEquals(await confirmRetention(projectRoot, "plans", preview.due[0].token!), false);
+        assertEquals((await listPlanHistory(projectRoot, "member")).milestones.length, 1);
+        await unlink(pinPath);
+        await setCustomSetting("plans", { archiveKeepLast: 1, archiveRetentionDays: 0 }, "project", projectRoot);
+        assertEquals(await confirmRetention(projectRoot, "plans", preview.due[0].token!), false);
+        await setCustomSetting("plans", { archiveKeepLast: 0, archiveRetentionDays: 0 }, "project", projectRoot);
+        assertStringIncludes(await captureLogs(() => runPlansPruneCommand(["--yes"])), "Pruned 1");
+        assertEquals(await loadArchivedPlan(projectRoot, "family"), null);
+        assertEquals(await loadArchivedPlan(projectRoot, "member"), null);
+        for (const id of ["family", "member"])
+            assertEquals(
+                await stat(
+                    join(identity.executionAccountHome, ".wld", "projects", identity.projectId, "history", id),
+                ).catch(() => null),
+                null,
+            );
+        await create(identity, { name: "family", planId: "replacement" });
+        await archivePlan(projectRoot, "family", { force: true });
+        await writeRecord(projectRoot, "33333333-1111-4111-8111-333333333333", "replacement");
+        await confirmRetention(projectRoot, "plans", preview.due[0].token!);
+        assertEquals((await loadArchivedPlan(projectRoot, "replacement"))?.attrs.planId, "replacement");
+        assertEquals(await listPlanHistory(projectRoot, "uncovered"), before);
+        assertEquals((await previewRecordRetention(projectRoot)).due.length, 1);
+    });
+});

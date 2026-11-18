@@ -2514,7 +2514,7 @@ async function listArchivedPlansInProject(cwd) {
 export async function deleteArchivedPlanUnit(cwd, archivedPlanName) {
     const owner = inspectLocalHomeStore(cwd);
     if (owner.kind === "local" || owner.kind === "empty")
-        throw new Error("Personal Plan history retention is not enabled; archived home packages remain available.");
+        throw new Error("Pruning home Plans requires a confirmed retention preview.");
     const location = getArchivedPlanLocation(cwd, archivedPlanName);
     if (location.segments.length !== 1) {
         throw new Error(`Archived Plan prune target must be top-level: ${archivedPlanName}`);

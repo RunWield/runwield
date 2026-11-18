@@ -634,6 +634,9 @@ export type ProjectStoreCommand =
     | ProjectStoreRead
     | ProjectStoreDocumentWrite
     | ProjectStoreHistoryRestore
+    | ({ kind: "preview-retention" } & HistoryCursor)
+    | { kind: "settle-prune-copies"; target: import("./retention.ts").RetentionKind; token: string }
+    | { kind: "confirm-retention"; target: import("./retention.ts").RetentionKind; token: string }
     | ProjectStoreHistoryList
     | ProjectStoreHistoryShow
     | ProjectStoreProseWrite
@@ -648,6 +651,18 @@ export interface ProjectStoreDocument {
     body: string;
     writable: boolean;
 }
+interface StoreTextPage {
+    text: string;
+    snapshot: string;
+    complete: boolean;
+}
+function pageStoreText(serialized: string, cursor: HistoryCursor): StoreTextPage {
+    const snapshot = operationHash(serialized);
+    if ((cursor.offset && snapshot !== cursor.snapshot) || cursor.offset >= serialized.length)
+        throw new Error("Project store data changed during inspection.");
+    const text = serialized.slice(cursor.offset, cursor.offset + HISTORY_PAGE_CHARS);
+    return { text, snapshot, complete: cursor.offset + text.length === serialized.length };
+}
 export interface ProjectStoreReply {
     binding: ProjectStoreBinding;
     result:
@@ -656,7 +671,9 @@ export interface ProjectStoreReply {
         | ProjectStorePublication
         | ProjectStoreExecution
         | ProjectStoreExecutionDocuments
-        | { historyPage: { text: string; snapshot: string; complete: boolean } }
+        | { retentionPage: StoreTextPage }
+        | { pruneResult: import("./retention.ts").PruneResult }
+        | { historyPage: StoreTextPage }
         | ProjectStoreDocumentView
         | ProjectStoreDocument
         | OperationOutcome
@@ -822,6 +839,37 @@ export class PreparedProjectStore {
                             true,
                         ),
                     );
+                }
+                if (command.kind === "settle-prune-copies")
+                    return {
+                        pruneResult: await (
+                            await import("./retention.ts")
+                        ).settlePruneCopies(this.cwd, command.target, command.token),
+                    };
+                if (command.kind === "preview-retention" || command.kind === "confirm-retention") {
+                    const retention = await import("./retention.ts");
+                    const context = async () => {
+                        if (!this.homeOwner) return await retention.readExecutionRetention(this.cwd);
+                        if (!this.launch) throw new Error("Managed prune needs its bound execution repository.");
+                        return await (
+                            await import("../shared/remote/project-store-launch.ts")
+                        ).readManagedRetentionContext(this.launch, this.binding, this.signal);
+                    };
+                    if (command.kind === "preview-retention")
+                        return {
+                            retentionPage: pageStoreText(
+                                JSON.stringify(await retention.localRetentionPreview(this.cwd, context)),
+                                command,
+                            ),
+                        };
+                    return {
+                        pruneResult: await retention.localConfirmRetention(
+                            this.cwd,
+                            command.target,
+                            command.token,
+                            context,
+                        ),
+                    };
                 }
                 if (command.kind === "list-plans") return { plans: await listPlans(this.cwd) };
                 if (command.kind === "resolve-plan") {
@@ -1037,13 +1085,7 @@ export class PreparedProjectStore {
                             ? await listPlanHistory(this.cwd, command.reference)
                             : await showPlanMilestone(this.cwd, command.reference, command.version),
                     );
-                    const snapshot = operationHash(serialized);
-                    if ((command.offset && snapshot !== command.snapshot) || command.offset >= serialized.length)
-                        throw new Error("Plan history changed during inspection.");
-                    const text = serialized.slice(command.offset, command.offset + HISTORY_PAGE_CHARS);
-                    return {
-                        historyPage: { text, snapshot, complete: command.offset + text.length === serialized.length },
-                    };
+                    return { historyPage: pageStoreText(serialized, command) };
                 }
                 if (command.kind === "restore-history")
                     return await withPlanPackageCatalogDiscovery(owner, () =>

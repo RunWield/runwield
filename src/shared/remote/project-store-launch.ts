@@ -392,3 +392,33 @@ export async function proveManagedNonGitExecution(
     if (proof.executionMode !== "non_git_in_place" || JSON.stringify(proof.identity) !== JSON.stringify(identity))
         throw new Error("Non-Git execution proof changed ownership.");
 }
+
+export async function readManagedRetentionContext(
+    launch: ManagedProjectStoreLaunch,
+    binding: import("../../plan-store/index.ts").ProjectStoreBinding,
+    signal?: AbortSignal,
+) {
+    const result = await captureForegroundProcess("ssh", {
+        cwd: getCwd(),
+        args: ["-T", "--", launch.host, PUBLICATION_PROOF],
+        signal,
+        stdinText:
+            JSON.stringify({
+                executable: launch.executable,
+                proof: { cwd: launch.cwd, ownerIdentity: getHomeDir(), retention: binding },
+            }) + "\n",
+    });
+    if (!result.success || result.stdout.byteLength > 1024 * 1024)
+        throw new Error("Cannot verify retention policy and unfinished publication in the bound execution repository.");
+    const response: { binding: typeof binding; context: import("../../plan-store/index.ts").RetentionContext } =
+        JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(result.stdout));
+    if (
+        !(await import("./project-store-protocol.ts")).sameProjectStoreBinding(binding, response.binding) ||
+        !Array.isArray(response.context?.pending)
+    )
+        throw new Error("Retention proof changed its repository binding.");
+    for (const policy of [response.context.policy?.records, response.context.policy?.plans])
+        if (!policy || ![policy.keepLast, policy.retentionDays].every((n) => Number.isSafeInteger(n) && n >= 0))
+            throw new Error("Invalid execution repository retention settings.");
+    return response.context;
+}

@@ -488,6 +488,12 @@ Verified; it does not mean the onward merge has happened.
 
 ## Work Records
 
+### Plan and Work Record retention
+
+Set the count and age independently for each collection in Project settings. See
+[Prune archived Plans and Work Records](workflows.md#prune-archived-plans-and-work-records) for defaults,
+protected records and confirmation commands.
+
 ### `workRecords.autoGenerateOnPlanCompletion`
 
 Type: boolean, inside the `workRecords` object. Default: `true`.

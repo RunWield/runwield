@@ -74,8 +74,7 @@ commit. Prior delivery copies may be replaced only with retained ownership, ance
 unchanged payloads need no new copies commit. Personal metadata never enters Git. Real target proof settles the package receipt and verified status together
 with owner-guard release before registry cleanup, preserving current documents. Retry reads the frozen input, and
 changed code re-enters validation. Recorder source survives execution cleanup. Non-Git execution instead retains its
-explicit in-place evidence. Canonical Work Records share the admitted personal store. Managed-remote store activation, history and retention remain
-separate work; the following checkout rules apply only to explicit retained legacy selection.
+explicit in-place evidence. Canonical Work Records share the admitted personal store. The initiating laptop owns managed Plans, milestone history and records. Confirmed pruning follows the [Project retention settings](user-documentation/workflows.md#prune-archived-plans-and-work-records). The following checkout rules apply to explicitly retained legacy selections.
 
 ## Passive reads and action preparation
 
