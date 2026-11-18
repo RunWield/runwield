@@ -16,6 +16,13 @@ provenance:
 
 ## Summary
 
+A bounded live SSH pilot verified personal MCP forwarding from macOS ARM64 to Linux x86-64, including discovery,
+tool calls, reconnect, cancellation, disconnect cleanup, and a fresh connection without replaying earlier calls.
+This evidence covers the transport path only; it does not establish release qualification, TUI behavior, or live
+model-provider compatibility.
+
+## Scope
+
 [Child06](../plans/archived/remote-ssh-development/06-forward-personal-mcp-tools-from-the-laptop.md) adds personal MCP
 transport forwarding. This record covers a bounded live check on `sct`, not release qualification or a production-provider matrix.
 

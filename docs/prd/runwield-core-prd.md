@@ -2758,6 +2758,10 @@ Before inspecting a retained execution checkout, including an Epic child's check
 initialized-submodule back-pointers caused by relocation. Working files, staged changes, branches, and commits survive;
 a pointer to another existing checkout is preserved and reported as a conflict.
 
+Doctor shares runtime safety inspections only within each passive scan. Each scan, including verification after
+repairs, starts with fresh evidence even inside an existing read operation. Reuse ends before repairs or external
+validation work; it does not cache Plan contents, admit writers, or replace any required validation before publication.
+
 **Requirement: Reconcile leftovers automatically.** When a Plan is selected, RunWield reconciles files recreated by
 older processes, stale runtime records, and concurrent migrations. Current progress, review decisions, and
 publications stay authoritative, and original files stay recoverable.
@@ -2809,6 +2813,9 @@ Open product questions:
   Plan performs required recovery and preserves current decisions.
 - Given a symlink escape, newer marker, identity conflict, or unreadable registry, passive reads keep the specific
   diagnostic rather than reporting an authoritative empty catalog.
+- Given runtime evidence changes between Doctor scans inside one caller operation, the next scan detects newly
+  introduced symlinks, unsupported markers, or tracked runtime paths without changing files. Post-repair verification
+  reads fresh authority, and interrupted or failed scans leave no reusable inspection results.
 - Given unfinished 0.10 publication, adoption keeps the publication copies and repairs, and publication resumes.
 - Given an unsafe layout, Doctor keeps all named paths and explains the conflict.
 - Given files recreated by an older RunWield process, selecting a Plan reconciles them while current progress and
