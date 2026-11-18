@@ -29,8 +29,8 @@ dependencies:
     - "external-plan-store/activate-managed-remote-store-ownership"
 targetBranch: "epic/external-plan-store"
 userVerifiedAt: null
-status: "reviewed"
 validatedCommit: "1db7143e16b7040f3d2ab50a01c2fb787330ea11"
+status: "verified"
 ---
 
 # Prove the Composed Store Migration
