@@ -7,7 +7,7 @@ import { readDeliveryEvidence, recordDeliveryEvidence } from "./delivery-evidenc
 
 import { getCodeReviewMode, getGuidedReviewMode } from "../settings.js";
 import { AGENTS } from "../../constants.js";
-import { runPlanFrontMatterTransition } from "./state-transition.ts";
+import { recordPlanHumanReview } from "../../plan-store/index.ts";
 import { type ValidationInteractionResponse, ValidationInteractionTypes } from "./validation-ports.ts";
 import type {
     HumanReviewMetadata,
@@ -526,11 +526,5 @@ export async function persistHumanReviewMetadata(
     projectRoot: string,
     metadata: HumanReviewMetadata,
 ): Promise<void> {
-    await runPlanFrontMatterTransition({
-        projectRoot,
-        planName: args.planName,
-        operation: "validation_human_review_metadata",
-        updates: metadata,
-        recoveryAttrs: { ...args.triageMeta },
-    });
+    await recordPlanHumanReview(projectRoot, args.planName, metadata);
 }

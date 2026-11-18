@@ -1,16 +1,16 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
+import { enterProjectRuntime } from "../project-runtime-layout.ts";
+import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { ok as assert } from "node:assert/strict";
+import { ok as assert, rejects } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { defineGitFixture, git } from "../git-test-fixture.ts";
-import {
-    loadEpicReviewContext,
-    recordIntegrationNotes,
-    withIntegrationNotes,
-    syncEpicChildPlanDeviations,
-} from "./epic-review-context.ts";
+import { withIntegrationNotes } from "../../plan-store/epic-context.ts";
+import { loadEpicReviewContext, recordIntegrationNotes, syncEpicChildPlanDeviations } from "../../plan-store/index.ts";
 
 type PlanFixtureAttribute = string | number | string[];
 type PlanFixtureAttributes = Record<string, PlanFixtureAttribute>;
@@ -80,93 +80,98 @@ test("a child's notes replace its earlier notes and other children's notes stay"
 
 test("an Epic child is reviewed with its Epic context; a standalone Plan is not", async () => {
     const repo = await repoFixture.checkout();
-    await writePlan(
-        repo,
-        "epic",
-        {
-            planId: "plan-epic",
-            classification: "PROJECT",
-            complexity: "HIGH",
+    return await withRetainedPlanFixture(repo, async () => {
+        await writePlan(
+            repo,
+            "epic",
+            {
+                planId: "plan-epic",
+                classification: "PROJECT",
+                complexity: "HIGH",
+                status: "ready_for_work",
+                targetBranch: "epic/epic",
+                affectedPaths: [],
+                createdAt: "2026-01-01T00:00:00.000Z",
+            },
+            EPIC_BODY,
+        );
+        const child = {
+            planId: "plan-child-1",
+            classification: "PLANNED_CHANGE",
+            complexity: "MEDIUM",
             status: "ready_for_work",
+            parentPlan: "epic",
+            order: 1,
+            summary: "Build the index",
             targetBranch: "epic/epic",
             affectedPaths: [],
             createdAt: "2026-01-01T00:00:00.000Z",
-        },
-        EPIC_BODY,
-    );
-    const child = {
-        planId: "plan-child-1",
-        classification: "PLANNED_CHANGE",
-        complexity: "MEDIUM",
-        status: "ready_for_work",
-        parentPlan: "epic",
-        order: 1,
-        summary: "Build the index",
-        targetBranch: "epic/epic",
-        affectedPaths: [],
-        createdAt: "2026-01-01T00:00:00.000Z",
-    };
-    await writePlan(repo, "epic/01-index", child, "# Index\n");
-    await writePlan(
-        repo,
-        "epic/02-query",
-        { ...child, planId: "plan-child-2", order: 2, summary: "Query it" },
-        "# Q\n",
-    );
+        };
+        await writePlan(repo, "epic/01-index", child, "# Index\n");
+        await writePlan(
+            repo,
+            "epic/02-query",
+            { ...child, planId: "plan-child-2", order: 2, summary: "Query it" },
+            "# Q\n",
+        );
 
-    const context = await loadEpicReviewContext(repo, "epic/01-index", {
-        parentPlan: "epic",
-        status: "ready_for_work",
+        const context = await loadEpicReviewContext(repo, "epic/01-index", {
+            parentPlan: "epic",
+            status: "ready_for_work",
+        });
+        const standalone = await loadEpicReviewContext(repo, "solo", { classification: "PLANNED_CHANGE" });
+
+        assertEquals(context?.epicPlanName, "epic");
+        assertStringIncludes(context?.section || "", "### Epic Context");
+        assertStringIncludes(context?.section || "", "Ship search across Plans.");
+        assertStringIncludes(context?.section || "", "- epic/01-index (ready_for_work): Build the index ← this Plan");
+        assertStringIncludes(context?.section || "", "- epic/02-query (ready_for_work): Query it");
+        assertEquals(standalone, null);
     });
-    const standalone = await loadEpicReviewContext(repo, "solo", { classification: "PLANNED_CHANGE" });
-
-    assertEquals(context?.epicPlanName, "epic");
-    assertStringIncludes(context?.section || "", "### Epic Context");
-    assertStringIncludes(context?.section || "", "Ship search across Plans.");
-    assertStringIncludes(context?.section || "", "- epic/01-index (ready_for_work): Build the index ← this Plan");
-    assertStringIncludes(context?.section || "", "- epic/02-query (ready_for_work): Query it");
-    assertEquals(standalone, null);
 });
 
 test("recording notes writes the Epic's managed section; nothing to note writes nothing", async () => {
     const repo = await repoFixture.checkout();
-    await writePlan(
-        repo,
-        "epic",
-        {
-            planId: "plan-epic",
-            classification: "PROJECT",
-            complexity: "HIGH",
-            status: "ready_for_work",
-            targetBranch: "epic/epic",
-            affectedPaths: [],
-            createdAt: "2026-01-01T00:00:00.000Z",
-        },
-        EPIC_BODY,
-    );
-    const before = (await loadPlan(repo, "epic"))?.markdown;
+    return await withRetainedPlanFixture(repo, async () => {
+        await writePlan(
+            repo,
+            "epic",
+            {
+                planId: "plan-epic",
+                classification: "PROJECT",
+                complexity: "HIGH",
+                status: "ready_for_work",
+                targetBranch: "epic/epic",
+                affectedPaths: [],
+                createdAt: "2026-01-01T00:00:00.000Z",
+            },
+            EPIC_BODY,
+        );
+        const before = (await loadPlan(repo, "epic"))?.markdown;
 
-    assertEquals(await recordIntegrationNotes(repo, "epic", "epic/01-index", []), null);
-    assertEquals((await loadPlan(repo, "epic"))?.markdown, before);
+        assertEquals(await recordIntegrationNotes(repo, "epic", "epic/01-index", []), null);
+        assertEquals((await loadPlan(repo, "epic"))?.markdown, before);
 
-    await git(repo, ["add", "."]);
-    await git(repo, ["commit", "-m", "Epic requirements"]);
-    const executionRoot = `${repo}-execution`;
-    await git(repo, ["worktree", "add", "-b", "worktree/notes", executionRoot]);
-    const written = await recordIntegrationNotes(executionRoot, "epic", "epic/01-index", [
-        {
-            check: "Index is read",
-            where: "",
-        },
-    ]);
+        await git(repo, ["add", "."]);
+        await git(repo, ["commit", "-m", "Epic requirements"]);
+        const executionRoot = `${repo}-execution`;
+        await git(repo, ["worktree", "add", "-b", "worktree/notes", executionRoot]);
+        await enterProjectRuntime(executionRoot);
+        const written = await recordIntegrationNotes(executionRoot, "epic", "epic/01-index", [
+            {
+                check: "Index is read",
+                where: "",
+            },
+        ]);
 
-    assertEquals(written, "docs/plans/epic.md");
-    assertEquals((await loadPlan(repo, "epic"))?.markdown, before);
-    const epic = await loadPlan(executionRoot, "epic");
-    assertStringIncludes(epic?.markdown || "", "### Integration Notes");
-    assertStringIncludes(epic?.markdown || "", "- Index is read");
-    assertEquals(epic?.attrs.status, "ready_for_work");
-    await git(repo, ["worktree", "remove", "--force", executionRoot]);
+        assertEquals(written, "docs/plans/epic.md");
+        assertEquals((await loadPlan(repo, "epic"))?.markdown, before);
+        const epic = await loadPlan(executionRoot, "epic");
+        assertStringIncludes(epic?.markdown || "", "### Integration Notes");
+        assertStringIncludes(epic?.markdown || "", "- Index is read");
+        assertEquals(epic?.attrs.status, "ready_for_work");
+        await git(repo, ["worktree", "remove", "--force", executionRoot]);
+    });
 });
 
 const DEVIATION = {
@@ -179,116 +184,129 @@ const DEVIATION = {
 
 test("Epic projections preserve sibling blocks and repair a missing block without rewriting matching content", async () => {
     const repo = await repoFixture.checkout();
-    await savePlan(repo, "epic", EPIC_BODY, { classification: "PROJECT", status: "ready_for_work" });
-    const original = (await loadPlan(repo, "epic"))!;
-    for (const name of ["epic/a", "epic/b"]) {
-        await savePlan(repo, name, "# Child", {
-            classification: "PLANNED_CHANGE",
-            parentPlan: "epic",
-            planDeviations: [DEVIATION],
-        });
-        assertEquals(await syncEpicChildPlanDeviations(repo, name), "docs/plans/epic.md");
-    }
-    const both = (await loadPlan(repo, "epic"))!;
-    assertEquals(both.attrs, original.attrs);
-    assertStringIncludes(both.body, "## Objective\n\nShip search across Plans.");
-    assert(both.body.indexOf("### Child Plan Deviations") < both.body.indexOf("## Verification Plan"));
-    assertStringIncludes(both.body, "Approved at: 2026-10-24T00:00:00.000Z");
-    assertEquals(await syncEpicChildPlanDeviations(repo, "epic/a"), null);
-    assertEquals((await loadPlan(repo, "epic"))?.revision, both.revision);
-    const aBlock = both.markdown.slice(
-        both.markdown.indexOf('<!-- runwield:child-plan-deviations:start child="epic/a"'),
-        both.markdown.indexOf('<!-- runwield:child-plan-deviations:end child="epic/a"') +
-            '<!-- runwield:child-plan-deviations:end child="epic/a" -->'.length,
-    );
-    const b = (await loadPlan(repo, "epic/b"))!;
-    await savePlan(
-        repo,
-        "epic/b",
-        b.markdown,
-        {
-            planDeviations: [
-                DEVIATION,
-                { ...DEVIATION, id: "second", replacementRequirement: "Title and tag search." },
-            ],
-        },
-        { expectedRevision: b.revision },
-    );
-    await syncEpicChildPlanDeviations(repo, "epic/b");
-    const updated = (await loadPlan(repo, "epic"))!;
-    assertStringIncludes(updated.markdown, aBlock);
-    assertStringIncludes(updated.markdown, "2. Superseded requirement");
-    await fsWriteFile(updated.path, updated.markdown.replace(aBlock, ""));
-    assertEquals(await syncEpicChildPlanDeviations(repo, "epic/a"), "docs/plans/epic.md");
-    assertStringIncludes((await loadPlan(repo, "epic"))!.markdown, aBlock);
+    return await withRetainedPlanFixture(repo, async () => {
+        await seedPlan(repo, "epic", EPIC_BODY, { classification: "PROJECT", status: "ready_for_work" });
+        const original = (await loadPlan(repo, "epic"))!;
+        for (const name of ["epic/a", "epic/b"]) {
+            await seedPlan(repo, name, "# Child", {
+                classification: "PLANNED_CHANGE",
+                parentPlan: "epic",
+                planDeviations: [DEVIATION],
+            });
+            assertEquals(await syncEpicChildPlanDeviations(repo, name), "docs/plans/epic.md");
+        }
+        const both = (await loadPlan(repo, "epic"))!;
+        assertEquals(both.attrs, original.attrs);
+        assertStringIncludes(both.body, "## Objective\n\nShip search across Plans.");
+        assert(both.body.indexOf("### Child Plan Deviations") < both.body.indexOf("## Verification Plan"));
+        assertStringIncludes(both.body, "Approved at: 2026-10-24T00:00:00.000Z");
+        assertEquals(await syncEpicChildPlanDeviations(repo, "epic/a"), null);
+        assertEquals((await loadPlan(repo, "epic"))?.revision, both.revision);
+        const aBlock = both.markdown.slice(
+            both.markdown.indexOf('<!-- runwield:child-plan-deviations:start child="epic/a"'),
+            both.markdown.indexOf('<!-- runwield:child-plan-deviations:end child="epic/a"') +
+                '<!-- runwield:child-plan-deviations:end child="epic/a" -->'.length,
+        );
+        const b = (await loadPlan(repo, "epic/b"))!;
+        await seedPlan(
+            repo,
+            "epic/b",
+            b.markdown,
+            {
+                planDeviations: [
+                    DEVIATION,
+                    { ...DEVIATION, id: "second", replacementRequirement: "Title and tag search." },
+                ],
+            },
+            { expectedRevision: b.revision },
+        );
+        await syncEpicChildPlanDeviations(repo, "epic/b");
+        const updated = (await loadPlan(repo, "epic"))!;
+        assertStringIncludes(updated.markdown, aBlock);
+        assertStringIncludes(updated.markdown, "2. Superseded requirement");
+        await fsWriteFile(updated.path, updated.markdown.replace(aBlock, ""));
+        assertEquals(await syncEpicChildPlanDeviations(repo, "epic/a"), "docs/plans/epic.md");
+        assertStringIncludes((await loadPlan(repo, "epic"))!.markdown, aBlock);
+    });
 });
 
 for (const heading of ["## Deferred work", "### Deferred work"]) {
     test(`child deviation blocks stay separate when a requirement contains ${heading}`, async () => {
         const repo = await repoFixture.checkout();
-        await savePlan(repo, "epic", EPIC_BODY, { classification: "PROJECT" });
-        const replacementRequirement = `Keep title search.\n\n${heading}\n\nOmit full-text search.`;
-        await savePlan(repo, "epic/a", "# Child A", {
-            parentPlan: "epic",
-            planDeviations: [{ ...DEVIATION, replacementRequirement }],
+        return await withRetainedPlanFixture(repo, async () => {
+            await seedPlan(repo, "epic", EPIC_BODY, { classification: "PROJECT" });
+            const replacementRequirement = `Keep title search.\n\n${heading}\n\nOmit full-text search.`;
+            await seedPlan(repo, "epic/a", "# Child A", {
+                parentPlan: "epic",
+                planDeviations: [{ ...DEVIATION, replacementRequirement }],
+            });
+            await syncEpicChildPlanDeviations(repo, "epic/a");
+            await seedPlan(repo, "epic/b", "# Child B", { parentPlan: "epic", planDeviations: [DEVIATION] });
+            await syncEpicChildPlanDeviations(repo, "epic/b");
+            const both = (await loadPlan(repo, "epic"))!;
+            assert(
+                both.body.indexOf('<!-- runwield:child-plan-deviations:end child="epic/a" -->') <
+                    both.body.indexOf('<!-- runwield:child-plan-deviations:start child="epic/b" -->'),
+            );
+            assert(both.body.indexOf("**epic/b**") < both.body.indexOf("## Verification Plan"));
+            const child = (await loadPlan(repo, "epic/a"))!;
+            const updatedRequirement = `${replacementRequirement}\n\nKeep the existing index.`;
+            await seedPlan(
+                repo,
+                "epic/a",
+                child.markdown,
+                { planDeviations: [{ ...DEVIATION, replacementRequirement: updatedRequirement }] },
+                { expectedRevision: child.revision },
+            );
+            await syncEpicChildPlanDeviations(repo, "epic/a");
+            assertEquals(
+                (await loadPlan(repo, "epic"))!.body,
+                both.body.replace(replacementRequirement, updatedRequirement),
+            );
         });
-        await syncEpicChildPlanDeviations(repo, "epic/a");
-        await savePlan(repo, "epic/b", "# Child B", { parentPlan: "epic", planDeviations: [DEVIATION] });
-        await syncEpicChildPlanDeviations(repo, "epic/b");
-        const both = (await loadPlan(repo, "epic"))!;
-        assert(
-            both.body.indexOf('<!-- runwield:child-plan-deviations:end child="epic/a" -->') <
-                both.body.indexOf('<!-- runwield:child-plan-deviations:start child="epic/b" -->'),
-        );
-        assert(both.body.indexOf("**epic/b**") < both.body.indexOf("## Verification Plan"));
-        const child = (await loadPlan(repo, "epic/a"))!;
-        const updatedRequirement = `${replacementRequirement}\n\nKeep the existing index.`;
-        await savePlan(
-            repo,
-            "epic/a",
-            child.markdown,
-            { planDeviations: [{ ...DEVIATION, replacementRequirement: updatedRequirement }] },
-            { expectedRevision: child.revision },
-        );
-        await syncEpicChildPlanDeviations(repo, "epic/a");
-        assertEquals(
-            (await loadPlan(repo, "epic"))!.body,
-            both.body.replace(replacementRequirement, updatedRequirement),
-        );
     });
 }
 
 for (const parent of ["missing", "standalone", "ordinary", "sequence"]) {
     test(`Epic sync writes nothing for ${parent}`, async () => {
         const repo = await repoFixture.checkout();
-        if (parent !== "missing")
-            await savePlan(repo, "parent", EPIC_BODY, {
-                classification: parent === "ordinary" ? "PLANNED_CHANGE" : "PROJECT",
-                ...(parent === "sequence" ? { type: "sequence" } : {}),
+        return await withRetainedPlanFixture(repo, async () => {
+            if (parent !== "missing")
+                await seedPlan(repo, "parent", EPIC_BODY, {
+                    classification: parent === "ordinary" ? "PLANNED_CHANGE" : "PROJECT",
+                    ...(parent === "sequence" ? { type: "sequence" } : {}),
+                });
+            await seedPlan(repo, "child", "# Child", {
+                classification: "PLANNED_CHANGE",
+                ...(parent !== "standalone" ? { parentPlan: "parent" } : {}),
+                planDeviations: [DEVIATION],
             });
-        await savePlan(repo, "child", "# Child", {
-            classification: "PLANNED_CHANGE",
-            ...(parent !== "standalone" ? { parentPlan: "parent" } : {}),
-            planDeviations: [DEVIATION],
+            const before = await loadPlan(repo, "parent");
+            if (parent === "missing")
+                await rejects(
+                    () => syncEpicChildPlanDeviations(repo, "child"),
+                    /Parent Plan parent is unavailable for the child deviation projection/,
+                );
+            else assertEquals(await syncEpicChildPlanDeviations(repo, "child"), null);
+            assertEquals((await loadPlan(repo, "parent"))?.markdown, before?.markdown);
         });
-        const before = await loadPlan(repo, "parent");
-        assertEquals(await syncEpicChildPlanDeviations(repo, "child"), null);
-        assertEquals((await loadPlan(repo, "parent"))?.markdown, before?.markdown);
     });
 }
 
 test("removing a child's deviations removes only its managed block", async () => {
     const repo = await repoFixture.checkout();
-    await savePlan(repo, "epic", EPIC_BODY, { classification: "PROJECT" });
-    await savePlan(repo, "child", "# Child", { parentPlan: "epic", planDeviations: [DEVIATION] });
-    await syncEpicChildPlanDeviations(repo, "child");
-    const child = (await loadPlan(repo, "child"))!;
-    await savePlan(repo, "child", child.markdown, { planDeviations: [] }, { expectedRevision: child.revision });
-    await syncEpicChildPlanDeviations(repo, "child");
-    const epic = (await loadPlan(repo, "epic"))!;
-    assertStringIncludes(epic.body, "### Child Plan Deviations");
-    assertEquals(epic.body.includes("**child**"), false);
-    assertStringIncludes(epic.body, "Ship search across Plans.");
+    return await withRetainedPlanFixture(repo, async () => {
+        await seedPlan(repo, "epic", EPIC_BODY, { classification: "PROJECT" });
+        await seedPlan(repo, "child", "# Child", { parentPlan: "epic", planDeviations: [DEVIATION] });
+        await syncEpicChildPlanDeviations(repo, "child");
+        const child = (await loadPlan(repo, "child"))!;
+        await seedPlan(repo, "child", child.markdown, { planDeviations: [] }, { expectedRevision: child.revision });
+        await syncEpicChildPlanDeviations(repo, "child");
+        const epic = (await loadPlan(repo, "epic"))!;
+        assertStringIncludes(epic.body, "### Child Plan Deviations");
+        assertEquals(epic.body.includes("**child**"), false);
+        assertStringIncludes(epic.body, "Ship search across Plans.");
+    });
 });
 
 test("Integration Notes append when Verification Plan is absent and keep an existing subsection", () => {

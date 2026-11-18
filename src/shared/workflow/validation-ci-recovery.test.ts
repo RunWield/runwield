@@ -1,3 +1,4 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { getCwd } from "../../constants.js";
 import { test } from "node:test";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
@@ -5,7 +6,9 @@ import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts"
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { type PlanFrontMatterInput, loadPlan, savePlan } from "../../plan-store.js";
+import { type PlanFrontMatterInput } from "../../plan-format.ts";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { HostedSession } from "../session/hosted-session.js";
 import { ensureRootAgentSession } from "../session/session.js";
 import { recordPlanEvent } from "./plan-lifecycle.js";
@@ -348,7 +351,7 @@ test("runValidationPhase keeps canonical progress when a stale checkpoint still 
             phase: "mechanical",
             state: "running",
         });
-        await savePlan(
+        await seedPlan(
             projectRoot,
             "p",
             advanced.body,

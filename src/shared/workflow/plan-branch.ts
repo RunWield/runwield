@@ -1,5 +1,5 @@
 import { isPlannedChangeClassification } from "../../constants.js";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store/index.ts";
 import { shouldAutoMergePlansIntoTargetBranch } from "../settings.js";
 import { ensureTargetBranchRef, slugify } from "../worktree.js";
 
@@ -32,7 +32,10 @@ export function isStandalonePlannedChange(attrs: Partial<PlanFrontMatter>): bool
 
 /** Epic children, recorded attempts, and authored Plan Branches keep their landing. */
 export function shouldAdoptPlanBranch(projectRoot: string, attrs: Partial<PlanFrontMatter>): boolean {
-    return isStandalonePlannedChange(attrs) && !attrs.deliveryBranch?.trim() &&
+    return (
+        isStandalonePlannedChange(attrs) &&
+        !attrs.deliveryBranch?.trim() &&
         !attrs.targetBranch?.trim().startsWith(PLAN_BRANCH_PREFIX) &&
-        !shouldAutoMergePlansIntoTargetBranch(projectRoot);
+        !shouldAutoMergePlansIntoTargetBranch(projectRoot)
+    );
 }

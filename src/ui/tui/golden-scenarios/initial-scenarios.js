@@ -285,8 +285,8 @@ export const planReviewTransactionContractScenario = {
     ],
     actions: [
         {
-            type: "writeProjectFile",
-            path: "docs/plans/plan.md",
+            type: "savePlan",
+            planName: "plan",
             text: "---\nclassification: PLANNED_CHANGE\nstatus: draft\n---\n# Plan\n\nDo the thing.\n",
         },
         { type: "type", text: "submit the plan for review" },
@@ -348,8 +348,8 @@ export const planReviewReplyOnlyConversationScenario = {
     ],
     actions: [
         {
-            type: "writeProjectFile",
-            path: "docs/plans/plan.md",
+            type: "savePlan",
+            planName: "plan",
             text: "---\nclassification: PLANNED_CHANGE\nstatus: draft\nexecutionAgent: engineer\ncollaborationRecommendation: autonomous\n---\n# Plan\n\n## Context\n\nKeep the original scope.\n",
         },
         { type: "type", text: "Review the saved Plan." },

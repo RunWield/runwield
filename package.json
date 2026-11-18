@@ -69,7 +69,8 @@
         "test:golden-tui:extensive": "bun scripts/write-version.ts && bun scripts/run-tests.js --isolated src/ui/tui/testing src/ui/tui/golden-scenarios",
         "compile": "bun run workspace:build && bun scripts/compile-command.ts",
         "compile:watch": "watchexec -e js,jsx,mjs,md,css,ts,tsx,json --ignore node_modules --ignore dist --ignore bin --ignore src/shared/version.js -- bun run compile",
-        "ux:new-user:current": "sh -c 'case $(uname -m) in arm64|aarch64) target=aarch64-unknown-linux-gnu ;; x86_64|amd64) target=x86_64-unknown-linux-gnu ;; *) echo unsupported container compile architecture: $(uname -m) >&2; exit 1 ;; esac; bun run compile --target \"$target\" && podman build --target wld-ux-current --build-arg WLD_INSTALL_REFRESH=$(date +%s) -f Containerfile.wld-ux -t runwield-wld-ux-current:local . && podman run --rm -it -e ANTHROPIC_API_KEY -e OPENAI_API_KEY -e GOOGLE_API_KEY -e MISTRAL_API_KEY runwield-wld-ux-current:local'"
+        "ux:new-user:current": "sh -c 'case $(uname -m) in arm64|aarch64) target=aarch64-unknown-linux-gnu ;; x86_64|amd64) target=x86_64-unknown-linux-gnu ;; *) echo unsupported container compile architecture: $(uname -m) >&2; exit 1 ;; esac; bun run compile --target \"$target\" && podman build --target wld-ux-current --build-arg WLD_INSTALL_REFRESH=$(date +%s) -f Containerfile.wld-ux -t runwield-wld-ux-current:local . && podman run --rm -it -e ANTHROPIC_API_KEY -e OPENAI_API_KEY -e GOOGLE_API_KEY -e MISTRAL_API_KEY runwield-wld-ux-current:local'",
+        "plan-store:check": "bun scripts/check-plan-store-boundary.ts"
     },
     "dependencies": {
         "@agentclientprotocol/sdk": "1.4.0",
@@ -111,6 +112,7 @@
         "@radix-ui/react-tabs": "1.1.21",
         "@radix-ui/react-tooltip": "1.2.16",
         "@silvia-odwyer/photon-node": "0.3.4",
+        "@streamparser/json": "0.0.26",
         "@tailwindcss/vite": "4.3.3",
         "@tanstack/react-table": "8.21.3",
         "@types/react": "19.2.18",

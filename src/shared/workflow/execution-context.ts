@@ -1,4 +1,6 @@
-import { preparePlanController } from "./plan-preparation.ts";
+import { restoreNonGitPlanExecution, reconcilePlanExecutionBinding } from "../../plan-store/index.ts";
+import { executionWorktreePathExists } from "./execution-worktree-rescue.ts";
+import { preparePlanController } from "../../plan-store/index.ts";
 import { resolve } from "node:path";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { realpath as fsRealpath } from "node:fs/promises";
@@ -8,7 +10,9 @@ import { effectiveDeliveryBranch } from "./plan-branch.ts";
  */
 
 import { isPlannedChangeClassification } from "../../constants.js";
-import { ensurePlanIdentity, loadPlan, normalizeExecutionMode, updatePlanFrontMatter } from "../../plan-store.js";
+
+import { normalizeExecutionMode } from "../../plan-format.ts";
+import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
 import {
     describeRegistryAmbiguity,
     findActiveByPlanName as findWorktreeRegistryEntryByPlanName,
@@ -18,8 +22,8 @@ import {
     restoreEntryFromPlanEvidence,
     updateEntry as updateWorktreeRegistryEntry,
 } from "../worktree-registry.js";
-import { prepareExecutionPlanFile } from "./execution-plan-file.js";
-import { withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
+import { prepareExecutionPlanFile } from "../../plan-store/index.ts";
+import { enterProjectRuntime, withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
 import { resolveTargetBranchName } from "../worktree.js";
 import { getWorkflowDiff } from "./git-snapshot.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
@@ -30,7 +34,7 @@ import type { ValidationRecoveryNotice } from "./validation-user-messages.ts";
 
 const VALIDATION_ELIGIBLE_WORKTREE_STATUSES = new Set(["active", "completed", "validation_failed", "validated"]);
 
-type PlanFrontMatter = import("../../plan-store.js").PlanFrontMatter;
+type PlanFrontMatter = import("../../plan-store/index.ts").PlanFrontMatter;
 type ResolutionSource = "explicit" | "active_session" | "durable_recovery";
 type ScalarValue = string | number | boolean | null | undefined;
 export interface ExecutionContextCandidate {
@@ -250,7 +254,9 @@ async function resolveValidationExecutionContextInScope({
         // The identity/Git recovery below owns validation's legacy-ID repair.
         const recorded = await findWorktreeRegistryEntryByPlanName(projectRoot, planName);
         plan =
-            (recorded ? await loadPlan(recorded.path, planName) : null) ||
+            (recorded && (await executionWorktreePathExists(recorded.path))
+                ? await loadPlan(recorded.path, planName)
+                : null) ||
             executionPlan ||
             (await loadPlan(projectRoot, planName));
     } catch (error) {
@@ -350,17 +356,7 @@ async function resolveValidationExecutionContextInScope({
             );
         }
         if (plan && attrs.executionMode !== "non_git_in_place" && selected.source !== "durable_recovery") {
-            await updatePlanFrontMatter(
-                projectRoot,
-                planName,
-                {
-                    executionMode: "non_git_in_place",
-                    deliveryEvidence: null,
-                    validatedCommit: null,
-                },
-                attrs,
-                { expectedRevision: plan.revision },
-            );
+            await restoreNonGitPlanExecution(projectRoot, planName, plan.revision);
         }
         await recordResolutionMetric({
             cwd: projectRoot,
@@ -653,28 +649,21 @@ async function resolveValidationExecutionContextInScope({
         selfHealNotices.push({ kind: "execution_plan_fixed", planName });
     }
 
+    await enterProjectRuntime(canonicalWorktreePath);
     await preparePlanController(canonicalWorktreePath, planName);
-    let persistedLegacyExecutionMode = false;
-    const currentExecutionPlan = await loadPlan(canonicalWorktreePath, planName);
-    if (currentExecutionPlan) {
-        const ownedRepairs: Partial<PlanFrontMatter> = {};
-        if (registryEntry.planId && currentExecutionPlan.attrs.planId !== registryEntry.planId) {
-            ownedRepairs.planId = registryEntry.planId;
-            selfHealNotices.push({ kind: "execution_plan_fixed", planName });
-        }
-        if (currentExecutionPlan.attrs.status !== "validated" && !currentExecutionPlan.attrs.worktreeId) {
-            ownedRepairs.worktreeId = worktreeId;
-        }
-        if (Object.keys(ownedRepairs).length > 0) {
-            await updatePlanFrontMatter(canonicalWorktreePath, planName, ownedRepairs, currentExecutionPlan.attrs, {
-                expectedRevision: currentExecutionPlan.revision,
-            });
-        }
-        persistedLegacyExecutionMode = currentExecutionPlan.attrs.executionMode !== "worktree";
-    }
-    // A host reviewer continuation resolves the same round again. Its checkpoint
+    const bindingRepair = await reconcilePlanExecutionBinding(canonicalWorktreePath, planName, worktreeId);
+    if (bindingRepair.identityRepaired) selfHealNotices.push({ kind: "execution_plan_fixed", planName });
+    const persistedLegacyExecutionMode = bindingRepair.legacyExecutionMode;
+    // A host reviewer or repair continuation resolves the same round again. Its checkpoint
     // already records that round's context; process re-entry is not another check.
-    if (!attrs.validationCheckpoint?.hostReview) {
+    if (
+        !attrs.validationCheckpoint?.hostReview &&
+        !attrs.validationCheckpoint?.pendingRepair &&
+        !(
+            attrs.validationCheckpoint?.repairCompletedOperationId &&
+            attrs.validationCheckpoint.repairCompletedOperationId !== attrs.validationCheckpoint.lastSettledOperationId
+        )
+    ) {
         await recordResolutionMetric({
             cwd: projectRoot,
             planName,

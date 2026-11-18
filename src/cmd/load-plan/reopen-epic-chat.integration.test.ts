@@ -1,7 +1,9 @@
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { ok as assert, strictEqual as assertStrictEquals } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.js";
+import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
+
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { requestLocalReviewInteraction } from "../../shared/session/local-review-interactions.ts";
@@ -11,17 +13,21 @@ async function decide(url: string, route: "deny" | "decision", body: Record<stri
     const page = new URL(url);
     const token = page.searchParams.get("token");
     assert(token);
+    const html = await (await fetch(page)).text();
+    const embedded = html.match(/<script[^>]*data-review-payload[^>]*>([\s\S]*?)<\/script>/)?.[1];
+    assert(embedded, "Expected review payload with current document revision.");
+    const { reviewRevision, documentRevision } = JSON.parse(embedded);
     const response = await fetch(new URL(`/api/review/${route}?token=${encodeURIComponent(token)}`, page.origin), {
         method: "POST",
         headers: { "content-type": "application/json", "x-runwield-review-token": token },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ reviewRevision, documentRevision, ...body }),
     });
     assertEquals(response.status, 200, await response.text());
 }
 
 test("saved Epic chat review keeps one conversation and live page across two runtime review rounds", async () => {
     await withRuntimeCommandFixture("saved-epic-chat-", async ({ homeDir, projectRoot }) => {
-        await savePlan(projectRoot, "epic", "# Epic\n\n## Context\n\nOriginal delivery boundary.\n", {
+        await seedPlan(projectRoot, "epic", "# Epic\n\n## Context\n\nOriginal delivery boundary.\n", {
             classification: "PROJECT",
             status: "draft",
             affectedPaths: [],
@@ -78,7 +84,7 @@ test("saved Epic chat review keeps one conversation and live page across two run
 
             const current = await loadPlan(projectRoot, "epic");
             assert(current);
-            await savePlan(
+            await seedPlan(
                 projectRoot,
                 "epic",
                 "# Epic\n\n## Context\n\nRevised delivery boundary with clear milestones.\n",

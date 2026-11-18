@@ -27,6 +27,7 @@ export interface RemoteSupervisorHeader {
     mount: MountHeader;
     remoteHome: string;
     memoryCollection: string;
+    personalOwner?: import("../project-identity.ts").ProjectPersonalOwner;
     modelProof?: RemoteModelProof;
 }
 
@@ -482,6 +483,7 @@ export async function runRemoteSupervisor(): Promise<void> {
                     cwd: header.view.cwd,
                     resources: {
                         globalRoot: personalMount.globalRoot,
+                        personalOwner: header.personalOwner,
                         agentsRoot: personalMount.agentsRoot,
                         packageRoots: personalMount.packageRoots,
                     },

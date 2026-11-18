@@ -1984,3 +1984,29 @@ body:has(.rw-code-review) button.review-toolbar-btn.primary:disabled,
     height: 100%;
     min-height: 0;
 }
+
+/* Package documents retain the shared reader and existing body editor. */
+.rw-plan-documents {
+    width: 100%;
+    min-width: 0;
+    padding: var(--rw-space-panel);
+}
+.rw-plan-document-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--rw-space-control-x);
+    padding: var(--rw-space-control-y) var(--rw-space-panel);
+}
+.rw-plan-document-controls select,
+.rw-plan-document-controls button {
+    min-height: var(--rw-control-height);
+    padding: var(--rw-space-control-y) var(--rw-space-control-x);
+    background: var(--rw-surface);
+    color: var(--rw-text);
+    border: 1px solid var(--rw-border);
+    border-radius: var(--rw-radius-control);
+}
+.rw-plan-documents .plan-body-editor {
+    width: 100%;
+}

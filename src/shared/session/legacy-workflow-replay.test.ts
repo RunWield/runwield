@@ -1,7 +1,10 @@
+import { seedPlanState, seedPlan } from "../testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { assertEquals, assertExists } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { makeManagedSessionFixture, readTranscriptEvidence } from "../../testing/managed-session-fixture.ts";
 import { tuiSessionSidebarProjection } from "../../ui/tui/session-sidebar.ts";
 
@@ -23,7 +26,7 @@ for (const planState of ["verified", "implemented", "missing", "different-id"] a
             const handle = fixture.openRuntime("tui", "legacy-reader");
             try {
                 if (planState !== "missing") {
-                    await savePlan(projectRoot, "sample", "# Sample\n", {
+                    await seedPlan(projectRoot, "sample", "# Sample\n", {
                         planId: planState === "different-id" ? "other-id" : "sample-id",
                         classification: "PLANNED_CHANGE",
                         status: planState === "different-id" ? "verified" : planState,
@@ -51,7 +54,7 @@ for (const planState of ["verified", "implemented", "missing", "different-id"] a
                 if (planState === "verified") {
                     const currentPlan = await loadPlan(projectRoot, "sample");
                     assertExists(currentPlan);
-                    await savePlan(
+                    await seedPlan(
                         projectRoot,
                         "sample",
                         "# Sample reopened\n",
@@ -62,6 +65,7 @@ for (const planState of ["verified", "implemented", "missing", "different-id"] a
                         },
                         { expectedRevision: currentPlan.revision },
                     );
+                    await seedPlanState(projectRoot, "sample", { status: "implemented" });
                     await handle.runtime.synchronizeManagedSession(handle.adoptedSessionId, { replayFromStart: true });
                     assertEquals(
                         handle.runtime.getSessionSnapshot(handle.adoptedSessionId)?.workflowContext?.status,

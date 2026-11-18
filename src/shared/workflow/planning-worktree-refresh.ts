@@ -1,10 +1,15 @@
+import {
+    mergePlanningDocumentBlobs,
+    preparePlanningMergeDocuments,
+    applyPlanningMergeDocuments,
+} from "../../plan-store/index.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
 import { captureForegroundProcess, type CapturedProcessOptions } from "../captured-process.ts";
-import { rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { rm as fsRm } from "node:fs/promises";
 /** Import published code before resuming an unstarted child's planning checkout. */
 import { join } from "node:path";
-import { injectFrontMatter, parsePlanFrontMatter, planDocumentMarkdown } from "../../plan-store.js";
+
 import { gitStatusPaths } from "../git-runtime-safety.ts";
 import { isRunWieldOwnedRuntimePath } from "../runwield-owned-paths.ts";
 import {
@@ -13,7 +18,7 @@ import {
     PLANNING_CHECKPOINT_GIT_OPTIONS,
 } from "../worktree.js";
 import { findById, refreshPlanningWorktreeBase, type WorktreeRegistryEntry } from "../worktree-registry.js";
-import { runExecutionPreparationTransition } from "./state-transition.ts";
+import { runExecutionPreparationTransition } from "../../plan-store/index.ts";
 import { healSettledTransitionRecords } from "./transition-recovery.ts";
 import { isTransferredProjectContext, recordedProjectContextPaths } from "../worktree-project-context.ts";
 
@@ -22,50 +27,6 @@ async function git(cwd: string, args: string[], options: Pick<CapturedProcessOpt
     const stdout = new TextDecoder().decode(result.stdout);
     if (!result.success) throw new Error(`git ${args.join(" ")} failed: ${new TextDecoder().decode(result.stderr)}`);
     return stdout;
-}
-
-async function readPlanAt(cwd: string, ref: string, path: string) {
-    const result = await captureForegroundProcess("git", { cwd, args: ["show", `${ref}:${path}`] });
-    return result.success ? new TextDecoder().decode(result.stdout) : null;
-}
-
-/** Merge scope normally, while lifecycle state comes from the document's owner. */
-async function mergePlanningDocument(
-    cwd: string,
-    path: string,
-    base: string,
-    current: string,
-    incoming: string,
-    own: boolean,
-) {
-    const baseAttrs = parsePlanFrontMatter(base).attrs;
-    const currentAttrs = parsePlanFrontMatter(current).attrs;
-    const incomingAttrs = parsePlanFrontMatter(incoming).attrs;
-    const locallyAssignedIdentity = own && !baseAttrs.planId && !incomingAttrs.planId;
-    if (currentAttrs.planId !== incomingAttrs.planId && !locallyAssignedIdentity) {
-        throw new Error(`Cannot refresh ${path}: the published Plan has a different identity.`);
-    }
-    const lifecycle = own || incomingAttrs.status === baseAttrs.status ? currentAttrs : incomingAttrs;
-    const overrides = {
-        ...(locallyAssignedIdentity ? { planId: currentAttrs.planId } : {}),
-        status: lifecycle.status,
-        userVerifiedAt: lifecycle.userVerifiedAt,
-    };
-    const versions = [current, base, incoming].map((text) => planDocumentMarkdown(injectFrontMatter(text, overrides)));
-    const scratch = await mkdtemp(join(tmpdir(), "runwield-planning-merge-"));
-    try {
-        const paths = ["current", "base", "incoming"].map((name) => join(scratch, name));
-        await Promise.all(paths.map((path, index) => fsWriteFile(path, versions[index])));
-        const result = await captureForegroundProcess("git", { cwd, args: ["merge-file", "-p", ...paths] });
-        if (!result.success) {
-            throw new Error(
-                `Cannot refresh ${path}: planning scope conflicts with published changes. Both versions are preserved.`,
-            );
-        }
-        return new TextDecoder().decode(result.stdout);
-    } finally {
-        await fsRm(scratch, { recursive: true });
-    }
 }
 
 async function isAncestor(cwd: string, ancestor: string, descendant: string) {
@@ -124,18 +85,12 @@ async function buildReplantedCommit(entry: WorktreeRegistryEntry, target: string
                         `Cannot refresh ${path}: saved planning edits conflict with the rewritten branch. Your files are preserved.`,
                     );
                 }
-                const contents = await Promise.all(
-                    entries.map((value) => git(entry.path, ["cat-file", "blob", value.split(" ")[2]])),
-                );
-                const merged = await mergePlanningDocument(
+                const oid = await mergePlanningDocumentBlobs(
                     entry.path,
                     path,
-                    contents[0],
-                    contents[1],
-                    contents[2],
-                    path === `docs/plans/${entry.planName}.md`,
+                    entry.planName,
+                    entries.map((value) => value.split(" ")[2]),
                 );
-                const oid = (await git(entry.path, ["hash-object", "-w", "--stdin"], { stdinText: merged })).trim();
                 carried = `${current.split(" ")[0]} blob ${oid}`;
             }
             if (carried) {
@@ -257,28 +212,7 @@ export async function refreshPlanningWorktree(
             }
             const head = (await git(entry.path, ["rev-parse", "HEAD"])).trim();
             const base = (await git(entry.path, ["merge-base", head, targetCommit])).trim();
-            const changed = (await git(entry.path, ["diff", "--name-only", "-z", base, head, "--", "docs/plans"]))
-                .split("\0")
-                .filter((path) => path.endsWith(".md"));
-            const documents = new Map<string, string>();
-            for (const path of changed) {
-                const original = await readPlanAt(entry.path, base, path);
-                const current = await readPlanAt(entry.path, head, path);
-                const incoming = await readPlanAt(entry.path, targetCommit, path);
-                if (original && current && incoming) {
-                    documents.set(
-                        path,
-                        await mergePlanningDocument(
-                            entry.path,
-                            path,
-                            original,
-                            current,
-                            incoming,
-                            path === `docs/plans/${entry.planName}.md`,
-                        ),
-                    );
-                }
-            }
+            const documents = await preparePlanningMergeDocuments(entry.path, entry.planName, base, head, targetCommit);
             // No autostash: all saved preparation is now durable, and a failed
             // merge can be aborted without losing it or touching the primary checkout.
             if (base !== targetCommit) {
@@ -299,13 +233,15 @@ export async function refreshPlanningWorktree(
                     const conflicts = (await git(entry.path, ["diff", "--name-only", "-z", "--diff-filter=U"]))
                         .split("\0")
                         .filter(Boolean);
-                    if ((!merged.success && !conflicts.length) || conflicts.some((path) => !documents.has(path))) {
+                    if (
+                        (!merged.success && !conflicts.length) ||
+                        conflicts.some((path) => !documents.paths.includes(path))
+                    ) {
                         throw new Error(
                             `Cannot refresh planning for ${entry.planName}: ${new TextDecoder().decode(merged.stderr)}`,
                         );
                     }
-                    for (const [path, markdown] of documents) {
-                        await fsWriteFile(join(entry.path, path), markdown);
+                    for (const path of await applyPlanningMergeDocuments(entry.path, documents)) {
                         await git(entry.path, ["add", "--", path]);
                     }
                     await git(entry.path, [

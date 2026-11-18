@@ -1,28 +1,29 @@
+import { withRetainedPlanFixture } from "./shared/testing/retained-plan-fixture.ts";
 import { test } from "node:test";
 import { deepStrictEqual, strictEqual, rejects, throws, ok } from "node:assert/strict";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import process from "node:process";
 import { withProcessGlobalTestLock } from "./testing/process-global-lock.ts";
 import { dirname, join } from "node:path";
+import { getPlanDocumentRoot } from "./plan-store.js";
+import { parsePlanTextStrict } from "./plan-format.ts";
 import {
     findPlanById,
-    getPlanDocumentRoot,
     listPlanResources,
     listArchivedPlans,
     loadArchivedPlan,
     listPlans,
     loadPlan,
     loadPlanBodyById,
-    parsePlanTextStrict,
-} from "./plan-store.js";
+} from "./plan-store/index.ts";
 import { getRunWieldRuntimeDir } from "./constants.js";
 import { defineGitFixture, git } from "./shared/git-test-fixture.ts";
 import {
     enterProjectRuntime,
+    resolveProjectRuntimeLayout,
     ProjectRuntimeEntryRefusedError,
-    WORKFLOW_DETAILS_PENDING,
 } from "./shared/project-runtime-layout.ts";
-import { inspectControllerView, writeControllerState } from "./shared/workflow/controller-registry.ts";
+import { inspectControllerView, writeControllerState } from "./plan-store/controllers.ts";
 import { loadTargetPlan } from "./shared/workflow/planning-worktree.ts";
 
 function document(id: string, extra = "", body = "# Plan\n\nRésumé 世界 🧭\n") {
@@ -70,23 +71,23 @@ const fixture = defineGitFixture(async (root) => {
     );
 });
 
-test("fresh catalog retains missing identities with a pending notice and creates no runtime", async () => {
+test("fresh catalog ignores unimported checkout documents and creates no runtime", async () => {
     const root = await fixture.checkout();
     try {
         await writeDocument(root, "unadopted", document(""));
         const before = await snapshot(root);
         const plans = await listPlanResources(root);
         const unadopted = plans.find((plan) => plan.name === "unadopted");
-        strictEqual(unadopted?.planId, "");
-        deepStrictEqual(unadopted?.readAvailability, { kind: "pending", message: WORKFLOW_DETAILS_PENDING });
         strictEqual("readAvailability" in (unadopted?.attrs || {}), false);
+        strictEqual(unadopted, undefined);
+        deepStrictEqual(plans, []);
         deepStrictEqual(await snapshot(root), before);
     } finally {
         await rm(root, { recursive: true, force: true });
     }
 });
 
-test("pending runtime retains local documents without projecting workflow truth or adopting storage", async () => {
+test("pending runtime ignores checkout documents without projecting workflow truth or adopting storage", async () => {
     const root = await fixture.checkout();
     try {
         const legacy = join(getRunWieldRuntimeDir(root), "controller/plans");
@@ -105,27 +106,26 @@ test("pending runtime retains local documents without projecting workflow truth 
         const before = await snapshot(root);
         const plans = await listPlanResources(root);
         const ordinary = plans.find((plan) => plan.name === "ordinary");
-        ok(ordinary);
-        strictEqual(ordinary.readAvailability?.kind, "pending");
-        strictEqual(ordinary.attrs.worktreeId, undefined);
-        strictEqual(ordinary.attrs.executionMode, undefined);
-        strictEqual(ordinary.attrs.executionReport, undefined);
-        deepStrictEqual((await listPlans(root)).map((plan) => plan.name).sort(), ["epic", "ordinary"]);
+        strictEqual(ordinary, undefined);
+        deepStrictEqual(plans, []);
+        strictEqual(await loadPlan(root, "ordinary"), null);
+        deepStrictEqual(await listArchivedPlans(root), []);
+        deepStrictEqual(await listPlans(root), []);
         deepStrictEqual(await snapshot(root), before);
     } finally {
         await rm(root, { recursive: true, force: true });
     }
 });
 
-test("legacy document controller hints stay pending instead of being imported by reads", async () => {
+test("legacy document controller hints are not imported by canonical reads", async () => {
     const root = await fixture.checkout();
     try {
         await enterProjectRuntime(root);
         await writeDocument(root, "ordinary", document("ordinary-id", "executionReport: legacy report\n"));
         const before = await snapshot(root);
         const plan = await loadPlan(root, "ordinary");
-        strictEqual(plan?.readAvailability?.kind, "pending");
-        strictEqual(plan?.attrs.executionReport, undefined);
+        strictEqual(plan, null);
+        deepStrictEqual(await listPlanResources(root), []);
         deepStrictEqual(await snapshot(root), before);
     } finally {
         await rm(root, { recursive: true, force: true });
@@ -135,11 +135,13 @@ test("legacy document controller hints stay pending instead of being imported by
 test("blocked catalog preserves the specific runtime refusal rather than dropping documents", async () => {
     const root = await fixture.checkout();
     try {
-        const layout = await enterProjectRuntime(root);
-        await writeFile(layout.primary.layoutMarkerPath, JSON.stringify({ version: 999 }));
-        await rejects(() => loadPlan(root, "ordinary"), ProjectRuntimeEntryRefusedError);
-        await rejects(() => listPlans(root), ProjectRuntimeEntryRefusedError);
-        await rejects(() => listPlanResources(root), /newer/);
+        await withRetainedPlanFixture(root, async () => {
+            const layout = await enterProjectRuntime(root);
+            await writeFile(layout.primary.layoutMarkerPath, JSON.stringify({ version: 999 }));
+            await rejects(() => loadPlan(root, "ordinary"), ProjectRuntimeEntryRefusedError);
+            await rejects(() => listPlans(root), ProjectRuntimeEntryRefusedError);
+            await rejects(() => listPlanResources(root), /newer/);
+        });
     } finally {
         await rm(root, { recursive: true, force: true });
     }
@@ -148,19 +150,21 @@ test("blocked catalog preserves the specific runtime refusal rather than droppin
 test("target snapshot identity and body reads use local Git bytes without filesystem hydration", async () => {
     const root = await fixture.checkout();
     try {
-        await git(root, ["remote", "add", "origin", `${root}-unavailable.git`]);
-        const before = await snapshot(root);
-        const resource = await findPlanById(root, "child-id");
-        const commit = await git(root, ["rev-parse", "target"]);
-        strictEqual(resource.path, `${commit}:docs/plans/epic/01-child.md`);
-        strictEqual(resource.body.includes("Résumé 世界 🧭"), true);
-        const body = await loadPlanBodyById(root, "child-id");
-        strictEqual(body.markdown, resource.markdown);
-        strictEqual(body.body, resource.body);
-        ok(body.bodyHash);
-        throws(() => getPlanDocumentRoot(resource.path), /not a writable document/);
-        throws(() => getPlanDocumentRoot("HEAD:docs/plans/ordinary.md"), /not a writable document/);
-        deepStrictEqual(await snapshot(root), before);
+        await withRetainedPlanFixture(root, async () => {
+            await git(root, ["remote", "add", "origin", `${root}-unavailable.git`]);
+            const before = await snapshot(root);
+            const resource = await findPlanById(root, "child-id");
+            const commit = await git(root, ["rev-parse", "target"]);
+            strictEqual(resource.path, `${commit}:docs/plans/epic/01-child.md`);
+            strictEqual(resource.body.includes("Résumé 世界 🧭"), true);
+            const body = await loadPlanBodyById(root, "child-id");
+            strictEqual(body.markdown, resource.markdown);
+            strictEqual(body.body, resource.body);
+            ok(body.bodyHash);
+            throws(() => getPlanDocumentRoot(resource.path), /not a writable document/);
+            throws(() => getPlanDocumentRoot("HEAD:docs/plans/ordinary.md"), /not a writable document/);
+            deepStrictEqual(await snapshot(root), before);
+        });
     } finally {
         await rm(root, { recursive: true, force: true });
     }
@@ -169,16 +173,18 @@ test("target snapshot identity and body reads use local Git bytes without filesy
 test("target snapshots use the same strict full-text parser as local Plans", async () => {
     const root = await fixture.checkout();
     try {
-        const markdown = `${document("broken-id")}\n<<<<<<< unresolved\n`;
-        await writeDocument(root, "broken", markdown);
-        await git(root, ["add", "."]);
-        await git(root, ["commit", "-m", "malformed document"]);
-        const commit = await git(root, ["rev-parse", "HEAD"]);
-        const parsed = await parsePlanTextStrict(markdown, `${commit}:docs/plans/broken.md`);
-        strictEqual(parsed.kind, "malformed");
-        const before = await snapshot(root);
-        await rejects(() => loadTargetPlan(root, "broken", commit), /unresolved merge conflict markers/);
-        deepStrictEqual(await snapshot(root), before);
+        await withRetainedPlanFixture(root, async () => {
+            const markdown = `${document("broken-id")}\n<<<<<<< unresolved\n`;
+            await writeDocument(root, "broken", markdown);
+            await git(root, ["add", "."]);
+            await git(root, ["commit", "-m", "malformed document"]);
+            const commit = await git(root, ["rev-parse", "HEAD"]);
+            const parsed = await parsePlanTextStrict(markdown, `${commit}:docs/plans/broken.md`);
+            strictEqual(parsed.kind, "malformed");
+            const before = await snapshot(root);
+            await rejects(() => loadTargetPlan(root, "broken", commit), /unresolved merge conflict markers/);
+            deepStrictEqual(await snapshot(root), before);
+        });
     } finally {
         await rm(root, { recursive: true, force: true });
     }
@@ -187,23 +193,25 @@ test("target snapshots use the same strict full-text parser as local Plans", asy
 test("durable publication receipts still project completion without remote verification", async () => {
     const root = await fixture.checkout();
     try {
-        await git(root, ["remote", "add", "origin", `${root}-unavailable.git`]);
-        await writeControllerState(
-            root,
-            { planName: "ordinary", planId: "ordinary-id" },
-            {
-                publicationReceipt: {
-                    validatedCommit: "a".repeat(40),
-                    publishedCommit: "b".repeat(40),
-                    targetBranch: "main",
+        await withRetainedPlanFixture(root, async () => {
+            await git(root, ["remote", "add", "origin", `${root}-unavailable.git`]);
+            await writeControllerState(
+                root,
+                { planName: "ordinary", planId: "ordinary-id" },
+                {
+                    publicationReceipt: {
+                        validatedCommit: "a".repeat(40),
+                        publishedCommit: "b".repeat(40),
+                        targetBranch: "main",
+                    },
                 },
-            },
-        );
-        const before = await snapshot(root);
-        const plan = await loadPlan(root, "ordinary");
-        strictEqual(plan?.attrs.status, "verified");
-        strictEqual(plan?.readAvailability?.kind, "ready");
-        deepStrictEqual(await snapshot(root), before);
+            );
+            const before = await snapshot(root);
+            const plan = await loadPlan(root, "ordinary");
+            strictEqual(plan?.attrs.status, "verified");
+            strictEqual(plan?.readAvailability?.kind, "ready");
+            deepStrictEqual(await snapshot(root), before);
+        });
     } finally {
         await rm(root, { recursive: true, force: true });
     }
@@ -212,15 +220,17 @@ test("durable publication receipts still project completion without remote verif
 test("passive resources keep archive exclusion and reject duplicate identities", async () => {
     const root = await fixture.checkout();
     try {
-        await writeDocument(root, "archived/old", document("ordinary-id"));
-        strictEqual(
-            (await listPlanResources(root)).some((plan) => plan.name === "archived/old"),
-            false,
-        );
-        await writeDocument(root, "duplicate", document("ordinary-id"));
-        const before = await snapshot(root);
-        await rejects(() => listPlanResources(root), /Duplicate planId/);
-        deepStrictEqual(await snapshot(root), before);
+        await withRetainedPlanFixture(root, async () => {
+            await writeDocument(root, "archived/old", document("ordinary-id"));
+            strictEqual(
+                (await listPlanResources(root)).some((plan) => plan.name === "archived/old"),
+                false,
+            );
+            await writeDocument(root, "duplicate", document("ordinary-id"));
+            const before = await snapshot(root);
+            await rejects(() => listPlanResources(root), /Duplicate planId/);
+            deepStrictEqual(await snapshot(root), before);
+        });
     } finally {
         await rm(root, { recursive: true, force: true });
     }
@@ -229,19 +239,21 @@ test("passive resources keep archive exclusion and reject duplicate identities",
 test("target loading works when temporary filesystem allocation is unavailable", async () => {
     const root = await fixture.checkout();
     try {
-        await withProcessGlobalTestLock(async () => {
-            const previous = process.env.TMPDIR;
-            const before = await snapshot(root);
-            try {
-                process.env.TMPDIR = join(root, "missing", "temporary");
-                const commit = await git(root, ["rev-parse", "target"]);
-                const plan = await loadTargetPlan(root, "epic/01-child", commit);
-                strictEqual(plan?.attrs.planId, "child-id");
-                deepStrictEqual(await snapshot(root), before);
-            } finally {
-                if (previous === undefined) delete process.env.TMPDIR;
-                else process.env.TMPDIR = previous;
-            }
+        await withRetainedPlanFixture(root, async () => {
+            await withProcessGlobalTestLock(async () => {
+                const previous = process.env.TMPDIR;
+                const before = await snapshot(root);
+                try {
+                    process.env.TMPDIR = join(root, "missing", "temporary");
+                    const commit = await git(root, ["rev-parse", "target"]);
+                    const plan = await loadTargetPlan(root, "epic/01-child", commit);
+                    strictEqual(plan?.attrs.planId, "child-id");
+                    deepStrictEqual(await snapshot(root), before);
+                } finally {
+                    if (previous === undefined) delete process.env.TMPDIR;
+                    else process.env.TMPDIR = previous;
+                }
+            });
         });
     } finally {
         await rm(root, { recursive: true, force: true });
@@ -251,18 +263,20 @@ test("target loading works when temporary filesystem allocation is unavailable",
 test("legacy validated documents need lifecycle reconciliation instead of read-time publication proof", async () => {
     const root = await fixture.checkout();
     try {
-        await writeDocument(
-            root,
-            "ordinary",
-            document("ordinary-id", "targetBranch: main\n").replace("status: ready_for_work", "status: validated"),
-        );
-        await git(root, ["add", "."]);
-        await git(root, ["commit", "-m", "legacy validated document on target"]);
-        const before = await snapshot(root);
-        const plan = await loadPlan(root, "ordinary");
-        strictEqual(plan?.attrs.status, "reviewed");
-        strictEqual(plan?.attrs.publicationReceipt, undefined);
-        deepStrictEqual(await snapshot(root), before);
+        await withRetainedPlanFixture(root, async () => {
+            await writeDocument(
+                root,
+                "ordinary",
+                document("ordinary-id", "targetBranch: main\n").replace("status: ready_for_work", "status: validated"),
+            );
+            await git(root, ["add", "."]);
+            await git(root, ["commit", "-m", "legacy validated document on target"]);
+            const before = await snapshot(root);
+            const plan = await loadPlan(root, "ordinary");
+            strictEqual(plan?.attrs.status, "reviewed");
+            strictEqual(plan?.attrs.publicationReceipt, undefined);
+            deepStrictEqual(await snapshot(root), before);
+        });
     } finally {
         await rm(root, { recursive: true, force: true });
     }
@@ -271,19 +285,21 @@ test("legacy validated documents need lifecycle reconciliation instead of read-t
 test("pending archived catalogs retain local documents with their read availability", async () => {
     const root = await fixture.checkout();
     try {
-        await writeDocument(root, "archived/old", document("old-id"));
-        const legacy = join(getRunWieldRuntimeDir(root), "controller/plans");
-        await mkdir(legacy, { recursive: true });
-        await writeFile(
-            join(legacy, "name%3Aold.json"),
-            JSON.stringify({ version: 1, revision: 1, planName: "old", state: {} }),
-        );
-        const before = await snapshot(root);
-        const archived = await listArchivedPlans(root);
-        strictEqual(archived.length, 1);
-        strictEqual(archived[0].readAvailability?.kind, "pending");
-        strictEqual((await loadArchivedPlan(root, "old"))?.readAvailability?.kind, "pending");
-        deepStrictEqual(await snapshot(root), before);
+        await withRetainedPlanFixture(root, async () => {
+            await writeDocument(root, "archived/old", document("old-id", "validationCiAttempts: 2\n"));
+            const legacy = resolveProjectRuntimeLayout(root).primary.controllerPlansDir;
+            await mkdir(legacy, { recursive: true });
+            await writeFile(
+                join(legacy, "name%3Aold.json"),
+                JSON.stringify({ version: 1, revision: 1, planName: "old", state: {} }),
+            );
+            const before = await snapshot(root);
+            const archived = await listArchivedPlans(root);
+            strictEqual(archived.length, 1);
+            strictEqual(archived[0].readAvailability?.kind, "pending");
+            strictEqual((await loadArchivedPlan(root, "old"))?.readAvailability?.kind, "pending");
+            deepStrictEqual(await snapshot(root), before);
+        });
     } finally {
         await rm(root, { recursive: true, force: true });
     }
@@ -292,16 +308,18 @@ test("pending archived catalogs retain local documents with their read availabil
 test("missing local target evidence keeps the Epic visible with pending availability", async () => {
     const root = await fixture.checkout();
     try {
-        await git(root, ["branch", "-D", "target"]);
-        const before = await snapshot(root);
-        const plans = await listPlanResources(root);
-        const epic = plans.find((plan) => plan.name === "epic");
-        ok(epic);
-        strictEqual(epic.readAvailability?.kind, "pending");
-        ok(epic.readAvailability?.message?.includes("Workflow details pending"));
-        ok(epic.readAvailability?.message?.includes("target"));
-        strictEqual(plans.find((plan) => plan.name === "ordinary")?.readAvailability?.kind, "ready");
-        deepStrictEqual(await snapshot(root), before);
+        await withRetainedPlanFixture(root, async () => {
+            await git(root, ["branch", "-D", "target"]);
+            const before = await snapshot(root);
+            const plans = await listPlanResources(root);
+            const epic = plans.find((plan) => plan.name === "epic");
+            ok(epic);
+            strictEqual(epic.readAvailability?.kind, "pending");
+            ok(epic.readAvailability?.message?.includes("Workflow details pending"));
+            ok(epic.readAvailability?.message?.includes("target"));
+            strictEqual(plans.find((plan) => plan.name === "ordinary")?.readAvailability?.kind, "ready");
+            deepStrictEqual(await snapshot(root), before);
+        });
     } finally {
         await rm(root, { recursive: true, force: true });
     }
@@ -311,56 +329,62 @@ for (const conflict of ["live-attempt", "candidate", "target", "delivery-candida
     test(`historical receipt does not complete a Plan with a different ${conflict}`, async () => {
         const root = await fixture.checkout();
         try {
-            const { addEntry } = await import("./shared/worktree-registry.js");
-            const receipt = { validatedCommit: "a".repeat(40), publishedCommit: "b".repeat(40), targetBranch: "main" };
-            const extra =
-                conflict === "candidate"
-                    ? `validatedCommit: ${"c".repeat(40)}\n`
-                    : conflict === "target"
-                      ? "targetBranch: release\n"
-                      : "";
-            await writeDocument(root, "ordinary", document("ordinary-id", extra));
-            await writeControllerState(
-                root,
-                { planName: "ordinary", planId: "ordinary-id" },
-                {
-                    publicationReceipt: receipt,
-                    ...(conflict.startsWith("delivery-")
-                        ? {
-                              deliveryEvidence: {
-                                  version: 1,
-                                  mode: "worktree_merge",
-                                  executionCommit:
-                                      conflict === "delivery-candidate" ? "c".repeat(40) : receipt.validatedCommit,
-                                  targetBranch: conflict === "delivery-target" ? "release" : "main",
-                                  targetHeadBeforeMerge: "d".repeat(40),
-                              },
-                          }
-                        : {}),
-                },
-            );
-            if (conflict === "live-attempt") {
-                const path = join(root, "execution");
-                await git(root, ["worktree", "add", "-b", "execution", path]);
-                await addEntry(root, {
-                    id: "new-attempt",
-                    planId: "ordinary-id",
-                    planName: "ordinary",
-                    path,
-                    branch: "execution",
-                    baseBranch: "main",
-                    baseRef: "main",
-                    baseCommit: await git(root, ["rev-parse", "HEAD"]),
-                    status: "active",
-                    createdAt: "now",
-                    updatedAt: "now",
-                });
-            }
-            const before = await snapshot(root);
-            const plan = await loadPlan(root, "ordinary");
-            strictEqual(plan?.attrs.status, "ready_for_work");
-            deepStrictEqual(plan?.attrs.publicationReceipt, receipt, "historical receipt must remain saved");
-            deepStrictEqual(await snapshot(root), before);
+            await withRetainedPlanFixture(root, async () => {
+                const { addEntry } = await import("./shared/worktree-registry.js");
+                const receipt = {
+                    validatedCommit: "a".repeat(40),
+                    publishedCommit: "b".repeat(40),
+                    targetBranch: "main",
+                };
+                const extra =
+                    conflict === "candidate"
+                        ? `validatedCommit: ${"c".repeat(40)}\n`
+                        : conflict === "target"
+                          ? "targetBranch: release\n"
+                          : "";
+                await writeDocument(root, "ordinary", document("ordinary-id", extra));
+                await writeControllerState(
+                    root,
+                    { planName: "ordinary", planId: "ordinary-id" },
+                    {
+                        publicationReceipt: receipt,
+                        ...(conflict.startsWith("delivery-")
+                            ? {
+                                  deliveryEvidence: {
+                                      version: 1,
+                                      mode: "worktree_merge",
+                                      executionCommit:
+                                          conflict === "delivery-candidate" ? "c".repeat(40) : receipt.validatedCommit,
+                                      targetBranch: conflict === "delivery-target" ? "release" : "main",
+                                      targetHeadBeforeMerge: "d".repeat(40),
+                                  },
+                              }
+                            : {}),
+                    },
+                );
+                if (conflict === "live-attempt") {
+                    const path = join(root, "execution");
+                    await git(root, ["worktree", "add", "-b", "execution", path]);
+                    await addEntry(root, {
+                        id: "new-attempt",
+                        planId: "ordinary-id",
+                        planName: "ordinary",
+                        path,
+                        branch: "execution",
+                        baseBranch: "main",
+                        baseRef: "main",
+                        baseCommit: await git(root, ["rev-parse", "HEAD"]),
+                        status: "active",
+                        createdAt: "now",
+                        updatedAt: "now",
+                    });
+                }
+                const before = await snapshot(root);
+                const plan = await loadPlan(root, "ordinary");
+                strictEqual(plan?.attrs.status, "ready_for_work");
+                deepStrictEqual(plan?.attrs.publicationReceipt, receipt, "historical receipt must remain saved");
+                deepStrictEqual(await snapshot(root), before);
+            });
         } finally {
             await rm(root, { recursive: true, force: true });
         }
@@ -372,48 +396,50 @@ for (const invalid of ["directory", "foreign-repository", "symlink", "document-s
         const root = await fixture.checkout();
         const foreign = await fixture.checkout();
         try {
-            const { addEntry } = await import("./shared/worktree-registry.js");
-            const { resolveWorkflowPlanLocation } = await import("./shared/workflow/plan-location.ts");
-            const { preparePlanController } = await import("./shared/workflow/plan-preparation.ts");
-            const { assertAuthorizedPlanPath } = await import("./ui/workspace/server/project-artifacts.ts");
-            const { symlink } = await import("node:fs/promises");
-            const { RegisteredPlanDocumentUnavailableError } = await import("./shared/workflow/controller-registry.ts");
-            await enterProjectRuntime(root);
-            let path = join(root, "unattached");
-            if (invalid === "foreign-repository") path = foreign;
-            else if (invalid === "symlink") await symlink(foreign, path);
-            else if (invalid === "document-symlink") {
-                await git(root, ["worktree", "add", "-b", "registered", path]);
-                await rm(join(path, "docs/plans/ordinary.md"));
-                await symlink(join(foreign, "docs/plans/ordinary.md"), join(path, "docs/plans/ordinary.md"));
-            } else await writeDocument(path, "ordinary", document("ordinary-id", "", "# Unauthorized bytes\n"));
-            await addEntry(root, {
-                id: "invalid",
-                planId: "ordinary-id",
-                planName: "ordinary",
-                path,
-                branch: "registered",
-                baseBranch: "main",
-                baseRef: "main",
-                baseCommit: await git(root, ["rev-parse", "HEAD"]),
-                status: "active",
-                createdAt: "now",
-                updatedAt: "now",
+            await withRetainedPlanFixture(root, async () => {
+                const { addEntry } = await import("./shared/worktree-registry.js");
+                const { resolveWorkflowPlanLocation } = await import("./plan-store/index.ts");
+                const { preparePlanController } = await import("./plan-store/index.ts");
+                const { assertAuthorizedPlanPath } = await import("./ui/workspace/server/project-artifacts.ts");
+                const { symlink } = await import("node:fs/promises");
+                const { RegisteredPlanDocumentUnavailableError } = await import("./plan-store/index.ts");
+                await enterProjectRuntime(root);
+                let path = join(root, "unattached");
+                if (invalid === "foreign-repository") path = foreign;
+                else if (invalid === "symlink") await symlink(foreign, path);
+                else if (invalid === "document-symlink") {
+                    await git(root, ["worktree", "add", "-b", "registered", path]);
+                    await rm(join(path, "docs/plans/ordinary.md"));
+                    await symlink(join(foreign, "docs/plans/ordinary.md"), join(path, "docs/plans/ordinary.md"));
+                } else await writeDocument(path, "ordinary", document("ordinary-id", "", "# Unauthorized bytes\n"));
+                await addEntry(root, {
+                    id: "invalid",
+                    planId: "ordinary-id",
+                    planName: "ordinary",
+                    path,
+                    branch: "registered",
+                    baseBranch: "main",
+                    baseRef: "main",
+                    baseCommit: await git(root, ["rev-parse", "HEAD"]),
+                    status: "active",
+                    createdAt: "now",
+                    updatedAt: "now",
+                });
+                strictEqual(
+                    (await listPlans(root)).some((plan) => plan.name === "ordinary"),
+                    false,
+                );
+                ok(
+                    (await listPlans(root)).some((plan) => plan.name === "epic"),
+                    "healthy Plans must remain available",
+                );
+                await rejects(
+                    () => resolveWorkflowPlanLocation(root, "ordinary", { readOnly: true }),
+                    RegisteredPlanDocumentUnavailableError,
+                );
+                await rejects(() => preparePlanController(root, "ordinary"), RegisteredPlanDocumentUnavailableError);
+                await rejects(() => assertAuthorizedPlanPath(root, join(path, "docs/plans/ordinary.md"), "ordinary"));
             });
-            strictEqual(
-                (await listPlans(root)).some((plan) => plan.name === "ordinary"),
-                false,
-            );
-            ok(
-                (await listPlans(root)).some((plan) => plan.name === "epic"),
-                "healthy Plans must remain available",
-            );
-            await rejects(
-                () => resolveWorkflowPlanLocation(root, "ordinary", { readOnly: true }),
-                RegisteredPlanDocumentUnavailableError,
-            );
-            await rejects(() => preparePlanController(root, "ordinary"), RegisteredPlanDocumentUnavailableError);
-            await rejects(() => assertAuthorizedPlanPath(root, join(path, "docs/plans/ordinary.md"), "ordinary"));
         } finally {
             await rm(root, { recursive: true, force: true });
             await rm(foreign, { recursive: true, force: true });
@@ -424,27 +450,29 @@ for (const invalid of ["directory", "foreign-repository", "symlink", "document-s
 test("legacy validated metadata cannot reuse a historical verification timestamp for a different candidate", async () => {
     const root = await fixture.checkout();
     try {
-        await writeDocument(
-            root,
-            "ordinary",
-            document("ordinary-id", `validatedCommit: ${"c".repeat(40)}\n`).replace(
-                "status: ready_for_work",
-                "status: validated",
-            ),
-        );
-        await writeControllerState(
-            root,
-            { planName: "ordinary", planId: "ordinary-id" },
-            {
-                verifiedAt: "2026-01-01T00:00:00.000Z",
-                publicationReceipt: {
-                    validatedCommit: "a".repeat(40),
-                    publishedCommit: "b".repeat(40),
-                    targetBranch: "main",
+        await withRetainedPlanFixture(root, async () => {
+            await writeDocument(
+                root,
+                "ordinary",
+                document("ordinary-id", `validatedCommit: ${"c".repeat(40)}\n`).replace(
+                    "status: ready_for_work",
+                    "status: validated",
+                ),
+            );
+            await writeControllerState(
+                root,
+                { planName: "ordinary", planId: "ordinary-id" },
+                {
+                    verifiedAt: "2026-01-01T00:00:00.000Z",
+                    publicationReceipt: {
+                        validatedCommit: "a".repeat(40),
+                        publishedCommit: "b".repeat(40),
+                        targetBranch: "main",
+                    },
                 },
-            },
-        );
-        strictEqual((await loadPlan(root, "ordinary"))?.attrs.status, "reviewed");
+            );
+            strictEqual((await loadPlan(root, "ordinary"))?.attrs.status, "reviewed");
+        });
     } finally {
         await rm(root, { recursive: true, force: true });
     }
@@ -453,21 +481,23 @@ test("legacy validated metadata cannot reuse a historical verification timestamp
 test("pending identity repair retains committed controller evidence and revision without writes", async () => {
     const root = await fixture.checkout();
     try {
-        await enterProjectRuntime(root);
-        await writeControllerState(
-            root,
-            { planName: "ordinary" },
-            {
-                executionReport: "committed report",
-            },
-        );
-        await writeDocument(root, "ordinary", document(""));
-        const before = await snapshot(root);
-        const plan = await loadPlan(root, "ordinary");
-        strictEqual(plan?.readAvailability?.kind, "pending");
-        strictEqual(plan?.attrs.executionReport, "committed report");
-        strictEqual(plan?.controllerRevision, 1);
-        deepStrictEqual(await snapshot(root), before);
+        await withRetainedPlanFixture(root, async () => {
+            await enterProjectRuntime(root);
+            await writeControllerState(
+                root,
+                { planName: "ordinary" },
+                {
+                    executionReport: "committed report",
+                },
+            );
+            await writeDocument(root, "ordinary", document(""));
+            const before = await snapshot(root);
+            const plan = await loadPlan(root, "ordinary");
+            strictEqual(plan?.readAvailability?.kind, "pending");
+            strictEqual(plan?.attrs.executionReport, "committed report");
+            strictEqual(plan?.controllerRevision, 1);
+            deepStrictEqual(await snapshot(root), before);
+        });
     } finally {
         await rm(root, { recursive: true, force: true });
     }
@@ -477,57 +507,59 @@ for (const proof of ["matching", "candidate", "published", "target"] as const) {
     test(`confirmed publication proof matches the durable receipt: ${proof}`, async () => {
         const root = await fixture.checkout();
         try {
-            const { addEntry } = await import("./shared/worktree-registry.js");
-            const { createPublicationAttempt } = await import("./shared/workflow/publication-attempt.ts");
-            const path = join(root, "execution");
-            await git(root, ["worktree", "add", "-b", "execution", path]);
-            const publication = {
-                ...createPublicationAttempt({
-                    attemptId: "confirmed-attempt",
+            await withRetainedPlanFixture(root, async () => {
+                const { addEntry } = await import("./shared/worktree-registry.js");
+                const { createPublicationAttempt } = await import("./shared/workflow/publication-attempt.ts");
+                const path = join(root, "execution");
+                await git(root, ["worktree", "add", "-b", "execution", path]);
+                const publication = {
+                    ...createPublicationAttempt({
+                        attemptId: "confirmed-attempt",
+                        planId: "ordinary-id",
+                        planName: "ordinary",
+                        targetBranch: "main",
+                        executionBranch: "execution",
+                        executionCwd: path,
+                        publicationRoot: root,
+                        validatedCommit: "a".repeat(40),
+                        targetHeadAtSeal: "d".repeat(40),
+                    }),
+                    publishedCommit: "b".repeat(40),
+                    phase: "publication_verified" as const,
+                };
+                await addEntry(root, {
+                    id: "confirmed-attempt",
                     planId: "ordinary-id",
                     planName: "ordinary",
-                    targetBranch: "main",
-                    executionBranch: "execution",
-                    executionCwd: path,
-                    publicationRoot: root,
-                    validatedCommit: "a".repeat(40),
-                    targetHeadAtSeal: "d".repeat(40),
-                }),
-                publishedCommit: "b".repeat(40),
-                phase: "publication_verified" as const,
-            };
-            await addEntry(root, {
-                id: "confirmed-attempt",
-                planId: "ordinary-id",
-                planName: "ordinary",
-                path,
-                branch: "execution",
-                baseBranch: "main",
-                baseRef: "main",
-                baseCommit: await git(root, ["rev-parse", "HEAD"]),
-                status: "active",
-                createdAt: "now",
-                updatedAt: "now",
-                publication,
-            });
-            await writeControllerState(
-                root,
-                { planName: "ordinary", planId: "ordinary-id" },
-                {
-                    publicationReceipt: {
-                        validatedCommit: proof === "candidate" ? "c".repeat(40) : publication.validatedCommit,
-                        publishedCommit: proof === "published" ? "c".repeat(40) : publication.publishedCommit,
-                        targetBranch: proof === "target" ? "release" : publication.targetBranch,
+                    path,
+                    branch: "execution",
+                    baseBranch: "main",
+                    baseRef: "main",
+                    baseCommit: await git(root, ["rev-parse", "HEAD"]),
+                    status: "active",
+                    createdAt: "now",
+                    updatedAt: "now",
+                    publication,
+                });
+                await writeControllerState(
+                    root,
+                    { planName: "ordinary", planId: "ordinary-id" },
+                    {
+                        publicationReceipt: {
+                            validatedCommit: proof === "candidate" ? "c".repeat(40) : publication.validatedCommit,
+                            publishedCommit: proof === "published" ? "c".repeat(40) : publication.publishedCommit,
+                            targetBranch: proof === "target" ? "release" : publication.targetBranch,
+                        },
                     },
-                },
-            );
-            const before = await snapshot(root);
-            const plan = await loadPlan(root, "ordinary");
-            const view = await inspectControllerView(root, { planName: "ordinary", planId: "ordinary-id" }, {});
-            strictEqual(view.publicationConfirmed, proof === "matching");
-            if (proof === "matching") strictEqual(plan?.attrs.status, "verified");
-            strictEqual(plan?.attrs.worktreeId, undefined);
-            deepStrictEqual(await snapshot(root), before);
+                );
+                const before = await snapshot(root);
+                const plan = await loadPlan(root, "ordinary");
+                const view = await inspectControllerView(root, { planName: "ordinary", planId: "ordinary-id" }, {});
+                strictEqual(view.publicationConfirmed, proof === "matching");
+                if (proof === "matching") strictEqual(plan?.attrs.status, "verified");
+                strictEqual(plan?.attrs.worktreeId, undefined);
+                deepStrictEqual(await snapshot(root), before);
+            });
         } finally {
             await rm(root, { recursive: true, force: true });
         }

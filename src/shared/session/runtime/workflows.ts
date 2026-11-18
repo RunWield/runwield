@@ -188,7 +188,8 @@ export class RuntimeWorkflows {
                 "reopenPlanReview",
                 {},
                 async () => {
-                    const { reopenSavedPlanReview } = await import("../../../cmd/load-plan/reopen-plan-review.ts");
+                    const { reopenSavedPlanReview, resolveSavedPlanReview } =
+                        await import("../../../cmd/load-plan/reopen-plan-review.ts");
                     const current = this.services.remotePersistence
                         ? this.services.remotePersistence.records(session).lastPlanReview
                         : managed
@@ -197,6 +198,8 @@ export class RuntimeWorkflows {
                     if (!current) {
                         return { kind: "no_reference" as const, message: "This Session has no previous Plan review." };
                     }
+                    const existing = await resolveSavedPlanReview(session.cwd, current);
+                    if (existing.kind !== "found") return existing;
                     const prepared = await prepareSessionPlanningWorktree(session.cwd, current.planName);
                     session.rebindProjectRoot(prepared.documentRoot);
                     return await reopenSavedPlanReview(runtime, sessionId, current, (message, isError) => {
@@ -236,7 +239,7 @@ export class RuntimeWorkflows {
         planningAgentName: string,
     ): Promise<import("../../workflow/workflow-tool-events.ts").PlanWrittenEventPayload> {
         const session = this.services.sessionHost.requireSession(sessionId);
-        const { resolveWorkflowPlanLocation } = await import("../../workflow/plan-location.ts");
+        const { resolveWorkflowPlanLocation } = await import("../../../plan-store/index.ts");
         const { reopenSavedPlanReview } = await import("../../../cmd/load-plan/reopen-plan-review.ts");
         const location = await resolveWorkflowPlanLocation(session.cwd, planName, { readOnly: true });
         if (!location.plan?.attrs.planId) throw new Error(`Plan ${planName} is unavailable for review.`);
@@ -335,7 +338,7 @@ export class RuntimeWorkflows {
     async reviewSavedPlan(sessionId: string, planId: string): Promise<RuntimeValidationResult> {
         const session = this.services.sessionHost.getSession(sessionId);
         if (!session) throw new Error("Session not found.");
-        const { findPlanEvidenceById } = await import("../../../plan-store.js");
+        const { findPlanEvidenceById } = await import("../../../plan-store/index.ts");
         const { loadPlanActionEvidence } = await import("../../workflow/plan-actions.ts");
         const { createPlanWrittenTool } = await import("../../../tools/plan-written.ts");
         const { claimWorkflowToolEvent, settleWorkflowToolEvent } =
@@ -457,7 +460,7 @@ ${outcome.feedback || ""}`,
             const prepared = await this.runWorkflowOperation(session, "prepareExecutePlan", options, async () => {
                 session.getManagedOperationCapability?.()?.assertLive();
                 const { executePlan } = await import("../../workflow/workflow.ts");
-                const { resolveWorkflowPlanLocation } = await import("../../workflow/plan-location.ts");
+                const { resolveWorkflowPlanLocation } = await import("../../../plan-store/index.ts");
                 const { recordPlanEvent } = await import("../../workflow/plan-lifecycle.js");
                 const location = await resolveWorkflowPlanLocation(session.cwd, options.planName || "", {
                     readOnly: true,
@@ -611,7 +614,7 @@ ${outcome.feedback || ""}`,
         }
         const result = await this.runWorkflowOperation(session, "runValidation", options, async () => {
             // Resume uses the current document authority, never an old sidebar snapshot's body or status.
-            const { resolveWorkflowPlanLocation } = await import("../../workflow/plan-location.ts");
+            const { resolveWorkflowPlanLocation } = await import("../../../plan-store/index.ts");
             const { plan } = await resolveWorkflowPlanLocation(session.cwd, planName);
             if (!plan || !isValidationTriageMeta(plan.attrs)) {
                 throw new Error("The saved Plan is unavailable for validation.");
@@ -669,7 +672,7 @@ ${outcome.feedback || ""}`,
             ...validationResult.semanticRepairHandoff.activeWorkflow,
         };
         const { loadPlanActionEvidence } = await import("../../workflow/plan-actions.ts");
-        const { getPlanRevisionForText } = await import("../../../plan-store.js");
+        const { getPlanRevisionForText } = await import("../../../plan-format.ts");
         const { buildSemanticRepairSegmentContinuation } = await import("../../workflow/execution-segment-handoff.ts");
         const planId = workflow.triageMeta?.planId || options.triageMeta?.planId;
         if (!planId) throw new Error("Semantic repair handoff requires Plan identity.");
@@ -824,7 +827,7 @@ ${outcome.feedback || ""}`,
             ? await runRepair()
             : await this.runWorkflowOperation(session, "semanticRepairSegment", options, runRepair);
         if (repairResult?.kind === "semantic_repair_completed") {
-            const { loadPlan } = await import("../../../plan-store.js");
+            const { loadPlan } = await import("../../../plan-store/index.ts");
             const completedPlan = await loadPlan(executionCwd, continuation.plan.planName || options.planName);
             if (!completedPlan) throw new Error("Completed semantic repair Plan is unavailable.");
             const refreshedWorkflow = {

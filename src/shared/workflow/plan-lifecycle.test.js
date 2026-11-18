@@ -1,3 +1,9 @@
+import { seedPlanState, seedPlan as savePlanDocument } from "../testing/plan-state-fixture.ts";
+import { pickControllerState } from "./controller-state.ts";
+import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
+import { enterProjectRuntime } from "../project-runtime-layout.ts";
+const executionRepository = defineCommittedGitFixture();
+import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { makeTempDirectory } from "../../testing/temp-file.ts";
 import { testWithFsPermissions } from "../../testing/file-test.ts";
 import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
@@ -13,17 +19,33 @@ import {
     recordPlanEvent,
     stageValidationPassedInExecutionWorktree,
 } from "./plan-lifecycle.js";
-import { injectFrontMatter, loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
+
+import { injectFrontMatter } from "../../plan-format.ts";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { COLLABORATION_STATE_REMOTE_CANONICAL, SharedPlanLockError } from "../collaboration/lock.ts";
+
+/** Seed authored bytes and controller facts through their separate public owners.
+ * @param {Parameters<typeof savePlanDocument>} args
+ */
+async function savePlan(...args) {
+    const path = await savePlanDocument(...args);
+    const [cwd, name, , attrs] = args;
+    const saved = await loadPlan(cwd, name);
+    const state = pickControllerState(attrs || {});
+    if (saved && Object.keys(state).length)
+        await seedPlanState(cwd, name, state, saved.attrs, { expectedRevision: saved.revision });
+    return path;
+}
 
 /**
  * @param {string} cwd
  * @param {string} planName
- * @param {Partial<import('../../plan-store.js').PlanFrontMatter>} updates
+ * @param {Partial<import('../../plan-store/index.ts').PlanFrontMatter>} updates
  */
 async function updatePlanFrontMatterForTest(cwd, planName, updates) {
     const plan = await loadPlan(cwd, planName);
-    return await updatePlanFrontMatter(cwd, planName, updates, undefined, { expectedRevision: plan?.revision });
+    return await seedPlanState(cwd, planName, updates, undefined, { expectedRevision: plan?.revision });
 }
 
 /** @type {import('./plan-lifecycle.js').PlanEventDetails} */
@@ -554,158 +576,167 @@ test("manual board helper exports expose lifecycle-owned rules", () => {
 
 test("recordPlanEvent mutates only the selected held plan file", async () => {
     const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
-    try {
-        await fsMkdir(`${cwd}/docs/plans/epic`, { recursive: true });
-        await fsWriteFile(
-            `${cwd}/docs/plans/epic.md`,
-            [
-                "---",
-                'classification: "PROJECT"',
-                'complexity: "HIGH"',
-                'summary: "Epic"',
-                "affectedPaths:",
-                "  []",
-                'createdAt: "2026-01-01T00:00:00.000Z"',
-                'status: "ready_for_work"',
-                "---",
-                "# Epic",
-            ].join("\n"),
-        );
-        await fsWriteFile(
-            `${cwd}/docs/plans/epic/child.md`,
-            [
-                "---",
-                'classification: "FEATURE"',
-                'complexity: "MEDIUM"',
-                'summary: "Child"',
-                "affectedPaths:",
-                "  []",
-                'createdAt: "2026-01-01T00:00:00.000Z"',
-                'status: "ready_for_work"',
-                'parentPlan: "epic"',
-                "---",
-                "# Child",
-            ].join("\n"),
-        );
+    return await withRetainedPlanFixture(cwd, async () => {
+        try {
+            await fsMkdir(`${cwd}/docs/plans/epic`, { recursive: true });
+            await fsWriteFile(
+                `${cwd}/docs/plans/epic.md`,
+                [
+                    "---",
+                    'classification: "PROJECT"',
+                    'complexity: "HIGH"',
+                    'summary: "Epic"',
+                    "affectedPaths:",
+                    "  []",
+                    'createdAt: "2026-01-01T00:00:00.000Z"',
+                    'status: "ready_for_work"',
+                    "---",
+                    "# Epic",
+                ].join("\n"),
+            );
+            await fsWriteFile(
+                `${cwd}/docs/plans/epic/child.md`,
+                [
+                    "---",
+                    'classification: "FEATURE"',
+                    'complexity: "MEDIUM"',
+                    'summary: "Child"',
+                    "affectedPaths:",
+                    "  []",
+                    'createdAt: "2026-01-01T00:00:00.000Z"',
+                    'status: "ready_for_work"',
+                    'parentPlan: "epic"',
+                    "---",
+                    "# Child",
+                ].join("\n"),
+            );
 
-        await recordPlanEvent({ cwd, planName: "epic", event: "plan_held", currentStatus: "ready_for_work" });
-        assertEquals((await fsReadFile(`${cwd}/docs/plans/epic.md`, "utf8")).includes('status: "on_hold"'), true);
-        assertEquals(
-            (await fsReadFile(`${cwd}/docs/plans/epic/child.md`, "utf8")).includes('status: "ready_for_work"'),
-            true,
-        );
+            await recordPlanEvent({ cwd, planName: "epic", event: "plan_held", currentStatus: "ready_for_work" });
+            assertEquals((await fsReadFile(`${cwd}/docs/plans/epic.md`, "utf8")).includes('status: "on_hold"'), true);
+            assertEquals(
+                (await fsReadFile(`${cwd}/docs/plans/epic/child.md`, "utf8")).includes('status: "ready_for_work"'),
+                true,
+            );
 
-        await recordPlanEvent({ cwd, planName: "epic/child", event: "plan_held", currentStatus: "ready_for_work" });
-        assertEquals((await fsReadFile(`${cwd}/docs/plans/epic.md`, "utf8")).includes('status: "on_hold"'), true);
-        assertEquals((await fsReadFile(`${cwd}/docs/plans/epic/child.md`, "utf8")).includes('status: "on_hold"'), true);
-    } finally {
-        await fsRm(cwd, { recursive: true });
-    }
+            await recordPlanEvent({ cwd, planName: "epic/child", event: "plan_held", currentStatus: "ready_for_work" });
+            assertEquals((await fsReadFile(`${cwd}/docs/plans/epic.md`, "utf8")).includes('status: "on_hold"'), true);
+            assertEquals(
+                (await fsReadFile(`${cwd}/docs/plans/epic/child.md`, "utf8")).includes('status: "on_hold"'),
+                true,
+            );
+        } finally {
+            await fsRm(cwd, { recursive: true });
+        }
+    });
 });
 
 test("recordPlanEvent verifies parent Epic when the final child feature is verified", async () => {
     const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
-    try {
-        await savePlan(cwd, "epic", "# Epic", {
-            planId: "fixture-epic",
-            classification: "PROJECT",
-            complexity: "HIGH",
-            summary: "Epic",
-            affectedPaths: [],
-            status: "ready_for_work",
-        });
-        await savePlan(cwd, "epic/01-first", "# First", {
-            planId: "fixture-epic/01-first",
-            classification: "FEATURE",
-            complexity: "MEDIUM",
-            summary: "First",
-            affectedPaths: [],
-            status: "verified",
-            ...TEST_DELIVERY_DETAILS,
-            parentPlan: "epic",
-            order: 1,
-        });
-        await savePlan(cwd, "epic/02-last", "# Last", {
-            planId: "fixture-epic/02-last",
-            classification: "FEATURE",
-            complexity: "MEDIUM",
-            summary: "Last",
-            affectedPaths: [],
-            status: "reviewed",
-            parentPlan: "epic",
-            order: 2,
-        });
-
-        await recordPlanEvent({
-            cwd,
-            planName: "epic/02-last",
-            event: "validation_passed",
-            currentStatus: "reviewed",
-            details: {
+    return await withRetainedPlanFixture(cwd, async () => {
+        try {
+            await savePlan(cwd, "epic", "# Epic", {
+                planId: "fixture-epic",
+                classification: "PROJECT",
+                complexity: "HIGH",
+                summary: "Epic",
+                affectedPaths: [],
+                status: "ready_for_work",
+            });
+            await savePlan(cwd, "epic/01-first", "# First", {
+                planId: "fixture-epic/01-first",
+                classification: "FEATURE",
+                complexity: "MEDIUM",
+                summary: "First",
+                affectedPaths: [],
+                status: "verified",
                 ...TEST_DELIVERY_DETAILS,
-                triageMeta: { classification: "FEATURE", parentPlan: "epic" },
-                now: () => new Date("2026-01-02T03:04:05.000Z"),
-            },
-        });
+                parentPlan: "epic",
+                order: 1,
+            });
+            await savePlan(cwd, "epic/02-last", "# Last", {
+                planId: "fixture-epic/02-last",
+                classification: "FEATURE",
+                complexity: "MEDIUM",
+                summary: "Last",
+                affectedPaths: [],
+                status: "reviewed",
+                parentPlan: "epic",
+                order: 2,
+            });
 
-        const parent = await loadPlan(cwd, "epic");
-        const child = await loadPlan(cwd, "epic/02-last");
-        assertEquals(child?.attrs.status, "verified");
-        assertEquals(parent?.attrs.status, "verified");
-        assertEquals(parent?.attrs.validatedAt, "2026-01-02T03:04:05.000Z");
-        assertEquals(parent?.attrs.epicCompletionMode, "done_enough");
-        assertEquals(parent?.attrs.epicDoneEnoughSummary, "All 2 child plans are completed after epic/02-last.");
-    } finally {
-        await fsRm(cwd, { recursive: true });
-    }
+            await recordPlanEvent({
+                cwd,
+                planName: "epic/02-last",
+                event: "validation_passed",
+                currentStatus: "reviewed",
+                details: {
+                    ...TEST_DELIVERY_DETAILS,
+                    triageMeta: { classification: "FEATURE", parentPlan: "epic" },
+                    now: () => new Date("2026-01-02T03:04:05.000Z"),
+                },
+            });
+
+            const parent = await loadPlan(cwd, "epic");
+            const child = await loadPlan(cwd, "epic/02-last");
+            assertEquals(child?.attrs.status, "verified");
+            assertEquals(parent?.attrs.status, "verified");
+            assertEquals(parent?.attrs.validatedAt, "2026-01-02T03:04:05.000Z");
+            assertEquals(parent?.attrs.epicCompletionMode, "done_enough");
+            assertEquals(parent?.attrs.epicDoneEnoughSummary, "All 2 child plans are completed after epic/02-last.");
+        } finally {
+            await fsRm(cwd, { recursive: true });
+        }
+    });
 });
 
 test("recordPlanEvent keeps parent Epic open while child features remain unverified", async () => {
     const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
-    try {
-        await savePlan(cwd, "epic", "# Epic", {
-            planId: "fixture-epic",
-            classification: "PROJECT",
-            complexity: "HIGH",
-            summary: "Epic",
-            affectedPaths: [],
-            status: "ready_for_work",
-        });
-        await savePlan(cwd, "epic/01-first", "# First", {
-            planId: "fixture-epic/01-first",
-            classification: "FEATURE",
-            complexity: "MEDIUM",
-            summary: "First",
-            affectedPaths: [],
-            status: "implemented",
-            parentPlan: "epic",
-            order: 1,
-        });
-        await savePlan(cwd, "epic/02-last", "# Last", {
-            planId: "fixture-epic/02-last",
-            classification: "FEATURE",
-            complexity: "MEDIUM",
-            summary: "Last",
-            affectedPaths: [],
-            status: "reviewed",
-            parentPlan: "epic",
-            order: 2,
-        });
+    return await withRetainedPlanFixture(cwd, async () => {
+        try {
+            await savePlan(cwd, "epic", "# Epic", {
+                planId: "fixture-epic",
+                classification: "PROJECT",
+                complexity: "HIGH",
+                summary: "Epic",
+                affectedPaths: [],
+                status: "ready_for_work",
+            });
+            await savePlan(cwd, "epic/01-first", "# First", {
+                planId: "fixture-epic/01-first",
+                classification: "FEATURE",
+                complexity: "MEDIUM",
+                summary: "First",
+                affectedPaths: [],
+                status: "implemented",
+                parentPlan: "epic",
+                order: 1,
+            });
+            await savePlan(cwd, "epic/02-last", "# Last", {
+                planId: "fixture-epic/02-last",
+                classification: "FEATURE",
+                complexity: "MEDIUM",
+                summary: "Last",
+                affectedPaths: [],
+                status: "reviewed",
+                parentPlan: "epic",
+                order: 2,
+            });
 
-        await recordPlanEvent({
-            cwd,
-            planName: "epic/02-last",
-            event: "validation_passed",
-            currentStatus: "reviewed",
-            details: { ...TEST_DELIVERY_DETAILS, triageMeta: { classification: "FEATURE", parentPlan: "epic" } },
-        });
+            await recordPlanEvent({
+                cwd,
+                planName: "epic/02-last",
+                event: "validation_passed",
+                currentStatus: "reviewed",
+                details: { ...TEST_DELIVERY_DETAILS, triageMeta: { classification: "FEATURE", parentPlan: "epic" } },
+            });
 
-        const parent = await loadPlan(cwd, "epic");
-        assertEquals(parent?.attrs.status, "ready_for_work");
-        assertEquals(parent?.attrs.epicCompletionMode, undefined);
-    } finally {
-        await fsRm(cwd, { recursive: true });
-    }
+            const parent = await loadPlan(cwd, "epic");
+            assertEquals(parent?.attrs.status, "ready_for_work");
+            assertEquals(parent?.attrs.epicCompletionMode, undefined);
+        } finally {
+            await fsRm(cwd, { recursive: true });
+        }
+    });
 });
 
 test("buildPlanEventUpdates only allows documented transitions", () => {
@@ -747,533 +778,571 @@ test("isEpicPlan detects PROJECT plans by classification", () => {
 });
 
 test("stageValidationPassedInExecutionWorktree validates only the execution Plan and is idempotent", async () => {
-    const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
-    const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
-    try {
-        const canonicalPath = `${projectRoot}/docs/plans/feature.md`;
-        await fsMkdir(`${projectRoot}/docs/plans`, { recursive: true });
-        await fsWriteFile(
-            canonicalPath,
-            injectFrontMatter(
-                "# Feature",
-                /** @type {any} */ ({
-                    status: "implemented",
-                    implementedAt: "2026-01-01T00:00:00.000Z",
-                    worktreeId: "wt-1",
-                    worktreePath: executionCwd,
-                    worktreeBranch: "runwield/worktree/feature-wt-1",
-                    worktreeBaseBranch: "main",
-                    worktreeStatus: "completed",
-                    customFlag: true,
-                }),
-            ),
-        );
-        await savePlan(executionCwd, "feature", "# Execution Feature", {
-            planId: "fixture-feature",
-            status: "reviewed",
-            implementedAt: "2026-01-01T00:00:00.000Z",
-            customFlag: true,
-        });
+    const projectRoot = await executionRepository.checkout();
+    return await withRetainedPlanFixture(projectRoot, async () => {
+        const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+        await git(projectRoot, ["worktree", "add", "-b", "execution", executionCwd]);
+        await enterProjectRuntime(executionCwd);
+        try {
+            const canonicalPath = `${projectRoot}/docs/plans/feature.md`;
+            await fsMkdir(`${projectRoot}/docs/plans`, { recursive: true });
+            await fsWriteFile(
+                canonicalPath,
+                injectFrontMatter(
+                    "# Feature",
+                    /** @type {any} */ ({
+                        status: "implemented",
+                        implementedAt: "2026-01-01T00:00:00.000Z",
+                        worktreeId: "wt-1",
+                        worktreePath: executionCwd,
+                        worktreeBranch: "runwield/worktree/feature-wt-1",
+                        worktreeBaseBranch: "main",
+                        worktreeStatus: "completed",
+                        customFlag: true,
+                    }),
+                ),
+            );
+            await savePlan(executionCwd, "feature", "# Execution Feature", {
+                planId: "fixture-feature",
+                status: "reviewed",
+                implementedAt: "2026-01-01T00:00:00.000Z",
+                customFlag: true,
+            });
 
-        const first = await stageValidationPassedInExecutionWorktree({
-            projectRoot,
-            executionCwd,
-            planName: "feature",
-            details: {
-                ...TEST_DELIVERY_DETAILS,
-                cleanupMergedWorktrees: false,
-                humanReviewMode: "always",
-                humanReviewDecision: "approved",
-                humanReviewedAt: "2026-01-02T00:00:00.000Z",
-                now: () => new Date("2026-01-03T00:00:00.000Z"),
-            },
-        });
-        const firstExecutionMarkdown = (await loadPlan(executionCwd, "feature"))?.markdown || "";
-        assertStringIncludes(firstExecutionMarkdown, 'status: "reviewed"');
-        const second = await stageValidationPassedInExecutionWorktree({
-            projectRoot,
-            executionCwd,
-            planName: "feature",
-            details: { ...TEST_DELIVERY_DETAILS, now: () => new Date("2026-01-04T00:00:00.000Z") },
-        });
+            const first = await stageValidationPassedInExecutionWorktree({
+                projectRoot,
+                executionCwd,
+                planName: "feature",
+                details: {
+                    ...TEST_DELIVERY_DETAILS,
+                    cleanupMergedWorktrees: false,
+                    humanReviewMode: "always",
+                    humanReviewDecision: "approved",
+                    humanReviewedAt: "2026-01-02T00:00:00.000Z",
+                    now: () => new Date("2026-01-03T00:00:00.000Z"),
+                },
+            });
+            const firstExecutionMarkdown = (await loadPlan(executionCwd, "feature"))?.markdown || "";
+            assertStringIncludes(firstExecutionMarkdown, 'status: "reviewed"');
+            const second = await stageValidationPassedInExecutionWorktree({
+                projectRoot,
+                executionCwd,
+                planName: "feature",
+                details: { ...TEST_DELIVERY_DETAILS, now: () => new Date("2026-01-04T00:00:00.000Z") },
+            });
 
-        assertEquals(first.attrs.status, "reviewed");
-        assertEquals(first.attrs.validatedAt, "2026-01-03T00:00:00.000Z");
-        assertEquals(first.attrs.implementedAt, "2026-01-01T00:00:00.000Z");
-        assertEquals(first.attrs.worktreeStatus ?? null, null);
-        assertEquals(first.attrs.humanReviewDecision, "approved");
-        assertEquals(second.attrs.validatedAt, first.attrs.validatedAt);
-        assertEquals(first.planPaths, ["docs/plans/feature.md"]);
-        assertEquals((await loadPlan(projectRoot, "feature"))?.attrs.status, "implemented");
-        const executionMarkdown = (await loadPlan(executionCwd, "feature"))?.markdown || "";
-        assertStringIncludes(executionMarkdown, "customFlag: true");
-        assertStringIncludes(executionMarkdown, 'status: "reviewed"');
-    } finally {
-        await fsRm(projectRoot, { recursive: true });
-        await fsRm(executionCwd, { recursive: true });
-    }
+            assertEquals(first.attrs.status, "reviewed");
+            assertEquals(first.attrs.validatedAt, "2026-01-03T00:00:00.000Z");
+            assertEquals(first.attrs.implementedAt, "2026-01-01T00:00:00.000Z");
+            assertEquals(first.attrs.worktreeStatus ?? null, null);
+            assertEquals(first.attrs.humanReviewDecision, "approved");
+            assertEquals(second.attrs.validatedAt, first.attrs.validatedAt);
+            assertEquals(first.planPaths, ["docs/plans/feature.md"]);
+            assertEquals((await loadPlan(projectRoot, "feature"))?.attrs.status, "implemented");
+            const executionMarkdown = (await loadPlan(executionCwd, "feature"))?.markdown || "";
+            assertStringIncludes(executionMarkdown, "customFlag: true");
+            assertStringIncludes(executionMarkdown, 'status: "reviewed"');
+        } finally {
+            await fsRm(projectRoot, { recursive: true });
+            await fsRm(executionCwd, { recursive: true });
+        }
+    });
 });
 
 test("stageValidationPassedInExecutionWorktree keeps reviewed evidence immutable on retry", async () => {
-    const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
-    const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
-    try {
-        await savePlan(projectRoot, "feature", "# Feature", {
-            planId: "fixture-feature",
-            status: "implemented",
-            classification: "FEATURE",
-        });
-        await savePlan(executionCwd, "feature", "# Feature", {
-            planId: "fixture-feature",
-            status: "reviewed",
-            validatedAt: "2026-01-03T00:00:00.000Z",
-            classification: "FEATURE",
-            executionMode: "worktree",
-            deliveryEvidence: TEST_DELIVERY_DETAILS.deliveryEvidence,
-        });
-
-        const suppliedDeliveryEvidence = /** @type {import('../../plan-store.js').DeliveryEvidence} */ ({
-            ...TEST_DELIVERY_DETAILS.deliveryEvidence,
-            executionCommit: "dddddddddddddddddddddddddddddddddddddddd",
-            targetHeadBeforeMerge: "cccccccccccccccccccccccccccccccccccccccc",
-        });
-        const result = await stageValidationPassedInExecutionWorktree({
-            projectRoot,
-            executionCwd,
-            planName: "feature",
-            details: {
+    const projectRoot = await executionRepository.checkout();
+    return await withRetainedPlanFixture(projectRoot, async () => {
+        const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+        await git(projectRoot, ["worktree", "add", "-b", "execution", executionCwd]);
+        await enterProjectRuntime(executionCwd);
+        try {
+            await savePlan(projectRoot, "feature", "# Feature", {
+                planId: "fixture-feature",
+                status: "implemented",
+                classification: "FEATURE",
+            });
+            await savePlan(executionCwd, "feature", "# Feature", {
+                planId: "fixture-feature",
+                status: "reviewed",
+                validatedAt: "2026-01-03T00:00:00.000Z",
+                classification: "FEATURE",
                 executionMode: "worktree",
-                deliveryEvidence: suppliedDeliveryEvidence,
-                cleanupMergedWorktrees: false,
-                now: () => new Date("2026-01-04T00:00:00.000Z"),
-            },
-        });
+                deliveryEvidence: TEST_DELIVERY_DETAILS.deliveryEvidence,
+            });
 
-        assertEquals(result.attrs.status, "reviewed");
-        assertEquals(result.attrs.validatedAt, "2026-01-03T00:00:00.000Z");
-        assertEquals(result.attrs.deliveryEvidence, TEST_DELIVERY_DETAILS.deliveryEvidence);
-        assertEquals((await loadPlan(projectRoot, "feature"))?.attrs.status, "implemented");
-    } finally {
-        await fsRm(projectRoot, { recursive: true });
-        await fsRm(executionCwd, { recursive: true });
-    }
+            const suppliedDeliveryEvidence = /** @type {import('../../plan-store/index.ts').DeliveryEvidence} */ ({
+                ...TEST_DELIVERY_DETAILS.deliveryEvidence,
+                executionCommit: "dddddddddddddddddddddddddddddddddddddddd",
+                targetHeadBeforeMerge: "cccccccccccccccccccccccccccccccccccccccc",
+            });
+            const result = await stageValidationPassedInExecutionWorktree({
+                projectRoot,
+                executionCwd,
+                planName: "feature",
+                details: {
+                    executionMode: "worktree",
+                    deliveryEvidence: suppliedDeliveryEvidence,
+                    cleanupMergedWorktrees: false,
+                    now: () => new Date("2026-01-04T00:00:00.000Z"),
+                },
+            });
+
+            assertEquals(result.attrs.status, "reviewed");
+            assertEquals(result.attrs.validatedAt, "2026-01-03T00:00:00.000Z");
+            assertEquals(result.attrs.deliveryEvidence, TEST_DELIVERY_DETAILS.deliveryEvidence);
+            assertEquals((await loadPlan(projectRoot, "feature"))?.attrs.status, "implemented");
+        } finally {
+            await fsRm(projectRoot, { recursive: true });
+            await fsRm(executionCwd, { recursive: true });
+        }
+    });
 });
 
 test("stageValidationPassedInExecutionWorktree preserves execution Plan human review evidence", async () => {
-    const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
-    const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
-    try {
-        await savePlan(projectRoot, "feature", "# Feature", {
-            planId: "fixture-feature",
-            status: "implemented",
-            humanReviewMode: "always",
-            humanReviewDecision: "approved",
-            humanReviewedAt: "2026-01-02T00:00:00.000Z",
-        });
-        await savePlan(executionCwd, "feature", "# Execution Feature", {
-            planId: "fixture-feature",
-            status: "reviewed",
-            humanReviewMode: "always",
-            humanReviewDecision: "approved",
-            humanReviewedAt: "2026-01-02T00:00:00.000Z",
-        });
+    const projectRoot = await executionRepository.checkout();
+    return await withRetainedPlanFixture(projectRoot, async () => {
+        const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+        await git(projectRoot, ["worktree", "add", "-b", "execution", executionCwd]);
+        await enterProjectRuntime(executionCwd);
+        try {
+            await savePlan(projectRoot, "feature", "# Feature", {
+                planId: "fixture-feature",
+                status: "implemented",
+                humanReviewMode: "always",
+                humanReviewDecision: "approved",
+                humanReviewedAt: "2026-01-02T00:00:00.000Z",
+            });
+            await savePlan(executionCwd, "feature", "# Execution Feature", {
+                planId: "fixture-feature",
+                status: "reviewed",
+                humanReviewMode: "always",
+                humanReviewDecision: "approved",
+                humanReviewedAt: "2026-01-02T00:00:00.000Z",
+            });
 
-        const result = await stageValidationPassedInExecutionWorktree({
-            projectRoot,
-            executionCwd,
-            planName: "feature",
-            details: { ...TEST_DELIVERY_DETAILS, now: () => new Date("2026-01-03T00:00:00.000Z") },
-        });
+            const result = await stageValidationPassedInExecutionWorktree({
+                projectRoot,
+                executionCwd,
+                planName: "feature",
+                details: { ...TEST_DELIVERY_DETAILS, now: () => new Date("2026-01-03T00:00:00.000Z") },
+            });
 
-        assertEquals(result.attrs.status, "reviewed");
-        assertEquals(result.attrs.humanReviewMode, "always");
-        assertEquals(result.attrs.humanReviewDecision, "approved");
-        assertEquals(result.attrs.humanReviewedAt, "2026-01-02T00:00:00.000Z");
+            assertEquals(result.attrs.status, "reviewed");
+            assertEquals(result.attrs.humanReviewMode, "always");
+            assertEquals(result.attrs.humanReviewDecision, "approved");
+            assertEquals(result.attrs.humanReviewedAt, "2026-01-02T00:00:00.000Z");
 
-        await savePlan(projectRoot, "staged-retry", "# Staged Retry", {
-            planId: "fixture-staged-retry",
-            status: "implemented",
-            humanReviewMode: "always",
-            humanReviewDecision: "approved",
-            humanReviewedAt: "2026-01-02T00:00:00.000Z",
-        });
-        await savePlan(executionCwd, "staged-retry", "# Staged Retry", {
-            planId: "fixture-staged-retry",
-            status: "reviewed",
-            executionMode: "worktree",
-            deliveryEvidence: TEST_DELIVERY_DETAILS.deliveryEvidence,
-            validatedAt: "2026-01-03T00:00:00.000Z",
-            humanReviewMode: "always",
-            humanReviewDecision: "approved",
-            humanReviewedAt: "2026-01-02T00:00:00.000Z",
-        });
-        const retried = await stageValidationPassedInExecutionWorktree({
-            projectRoot,
-            executionCwd,
-            planName: "staged-retry",
-            details: { ...TEST_DELIVERY_DETAILS, now: () => new Date("2026-01-04T00:00:00.000Z") },
-        });
-        assertEquals(retried.attrs.validatedAt, "2026-01-03T00:00:00.000Z");
-        assertEquals(retried.attrs.humanReviewMode, "always");
-        assertEquals(retried.attrs.humanReviewDecision, "approved");
-        assertEquals(retried.attrs.humanReviewedAt, "2026-01-02T00:00:00.000Z");
-    } finally {
-        await fsRm(projectRoot, { recursive: true });
-        await fsRm(executionCwd, { recursive: true });
-    }
+            await savePlan(projectRoot, "staged-retry", "# Staged Retry", {
+                planId: "fixture-staged-retry",
+                status: "implemented",
+                humanReviewMode: "always",
+                humanReviewDecision: "approved",
+                humanReviewedAt: "2026-01-02T00:00:00.000Z",
+            });
+            await savePlan(executionCwd, "staged-retry", "# Staged Retry", {
+                planId: "fixture-staged-retry",
+                status: "reviewed",
+                executionMode: "worktree",
+                deliveryEvidence: TEST_DELIVERY_DETAILS.deliveryEvidence,
+                validatedAt: "2026-01-03T00:00:00.000Z",
+                humanReviewMode: "always",
+                humanReviewDecision: "approved",
+                humanReviewedAt: "2026-01-02T00:00:00.000Z",
+            });
+            const retried = await stageValidationPassedInExecutionWorktree({
+                projectRoot,
+                executionCwd,
+                planName: "staged-retry",
+                details: { ...TEST_DELIVERY_DETAILS, now: () => new Date("2026-01-04T00:00:00.000Z") },
+            });
+            assertEquals(retried.attrs.validatedAt, "2026-01-03T00:00:00.000Z");
+            assertEquals(retried.attrs.humanReviewMode, "always");
+            assertEquals(retried.attrs.humanReviewDecision, "approved");
+            assertEquals(retried.attrs.humanReviewedAt, "2026-01-02T00:00:00.000Z");
+        } finally {
+            await fsRm(projectRoot, { recursive: true });
+            await fsRm(executionCwd, { recursive: true });
+        }
+    });
 });
 
 test("stageValidationPassedInExecutionWorktree advances the execution-worktree parent only", async () => {
-    const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
-    const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
-    try {
-        const epicAttrs = /** @type {any} */ ({
-            planId: "fixture-epic",
-            status: "ready_for_work",
-            classification: "PROJECT",
-        });
-        await savePlan(projectRoot, "epic", "# Epic", epicAttrs);
-        await savePlan(projectRoot, "child-a", "# Child A", {
-            planId: "fixture-child-a",
-            status: "verified",
-            classification: "FEATURE",
-            ...TEST_DELIVERY_DETAILS,
-            parentPlan: "epic",
-        });
-        await savePlan(projectRoot, "child-b", "# Child B", {
-            planId: "fixture-child-b",
-            status: "implemented",
-            classification: "FEATURE",
-            parentPlan: "epic",
-        });
-        await savePlan(executionCwd, "epic", "# Stale Epic", epicAttrs);
-        await savePlan(executionCwd, "child-a", "# Stale Child A", {
-            planId: "fixture-child-a",
-            status: "verified",
-            classification: "FEATURE",
-            parentPlan: "epic",
-            ...TEST_DELIVERY_DETAILS,
-        });
-        await savePlan(executionCwd, "child-b", "# Stale Child B", {
-            planId: "fixture-child-b",
-            status: "reviewed",
-            classification: "FEATURE",
-            parentPlan: "epic",
-        });
+    const projectRoot = await executionRepository.checkout();
+    return await withRetainedPlanFixture(projectRoot, async () => {
+        const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+        await git(projectRoot, ["worktree", "add", "-b", "execution", executionCwd]);
+        await enterProjectRuntime(executionCwd);
+        try {
+            const epicAttrs = /** @type {any} */ ({
+                planId: "fixture-epic",
+                status: "ready_for_work",
+                classification: "PROJECT",
+            });
+            await savePlan(projectRoot, "epic", "# Epic", epicAttrs);
+            await savePlan(projectRoot, "child-a", "# Child A", {
+                planId: "fixture-child-a",
+                status: "verified",
+                classification: "FEATURE",
+                ...TEST_DELIVERY_DETAILS,
+                parentPlan: "epic",
+            });
+            await savePlan(projectRoot, "child-b", "# Child B", {
+                planId: "fixture-child-b",
+                status: "implemented",
+                classification: "FEATURE",
+                parentPlan: "epic",
+            });
+            await savePlan(executionCwd, "epic", "# Stale Epic", epicAttrs);
+            await savePlan(executionCwd, "child-a", "# Stale Child A", {
+                planId: "fixture-child-a",
+                status: "verified",
+                classification: "FEATURE",
+                parentPlan: "epic",
+                ...TEST_DELIVERY_DETAILS,
+            });
+            await savePlan(executionCwd, "child-b", "# Stale Child B", {
+                planId: "fixture-child-b",
+                status: "reviewed",
+                classification: "FEATURE",
+                parentPlan: "epic",
+            });
 
-        const result = await stageValidationPassedInExecutionWorktree({
-            projectRoot,
-            executionCwd,
-            planName: "child-b",
-            details: { ...TEST_DELIVERY_DETAILS, now: () => new Date("2026-01-03T00:00:00.000Z") },
-        });
-        await updatePlanFrontMatterForTest(projectRoot, "epic", /** @type {any} */ ({ customFlag: true }));
-        const retried = await stageValidationPassedInExecutionWorktree({
-            projectRoot,
-            executionCwd,
-            planName: "child-b",
-            details: { ...TEST_DELIVERY_DETAILS, now: () => new Date("2026-01-04T00:00:00.000Z") },
-        });
-        const retriedParent = await loadPlan(executionCwd, "epic");
+            const result = await stageValidationPassedInExecutionWorktree({
+                projectRoot,
+                executionCwd,
+                planName: "child-b",
+                details: { ...TEST_DELIVERY_DETAILS, now: () => new Date("2026-01-03T00:00:00.000Z") },
+            });
+            await updatePlanFrontMatterForTest(projectRoot, "epic", /** @type {any} */ ({ customFlag: true }));
+            const retried = await stageValidationPassedInExecutionWorktree({
+                projectRoot,
+                executionCwd,
+                planName: "child-b",
+                details: { ...TEST_DELIVERY_DETAILS, now: () => new Date("2026-01-04T00:00:00.000Z") },
+            });
+            const retriedParent = await loadPlan(executionCwd, "epic");
 
-        assertEquals((await loadPlan(executionCwd, "child-a"))?.attrs.status, "verified");
-        assertEquals(retriedParent?.attrs.status, "reviewed");
-        assertEquals(retriedParent?.attrs.validatedAt, "2026-01-03T00:00:00.000Z");
-        assertEquals(/** @type {any} */ (retriedParent?.attrs).customFlag, undefined);
-        assertEquals(retriedParent?.body, "# Stale Epic");
-        assertEquals(result.planPaths, ["docs/plans/child-b.md", "docs/plans/epic.md"]);
-        assertEquals(retried.planPaths, result.planPaths);
-    } finally {
-        await fsRm(projectRoot, { recursive: true });
-        await fsRm(executionCwd, { recursive: true });
-    }
+            assertEquals((await loadPlan(executionCwd, "child-a"))?.attrs.status, "verified");
+            assertEquals(retriedParent?.attrs.status, "reviewed");
+            assertEquals(retriedParent?.attrs.validatedAt, "2026-01-03T00:00:00.000Z");
+            assertEquals(/** @type {any} */ (retriedParent?.attrs).customFlag, undefined);
+            assertEquals(retriedParent?.body, "# Stale Epic");
+            assertEquals(result.planPaths, ["docs/plans/child-b.md", "docs/plans/epic.md"]);
+            assertEquals(retried.planPaths, result.planPaths);
+        } finally {
+            await fsRm(projectRoot, { recursive: true });
+            await fsRm(executionCwd, { recursive: true });
+        }
+    });
 });
 
 test("stageValidationPassedInExecutionWorktree idempotent retry does not reread the primary hierarchy", async () => {
-    const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
-    const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
-    try {
-        const epicAttrs = /** @type {any} */ ({
-            planId: "fixture-epic",
-            status: "ready_for_work",
-            classification: "PROJECT",
-        });
-        await savePlan(projectRoot, "epic", "# Epic", epicAttrs);
-        await savePlan(projectRoot, "child-a", "# Child A", {
-            planId: "fixture-child-a",
-            status: "implemented",
-            classification: "FEATURE",
-            parentPlan: "epic",
-        });
-        await savePlan(projectRoot, "child-b", "# Child B", {
-            planId: "fixture-child-b",
-            status: "in_progress",
-            classification: "FEATURE",
-            parentPlan: "epic",
-        });
-        await savePlan(executionCwd, "epic", "# Epic", epicAttrs);
-        for (const name of ["child-a", "child-b"]) {
-            await savePlan(executionCwd, name, `# ${name}`, {
-                planId: `fixture-${name}`,
-                status: name === "child-a" ? "reviewed" : "in_progress",
+    const projectRoot = await executionRepository.checkout();
+    return await withRetainedPlanFixture(projectRoot, async () => {
+        const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+        await git(projectRoot, ["worktree", "add", "-b", "execution", executionCwd]);
+        await enterProjectRuntime(executionCwd);
+        try {
+            const epicAttrs = /** @type {any} */ ({
+                planId: "fixture-epic",
+                status: "ready_for_work",
+                classification: "PROJECT",
+            });
+            await savePlan(projectRoot, "epic", "# Epic", epicAttrs);
+            await savePlan(projectRoot, "child-a", "# Child A", {
+                planId: "fixture-child-a",
+                status: "implemented",
                 classification: "FEATURE",
                 parentPlan: "epic",
             });
+            await savePlan(projectRoot, "child-b", "# Child B", {
+                planId: "fixture-child-b",
+                status: "in_progress",
+                classification: "FEATURE",
+                parentPlan: "epic",
+            });
+            await savePlan(executionCwd, "epic", "# Epic", epicAttrs);
+            for (const name of ["child-a", "child-b"]) {
+                await savePlan(executionCwd, name, `# ${name}`, {
+                    planId: `fixture-${name}`,
+                    status: name === "child-a" ? "reviewed" : "in_progress",
+                    classification: "FEATURE",
+                    parentPlan: "epic",
+                });
+            }
+
+            const first = await stageValidationPassedInExecutionWorktree({
+                projectRoot,
+                executionCwd,
+                planName: "child-a",
+                details: { ...TEST_DELIVERY_DETAILS, now: () => new Date("2026-01-03T00:00:00.000Z") },
+            });
+            await updatePlanFrontMatterForTest(projectRoot, "child-b", {
+                status: "verified",
+                classification: "FEATURE",
+                ...TEST_DELIVERY_DETAILS,
+                parentPlan: "epic",
+            });
+            const retried = await stageValidationPassedInExecutionWorktree({
+                projectRoot,
+                executionCwd,
+                planName: "child-a",
+                details: { ...TEST_DELIVERY_DETAILS, now: () => new Date("2026-01-04T00:00:00.000Z") },
+            });
+
+            assertEquals(first.attrs.validatedAt, "2026-01-03T00:00:00.000Z");
+            assertEquals(retried.attrs.validatedAt, first.attrs.validatedAt);
+            assertEquals(retried.planPaths, ["docs/plans/child-a.md"]);
+            assertEquals((await loadPlan(executionCwd, "epic"))?.attrs.status, "ready_for_work");
+            assertEquals((await loadPlan(executionCwd, "child-b"))?.attrs.status, "in_progress");
+        } finally {
+            await fsRm(projectRoot, { recursive: true });
+            await fsRm(executionCwd, { recursive: true });
         }
-
-        const first = await stageValidationPassedInExecutionWorktree({
-            projectRoot,
-            executionCwd,
-            planName: "child-a",
-            details: { ...TEST_DELIVERY_DETAILS, now: () => new Date("2026-01-03T00:00:00.000Z") },
-        });
-        await updatePlanFrontMatterForTest(projectRoot, "child-b", {
-            status: "verified",
-            classification: "FEATURE",
-            ...TEST_DELIVERY_DETAILS,
-            parentPlan: "epic",
-        });
-        const retried = await stageValidationPassedInExecutionWorktree({
-            projectRoot,
-            executionCwd,
-            planName: "child-a",
-            details: { ...TEST_DELIVERY_DETAILS, now: () => new Date("2026-01-04T00:00:00.000Z") },
-        });
-
-        assertEquals(first.attrs.validatedAt, "2026-01-03T00:00:00.000Z");
-        assertEquals(retried.attrs.validatedAt, first.attrs.validatedAt);
-        assertEquals(retried.planPaths, ["docs/plans/child-a.md"]);
-        assertEquals((await loadPlan(executionCwd, "epic"))?.attrs.status, "ready_for_work");
-        assertEquals((await loadPlan(executionCwd, "child-b"))?.attrs.status, "in_progress");
-    } finally {
-        await fsRm(projectRoot, { recursive: true });
-        await fsRm(executionCwd, { recursive: true });
-    }
+    });
 });
 
 test("stageValidationPassedInExecutionWorktree ignores a sibling reopened only in the primary checkout", async () => {
-    const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
-    const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
-    try {
-        const epicAttrs = /** @type {any} */ ({
-            planId: "fixture-epic",
-            status: "ready_for_work",
-            classification: "PROJECT",
-        });
-        await savePlan(projectRoot, "epic", "# Epic", epicAttrs);
-        await savePlan(projectRoot, "child-a", "# Child A", {
-            planId: "fixture-child-a",
-            status: "implemented",
-            classification: "FEATURE",
-            parentPlan: "epic",
-        });
-        await savePlan(projectRoot, "child-b", "# Child B", {
-            planId: "fixture-child-b",
-            status: "verified",
-            classification: "FEATURE",
-            ...TEST_DELIVERY_DETAILS,
-            parentPlan: "epic",
-        });
-        await savePlan(executionCwd, "epic", "# Epic", epicAttrs);
-        for (const name of ["child-a", "child-b"]) {
-            await savePlan(executionCwd, name, `# ${name}`, {
-                planId: `fixture-${name}`,
-                status: name === "child-a" ? "reviewed" : "verified",
+    const projectRoot = await executionRepository.checkout();
+    return await withRetainedPlanFixture(projectRoot, async () => {
+        const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+        await git(projectRoot, ["worktree", "add", "-b", "execution", executionCwd]);
+        await enterProjectRuntime(executionCwd);
+        try {
+            const epicAttrs = /** @type {any} */ ({
+                planId: "fixture-epic",
+                status: "ready_for_work",
+                classification: "PROJECT",
+            });
+            await savePlan(projectRoot, "epic", "# Epic", epicAttrs);
+            await savePlan(projectRoot, "child-a", "# Child A", {
+                planId: "fixture-child-a",
+                status: "implemented",
                 classification: "FEATURE",
                 parentPlan: "epic",
-                ...(name === "child-b" ? TEST_DELIVERY_DETAILS : {}),
             });
+            await savePlan(projectRoot, "child-b", "# Child B", {
+                planId: "fixture-child-b",
+                status: "verified",
+                classification: "FEATURE",
+                ...TEST_DELIVERY_DETAILS,
+                parentPlan: "epic",
+            });
+            await savePlan(executionCwd, "epic", "# Epic", epicAttrs);
+            for (const name of ["child-a", "child-b"]) {
+                await savePlan(executionCwd, name, `# ${name}`, {
+                    planId: `fixture-${name}`,
+                    status: name === "child-a" ? "reviewed" : "verified",
+                    classification: "FEATURE",
+                    parentPlan: "epic",
+                    ...(name === "child-b" ? TEST_DELIVERY_DETAILS : {}),
+                });
+            }
+
+            const first = await stageValidationPassedInExecutionWorktree({
+                projectRoot,
+                executionCwd,
+                planName: "child-a",
+                details: { ...TEST_DELIVERY_DETAILS, now: () => new Date("2026-01-03T00:00:00.000Z") },
+            });
+            await updatePlanFrontMatterForTest(projectRoot, "child-b", {
+                status: "draft",
+                classification: "FEATURE",
+                parentPlan: "epic",
+            });
+            const retried = await stageValidationPassedInExecutionWorktree({
+                projectRoot,
+                executionCwd,
+                planName: "child-a",
+                details: { ...TEST_DELIVERY_DETAILS, now: () => new Date("2026-01-04T00:00:00.000Z") },
+            });
+
+            assertEquals(first.planPaths, ["docs/plans/child-a.md", "docs/plans/epic.md"]);
+            assertEquals(retried.planPaths, ["docs/plans/child-a.md", "docs/plans/epic.md"]);
+            assertEquals(retried.attrs.validatedAt, first.attrs.validatedAt);
+            assertEquals((await loadPlan(executionCwd, "epic"))?.attrs.status, "reviewed");
+            assertEquals((await loadPlan(executionCwd, "child-b"))?.attrs.status, "verified");
+        } finally {
+            await fsRm(projectRoot, { recursive: true });
+            await fsRm(executionCwd, { recursive: true });
         }
-
-        const first = await stageValidationPassedInExecutionWorktree({
-            projectRoot,
-            executionCwd,
-            planName: "child-a",
-            details: { ...TEST_DELIVERY_DETAILS, now: () => new Date("2026-01-03T00:00:00.000Z") },
-        });
-        await updatePlanFrontMatterForTest(projectRoot, "child-b", {
-            status: "draft",
-            classification: "FEATURE",
-            parentPlan: "epic",
-        });
-        const retried = await stageValidationPassedInExecutionWorktree({
-            projectRoot,
-            executionCwd,
-            planName: "child-a",
-            details: { ...TEST_DELIVERY_DETAILS, now: () => new Date("2026-01-04T00:00:00.000Z") },
-        });
-
-        assertEquals(first.planPaths, ["docs/plans/child-a.md", "docs/plans/epic.md"]);
-        assertEquals(retried.planPaths, ["docs/plans/child-a.md", "docs/plans/epic.md"]);
-        assertEquals(retried.attrs.validatedAt, first.attrs.validatedAt);
-        assertEquals((await loadPlan(executionCwd, "epic"))?.attrs.status, "reviewed");
-        assertEquals((await loadPlan(executionCwd, "child-b"))?.attrs.status, "verified");
-    } finally {
-        await fsRm(projectRoot, { recursive: true });
-        await fsRm(executionCwd, { recursive: true });
-    }
+    });
 });
 
 test("stageValidationPassedInExecutionWorktree does not import a newer primary parent state", async () => {
-    const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
-    const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
-    try {
-        const epicAttrs = /** @type {any} */ ({
-            planId: "fixture-epic",
-            status: "ready_for_work",
-            classification: "PROJECT",
-        });
-        await savePlan(projectRoot, "epic", "# Epic", epicAttrs);
-        await savePlan(projectRoot, "child-a", "# Child A", {
-            planId: "fixture-child-a",
-            status: "implemented",
-            classification: "FEATURE",
-            parentPlan: "epic",
-        });
-        await savePlan(projectRoot, "child-b", "# Child B", {
-            planId: "fixture-child-b",
-            status: "verified",
-            classification: "FEATURE",
-            ...TEST_DELIVERY_DETAILS,
-            parentPlan: "epic",
-        });
-        await savePlan(executionCwd, "epic", "# Epic", epicAttrs);
-        await savePlan(executionCwd, "child-a", "# Child A", {
-            planId: "fixture-child-a",
-            status: "reviewed",
-            classification: "FEATURE",
-            parentPlan: "epic",
-            ...TEST_DELIVERY_DETAILS,
-        });
-        await savePlan(executionCwd, "child-b", "# Child B", {
-            planId: "fixture-child-b",
-            status: "verified",
-            classification: "FEATURE",
-            parentPlan: "epic",
-            ...TEST_DELIVERY_DETAILS,
-        });
+    const projectRoot = await executionRepository.checkout();
+    return await withRetainedPlanFixture(projectRoot, async () => {
+        const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+        await git(projectRoot, ["worktree", "add", "-b", "execution", executionCwd]);
+        await enterProjectRuntime(executionCwd);
+        try {
+            const epicAttrs = /** @type {any} */ ({
+                planId: "fixture-epic",
+                status: "ready_for_work",
+                classification: "PROJECT",
+            });
+            await savePlan(projectRoot, "epic", "# Epic", epicAttrs);
+            await savePlan(projectRoot, "child-a", "# Child A", {
+                planId: "fixture-child-a",
+                status: "implemented",
+                classification: "FEATURE",
+                parentPlan: "epic",
+            });
+            await savePlan(projectRoot, "child-b", "# Child B", {
+                planId: "fixture-child-b",
+                status: "verified",
+                classification: "FEATURE",
+                ...TEST_DELIVERY_DETAILS,
+                parentPlan: "epic",
+            });
+            await savePlan(executionCwd, "epic", "# Epic", epicAttrs);
+            await savePlan(executionCwd, "child-a", "# Child A", {
+                planId: "fixture-child-a",
+                status: "reviewed",
+                classification: "FEATURE",
+                parentPlan: "epic",
+                ...TEST_DELIVERY_DETAILS,
+            });
+            await savePlan(executionCwd, "child-b", "# Child B", {
+                planId: "fixture-child-b",
+                status: "verified",
+                classification: "FEATURE",
+                parentPlan: "epic",
+                ...TEST_DELIVERY_DETAILS,
+            });
 
-        const first = await stageValidationPassedInExecutionWorktree({
-            projectRoot,
-            executionCwd,
-            planName: "child-a",
-            details: { ...TEST_DELIVERY_DETAILS, now: () => new Date("2026-01-03T00:00:00.000Z") },
-        });
-        await updatePlanFrontMatterForTest(projectRoot, "epic", {
-            status: "on_hold",
-            holdReason: "Canonical parent changed while merge recovery was pending.",
-        });
-        const retried = await stageValidationPassedInExecutionWorktree({
-            projectRoot,
-            executionCwd,
-            planName: "child-a",
-            details: { ...TEST_DELIVERY_DETAILS, now: () => new Date("2026-01-04T00:00:00.000Z") },
-        });
+            const first = await stageValidationPassedInExecutionWorktree({
+                projectRoot,
+                executionCwd,
+                planName: "child-a",
+                details: { ...TEST_DELIVERY_DETAILS, now: () => new Date("2026-01-03T00:00:00.000Z") },
+            });
+            await updatePlanFrontMatterForTest(projectRoot, "epic", {
+                status: "on_hold",
+                holdReason: "Canonical parent changed while merge recovery was pending.",
+            });
+            const retried = await stageValidationPassedInExecutionWorktree({
+                projectRoot,
+                executionCwd,
+                planName: "child-a",
+                details: { ...TEST_DELIVERY_DETAILS, now: () => new Date("2026-01-04T00:00:00.000Z") },
+            });
 
-        assertEquals(first.planPaths, ["docs/plans/child-a.md", "docs/plans/epic.md"]);
-        assertEquals(retried.planPaths, ["docs/plans/child-a.md", "docs/plans/epic.md"]);
-        assertEquals(retried.attrs.validatedAt, first.attrs.validatedAt);
-        assertEquals((await loadPlan(projectRoot, "epic"))?.attrs.status, "on_hold");
-        assertEquals((await loadPlan(executionCwd, "epic"))?.attrs.status, "reviewed");
-    } finally {
-        await fsRm(projectRoot, { recursive: true });
-        await fsRm(executionCwd, { recursive: true });
-    }
+            assertEquals(first.planPaths, ["docs/plans/child-a.md", "docs/plans/epic.md"]);
+            assertEquals(retried.planPaths, ["docs/plans/child-a.md", "docs/plans/epic.md"]);
+            assertEquals(retried.attrs.validatedAt, first.attrs.validatedAt);
+            assertEquals((await loadPlan(projectRoot, "epic"))?.attrs.status, "on_hold");
+            assertEquals((await loadPlan(executionCwd, "epic"))?.attrs.status, "reviewed");
+        } finally {
+            await fsRm(projectRoot, { recursive: true });
+            await fsRm(executionCwd, { recursive: true });
+        }
+    });
 });
 
 test("stageValidationPassedInExecutionWorktree rejects a Plan outside Workflow Validation", async () => {
-    const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
-    const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
-    try {
-        // Publishing is legal from any status validation actually runs from, so the
-        // guard rejects statuses outside validation rather than one exact status. It
-        // used to demand `implemented`, which refused every publication once the Plan
-        // reached `reviewed` before merge.
-        await savePlan(projectRoot, "feature", "# Feature", { planId: "fixture-feature", status: "in_progress" });
-        await savePlan(executionCwd, "feature", "# Execution Feature", {
-            planId: "fixture-feature",
-            status: "in_progress",
-        });
-        await assertRejects(
-            () => stageValidationPassedInExecutionWorktree({ projectRoot, executionCwd, planName: "feature" }),
-            Error,
-            'at "in_progress"',
-        );
-        assertEquals((await loadPlan(executionCwd, "feature"))?.attrs.status, "in_progress");
-    } finally {
-        await fsRm(projectRoot, { recursive: true });
-        await fsRm(executionCwd, { recursive: true });
-    }
+    const projectRoot = await executionRepository.checkout();
+    return await withRetainedPlanFixture(projectRoot, async () => {
+        const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+        await git(projectRoot, ["worktree", "add", "-b", "execution", executionCwd]);
+        await enterProjectRuntime(executionCwd);
+        try {
+            // Publishing is legal from any status validation actually runs from, so the
+            // guard rejects statuses outside validation rather than one exact status. It
+            // used to demand `implemented`, which refused every publication once the Plan
+            // reached `reviewed` before merge.
+            await savePlan(projectRoot, "feature", "# Feature", { planId: "fixture-feature", status: "in_progress" });
+            await savePlan(executionCwd, "feature", "# Execution Feature", {
+                planId: "fixture-feature",
+                status: "in_progress",
+            });
+            await assertRejects(
+                () => stageValidationPassedInExecutionWorktree({ projectRoot, executionCwd, planName: "feature" }),
+                Error,
+                'at "in_progress"',
+            );
+            assertEquals((await loadPlan(executionCwd, "feature"))?.attrs.status, "in_progress");
+        } finally {
+            await fsRm(projectRoot, { recursive: true });
+            await fsRm(executionCwd, { recursive: true });
+        }
+    });
 });
 
 test("recordPlanEvent enforces FEATURE Delivery Evidence without supplied triage metadata", async () => {
-    const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
-    try {
-        await savePlan(projectRoot, "feature", "# Feature", {
-            planId: "fixture-feature",
-            status: "reviewed",
-            classification: "FEATURE",
-        });
-        await assertRejects(
-            () =>
-                recordPlanEvent({
-                    cwd: projectRoot,
-                    planName: "feature",
-                    event: "validation_passed",
-                    currentStatus: "reviewed",
-                }),
-            Error,
-            "planned change validation_passed requires executionMode",
-        );
-        assertEquals((await loadPlan(projectRoot, "feature"))?.attrs.status, "reviewed");
-    } finally {
-        await fsRm(projectRoot, { recursive: true });
-    }
+    const projectRoot = await executionRepository.checkout();
+    return await withRetainedPlanFixture(projectRoot, async () => {
+        try {
+            await savePlan(projectRoot, "feature", "# Feature", {
+                planId: "fixture-feature",
+                status: "reviewed",
+                classification: "FEATURE",
+            });
+            await assertRejects(
+                () =>
+                    recordPlanEvent({
+                        cwd: projectRoot,
+                        planName: "feature",
+                        event: "validation_passed",
+                        currentStatus: "reviewed",
+                    }),
+                Error,
+                "planned change validation_passed requires executionMode",
+            );
+            assertEquals((await loadPlan(projectRoot, "feature"))?.attrs.status, "reviewed");
+        } finally {
+            await fsRm(projectRoot, { recursive: true });
+        }
+    });
 });
 
 test("recordPlanEvent rejects invalid transitions before writing", async () => {
-    const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
-    try {
-        await assertRejects(
-            () =>
-                recordPlanEvent({
-                    cwd: projectRoot,
-                    planName: "missing",
-                    event: "validation_passed",
-                    currentStatus: "approved",
-                }),
-            Error,
-            "Plan not found: missing",
-        );
-    } finally {
-        await fsRm(projectRoot, { recursive: true }).catch(() => {});
-    }
+    const projectRoot = await executionRepository.checkout();
+    return await withRetainedPlanFixture(projectRoot, async () => {
+        try {
+            await assertRejects(
+                () =>
+                    recordPlanEvent({
+                        cwd: projectRoot,
+                        planName: "missing",
+                        event: "validation_passed",
+                        currentStatus: "approved",
+                    }),
+                Error,
+                "Plan not found: missing",
+            );
+        } finally {
+            await fsRm(projectRoot, { recursive: true }).catch(() => {});
+        }
+    });
 });
 
 test("recordPlanEvent explains stale Plan status with a validation action", async () => {
-    const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
-    try {
-        await savePlan(projectRoot, "feature", "# Feature", { planId: "fixture-feature", status: "implemented" });
+    const projectRoot = await executionRepository.checkout();
+    return await withRetainedPlanFixture(projectRoot, async () => {
+        try {
+            await savePlan(projectRoot, "feature", "# Feature", { planId: "fixture-feature", status: "implemented" });
 
-        const error = await assertRejects(
-            () =>
-                recordPlanEvent({
-                    cwd: projectRoot,
-                    planName: "feature",
-                    event: "semantic_review_passed",
-                    currentStatus: "validated_ci",
-                }),
-            Error,
-        );
+            const error = await assertRejects(
+                () =>
+                    recordPlanEvent({
+                        cwd: projectRoot,
+                        planName: "feature",
+                        event: "semantic_review_passed",
+                        currentStatus: "validated_ci",
+                    }),
+                Error,
+            );
 
-        assertStringIncludes(error.message, "RunWield had old status data for Plan feature.");
-        assertStringIncludes(error.message, "It thought the Plan was at validated_ci (the checks passed)");
-        assertStringIncludes(error.message, "the saved Plan is at implemented (the work is done)");
-        assertStringIncludes(error.message, "run validation again for this Plan");
-        assertStringIncludes(error.message, "Do not reset your worktree.");
-    } finally {
-        await fsRm(projectRoot, { recursive: true }).catch(() => {});
-    }
+            assertStringIncludes(error.message, "RunWield had old status data for Plan feature.");
+            assertStringIncludes(error.message, "It thought the Plan was at validated_ci (the checks passed)");
+            assertStringIncludes(error.message, "the saved Plan is at implemented (the work is done)");
+            assertStringIncludes(error.message, "run validation again for this Plan");
+            assertStringIncludes(error.message, "Do not reset your worktree.");
+        } finally {
+            await fsRm(projectRoot, { recursive: true }).catch(() => {});
+        }
+    });
 });
 
 test("getPlanLifecycleActionMetadata keeps protected states behind dedicated actions", () => {
@@ -1302,90 +1371,94 @@ test("getPlanLifecycleActionMetadata keeps protected states behind dedicated act
 
 testWithFsPermissions("recordPlanEvent blocks shared Plan lifecycle writes without mutating siblings", async () => {
     const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
-    try {
-        const lockedPath = await savePlan(cwd, "locked", "# Locked", {
-            planId: "fixture-locked",
-            status: "approved",
-            collaborationState: COLLABORATION_STATE_REMOTE_CANONICAL,
-            collaborationServerUrl: "https://plans.example.test",
-            collaborationSpaceId: "space-1",
-        });
-        const siblingPath = await savePlan(cwd, "sibling", "# Sibling", {
-            planId: "fixture-sibling",
-            status: "approved",
-        });
-        const lockedBefore = await fsReadFile(lockedPath, "utf8");
-        const siblingBefore = await fsReadFile(siblingPath, "utf8");
+    return await withRetainedPlanFixture(cwd, async () => {
+        try {
+            const lockedPath = await savePlanDocument(cwd, "locked", "# Locked", {
+                planId: "fixture-locked",
+                status: "approved",
+                collaborationState: COLLABORATION_STATE_REMOTE_CANONICAL,
+                collaborationServerUrl: "https://plans.example.test",
+                collaborationSpaceId: "space-1",
+            });
+            const siblingPath = await savePlan(cwd, "sibling", "# Sibling", {
+                planId: "fixture-sibling",
+                status: "approved",
+            });
+            const lockedBefore = await fsReadFile(lockedPath, "utf8");
+            const siblingBefore = await fsReadFile(siblingPath, "utf8");
 
-        const error = await assertRejects(
-            () =>
-                recordPlanEvent({
-                    cwd,
-                    planName: "locked",
-                    event: "readiness_passed",
-                    currentStatus: "approved",
-                }),
-            SharedPlanLockError,
-        );
-        assertStringIncludes(error.repair, "wld plans pull");
-        assertEquals(await fsReadFile(lockedPath, "utf8"), lockedBefore);
-        assertEquals(await fsReadFile(siblingPath, "utf8"), siblingBefore);
-        assertEquals((await loadPlan(cwd, "sibling"))?.attrs.status, "approved");
-    } finally {
-        await fsRm(cwd, { recursive: true });
-    }
+            const error = await assertRejects(
+                () =>
+                    recordPlanEvent({
+                        cwd,
+                        planName: "locked",
+                        event: "readiness_passed",
+                        currentStatus: "approved",
+                    }),
+                SharedPlanLockError,
+            );
+            assertStringIncludes(error.repair, "wld plans pull");
+            assertEquals(await fsReadFile(lockedPath, "utf8"), lockedBefore);
+            assertEquals(await fsReadFile(siblingPath, "utf8"), siblingBefore);
+            assertEquals((await loadPlan(cwd, "sibling"))?.attrs.status, "approved");
+        } finally {
+            await fsRm(cwd, { recursive: true });
+        }
+    });
 });
 
 test("passing CI retains durable semantic review state across a fresh Plan load", async () => {
     const root = await makeTempDirectory({ prefix: "lifecycle-ci-review-state-" });
-    /** @type {import("./validation-checkpoint.ts").ValidationCheckpoint} */
-    const checkpoint = {
-        version: 1,
-        attemptId: "attempt-review",
-        generation: "generation-review",
-        expectedStatus: "implemented",
-        nextPhase: "mechanical",
-        state: "ready",
-        updatedAt: "2026-01-01T00:00:00.000Z",
-        reviewState: {
-            semanticRound: 2,
-            reviewLedger: {
-                items: [
-                    {
-                        id: "R1-1",
-                        openedInRound: 1,
-                        resolvedInRound: null,
-                        title: "Filter type",
-                        requirement: "Reject non-string queries",
-                        evidence: "The prior run accepted a number",
-                        status: "fix_claimed",
-                    },
-                ],
-                sequence: 1,
+    return await withRetainedPlanFixture(root, async () => {
+        /** @type {import("./validation-checkpoint.ts").ValidationCheckpoint} */
+        const checkpoint = {
+            version: 1,
+            attemptId: "attempt-review",
+            generation: "generation-review",
+            expectedStatus: "implemented",
+            nextPhase: "mechanical",
+            state: "ready",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            reviewState: {
+                semanticRound: 2,
+                reviewLedger: {
+                    items: [
+                        {
+                            id: "R1-1",
+                            openedInRound: 1,
+                            resolvedInRound: null,
+                            title: "Filter type",
+                            requirement: "Reject non-string queries",
+                            evidence: "The prior run accepted a number",
+                            status: "fix_claimed",
+                        },
+                    ],
+                    sequence: 1,
+                },
+                repairBaselineTree: "baseline-tree",
+                lastRepairReport: "Fixed the rejected behavior",
             },
-            repairBaselineTree: "baseline-tree",
-            lastRepairReport: "Fixed the rejected behavior",
-        },
-    };
-    try {
-        await savePlan(root, "review", "# Review", {
-            planId: "fixture-review",
-            status: "implemented",
-            validationSemanticRounds: 2,
-            validationCheckpoint: checkpoint,
-        });
-        await recordPlanEvent({
-            cwd: root,
-            planName: "review",
-            event: "mechanical_validation_passed",
-            currentStatus: "implemented",
-        });
-        const resumed = await loadPlan(root, "review");
-        assertEquals(resumed?.attrs.status, "implemented");
-        assertEquals(resumed?.attrs.validationPhase, "semantic");
-        assertEquals(resumed?.attrs.validationSemanticRounds, 2);
-        assertEquals(resumed?.attrs.validationCheckpoint, checkpoint);
-    } finally {
-        await fsRm(root, { recursive: true });
-    }
+        };
+        try {
+            await savePlan(root, "review", "# Review", {
+                planId: "fixture-review",
+                status: "implemented",
+                validationSemanticRounds: 2,
+                validationCheckpoint: checkpoint,
+            });
+            await recordPlanEvent({
+                cwd: root,
+                planName: "review",
+                event: "mechanical_validation_passed",
+                currentStatus: "implemented",
+            });
+            const resumed = await loadPlan(root, "review");
+            assertEquals(resumed?.attrs.status, "implemented");
+            assertEquals(resumed?.attrs.validationPhase, "semantic");
+            assertEquals(resumed?.attrs.validationSemanticRounds, 2);
+            assertEquals(resumed?.attrs.validationCheckpoint, checkpoint);
+        } finally {
+            await fsRm(root, { recursive: true });
+        }
+    });
 });

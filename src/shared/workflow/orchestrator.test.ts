@@ -1,4 +1,6 @@
-import { mkdir as fsMkdir, readFile as fsReadFile, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
+import { seedPlan } from "../testing/plan-state-fixture.ts";
+import { approvePlanForExecution } from "../testing/ready-plan-fixture.ts";
+import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import {
@@ -11,7 +13,8 @@ import {
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, listPlans } from "../../plan-store/index.ts";
+
 import { git } from "../git-test-fixture.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { listPendingTaskCompletions } from "../session/task-completion-session.ts";
@@ -370,7 +373,8 @@ test("planned work with no Plan declaration stays with the real Planner", async 
         });
 
         assertEquals(fixture.hostedSession.getRootAgentName(), "planner");
-        assertEquals(await fsStat(`${projectRoot}/docs/plans`).then((entry) => entry.isDirectory()), true);
+        assertEquals(await listPlans(projectRoot), []);
+        assertEquals(fixture.hostedSession.getActiveExecutionWorkflow(), null);
         assertEquals(ci.calls, []);
         fixture.hostedSession.dispose();
     });
@@ -436,7 +440,7 @@ test("Router-to-Planner dispatch sends Planner system instructions despite Route
 
 test("PROJECT approval runs the real readiness transition and Slicer", async () => {
     await withRuntimeCommandFixture("orchestrator-project-", async ({ projectRoot, setModelMessages }) => {
-        await savePlan(projectRoot, "epic-a", "# Epic A", {
+        await seedPlan(projectRoot, "epic-a", "# Epic A", {
             classification: "PROJECT",
             complexity: "HIGH",
             summary: "Epic A",
@@ -480,7 +484,7 @@ test("PROJECT approval runs the real readiness transition and Slicer", async () 
 
 test("approved planned work executes through real lifecycle machinery and pauses with Plan Engineer", async () => {
     await withRuntimeCommandFixture("orchestrator-feature-", async ({ projectRoot, setModelMessages }) => {
-        await savePlan(projectRoot, "feature-a", "# Feature A", {
+        await seedPlan(projectRoot, "feature-a", "# Feature A", {
             classification: "PLANNED_CHANGE",
             complexity: "MEDIUM",
             summary: "Feature A",
@@ -488,6 +492,7 @@ test("approved planned work executes through real lifecycle machinery and pauses
             status: "ready_for_work",
             executionAgent: "engineer",
         });
+        await approvePlanForExecution(projectRoot, "feature-a");
         const interactions: RuntimeInteractionRequest[] = [];
         const fixture = createSessionFixture(projectRoot, (request) => {
             interactions.push(request);
@@ -534,7 +539,7 @@ test("approved planned work executes through real lifecycle machinery and pauses
 
 test("a Pair checkpoint keeps Plan Engineer active while waiting for feedback", async () => {
     await withRuntimeCommandFixture("orchestrator-pair-", async ({ projectRoot, setModelMessages }) => {
-        await savePlan(projectRoot, "feature-a", "# Feature A", {
+        await seedPlan(projectRoot, "feature-a", "# Feature A", {
             classification: "PLANNED_CHANGE",
             complexity: "MEDIUM",
             summary: "Feature A",
@@ -543,6 +548,7 @@ test("a Pair checkpoint keeps Plan Engineer active while waiting for feedback", 
             executionAgent: "engineer",
             collaborationRecommendation: "pair",
         });
+        await approvePlanForExecution(projectRoot, "feature-a");
         const interactions: RuntimeInteractionRequest[] = [];
         const fixture = createSessionFixture(projectRoot, (request) => {
             interactions.push(request);
@@ -595,14 +601,16 @@ test("completed planned work runs the real validation lifecycle around external 
             `${projectRoot}/.wld/settings.json`,
             JSON.stringify({ codereview: "none", workRecords: { autoGenerateOnPlanCompletion: false } }),
         );
-        await savePlan(projectRoot, "feature-validated", "# Validated Feature", {
+        await seedPlan(projectRoot, "feature-validated", "# Validated Feature", {
             classification: "PLANNED_CHANGE",
             complexity: "MEDIUM",
             summary: "Validated Feature",
+            collaborationRecommendation: "autonomous",
             affectedPaths: ["implemented.txt"],
             status: "ready_for_work",
             executionAgent: "engineer",
         });
+        await approvePlanForExecution(projectRoot, "feature-validated");
         const fixture = createSessionFixture(projectRoot, (request) => {
             if (request.type === "plan_review") {
                 return { outcome: "accepted", _meta: { approved: true, approvalAction: "run" } };

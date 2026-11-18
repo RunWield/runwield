@@ -1,11 +1,13 @@
+import { hasPlanDeliveryEvidence } from "../../plan-store/index.ts";
+
 import { opendir as fsOpendir } from "node:fs/promises";
 import { readFile as fsReadFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AGENTS } from "../../constants.js";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
 import { listWorkRecords } from "../../shared/work-records/store.ts";
-import { findPlanEvidenceById } from "../../plan-store.js";
-import { readControllerRecord } from "../../shared/workflow/controller-registry.ts";
+import { findPlanEvidenceById } from "../../plan-store/index.ts";
+
 import { getCustomSetting } from "../../shared/settings.js";
 import { INIT_VERIFICATION_COMMAND_PLACEHOLDER } from "../../tools/init-verification-command.ts";
 import type { UiAPI } from "./types.js";
@@ -140,11 +142,7 @@ async function readVerifiedTutorialPlan(
     const plan = await findPlanEvidenceById(projectRoot, planId).catch(() => null);
     if (!plan || plan.planName !== association.planName || plan.attrs.planId !== planId) return null;
     if (plan.attrs.status !== "verified") return null;
-    const controller = await readControllerRecord(projectRoot, {
-        planId,
-        planName: association.planName,
-    });
-    if (!controller?.state.verifiedAt || !controller.state.deliveryEvidence) return null;
+    if (!(await hasPlanDeliveryEvidence(projectRoot, association.planName, planId))) return null;
     return { plan };
 }
 
@@ -219,7 +217,9 @@ export async function presentTutorialEvent({
         followsExecution && activeAssociatedPlanId ? activeAssociatedPlanId : context.planId || activeAssociatedPlanId;
     if ((!context.planId || followsExecution) && planId !== context.planId) {
         const associated = await runtime.updateTutorialContext(sessionId, { planId });
-        if (!associated.ok) return;
+        // A live Plan review can precede the transcript generation that commits
+        // its association. Present guidance now; bind only after that evidence commits.
+        if (!associated.ok && associated.error !== "tutorial_context_plan_association_required") return;
         snapshot = runtime.getSessionSnapshot(sessionId);
         context = snapshot?.tutorialContext;
     }

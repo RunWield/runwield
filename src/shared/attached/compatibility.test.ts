@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { getWorktreeRegistryPath } from "../worktree-registry.js";
 import {
@@ -232,8 +232,8 @@ for (const refusal of [
                 const recordPath = join(location.workflowsDir, `${fixture.workflowId}.json`);
                 const paths = [
                     recordPath,
-                    join(fixture.cwd, "docs/plans/p.md"),
-                    join(fixture.root, "docs/plans/p.md"),
+                    (await fixture.plan()).path,
+                    join(dirname((await fixture.plan()).path), "plan.wld.json"),
                     join(fixture.cwd, "implementation.ts"),
                     getWorktreeRegistryPath(fixture.root),
                 ];

@@ -1,11 +1,14 @@
+import { seedPlanState, seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
-import { archivePlan, ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.js";
+
+import { archivePlan, loadArchivedPlan, ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
+
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";
@@ -14,7 +17,7 @@ import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts
 const gitFixture = defineCommittedGitFixture();
 
 async function createReviewPlan(root: string, name: string, content = `# ${name}\n\n## Context\n\nOriginal.\n`) {
-    await savePlan(root, name, content, {
+    await seedPlan(root, name, content, {
         classification: "PLANNED_CHANGE",
         status: "draft",
         affectedPaths: [],
@@ -36,7 +39,10 @@ test("the Session reopens B with its latest contents after reviews of A and B an
             const b = await createReviewPlan(root, "b");
             const { sessionId } = await runtime.createInteractiveSession({ cwd: root, mode: "new" });
             runtime.setInteractionAdapter(sessionId, { requestInteraction: () => ({ outcome: "canceled" }) });
-            for (const [name, id] of [["a", a.attrs.planId], ["b", b.attrs.planId]]) {
+            for (const [name, id] of [
+                ["a", a.attrs.planId],
+                ["b", b.attrs.planId],
+            ]) {
                 await runtime.requestInteraction(sessionId, {
                     type: RuntimeInteractionTypes.PLAN_REVIEW,
                     prompt: `Review ${name}`,
@@ -55,7 +61,7 @@ test("the Session reopens B with its latest contents after reviews of A and B an
             assertEquals(runtime.getSessionSnapshot(resumed.sessionId)?.managed?.runwieldSessionId, stableSessionId);
             const before = await loadPlan(root, "b");
             assert(before);
-            await savePlan(root, "b", "# B\n\n## Context\n\nThe revised B, not A or C.\n", before.attrs, {
+            await seedPlan(root, "b", "# B\n\n## Context\n\nThe revised B, not A or C.\n", before.attrs, {
                 expectedRevision: before.revision,
             });
             await createReviewPlan(root, "c", "# C\n\n## Context\n\nNewest unrelated Plan.\n");
@@ -110,7 +116,7 @@ test("a deleted reviewed Plan is not replaced by another Plan", async () => {
                 prompt: "Review target",
                 _meta: { planId: target.attrs.planId, planName: "target", planningAgentName: "planner" },
             });
-            await fsRm(target.path);
+            await fsRm(dirname(target.path), { recursive: true });
             await createReviewPlan(root, "other");
             let turns = 0;
             setModelResponseFactory(() => {
@@ -141,7 +147,7 @@ test("a reused Plan name with a different identity is not reopened", async () =>
                 prompt: "Review target",
                 _meta: { planId: target.attrs.planId, planName: "target", planningAgentName: "planner" },
             });
-            await fsRm(target.path);
+            await fsRm(dirname(target.path), { recursive: true });
             const replacement = await createReviewPlan(
                 root,
                 "target",
@@ -178,10 +184,9 @@ for (const status of ["archived", "verified"] as const) {
                 if (status === "archived") {
                     await archivePlan(root, "target", { force: true });
                 } else {
-                    await savePlan(root, "target", "# target\n\n## Context\n\nOriginal.\n", {
-                        ...before.attrs,
-                        status,
-                    }, { expectedRevision: before.revision });
+                    await seedPlanState(root, "target", { status }, before.attrs, {
+                        expectedRevision: before.revision,
+                    });
                 }
                 let turns = 0;
                 setModelResponseFactory(() => {
@@ -193,7 +198,8 @@ for (const status of ["archived", "verified"] as const) {
                     status === "archived" ? "missing_plan" : "not_reviewable",
                 );
                 assertEquals(
-                    (await loadPlan(root, status === "archived" ? "archived/target" : "target"))?.attrs.status,
+                    (status === "archived" ? await loadArchivedPlan(root, "target") : await loadPlan(root, "target"))
+                        ?.attrs.status,
                     status === "archived" ? "draft" : status,
                 );
                 assertEquals(turns, 0);
@@ -237,7 +243,7 @@ test("an unrelated active turn reports busy rather than launching the saved revi
                 await Promise.race([
                     started,
                     new Promise<never>((_, reject) =>
-                        setTimeout(() => reject(new Error("Agent turn did not start")), 5_000)
+                        setTimeout(() => reject(new Error("Agent turn did not start")), 5_000),
                     ),
                 ]);
                 const result = await runtime.reopenPlanReview(sessionId);

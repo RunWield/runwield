@@ -1,3 +1,5 @@
+import { readLocalHomeStore } from "../../plan-store/index.ts";
+import { workRecordOwnerLayout, assertWorkRecordPath } from "./owner.ts";
 import { mkdir as fsMkdir } from "node:fs/promises";
 import { captureForegroundProcess } from "../captured-process.ts";
 /**
@@ -5,8 +7,9 @@ import { captureForegroundProcess } from "../captured-process.ts";
  * Derived Mnemoteca index for canonical Work Records.
  */
 
-import { remotePersonalResourcesActive } from "../remote/personal-resources.ts";
-import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { checkedProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { inspectProjectIdentity } from "../project-identity.ts";
+import { remoteProjectOwner } from "../remote/personal-resources.ts";
 import { basename, dirname } from "node:path";
 import { listWorkRecords } from "./store.ts";
 import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
@@ -62,7 +65,16 @@ function resolveWorkRecordIndexProjectName(cwd: string, gitCommonDir: string) {
     return rawName === "global" || !rawName ? "default" : rawName;
 }
 
-export async function getWorkRecordIndexCollectionName(cwd: string) {
+export async function getWorkRecordIndexCollectionName(cwd: string): Promise<string> {
+    return await readLocalHomeStore(
+        cwd,
+        () => getWorkRecordIndexCollectionNameInScope(cwd),
+        () => getWorkRecordIndexCollectionNameInScope(cwd),
+    );
+}
+
+async function getWorkRecordIndexCollectionNameInScope(cwd: string) {
+    if (workRecordOwnerLayout()) return workRecordOwnerLayout()!.collection;
     return `${resolveWorkRecordIndexProjectName(cwd, await resolveGitCommonDir(cwd))}:work-records`;
 }
 
@@ -120,21 +132,39 @@ function decode(bytes: Uint8Array) {
     return new TextDecoder().decode(bytes || new Uint8Array()).trim();
 }
 
-export async function runMnemotecaWorkRecordCommand(cwd: string, args: string[], options: WorkRecordIndexOptions) {
+export async function runMnemotecaWorkRecordCommand(
+    cwd: string,
+    args: string[],
+    options: WorkRecordIndexOptions,
+): Promise<string> {
+    return await readLocalHomeStore(
+        cwd,
+        () => runMnemotecaWorkRecordCommandInScope(cwd, args, options),
+        () => runMnemotecaWorkRecordCommandInScope(cwd, args, options),
+    );
+}
+
+async function runMnemotecaWorkRecordCommandInScope(cwd: string, args: string[], options: WorkRecordIndexOptions) {
     const mnemotecaPort = options.mnemotecaPort;
     let result;
     try {
-        if (remotePersonalResourcesActive()) {
-            const commonDir = await resolveGitCommonDir(cwd);
-            const root = commonDir && basename(commonDir) === ".git" ? dirname(commonDir) : cwd;
-            const layout = resolveProjectRuntimeLayout(root).primary;
-            await fsMkdir(layout.internalRoot, { recursive: true, mode: 0o700 });
-            result = await mnemotecaPort.run(args, {
-                cwd,
-                env: { MNEMOTECA_DB_PATH: layout.workRecordIndexDatabasePath },
-            });
+        const admitted = workRecordOwnerLayout();
+        if (admitted) {
+            assertWorkRecordPath(admitted.database);
+            await fsMkdir(dirname(admitted.database), { recursive: true, mode: 0o700 });
+            result = await mnemotecaPort.run(args, { cwd, env: { MNEMOTECA_DB_PATH: admitted.database } });
         } else {
-            result = await mnemotecaPort.run(args, { cwd });
+            const layout = (await checkedProjectRuntimeLayout(cwd)).primary;
+            if (remoteProjectOwner()?.kind === "managed-remote" || inspectProjectIdentity(cwd).kind === "existing") {
+                await fsMkdir(dirname(layout.workRecordIndexDatabasePath), { recursive: true, mode: 0o700 });
+                result = await mnemotecaPort.run(args, {
+                    cwd,
+                    env: { MNEMOTECA_DB_PATH: layout.workRecordIndexDatabasePath },
+                });
+            } else {
+                // An identity-free Project retains its existing derived collection until deliberate admission.
+                result = await mnemotecaPort.run(args, { cwd });
+            }
         }
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

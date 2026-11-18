@@ -1,3 +1,4 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { delimiter } from "node:path";
 import {
     writeWorkflowBinaryFixtures,
@@ -44,7 +45,8 @@ import { openFileSessionStore } from "./file-session-store.ts";
 import { sessionDirForRoot } from "./file-session-storage.ts";
 import { openOwnerCoordinationStore } from "../owner-coordination/index.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { getPlanRevisionForText, savePlan } from "../../plan-store.js";
+import { getPlanRevisionForText } from "../../plan-format.ts";
+
 import { rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
 import { McpIntegration } from "../mcp/integration.ts";
 import { loadPlanActionEvidence } from "../workflow/plan-actions.ts";
@@ -893,7 +895,7 @@ async function exerciseRepairCompactionFollowUp(disconnect) {
             ensureRuntimeModelFixture();
             const planBody = "# Repair Follow Up\n\nApproved Plan body";
             const planId = "runtime-repair-follow-up-plan";
-            await savePlan(worktreeRoot, "repair-follow-up", planBody, {
+            await seedPlan(worktreeRoot, "repair-follow-up", planBody, {
                 planId,
                 status: "implemented",
                 classification: "PLANNED_CHANGE",
@@ -1030,7 +1032,8 @@ async function exerciseRepairCompactionFollowUp(disconnect) {
                 unsubscribeRepair();
                 assertEquals(repairUserMessages, []);
                 assertEquals(repairResult.kind, "paused");
-                assertStringIncludes(repairPromptText, "docs/plans/repair-follow-up.md");
+                assertStringIncludes(repairPromptText, `Repair checkout: \`${worktreeRoot}\``);
+                assertStringIncludes(repairPromptText, "The workflow diff is 0 B across 0 file(s).");
                 assertEquals(repairPromptText.includes("file.js"), false);
                 const blockedSegment = store.getCurrentSessionSegment(acquired.session.runwieldSessionId);
                 if (!blockedSegment) throw new Error("Expected a blocked repair segment");
@@ -2225,7 +2228,7 @@ test("SessionRuntime routes execution continuation input to the resolved Plan ow
 test("SessionRuntime keeps the next Epic decomposition reply with Slicer", async () => {
     const projectRoot = join(runtimeProjectRoot(), `slicer-resume-${crypto.randomUUID()}`);
     await fsMkdir(projectRoot, { recursive: true });
-    await savePlan(projectRoot, "epic-a", "# Epic A", {
+    await seedPlan(projectRoot, "epic-a", "# Epic A", {
         classification: "PROJECT",
         complexity: "HIGH",
         summary: "Epic A",
@@ -2527,12 +2530,18 @@ test("SessionRuntime keeps executePlan workflow operations busy while preparatio
             return fauxAssistantMessage(fauxText("Execution remains paused in the fixture."));
         });
         const planName = "execute-busy-plan";
-        await savePlan(cwd, planName, `# ${planName}`, {
+        await seedPlan(cwd, planName, `# ${planName}`, {
             classification: "PLANNED_CHANGE",
-            status: "ready_for_work",
+            status: "draft",
             summary: planName,
             affectedPaths: [],
             planId: "execute-busy-plan-id",
+        });
+        const { withLocalPlanWorkflow } = await import("../../plan-store/index.ts");
+        const { recordPlanEvent } = await import("../workflow/plan-lifecycle.js");
+        await withLocalPlanWorkflow(cwd, planName, async () => {
+            await recordPlanEvent({ cwd, planName, event: "review_approved", currentStatus: "draft" });
+            await recordPlanEvent({ cwd, planName, event: "readiness_passed", currentStatus: "approved" });
         });
         // Exercise the real persisted-consent path against the fixture HOME. This keeps
         // the test on the non-Git execution branch without replacing workflow machinery
@@ -4601,6 +4610,8 @@ test("Workspace gets a stop alert even when the handler suppresses its normal at
 
 test("managed Plan review requests persist the container before the adapter starts", async () => {
     await withRuntimeCommandFixture("runtime-review-bookmark-", async ({ homeDir, projectRoot }) => {
+        await seedPlan(projectRoot, "first", "# First\n", { planId: "first-id", status: "draft" });
+        await seedPlan(projectRoot, "sequence", "# Sequence\n", { planId: "sequence-id", status: "draft" });
         const ownerStore = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
         const fileStore = openFileSessionStore();
         const runtime = createSessionRuntime({

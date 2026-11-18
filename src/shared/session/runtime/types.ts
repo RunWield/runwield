@@ -94,7 +94,7 @@ export interface PromptSessionOptions {
     signal?: AbortSignal;
     planName?: string;
     planContent?: string;
-    triageMeta?: Partial<import("../../../plan-store.js").PlanFrontMatter>;
+    triageMeta?: Partial<import("../../../plan-store/index.ts").PlanFrontMatter>;
 }
 
 export interface PromptSessionResult {

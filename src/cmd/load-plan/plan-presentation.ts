@@ -7,7 +7,7 @@
  */
 
 import { buildTriageReport } from "../../shared/workflow/workflow-prompts.ts";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store/index.ts";
 
 /** One commit in the "these paths changed since the Plan was written" warning. */
 export interface CommitHeadsUp {
@@ -59,9 +59,9 @@ export function buildPlannerReReviewRequest(planName: string): string {
 /** Render the commit list shown before execution starts, capped for readability. */
 export function formatCommitHeadsUp(commits: CommitHeadsUp[]): string[] {
     const maxVisible = 12;
-    const visible = commits.slice(0, maxVisible).map((commit) =>
-        `  - ${commit.hash} ${commit.date} ${commit.subject}`.trimEnd()
-    );
+    const visible = commits
+        .slice(0, maxVisible)
+        .map((commit) => `  - ${commit.hash} ${commit.date} ${commit.subject}`.trimEnd());
     if (commits.length > maxVisible) {
         visible.push(`  - ...and ${commits.length - maxVisible} more`);
     }

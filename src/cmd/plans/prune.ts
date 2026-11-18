@@ -1,6 +1,6 @@
 import { parseArgs } from "../../shared/cli-args.ts";
 import { CLI_BIN, getCwd } from "../../constants.js";
-import { deleteArchivedPlanUnit } from "../../plan-store.js";
+import { deleteArchivedPlanUnit } from "../../plan-store/index.ts";
 import {
     type ArchivedPlanUnit,
     collectArchivedPlanUnits,

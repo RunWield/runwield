@@ -1,16 +1,20 @@
+import type { PlanExecutionPolicy } from "../../plan-format.ts";
 import { ok as assert } from "node:assert/strict";
 import { applyAttachedReviewDecision, openAttachedReviewRound } from "./coordinator.ts";
 import { EVIDENCE, runOperation, submitReview } from "./attached-test-fixture.ts";
 import { type AttachedJsonObject, type AttachedWorkflowView } from "./operations.ts";
 
-export async function readyPlan(root: string): Promise<AttachedWorkflowView> {
+export async function readyPlan(
+    root: string,
+    executionAgent: PlanExecutionPolicy["executionAgent"] = "engineer",
+): Promise<AttachedWorkflowView> {
     const submitted = await submitReview(root);
     const round = await openAttachedReviewRound(root, submitted.workflowId);
     assert(round.kind === "opened");
     await applyAttachedReviewDecision(root, submitted.workflowId, round.basis, {
         approved: true,
         approvalAction: "run",
-        executionAgent: "engineer",
+        executionAgent,
         collaborationRecommendation: "autonomous",
     });
     const status = await runOperation("status", root, { workflowId: submitted.workflowId });
