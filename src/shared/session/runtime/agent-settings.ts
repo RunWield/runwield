@@ -1,3 +1,4 @@
+import { AGY_CLI_MODEL_CHOICES } from "../../models/agy-cli-catalog.ts";
 import { mkdirSync } from "node:fs";
 import { AGENTS } from "../../../constants.ts";
 import { recordManualModelSelection } from ".././active-agent-session.ts";
@@ -186,7 +187,7 @@ export class RuntimeAgentSettings {
         const targetModel = parsedModel.ok ? registry.find(parsedModel.provider, parsedModel.id) : undefined;
         if (parsedModel.ok && parsedModel.provider === "agy-cli" && !targetModel) {
             throw new Error(
-                `Unsupported Antigravity CLI model: agy-cli/${parsedModel.id}. Select agy-cli/gemini-3.8-flash or agy-cli/gemini-3.1-pro.`,
+                `Unsupported Antigravity CLI model: agy-cli/${parsedModel.id}. Select ${AGY_CLI_MODEL_CHOICES}.`,
             );
         }
         assertModelExecutionBackendSupported(targetModel);

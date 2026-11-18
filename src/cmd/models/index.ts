@@ -1,3 +1,4 @@
+import { AGY_CLI_MODEL_CHOICES } from "../../shared/models/agy-cli-catalog.ts";
 /**
  * @module cmd/models
  * Handler for the model listing and switching command.
@@ -137,7 +138,7 @@ export async function runModelsCommand(
     if (!targetModel) {
         const message =
             parsedArgs.provider === "agy-cli"
-                ? `Unsupported Antigravity CLI model: ${firstArg}. Select agy-cli/gemini-3.8-flash or agy-cli/gemini-3.1-pro.`
+                ? `Unsupported Antigravity CLI model: ${firstArg}. Select ${AGY_CLI_MODEL_CHOICES}.`
                 : `Unknown model: ${firstArg}. Use /model to switch.`;
         if (uiAPI) uiAPI.appendSystemMessage(message, true);
         else console.log(parsedArgs.provider === "agy-cli" ? message : `Unknown model: ${firstArg}`);

@@ -16,10 +16,16 @@ executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-11-17"
 origin: "internal"
-status: "ready_for_work"
 userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "main"
+status: "reviewed"
+validatedCommit: "1e0ba4c7624c0e9617c068869680bf777273a5be"
+workRecord:
+    status: "generated"
+    recordId: "75fbe598-ec37-45af-8d43-51eba9a9fae3"
+    path: "docs/work-records/2026-11-18-antigravity-cli-model-catalog-and-effort-mapping.md"
+    lastAttemptAt: "2026-11-18T02:08:01.845Z"
 ---
 
 # Update Antigravity CLI Model Names
