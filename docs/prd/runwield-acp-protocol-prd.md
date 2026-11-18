@@ -286,6 +286,8 @@ requirement.
 - Given a menu with no option matching `cancel`, replying `cancel` settles it as canceled without selecting a default.
   A matching Cancel option instead keeps that option's meaning. Text and interview questions treat `cancel` as an
   ordinary answer. With workflow metrics enabled, a canceled command records `canceled` when it settles.
+- Given `/model` with no argument and workflow metrics enabled, opening the selector records `opened`. A successful
+  selection records `dispatched` before the successful finish, updates client model options, and changes the next turn's model.
 - Given a waiting command menu, `session/cancel` settles the command before another prompt can start. The next ordinary
   prompt is accepted, and enabled workflow metrics record the command outcome as `canceled`.
 - Given a no-form approval with no supplied options, the menu shows Yes and No; replies `1` and `2` map to accept and
