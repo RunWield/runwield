@@ -24,6 +24,7 @@ dependencies:
 targetBranch: "epic/external-plan-store"
 userVerifiedAt: null
 status: "reviewed"
+validatedCommit: "a49e61f4cad402ce049de6d7da20e5daefbba26e"
 ---
 
 # Keep and Restore Plan Milestone History
