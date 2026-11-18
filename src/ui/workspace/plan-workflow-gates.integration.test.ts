@@ -1,3 +1,4 @@
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import type { RuntimeInteractionRequest } from "../../shared/session/session-runtime-interactions.js";
@@ -8,7 +9,8 @@ import { assertEquals, assertExists, assertStringIncludes } from "../../testing/
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { createTestWorktreeAttempt } from "../../shared/worktree-test-helpers.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
@@ -51,7 +53,7 @@ for (const status of ["reviewed", "ready_for_decomposition"]) {
                 const name = epic ? "epic-plan" : "review-plan";
                 const planId = `${name}-id`;
                 const body = `# ${name}\n\nImplement the requested change.\n`;
-                await savePlan(root, name, body, {
+                await seedPlan(root, name, body, {
                     planId,
                     status,
                     classification: epic ? "PROJECT" : "PLANNED_CHANGE",
@@ -59,7 +61,7 @@ for (const status of ["reviewed", "ready_for_decomposition"]) {
                     targetBranch: "main",
                     humanReviewMode: "ask",
                 });
-                await savePlan(root, "earlier-plan", "# Earlier Plan\n", {
+                await seedPlan(root, "earlier-plan", "# Earlier Plan\n", {
                     planId: "earlier-plan-id",
                     status: "ready_for_work",
                     classification: "PLANNED_CHANGE",
@@ -77,7 +79,7 @@ for (const status of ["reviewed", "ready_for_decomposition"]) {
                     });
                     await fsWriteFile(join(tree.path, "implementation.txt"), "implemented\n");
                     const plan = await loadPlan(tree.path, name);
-                    await savePlan(
+                    await seedPlan(
                         tree.path,
                         name,
                         body,

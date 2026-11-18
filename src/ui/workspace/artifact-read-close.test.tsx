@@ -81,6 +81,7 @@ async function withReader(payload, check, exitStatus = 200, home = false) {
             "localStorage",
             "matchMedia",
             "HTMLElement",
+            "customElements",
             "Element",
             "Node",
             "MutationObserver",

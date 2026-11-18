@@ -126,6 +126,7 @@ function assertRuntimeSessionReplacementAndEpicEvidence(result, capability) {
 }
 
 export const projectPlanReviewScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     name: "project-plan-review-approval-journey",
     // Real review persistence and Session settlement share CI resources with the other Golden files.
     timeoutMs: 90000,
@@ -172,6 +173,7 @@ export const projectPlanReviewScenario = {
 };
 
 export const twoChildProjectContinuationScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     // This scenario isolates automated delivery; human policy gates have dedicated journeys.
     globalSettings: { defaultProvider: "golden", defaultModel: "faux", codereview: "none" },
     name: "project-two-child-continuation-epic-evidence",

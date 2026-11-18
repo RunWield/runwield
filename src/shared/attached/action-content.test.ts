@@ -142,7 +142,7 @@ test("bounded artifact pages restore the complete UTF-8 execution report and act
                     offsetBytes,
                     maxBytes: 4096,
                 });
-                assert(page.ok && "content" in page);
+                assert(page.ok && "content" in page, JSON.stringify(page));
                 assert(new TextEncoder().encode(page.content).length <= 4096);
                 equal(page.offsetBytes, offsetBytes);
                 restored += page.content;

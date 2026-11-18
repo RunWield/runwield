@@ -6,7 +6,8 @@ import { captureForegroundProcess } from "../captured-process.ts";
  */
 
 import { AGENTS } from "../../constants.js";
-import { loadPlan, PlanLockTimeoutError } from "../../plan-store.js";
+import { PlanLockTimeoutError } from "../../plan-store/index.ts";
+import { loadPlan } from "../../plan-store/index.ts";
 import { requestHostRepair } from "./validation-host-state.ts";
 import { logValidationFailure } from "./validation-state-errors.ts";
 import type { PhaseContext, UserActionPause, ValidationLoopArgs } from "./validation-types.ts";

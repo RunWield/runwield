@@ -1,10 +1,16 @@
+import { seedPlan as saveOwnedPlan } from "../testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ok as assert } from "node:assert/strict";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { assertEquals } from "../../testing/assertions.ts";
-import { savePlan } from "../../plan-store.js";
+
+import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
+
+// Seed the checkout contract still owned by the managed remote runtime.
+const savePlan: typeof saveOwnedPlan = (root, ...args) =>
+    withRetainedPlanFixture(root, () => saveOwnedPlan(root, ...args));
 import type { RemoteSessionRequest } from "./session-protocol.ts";
 import {
     assertRemoteStorageAbsent,

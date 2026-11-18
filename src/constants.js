@@ -1,3 +1,19 @@
+import {
+    ROUTING_INTENT_PLANNED_CHANGE,
+    LEGACY_ROUTING_INTENT_FEATURE,
+    normalizeWorkKind,
+} from "./plan-format/classification.ts";
+export {
+    ROUTING_INTENT_PLANNED_CHANGE,
+    LEGACY_ROUTING_INTENT_FEATURE,
+    WORK_KINDS,
+    PLANS_DIR_NAME,
+    normalizePlanClassification,
+    isPlannedChangeClassification,
+    normalizeWorkKind,
+} from "./plan-format/classification.ts";
+
+export { CLI_BIN } from "./shared/cli-name.ts";
 /**
  * @module constants
  * Shared constants for RunWield CLI orchestration.
@@ -7,9 +23,6 @@ import { realpathSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import { argv, cwd, env, platform, versions } from "node:process";
 import { RUNWIELD_SOURCE_ROOT } from "../runtime-root.js";
-
-/** Name of the installed CLI binary shown in user-facing docs/help. */
-export const CLI_BIN = "wld";
 
 /** Fallback source-run invocation used in contributor docs and local dev. */
 export const DEV_CLI_RUN = "bun src/cli.ts";
@@ -78,15 +91,6 @@ export const ROUTING_INTENTS = [
     "PROJECT",
 ];
 
-/** Canonical planned-work Routing Intent and Plan Classification. */
-export const ROUTING_INTENT_PLANNED_CHANGE = "PLANNED_CHANGE";
-
-/** Legacy planned-work workflow label accepted for compatibility. */
-export const LEGACY_ROUTING_INTENT_FEATURE = "FEATURE";
-
-/** Work Kind values describe the nature of planned executable work. */
-export const WORK_KINDS = ["BUG_FIX", "FEATURE", "REFACTOR", "MAINTENANCE", "DOCUMENTATION"];
-
 /**
  * @param {unknown} value
  * @returns {"INQUIRY"|"IDEATION"|"OPERATION"|"QUICK_FIX"|"PLANNED_CHANGE"|"PROJECT"|null}
@@ -97,33 +101,6 @@ export function normalizeRoutingIntent(value) {
     return ROUTING_INTENTS.includes(value)
         ? /** @type {"INQUIRY"|"IDEATION"|"OPERATION"|"QUICK_FIX"|"PLANNED_CHANGE"|"PROJECT"} */ (value)
         : null;
-}
-
-/**
- * @param {unknown} value
- * @returns {"QUICK_FIX"|"PLANNED_CHANGE"|"PROJECT"}
- */
-export function normalizePlanClassification(value) {
-    if (typeof value !== "string") return ROUTING_INTENT_PLANNED_CHANGE;
-    if (value === LEGACY_ROUTING_INTENT_FEATURE) return ROUTING_INTENT_PLANNED_CHANGE;
-    if (value === ROUTING_INTENT_PLANNED_CHANGE || value === "PROJECT" || value === "QUICK_FIX") return value;
-    return ROUTING_INTENT_PLANNED_CHANGE;
-}
-
-/** @param {unknown} value */
-export function isPlannedChangeClassification(value) {
-    return value === ROUTING_INTENT_PLANNED_CHANGE || value === LEGACY_ROUTING_INTENT_FEATURE;
-}
-
-/**
- * @param {unknown} value
- * @returns {"BUG_FIX"|"FEATURE"|"REFACTOR"|"MAINTENANCE"|"DOCUMENTATION"|undefined}
- */
-export function normalizeWorkKind(value) {
-    if (typeof value !== "string") return undefined;
-    return WORK_KINDS.includes(value)
-        ? /** @type {"BUG_FIX"|"FEATURE"|"REFACTOR"|"MAINTENANCE"|"DOCUMENTATION"} */ (value)
-        : undefined;
 }
 
 /**
@@ -149,9 +126,6 @@ export function formatPlannedWorkLabel(workKind) {
 
 /** Allowed complexity values emitted by triage. */
 export const COMPLEXITIES = ["LOW", "MEDIUM", "HIGH"];
-
-/** Project-relative directory path where plan markdown files are stored. */
-export const PLANS_DIR_NAME = "docs/plans";
 
 /** Directory name where canonical Work Record markdown files are stored. */
 export const WORK_RECORDS_DIR_NAME = "docs/work-records";

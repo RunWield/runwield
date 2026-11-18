@@ -1,24 +1,30 @@
+import { planFixtureJournalDirectory, planFixtureJournalPath } from "../testing/plan-state-fixture.ts";
+import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
+import { withPackageExecutionJournal } from "../../plan-store/workflows.ts";
 import { compactStatus } from "./presentation.ts";
 import { test } from "node:test";
-import { realpath as fsRealpath, rm as fsRm, writeFile as fsWriteFile, mkdir as fsMkdir } from "node:fs/promises";
+import {
+    realpath as fsRealpath,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+    mkdir as fsMkdir,
+    mkdtemp,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
 import { hasNonGitExecutionConsent } from "../non-git-execution-consent.ts";
-import {
-    getTransitionJournalDir,
-    getTransitionJournalPath,
-    listTransitionRecoveryRecords,
-} from "../workflow/state-transition.ts";
-import { makeValidationProjectRoot } from "../workflow/validation-test-helpers.js";
+
+import { listTransitionRecoveryRecords } from "../../plan-store/index.ts";
 import { EVIDENCE, readRecordBytes, runOperation, spawnAttachedCli, withProject } from "./attached-test-fixture.ts";
 import { completionInput, executionInput, readyPlan } from "./execution-test-fixture.ts";
 import { type AttachedWorkflowRecord, loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
 
 for (const consent of ["proceed", "decline"] as const) {
     test(`non-Git consent persists across processes and ${consent} uses the Core decision`, async () => {
-        const root = await makeValidationProjectRoot("other");
+        const root = await mkdtemp(join(tmpdir(), "runwield-consent-"));
         try {
             const ready = await readyPlan(root);
             const question = await runOperation("start_execution", root, executionInput(ready, "ask"));
@@ -85,7 +91,7 @@ test("old Attached records without execution fields normalize to null on read", 
 });
 
 test("non-Git preparation retries after a lost Attached write without repeating execution_started", async () => {
-    const root = await makeValidationProjectRoot("other");
+    const root = await mkdtemp(join(tmpdir(), "runwield-consent-recovery-"));
     try {
         const ready = await readyPlan(root);
         const question = await runOperation("start_execution", root, executionInput(ready, "ask"));
@@ -97,23 +103,27 @@ test("non-Git preparation retries after a lost Attached write without repeating 
         });
         const started = await runOperation("start_execution", root, input);
         assert(started.ok && started.workflow.state === "implementing");
-        const transitionId = crypto.randomUUID();
-        await fsMkdir(getTransitionJournalDir(root), { recursive: true });
-        await fsWriteFile(
-            getTransitionJournalPath(root, transitionId),
-            JSON.stringify({
-                version: 1,
-                transitionId,
-                operation: "execution_preparation",
-                planName: "dark-mode-toggle",
-                resources: [{ kind: "plan", id: "dark-mode-toggle" }],
-                state: "applying",
-                intendedPostconditions: { status: "in_progress" },
-                completedEffects: [{ effect: "execution_prepared", completedAt: new Date().toISOString() }],
-                updatedAt: new Date().toISOString(),
+        await withLocalPlanWorkflow(root, "dark-mode-toggle", () =>
+            withPackageExecutionJournal(async () => {
+                const transitionId = crypto.randomUUID();
+                await fsMkdir(planFixtureJournalDirectory(root), { recursive: true });
+                await fsWriteFile(
+                    planFixtureJournalPath(root, transitionId),
+                    JSON.stringify({
+                        version: 1,
+                        transitionId,
+                        operation: "execution_preparation",
+                        planName: "dark-mode-toggle",
+                        resources: [{ kind: "plan", id: "dark-mode-toggle" }],
+                        state: "applying",
+                        intendedPostconditions: { status: "in_progress" },
+                        completedEffects: [{ effect: "execution_prepared", completedAt: new Date().toISOString() }],
+                        updatedAt: new Date().toISOString(),
+                    }),
+                );
+                assertEquals((await listTransitionRecoveryRecords(root)).length, 1);
             }),
         );
-        assertEquals((await listTransitionRecoveryRecords(root)).length, 1);
         await fsWriteFile(join(locateAttachedWorkflows(root).workflowsDir, `${ready.workflowId}.json`), before);
         const retry = await spawnAttachedCli("start_execution", root, input);
         assert(retry.result.ok, JSON.stringify(retry.result));

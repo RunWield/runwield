@@ -1,3 +1,4 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { makeTempFile } from "../../testing/temp-file.ts";
 import { getCwd } from "../../constants.js";
 import { test } from "node:test";
@@ -28,7 +29,8 @@ import { ensureBundledAgentDefFile, getBundledAgentDefsPath } from "./agent-asse
 import { type DisposableLike, HostedSession } from "./hosted-session.js";
 import { getAgentDisplayName, listAvailableAgents } from "./agents.js";
 import { getCustomSetting } from "../settings.js";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
@@ -74,10 +76,13 @@ test("two project roots keep local catalogs settings and Plans isolated", async 
                 `---\nname: "${marker} Agent"\ndescription: "${marker}"\ntools: []\n---\n${marker} agent body`,
             );
             await fsWriteFile(join(root, ".wld", "settings.json"), JSON.stringify({ marker }));
-            await fsWriteFile(
-                join(root, "docs", "plans", "same-plan.md"),
-                `---\nclassification: FEATURE\ncomplexity: LOW\nsummary: "${marker} plan"\naffectedPaths: []\nstatus: approved\n---\n# ${marker} plan`,
-            );
+            await seedPlan(root, "same-plan", `# ${marker} plan`, {
+                classification: "PLANNED_CHANGE",
+                complexity: "LOW",
+                summary: `${marker} plan`,
+                affectedPaths: [],
+                status: "approved",
+            });
         }
 
         const [alphaPrompts, betaPrompts, alphaSkills, betaSkills, alphaAgents, betaAgents] = await Promise.all([

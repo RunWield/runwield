@@ -1,3 +1,4 @@
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import process from "node:process";
 import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
@@ -11,7 +12,7 @@ import { getHomeDir } from "../../constants.js";
 import { dirname } from "node:path";
 import { getWorktreeRegistryPath, withWorktreeRegistryLock } from "../../shared/worktree-registry.js";
 import { makeManagedSessionFixture, readTranscriptEvidence } from "../../testing/managed-session-fixture.ts";
-import { savePlan } from "../../plan-store.js";
+
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
@@ -33,7 +34,7 @@ test("owner dashboard stream authenticates and completes with verified rows", as
     const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
     const appObject = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: "http://127.0.0.1:8787", store });
     try {
-        await savePlan(root, "finished", "# Finished\n", {
+        await seedPlan(root, "finished", "# Finished\n", {
             planId: "stream-plan",
             classification: "FEATURE",
             status: "user_verified",
@@ -96,7 +97,7 @@ test("dashboard keeps Promise identity and publishes later Project while first w
     try {
         const firstProject = store.registerProject({ root: first, displayName: "Blocked" });
         store.registerProject({ root: second, displayName: "Available" });
-        await savePlan(second, "finished", "# Finished\n", {
+        await seedPlan(second, "finished", "# Finished\n", {
             planId: "available-plan",
             classification: "FEATURE",
             status: "user_verified",
@@ -227,18 +228,18 @@ test("one Project streams a finished row before its unrelated live socket respon
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     let lateReader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     try {
-        await savePlan(fixture.projectRoot, "blocked", "# Blocked\n", {
+        await seedPlan(fixture.projectRoot, "blocked", "# Blocked\n", {
             planId: "blocked-plan",
             classification: "FEATURE",
             status: "in_progress",
         });
-        await savePlan(fixture.projectRoot, "finished", "# Finished\n", {
+        await seedPlan(fixture.projectRoot, "finished", "# Finished\n", {
             planId: "early-plan",
             classification: "FEATURE",
             status: "user_verified",
             userVerifiedAt: new Date().toISOString(),
         });
-        await savePlan(fixture.projectRoot, "validated", "# Validated\n", {
+        await seedPlan(fixture.projectRoot, "validated", "# Validated\n", {
             planId: "validated-plan",
             classification: "FEATURE",
             status: "validated",
@@ -412,7 +413,7 @@ test("unreadable publication registry fails the finished card before unrelated P
     try {
         store.registerProject({ root: first, displayName: "Publication" });
         const other = store.registerProject({ root: second, displayName: "Other" });
-        await savePlan(first, "validated", "# Validated\n", {
+        await seedPlan(first, "validated", "# Validated\n", {
             planId: "validated-plan",
             classification: "FEATURE",
             status: "validated",
@@ -481,7 +482,7 @@ test("standalone Sessions linked to one on-hold Plan remain distinct", async () 
     const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
     try {
         const project = store.registerProject({ root, displayName: "Test" });
-        await savePlan(root, "held", "# Held\n", { planId: "held-plan", classification: "FEATURE", status: "on_hold" });
+        await seedPlan(root, "held", "# Held\n", { planId: "held-plan", classification: "FEATURE", status: "on_hold" });
         const operation = (sessionId: string) => ({
             projectId: project.projectId,
             runwieldSessionId: sessionId,
@@ -535,7 +536,7 @@ test("HTTP dashboard stream completes its producer and starts a fresh read after
         let listening = false;
         const appObject = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: "http://127.0.0.1:8787", store });
         try {
-            await savePlan(root, "finished", "# Finished\n", {
+            await seedPlan(root, "finished", "# Finished\n", {
                 planId: "scope-plan",
                 classification: "FEATURE",
                 status: "user_verified",
@@ -585,7 +586,7 @@ test("HTTP dashboard stream completes its producer and starts a fresh read after
                 true,
             );
             // A fresh producer must reread Plan content even when Git metadata is unchanged.
-            await savePlan(root, "added-after-completion", "# Added after completion\n", {
+            await seedPlan(root, "added-after-completion", "# Added after completion\n", {
                 planId: "fresh-scope-plan",
                 classification: "FEATURE",
                 status: "user_verified",
@@ -622,7 +623,7 @@ test("archived Sessions stay under Plans in dashboard and sidebar but leave stan
     const { store, session, project } = fixture;
     const continuation = new WorkspaceSessionContinuationService({ store });
     try {
-        await savePlan(fixture.projectRoot, "archive-plan", "# Archive Plan\n", {
+        await seedPlan(fixture.projectRoot, "archive-plan", "# Archive Plan\n", {
             planId: "archive-plan",
             classification: "FEATURE",
             status: "on_hold",
@@ -709,8 +710,8 @@ test("top-level sidebar priority stays ahead of explicit Plan order in both read
     const store = openOwnerCoordinationStore({ dbPath: join(dir, "owner.sqlite3") });
     try {
         store.registerProject({ root, displayName: "Priority" });
-        await savePlan(root, "held", "# Held", { planId: "held-id", status: "on_hold", order: 1 });
-        await savePlan(root, "ready", "# Ready", { planId: "ready-id", status: "ready_for_work", order: 10 });
+        await seedPlan(root, "held", "# Held", { planId: "held-id", status: "on_hold", order: 1 });
+        await seedPlan(root, "ready", "# Ready", { planId: "ready-id", status: "ready_for_work", order: 10 });
         const continuation = {
             operations: new Map(),
             listSessions() {
@@ -740,19 +741,20 @@ for (const reader of [loadOwnerDashboard, loadOwnerSidebar]) {
         const store = openOwnerCoordinationStore({ dbPath: join(dir, "owner.sqlite3") });
         try {
             store.registerProject({ root, displayName: "Children" });
+            await seedPlan(root, "epic", "# Epic", { planId: "epic-id", classification: "PROJECT" });
             for (const child of [
                 { name: "z-first", order: 1, status: "on_hold" },
                 { name: "a-last", order: 10, status: "ready_for_work" },
                 { name: "b-unordered", status: "draft" },
             ]) {
-                await savePlan(root, `epic/${child.name}`, `# ${child.name}`, {
+                await seedPlan(root, `epic/${child.name}`, `# ${child.name}`, {
                     planId: child.name,
                     parentPlan: "epic",
                     order: child.order,
                     status: child.status,
                 });
             }
-            await savePlan(root, "unrelated", "# Unrelated", {
+            await seedPlan(root, "unrelated", "# Unrelated", {
                 planId: "unrelated",
                 status: "draft",
             });
@@ -764,7 +766,9 @@ for (const reader of [loadOwnerDashboard, loadOwnerSidebar]) {
             });
             const projects = Array.isArray(result) ? result : result.projects;
             assertEquals(
-                projects[0].plans.filter((plan) => plan.planId !== "unrelated").map((plan) => plan.planId),
+                projects[0].plans
+                    .filter((plan) => plan.planId !== "unrelated" && plan.planId !== "epic-id")
+                    .map((plan) => plan.planId),
                 ["z-first", "a-last", "b-unordered"],
             );
         } finally {

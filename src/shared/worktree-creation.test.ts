@@ -10,13 +10,13 @@ import {
     stat as fsStat,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
+import { throws } from "node:assert/strict";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { match as assertMatch } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
 import { basename, dirname, join } from "node:path";
 
-import { resolveProjectRuntimeLayout } from "./project-runtime-layout.ts";
 import { addEntry, findByPlanId } from "./worktree-registry.js";
 import type { WorktreeRegistryEntry } from "./worktree-registry.js";
 import {
@@ -31,7 +31,7 @@ import {
 import { createTestWorktreeAttempt, git, makeRepo } from "./worktree-test-helpers.ts";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 
-test("resolveWorktreeParent keeps overrides and home placement while no-home fallback uses primary internal storage", async () => {
+test("resolveWorktreeParent keeps overrides and home placement and refuses creation without an account home", async () => {
     await withProcessGlobalTestLock(async () => {
         const homeKeys = ["HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "LOCALAPPDATA"];
         const previousHome = new Map(homeKeys.map((key) => [key, process.env[key]]));
@@ -48,10 +48,8 @@ test("resolveWorktreeParent keeps overrides and home placement while no-home fal
 
             await git(projectRoot, ["worktree", "add", "-b", "linked-parent", linkedRoot]);
             for (const key of homeKeys) delete process.env[key];
-            const expected = resolveProjectRuntimeLayout(await fsRealpath(projectRoot)).primary.fallbackWorktreesRoot;
-            assertEquals(resolveWorktreeParent(projectRoot, undefined), expected);
-            assertEquals(resolveWorktreeParent(linkedRoot, undefined), expected);
-            assertEquals(expected.endsWith(join(".wld", "internal", "worktrees")), true);
+            throws(() => resolveWorktreeParent(projectRoot, undefined), /account home/);
+            throws(() => resolveWorktreeParent(linkedRoot, undefined), /account home/);
         } finally {
             for (const [key, value] of previousHome) {
                 if (value === undefined) delete process.env[key];

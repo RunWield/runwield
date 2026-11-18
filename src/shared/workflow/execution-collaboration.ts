@@ -1,12 +1,12 @@
 // @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
 import { AGENTS } from "../../constants.js";
-import { resolvePlanExecutionPolicy } from "../../plan-store.js";
+import { resolvePlanExecutionPolicy } from "../../plan-format.ts";
 import { emitSystemStatus } from "../session/session-runtime-events.js";
 
 export function resolveExecutionOwner(meta) {
     const policy = resolvePlanExecutionPolicy(meta);
     if (policy.ok) return policy.policy.executionAgent;
-    if (policy.reason === "project_epic") return /** @type {"engineer"} */ (AGENTS.ENGINEER);
+    if (policy.reason === "project_epic") return /** @type {"engineer"} */ AGENTS.ENGINEER;
     throw new Error(policy.error);
 }
 

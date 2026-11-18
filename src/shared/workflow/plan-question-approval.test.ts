@@ -1,11 +1,15 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
+import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
+import { capturePlanReviewInput } from "../../plan-store/index.ts";
 import { test } from "node:test";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { makeValidationProjectRoot } from "./validation-test-helpers.js";
-import { loadPlan, savePlan } from "../../plan-store.js";
-import { applySharedPlanReviewDecision } from "./plan-review-actions.ts";
-import type { SharedPlanReviewDecision } from "./plan-review-actions.ts";
+import { loadPlan } from "../../plan-store/index.ts";
+
+import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";
+import type { SharedPlanReviewDecision } from "../../plan-store/index.ts";
 
 const body =
     '# Plan\n\nBefore.\n\n```wld-question\n{"id":"scope","type":"multiple_choice","prompt":"Who can export?","choices":[{"value":"admins","label":"Admins only"},{"value":"all","label":"All members"}],"default":"admins"}\n```\n\nBetween.\n\n```wld-question\n{"id":"keep","type":"yes_no","prompt":"Keep old links?","default":true}\n```\n\nAfter.\n';
@@ -20,7 +24,7 @@ async function withQuestionPlan(verify: (fixture: QuestionPlanFixture) => Promis
     try {
         const initial = await loadPlan(root, "questions");
         assert(initial);
-        await savePlan(
+        await seedPlan(
             root,
             "questions",
             body,
@@ -34,9 +38,13 @@ async function withQuestionPlan(verify: (fixture: QuestionPlanFixture) => Promis
         );
         const plan = await loadPlan(root, "questions");
         assert(plan);
+        const packageInput = await withLocalPlanWorkflow(root, "questions", () =>
+            capturePlanReviewInput(root, "questions", plan.revision),
+        );
         const decide = (decision: SharedPlanReviewDecision) =>
             applySharedPlanReviewDecision({
                 cwd: root,
+                packageInput,
                 planName: "questions",
                 planPath: plan.path,
                 planWithFrontMatter: plan.markdown,

@@ -1,3 +1,4 @@
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { assertEquals, assertInstanceOf, assertStringIncludes } from "../../testing/assertions.ts";
 import { Container, Editor, Image, Spacer, Text, type TUI, TuiMainScreen } from "@earendil-works/pi-tui";
@@ -13,7 +14,8 @@ import { installUiApiOverrides } from "./ui-api-overrides.ts";
 
 import { createTuiInteractionAdapter } from "./runtime-interaction-adapter.js";
 import { createScriptedReviewBrowser } from "../review/review-test-fixture.ts";
-import { getStoredPlanPath, savePlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 
 interface OverridesHarness {
@@ -172,7 +174,7 @@ for (const type of ["plan_review", "code_review"] as const) {
                 const originalChildren = [...harness.container.children];
                 let surfaceReady = false;
                 try {
-                    await savePlan(projectRoot, "feature", "# Feature\n\nDo the work.\n", {
+                    await seedPlan(projectRoot, "feature", "# Feature\n\nDo the work.\n", {
                         planId: "tui-input-review-plan",
                         classification: "PLANNED_CHANGE",
                         status: "draft",
@@ -197,7 +199,7 @@ for (const type of ["plan_review", "code_review"] as const) {
                                 cwd: projectRoot,
                                 executionCwd: projectRoot,
                                 planName: "feature",
-                                planPath: getStoredPlanPath(projectRoot, "feature"),
+                                planPath: (await loadPlan(projectRoot, "feature"))!.path,
                                 diffText: "diff --git a/a b/a\n",
                                 onSurfaceReady: () => {
                                     surfaceReady = true;

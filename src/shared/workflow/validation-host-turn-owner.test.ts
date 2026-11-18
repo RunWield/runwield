@@ -1,3 +1,4 @@
+import { seedPlanState } from "../testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { getCwd } from "../../constants.js";
 import { spawnNativeProcess } from "../foreground-process.ts";
@@ -5,7 +6,7 @@ import { writeFile as fsWriteFile, stat as fsStat } from "node:fs/promises";
 import { assertEquals, assertExists, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { getLockHostname } from "../process-liveness.ts";
-import { updatePlanFrontMatter } from "../../plan-store.js";
+
 import { recordValidationRepairCompletion } from "./validation-supervisor.ts";
 import { complete, hostFixture, hostRequest } from "./testing/validation-host-fixture.ts";
 
@@ -19,7 +20,7 @@ for (const state of ["awaiting_repair", "ready", "paused"] as const) {
             const plan = await fixture.plan();
             const pending = plan.attrs.validationCheckpoint;
             assertExists(pending);
-            await updatePlanFrontMatter(
+            await seedPlanState(
                 fixture.cwd,
                 "p",
                 {
@@ -96,7 +97,7 @@ for (const changedOwnerField of ["ownerPid", "ownerHostname"] as const) {
                 ...checkpoint,
                 ...(changedOwnerField === "ownerPid" ? { ownerPid: holder.pid } : { ownerHostname: "new-owner-host" }),
             };
-            await updatePlanFrontMatter(fixture.cwd, "p", { validationCheckpoint: replacement }, plan.attrs, {
+            await seedPlanState(fixture.cwd, "p", { validationCheckpoint: replacement }, plan.attrs, {
                 expectedRevision: plan.revision,
                 expectedControllerRevision: plan.controllerRevision,
             });

@@ -1,16 +1,14 @@
+import { seedPlanState, seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { ok as assert, rejects } from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import { fauxAssistantMessage, fauxText, fauxToolCall, type TranscriptContext } from "@earendil-works/pi-ai";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import {
-    ensurePlanIdentity,
-    loadPlan,
-    parsePlanFrontMatter,
-    planDocumentMarkdown,
-    savePlan,
-} from "../../plan-store.js";
-import type { SequenceReviewDocument } from "../../shared/workflow/sequence-review.ts";
+
+import { parsePlanFrontMatter, planDocumentMarkdown } from "../../plan-format.ts";
+import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
+
+import type { SequenceReviewDocument } from "../../plan-store/index.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { requestLocalReviewInteraction } from "../../shared/session/local-review-interactions.ts";
@@ -30,12 +28,20 @@ interface ReviewAnswer {
 async function answer(url: string, body: ReviewAnswer) {
     const page = new URL(url);
     const token = page.searchParams.get("token")!;
+    const html = await (await fetch(url)).text();
+    const embedded = html.match(/<script[^>]*data-review-payload[^>]*>([\s\S]*?)<\/script>/)?.[1];
+    assert(embedded, "Expected review revision payload.");
+    const payload = JSON.parse(embedded);
     const response = await fetch(
         new URL(`/api/review/${body.approved ? "decision" : "deny"}?token=${token}`, page.origin),
         {
             method: "POST",
             headers: { "content-type": "application/json", "x-runwield-review-token": token },
-            body: JSON.stringify(body),
+            body: JSON.stringify({
+                ...body,
+                reviewRevision: payload.reviewRevision,
+                documentRevision: payload.documentRevision,
+            }),
         },
     );
     assertEquals(response.status, 200, await response.text());
@@ -64,7 +70,7 @@ for (const source of ["tool", "saved", "epic"] as const) {
             await withRuntimeCommandFixture(
                 "conversation-rearm-",
                 async ({ homeDir, projectRoot, setModelResponseFactories }) => {
-                    await savePlan(projectRoot, "target", "# Target\n\n## Context\n\nThe delivery boundary.\n", {
+                    await seedPlan(projectRoot, "target", "# Target\n\n## Context\n\nThe delivery boundary.\n", {
                         classification: source === "epic" ? "PROJECT" : "PLANNED_CHANGE",
                         status: source === "tool" ? "draft" : "ready_for_work",
                         affectedPaths: [],
@@ -94,8 +100,11 @@ for (const source of ["tool", "saved", "epic"] as const) {
                         async (context) => {
                             transcript = context;
                             if (reply === "unreviewable Plan") {
-                                const markdown = await readFile(initial.path, "utf8");
-                                await writeFile(initial.path, markdown.replace(/^status:.*$/m, "status: implemented"));
+                                const current = await loadPlan(projectRoot, "target");
+                                assert(current);
+                                await seedPlanState(projectRoot, "target", { status: "implemented" }, current.attrs, {
+                                    expectedRevision: current.revision,
+                                });
                                 throw new Error("The Agent left a Plan that cannot be reviewed.");
                             }
                             if (reply === "Agent error") throw new Error("The planning provider is unavailable.");
@@ -241,11 +250,11 @@ for (const source of ["tool", "saved", "epic"] as const) {
 
 for (const status of ["approved", "ready_for_work", "ready_for_decomposition"] as const) {
     for (const meaningful of [false, true]) {
-        test(`plan_written ${meaningful ? "cancels" : "preserves"} ${status} after a reviewed revision`, async () => {
+        test(`plan_written invalidates ${status} after a ${meaningful ? "meaningful" : "whitespace"} canonical byte revision`, async () => {
             await withRuntimeCommandFixture(
                 "conversation-revision-",
                 async ({ homeDir, projectRoot, setModelMessages }) => {
-                    await savePlan(projectRoot, "target", "# Target\n\n## Context\n\nThe delivery boundary.\n", {
+                    await seedPlan(projectRoot, "target", "# Target\n\n## Context\n\nThe delivery boundary.\n", {
                         classification: status === "ready_for_decomposition" ? "PROJECT" : "PLANNED_CHANGE",
                         status,
                         affectedPaths: [],
@@ -312,10 +321,7 @@ for (const status of ["approved", "ready_for_work", "ready_for_decomposition"] a
                         void running.catch(() => {});
                         await waitForReview(surfaces[0].promise, running);
                         assert(reviewUrl);
-                        assertEquals(
-                            (await loadPlan(projectRoot, "target"))?.attrs.status,
-                            meaningful ? "draft" : status,
-                        );
+                        assertEquals((await loadPlan(projectRoot, "target"))?.attrs.status, "draft");
                         await answer(reviewUrl, { approved: true, approvalAction: "later" });
                         await running;
                     } finally {
@@ -332,7 +338,7 @@ test("explicit review cancellation does not run a conversation turn or re-arm", 
     await withRuntimeCommandFixture(
         "conversation-cancel-",
         async ({ homeDir, projectRoot, setModelResponseFactories }) => {
-            await savePlan(projectRoot, "target", "# Target\n\nKeep the scope.\n", {
+            await seedPlan(projectRoot, "target", "# Target\n\nKeep the scope.\n", {
                 classification: "PLANNED_CHANGE",
                 status: "ready_for_work",
                 executionAgent: "engineer",
@@ -410,12 +416,12 @@ test("explicit review cancellation does not run a conversation turn or re-arm", 
 
 test("saved Sequence conversation re-arms every tab without losing child readiness", async () => {
     await withRuntimeCommandFixture("sequence-conversation-", async ({ homeDir, projectRoot, setModelMessages }) => {
-        await savePlan(projectRoot, "target", "# Target sequence\n", {
+        await seedPlan(projectRoot, "target", "# Target sequence\n", {
             classification: "PROJECT",
             type: "sequence",
             status: "approved",
         });
-        await savePlan(projectRoot, "target/child", "# Child\n\n## Context\n\nKeep this boundary.\n", {
+        await seedPlan(projectRoot, "target/child", "# Child\n\n## Context\n\nKeep this boundary.\n", {
             classification: "PLANNED_CHANGE",
             parentPlan: "target",
             order: 1,
@@ -501,7 +507,7 @@ test("saved Sequence conversation re-arms every tab without losing child readine
 
 test("Approve and Run after a reply-only tool turn starts execution through the re-armed review", async () => {
     await withRuntimeCommandFixture("conversation-run-", async ({ homeDir, projectRoot, setModelMessages }) => {
-        await savePlan(projectRoot, "target", "# Target\n\n## Context\n\nImplement the saved scope.\n", {
+        await seedPlan(projectRoot, "target", "# Target\n\n## Context\n\nImplement the saved scope.\n", {
             classification: "PLANNED_CHANGE",
             status: "draft",
             affectedPaths: [],
@@ -597,7 +603,7 @@ test("direct conversation revision defers Approve and Run until the review write
     await withRuntimeCommandFixture(
         "direct-conversation-run-",
         async ({ homeDir, projectRoot, setModelResponseFactories }) => {
-            await savePlan(projectRoot, "target", "# Target\n\n## Context\n\nOriginal scope.\n", {
+            await seedPlan(projectRoot, "target", "# Target\n\n## Context\n\nOriginal scope.\n", {
                 classification: "PLANNED_CHANGE",
                 status: "ready_for_work",
                 affectedPaths: [],
@@ -682,12 +688,12 @@ test("a ready Sequence child revision presents one draft snapshot and accepts ch
     await withRuntimeCommandFixture(
         "sequence-revision-conversation-",
         async ({ homeDir, projectRoot, setModelResponseFactories }) => {
-            await savePlan(projectRoot, "target", "# Target sequence\n", {
+            await seedPlan(projectRoot, "target", "# Target sequence\n", {
                 classification: "PROJECT",
                 type: "sequence",
                 status: "approved",
             });
-            await savePlan(projectRoot, "target/child", "# Child\n\n## Context\n\nOriginal boundary.\n", {
+            await seedPlan(projectRoot, "target/child", "# Child\n\n## Context\n\nOriginal boundary.\n", {
                 classification: "PLANNED_CHANGE",
                 parentPlan: "target",
                 order: 1,

@@ -1,10 +1,11 @@
+import { seedPlan } from "../shared/testing/plan-state-fixture.ts";
 import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
-import { savePlan } from "../plan-store.js";
+
 import { createQaChecklistGeneratedTool } from "./qa-checklist-generated.ts";
 
 const EXTENSION_CONTEXT = {} as ExtensionToolContext;
@@ -16,12 +17,12 @@ function text(result: { content: Array<{ type: string; text?: string }> }): stri
 
 async function makeRoot() {
     const projectRoot = await fsMkdtemp(join(tmpdir(), "qa-checklist-tool-"));
-    await savePlan(projectRoot, "epic", "# Epic", {
+    await seedPlan(projectRoot, "epic", "# Epic", {
         classification: "PROJECT",
         status: "ready_for_work",
         summary: "Epic",
     });
-    await savePlan(projectRoot, "epic/01-one", "# One", {
+    await seedPlan(projectRoot, "epic/01-one", "# One", {
         classification: "PLANNED_CHANGE",
         status: "reviewed",
         parentPlan: "epic",

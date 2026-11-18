@@ -4,6 +4,7 @@ import { withValidationBranches } from "./validation-workflow-tree-shared.ts";
 export const validationTreeMissingPlanScenario = withValidationBranches(
     {
         name: "load-plan-missing-plan-fails-closed",
+        retainedCheckoutInput: true, // Retained checkout validation rejection contract.
         composedTui: true,
         initialAgentName: "guide",
         terminal: { columns: 100, rows: 30 },
@@ -31,6 +32,8 @@ export const validationTreeMalformedFrontMatterScenario = withValidationBranches
 
 export const validationTreeResumeImplementedScenario = withValidationBranches(
     {
+        retainedCheckoutInput: true, // Explicit pre-cutover execution owner and checkout publication evidence.
+
         name: "validation-tree-resume-implemented-base",
         composedTui: true,
         initialAgentName: "guide",
@@ -39,11 +42,12 @@ export const validationTreeResumeImplementedScenario = withValidationBranches(
         committedProjectFiles: [
             { path: ".wld/settings.json", text: `${JSON.stringify({ verification_command: "true" }, null, 4)}\n` },
         ],
-        initialProjectFiles: [{
-            path: "docs/plans/resume-implemented.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Resume implemented\naffectedPaths: []\nstatus: ready_for_work\nplanId: resume-implemented-plan\n---\n# Resume implemented\n\nDraft content.\n",
-        }],
+        initialProjectFiles: [
+            {
+                path: "docs/plans/resume-implemented.md",
+                text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Resume implemented\naffectedPaths: []\nstatus: ready_for_work\nplanId: resume-implemented-plan\n---\n# Resume implemented\n\nDraft content.\n",
+            },
+        ],
         script: [
             {
                 id: "reviewer-approves-resume-implemented",
@@ -86,6 +90,8 @@ export const validationTreeResumeImplementedScenario = withValidationBranches(
 
 export const validationTreeResumeValidatedCiScenario = withValidationBranches(
     {
+        retainedCheckoutInput: true, // Explicit pre-cutover execution owner and checkout publication evidence.
+
         name: "validation-tree-resume-validated-ci-base",
         composedTui: true,
         initialAgentName: "guide",
@@ -94,11 +100,12 @@ export const validationTreeResumeValidatedCiScenario = withValidationBranches(
         committedProjectFiles: [
             { path: ".wld/settings.json", text: `${JSON.stringify({ verification_command: "true" }, null, 4)}\n` },
         ],
-        initialProjectFiles: [{
-            path: "docs/plans/resume-validated-ci.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Resume validated CI\naffectedPaths: []\nstatus: ready_for_work\nplanId: resume-validated-ci-plan\n---\n# Resume validated CI\n\nDraft content.\n",
-        }],
+        initialProjectFiles: [
+            {
+                path: "docs/plans/resume-validated-ci.md",
+                text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Resume validated CI\naffectedPaths: []\nstatus: ready_for_work\nplanId: resume-validated-ci-plan\n---\n# Resume validated CI\n\nDraft content.\n",
+            },
+        ],
         script: [
             {
                 id: "reviewer-approves-resume-validated-ci",
@@ -141,6 +148,8 @@ export const validationTreeResumeValidatedCiScenario = withValidationBranches(
 
 export const validationTreeResumeValidatedReviewerScenario = withValidationBranches(
     {
+        retainedCheckoutInput: true, // Explicit pre-cutover execution owner and checkout publication evidence.
+
         name: "validation-tree-resume-validated-reviewer-base",
         composedTui: true,
         initialAgentName: "guide",
@@ -149,16 +158,19 @@ export const validationTreeResumeValidatedReviewerScenario = withValidationBranc
         committedProjectFiles: [
             { path: ".wld/settings.json", text: `${JSON.stringify({ verification_command: "true" }, null, 4)}\n` },
         ],
-        initialProjectFiles: [{
-            path: "docs/plans/resume-validated-reviewer.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Resume validated reviewer\naffectedPaths: []\nstatus: ready_for_work\nplanId: resume-validated-reviewer-plan\n---\n# Resume validated reviewer\n\nDraft content.\n",
-        }],
-        scriptedInteractions: [{
-            type: "select",
-            promptIncludes: "Plan recovery (reviewed)",
-            value: "validate",
-        }],
+        initialProjectFiles: [
+            {
+                path: "docs/plans/resume-validated-reviewer.md",
+                text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Resume validated reviewer\naffectedPaths: []\nstatus: ready_for_work\nplanId: resume-validated-reviewer-plan\n---\n# Resume validated reviewer\n\nDraft content.\n",
+            },
+        ],
+        scriptedInteractions: [
+            {
+                type: "select",
+                promptIncludes: "Plan recovery (reviewed)",
+                value: "validate",
+            },
+        ],
         actions: [
             {
                 type: "seedActiveWorktree",
@@ -189,15 +201,17 @@ export const validationTreeResumeValidatedReviewerScenario = withValidationBranc
 export const validationTreeMissingExecutionContextScenario = withValidationBranches(
     {
         name: "validation-tree-missing-execution-context-base",
+        retainedCheckoutInput: true, // Retained checkout validation rejection contract.
         composedTui: true,
         initialAgentName: "guide",
         terminal: { columns: 100, rows: 30 },
         timeoutMs: 60000,
-        initialProjectFiles: [{
-            path: "docs/plans/missing-execution-context.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Missing execution context\naffectedPaths: []\nstatus: implemented\nplanId: missing-execution-context-plan\n---\n# Missing execution context\n\nDraft content.\n",
-        }],
+        initialProjectFiles: [
+            {
+                path: "docs/plans/missing-execution-context.md",
+                text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Missing execution context\naffectedPaths: []\nstatus: implemented\nplanId: missing-execution-context-plan\n---\n# Missing execution context\n\nDraft content.\n",
+            },
+        ],
         scriptedInteractions: [{ type: "select", promptIncludes: "Plan recovery (implemented)", value: "validate" }],
         actions: [
             { type: "type", text: "/load-plan missing-execution-context" },
@@ -218,6 +232,8 @@ export const validationTreeMissingExecutionContextScenario = withValidationBranc
 // already records validated_ci, so validation continues from Semantic Review.
 export const validationTreeAheadStatusScenario = withValidationBranches(
     {
+        retainedCheckoutInput: true, // Explicit pre-cutover execution owner and checkout publication evidence.
+
         name: "validation-tree-ahead-status-base",
         composedTui: true,
         initialAgentName: "guide",
@@ -226,11 +242,12 @@ export const validationTreeAheadStatusScenario = withValidationBranches(
         committedProjectFiles: [
             { path: ".wld/settings.json", text: `${JSON.stringify({ verification_command: "true" }, null, 4)}\n` },
         ],
-        initialProjectFiles: [{
-            path: "docs/plans/ahead-status.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Ahead status\naffectedPaths: []\nstatus: ready_for_work\nplanId: ahead-status-plan\n---\n# Ahead status\n\nDraft content.\n",
-        }],
+        initialProjectFiles: [
+            {
+                path: "docs/plans/ahead-status.md",
+                text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Ahead status\naffectedPaths: []\nstatus: ready_for_work\nplanId: ahead-status-plan\n---\n# Ahead status\n\nDraft content.\n",
+            },
+        ],
         script: [
             {
                 id: "reviewer-approves-ahead-status",
@@ -276,15 +293,17 @@ export const validationTreeAheadStatusScenario = withValidationBranches(
 export const validationTreeUnsupportedStatusScenario = withValidationBranches(
     {
         name: "validation-tree-unsupported-status-base",
+        retainedCheckoutInput: true, // Retained checkout validation rejection contract.
         composedTui: true,
         initialAgentName: "guide",
         terminal: { columns: 100, rows: 30 },
         timeoutMs: 60000,
-        initialProjectFiles: [{
-            path: "docs/plans/unsupported-status.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Unsupported status\naffectedPaths: []\nstatus: sideways\nplanId: unsupported-status-plan\n---\n# Unsupported status\n\nDraft content.\n",
-        }],
+        initialProjectFiles: [
+            {
+                path: "docs/plans/unsupported-status.md",
+                text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Unsupported status\naffectedPaths: []\nstatus: sideways\nplanId: unsupported-status-plan\n---\n# Unsupported status\n\nDraft content.\n",
+            },
+        ],
         actions: [
             { type: "type", text: "/load-plan unsupported-status" },
             { type: "enter" },
@@ -303,6 +322,8 @@ export const validationTreeUnsupportedStatusScenario = withValidationBranches(
 // The registry locates the execution Plan; validation then continues normally.
 export const validationTreeMismatchedWorktreeIdentityScenario = withValidationBranches(
     {
+        retainedCheckoutInput: true, // Explicit pre-cutover execution owner and checkout publication evidence.
+
         name: "validation-tree-mismatched-worktree-identity-base",
         composedTui: true,
         initialAgentName: "guide",
@@ -311,11 +332,12 @@ export const validationTreeMismatchedWorktreeIdentityScenario = withValidationBr
         committedProjectFiles: [
             { path: ".wld/settings.json", text: `${JSON.stringify({ verification_command: "true" }, null, 4)}\n` },
         ],
-        initialProjectFiles: [{
-            path: "docs/plans/mismatched-worktree-identity.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Mismatched worktree identity\naffectedPaths: []\nstatus: ready_for_work\nplanId: mismatched-worktree-identity-plan\n---\n# Mismatched worktree identity\n\nDraft content.\n",
-        }],
+        initialProjectFiles: [
+            {
+                path: "docs/plans/mismatched-worktree-identity.md",
+                text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Mismatched worktree identity\naffectedPaths: []\nstatus: ready_for_work\nplanId: mismatched-worktree-identity-plan\n---\n# Mismatched worktree identity\n\nDraft content.\n",
+            },
+        ],
         script: [
             {
                 id: "reviewer-approves-registry-owned-worktree",

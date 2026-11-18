@@ -1,3 +1,5 @@
+import { seedPlanState, seedPlan } from "../testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { makeReadOnlyDirectoryFixture } from "../../testing/read-only-directory-fixture.ts";
 import { test } from "node:test";
 import {
@@ -12,26 +14,26 @@ import { tmpdir } from "node:os";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
+
 import {
     archivePlan,
     listPlans,
     loadPlan,
     loadPlanBodyById,
     restoreArchivedPlan,
-    savePlan,
     savePlanBodyById,
-    updatePlanFrontMatter,
-} from "../../plan-store.js";
+} from "../../plan-store/index.ts";
+
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { addEntry, findById, updateEntry } from "../worktree-registry.js";
-import { resolvePlanWithPrimaryRecovery } from "../../cmd/load-plan/primary-plan-recovery.ts";
+import { resolvePlanWithPrimaryRecovery } from "../../plan-store/index.ts";
 import { recordPlanEvent } from "./plan-lifecycle.js";
 import { HostedSession } from "../session/hosted-session.js";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
-import { resolveWorkflowPlanLocation } from "./plan-location.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 import { createPublicationAttempt } from "./publication-attempt.ts";
-import { findCompletionSiblings, prepareCompletionSiblings } from "./plan-family.ts";
+import { findCompletionSiblings, prepareCompletionSiblings } from "../../plan-store/index.ts";
 
 const fixture = defineCommittedGitFixture({ ".gitignore": ".wld/\n", "app.ts": "// app\n" });
 
@@ -39,7 +41,7 @@ async function withProject(run: (root: string, directory: string) => Promise<voi
     const root = await fixture.checkout();
     const directory = await fsMkdtemp(join(tmpdir(), "rw-authority-continuation-"));
     try {
-        await run(root, directory);
+        await withRetainedPlanFixture(root, () => run(root, directory));
     } finally {
         for await (const entry of await fsReaddir(directory, { withFileTypes: true })) {
             await git(root, ["worktree", "remove", "--force", join(directory, entry.name)]).catch(() => {});
@@ -70,7 +72,7 @@ async function addTree(root: string, directory: string, id: string, name = "demo
 }
 
 async function createPlan(root: string) {
-    await savePlan(root, "demo", "# Demo\n\n## Context\n\nImplement demo.\n", {
+    await seedPlan(root, "demo", "# Demo\n\n## Context\n\nImplement demo.\n", {
         planId: "demo",
         classification: "PLANNED_CHANGE",
         status: "ready_for_work",
@@ -85,7 +87,7 @@ async function createPlan(root: string) {
 async function setStatus(root: string, status: "implemented" | "verified" | "in_progress" | "draft") {
     const plan = await loadPlan(root, "demo");
     assert(plan);
-    await updatePlanFrontMatter(root, "demo", { status }, {}, { expectedRevision: plan.revision });
+    await seedPlanState(root, "demo", { status }, {}, { expectedRevision: plan.revision });
 }
 
 test("missing execution document cannot redirect a lifecycle write into primary", async () => {
@@ -189,7 +191,7 @@ for (const retired of [false, true]) {
                 await updateEntry(root, "current", { status: "abandoned" });
                 const plan = await loadPlan(tree, "demo");
                 assert(plan);
-                await updatePlanFrontMatter(
+                await seedPlanState(
                     tree,
                     "demo",
                     { documentWorktreeId: "current" },
@@ -236,7 +238,7 @@ for (const failure of ["name_collision", "archive_unlink", "publication_started"
             const before = await fsReadFile(archivedPath, "utf8");
             let restorePermissions: (() => Promise<void>) | undefined;
             if (failure === "name_collision") {
-                await savePlan(root, "renamed", "# Different Plan\n", { planId: "other", status: "draft" });
+                await seedPlan(root, "renamed", "# Different Plan\n", { planId: "other", status: "draft" });
             } else if (failure === "publication_started") {
                 const head = await git(tree, ["rev-parse", "HEAD"]);
                 await updateEntry(root, "current", {
@@ -270,12 +272,12 @@ for (const failure of ["name_collision", "archive_unlink", "publication_started"
 for (const event of ["manual_user_verified", "validation_passed"] as const) {
     test(`${event} does not finish an Epic while a newer unstarted sibling remains`, async () => {
         await withProject(async (root, directory) => {
-            await savePlan(root, "epic", "# Epic\n", {
+            await seedPlan(root, "epic", "# Epic\n", {
                 planId: "epic",
                 classification: "PROJECT",
                 status: "ready_for_work",
             });
-            await savePlan(root, "epic/a", "# A\n", {
+            await seedPlan(root, "epic/a", "# A\n", {
                 planId: "epic/a",
                 classification: "PLANNED_CHANGE",
                 parentPlan: "epic",
@@ -284,7 +286,7 @@ for (const event of ["manual_user_verified", "validation_passed"] as const) {
             await git(root, ["add", "docs"]);
             await git(root, ["commit", "-m", "First child"]);
             const tree = await addTree(root, directory, "a", "epic/a");
-            await savePlan(root, "epic/b", "# B\n", {
+            await seedPlan(root, "epic/b", "# B\n", {
                 planId: "epic/b",
                 classification: "PLANNED_CHANGE",
                 parentPlan: "epic",
@@ -313,13 +315,13 @@ for (const event of ["manual_user_verified", "validation_passed"] as const) {
 
 test("Epic completion reads published siblings without a permanent controller receipt", async () => {
     await withProject(async (root, directory) => {
-        await savePlan(root, "epic/a", "# A\n", {
+        await seedPlan(root, "epic/a", "# A\n", {
             planId: "epic/a",
             classification: "PLANNED_CHANGE",
             parentPlan: "epic",
             status: "implemented",
         });
-        await savePlan(root, "epic/b", "# B\n", {
+        await seedPlan(root, "epic/b", "# B\n", {
             planId: "epic/b",
             classification: "PLANNED_CHANGE",
             parentPlan: "epic",
@@ -331,7 +333,7 @@ test("Epic completion reads published siblings without a permanent controller re
         await git(root, ["switch", "-c", "published-target-snapshot"]);
         const before = await loadPlan(root, "epic/b");
         assert(before);
-        await updatePlanFrontMatter(
+        await seedPlanState(
             root,
             "epic/b",
             {
@@ -357,13 +359,13 @@ test("Epic completion reads published siblings without a permanent controller re
 for (const change of ["reparented", "archived", "uncommitted_completion"] as const) {
     test(`Epic completion does not revive a ${change} sibling from an old checkout`, async () => {
         await withProject(async (root, directory) => {
-            await savePlan(root, "epic/a", "# A\n", {
+            await seedPlan(root, "epic/a", "# A\n", {
                 planId: "epic/a",
                 classification: "PLANNED_CHANGE",
                 parentPlan: "epic",
                 status: "implemented",
             });
-            await savePlan(root, "epic/b", "# B\n", {
+            await seedPlan(root, "epic/b", "# B\n", {
                 planId: "epic/b",
                 classification: "PLANNED_CHANGE",
                 parentPlan: "epic",
@@ -384,7 +386,7 @@ for (const change of ["reparented", "archived", "uncommitted_completion"] as con
                 const documentRoot = change === "reparented" ? root : tree;
                 const before = await loadPlan(documentRoot, "epic/b");
                 assert(before);
-                await updatePlanFrontMatter(
+                await seedPlanState(
                     documentRoot,
                     "epic/b",
                     change === "reparented" ? { parentPlan: "another-epic" } : { status: "validated" },

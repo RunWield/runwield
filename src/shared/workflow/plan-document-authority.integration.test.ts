@@ -1,3 +1,6 @@
+import { holdPlanFixtureLock } from "../testing/plan-state-fixture.ts";
+import { seedPlanState, seedPlan } from "../testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { makeReadOnlyDirectoryFixture } from "../../testing/read-only-directory-fixture.ts";
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { spawnNativeProcess } from "../foreground-process.ts";
@@ -9,26 +12,26 @@ import nodeProcess from "node:process";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { fileURLToPath as fromFileUrl } from "node:url";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+
+import { hashPlanBody } from "../../plan-format.ts";
 import {
     archivePlan,
-    hashPlanBody,
+    archiveSavedPlan,
     listArchivedPlans,
     listPlans,
     loadPlan,
     restoreArchivedPlan,
-    savePlan,
     updatePlanCollaborationMetadata,
-    updatePlanFrontMatter,
-    withPlanLock,
-} from "../../plan-store.js";
+} from "../../plan-store/index.ts";
+
 import { COLLABORATION_LOCK_BYPASS } from "../collaboration/lock.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { addEntry } from "../worktree-registry.js";
 import { getCwd } from "../../constants.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { runPlansArchiveCommand } from "../../cmd/plans/archive.ts";
-import { resolveWorkflowPlanLocation } from "./plan-location.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 
 const fixture = defineCommittedGitFixture({ ".gitignore": ".wld/\n" });
 
@@ -37,33 +40,35 @@ async function withDocument(run: (root: string, tree: string) => Promise<void>) 
     const container = await fsMkdtemp(join(tmpdir(), "rw-document-authority-"));
     const tree = join(container, "execution");
     try {
-        await savePlan(root, "demo", "# Demo\n\n## Context\n\nOriginal.\n", {
-            planId: "document-plan",
-            classification: "PLANNED_CHANGE",
-            status: "ready_for_work",
-            targetBranch: "main",
+        await withRetainedPlanFixture(root, async () => {
+            await seedPlan(root, "demo", "# Demo\n\n## Context\n\nOriginal.\n", {
+                planId: "document-plan",
+                classification: "PLANNED_CHANGE",
+                status: "ready_for_work",
+                targetBranch: "main",
+            });
+            await git(root, ["add", "docs"]);
+            await git(root, ["commit", "-m", "Plan"]);
+            await git(root, ["worktree", "add", "-b", "worktree/demo", tree]);
+            await addEntry(root, {
+                id: "document-attempt",
+                planId: "document-plan",
+                planName: "demo",
+                path: tree,
+                branch: "worktree/demo",
+                baseBranch: "main",
+                baseRef: "refs/heads/main",
+                baseCommit: await git(root, ["rev-parse", "HEAD"]),
+                baseTree: await git(root, ["rev-parse", "HEAD^{tree}"]),
+                status: "completed",
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+            });
+            const plan = await loadPlan(tree, "demo");
+            assert(plan);
+            await seedPlanState(tree, "demo", { status: "verified" }, {}, { expectedRevision: plan.revision });
+            await run(root, tree);
         });
-        await git(root, ["add", "docs"]);
-        await git(root, ["commit", "-m", "Plan"]);
-        await git(root, ["worktree", "add", "-b", "worktree/demo", tree]);
-        await addEntry(root, {
-            id: "document-attempt",
-            planId: "document-plan",
-            planName: "demo",
-            path: tree,
-            branch: "worktree/demo",
-            baseBranch: "main",
-            baseRef: "refs/heads/main",
-            baseCommit: await git(root, ["rev-parse", "HEAD"]),
-            baseTree: await git(root, ["rev-parse", "HEAD^{tree}"]),
-            status: "completed",
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-        });
-        const plan = await loadPlan(tree, "demo");
-        assert(plan);
-        await updatePlanFrontMatter(tree, "demo", { status: "verified" }, {}, { expectedRevision: plan.revision });
-        await run(root, tree);
     } finally {
         await git(root, ["worktree", "remove", "--force", tree]);
         await fsRm(container, { recursive: true });
@@ -90,7 +95,7 @@ test("Workspace body save waits for the execution document lock in another proce
                 stderr: "piped",
             });
         let finishedWhileLocked = false;
-        const process = await withPlanLock(tree, "demo", async () => {
+        const process = await holdPlanFixtureLock(tree, "demo", async () => {
             const process = startChild();
             const reader = process.stdout.getReader();
             try {
@@ -141,6 +146,23 @@ for (const target of ["demo", "document-plan"]) {
     });
 }
 
+test("archive rejects an explicit primary revision without changing the execution document", async () => {
+    await withDocument(async (root, tree) => {
+        const primary = await loadPlan(root, "demo");
+        const execution = await loadPlan(tree, "demo");
+        assert(primary && execution);
+        assert(primary.revision !== execution.revision);
+        await assertRejects(
+            () => archiveSavedPlan(root, "demo", { expectedRevision: primary.revision }),
+            Error,
+            "changed after this operation read it",
+        );
+        assertEquals((await loadPlan(tree, "demo"))?.revision, execution.revision);
+        assertEquals((await loadPlan(root, "demo"))?.revision, primary.revision);
+        assertEquals(await listArchivedPlans(root), []);
+    });
+});
+
 for (const mode of ["single", "bulk"]) {
     test(`archive CLI ${mode} resolves execution evidence and restores from the primary checkout`, async () => {
         await withProcessGlobalTestLock(async () => {
@@ -171,29 +193,44 @@ for (const mode of ["single", "bulk"]) {
 
 test("failed collaboration document write rolls back controller revision and hash, then retries", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "rw-collaboration-rollback-"));
-    const plansDir = join(root, "docs/plans");
     const original = "# Demo\n\n## Context\n\nOriginal.\n";
     const revised = "# Demo\n\n## Context\n\nRevised.\n";
     let restorePermissions: (() => Promise<void>) | undefined;
     try {
-        await savePlan(root, "demo", original, { planId: "demo-id", status: "draft" });
-        await updatePlanCollaborationMetadata(
-            root,
-            "demo",
-            {
-                collaborationState: "remote_canonical",
-                collaborationServerUrl: "https://example.test",
-                collaborationSpaceId: "space-1",
-                collaborationRevision: 1,
-            },
-            COLLABORATION_LOCK_BYPASS.pull,
-            { body: original },
-        );
-        const before = await loadPlan(root, "demo");
-        assert(before);
-        restorePermissions = await makeReadOnlyDirectoryFixture(plansDir);
-        await assertRejects(() =>
-            updatePlanCollaborationMetadata(
+        await withRetainedPlanFixture(root, async () => {
+            await seedPlan(root, "demo", original, { planId: "demo-id", status: "draft" });
+            await updatePlanCollaborationMetadata(
+                root,
+                "demo",
+                {
+                    collaborationState: "remote_canonical",
+                    collaborationServerUrl: "https://example.test",
+                    collaborationSpaceId: "space-1",
+                    collaborationRevision: 1,
+                },
+                COLLABORATION_LOCK_BYPASS.pull,
+                { body: original },
+            );
+            const before = await loadPlan(root, "demo");
+            assert(before);
+            restorePermissions = await makeReadOnlyDirectoryFixture(dirname(before.path));
+            await assertRejects(() =>
+                updatePlanCollaborationMetadata(
+                    root,
+                    "demo",
+                    {
+                        collaborationRevision: 2,
+                    },
+                    COLLABORATION_LOCK_BYPASS.pull,
+                    { body: revised },
+                ),
+            );
+            const after = await loadPlan(root, "demo");
+            assertEquals(after?.body, before.body);
+            assertEquals(after?.attrs.collaborationRevision, 1);
+            assertEquals(after?.attrs.collaborationBodyHash, await hashPlanBody(original));
+            await restorePermissions?.();
+            await updatePlanCollaborationMetadata(
                 root,
                 "demo",
                 {
@@ -201,24 +238,10 @@ test("failed collaboration document write rolls back controller revision and has
                 },
                 COLLABORATION_LOCK_BYPASS.pull,
                 { body: revised },
-            ),
-        );
-        const after = await loadPlan(root, "demo");
-        assertEquals(after?.body, before.body);
-        assertEquals(after?.attrs.collaborationRevision, 1);
-        assertEquals(after?.attrs.collaborationBodyHash, await hashPlanBody(original));
-        await restorePermissions?.();
-        await updatePlanCollaborationMetadata(
-            root,
-            "demo",
-            {
-                collaborationRevision: 2,
-            },
-            COLLABORATION_LOCK_BYPASS.pull,
-            { body: revised },
-        );
-        assertEquals((await loadPlan(root, "demo"))?.body, revised);
-        assertEquals((await loadPlan(root, "demo"))?.attrs.collaborationBodyHash, await hashPlanBody(revised));
+            );
+            assertEquals((await loadPlan(root, "demo"))?.body, revised);
+            assertEquals((await loadPlan(root, "demo"))?.attrs.collaborationBodyHash, await hashPlanBody(revised));
+        });
     } finally {
         await restorePermissions?.();
         await fsRm(root, { recursive: true });

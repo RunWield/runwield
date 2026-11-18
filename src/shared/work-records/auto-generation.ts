@@ -1,3 +1,17 @@
+import {
+    readPlanRecordingContext,
+    generateRetainedPlanRecord,
+    readRecordingPublication,
+    planRecordingSourceRoot,
+    withRecordingPlan,
+} from "../../plan-store/index.ts";
+import {
+    generatePlanPreparedRecord as generatePreparedPackageRecord,
+    settlePlanPreparedRecord as settlePreparedPackageRecord,
+} from "../../plan-store/index.ts";
+import { findWorkRecordById } from "./store.ts";
+import { readPublishedDeliverySources } from "../../plan-store/index.ts";
+
 /**
  * @module shared/work-records/auto-generation
  * Targeted Work Record auto-generation after terminal Plan outcomes.
@@ -5,15 +19,10 @@
 
 import { ValidationHostRejected, ValidationHostWait } from "../workflow/validation-host-contract.ts";
 import { isPlannedChangeClassification } from "../../constants.js";
-import {
-    findPlansByParent,
-    getPlanDocumentRoot,
-    isChildFeaturePlan,
-    isProjectPlan,
-    listArchivedPlans,
-    loadArchivedPlan,
-} from "../../plan-store.js";
-import { resolveWorkflowPlanLocation } from "../workflow/plan-location.ts";
+
+import { isChildFeaturePlan, isProjectPlan } from "../../plan-format.ts";
+import { findPlansByParent, listArchivedPlans, loadArchivedPlan } from "../../plan-store/index.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { shouldAutoGenerateWorkRecordsOnPlanCompletion } from "../settings.js";
 import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
 import {
@@ -54,13 +63,15 @@ interface TargetedWorkRecordSource {
     targetPlanName?: string;
 }
 
-type WorkRecordParentState = Pick<import("../../plan-store.js").PlanFrontMatter, "status" | "epicCompletionMode">;
+type WorkRecordParentState = Pick<import("../../plan-store/index.ts").PlanFrontMatter, "status" | "epicCompletionMode">;
 
 /** The parent must be terminal before a child completion can record its Epic. */
 export function isTerminalWorkRecordParent(attrs: WorkRecordParentState): boolean {
-    return (["verified", "closed_without_verification"].includes(attrs.status) &&
-        attrs.epicCompletionMode === "done_enough") ||
-        attrs.status === "user_verified";
+    return (
+        (["verified", "closed_without_verification"].includes(attrs.status) &&
+            attrs.epicCompletionMode === "done_enough") ||
+        attrs.status === "user_verified"
+    );
 }
 
 function conciseError(value: Error | string): string {
@@ -119,8 +130,11 @@ export async function resolveTargetedWorkRecordSource(
         const parentWithChildren = await withEpicChildren(cwd, parent);
         if (
             !isTerminalWorkRecordParent(parentWithChildren.attrs) &&
-            !(pendingPublication && parentWithChildren.attrs.status === "reviewed" &&
-                parentWithChildren.attrs.epicCompletionMode === "done_enough")
+            !(
+                pendingPublication &&
+                parentWithChildren.attrs.status === "reviewed" &&
+                parentWithChildren.attrs.epicCompletionMode === "done_enough"
+            )
         ) {
             return { skipReason: "parent_not_terminal", targetPlanName: parent.name };
         }
@@ -152,9 +166,9 @@ export function formatWorkRecordAutoGenerationResult(result: WorkRecordAutoGener
     const verb = result.status === "linked" ? "linked" : "generated";
     const warning = result.indexWarning ? ` Warning: ${result.indexWarning}` : "";
     const proposals = result.supersessionProposals?.length
-        ? ` Pending supersession proposals: ${
-            result.supersessionProposals.map((candidate) => `${candidate.recordId} (${candidate.reason})`).join(", ")
-        }. Run wld wr supersede ${result.recordId}.`
+        ? ` Pending supersession proposals: ${result.supersessionProposals
+              .map((candidate) => `${candidate.recordId} (${candidate.reason})`)
+              .join(", ")}. Run wld wr supersede ${result.recordId}.`
         : "";
     return `Work Record ${verb}: ${result.path || result.recordId || "record available"}.${proposals}${warning}`;
 }
@@ -175,16 +189,63 @@ async function generateTargetedWorkRecord(
     { cwd, planName, mnemotecaPort, signal, pendingPublication, runRecorderStep }: AutoGenerateWorkRecordArgs,
     automatic: boolean,
 ): Promise<WorkRecordAutoGenerationResult> {
-    if (automatic && !shouldAutoGenerateWorkRecordsOnPlanCompletion(cwd)) {
+    const retained = await generateRetainedPlanRecord(
+        { cwd, planName, mnemotecaPort, signal, pendingPublication, runRecorderStep },
+        automatic,
+    );
+    if (retained) return retained;
+    const recording = await readPlanRecordingContext(planName, automatic, pendingPublication);
+    const preparation = recording?.preparation;
+    if (
+        automatic &&
+        !(preparation ? recording!.autoGenerateRecords !== false : shouldAutoGenerateWorkRecordsOnPlanCompletion(cwd))
+    ) {
         return withMessage({ status: "disabled", planName, message: "" });
     }
 
     try {
-        const { loadPublishedWorkRecordSource } = await import("./published-source.ts");
+        const { loadPublishedWorkRecordSource } = await import("../../plan-store/index.ts");
+        const publishedReference = recording?.publishedReference;
+        if (recording && !automatic && !publishedReference)
+            throw new Error(
+                "The admitted Plan has no retained publication source; recording can retry when its evidence is available.",
+            );
+        if (publishedReference) {
+            const manifest = await readRecordingPublication(cwd, planName, publishedReference);
+            if (manifest.preparedRecord) {
+                const indexWarning = await settlePreparedPackageRecord(cwd, manifest, mnemotecaPort);
+                const record = await import("./markdown.js").then((module) =>
+                    module.parseWorkRecordMarkdown(manifest.preparedRecord!.text),
+                );
+                return withMessage({
+                    status: "linked",
+                    planName,
+                    recordId: record.attrs.recordId,
+                    path: (await findWorkRecordById(cwd, record.attrs.recordId))!.path,
+                    indexWarning,
+                    message: "",
+                });
+            }
+        }
+
         const published = automatic ? null : await loadPublishedWorkRecordSource(cwd, planName);
-        const resolved = published
-            ? { source: published, targetPlanName: published.name }
-            : await resolveTargetedWorkRecordSource(cwd, planName, automatic && pendingPublication);
+        const frozen = preparation
+            ? await readPublishedDeliverySources(cwd, {
+                  packageInput: preparation,
+                  planName,
+                  planId: preparation.planId,
+                  phase: "candidate_sealed",
+              })
+            : null;
+        const resolved = frozen
+            ? {
+                  source: frozen.workRecordOwner,
+                  targetPlanName: frozen.workRecordOwner?.name,
+                  skipReason: "parent_not_terminal",
+              }
+            : published
+              ? { source: published, targetPlanName: published.name }
+              : await resolveTargetedWorkRecordSource(cwd, planName, automatic && pendingPublication);
         if (!resolved.source) {
             return withMessage({
                 status: "skipped",
@@ -195,12 +256,15 @@ async function generateTargetedWorkRecord(
             });
         }
 
-        const sourceRoot = getPlanDocumentRoot(resolved.source.path);
+        const sourceRoot = planRecordingSourceRoot(resolved.source.path);
         // Store discovery belongs inside generation's failure-persistence boundary.
         // Eligibility alone does not need existing records; generation reconciles them.
         const evaluated = evaluateWorkRecordSource({
             ...resolved.source,
-            pendingPublication: Boolean(automatic && pendingPublication && resolved.source.attrs.status === "reviewed"),
+            ...(preparation ? { attrs: { ...resolved.source.attrs, workRecord: undefined } } : {}),
+            pendingPublication: Boolean(
+                automatic && pendingPublication && (preparation || resolved.source.attrs.status === "reviewed"),
+            ),
         });
         if (evaluated.skipReason) {
             return withMessage({
@@ -212,11 +276,15 @@ async function generateTargetedWorkRecord(
             });
         }
 
-        const outcome = await generateWorkRecordForSource(sourceRoot, evaluated, {
-            mnemotecaPort,
-            signal,
-            runRecorderStep,
-        });
+        const generate = () =>
+            preparation || publishedReference
+                ? generatePreparedPackageRecord(sourceRoot, evaluated, (preparation || publishedReference)!.attemptId, {
+                      mnemotecaPort,
+                      signal,
+                      runRecorderStep,
+                  })
+                : generateWorkRecordForSource(sourceRoot, evaluated, { mnemotecaPort, signal, runRecorderStep });
+        const outcome = await withRecordingPlan(sourceRoot, evaluated.planId, generate);
         const status = outcome.status === "generated" || outcome.status === "linked" ? outcome.status : "failed";
         return withMessage({
             status,

@@ -987,3 +987,12 @@ export function getGuidedReviewMode(projectRoot) {
     }
     return "none";
 }
+
+/** Internal publication policy, resolved at the executing repository binding.
+ * @param {string} projectRoot
+ */
+export function getDeliveryCopyPolicy(projectRoot) {
+    const plans = getMergedCustomSetting("plans", projectRoot);
+    const records = getMergedCustomSetting("workRecords", projectRoot);
+    return { plans: plans?.deliveryCopies === true, workRecords: records?.deliveryCopies !== false };
+}

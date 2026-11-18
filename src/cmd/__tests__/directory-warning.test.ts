@@ -40,7 +40,11 @@ for (const command of ["init", "initialize", "plans", "wr", "guided-review", "re
             );
             assertEquals(
                 await readdir(join(home, ".wld"), { withFileTypes: true })
-                    .then((entries) => entries.some((entry) => entry.name === "sessions"))
+                    .then((entries) =>
+                        entries.some((entry) =>
+                            ["sessions", "projects", "project-identity-locks"].includes(entry.name),
+                        ),
+                    )
                     .catch((error) => {
                         if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
                         throw error;
@@ -77,7 +81,8 @@ test("leading acknowledgement reaches real plans listing and help is exempt", as
                 }),
             );
             assertEquals(output.code, 0, decode(output.stderr));
-            if (args[0] === "--allow-system-directory") assertStringIncludes(decode(output.stdout), "Consent fixture");
+            if (args[0] === "--allow-system-directory")
+                assertStringIncludes(decode(output.stdout), "Use wld plans import <file-or-folder>");
         }
     } finally {
         await rm(home, { recursive: true });

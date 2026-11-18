@@ -1,3 +1,4 @@
+import { inspectProjectIdentity } from "../project-identity.ts";
 import { inspectProjectDirectory, requireDirectoryConfirmation } from "../project-directory.ts";
 /**
  * @module shared/owner-coordination/projects
@@ -19,6 +20,7 @@ import { basename, isAbsolute, resolve } from "node:path";
 /**
  * @typedef {Object} RegisteredProject
  * @property {string} projectId
+ * @property {string | null} coreProjectId Stable Core identity; registration IDs remain unchanged.
  * @property {string} displayName
  * @property {string} registeredRoot
  * @property {string} currentRoot
@@ -124,7 +126,9 @@ function ensureProjectRootEvidence(db, options) {
 
 /** @param {any} row */
 function projectFromRow(row) {
+    const identity = inspectProjectIdentity(row.current_root);
     return {
+        coreProjectId: identity.kind === "existing" ? identity.identity.projectId : null,
         projectId: row.id,
         displayName: row.display_name,
         registeredRoot: row.registered_root,

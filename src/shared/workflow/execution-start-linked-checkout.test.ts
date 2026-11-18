@@ -1,3 +1,6 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
+import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
+import { recordPlanEvent } from "./plan-lifecycle.js";
 import { existsSync } from "node:fs";
 import { readFile, realpath, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -5,7 +8,8 @@ import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { WORKTREE_REGISTRY_FILE } from "../../constants.js";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { assertEquals } from "../../testing/assertions.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
@@ -15,7 +19,7 @@ import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execu
 
 const fixture = defineCommittedGitFixture({ "sentinel.txt": "original\n" });
 
-test("isolated execution uses the Plan saved only in the selected unregistered linked checkout", async () => {
+test("isolated execution uses the canonical Plan authored from the selected unregistered linked checkout", async () => {
     // This fixture holds withProcessGlobalTestLock while changing HOME, cwd, and PATH.
     // Only external executables (including cymbal) are fixtures; execution ports are real.
     await withRuntimeCommandFixture("execution-start-linked-", async ({ alternateRoot }) => {
@@ -24,20 +28,34 @@ test("isolated execution uses the Plan saved only in the selected unregistered l
         let hostedSession: HostedSession | undefined;
         try {
             await git(primary, ["worktree", "add", "-b", "selected-plan", linked]);
-            await savePlan(
+            await seedPlan(
                 linked,
                 "remote-delivery",
                 "# Remote delivery\n\n## Context\n\nUse the selected source.\n\n## Implementation\n\n- Update sentinel.txt.\n\n## Verification\n\n- Read sentinel.txt.\n",
                 {
                     planId: "remote-delivery-plan",
                     classification: "PLANNED_CHANGE",
-                    status: "ready_for_work",
+                    status: "draft",
                     executionAgent: "engineer",
                     collaborationRecommendation: "autonomous",
                     targetBranch: "main",
                     affectedPaths: ["sentinel.txt"],
                 },
             );
+            await withLocalPlanWorkflow(linked, "remote-delivery", async () => {
+                await recordPlanEvent({
+                    cwd: linked,
+                    planName: "remote-delivery",
+                    event: "review_approved",
+                    currentStatus: "draft",
+                });
+                await recordPlanEvent({
+                    cwd: linked,
+                    planName: "remote-delivery",
+                    event: "readiness_passed",
+                    currentStatus: "approved",
+                });
+            });
             const selectedPlan = await loadPlan(linked, "remote-delivery");
             assert(selectedPlan);
             assertEquals(existsSync(join(primary, "docs")), false);

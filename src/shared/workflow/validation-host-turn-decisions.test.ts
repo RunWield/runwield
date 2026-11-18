@@ -1,9 +1,10 @@
+import { seedPlanState } from "../testing/plan-state-fixture.ts";
 import { writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { join } from "node:path";
-import { updatePlanFrontMatter } from "../../plan-store.js";
+
 import { getExactProjectCustomSetting } from "../settings.js";
 import { captureWorktreeTree } from "./git-snapshot.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
@@ -27,7 +28,7 @@ async function pastReviewLimit(fixture: HostFixture) {
         ],
         1,
     ).ledger;
-    await updatePlanFrontMatter(
+    await seedPlanState(
         fixture.cwd,
         "p",
         {

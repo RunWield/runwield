@@ -1,3 +1,4 @@
+import type { PlanAuthoringDefinition } from "../../plan-store/index.ts";
 /**
  * @module shared/attached/operations
  * The bounded operation contract between an External Agent Host carrier and the
@@ -37,13 +38,26 @@ export type AttachedOperationName =
     | "work_record_completed"
     | AttachedReadOperationName;
 
-export type AttachedReadOperationName = "get_instructions" | "get_artifact" | "get_pending_chat";
+export type AttachedReadOperationName =
+    "get_instructions" | "get_artifact" | "get_pending_chat" | "read_plan" | "work_record_read" | "work_record_search";
 export type AttachedLifecycleOperationName = Exclude<AttachedOperationName, AttachedReadOperationName>;
 
 export interface AttachedActionReadEnvelope extends StatusEnvelope {
     evidence: HostEvidence;
     actionId: string;
-    content: "instructions" | "chat" | "prompt" | "execution_report" | "repair_report";
+    content:
+        | "instructions"
+        | "chat"
+        | "prompt"
+        | "execution_report"
+        | "repair_report"
+        | "read_plan"
+        | "work_record_read"
+        | "work_record_search";
+    resource?: string;
+    recordId?: string;
+    query?: string;
+    documentRevision?: string;
     offsetBytes?: number;
     maxBytes?: number;
 }
@@ -118,6 +132,10 @@ export interface TriageReportPayload {
 
 /** The Core `plan_written` arguments. Values are checked by the Plan execution policy, not here. */
 export interface PlanWrittenPayload {
+    definition?: PlanAuthoringDefinition;
+    contextMarkdown?: string;
+    validationMarkdown?: string;
+    expectedRevision?: string;
     actionId: string;
     planName: string;
     executionAgent?: string;
@@ -254,6 +272,8 @@ export type AttachedNextAction = (
           kind: "implementation";
           planName: string;
           planPath: string;
+          planRevision?: string;
+          documentAccess?: string;
           executionCwd: string;
           executionMode: string;
           worktreeBranch?: string;
@@ -293,7 +313,7 @@ export type AttachedNextAction = (
           planName: string;
           guidance: string;
           completionMode?: import("../workflow/validation-host-contract.ts").HostDeliveryMode;
-          workRecord?: import("../../plan-store.js").PlanFrontMatter["workRecord"];
+          workRecord?: import("../../plan-store/index.ts").PlanFrontMatter["workRecord"];
       }
     | { kind: "return_to_host"; reason: "unsupported_in_preview" | "plan_advanced_in_core"; message?: string }
 ) & { dispatch?: CodexRoleDispatch };
@@ -318,7 +338,7 @@ export type AttachedWorkflowClosure =
     | {
           reason: "delivered";
           completionMode?: import("../workflow/validation-host-contract.ts").HostDeliveryMode;
-          workRecord?: import("../../plan-store.js").PlanFrontMatter["workRecord"];
+          workRecord?: import("../../plan-store/index.ts").PlanFrontMatter["workRecord"];
       };
 
 export interface ProjectMovedRecovery {
@@ -533,12 +553,78 @@ export function parseTriageReportInput(projectRoot: string, input: AttachedJsonV
     );
 }
 
+function readAuthoringDefinition(value: AttachedJsonValue | undefined): PlanAuthoringDefinition | undefined {
+    if (value === undefined) return undefined;
+    const input = readObject(value, "payload.definition", [
+        "summary",
+        "affectedPaths",
+        "targetBranch",
+        "frontend",
+        "devServerCommand",
+        "devServerUrl",
+        "devServerHmr",
+    ]);
+    const paths = input.affectedPaths;
+    if (paths !== undefined && (!Array.isArray(paths) || paths.some((path) => typeof path !== "string")))
+        reject("invalid_input", "payload.definition.affectedPaths", "affectedPaths must be strings.");
+    const frontend = input.frontend;
+    const hmr = input.devServerHmr;
+    if (frontend !== undefined && typeof frontend !== "boolean")
+        reject("invalid_input", "payload.definition.frontend", "frontend must be boolean.");
+    if (hmr !== undefined && typeof hmr !== "boolean")
+        reject("invalid_input", "payload.definition.devServerHmr", "devServerHmr must be boolean.");
+    return {
+        summary: readOptionalText(input, "summary", "payload.definition.summary", MAX_SHORT_TEXT_LENGTH),
+        targetBranch: readOptionalText(input, "targetBranch", "payload.definition.targetBranch", MAX_SHORT_TEXT_LENGTH),
+        devServerCommand: readOptionalText(
+            input,
+            "devServerCommand",
+            "payload.definition.devServerCommand",
+            MAX_SHORT_TEXT_LENGTH,
+        ),
+        devServerUrl: readOptionalText(input, "devServerUrl", "payload.definition.devServerUrl", MAX_SHORT_TEXT_LENGTH),
+        affectedPaths: Array.isArray(paths)
+            ? paths.filter((path): path is string => typeof path === "string")
+            : undefined,
+        frontend,
+        devServerHmr: hmr,
+    };
+}
+
 export function parsePlanWrittenInput(projectRoot: string, input: AttachedJsonValue | undefined) {
-    const keys = ["actionId", "planName", "executionAgent", "collaborationRecommendation"];
+    const keys = [
+        "actionId",
+        "planName",
+        "executionAgent",
+        "collaborationRecommendation",
+        "contextMarkdown",
+        "definition",
+        "validationMarkdown",
+        "expectedRevision",
+    ];
     return parse(input, (): PlanWrittenEnvelope =>
         readWorkflowEnvelope(projectRoot, input, keys, (payload) => ({
             actionId: readIdentifier(payload, "actionId", "payload.actionId"),
             planName: readText(payload, "planName", "payload.planName", MAX_SHORT_TEXT_LENGTH),
+            definition: readAuthoringDefinition(payload.definition),
+            contextMarkdown: readOptionalText(
+                payload,
+                "contextMarkdown",
+                "payload.contextMarkdown",
+                MAX_ATTACHED_INPUT_BYTES,
+            ),
+            validationMarkdown: readOptionalText(
+                payload,
+                "validationMarkdown",
+                "payload.validationMarkdown",
+                MAX_ATTACHED_INPUT_BYTES,
+            ),
+            expectedRevision: readOptionalText(
+                payload,
+                "expectedRevision",
+                "payload.expectedRevision",
+                MAX_SHORT_TEXT_LENGTH,
+            ),
             executionAgent: readOptionalText(
                 payload,
                 "executionAgent",
@@ -624,6 +710,12 @@ export function parseAttachedActionReadInput(
             "workflowId",
             "actionId",
             ...(name === "get_artifact" ? ["artifact", "offsetBytes", "maxBytes"] : []),
+            ...(["read_plan", "work_record_read", "work_record_search"].includes(name)
+                ? ["offsetBytes", "maxBytes", "documentRevision"]
+                : []),
+            ...(name === "read_plan" ? ["resource"] : []),
+            ...(name === "work_record_read" ? ["recordId"] : []),
+            ...(name === "work_record_search" ? ["query"] : []),
         ];
         const object = readObject(input, "", keys);
         let content: AttachedActionReadEnvelope["content"] = name === "get_instructions" ? "instructions" : "chat";
@@ -633,6 +725,32 @@ export function parseAttachedActionReadInput(
                 reject("invalid_input", "artifact", "Use prompt, execution_report, or repair_report.");
             }
             content = artifact;
+        }
+        if (name === "read_plan" || name === "work_record_read" || name === "work_record_search") {
+            content = name;
+            if (
+                object.resource !== undefined &&
+                (typeof object.resource !== "string" ||
+                    !["context.md", "validation.md", "manual-qa.md", "integration-report.md"].includes(object.resource))
+            )
+                reject("invalid_input", "resource", "Use a named Plan document.");
+            if (name === "work_record_read") readIdentifier(object, "recordId", "recordId");
+            if (
+                name === "work_record_search" &&
+                (typeof object.query !== "string" || !object.query.trim() || object.query.length > 4096)
+            )
+                reject("invalid_input", "query", "Supply a search query of 1 to 4096 characters.");
+            if (
+                object.documentRevision !== undefined &&
+                (typeof object.documentRevision !== "string" || !/^[a-f0-9]{64}$/.test(object.documentRevision))
+            )
+                reject("invalid_input", "documentRevision", "Use the returned documentRevision.");
+            if (
+                typeof object.offsetBytes === "number" &&
+                object.offsetBytes > 0 &&
+                object.documentRevision === undefined
+            )
+                reject("invalid_input", "documentRevision", "Continuing a document requires its documentRevision.");
         }
         for (const key of ["offsetBytes", "maxBytes"]) {
             const value = object[key];
@@ -651,6 +769,10 @@ export function parseAttachedActionReadInput(
             workflowId: readIdentifier(object, "workflowId", "workflowId"),
             actionId: readIdentifier(object, "actionId", "actionId"),
             content,
+            ...(typeof object.resource === "string" && { resource: object.resource }),
+            ...(typeof object.recordId === "string" && { recordId: object.recordId }),
+            ...(typeof object.query === "string" && { query: object.query }),
+            ...(typeof object.documentRevision === "string" && { documentRevision: object.documentRevision }),
             evidence: readEvidence(object),
             ...(typeof object.offsetBytes === "number" && { offsetBytes: object.offsetBytes }),
             ...(typeof object.maxBytes === "number" && { maxBytes: object.maxBytes }),
@@ -660,7 +782,14 @@ export function parseAttachedActionReadInput(
 }
 
 export function isAttachedReadOperation(name: AttachedOperationName): name is AttachedReadOperationName {
-    return name === "get_instructions" || name === "get_artifact" || name === "get_pending_chat";
+    return (
+        name === "get_instructions" ||
+        name === "get_artifact" ||
+        name === "get_pending_chat" ||
+        name === "read_plan" ||
+        name === "work_record_read" ||
+        name === "work_record_search"
+    );
 }
 
 const IDENTIFIER_SCHEMA = { type: "string", pattern: IDENTIFIER_PATTERN.source };
@@ -791,6 +920,28 @@ export const ATTACHED_OPERATIONS: AttachedOperationDescriptor[] = [
             "Submit the Plan written in docs/plans/ for the pending Planner action. RunWield gives it a Plan ID and " +
             "Triage Front Matter, and sets up the project runtime. Repeating an accepted operationId returns the saved result.",
         inputSchema: workflowOperationSchema(["actionId", "planName"], {
+            definition: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                    summary: { type: "string" },
+                    affectedPaths: { type: "array", items: { type: "string" } },
+                    targetBranch: { type: "string" },
+                    frontend: { type: "boolean" },
+                    devServerCommand: { type: "string" },
+                    devServerUrl: { type: "string" },
+                    devServerHmr: { type: "boolean" },
+                },
+            },
+            contextMarkdown: {
+                type: "string",
+                description: "Canonical Plan Markdown without front matter; creates the Plan in an empty store.",
+            },
+            validationMarkdown: { type: "string", description: "Verification Markdown without front matter." },
+            expectedRevision: {
+                type: "string",
+                description: "Required current Plan revision when replacing existing prose.",
+            },
             actionId: IDENTIFIER_SCHEMA,
             planName: {
                 type: "string",
@@ -1186,3 +1337,48 @@ ATTACHED_OPERATIONS.push(
         },
     },
 );
+
+for (const name of ["read_plan", "work_record_read", "work_record_search"] as const) {
+    ATTACHED_OPERATIONS.push({
+        name,
+        description:
+            name === "read_plan"
+                ? "Read the current action's canonical Plan document through Core, without host filesystem access."
+                : name === "work_record_read"
+                  ? "Read a canonical Work Record by stable recordId in this workflow's Project, with the current role's access mode."
+                  : "Search canonical Work Records in this workflow's Project with the current role's access mode. The paged content is JSON containing records and stale index diagnostics.",
+        inputSchema: {
+            type: "object",
+            additionalProperties: false,
+            required: [
+                "workflowId",
+                "actionId",
+                "evidence",
+                ...(name === "work_record_read" ? ["recordId"] : name === "work_record_search" ? ["query"] : []),
+            ],
+            properties: {
+                workflowId: IDENTIFIER_SCHEMA,
+                actionId: IDENTIFIER_SCHEMA,
+                evidence: EVIDENCE_SCHEMA,
+                ...(name === "read_plan"
+                    ? {
+                          resource: {
+                              type: "string",
+                              enum: ["context.md", "validation.md", "manual-qa.md", "integration-report.md"],
+                          },
+                      }
+                    : {}),
+                ...(name === "work_record_read" ? { recordId: IDENTIFIER_SCHEMA } : {}),
+                ...(name === "work_record_search" ? { query: { type: "string", minLength: 1, maxLength: 4096 } } : {}),
+                documentRevision: {
+                    type: "string",
+                    pattern: "^[a-f0-9]{64}$",
+                    description:
+                        "Return this token on every continuation page. A changed document rejects the read; restart at offset zero.",
+                },
+                offsetBytes: { type: "integer", minimum: 0 },
+                maxBytes: { type: "integer", minimum: 4, maximum: 65536 },
+            },
+        },
+    });
+}
