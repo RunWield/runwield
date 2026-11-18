@@ -903,6 +903,8 @@ existing repair Agent behavior.
 
 **Requirement: Execute approved work in isolation.** Executable Plan work starts from `ready_for_work` in an isolated
 worktree. The user's checkout changes stay as they are, and execution keeps a useful recovery point.
+The selected Plan and any materialized Epic family documents appear in the starting baseline and preparation commit
+even if Git ignores them.
 
 **Requirement: Prepare the worktree before Agent work.** RunWield runs the project's `worktree_setup_command`, or a
 command the user confirms, before the first commit that runs the project's Git hooks. When hooks exist and no command
@@ -942,6 +944,8 @@ and implementation commits still run the project's hooks.
   the same rule. Normal commits still run the hooks.
 - Given a dependency-backed Git hook and an approved setup command, setup runs before the first execution preparation
   commit, the hook passes, and one execution preparation commit precedes Agent work.
+- Given a Plan excluded by the repository's local Git rules, starting it from a linked worktree records the Plan in
+  the execution baseline and preparation commit. The source Plan stays untracked and its exclude rule still applies.
 - Given failed setup, the Plan stays ready and the worktree and diagnostics remain; a corrected retry continues that
   attempt.
 - Given a prepared worktree, resuming keeps its baseline without a second setup or preparation commit.
