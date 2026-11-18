@@ -34,11 +34,12 @@ async function fixture() {
     const directory = join(root, "lib");
     const realFetch = globalThis.fetch;
     function serve(wheelStatus = 200) {
-        globalThis.fetch = Object.assign(async (input: string | URL | Request) => {
+        globalThis.fetch = Object.assign((input: string | URL | Request) => {
             const url = String(input);
-            if (url === "https://pypi.org/pypi/onnxruntime/1.23.1/json") return Response.json(metadata);
+            if (url === "https://pypi.org/pypi/onnxruntime/1.23.1/json")
+                return Promise.resolve(Response.json(metadata));
             strictEqual(url, metadata.urls[0].url);
-            return new Response(bytes, { status: wheelStatus });
+            return Promise.resolve(new Response(bytes, { status: wheelStatus }));
         }, realFetch);
     }
     serve();
