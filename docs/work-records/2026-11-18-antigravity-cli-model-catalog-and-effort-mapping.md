@@ -1,7 +1,7 @@
 ---
 kind: "work_record"
 recordId: "75fbe598-ec37-45af-8d43-51eba9a9fae3"
-status: "pending_verification"
+status: "approved"
 scope: "planned_change"
 workKind: "MAINTENANCE"
 origin: "internal"
@@ -11,7 +11,6 @@ provenance:
     sourcePlans:
         - "9278ac3d-3788-40d1-8379-e857f4f77239"
 ---
-
 # Antigravity CLI model catalog and effort mapping
 
 ## Summary
