@@ -27,7 +27,7 @@ dependencies:
     - "external-plan-store/keep-and-restore-plan-milestone-history"
 userVerifiedAt: null
 targetBranch: "epic/external-plan-store"
-status: "implemented"
+status: "reviewed"
 ---
 
 # Prune Retained Plans and Work Records

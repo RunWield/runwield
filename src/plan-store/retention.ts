@@ -5,8 +5,12 @@ import {
 import { pruneWorkRecordIndex } from "../shared/work-records/index-adapter.ts";
 import { pruneEffect } from "./prune-effects.ts";
 import { createHash } from "node:crypto";
-import { constants } from "node:fs";
-import { lstat, open, realpath, unlink } from "node:fs/promises";
+import { lstat } from "node:fs/promises";
+import { checkedProjectRuntimeLayout } from "../shared/project-runtime-layout.ts";
+import { assertManagedRuntimePath } from "../shared/project-runtime-managed.ts";
+import { ensurePrivateDir } from "../shared/private-json-file.ts";
+import { openNativeFileLock } from "../shared/native-file-lock.ts";
+import { removeContainedCopy } from "../shared/contained-text-file.ts";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { currentPackageProject } from "./workflows.ts";
 import { readLocalHomeStore } from "./access.ts";
@@ -16,7 +20,7 @@ import { getPlanArchiveRetentionPolicy, getWorkRecordRetentionPolicy } from "../
 import { deleteWorkRecord, listLocalWorkRecords } from "../shared/work-records/store.ts";
 import { unfinishedRecordingPins } from "../shared/work-records/package-recording.ts";
 import { assertWorkRecordPath, withWorkRecordMutation } from "../shared/work-records/owner.ts";
-import { readWorkRecordLocations } from "../shared/work-records/import.ts";
+import { forgetWorkRecordLocations, readWorkRecordLocations } from "../shared/work-records/import.ts";
 import { withPlanCatalogLock, deleteArchivedPlanUnit } from "../plan-store.js";
 import {
     isHomeProjectOwner,
@@ -33,6 +37,7 @@ import {
     withPlanPackageLocks,
     prunePackageFamily,
     type LoadedPlanPackage,
+    type PackagePublicationManifest,
 } from "./packages.ts";
 import { managedPersonalStoreActive, requestManagedRetention } from "./managed.ts";
 
@@ -104,12 +109,18 @@ async function state(cwd: string, context: RetentionContext, empty = false) {
     const catalog = empty ? [] : await catalogIn(owner);
     const records = empty ? [] : await listLocalWorkRecords(cwd, { createDir: false });
     const pins = await unfinishedRecordingPins();
+    function pinPublication(manifest: PackagePublicationManifest) {
+        for (const { metadata } of manifest.members) {
+            pins.plans.add(metadata.planId);
+            for (const predecessor of metadata.definition.supersedes || [])
+                pins.records.add(predecessor.trim().toLowerCase());
+        }
+    }
     for (const attempt of context.pending) {
         pins.plans.add(attempt.planId);
         pins.attempts.add(attempt.attemptId);
         if (owner && attempt.source && attempt.source.repositoryId === owner.repositoryId)
-            for (const member of (await readPlanPackagePublication(owner, attempt.source)).members)
-                pins.plans.add(member.metadata.planId);
+            pinPublication(await readPlanPackagePublication(owner, attempt.source));
     }
     for (const { metadata } of catalog) {
         const workflow = metadata.workflow;
@@ -136,8 +147,7 @@ async function state(cwd: string, context: RetentionContext, empty = false) {
                 ref.repositoryId === owner.repositoryId
                     ? owner
                     : inspectHomeProjectOwner(owner.projectId, ref.repositoryId);
-            const manifest = await readPlanPackagePublication(sourceOwner, ref);
-            for (const member of manifest.members) pins.plans.add(member.metadata.planId);
+            pinPublication(await readPlanPackagePublication(sourceOwner, ref));
         }
     }
     const units: ArchivedPlanUnit[] = [];
@@ -182,7 +192,7 @@ async function state(cwd: string, context: RetentionContext, empty = false) {
         .filter(
             (r) =>
                 owner &&
-                !pins.records.has(r.attrs.recordId) &&
+                !pins.records.has(r.attrs.recordId.toLowerCase()) &&
                 !(r.attrs.provenance?.sourcePlans || []).some((id) => archivedIds.has(id) || pins.plans.has(id)) &&
                 (policy.records.retentionDays === 0 ||
                     Date.parse(r.attrs.createdAt) <= Date.now() - policy.records.retentionDays * 86400000),
@@ -270,12 +280,21 @@ export async function localConfirmRetention(
                 const effect = owner ? pruneEffect(kind, token) : undefined;
                 const retained = await effect?.read();
                 const current = await state(cwd, await context());
+                async function finishRecord(recordId: string, copies: PruneCopy[]) {
+                    await forgetWorkRecordLocations(recordId);
+                    const indexWarning = await pruneWorkRecordIndex(cwd, recordId, { mnemotecaPort });
+                    effect!.write(recordId, copies, true);
+                    return { deleted: true, copies, indexWarning };
+                }
                 if (retained) {
                     const live =
                         kind === "records"
-                            ? current.resources.some((r) => r.attrs.recordId === retained.identity)
+                            ? current.resources.some(
+                                  (r) => r.attrs.recordId.toLowerCase() === retained.identity.toLowerCase(),
+                              )
                             : current.catalog.some((p) => p.metadata.planId === retained.identity);
                     if (retained.completed || !live) {
+                        if (!live && kind === "records") return await finishRecord(retained.identity, retained.copies);
                         if (!retained.completed) effect!.write(retained.identity, retained.copies, true);
                         return { deleted: true, copies: live ? [] : retained.copies };
                     }
@@ -297,12 +316,7 @@ export async function localConfirmRetention(
                     effect!.write(approved.recordId, copies, false);
                     assertWorkRecordPath(record.path);
                     await deleteWorkRecord(cwd, record);
-                    await (
-                        await import("../shared/work-records/import.ts")
-                    ).forgetWorkRecordLocations(approved.recordId);
-                    effect!.write(approved.recordId, copies, true);
-                    const indexWarning = await pruneWorkRecordIndex(cwd, approved.recordId, { mnemotecaPort });
-                    return { deleted: true, copies, indexWarning };
+                    return await finishRecord(approved.recordId, copies);
                 }
                 const unit = current.plans.due.find((p) => p.token === token);
                 if (!unit) return skipped;
@@ -316,7 +330,7 @@ export async function localConfirmRetention(
                 );
                 const copies = await planCopies(owner, family);
                 effect!.write(unit.planId!, copies, false);
-                await prunePackageFamily(owner, family);
+                if (!(await prunePackageFamily(owner, family))) return skipped;
                 effect!.write(unit.planId!, copies, true);
                 return { deleted: true, copies };
             };
@@ -332,7 +346,7 @@ export async function localConfirmRetention(
         () => skipped,
     );
 }
-async function cleanCopy(root: string, copy: PruneCopy) {
+async function cleanCopy(root: string, copy: PruneCopy, journal: string) {
     if (
         typeof copy.path !== "string" ||
         isAbsolute(copy.path) ||
@@ -342,27 +356,17 @@ async function cleanCopy(root: string, copy: PruneCopy) {
         return;
     const path = join(root, copy.path);
     if (copy.sourcePath && resolve(copy.sourcePath) !== path) return;
-    for (let cursor = path; ; cursor = dirname(cursor)) {
-        const info = await lstat(cursor);
-        if (info.isSymbolicLink() || (cursor === path && !info.isFile())) return;
-        if (cursor === root) break;
+    if (process.platform === "win32") {
+        for (let cursor = path; ; cursor = dirname(cursor)) {
+            const info = await lstat(cursor).catch((error: NodeJS.ErrnoException) => {
+                if (error.code === "ENOENT") return;
+                throw error;
+            });
+            if (!info || info.isSymbolicLink() || (cursor === path && !info.isFile())) return;
+            if (cursor === root) break;
+        }
     }
-    const handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
-    try {
-        const original = await handle.stat();
-        if (!original.isFile() || digest(await handle.readFile()) !== copy.digest) return;
-        const current = await lstat(path);
-        if (
-            current.isFile() &&
-            original.dev === current.dev &&
-            original.ino === current.ino &&
-            original.ctimeMs === current.ctimeMs &&
-            (await realpath(path)) === path
-        )
-            await unlink(path);
-    } finally {
-        await handle.close();
-    }
+    await removeContainedCopy(root, path, copy.digest, journal);
 }
 export async function settlePruneCopies(cwd: string, kind: RetentionKind, token: string): Promise<PruneResult> {
     return await readLocalHomeStore<PruneResult>(
@@ -391,12 +395,37 @@ export async function confirmRetention(
     if (result.deleted && result.copies.length) {
         const binding = inspectProjectIdentity(cwd);
         if (binding.kind === "existing") {
-            for (const copy of result.copies)
-                if (copy.repositoryId === binding.identity.repositoryId)
-                    await cleanCopy(binding.identity.checkoutRoot, copy).catch(() => {});
-            if (managedPersonalStoreActive())
-                await requestManagedRetention(cwd, { kind: "settle-prune-copies", target: kind, token });
-            else await settlePruneCopies(cwd, kind, token);
+            const runtime = await checkedProjectRuntimeLayout(cwd);
+            const directory = join(runtime.selected.internalRoot, "prune-copies");
+            const lockPath = join(directory, "cleanup.lock");
+            await assertManagedRuntimePath(lockPath, binding.identity.executionAccountHome);
+            ensurePrivateDir(directory);
+            const lock = openNativeFileLock(lockPath);
+            try {
+                await lock.lock(true);
+                for (const copy of result.copies) {
+                    if (copy.repositoryId !== binding.identity.repositoryId) continue;
+                    const key = digest(
+                        JSON.stringify([binding.identity.checkoutId, kind, token, copy.path, copy.digest]),
+                    );
+                    const journal = join(directory, key + ".json");
+                    await assertManagedRuntimePath(journal, binding.identity.executionAccountHome);
+                    try {
+                        await cleanCopy(binding.identity.checkoutRoot, copy, journal);
+                    } catch (error) {
+                        // A journal can own a detached editor save. Keep that cleanup pending.
+                        const entry = await lstat(journal).catch((cause: NodeJS.ErrnoException) => {
+                            if (cause.code !== "ENOENT") throw cause;
+                        });
+                        if (entry) throw error;
+                    }
+                }
+                if (managedPersonalStoreActive())
+                    await requestManagedRetention(cwd, { kind: "settle-prune-copies", target: kind, token });
+                else await settlePruneCopies(cwd, kind, token);
+            } finally {
+                lock.close();
+            }
         }
     }
     return result.deleted;

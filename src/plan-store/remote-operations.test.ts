@@ -796,3 +796,147 @@ test("managed pruning changes laptop records and bound execution copies while ma
         }
     });
 });
+
+test("a retained publication pins its declared predecessor before the Recorder writes output", async () => {
+    const f = await packageFixture();
+    try {
+        const { create } = await import("../shared/testing/plan-package-fixture.ts");
+        const { withWorkRecordOwner } = await import("../shared/work-records/owner.ts");
+        const { capturePlanPackageInput, retainPlanPackagePublication } = await import("./packages.ts");
+        const { localConfirmRetention, localRetentionPreview } = await import("./retention.ts");
+        const { recordAttrs, recordBody } = await import("../shared/work-records/test-fixtures/package-records.ts");
+        const { writeWorkRecord } = await import("../shared/work-records/store.ts");
+        const predecessor = await withWorkRecordOwner(f.root, f.identity, () =>
+            writeWorkRecord(f.root, recordAttrs({ provenance: { sourcePlans: ["other-plan"] } }), recordBody),
+        );
+        const plan = await create(f.identity, {
+            definition: {
+                classification: "PLANNED_CHANGE",
+                status: "verified",
+                supersedes: [predecessor.attrs.recordId.toUpperCase()],
+            },
+        });
+        const planId = plan.metadata.planId;
+        const attemptId = randomUUID();
+        const member = {
+            metadata: plan.metadata,
+            controller: {},
+            input: await capturePlanPackageInput(f.identity, planId),
+        };
+        const source = await retainPlanPackagePublication(f.identity, {
+            planId,
+            attemptId,
+            validatedCommit: "abc123",
+            targetBranch: "main",
+            planCopies: false,
+            copies: [],
+            members: [member],
+        });
+        const immediate = { retentionDays: 0, keepLast: 0 };
+        const policy = { plans: immediate, records: immediate };
+        const [approved] = (await localRetentionPreview(f.root, () => Promise.resolve({ policy, pending: [] }))).records
+            .due;
+        const pending = () => Promise.resolve({ policy, pending: [{ planId, attemptId, source }] });
+        deepEqual((await localRetentionPreview(f.root, pending)).records.due, []);
+        equal((await localConfirmRetention(f.root, "records", approved.token, pending)).deleted, false);
+    } finally {
+        await f.cleanup();
+    }
+});
+
+test(
+    "prune retry resumes detached copies and preserves each saved version",
+    { skip: process.platform === "win32" },
+    async () => {
+        const f = await packageFixture();
+        try {
+            const fs = await import("node:fs/promises");
+            const { checkedProjectRuntimeLayout } = await import("../shared/project-runtime-layout.ts");
+            const { withWorkRecordOwner } = await import("../shared/work-records/owner.ts");
+            const { writeWorkRecord } = await import("../shared/work-records/store.ts");
+            const { retainWorkRecordLocation } = await import("../shared/work-records/import.ts");
+            const { recordAttrs, recordBody } = await import("../shared/work-records/test-fixtures/package-records.ts");
+            const { createWorkRecordMnemotecaFixture } =
+                await import("../shared/work-records/test-fixtures/mnemoteca-port.ts");
+            const { setCustomSetting } = await import("../shared/settings.js");
+            const { previewRecordRetention, confirmRetention } = await import("./index.ts");
+            const { localConfirmRetention } = await import("./retention.ts");
+            await setCustomSetting("workRecords", { retentionDays: 0, retentionKeepLast: 0 }, "project", f.root);
+            const port = createWorkRecordMnemotecaFixture();
+            const runtime = await checkedProjectRuntimeLayout(f.root);
+            const directory = join(runtime.selected.internalRoot, "prune-copies");
+            await fs.mkdir(directory, { recursive: true });
+            const identityOf = async (path: string) => {
+                const stat = await fs.stat(path, { bigint: true });
+                return [stat.dev, stat.ino, stat.birthtimeNs].join("/");
+            };
+            for (const scenario of ["approved", "edited", "two-saves", "moved-directory"] as const) {
+                const filename = scenario + "/copy.md";
+                const parent = join(f.root, scenario);
+                await fs.mkdir(parent);
+                const path = join(f.root, filename);
+                const digest = await withWorkRecordOwner(f.root, f.identity, async () => {
+                    const record = await writeWorkRecord(f.root, recordAttrs(), recordBody);
+                    await fs.writeFile(path, record.markdown);
+                    const digest = hash(record.markdown);
+                    await retainWorkRecordLocation(record.attrs.recordId, {
+                        kind: "copy",
+                        sourcePath: path,
+                        repositoryPath: filename,
+                        repositoryId: f.identity.repositoryId,
+                        digest,
+                    });
+                    return digest;
+                });
+                const [{ token }] = (await previewRecordRetention(f.root)).due;
+                equal((await localConfirmRetention(f.root, "records", token, undefined, port)).deleted, true);
+                const stageId = randomUUID();
+                const stageName = "RunWield recovered copy " + stageId + ".md";
+                const staged = join(parent, stageName);
+                const journalKey = hash(JSON.stringify([f.identity.checkoutId, "records", token, filename, digest]));
+                const journalPath = join(directory, journalKey + ".json");
+                await fs.writeFile(
+                    journalPath,
+                    JSON.stringify({
+                        path,
+                        digest,
+                        stageId,
+                        parent: await identityOf(parent),
+                        original: await identityOf(path),
+                        settled: false,
+                    }),
+                );
+                if (scenario !== "approved") {
+                    const editor = join(f.root, "editor.tmp");
+                    await fs.writeFile(editor, "First editor save.");
+                    await fs.rename(editor, path);
+                }
+                await fs.rename(path, staged);
+                if (scenario === "edited" && process.getuid?.() !== 0) {
+                    await fs.chmod(parent, 0o555);
+                    try {
+                        await rejects(confirmRetention(f.root, "records", token, port), /Could not restore/);
+                        equal(await fs.readFile(staged, "utf8"), "First editor save.");
+                    } finally {
+                        await fs.chmod(parent, 0o755);
+                    }
+                }
+                if (scenario === "moved-directory") await fs.rename(parent, join(f.root, "relocated"));
+                if (scenario === "two-saves") await fs.writeFile(path, "Second editor save.");
+                await confirmRetention(f.root, "records", token, port);
+                if (scenario !== "two-saves") await rejects(fs.stat(staged), { code: "ENOENT" });
+                if (scenario === "approved") await rejects(fs.stat(path), { code: "ENOENT" });
+                else if (scenario === "edited") equal(await fs.readFile(path, "utf8"), "First editor save.");
+                else if (scenario === "moved-directory")
+                    equal(await fs.readFile(join(f.root, "relocated", stageName), "utf8"), "First editor save.");
+                else {
+                    equal(await fs.readFile(path, "utf8"), "Second editor save.");
+                    equal(await fs.readFile(staged, "utf8"), "First editor save.");
+                }
+                equal(JSON.parse(await fs.readFile(journalPath, "utf8")).settled, true);
+            }
+        } finally {
+            await f.cleanup();
+        }
+    },
+);

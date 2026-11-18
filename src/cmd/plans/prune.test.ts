@@ -168,6 +168,49 @@ test("canonical archived families retain records and remove only confirmed, cove
         await setCustomSetting("plans", { archiveKeepLast: 1, archiveRetentionDays: 0 }, "project", projectRoot);
         assertEquals(await confirmRetention(projectRoot, "plans", preview.due[0].token!), false);
         await setCustomSetting("plans", { archiveKeepLast: 0, archiveRetentionDays: 0 }, "project", projectRoot);
+        const { read } = await import("../../shared/testing/plan-package-fixture.ts");
+        const { createHash } = await import("node:crypto");
+        const { readFile } = await import("node:fs/promises");
+        const family = await Promise.all(["member", "family"].map((id) => read(identity, id)));
+        const journal = await Promise.all(
+            family.map(async ({ metadata, path, documents }) => ({
+                planId: metadata.planId,
+                name: metadata.name,
+                metadataDigest: createHash("sha256")
+                    .update(await readFile(join(path, "plan.wld.json")))
+                    .digest("hex"),
+                documents: documents.map(({ name, hash }) => ({ name, hash })),
+                versions: metadata.history!.map((m) => m.version),
+            })),
+        );
+        const internal = join(
+            identity.executionAccountHome,
+            ".wld",
+            "projects",
+            identity.projectId,
+            "internal",
+            "plan-packages",
+        );
+        const journalPath = join(internal, "pruning.json");
+        const original = await readFile(join(family[1].path, "context.md"), "utf8");
+        await writeFile(journalPath, JSON.stringify({ phase: "staging", members: journal }));
+        await setCustomSetting("plans", { archiveKeepLast: 1, archiveRetentionDays: 0 }, "project", projectRoot);
+        assertEquals(await confirmRetention(projectRoot, "plans", preview.due[0].token!), false);
+        assertEquals((await listPlanHistory(projectRoot, "member")).milestones.length, 1);
+        await setCustomSetting("plans", { archiveKeepLast: 0, archiveRetentionDays: 0 }, "project", projectRoot);
+        await writeFile(join(family[1].path, "context.md"), original + "Edited before replay.");
+        await writeFile(journalPath, JSON.stringify(journal));
+        const stage = join(internal, "prune-staging");
+        await mkdir(stage);
+        await (await import("node:fs/promises")).rename(family[1].path, join(stage, "0"));
+        const { rejects } = await import("node:assert/strict");
+        await rejects(previewPlanRetention(projectRoot), /pending prune recovery/);
+        await rejects(read(identity, "member"), /pending_recovery/);
+        assertEquals(await confirmRetention(projectRoot, "plans", preview.due[0].token!), false);
+        for (const id of ["family", "member"])
+            assertEquals((await listPlanHistory(projectRoot, id)).milestones.length, 1);
+        assertEquals(await readFile(join(family[1].path, "context.md"), "utf8"), original + "Edited before replay.");
+        await writeFile(join(family[1].path, "context.md"), original);
         assertStringIncludes(await captureLogs(() => runPlansPruneCommand(["--yes"])), "Pruned 1");
         assertEquals(await loadArchivedPlan(projectRoot, "family"), null);
         assertEquals(await loadArchivedPlan(projectRoot, "member"), null);

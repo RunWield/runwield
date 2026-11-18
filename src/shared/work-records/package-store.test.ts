@@ -1,6 +1,6 @@
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { test } from "node:test";
-import { equal, ok, rejects } from "node:assert/strict";
+import { deepEqual, equal, ok, rejects } from "node:assert/strict";
 import fs from "node:fs/promises";
 import { basename, join } from "node:path";
 import { packageFixture, create, read } from "../testing/plan-package-fixture.ts";
@@ -288,11 +288,31 @@ test("a new Recorder pin survives earlier confirmation and its release restores 
         const { reservePreparedPackageRecord } = await import("./package-recording.ts");
         await setCustomSetting("workRecords", { retentionDays: 0, retentionKeepLast: 0 }, "project", f.root);
         await withWorkRecordOwner(f.root, f.identity, async () => {
-            const reserved = await reservePreparedPackageRecord("recording-fixture");
+            const reserved = {
+                ...(await reservePreparedPackageRecord("recording-fixture")),
+                recordId: "abcdefab-1111-4111-8111-111111111111",
+            };
             const path = join(workRecordOwnerLayout()!.internal, "preparations", "recording-fixture.json");
             await fs.unlink(path);
             await writeWorkRecord(f.root, recordAttrs({ recordId: reserved.recordId }), recordBody);
             const [approved] = (await previewRecordRetention(f.root)).due;
+            await fs.writeFile(path, "");
+            await rejects(previewRecordRetention(f.root), /preparation is empty/);
+            await rejects(confirmRetention(f.root, "records", approved.token), /preparation is empty/);
+            equal((await listWorkRecords(f.root)).length, 1);
+            await fs.writeFile(
+                path,
+                JSON.stringify({
+                    ...reserved,
+                    recordId: crypto.randomUUID(),
+                    sections: {
+                        title: "Updated outcome",
+                        summary: "Revises the earlier outcome.",
+                        supersessionProposals: [{ recordId: reserved.recordId.toUpperCase(), reason: "Revised" }],
+                    },
+                }),
+            );
+            equal(await confirmRetention(f.root, "records", approved.token), false);
             await fs.writeFile(path, JSON.stringify(reserved));
             equal(await confirmRetention(f.root, "records", approved.token), false);
             equal((await previewRecordRetention(f.root)).due.length, 0);
@@ -303,6 +323,109 @@ test("a new Recorder pin survives earlier confirmation and its release restores 
         await f.cleanup();
     }
 });
+
+test("retry after canonical unlink clears the old index and copy locations before reimport", async () => {
+    const f = await packageFixture();
+    try {
+        const { previewRecordRetention, confirmRetention } = await import("../../plan-store/index.ts");
+        const { setCustomSetting } = await import("../settings.js");
+        const { importWorkRecords, readWorkRecordLocations } = await import("./import.ts");
+        const options = { mnemotecaPort: createWorkRecordMnemotecaFixture() };
+        await setCustomSetting("workRecords", { retentionDays: 0, retentionKeepLast: 0 }, "project", f.root);
+        await withWorkRecordOwner(f.root, f.identity, async () => {
+            const path = join(f.root, "original.md");
+            const attrs = recordAttrs();
+            const markdown = formatWorkRecordMarkdown(attrs, recordBody);
+            await fs.writeFile(path, markdown);
+            const [{ record }] = await importWorkRecords(f.root, path, options);
+            const oldLocations = await readWorkRecordLocations(attrs.recordId);
+            const [approved] = (await previewRecordRetention(f.root)).due;
+            const owner = workRecordOwnerLayout()!;
+            const receipts = join(owner.root, "internal", "retention", "records");
+            await fs.mkdir(receipts, { recursive: true });
+            await fs.writeFile(
+                join(receipts, approved.token + ".json"),
+                JSON.stringify({
+                    projectId: f.identity.projectId,
+                    owner: f.identity.personalOwner.identity,
+                    repositoryId: f.identity.repositoryId,
+                    kind: "records",
+                    token: approved.token,
+                    identity: attrs.recordId,
+                    copies: [],
+                    completed: false,
+                }),
+            );
+            await fs.unlink(record.path);
+            equal(options.mnemotecaPort.snapshot().length, 1);
+            equal(await confirmRetention(f.root, "records", approved.token, options.mnemotecaPort), true);
+            equal(await readWorkRecordLocations(attrs.recordId), null);
+            equal(options.mnemotecaPort.snapshot().length, 0);
+            const replacement = join(f.root, "replacement.md");
+            await fs.writeFile(replacement, markdown);
+            // A reimport may also be the first writer after the interruption.
+            await fs.writeFile(
+                join(owner.internal, "locations", attrs.recordId + ".json"),
+                JSON.stringify(oldLocations),
+            );
+            await importWorkRecords(f.root, replacement, options);
+            await confirmRetention(f.root, "records", approved.token, options.mnemotecaPort);
+            const locations = (await readWorkRecordLocations(attrs.recordId))?.locations;
+            equal(locations?.length, 1);
+            equal(locations?.[0].sourcePath, replacement);
+            equal(options.mnemotecaPort.snapshot().length, 1);
+            const [next] = (await previewRecordRetention(f.root)).due;
+            await confirmRetention(f.root, "records", next.token, options.mnemotecaPort);
+            equal(await fs.readFile(path, "utf8"), markdown);
+        });
+    } finally {
+        await f.cleanup();
+    }
+});
+
+test(
+    "a read-only copy directory still allows the whole confirmed batch to finish",
+    { skip: process.platform === "win32" || process.getuid?.() === 0 },
+    async () => {
+        const f = await packageFixture();
+        const directory = join(f.root, "read-only");
+        try {
+            const { previewRecordRetention, confirmPruneRequest, pendingPruneRequest } =
+                await import("../../plan-store/index.ts");
+            const { setCustomSetting } = await import("../settings.js");
+            const { importWorkRecords } = await import("./import.ts");
+            const port = createWorkRecordMnemotecaFixture();
+            await setCustomSetting("workRecords", { retentionDays: 0, retentionKeepLast: 0 }, "project", f.root);
+            await fs.mkdir(directory);
+            await withWorkRecordOwner(f.root, f.identity, async () => {
+                const path = join(directory, "copy.md");
+                const attrs = recordAttrs({ createdAt: "2001-01-01T00:00:00Z" });
+                const markdown = formatWorkRecordMarkdown(attrs, recordBody);
+                await fs.writeFile(path, markdown);
+                await importWorkRecords(f.root, path, { mnemotecaPort: port });
+                await writeWorkRecord(f.root, recordAttrs({ createdAt: "2000-01-01T00:00:00Z" }), recordBody);
+                const approved = (await previewRecordRetention(f.root)).due.map(({ recordId, token }) => ({
+                    label: recordId,
+                    token,
+                }));
+                equal(approved.length, 2);
+                equal(approved[0].label, attrs.recordId);
+                await fs.chmod(directory, 0o555);
+                try {
+                    const result = await confirmPruneRequest(f.root, "records", approved, port);
+                    deepEqual(result, { deleted: approved.map((item) => item.label), skipped: [] });
+                    equal((await listWorkRecords(f.root)).length, 0);
+                    equal(await pendingPruneRequest(f.root, "records"), undefined);
+                    equal(await fs.readFile(path, "utf8"), markdown);
+                } finally {
+                    await fs.chmod(directory, 0o755);
+                }
+            });
+        } finally {
+            await f.cleanup();
+        }
+    },
+);
 
 test("interrupted confirmation resumes its original set and skips unsafe, moved or missing copies", async () => {
     const f = await packageFixture();
@@ -343,6 +466,9 @@ test("interrupted confirmation resumes its original set and skips unsafe, moved 
                 sourcePath: outside,
                 repositoryId: crypto.randomUUID(),
             });
+            const edited = join(f.root, "edited.md");
+            await fs.writeFile(edited, first.markdown);
+            stored.locations.push({ ...location, repositoryPath: "edited.md", sourcePath: edited });
             await fs.writeFile(path, JSON.stringify(stored));
             const secondLocation = join(
                 workRecordOwnerLayout()!.internal,
@@ -354,6 +480,9 @@ test("interrupted confirmation resumes its original set and skips unsafe, moved 
                 label: recordId,
                 token,
             }));
+            const editorSave = join(f.root, "editor-save.md");
+            await fs.writeFile(editorSave, "Local editor changes.");
+            await fs.rename(editorSave, edited);
             await rejects(confirmPruneRequest(f.root, "records", approved, port));
             equal((await listWorkRecords(f.root)).length, 1);
             const reserved = await pendingPruneRequest(f.root, "records");
@@ -365,6 +494,7 @@ test("interrupted confirmation resumes its original set and skips unsafe, moved 
             equal((await listWorkRecords(f.root))[0].attrs.recordId, newer.attrs.recordId);
             equal(await fs.readFile(outside, "utf8"), first.markdown);
             equal(await fs.readFile(decoy, "utf8"), first.markdown);
+            equal(await fs.readFile(edited, "utf8"), "Local editor changes.");
             ok((await fs.lstat(join(f.root, "link.md"))).isSymbolicLink());
             equal(await pendingPruneRequest(f.root, "records"), undefined);
         });
