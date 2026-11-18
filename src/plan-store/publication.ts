@@ -497,6 +497,9 @@ async function settlePackageParent(manifest: PackagePublicationManifest, verifie
                 status: "verified",
                 verifiedAt,
             },
+            undefined,
+            undefined,
+            { delivered: parent.input },
         );
     });
 }

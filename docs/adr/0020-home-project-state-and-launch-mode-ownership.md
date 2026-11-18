@@ -19,7 +19,7 @@ The owner confirmed these target constraints on 2026-11-01:
   execution on the remote machine.
 - `wld remote <host>` keeps Plans on the initiating laptop, while code execution stays remote.
 
-This ADR records accepted local, manual-SSH, and managed-remote mechanisms alongside the still-proposed history and retention work. Only the explicitly accepted scope below is current guidance. [ADR-015](015-file-authoritative-session-bundles.md),
+This ADR records accepted local, manual-SSH, and managed-remote mechanisms alongside the still-proposed retention work. Only the explicitly accepted scope below is current guidance. [ADR-015](015-file-authoritative-session-bundles.md),
 [ADR-016](016-proof-bearing-publication-state-machine.md),
 [ADR-017](017-project-runtime-state-under-wld-internal.md), and
 [ADR-018](018-remote-ssh-local-personal-authority.md) remain the existing decisions until reconciled with an accepted
@@ -72,7 +72,7 @@ metadata/family/Tickets and frozen optional delivery copies. Packages complete r
 settle matching personal receipts and release ownership before cleanup; no target metadata-only commit or repository
 Plan is required. Retained Recorder inputs survive code cleanup. Reusing the publication state machine avoids a second
 phase authority, and exact immutable inputs avoid treating a delivery copy as live state. ADR-016 qualifies its legacy
-Git-metadata rule for this internal case. Local and managed selection now use this contract; history retention remains outside it. ADR-004 and ADR-017 qualify the accepted lifecycle/runtime
+Git-metadata rule for this internal case. Local and managed selection now use this contract; milestone pruning remains outside it. ADR-004 and ADR-017 qualify the accepted lifecycle/runtime
 decisions; the broader proposal below remains proposed.
 
 The internal Work Record contract now shares personal Project ownership with admitted packages. Explicit record
@@ -81,7 +81,7 @@ of repository binding; private location evidence retains each binding's copies. 
 can be rebuilt from canonical records after a move or clone link. General Memory namespaces do not move. Retained
 Recorder preparation supplies the existing single-commit publisher and keeps pending copy confidence distinct from
 proof-approved canonical confidence. These choices are qualified in ADR-016 and used by managed owner-side recording;
-later history and retention remain proposed.
+later retention and pruning remain proposed.
 
 ## Accepted Local and Manual-SSH Activation
 
@@ -103,7 +103,17 @@ once settlement succeeds. Managed-remote ownership activation is explicitly not 
 
 The preceding implementation history describes the incremental prerequisites. Its internal-only/public-activation
 limits are superseded for local/manual-SSH use by this section. The managed owner transport is described below;
-history and retention remain proposed.
+retention and pruning remain proposed.
+
+### Milestone history
+
+The package owner stages the event's Markdown in the home Project and publishes a history reference with the
+corresponding metadata write. Approval and delivery use their retained inputs. Archive and closure capture the
+current package. A version's digest covers document names and bytes. Renaming the Plan preserves its history.
+
+Restore uses the package batch journal to compare the whole observed generation, replace its Markdown membership
+and advance the current metadata revision. The journal lets managed operation receipts retain the original outcome.
+Historical documents and private execution inputs have separate lifetimes. Automatic history pruning remains proposed.
 
 ### Plan persistence boundary
 

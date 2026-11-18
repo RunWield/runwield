@@ -13,7 +13,7 @@ metadata RunWield owns moves into a separate file beside them. Each project choo
 and Work Records are also committed to the repository. The full proposal also moves all state currently under
 project `.wld/internal/` into `~/.wld/projects/<projectId>/`. Only local settings and user overrides remain in project
 `.wld/`. Home packages, explicit import, ordinary runtime relocation and managed owner transport are current under
-[Core](runwield-core-prd.md#plan-authoring-and-external-adoption). The remaining history and retention requirements stay
+[Core](runwield-core-prd.md#plan-authoring-and-external-adoption). The remaining pruning and retention requirements stay
 in this proposal until delivered and promoted to their central capabilities.
 
 ## Current Persistence Boundary
@@ -31,9 +31,8 @@ personal-store inputs and settle matching receipts before cleanup. The internal 
 Markdown and supplied prepared Work Record payloads share one artifacts-only commit. Frozen bytes and destinations
 survive retry, rename and target advancement; retained family/Ticket sources remain readable after code cleanup.
 Public discovery now selects personal home packages. Copy settings and canonical recording are owned by Core; managed
-remote launch uses the initiating laptop store and remote-home execution runtime. Milestone retention remains a target
-journey below. A captured input alone is
-persistence evidence, not approval or delivery evidence.
+remote launch uses the initiating laptop store and remote-home execution runtime. Milestone history is current under
+[Core Plan lifecycle](runwield-core-prd.md#plan-lifecycle). Approval and delivery each require a committed event.
 
 ## Problem Description
 
@@ -128,9 +127,8 @@ with no front matter.
       context.md
     my-epic-first-child/                  a child is its own Plan; its parent is in plan.wld.json
   history/
-    my-feature/
-      2026-10-02T14-05-approved/          frozen copy of the Plan folder at each milestone
-      2026-10-04T09-30-delivered/
+    <plan-id>/
+      <version-id>/                       frozen package at a milestone
   work-records/
     my-feature.md                         the live Work Record
   internal/                               personal project runtime state
@@ -171,7 +169,7 @@ Journeys:
 
 ## Capability Requirements
 
-Maturity is stated per capability. The owning Core capabilities define delivered behavior; history and retention
+Maturity is stated per capability. The owning Core capabilities define delivered behavior; retention and pruning
 remain planned extensions.
 
 ### Plan store
@@ -281,22 +279,8 @@ not implicitly synchronize, adopt, or overwrite another personal owner's Plans o
 
 ### Plan history
 
-**Scope and maturity:** Target.
-
-**Requirement: Milestone versions are kept.** When a Plan is approved, delivered, and closed or archived, RunWield keeps
-a frozen copy of its folder, with readable Markdown documents, in the project's history. History works without Git, in
-every project.
-
-**Requirement: A kept version can be restored.** The user can restore a kept version as the live Plan, through RunWield
-or by copying the file.
-
-**Acceptance scenarios:**
-
-- Given an approved Plan that Planner later rewrites, when the user looks at its history, the approved version is there
-  unchanged.
-- Given a machine without Git, when a Plan reaches a milestone, its version is kept.
-- Given a crash between a Plan change and its next milestone, when RunWield restarts, the live Plan is intact and the
-  next milestone keeps it.
+**Scope and maturity:** Current. [Core Plan lifecycle](runwield-core-prd.md#plan-lifecycle) owns milestone capture,
+inspection and content restoration. Pruning remains planned.
 
 ### Project identity
 
@@ -306,7 +290,7 @@ requirements and acceptance scenarios. [Session continuity](runwield-core-prd.md
 [Connect recovery](runwield-connect-prd.md#lazy-project-setup-and-recovery) now follow verified original-store bindings
 across moves and accepted clone links. Physical Session bundles and native locks remain in place. Plan/Work Record
 continuity and relocation use these same verified identities; managed remote personal persistence uses the initiating
-laptop owner. Later history and retention remain targets.
+laptop owner. Later retention and pruning remain targets.
 
 **Requirement: Plans and Sessions belong to the project, not its folder.** RunWield identifies a project by an identity
 it creates once and keeps with the project's local repository configuration, or in a small file for a folder without a
@@ -481,7 +465,7 @@ the smallest useful release includes the store, metadata split, project identity
 document access, and explicit import, with a note telling existing users to run `wld plans import docs/plans/` once.
 Work Records may move
 into the store only in the same release as Work Record delivery copies, so default projects never stop putting Work
-Records in the repository. Plan delivery copies, Work Record retention, and milestone history can follow without
+Records in the repository. Work Record retention can follow without
 changing the store.
 
 This work changes Plan storage and settles the Plan folder layout. The

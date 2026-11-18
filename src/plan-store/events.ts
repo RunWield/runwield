@@ -179,6 +179,8 @@ async function packageEventWorkflow(planName: string, event: PlanEvent) {
     }
     if (event === "implementation_finished" && workflow.attempt)
         await assertPackageWorkflowInput(planName, workflow.readiness || workflow.attempt.input);
+    if (event === "epic_integration_passed") workflow.integration = await capturePackageWorkflowInput(planName);
+    if (event === "epic_integration_stale" || event === "epic_integration_failed") workflow.integration = undefined;
     if (event === "review_approved") workflow.review = await capturePackageWorkflowInput(planName);
     if (event === "readiness_passed") workflow.readiness = await capturePackageWorkflowInput(planName);
     return workflow;
@@ -451,7 +453,13 @@ export async function recordPlanEvent({
             if (currentStatus && before.attrs.status !== currentStatus) throw new Error("Plan status changed.");
             const updates = buildPlanEventUpdates(event, before.attrs.status, { ...details, triageMeta: before.attrs });
             const workflow = await packageEventWorkflow(planName, event);
-            return await updatePackageWorkflowMetadata(planName, updates, before.revision, workflow);
+            return await updatePackageWorkflowMetadata(
+                planName,
+                updates,
+                before.revision,
+                workflow,
+                event === "review_approved" ? "approved" : undefined,
+            );
         });
     }
     if (currentPackageSelection() && event === "validation_passed") {
@@ -502,7 +510,16 @@ export async function recordPlanEvent({
         const updates = buildPlanEventUpdates(event, canonicalStatus, canonicalDetails);
         if (currentPackageSelection()) {
             const workflow = await packageEventWorkflow(planName, event);
-            const attrs = await updatePackageWorkflowMetadata(planName, updates, beforePlan.revision, workflow);
+            const integration = event === "epic_publication_confirmed" ? workflow.integration : undefined;
+            const integrated = integration?.inputs.find((input) => input.planId === beforePlan.attrs.planId);
+            if (integration && !integrated) throw new Error("Epic integration evidence omits its Plan input.");
+            const attrs = await updatePackageWorkflowMetadata(
+                planName,
+                updates,
+                beforePlan.revision,
+                workflow,
+                event === "review_approved" ? "approved" : integrated ? { delivered: integrated } : undefined,
+            );
             return { attrs, details: canonicalDetails };
         }
         const attrs = await updatePlanFrontMatter(cwd, planName, updates, canonicalDetails.triageMeta, {

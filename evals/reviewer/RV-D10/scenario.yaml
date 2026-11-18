@@ -2,14 +2,14 @@ schemaVersion: 1
 scenarioId: RV-D10
 track: discovery
 group: correctness-beyond-plan
-fixtureRevision: 2
+fixtureRevision: 3
 planPath: docs/plans/resume-saved-publication.md
 baselineRef: main
 candidateRef: change
 language: typescript
 runtime:
     name: bun
-    version: 1.4.3
+    version: ^1.4.0
 sourcePath: source
 tags:
     - repair-publication-retry

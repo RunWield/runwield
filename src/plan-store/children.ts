@@ -18,8 +18,7 @@ import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
 import {
     commitPlanPackageBatch,
     listPlanPackages,
-    type LoadedPlanPackage,
-    type PackageDocuments,
+    packageDocumentText,
     type PlanPackageBatchWrite,
 } from "./packages.ts";
 import { currentPackageProject, packageController, packageWorkflowRevision } from "./workflows.ts";
@@ -27,12 +26,6 @@ import { buildPlanEventUpdates } from "../shared/workflow/plan-lifecycle.js";
 import { pickControllerState } from "../shared/workflow/controller-state.ts";
 import { writePackageControllerEvidence } from "./controllers.ts";
 import { isEpicPlan, isProjectPlan } from "../shared/project-plan.ts";
-
-function documents(plan: LoadedPlanPackage): PackageDocuments {
-    const result: PackageDocuments = { "context.md": "", "validation.md": "" };
-    for (const document of plan.documents) result[document.name] = new TextDecoder().decode(document.bytes);
-    return result;
-}
 
 /** Allocate the whole family before resolving relations, then publish one recoverable generation. */
 export async function authorPackageChildren(
@@ -111,7 +104,9 @@ export async function authorPackageChildren(
             origin: "internal",
         };
         const attrs = parsePlanFrontMatter(injectFrontMatter(child.content, metadata)).attrs;
-        const before = existing ? { metadata: existing.metadata, documents: documents(existing) } : null;
+        const before = existing
+            ? { metadata: existing.metadata, documents: packageDocumentText(existing.documents) }
+            : null;
         writes.push({
             before,
             metadata: {
@@ -161,8 +156,8 @@ export async function authorPackageChildren(
             const state = { ...(await packageController(parent)), ...pickControllerState(updates) };
             const controller = await writePackageControllerEvidence(identity, parent.metadata.planId, state);
             writes.push({
-                before: { metadata: parent.metadata, documents: documents(parent) },
-                documents: documents(parent),
+                before: { metadata: parent.metadata, documents: packageDocumentText(parent.documents) },
+                documents: packageDocumentText(parent.documents),
                 metadata: {
                     ...parent.metadata,
                     revision: parent.metadata.revision + 1,
@@ -173,16 +168,16 @@ export async function authorPackageChildren(
             });
         } else if (writes.length) {
             writes.push({
-                before: { metadata: parent.metadata, documents: documents(parent) },
-                documents: documents(parent),
+                before: { metadata: parent.metadata, documents: packageDocumentText(parent.documents) },
+                documents: packageDocumentText(parent.documents),
                 metadata: { ...parent.metadata, revision: parent.metadata.revision + 1 },
             });
         }
     }
     if (writes.length && !writes.some((write) => write.metadata.planId === parent.metadata.planId)) {
         writes.push({
-            before: { metadata: parent.metadata, documents: documents(parent) },
-            documents: documents(parent),
+            before: { metadata: parent.metadata, documents: packageDocumentText(parent.documents) },
+            documents: packageDocumentText(parent.documents),
             metadata: { ...parent.metadata, revision: parent.metadata.revision + 1 },
         });
     }
