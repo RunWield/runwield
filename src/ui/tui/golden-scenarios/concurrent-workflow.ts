@@ -209,6 +209,8 @@ export const concurrentPlansIdentityScenario = {
             planNames: ["concurrent-a", "concurrent-b"],
             key: "concurrentActiveProjectState",
         },
+        // Observe completed validation before waiting for publication; the child still has one 240-second deadline.
+        { type: "waitForPlanStatus", planName: "concurrent-a", statuses: ["reviewed", "verified"], timeoutMs: 120000 },
         { type: "waitForPlanStatus", planName: "concurrent-a", statuses: ["verified"], timeoutMs: 120000 },
         { type: "waitForPlanStatus", planName: "concurrent-b", statuses: ["verified"], timeoutMs: 120000 },
         { type: "waitForConcurrentIdle", name: "plan-b", timeoutMs: 120000 },

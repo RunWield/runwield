@@ -204,15 +204,16 @@ test("first canonical record after cleanup keeps sealed prose, record identity a
         deepEqual(await readPlanPublicationReference(root, "delivery"), reference);
         equal(await git(remote, ["rev-parse", "main"]), publishedHead);
         await rejects(stat(workflow.executionCwd!), { code: "ENOENT" });
-        const holder = spawn(process.execPath, [sessionDriver, "hold", root, savedSession.path], {
-            cwd: root,
+        await rename(root, moved);
+        const holder = spawn(process.execPath, [sessionDriver, "hold", moved, savedSession.path], {
+            cwd: moved,
             stdio: ["pipe", "pipe", "pipe"],
         });
         let holderErrors = "";
         holder.stderr.on("data", (chunk) => {
             holderErrors += chunk.toString();
         });
-        const holderExit = new Promise<void>((resolve) => holder.once("exit", () => resolve()));
+        const holderExit = new Promise<number | null>((resolve) => holder.once("exit", resolve));
         try {
             await new Promise<void>((resolve, reject) => {
                 holder.once("error", reject);
@@ -222,14 +223,13 @@ test("first canonical record after cleanup keeps sealed prose, record identity a
                     resolve();
                 });
             });
-            await rename(root, moved);
             const contended = await sessionCommand("contend", moved, savedSession.path);
             equal(contended.sessionId, savedSession.sessionId);
             equal(contended.projectId, savedSession.projectId);
-            ok(contended.contention?.includes("Session is open in another RunWield surface"));
+            equal(contended.contention, "managed_operation_in_progress");
         } finally {
             holder.stdin.end("release\n");
-            await holderExit;
+            equal(await holderExit, 0, holderErrors);
         }
         const continued = await sessionCommand("resume", moved, savedSession.path);
         equal(continued.sessionId, savedSession.sessionId);
