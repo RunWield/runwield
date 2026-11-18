@@ -594,7 +594,9 @@ An unfinished imported legacy attempt continues through its revalidated original
 **Requirement: Keep and restore Plan History.** Approval, confirmed delivery, manual closure and archive each keep
 a frozen version of the Plan's Markdown under its stable ID. Each approved Sequence member has its own version.
 Delivery uses the publication's retained documents, even after later edits or execution cleanup. Manual closure
-keeps the owner's reason. A Plan can start with empty history. Reading history creates no milestones.
+keeps the owner's reason. A Plan can start with empty history. When an Epic passed integration before Core retained
+its documents, publication confirms delivery without creating a historical version from later edits. Inspecting history
+preserves Project ownership and leaves an uninitialized store untouched.
 
 **Acceptance: Inspect and restore a milestone.** Given a renamed or archived Plan, its ID still resolves its history.
 The user can inspect the named documents and restore the complete set on an editable Plan. Restore checks the
@@ -604,7 +606,8 @@ from the live Plan. Archived Plans require archive restore before editing. A sta
 
 **Acceptance: Keep one version per event.** Given an interruption, retry exposes a complete version once. A later
 approval gets a distinct version even when the documents repeat. Local and non-Git Projects use their personal
-store. A managed remote Project uses its initiating laptop and can retry a restore after losing the acknowledgement.
+store. A managed remote Project reads large catalogs and document sets in bounded replies from its initiating laptop.
+Retrying after a lost restore acknowledgement returns the original revision and preserves intervening edits.
 
 **Requirement: Conversation is not a Plan Status.** Review chat alone does not change status or write Plan front
 matter. Legacy `feedback` and `in_review` Plans read as `draft` in every surface, including Epic, Sequence, dependency,

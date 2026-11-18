@@ -510,20 +510,15 @@ export async function recordPlanEvent({
         const updates = buildPlanEventUpdates(event, canonicalStatus, canonicalDetails);
         if (currentPackageSelection()) {
             const workflow = await packageEventWorkflow(planName, event);
+            const integration = event === "epic_publication_confirmed" ? workflow.integration : undefined;
+            const integrated = integration?.inputs.find((input) => input.planId === beforePlan.attrs.planId);
+            if (integration && !integrated) throw new Error("Epic integration evidence omits its Plan input.");
             const attrs = await updatePackageWorkflowMetadata(
                 planName,
                 updates,
                 beforePlan.revision,
                 workflow,
-                event === "review_approved"
-                    ? "approved"
-                    : event === "epic_publication_confirmed"
-                      ? {
-                            delivered: workflow.integration?.inputs.find(
-                                (input) => input.planId === beforePlan.attrs.planId,
-                            ),
-                        }
-                      : undefined,
+                event === "review_approved" ? "approved" : integrated ? { delivered: integrated } : undefined,
             );
             return { attrs, details: canonicalDetails };
         }

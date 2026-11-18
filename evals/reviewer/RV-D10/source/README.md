@@ -8,7 +8,7 @@ with its error for a later operator action. A successful push is recorded as pub
 validated commit ID. The repair workspace must be clean and exclusively owned by the service. Attempt files live
 outside its working tree. Validation of the supplied candidate is the caller's responsibility.
 
-Use Bun 1.4.3 and Git. Run `bun run test`. Tests create disposable local repositories outside this project. They do not
+Use Bun ^1.4.0 and Git. Run `bun run test`. Tests create disposable local repositories outside this project. They do not
 use the materialized project's Git history or global Git configuration.
 
 The approved change is in [Resume saved publication attempts](docs/plans/resume-saved-publication.md).

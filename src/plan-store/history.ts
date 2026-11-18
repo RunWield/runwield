@@ -38,7 +38,7 @@ export interface PlanHistory {
     milestones: PlanMilestone[];
 }
 
-async function withHistoryPlan<T>(cwd: string, reference: string, run: (plan: LoadedPlanPackage) => Promise<T>) {
+async function withHistoryPlan<T>(cwd: string, reference: string, run: (plan: LoadedPlanPackage) => T | Promise<T>) {
     const missing = (): never => {
         throw new Error("Plan history requires an admitted Plan.");
     };
@@ -46,17 +46,23 @@ async function withHistoryPlan<T>(cwd: string, reference: string, run: (plan: Lo
         cwd,
         async () => {
             const owner = currentPackageProject() ?? missing();
-            return await withPlanPackageCatalogDiscovery(owner, async () => {
-                const catalog = await listPlanPackages(owner, true);
-                if (catalog.issues.length) throw new Error(catalog.issues[0].message);
-                const plan =
-                    catalog.packages.find((plan) => plan.metadata.planId === reference) ??
-                    catalog.packages.find((plan) => plan.metadata.name === reference) ??
-                    missing();
-                const planId = plan.metadata.planId;
-                await settleSequenceHistory(cwd, planId);
-                return await withPlanPackageLocks(owner, [planId], async () => run(await selectedPackage({ planId })));
-            });
+            return await withPlanPackageCatalogDiscovery(
+                owner,
+                async () => {
+                    const catalog = await listPlanPackages(owner, true);
+                    if (catalog.issues.length) throw new Error(catalog.issues[0].message);
+                    const plan =
+                        catalog.packages.find((plan) => plan.metadata.planId === reference) ??
+                        catalog.packages.find((plan) => plan.metadata.name === reference) ??
+                        missing();
+                    const planId = plan.metadata.planId;
+                    await settleSequenceHistory(cwd, planId);
+                    return await withPlanPackageLocks(owner, [planId], async () =>
+                        run(await selectedPackage({ planId })),
+                    );
+                },
+                missing,
+            );
         },
         missing,
     );
@@ -64,7 +70,7 @@ async function withHistoryPlan<T>(cwd: string, reference: string, run: (plan: Lo
 
 export async function listPlanHistory(cwd: string, reference: string): Promise<PlanHistory> {
     if (managedPersonalStoreActive()) return await readManagedPlanHistory(cwd, reference);
-    return await withHistoryPlan(cwd, reference, async (plan) => ({
+    return await withHistoryPlan(cwd, reference, (plan) => ({
         planId: plan.metadata.planId,
         revision: packageWorkflowRevision(plan),
         milestones: plan.metadata.history ?? [],

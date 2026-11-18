@@ -1214,11 +1214,22 @@ export async function withPlanPackageLocks<T>(
     return await mutate(identity, planIds, () => action());
 }
 
-/** Private authoring discovery: hold the catalog before choosing identity, then acquire the complete Plan set once. */
+/** Hold the catalog before choosing identity, then acquire the complete Plan set once. */
 export async function withPlanPackageCatalogDiscovery<T>(
     identity: ProjectIdentity,
     action: () => Promise<T>,
+    onUninitialized?: () => T,
 ): Promise<T> {
+    if (onUninitialized) {
+        const paths = layout(identity);
+        const catalogLock = join(paths.locks, "catalog.lock");
+        await safe(paths.home, catalogLock);
+        if (!(await stat(catalogLock))) {
+            // A copied store can have packages or pending recovery before it has a local lock.
+            const catalog = await listPlanPackages(identity, true);
+            if (!catalog.packages.length && !catalog.issues.length) return onUninitialized();
+        }
+    }
     return await mutate(identity, null, () => action(), true);
 }
 

@@ -1,3 +1,4 @@
+import { parseHistoryList, parseMilestoneDocuments } from "../shared/remote/project-store-protocol.ts";
 import { test } from "node:test";
 import { equal, deepEqual, rejects } from "node:assert/strict";
 import { randomUUID, createHash } from "node:crypto";
@@ -720,12 +721,16 @@ test("managed milestone replay returns the first committed revision after later 
             operationId: randomUUID(),
             expectedRevision: plan.revision!,
         });
-        const listed = (await service.execute({ kind: "list-history", reference: planId })).result;
-        if (!("history" in listed)) throw new Error("Missing history.");
-        const version = listed.history.milestones[0].version;
-        const shown = (await service.execute({ kind: "show-history", reference: "proposal", version })).result;
-        equal("milestoneDocuments" in shown && shown.milestoneDocuments["context.md"], "# Approved\n");
-        const expectedRevision = await savePlanProse(fixture.root, "proposal", "# Changed\n", listed.history.revision);
+        const listed = (await service.execute({ kind: "list-history", reference: planId, offset: 0, snapshot: "" }))
+            .result;
+        if (!("historyPage" in listed)) throw new Error("Missing history.");
+        const history = parseHistoryList(listed.historyPage.text);
+        const version = history.milestones[0].version;
+        const shown = (
+            await service.execute({ kind: "show-history", reference: "proposal", version, offset: 0, snapshot: "" })
+        ).result;
+        equal("historyPage" in shown && parseMilestoneDocuments(shown.historyPage.text)["context.md"], "# Approved\n");
+        const expectedRevision = await savePlanProse(fixture.root, "proposal", "# Changed\n", history.revision);
         const command = {
             kind: "restore-history" as const,
             version,

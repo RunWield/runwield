@@ -360,6 +360,7 @@
     "src/shared/remote/composed-store-recovery.test.ts",
     "src/shared/remote/control.test.ts",
     "src/shared/remote/entry-isolation.test.ts",
+    "src/shared/remote/managed-store-activation-copies.test.ts",
     "src/shared/remote/managed-store-activation.test.ts",
     "src/shared/remote/managed-store-adoption.test.ts",
     "src/shared/remote/managed-store-non-git.test.ts",

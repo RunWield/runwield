@@ -623,7 +623,7 @@ export async function updatePackageWorkflowMetadata(
     updates: Partial<PlanFrontMatter>,
     expectedRevision?: string,
     workflowUpdate?: PackageWorkflowEvidence,
-    milestone?: "approved" | { delivered: PackageInputReference | undefined },
+    milestone?: "approved" | { delivered: PackageInputReference },
 ) {
     return await packageWorkflowLocks([planName], async () => {
         const current = (await selectedPackage(planName))!;

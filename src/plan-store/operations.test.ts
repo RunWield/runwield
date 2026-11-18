@@ -9,7 +9,7 @@ import {
     operatePlanFile,
 } from "./index.ts";
 import { seedPlanState } from "../shared/testing/plan-state-fixture.ts";
-import { packageFixture } from "../shared/testing/plan-package-fixture.ts";
+import { packageFixture, tree } from "../shared/testing/plan-package-fixture.ts";
 
 test("competing authoring commands preserve one complete context and validation generation", async () => {
     const fixture = await packageFixture();
@@ -307,6 +307,21 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { deepEqual, notEqual } from "node:assert/strict";
 
+test("history list and show leave an admitted local Project with no Plans untouched", async () => {
+    const fixture = await packageFixture();
+    try {
+        const { executionAccountHome, projectId } = fixture.identity;
+        const store = join(executionAccountHome, ".wld", "projects", projectId);
+        const before = await tree(store);
+        await rejects(listPlanHistory(fixture.root, "missing"), /requires an admitted Plan/);
+        deepEqual(await tree(store), before);
+        await rejects(showPlanMilestone(fixture.root, "missing", "version"), /requires an admitted Plan/);
+        deepEqual(await tree(store), before);
+    } finally {
+        await fixture.cleanup();
+    }
+});
+
 test("non-Git history freezes the approved package and restores its membership against a whole-package revision", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "plan-history-"));
     try {
@@ -421,6 +436,45 @@ test("an interrupted restore preserves an intervening edit and resumes one compl
         equal((await listPlanHistory(fixture.root, planId)).revision, revision);
         equal(await readFile(join(folder, "validation.md"), "utf8"), "Checks\n");
         equal((await loadPlan(fixture.root, "proposal"))?.attrs.status, "draft");
+    } finally {
+        await fixture.cleanup();
+    }
+});
+
+test("Epic publication keeps only the Markdown retained by its integration gate", async () => {
+    const fixture = await packageFixture();
+    try {
+        for (const name of ["legacy", "current"]) {
+            await authorLocalPlan(fixture.root, {
+                planName: name,
+                contextMarkdown: "# Integrated\n",
+                definition: { classification: "PROJECT", type: "epic" },
+            });
+            await seedPlanState(fixture.root, name, { status: name === "legacy" ? "reviewed" : "implemented" });
+            if (name === "current")
+                await recordPlanEvent({
+                    cwd: fixture.root,
+                    planName: name,
+                    event: "epic_integration_passed",
+                    details: { integrationCommit: "abc" },
+                });
+            const live = (await loadPlan(fixture.root, name))!;
+            await writeFile(join(dirname(live.path), "context.md"), "# Later edit\n");
+            await recordPlanEvent({ cwd: fixture.root, planName: name, event: "epic_publication_confirmed" });
+            equal((await loadPlan(fixture.root, name))?.attrs.status, "verified");
+            const history = await listPlanHistory(fixture.root, name);
+            if (name === "legacy") deepEqual(history.milestones, []);
+            else {
+                deepEqual(
+                    history.milestones.map((entry) => entry.milestone),
+                    ["delivered"],
+                );
+                equal(
+                    (await showPlanMilestone(fixture.root, name, history.milestones[0].version))["context.md"],
+                    "# Integrated\n",
+                );
+            }
+        }
     } finally {
         await fixture.cleanup();
     }

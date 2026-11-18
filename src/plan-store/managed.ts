@@ -5,10 +5,12 @@ import { randomUUID } from "node:crypto";
 import { join, relative, isAbsolute } from "node:path";
 import { personalGlobalRoot } from "../shared/remote/personal-resources.ts";
 import { readFile, rename } from "node:fs/promises";
-import { ProjectStoreClient } from "../shared/remote/project-store-client.ts";
+import { ProjectStoreClient, ProjectStorePreconditionError } from "../shared/remote/project-store-client.ts";
 import {
     validateProjectStoreBinding,
     sameProjectStoreBinding,
+    parseHistoryList,
+    parseMilestoneDocuments,
     validateProjectStoreRequest,
 } from "../shared/remote/project-store-protocol.ts";
 import type { RemoteSessionControlConnection } from "../shared/remote/session-control-client.ts";
@@ -190,6 +192,7 @@ export async function withManagedPlan<T>(
     return await selections.run(current, run);
 }
 interface RetainedManagedCommand {
+    acknowledged?: boolean;
     binding: ProjectStoreBinding;
     command: ProjectStoreCommand;
 }
@@ -198,10 +201,13 @@ export async function mutateManagedPlan(cwd: string, command: ProjectStoreComman
     const owner = await client(cwd, true);
     if (!("operationId" in command)) throw new Error("Managed mutation requires an operation identity.");
     const { operationId: _operationId, ...intent } = command;
+    // A CLI retry observes today's revision, but a pending restore still owns its original precondition.
     const stableIntent =
-        command.kind === "author-plan" && !command.input.expectedRevision
-            ? { kind: command.kind, input: command.input }
-            : intent;
+        command.kind === "restore-history"
+            ? { kind: command.kind, planId: command.planId, version: command.version }
+            : command.kind === "author-plan" && !command.input.expectedRevision
+              ? { kind: command.kind, input: command.input }
+              : intent;
     const key = operationDigest(JSON.stringify({ binding: owner.binding, command: stableIntent }));
     const directory = join((await enterProjectRuntime(cwd)).selected.transitionJournalsDir, "managed-operations");
     const path = join(directory, `managed-operation-${key}.json`);
@@ -217,12 +223,27 @@ export async function mutateManagedPlan(cwd: string, command: ProjectStoreComman
             retained = { binding: owner.binding, command };
             writeJsonAtomically(path, retained);
         }
-        validateProjectStoreRequest(retained);
+        if (
+            retained.acknowledged &&
+            command.kind === "restore-history" &&
+            retained.command.kind === "restore-history" &&
+            retained.command.expectedRevision !== command.expectedRevision
+        ) {
+            retained = { binding: owner.binding, command };
+            writeJsonAtomically(path, retained);
+        }
+        validateProjectStoreRequest({ binding: retained.binding, command: retained.command });
         if (!sameProjectStoreBinding(retained.binding, owner.binding))
             throw new Error("Managed operation owner changed.");
-        const result = await owner.execute(retained.command);
+        const result = await owner.execute(retained.command).catch((error) => {
+            if (command.kind === "restore-history" && error instanceof ProjectStorePreconditionError)
+                writeJsonAtomically(path, { ...retained, acknowledged: true });
+            throw error;
+        });
         if (!("status" in result.result) || result.result.status !== "completed")
             throw new Error("Managed Plan operation remains recoverable under its retained identity.");
+        if (command.kind === "restore-history" && !retained.acknowledged)
+            writeJsonAtomically(path, { ...retained, acknowledged: true });
         return result.result;
     } finally {
         lock.close();
@@ -1434,21 +1455,35 @@ export async function settleRetainedExecutionAbandonment(cwd: string, name: stri
     });
 }
 
-export async function readManagedPlanHistory(
-    cwd: string,
-    reference: string,
-): Promise<import("./history.ts").PlanHistory> {
-    const { result } = await (await client(cwd, true)).execute({ kind: "list-history", reference });
-    if (!("history" in result)) throw new Error("Managed Plan history is unavailable.");
-    return result.history;
+async function readHistoryPages(cwd: string, reference: string, version?: string) {
+    const owner = await client(cwd);
+    if (!owner) throw new Error("Plan history requires an admitted Plan.");
+    const chunks: string[] = [];
+    let offset = 0;
+    let snapshot = "";
+    while (true) {
+        const command =
+            version === undefined
+                ? { kind: "list-history" as const, reference, offset, snapshot }
+                : { kind: "show-history" as const, reference, version, offset, snapshot };
+        const { result } = await owner.execute(command);
+        if (!("historyPage" in result)) throw new Error("Missing Plan history page.");
+        const page = result.historyPage;
+        chunks.push(page.text);
+        if (page.complete) {
+            const text = chunks.join("");
+            if (operationHash(text) !== page.snapshot) throw new Error("Incomplete Plan history response.");
+            return text;
+        }
+        offset += page.text.length;
+        snapshot = page.snapshot;
+    }
 }
 
-export async function showManagedPlanMilestone(
-    cwd: string,
-    reference: string,
-    version: string,
-): Promise<import("./packages.ts").PackageDocuments> {
-    const { result } = await (await client(cwd, true)).execute({ kind: "show-history", reference, version });
-    if (!("milestoneDocuments" in result)) throw new Error("Managed Plan milestone is unavailable.");
-    return result.milestoneDocuments;
+export async function readManagedPlanHistory(cwd: string, reference: string) {
+    return parseHistoryList(await readHistoryPages(cwd, reference));
+}
+
+export async function showManagedPlanMilestone(cwd: string, reference: string, version: string) {
+    return parseMilestoneDocuments(await readHistoryPages(cwd, reference, version));
 }

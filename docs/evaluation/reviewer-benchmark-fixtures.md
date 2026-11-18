@@ -10,11 +10,9 @@ The fixture contract belongs to the Reviewer evaluator. The current interim runn
 result capture, resume, and single-configuration reports. The shared runner, repetition, repair-state execution, and
 paired comparison remain target. See [usage and human adjudication](../../evals/reviewer/README.md#run-and-score).
 
-RV-D04, RV-D12, RV-D13, and RV-M01 are revision 2 after owner adjudication. RV-D01, RV-D02, RV-D03, RV-D05, and
-RV-D06 are revision 1. The original paid baseline measures revision 1 only; see the [revision notes](../../evals/reviewer/README.md#fixture-revisions-after-owner-adjudication).
+The [fixture revision notes](../../evals/reviewer/README.md#fixture-revisions-after-owner-adjudication) list the current revisions. The original paid baseline measures revision 1.
 
-The 17 materialized discovery cases live in nine packages under `evals/reviewer/`: RV-D01–D06 A/B, RV-D12 A/B,
-RV-D13 A/B, and RV-M01 A. The original nine-case smoke selection is unchanged. They are Bun 1.4.3 TypeScript
+The 33 discovery cases live in 17 packages under `evals/reviewer/`. They are Bun ^1.4.0 TypeScript
 projects. RunWield CI excludes their `source/`, `variants/`, and `evaluation/` payloads; fixture admission checks them
 separately. Runner code and tests remain in normal CI.
 
@@ -55,14 +53,14 @@ schemaVersion: 1
 scenarioId: RV-D04
 track: discovery
 group: correctness-beyond-plan
-fixtureRevision: 2
+fixtureRevision: 3
 planPath: docs/plans/reuse-plan-summaries.md
 baselineRef: main
 candidateRef: change
 language: typescript
 runtime:
     name: bun
-    version: 1.4.3
+    version: ^1.4.0
 sourcePath: source
 tags:
     - correctness-beyond-plan

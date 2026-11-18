@@ -1,5 +1,10 @@
 import type { ManagedProjectStoreLaunch } from "./project-store-launch.ts";
-import { PreparedProjectStore, type HomeProjectOwner, type PlanExecutionHost } from "../../plan-store/index.ts";
+import {
+    PreparedProjectStore,
+    StalePlanWriteError,
+    type HomeProjectOwner,
+    type PlanExecutionHost,
+} from "../../plan-store/index.ts";
 import {
     readProjectStoreBody,
     sameProjectStoreBinding,
@@ -45,7 +50,9 @@ export class LaptopProjectStoreService {
             if (new TextEncoder().encode(result).length > PROJECT_STORE_MAX_BYTES)
                 return new Response(null, { status: 413 });
             return new Response(result, { headers: { "Content-Type": "application/json" } });
-        } catch {
+        } catch (error) {
+            if (input.command.kind === "restore-history" && error instanceof StalePlanWriteError)
+                return new Response(null, { status: 412 });
             return new Response(null, { status: 409 });
         }
     }

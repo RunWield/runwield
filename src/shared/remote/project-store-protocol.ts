@@ -1,4 +1,6 @@
 import type { ProjectStoreBinding, ProjectStoreCommand, ProjectStoreReply } from "../../plan-store/index.ts";
+// Six bytes per UTF-16 code unit covers JSON escaping in the response envelope.
+export const HISTORY_PAGE_CHARS = 128 * 1024;
 export const PROJECT_STORE_MAX_BYTES = 1024 * 1024;
 export interface ProjectStoreRequest {
     binding: ProjectStoreBinding;
@@ -74,8 +76,8 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
         "checkpoint-retained-execution": [...common, "attemptId", "updates", "options"],
         "read-retained-execution": ["kind", "reference", "attemptId"],
         "archive-catalog": ["kind"],
-        "list-history": ["kind", "reference"],
-        "show-history": ["kind", "reference", "version"],
+        "list-history": ["kind", "reference", "offset", "snapshot"],
+        "show-history": ["kind", "reference", "version", "offset", "snapshot"],
         "restore-history": [...common, "version"],
         "read-archive": ["kind", "reference"],
         "archive-plan": [...common, "reason", "force", "now"],
@@ -173,6 +175,13 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
         (typeof command.version !== "string" || !/^[a-f0-9-]{36}$/.test(command.version))
     )
         throw new Error("Invalid history version.");
+    if (
+        (command.kind === "list-history" || command.kind === "show-history") &&
+        (!Number.isSafeInteger(command.offset) ||
+            command.offset < 0 ||
+            (command.offset === 0 ? command.snapshot !== "" : !/^[a-f0-9]{64}$/.test(command.snapshot)))
+    )
+        throw new Error("Invalid history cursor.");
     if ("operationId" in command && !/^[a-f0-9-]{36}$/.test(command.operationId))
         throw new Error("Invalid operation identity.");
     if ("expectedRevision" in command && !/^[a-f0-9]{64}$/.test(command.expectedRevision))
@@ -455,8 +464,7 @@ export function validateProjectStoreReply(reply: ProjectStoreReply, request: Pro
     if ("children" in result) allowed = ["children"];
     if ("retainedRecording" in result) allowed = ["retainedRecording"];
     if ("retainedExecution" in result) allowed = ["retainedExecution"];
-    if ("history" in result) allowed = ["history"];
-    if ("milestoneDocuments" in result) allowed = ["milestoneDocuments"];
+    if ("historyPage" in result) allowed = ["historyPage"];
     if ("archives" in result) allowed = ["archives"];
     if ("archived" in result) allowed = ["archived"];
     if ("resourceCatalog" in result) allowed = ["resourceCatalog"];
@@ -519,35 +527,20 @@ export function validateProjectStoreReply(reply: ProjectStoreReply, request: Pro
                     (request.command.attemptId && result.retainedExecution.attempt.id !== request.command.attemptId)))
         )
             throw new Error("Invalid retained execution reply.");
-    } else if (request.command.kind === "list-history") {
+    } else if (request.command.kind === "list-history" || request.command.kind === "show-history") {
+        if (!("historyPage" in result)) throw new Error("Missing Plan history page.");
+        const page = result.historyPage;
         if (
-            !("history" in result) ||
-            !identity(result.history?.planId) ||
-            !/^[a-f0-9]{64}$/.test(result.history.revision) ||
-            !Array.isArray(result.history.milestones) ||
-            result.history.milestones.some(
-                (entry) =>
-                    !entry ||
-                    !/^[a-f0-9-]{36}$/.test(entry.version) ||
-                    !["approved", "delivered", "closed", "archived"].includes(entry.milestone) ||
-                    typeof entry.at !== "string" ||
-                    typeof entry.reason !== "string" ||
-                    !/^[a-f0-9]{64}$/.test(entry.digest),
-            )
+            !page ||
+            typeof page.text !== "string" ||
+            !page.text.length ||
+            page.text.length > HISTORY_PAGE_CHARS ||
+            typeof page.complete !== "boolean" ||
+            (!page.complete && page.text.length !== HISTORY_PAGE_CHARS) ||
+            !/^[a-f0-9]{64}$/.test(page.snapshot) ||
+            (request.command.offset > 0 && page.snapshot !== request.command.snapshot)
         )
-            throw new Error("Invalid Plan history reply.");
-    } else if (request.command.kind === "show-history") {
-        if (
-            !("milestoneDocuments" in result) ||
-            typeof result.milestoneDocuments?.["context.md"] !== "string" ||
-            typeof result.milestoneDocuments["validation.md"] !== "string" ||
-            Object.entries(result.milestoneDocuments).some(
-                ([name, value]) =>
-                    !["context.md", "validation.md", "manual-qa.md", "integration-report.md"].includes(name) ||
-                    typeof value !== "string",
-            )
-        )
-            throw new Error("Invalid milestone documents reply.");
+            throw new Error("Invalid Plan history page.");
     } else if (request.command.kind === "archive-catalog") {
         if (!("archives" in result) || !Array.isArray(result.archives)) throw new Error("Invalid archive catalog.");
     } else if (request.command.kind === "read-archive") {
@@ -687,4 +680,42 @@ export function validateProjectStoreReply(reply: ProjectStoreReply, request: Pro
         (result.status === "completed" && !/^[a-f0-9]{64}$/.test(result.revision || ""))
     )
         throw new Error("Invalid operation reply.");
+}
+
+export function parseHistoryList(text: string) {
+    const history: import("../../plan-store/index.ts").PlanHistory = JSON.parse(text);
+    if (
+        !history ||
+        !identity(history?.planId) ||
+        !/^[a-f0-9]{64}$/.test(history.revision) ||
+        !Array.isArray(history.milestones) ||
+        history.milestones.some(
+            (entry) =>
+                !entry ||
+                !/^[a-f0-9-]{36}$/.test(entry.version) ||
+                !["approved", "delivered", "closed", "archived"].includes(entry.milestone) ||
+                typeof entry.at !== "string" ||
+                typeof entry.reason !== "string" ||
+                !/^[a-f0-9]{64}$/.test(entry.digest),
+        )
+    )
+        throw new Error("Invalid Plan history reply.");
+    return history;
+}
+
+export function parseMilestoneDocuments(text: string) {
+    const documents: Awaited<ReturnType<typeof import("../../plan-store/index.ts").showPlanMilestone>> =
+        JSON.parse(text);
+    if (
+        !documents ||
+        typeof documents?.["context.md"] !== "string" ||
+        typeof documents["validation.md"] !== "string" ||
+        Object.entries(documents).some(
+            ([name, value]) =>
+                !["context.md", "validation.md", "manual-qa.md", "integration-report.md"].includes(name) ||
+                typeof value !== "string",
+        )
+    )
+        throw new Error("Invalid milestone documents reply.");
+    return documents;
 }

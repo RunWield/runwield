@@ -4,6 +4,7 @@ import type { TriageMeta } from "../../tools/plan-written.ts";
 import type { SessionRuntimeEvent } from "../session/session-runtime-events.js";
 import { hostname } from "node:os";
 import { test } from "node:test";
+import { lstatSync } from "node:fs";
 import fs from "node:fs/promises";
 import {
     chmod as fsChmod,
@@ -305,7 +306,7 @@ for (const malformed of [false, true])
         malformed
             ? "publication preserves malformed authority errors during sibling cleanup"
             : "publication continues when sibling checkouts disappear during consecutive registry reads",
-        async () => {
+        async (t) => {
             const fixture = await makePlannedReviewWorktree();
             return await withRetainedPlanFixture(fixture.projectRoot, async () => {
                 const sibling = `${fixture.projectRoot}-sibling`;
@@ -388,59 +389,45 @@ for (const malformed of [false, true])
                     });
                     const phase = await resolvePhaseContext(args);
                     if (phase.kind !== "ok") throw new Error("Missing phase context");
-                    let finished = false;
+                    // A zero jitter draw retries immediately without registering a wait.
+                    const randomValues = crypto.getRandomValues.bind(crypto);
+                    t.mock.method(crypto, "getRandomValues", (bytes: ArrayBufferView) => {
+                        if (bytes instanceof Uint32Array && bytes.length === 1) return bytes.fill(0x01000000);
+                        return randomValues(bytes);
+                    });
+                    const register = args.session.registerActiveInteraction;
                     let observedRetry = false;
-                    const lockObservations: boolean[] = [];
-                    const observeRetry = (async () => {
-                        while (!finished) {
-                            const retry = [...fixture.hostedSession.getActiveInteractions().keys()].find((id) =>
-                                id.startsWith("validation-retry:"),
+                    args.session.registerActiveInteraction = (id, controller) => {
+                        register(id, controller);
+                        if (id.startsWith("validation-retry:")) {
+                            observedRetry = true;
+                            assertEquals(
+                                lstatSync(publicationLock, { throwIfNoEntry: false }),
+                                undefined,
+                                "Retry must release the publishing Plan lock",
                             );
-                            if (retry) {
-                                observedRetry = true;
-                                const held = await lstat(publicationLock).then(
-                                    () => true,
-                                    (error) => {
-                                        if (error.code === "ENOENT") return false;
-                                        throw error;
-                                    },
-                                );
-                                if (fixture.hostedSession.getActiveInteractions().has(retry))
-                                    lockObservations.push(held);
-                            }
-                            await new Promise((resolve) => setTimeout(resolve, 10));
                         }
-                    })();
+                    };
                     const publish = () =>
                         runPublicationPhase(args, phase.context, {
                             humanReviewMode: "none",
                             humanReviewDecision: "not_required",
                             humanReviewedAt: null,
                         });
-                    try {
-                        if (malformed) {
-                            await assertRejects(publish, Error, "Home runtime marker is unreadable");
-                            assertEquals(observedRetry, false);
-                        } else {
-                            const result = await publish();
-                            assertEquals(result.result.kind, "verified", JSON.stringify(result));
-                            assertEquals(secondRemoved, true, "The second passive read must race cleanup too");
-                            assertEquals(observedRetry, true);
-                            assertEquals(
-                                lockObservations.some(Boolean),
-                                false,
-                                "Retry must release the publishing Plan lock",
-                            );
-                            assertEquals(
-                                await git(fixture.projectRoot, ["show", "main:delivered.txt"]),
-                                "reviewed implementation",
-                            );
-                        }
-                        assertEquals(removed, true, "The real authority inspection boundary must be exercised");
-                    } finally {
-                        finished = true;
-                        await observeRetry;
+                    if (malformed) {
+                        await assertRejects(publish, Error, "Home runtime marker is unreadable");
+                        assertEquals(observedRetry, false);
+                    } else {
+                        const result = await publish();
+                        assertEquals(result.result.kind, "verified", JSON.stringify(result));
+                        assertEquals(secondRemoved, true, "The second passive read must race cleanup too");
+                        assertEquals(observedRetry, true);
+                        assertEquals(
+                            await git(fixture.projectRoot, ["show", "main:delivered.txt"]),
+                            "reviewed implementation",
+                        );
                     }
+                    assertEquals(removed, true, "The real authority inspection boundary must be exercised");
                 } finally {
                     Object.defineProperty(fs, "lstat", { value: lstat });
                     await fsRm(sibling, { recursive: true, force: true });

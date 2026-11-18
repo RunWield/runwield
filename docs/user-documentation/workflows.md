@@ -202,7 +202,7 @@ abandoned; importing does not replace or discard their work.
 ## Plan history
 
 Run `wld plans history <plan-name-or-id>` to list the version ID, milestone, time and reason. An approval, confirmed
-delivery, manual closure or archive adds a version. Plans created before history was enabled can have an empty list.
+delivery, manual closure or archive adds a version. Plans created before history was enabled can have an empty list. If an Epic passed integration before Core began retaining its Markdown, confirming publication preserves its verified status without adding a delivered version.
 
 ```sh
 wld plans history proposal
