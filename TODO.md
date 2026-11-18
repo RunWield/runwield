@@ -1,3 +1,5 @@
+https://github.com/plannotator/effective-html
+
 | Priority | User journey                    | Current coverage                                                               | Missing proof                                                                                                                       |
 | -------- | ------------------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
 | 3        | Authentication onboarding       | `/login` only tests cancellation; `/logout` only tests having no credentials.  | Successful login → provider/model selection → first message, persisted credentials, real logout, and failed-auth recovery.          |
