@@ -25,6 +25,7 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
     const command = request.command;
     if (!command || ("planId" in command && !identity(command.planId))) throw new Error("Invalid Plan identity.");
     const common = ["kind", "planId", "operationId", "expectedRevision"];
+    const recordingReference = "reference" in command && command.reference !== undefined ? ["reference"] : [];
     const commandFields = {
         "inspect-owner": ["kind"],
         "repair-owner": ["kind", "operationId"],
@@ -102,8 +103,8 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
         "verify-recording-delivery": ["kind", "planId", "reference"],
         "read-recording-context": ["kind", "planId", "automatic", "pendingPublication"],
         "read-delivery-sources": ["kind", "planId", "reference", "confirmed"],
-        "reserve-recording": [...common, "attemptId"],
-        "prepare-record": [...common, "attemptId", "sections"],
+        "reserve-recording": [...common, "attemptId", ...recordingReference],
+        "prepare-record": [...common, "attemptId", "sections", ...recordingReference],
         "search-records": ["kind", "planId", "query", "limit"],
         "save-record": [...common, "title", "summary"],
         "reconcile-record-index": [...common, "recordId"],
@@ -323,13 +324,17 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
         command.kind === "read-publication" ||
         command.kind === "settle-publication" ||
         command.kind === "read-delivery-sources" ||
-        command.kind === "verify-recording-delivery"
+        command.kind === "verify-recording-delivery" ||
+        ((command.kind === "reserve-recording" || command.kind === "prepare-record") && command.reference !== undefined)
     ) {
         const ref = command.reference;
         if (
             !ref ||
             ref.kind !== "package" ||
-            ref.planId !== command.planId ||
+            (command.kind !== "reserve-recording" &&
+                command.kind !== "prepare-record" &&
+                ref.planId !== command.planId) ||
+            !identity(ref.planId) ||
             ref.projectId !== request.binding.projectId ||
             ref.repositoryId !== request.binding.repositoryId ||
             !identity(ref.attemptId) ||

@@ -102,7 +102,8 @@ abandonment must be deliberate. This avoids both duplicate execution and indefin
 once settlement succeeds. Managed-remote ownership activation is explicitly not accepted by this local cutover.
 
 The preceding implementation history describes the incremental prerequisites. Its internal-only/public-activation
-limits are superseded for local/manual-SSH use by this section; managed transport and retention limits remain.
+limits are superseded for local/manual-SSH use by this section. The managed owner transport is described below;
+history and retention remain proposed.
 
 ### Plan persistence boundary
 
@@ -178,6 +179,19 @@ records the bounded replacement before it occurs; recovery verifies the original
 before another writer proceeds. Connection caches cannot prove completion after restart. ID reservations survive lost
 receipts, and immutable snapshot references avoid copying frozen history into acknowledgements. Index reconciliation
 uses the existing canonical Work Record owner and does not manufacture publication proof.
+
+An eligible parent Epic can own a child's Work Record. Recording carries the child's retained publication reference
+inside the existing owner operation, while checking the parent's current revision and the sealed Work Record owner.
+The service locks both package identities and validates the exact attempt and retained input before reserving or
+writing the record. Looking for the child's preparation on the parent would lose this relationship; accepting only a
+parent name would lose the proof binding. This extends neither public recording semantics nor storage ownership.
+
+Session resume resolves established admitted storage directories before applying the initial directory-name check.
+A moved Project can retain its original bundle directory and native lock. The resumed current cwd comes from the
+synchronized Project binding; historical segment execution paths remain evidence and are not rewritten.
+
+Managed Session discovery follows the [Session owner's verified identity binding](015-file-authoritative-session-bundles.md#remote-pi-saves-through-the-laptop-owner).
+It does not require Plan-store admission and does not create another Plan owner.
 
 The runtime location change does not move every resource to one logical owner. A Plan reference names an execution
 attempt, while its registry owns the mutable publication phase. Git supplies delivery proof; Plan metadata retains a

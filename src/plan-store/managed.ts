@@ -546,12 +546,14 @@ export async function generateManagedPreparedRecord(
     source: import("../shared/work-records/generation.js").WorkRecordSource,
     attemptId: string,
     options: import("../shared/work-records/generation.js").WorkRecordGenerationOptions,
+    reference: import("./packages.ts").PackagePublicationReference,
 ): ReturnType<typeof import("../shared/work-records/package-recording.ts").generatePreparedPackageRecord> {
     cwd = managedExecutionRoot();
     const plan = await readManagedPlan(cwd, source.planId);
     if (!plan) throw new Error("Recording Plan is unavailable.");
     const reserved = await mutateManagedPlan(cwd, {
         kind: "reserve-recording",
+        reference,
         operationId: randomUUID(),
         planId: source.planId,
         expectedRevision: plan.revision,
@@ -560,7 +562,7 @@ export async function generateManagedPreparedRecord(
     if (!reserved.recordId) throw new Error("Recorder identity was not retained.");
     const { generateRecorderSections } = await import("../shared/work-records/generation.js");
     const context = await readManagedRecordingContext(
-        source.name,
+        reference.planId,
         Boolean(source.pendingPublication),
         Boolean(source.pendingPublication),
     );
@@ -570,6 +572,7 @@ export async function generateManagedPreparedRecord(
     if (!checkpointed) throw new Error("Recording Plan is unavailable after the Recorder turn.");
     const saved = await mutateManagedPlan(cwd, {
         kind: "prepare-record",
+        reference,
         operationId: randomUUID(),
         planId: source.planId,
         expectedRevision: checkpointed.revision,

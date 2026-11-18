@@ -172,7 +172,10 @@ the implementation or merge. `wld wr backfill` regenerates missing or failed rec
 
 Local `wld` keeps Plans and Work Records under `~/.wld/projects/<projectId>/`. Manual SSH followed by `wld` uses that
 remote account’s home. Back up this directory alongside your code: Git delivery copies are not the live store.
-Managed `wld remote` keeps its existing ownership contract until its separate migration.
+Managed `wld remote` keeps canonical Plans and Work Records in the initiating laptop account’s home, even for a
+remote-only Project without a laptop checkout. Code, Git worktrees and execution runtime stay on the remote host.
+If the laptop connection is lost, managed work waits for that owner; it does not switch to the remote account’s
+personal Plans. Opening the same repository through manual SSH uses the remote account’s separate store.
 
 Import old documents explicitly:
 

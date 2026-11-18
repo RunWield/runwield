@@ -227,10 +227,12 @@ export interface ProjectStoreDeliverySourcesRead {
 export interface ProjectStoreRecordingReservation extends PlanMutation {
     kind: "reserve-recording";
     attemptId: string;
+    reference?: PackagePublicationReference;
 }
 export interface ProjectStoreRecordingWrite extends PlanMutation {
     kind: "prepare-record";
     attemptId: string;
+    reference?: PackagePublicationReference;
     sections: GeneratedWorkRecordSections;
 }
 export interface ProjectStoreRecordingContext {
@@ -1376,7 +1378,10 @@ export class PreparedProjectStore {
                             },
                         ),
                     );
-                return await packageWorkflowLocks([{ planId: command.planId }], async () => {
+                const mutationPlans = [{ planId: command.planId }];
+                if ((command.kind === "reserve-recording" || command.kind === "prepare-record") && command.reference)
+                    mutationPlans.push({ planId: command.reference.planId });
+                return await packageWorkflowLocks(mutationPlans, async () => {
                     this.owner();
                     if (command.kind === "reconcile")
                         return inspectOperationReceipt(directory, command.operationId, command.planId);
@@ -1642,32 +1647,40 @@ export class PreparedProjectStore {
                                 });
                             } else if (command.kind === "reserve-recording" || command.kind === "prepare-record") {
                                 const current = await selectedPackage({ planId: command.planId });
+                                const delivery = command.reference
+                                    ? await selectedPackage({ planId: command.reference.planId })
+                                    : current;
                                 const reference =
-                                    current.metadata.workflow?.recordingPreparation ||
-                                    current.metadata.workflow?.delivery?.source;
+                                    delivery.metadata.workflow?.recordingPreparation ||
+                                    delivery.metadata.workflow?.delivery?.source;
                                 if (
                                     !reference ||
                                     reference.attemptId !== command.attemptId ||
+                                    (command.reference &&
+                                        (command.reference.inputId !== reference.inputId ||
+                                            command.reference.digest !== reference.digest)) ||
                                     (await readPlanDocuments(command.planId)).revision !== command.expectedRevision
                                 )
                                     throw new Error("Recording attempt or Plan revision changed.");
+                                await readPlanPackagePublication(owner, command.reference || reference);
+                                const sources = await readPublishedDeliverySources(this.cwd, {
+                                    planName: delivery.metadata.name,
+                                    planId: delivery.metadata.planId,
+                                    packageInput: reference,
+                                    phase: delivery.metadata.workflow?.delivery
+                                        ? "publication_verified"
+                                        : "candidate_sealed",
+                                });
+                                if (!sources.workRecordOwner || sources.workRecordOwner.planId !== command.planId)
+                                    throw new Error("Recording requires its retained parent owner.");
+                                const workRecordOwner = sources.workRecordOwner;
                                 const prepared = await reservePreparedPackageRecord(command.attemptId);
                                 if (command.kind === "reserve-recording")
                                     return { revision: command.expectedRevision, recordId: prepared.recordId };
                                 const generate = async () => {
-                                    const sources = await readPublishedDeliverySources(this.cwd, {
-                                        planName: plan.metadata.name,
-                                        planId: command.planId,
-                                        packageInput: reference,
-                                        phase: current.metadata.workflow?.delivery
-                                            ? "publication_verified"
-                                            : "candidate_sealed",
-                                    });
-                                    if (!sources.workRecordOwner || sources.workRecordOwner.planId !== command.planId)
-                                        throw new Error("Recording requires its retained parent owner.");
                                     const source = {
-                                        ...sources.workRecordOwner,
-                                        pendingPublication: !current.metadata.workflow?.delivery,
+                                        ...workRecordOwner,
+                                        pendingPublication: !delivery.metadata.workflow?.delivery,
                                     };
                                     const saved = await withLocalPlanWorkflow(this.cwd, plan.metadata.name, () =>
                                         generatePreparedPackageRecord(this.cwd, source, command.attemptId, {
@@ -1682,10 +1695,10 @@ export class PreparedProjectStore {
                                         recordId: prepared.recordId,
                                     };
                                 };
-                                if (current.metadata.workflow?.delivery) {
+                                if (delivery.metadata.workflow?.delivery) {
                                     if (!this.homeOwner || !this.launch)
                                         throw new Error("Recording requires its trusted execution launcher.");
-                                    if (current.metadata.workflow.delivery.mode === "non_git_in_place") {
+                                    if (delivery.metadata.workflow.delivery.mode === "non_git_in_place") {
                                         await verifyPackageRecordingDelivery(this.cwd, reference);
                                         return await generate();
                                     }

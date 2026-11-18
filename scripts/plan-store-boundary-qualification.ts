@@ -216,6 +216,12 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
 
 /** Test-only targets include dependent fixtures, process and Golden qualification drivers. */
 export const PLAN_TEST_SUPPORT = new Set([
+    "src/shared/remote/composed-replay-process.ts",
+    "src/shared/remote/composed-store-fixture.ts",
+    "src/shared/remote/composed-store-process.ts",
+    "src/shared/workflow/testing/composed-runtime-process.ts",
+    "src/shared/workflow/testing/composed-session-process.ts",
+    "src/shared/workflow/testing/composed-validation-process.ts",
     "src/shared/remote/managed-store-activation-fixture.ts",
     "src/shared/remote/managed-store-client.ts",
     "src/cmd/load-plan/publication-cleanup-test-helpers.ts",

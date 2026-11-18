@@ -1,6 +1,7 @@
 import {
     managedPlanStoreActive,
     readManagedDeliverySources,
+    readManagedPublication,
     readManagedRecordingContext,
     readManagedPlan,
     settleManagedPublication,
@@ -251,6 +252,13 @@ export async function readPublishedRecordMarkdown(
         !/^docs\/work-records\/[^/]+\.md$/.test(path)
     ) {
         return null;
+    }
+    if (attempt.packageInput && managedPlanStoreActive()) {
+        await readManagedDeliverySources(root, attempt.packageInput, true);
+        const manifest = await readManagedPublication(root, attempt.packageInput);
+        return manifest.preparedRecord?.path === path
+            ? manifest.preparedRecord.text
+            : manifest.copies.find((copy) => copy.kind === "work-record" && copy.path === path)?.text || null;
     }
     if (attempt.packageInput) {
         const inspected = currentPackageProject()

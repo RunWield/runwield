@@ -19,6 +19,7 @@ import {
     currentPackageSelection,
 } from "./workflows.ts";
 import { preparePlanWorkflow } from "./preparation.ts";
+import { loadPlan as queryPlan } from "./queries.ts";
 import { getPlanDocumentRoot, updatePlanFrontMatter, loadPlan, type PlanFrontMatter } from "../plan-store.js";
 import { isPlannedChangeClassification } from "../constants.js";
 import {
@@ -728,10 +729,21 @@ export async function stageValidationPassedInExecutionWorktree({
 }: StageValidationRequest): Promise<ValidationPassedStagingResult> {
     await preparePlanWorkflow(executionCwd, planName);
     const planPath = `docs/plans/${planName}.md`;
-    const executionPlan = await loadPlan(executionCwd, planName);
+    const executionPlan = await queryPlan(executionCwd, planName);
     if (!executionPlan) throw new Error(`Plan not found in its execution worktree: ${planName}`);
     if (executionPlan.attrs.status !== "reviewed" && executionPlan.attrs.status !== "validated") {
         throw new Error(`Cannot prepare publication for ${planName} at "${executionPlan.attrs.status}".`);
+    }
+    if (managedPlanStoreActive() && details.executionMode === "worktree") {
+        const execution = executionPlan.attrs.planId
+            ? await readManagedExecution(executionCwd, executionPlan.attrs.planId)
+            : null;
+        if (!execution || (details.worktreeId && details.worktreeId !== execution.attemptId))
+            throw new Error("Publication staging belongs to another execution attempt.");
+        if (executionPlan.attrs.status !== "reviewed")
+            throw new Error("Managed Git publication requires its reviewed Plan.");
+        // The managed seal checks this attempt's review evidence; Git settlement records completion.
+        return { attrs: executionPlan.attrs, planPaths: [planPath] };
     }
     const prepared =
         executionPlan.attrs.status === "reviewed" &&

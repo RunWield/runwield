@@ -278,11 +278,17 @@ async function generateTargetedWorkRecord(
 
         const generate = () =>
             preparation || publishedReference
-                ? generatePreparedPackageRecord(sourceRoot, evaluated, (preparation || publishedReference)!.attemptId, {
-                      mnemotecaPort,
-                      signal,
-                      runRecorderStep,
-                  })
+                ? generatePreparedPackageRecord(
+                      sourceRoot,
+                      evaluated,
+                      (preparation || publishedReference)!.attemptId,
+                      {
+                          mnemotecaPort,
+                          signal,
+                          runRecorderStep,
+                      },
+                      (preparation || publishedReference)!,
+                  )
                 : generateWorkRecordForSource(sourceRoot, evaluated, { mnemotecaPort, signal, runRecorderStep });
         const outcome = await withRecordingPlan(sourceRoot, evaluated.planId, generate);
         const status = outcome.status === "generated" || outcome.status === "linked" ? outcome.status : "failed";

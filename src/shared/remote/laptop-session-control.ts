@@ -2,7 +2,13 @@ import { readCommittedSessionExport } from "../session/session-export.ts";
 import { readCommittedRemoteLineage } from "./committed-session.ts";
 import { join } from "node:path";
 import { CURRENT_SESSION_VERSION } from "@earendil-works/pi-coding-agent";
-import type { FileSessionManifest, FileSessionProject, FileSessionStore } from "../session/file-session-store-types.ts";
+import type {
+    FileSessionManifest,
+    FileSessionProject,
+    FileSessionStore,
+    RemoteSessionProjectBinding,
+} from "../session/file-session-store-types.ts";
+import type { ProjectIdentity } from "../project-identity.ts";
 import { openFileSessionStore, type RemoteSessionOwner } from "../session/file-session-store.ts";
 import { getRunWieldSessionsBaseDir } from "../session/root-session.js";
 import {
@@ -10,7 +16,8 @@ import {
     ensureRemoteProject,
     listManifests,
     listProjectsFromDisk,
-    remoteProjectRoot,
+    remoteSessionProjectMatches,
+    bindRemoteSessionProject,
     sessionDirForProject,
     writeTextAtomically,
 } from "../session/file-session-storage.ts";
@@ -113,6 +120,7 @@ export class LaptopSessionControl {
     #admissions = new Map<string, SessionAdmission>();
     #operationAdmissions = new Map<string, string>();
     #settledAdmissions = new Set<string>();
+    #binding?: RemoteSessionProjectBinding;
 
     #settleAdmission(admissionId: string): void {
         const admission = this.#admissions.get(admissionId);
@@ -135,6 +143,32 @@ export class LaptopSessionControl {
 
     constructor(readonly connection: LaptopSessionTarget) {
         this.#store = openFileSessionStore({ baseDir: connection.baseDir });
+    }
+
+    /** Only the trusted launcher supplies evidence; Session HTTP requests cannot bind identities. */
+    bindProjectIdentity(identity: ProjectIdentity | null): void {
+        if (this.#closed) throw new Error("Session connection is closed");
+        this.#binding =
+            identity && this.connection.target.gitRoot
+                ? {
+                      projectId: identity.projectId,
+                      repositoryId: identity.repositoryId,
+                      checkoutId: identity.checkoutId,
+                      personalOwnerIdentity: identity.personalOwner.identity,
+                      executionAccountHome: identity.executionAccountHome,
+                  }
+                : undefined;
+        if (!this.#binding) return;
+        for (const project of listProjectsFromDisk(this.#store.path)) {
+            if (this.#projectMatches(project))
+                bindRemoteSessionProject(
+                    this.#store.path,
+                    project,
+                    this.connection.target,
+                    this.#binding,
+                    this.connection.targetLabel,
+                );
+        }
     }
 
     handleSave(input: import("./session-protocol.ts").RemoteSessionRequest) {
@@ -165,16 +199,7 @@ export class LaptopSessionControl {
     }
 
     #projectMatches(project: FileSessionProject): boolean {
-        const remote = project.remote;
-        const target = this.connection.target;
-        return Boolean(
-            remote &&
-            remote.root === remoteProjectRoot(target) &&
-            remote.host.hostname === target.host.hostname &&
-            remote.host.user === target.host.user &&
-            remote.host.port === target.host.port &&
-            remote.host.hostKeyFingerprint === target.host.hostKeyFingerprint,
-        );
+        return remoteSessionProjectMatches(project, this.connection.target, this.#binding);
     }
 
     #locate(sessionId: string) {
@@ -278,13 +303,24 @@ export class LaptopSessionControl {
                 if (this.#creating.has(input.sessionId)) throw new Error("Session creation is already running");
                 this.#creating.add(input.sessionId);
                 try {
-                    const project = ensureRemoteProject(
-                        store.path,
-                        this.connection.target.host,
-                        this.connection.target,
-                        undefined,
-                        this.connection.targetLabel,
-                    );
+                    const project =
+                        listProjectsFromDisk(store.path).find((project) => this.#projectMatches(project)) ??
+                        ensureRemoteProject(
+                            store.path,
+                            this.connection.target.host,
+                            this.connection.target,
+                            undefined,
+                            this.connection.targetLabel,
+                        );
+                    if (!this.#projectMatches(project)) throw new Error("Remote Session Project identity changed.");
+                    if (this.#binding)
+                        bindRemoteSessionProject(
+                            store.path,
+                            project,
+                            this.connection.target,
+                            this.#binding,
+                            this.connection.targetLabel,
+                        );
                     const directory = sessionDirForProject(store.path, project);
                     if (
                         listManifests(directory, true).some(

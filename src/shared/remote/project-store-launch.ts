@@ -32,12 +32,12 @@ sys.stderr.write(result.stderr)
 sys.exit(result.returncode)
 `);
 
-/** Deliberate admission uses the same verified runtime and target as the interactive launch. */
-export async function resolveManagedProjectStore(
+/** Inspect identity independently of whether this laptop has admitted a Plan store. */
+export async function resolveManagedProjectIdentity(
     launch: ManagedProjectStoreLaunch,
     signal: AbortSignal,
     admit: boolean,
-): Promise<ManagedProjectStoreAdmission | null> {
+): Promise<(ProjectIdentity & PlanExecutionHost) | null> {
     const ownerIdentity = getHomeDir();
     const result = await captureForegroundProcess("ssh", {
         cwd: getCwd(),
@@ -68,6 +68,17 @@ export async function resolveManagedProjectStore(
     )
         throw new Error("Remote Project admission does not match this launch.");
     signal.throwIfAborted();
+    return execution;
+}
+
+/** Deliberate admission uses the same verified runtime and target as the interactive launch. */
+export async function resolveManagedProjectStore(
+    launch: ManagedProjectStoreLaunch,
+    signal: AbortSignal,
+    admit: boolean,
+): Promise<ManagedProjectStoreAdmission | null> {
+    const execution = await resolveManagedProjectIdentity(launch, signal, admit);
+    if (!execution) return null;
     const owner = admit
         ? await registerHomeProjectOwner({
               projectId: execution.projectId,
