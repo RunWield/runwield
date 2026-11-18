@@ -698,6 +698,12 @@ async function dispatchAcpBuiltinCommand(options: AcpBuiltinCommandOptions): Pro
                 if (selected) await tracker?.recordDispatched();
                 return selected;
             };
+            const showModelSelector = commandUiAPI.showModelSelector;
+            commandUiAPI.showModelSelector = async (...args) => {
+                const result = await showModelSelector(...args);
+                if (result.selected) await tracker?.recordDispatched();
+                return result;
+            };
         }
         let outcome: SlashCommandOutcome = "succeeded";
         let errorReason = null;
