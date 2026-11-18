@@ -30,6 +30,7 @@ dependencies:
 targetBranch: "epic/external-plan-store"
 userVerifiedAt: null
 status: "reviewed"
+validatedCommit: "1db7143e16b7040f3d2ab50a01c2fb787330ea11"
 ---
 
 # Prove the Composed Store Migration
