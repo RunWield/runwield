@@ -324,60 +324,41 @@ test("imageGeneration preserves settings and resets inherited options when the m
         assertThrows(() => resolveImageGenerationSettings(f.cwd), Error, "thinkingLvel");
     }));
 
-test("create_image routes agy-cli to a real subprocess with matching model/effort and saves PNG", () =>
-    withFixture(async (f) => {
-        await f.settings({ model: "agy-cli/gemini-3.8-flash", thinkingLevel: "medium" });
-        const argsPath = join(f.cwd, "args.json");
-        process.env["RUNWIELD_IMAGE_FIXTURE_ARGS"] = argsPath;
-        const result = await createImage({ cwd: f.cwd, prompt: "red mug", outputPath: "agy.png" });
-        const args: string[] = JSON.parse(await fsReadFile(argsPath, "utf8"));
-        assertEquals(args[args.indexOf("--model") + 1], "gemini-3.8-flash-medium");
-        assertEquals(args[args.indexOf("--effort") + 1], "medium");
-        assert(!args.includes("--dangerously-skip-permissions"));
-        assert(args.includes("--json-schema"));
-        assertEquals(result.model, "agy-cli/gemini-3.8-flash");
-        assertEquals(result.width, 4);
-        assertEquals(f.requests.length, 0);
-    }));
-
-test("create_image uses concrete new family IDs and the shared effort mapping", () =>
+test("create_image preserves saved Agy settings but fails without spawning or credential fallback", () =>
     withFixture(async (f) => {
         const argsPath = join(f.cwd, "args.json");
         process.env["RUNWIELD_IMAGE_FIXTURE_ARGS"] = argsPath;
-        for (const [family, thinking, effort] of [
-            ["gemini-4-argon", "medium", "medium"],
-            ["gemini-4-carbon", "low", "low"],
-            ["gemini-4-carbon", "medium", "medium"],
-            ["gemini-4-carbon", "max", "high"],
-            ["gemini-4-hydrogen", "xhigh", "xhigh"],
+        for (const family of [
+            "gemini-3.8-flash",
+            "gemini-3.1-pro",
+            "gemini-4-argon",
+            "gemini-4-carbon",
+            "gemini-4-hydrogen",
         ]) {
-            await f.settings({ model: `agy-cli/${family}`, thinkingLevel: thinking });
-            const result = await createImage({
-                cwd: f.cwd,
-                prompt: "red mug",
-                outputPath: `${family}-${thinking}.png`,
-            });
-            const args: string[] = JSON.parse(await fsReadFile(argsPath, "utf8"));
-            assertEquals(args[args.indexOf("--model") + 1], `${family}-${effort}`);
-            assertEquals(args[args.indexOf("--effort") + 1], effort);
-            assertEquals(result.model, `agy-cli/${family}`);
-            assertEquals(result.width, 4);
+            const settings = { model: `agy-cli/${family}`, thinkingLevel: "medium" as const };
+            await f.settings(settings);
+            await assertRejects(
+                () => createImage({ cwd: f.cwd, prompt: "red mug", outputPath: `${family}.png` }),
+                Error,
+                "agy-cli image generation is unavailable after the ACP migration",
+            );
+            assertEquals(resolveImageGenerationSettings(f.cwd), settings);
+            await assertRejects(() => fsStat(join(f.cwd, `${family}.png`)), Error, "ENOENT");
         }
-    }));
-
-test("create_image does not trust Agy final SUCCESS or paths from other runs", () =>
-    withFixture(async (f) => {
-        await f.settings({ model: "agy-cli/gemini-3.8-flash" });
-        process.env["RUNWIELD_IMAGE_FIXTURE_OUTSIDE"] = join(f.cwd, "existing.png");
-        await fsWriteFile(
-            join(f.cwd, "existing.png"),
-            Uint8Array.from(atob(PNG), (c) => c.charCodeAt(0)),
+        await assertRejects(() => fsStat(argsPath), Error, "ENOENT");
+        // The fixture has working provider credentials; selecting Agy must never use them.
+        assertEquals(f.requests.length, 0);
+        await assertRejects(
+            () => createImage({ cwd: f.cwd, prompt: "red mug", outputPath: "actionable.png" }),
+            Error,
+            "Explicitly select another supported image provider in imageGeneration.model",
         );
-        for (const mode of ["false-success", "outside"]) {
-            process.env["RUNWIELD_IMAGE_FIXTURE_MODE"] = mode;
-            await assertRejects(() => createImage({ cwd: f.cwd, prompt: "red", outputPath: `${mode}.png` }));
-            await assertRejects(() => fsStat(join(f.cwd, `${mode}.png`)), Error, "ENOENT");
-        }
+        await f.settings({ model: MODEL });
+        const result = await createImage({ cwd: f.cwd, prompt: "red mug", outputPath: "supported.png" });
+        assertEquals(result.model, MODEL);
+        assertEquals(result.width, 4);
+        assertEquals(f.requests.length, 1);
+        await assertRejects(() => fsStat(argsPath), Error, "ENOENT");
     }));
 
 test("create_image honors pre-cancellation without generating or saving", () =>
@@ -429,34 +410,6 @@ test("create_image cancels an in-flight Pi request without saving or retrying", 
             }),
         );
         assertEquals(f.requests.length, 1);
-        await assertRejects(() => fsStat(join(f.cwd, "cancelled.png")), Error, "ENOENT");
-    }));
-
-test("create_image cancels a running Agy subprocess without saving", () =>
-    withFixture(async (f) => {
-        await f.settings({ model: "agy-cli/gemini-3.8-flash" });
-        const argsPath = join(f.cwd, "args.json");
-        process.env["RUNWIELD_IMAGE_FIXTURE_ARGS"] = argsPath;
-        process.env["RUNWIELD_IMAGE_FIXTURE_MODE"] = "wait";
-        const abort = new AbortController();
-        const pending = assertRejects(() =>
-            createImage({
-                cwd: f.cwd,
-                prompt: "red",
-                outputPath: "cancelled.png",
-                signal: abort.signal,
-            }),
-        );
-        try {
-            const deadline = Date.now() + 5000;
-            while (!(await fsStat(argsPath).catch(() => null))) {
-                if (Date.now() > deadline) throw new Error("Agy fixture did not start");
-                await new Promise((resolve) => setTimeout(resolve, 10));
-            }
-        } finally {
-            abort.abort();
-            await pending;
-        }
         await assertRejects(() => fsStat(join(f.cwd, "cancelled.png")), Error, "ENOENT");
     }));
 
