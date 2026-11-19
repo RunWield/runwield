@@ -29,7 +29,7 @@ test("new Agy families use only exact Google price evidence", () => {
     const argon = getModelRegistry().find("agy-cli", "gemini-4-argon");
     assert(argon);
     assertEquals(getExternalCliPriceModel(argon)?.cost, { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 0 });
-    for (const id of ["gemini-4-hydrogen", "gemini-4-carbon"]) {
+    for (const id of ["gemini-4-neon", "gemini-4-hydrogen", "gemini-4-carbon"]) {
         const model = getModelRegistry().find("agy-cli", id);
         assert(model);
         assertEquals(model.cost, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });

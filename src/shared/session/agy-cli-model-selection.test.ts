@@ -37,6 +37,7 @@ const AGY_EXECUTABLE = process.platform === "win32" ? "agy.exe" : "agy";
 const FIXTURE_MODEL = "runtime-command-fixture/fixture-model";
 const AGY_FLASH = "agy-cli/gemini-3.8-flash";
 const APPROVED_AGY_MODELS = [
+    "gemini-4-neon",
     "gemini-4-argon",
     "gemini-4-hydrogen",
     "gemini-4-carbon",
@@ -45,9 +46,15 @@ const APPROVED_AGY_MODELS = [
 ];
 const UNSUPPORTED_AGY_MODELS = [
     "agy-cli/fixture-model",
-    ...["gemini-4-argon", "gemini-4-hydrogen", "gemini-4-carbon", "gemini-3.8-flash", "gemini-3.1-pro"].flatMap(
-        (model) => ["low", "medium", "high", "xhigh"].map((effort) => `agy-cli/${model}-${effort}`),
-    ),
+    "agy-cli/gemini-pro-orchestrator-neon",
+    ...[
+        "gemini-4-neon",
+        "gemini-4-argon",
+        "gemini-4-hydrogen",
+        "gemini-4-carbon",
+        "gemini-3.8-flash",
+        "gemini-3.1-pro",
+    ].flatMap((model) => ["low", "medium", "high", "xhigh"].map((effort) => `agy-cli/${model}-${effort}`)),
     "agy-cli/claude-opus-5-5",
     "agy-cli/claude-opus-5-5-high",
     "agy-cli/claude-sonnet-5-5",
@@ -136,6 +143,10 @@ appendFileSync(${JSON.stringify(agyLaunchLog)}, "launched\\n"); process.exit(2);
                     assertEquals(messages.length, 1);
                     assertEquals(messages[0].isError, true);
                     assertStringIncludes(messages[0].text, "Unsupported Antigravity CLI model");
+                    assertStringIncludes(
+                        messages[0].text,
+                        "Select agy-cli/gemini-4-neon, agy-cli/gemini-4-argon, agy-cli/gemini-4-hydrogen, agy-cli/gemini-4-carbon, agy-cli/gemini-3.8-flash, agy-cli/gemini-3.1-pro.",
+                    );
                     assertEquals(runtime.getSessionSnapshot(sessionId)?.activeModel, { model: "", provider: "" });
                     assertEquals(await pathExists(agyLaunchLog), false);
                     assertEquals(await pathExists(join(homeDir, ".gemini")), false);
@@ -294,7 +305,13 @@ test("explicit approved Agy CLI selection updates the active runtime Session mod
             assertEquals(getSettingsManager(projectRoot).getDefaultProvider(), "runtime-command-fixture");
             assertEquals(getSettingsManager(projectRoot).getDefaultModel(), "fixture-model");
             assertStringIncludes(messages.at(-1) || "", `Switched model to ${AGY_FLASH}`);
-            for (const modelId of ["gemini-4-argon", "gemini-4-hydrogen", "gemini-4-carbon", "gemini-3.1-pro"]) {
+            for (const modelId of [
+                "gemini-4-neon",
+                "gemini-4-argon",
+                "gemini-4-hydrogen",
+                "gemini-4-carbon",
+                "gemini-3.1-pro",
+            ]) {
                 await runModelsCommand([`agy-cli/${modelId}`], {
                     uiAPI: {
                         appendSystemMessage: (message) => messages.push(message),
@@ -355,6 +372,10 @@ appendFileSync(${JSON.stringify(launchLog)}, "launched\\n"); process.exit(2);`,
                 assertEquals(messages.length, 1);
                 assertEquals(messages[0].isError, true);
                 assertStringIncludes(messages[0].text, "Unsupported Antigravity CLI model");
+                assertStringIncludes(
+                    messages[0].text,
+                    "Select agy-cli/gemini-4-neon, agy-cli/gemini-4-argon, agy-cli/gemini-4-hydrogen, agy-cli/gemini-4-carbon, agy-cli/gemini-3.8-flash, agy-cli/gemini-3.1-pro.",
+                );
                 assertEquals(runtime.getSessionSnapshot(sessionId)?.activeModel, {
                     model: "fixture-model",
                     provider: "runtime-command-fixture",
@@ -529,6 +550,130 @@ test("persisted Pro Session resumes as Pro and preserves all prior execution evi
             });
         } finally {
             await reader.closeAllSessionsWhenIdle();
+        }
+    });
+});
+
+test("persisted Neon Session resumes as Neon and preserves all prior execution evidence", async () => {
+    await withAgySelectionExecutionFixture(async (projectRoot, logPath) => {
+        const writer = createSessionRuntime();
+        let persistedId = "";
+        let priorEntries: SessionExportSegment["entries"] = [];
+        try {
+            const sessionId = await writer.createPromptReadySession({
+                cwd: projectRoot,
+                agentName: AGENTS.GUIDE,
+                deferPersistenceUntilFirstMessage: true,
+            });
+            await runModelsCommand(["agy-cli/gemini-4-neon"], {
+                uiAPI: { appendSystemMessage: () => {}, promptSelect: () => Promise.resolve(null) },
+                sessionId,
+                sessionRuntime: writer,
+            });
+            assertEquals((await writer.setSessionThinkingLevel(sessionId, "xhigh")).ok, true);
+            assertEquals(
+                (await writer.promptUserTurn(sessionId, { initialRequest: "Persist my Neon history" })).ok,
+                true,
+            );
+            persistedId = writer.getSessionSnapshot(sessionId)?.managed?.runwieldSessionId || "";
+            assert(persistedId);
+            priorEntries = (await writer.readSessionExport(sessionId)).document.segments.flatMap(
+                (segment) => segment.entries,
+            );
+            assertEquals(summarizeProjectedEntries(priorEntries).executionBackend, {
+                backend: "agy-cli",
+                provider: "agy-cli",
+                model: "gemini-4-neon",
+                thinkingLevel: "xhigh",
+                effort: "xhigh",
+                backendModel: "gemini-4-neon-xhigh",
+            });
+        } finally {
+            await writer.closeAllSessionsWhenIdle();
+        }
+        await setCustomSetting("defaultProvider", "agy-cli", "global", projectRoot);
+        await setCustomSetting("defaultModel", "gemini-4-argon", "global", projectRoot);
+        const reader = createSessionRuntime();
+        try {
+            const { sessionId } = await reader.createInteractiveSession({
+                cwd: projectRoot,
+                mode: "continue",
+                resumeSessionId: persistedId,
+            });
+            assertEquals(reader.getSessionSnapshot(sessionId)?.activeModel, {
+                model: "gemini-4-neon",
+                provider: "agy-cli",
+            });
+            assertEquals(
+                (await reader.promptUserTurn(sessionId, { initialRequest: "Continue with the persisted Neon model" }))
+                    .ok,
+                true,
+            );
+            const calls = await readSelectionExecutionCalls(logPath);
+            assertEquals(
+                calls.map((call) => [call.model, call.effort]),
+                [
+                    ["gemini-4-neon", "xhigh"],
+                    ["gemini-4-neon", "xhigh"],
+                ],
+            );
+            assertStringIncludes(calls[1].prompt, "Persist my Neon history");
+            assertStringIncludes(calls[1].prompt, "agy:first");
+            const entries = (await reader.readSessionExport(sessionId)).document.segments.flatMap(
+                (segment) => segment.entries,
+            );
+            assertEquals(entries.slice(0, priorEntries.length), priorEntries);
+            assertEquals(summarizeProjectedEntries(entries).executionBackend, {
+                backend: "agy-cli",
+                provider: "agy-cli",
+                model: "gemini-4-neon",
+                thinkingLevel: "xhigh",
+                effort: "xhigh",
+                backendModel: "gemini-4-neon-xhigh",
+            });
+        } finally {
+            await reader.closeAllSessionsWhenIdle();
+        }
+    });
+});
+
+test("Neon Agent settings select the family for a Session xhigh turn", async () => {
+    await withAgySelectionExecutionFixture(async (projectRoot, logPath) => {
+        await setCustomSetting("agents", { guide: { model: "agy-cli/gemini-4-neon" } }, "project", projectRoot);
+        const runtime = createSessionRuntime();
+        try {
+            const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: AGENTS.GUIDE });
+            assertEquals(runtime.getSessionSnapshot(sessionId)?.activeModel, {
+                model: "gemini-4-neon",
+                provider: "agy-cli",
+            });
+            assertEquals((await runtime.setSessionThinkingLevel(sessionId, "xhigh")).ok, true);
+            assertEquals(
+                (await runtime.promptUserTurn(sessionId, { initialRequest: "Use my configured Neon model" })).ok,
+                true,
+            );
+            const calls = await readSelectionExecutionCalls(logPath);
+            assertEquals(
+                calls.map((call) => [call.model, call.effort]),
+                [["gemini-4-neon", "xhigh"]],
+            );
+            assertEquals(
+                summarizeProjectedEntries(
+                    (await runtime.readSessionExport(sessionId)).document.segments.flatMap(
+                        (segment) => segment.entries,
+                    ),
+                ).executionBackend,
+                {
+                    backend: "agy-cli",
+                    provider: "agy-cli",
+                    model: "gemini-4-neon",
+                    thinkingLevel: "xhigh",
+                    effort: "xhigh",
+                    backendModel: "gemini-4-neon-xhigh",
+                },
+            );
+        } finally {
+            await runtime.closeAllSessionsWhenIdle();
         }
     });
 });

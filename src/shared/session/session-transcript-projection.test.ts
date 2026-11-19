@@ -493,6 +493,56 @@ test("Agy replay excludes incomplete, base-only, conflicting and invalid new-fam
     }
 });
 
+test("Agy replay excludes incomplete, base-only, conflicting and invalid Neon facts", () => {
+    const valid = {
+        backend: "agy-cli",
+        provider: "agy-cli",
+        model: "gemini-4-neon",
+        thinkingLevel: "xhigh",
+        effort: "xhigh",
+        backendModel: "gemini-4-neon-xhigh",
+    };
+    for (const data of [
+        { ...valid, provider: "" },
+        { ...valid, thinkingLevel: "" },
+        { ...valid, thinkingLevel: "invalid" },
+        { ...valid, thinkingLevel: undefined },
+        { ...valid, effort: "" },
+        { ...valid, effort: "high" },
+        { ...valid, effort: "high", backendModel: "gemini-4-neon-high" },
+        { ...valid, thinkingLevel: "medium", effort: "low", backendModel: "gemini-4-neon-low" },
+        { ...valid, model: "gemini-4-carbon", backendModel: "gemini-4-carbon-xhigh" },
+        { ...valid, backendModel: "gemini-4-neon" },
+        { ...valid, backendModel: "gemini-4-neon-high" },
+        { ...valid, backendModel: "gemini-4-carbon-xhigh" },
+        { ...valid, model: "claude-opus-5-5" },
+    ]) {
+        assertEquals(
+            summarizeProjectedEntries([{ type: "custom", customType: "runwield.execution_backend", data }])
+                .executionBackend,
+            null,
+        );
+    }
+});
+
+for (const effort of ["low", "medium", "high", "xhigh"]) {
+    test(`Agy replay accepts verified Neon ${effort} facts`, () => {
+        const data = {
+            backend: "agy-cli",
+            provider: "agy-cli",
+            model: "gemini-4-neon",
+            thinkingLevel: effort,
+            effort,
+            backendModel: `gemini-4-neon-${effort}`,
+        };
+        assertEquals(
+            summarizeProjectedEntries([{ type: "custom", customType: "runwield.execution_backend", data }])
+                .executionBackend,
+            data,
+        );
+    });
+}
+
 test("projection cursor selection fails closed when the prior cursor is absent", () => {
     const events = [{ type: "user_message", eventId: "one" }];
     assertThrows(

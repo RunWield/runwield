@@ -8,7 +8,14 @@ import { assertModelExecutionBackendSupported, UnsupportedModelExecutionBackendE
 import { discoverProviderModel, RunWieldCredentialStore, RunWieldModelRegistry } from "./model-registry.ts";
 import { resolveTemplateModel } from "./model-validation.ts";
 
-const AGY_MODELS = ["gemini-4-argon", "gemini-4-hydrogen", "gemini-4-carbon", "gemini-3.8-flash", "gemini-3.1-pro"];
+const AGY_MODELS = [
+    "gemini-4-neon",
+    "gemini-4-argon",
+    "gemini-4-hydrogen",
+    "gemini-4-carbon",
+    "gemini-3.8-flash",
+    "gemini-3.1-pro",
+];
 
 async function makeRegistry(): Promise<{ registry: RunWieldModelRegistry; tempDir: string }> {
     const tempDir = await fsMkdtemp(join(tmpdir(), "runwield-agy-cli-models-"));
@@ -40,6 +47,7 @@ test("Agy CLI exposes exactly the supported selectable base models", async () =>
             registry.getAvailable().some((model) => model.provider === "agy-cli"),
             false,
         );
+        assertEquals(registry.find("agy-cli", "gemini-4-neon")?.name, "Antigravity CLI Gemini 4 Neon");
         for (const model of selectable) {
             assertObjectMatch(model, {
                 provider: "agy-cli",
@@ -83,6 +91,8 @@ test("Agy CLI lookup accepts only the supported base models", async () => {
             "",
             "   ",
             "fixture-model",
+            "gemini-4-neon-high",
+            "gemini-pro-orchestrator-neon",
             "gemini-4-argon-high",
             "gemini-4-hydrogen-xhigh",
             "gemini-4-carbon-low",

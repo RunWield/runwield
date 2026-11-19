@@ -86,16 +86,20 @@ Antigravity models run through the `agy` CLI using your Antigravity sign-in, so 
 
 | Family   | Model selection             |
 | -------- | --------------------------- |
+| Neon     | `agy-cli/gemini-4-neon`     |
 | Argon    | `agy-cli/gemini-4-argon`    |
 | Hydrogen | `agy-cli/gemini-4-hydrogen` |
 | Carbon   | `agy-cli/gemini-4-carbon`   |
 | Flash    | `agy-cli/gemini-3.8-flash`  |
 | Pro      | `agy-cli/gemini-3.1-pro`    |
 
-These are the five supported base families. Set thinking separately; do not append an effort suffix to the selection.
+These are the six supported base families. Set thinking separately; do not append an effort suffix to the selection.
 RunWield uses a bundled catalog, without CLI-version discovery or account filtering. Carbon stays listed even when
 it is unavailable to your account. Access to each family depends on your CLI version and account; listing a family
 is not proof of a successful live request or image-generation support.
+
+Neon requires Google AI Ultra, paid Google AI Pro, Gemini Enterprise, or `GEMINI_API_KEY` sign-in.
+Free and Plus plans do not include Neon. See the [Antigravity model access documentation](https://antigravity.google/docs/models?surface=cli).
 
 Saved Pro selections and historical model names stay unchanged. Pro remains selectable where upstream supports it;
 RunWield cannot guarantee continued upstream access. If a model is unavailable, the failure stays visible. RunWield
@@ -112,20 +116,22 @@ If Antigravity blocks an action, RunWield shows what was blocked.
 
 **Thinking level** sets Antigravity's effort:
 
-| Thinking level    | Argon / Carbon / Flash effort | Hydrogen effort | Pro effort |
-| ----------------- | ----------------------------- | --------------- | ---------- |
-| off, minimal, low | low                           | low             | low        |
-| medium            | medium                        | medium          | high       |
-| high              | high                          | high            | high       |
-| xhigh, max        | high                          | xhigh           | high       |
+| Thinking level    | Argon / Carbon / Flash effort | Neon / Hydrogen effort | Pro effort |
+| ----------------- | ----------------------------- | ---------------------- | ---------- |
+| off, minimal, low | low                           | low                    | low        |
+| medium            | medium                        | medium                 | high       |
+| high              | high                          | high                   | high       |
+| xhigh, max        | high                          | xhigh                  | high       |
 
 Omitted thinking defaults to off, which sends low effort. Invalid thinking values fail before execution. The Session
 keeps your original thinking level and records the verified backend effort for history and replay.
 
-The bundled [`agy` preset](settings.md#modelpresets) uses Argon for Router, Slicer, Architect, Planner, Ideator, and
-Reviewer; other Agents keep Flash. Thinking levels are unchanged. Router and Reviewer use medium thinking, which now
-sends medium effort with Argon rather than Pro's high effort. The preset requires Argon access and does not change by
-CLI version or fall back automatically. Personal and project selections remain unchanged.
+The bundled [`agy` preset](settings.md#modelpresets) uses Neon for Router, Slicer, Guide, Engineer, Frontend Engineer,
+and Init; Hydrogen for Operator; and Argon for Planner, Ideator, Architect, and Reviewer. Thinking levels stay
+unchanged: Router, Operator, and Reviewer use medium; the other Agents use high. The preset needs access to all three
+families, including Neon and Hydrogen. If access is unavailable, the CLI error stays visible. RunWield does not change
+the preset by CLI version or fall back automatically. Select another model or a personal preset. Personal and project
+selections remain unchanged.
 
 **Limitations:**
 

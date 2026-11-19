@@ -1,5 +1,6 @@
 /** Fixed public families; availability depends on the user's CLI and account. */
 export const AGY_CLI_MODEL_IDS = [
+    "gemini-4-neon",
     "gemini-4-argon",
     "gemini-4-hydrogen",
     "gemini-4-carbon",
@@ -7,7 +8,12 @@ export const AGY_CLI_MODEL_IDS = [
     "gemini-3.1-pro",
 ] as const;
 
-export const AGY_CLI_DISPLAY_NAMES: Record<(typeof AGY_CLI_MODEL_IDS)[number], string> = {
+export type AgyCliModelId = (typeof AGY_CLI_MODEL_IDS)[number];
+
+export const AGY_CLI_XHIGH_MODEL_IDS: ReadonlySet<AgyCliModelId> = new Set(["gemini-4-neon", "gemini-4-hydrogen"]);
+
+export const AGY_CLI_DISPLAY_NAMES: Record<AgyCliModelId, string> = {
+    "gemini-4-neon": "Antigravity CLI Gemini 4 Neon",
     "gemini-4-argon": "Antigravity CLI Gemini 4 Argon",
     "gemini-4-hydrogen": "Antigravity CLI Gemini 4 Hydrogen",
     "gemini-4-carbon": "Antigravity CLI Gemini 4 Carbon",
