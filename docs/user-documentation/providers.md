@@ -87,7 +87,7 @@ The installed Antigravity CLI owns sign-in and model access. RunWield owns its S
 
 Google documents ACP clients separately from headless print mode. Google
 [does not support wrapping `agy -p` in third-party coding agents on consumer plans](https://antigravity.google/docs/faq?hl=en#can-i-use-antigravity-cli-headless-mode-in-third-party-coding-agents-or-automate-account-switching).
-RunWield does not fall back to print mode for conversation turns. Google's ACP editor guidance does not establish
+RunWield does not fall back to print mode for conversation turns or image generation. Google's ACP editor guidance does not establish
 consumer-plan support for unattended workflow dispatch. To use Gemini without Antigravity, choose a
 `google/<model>` with a [Google AI Studio API key](https://ai.google.dev/gemini-api/docs/api-key).
 
@@ -133,7 +133,8 @@ CLI version or fall back automatically. Personal and project selections remain u
 
 **Limitations:**
 
-- Antigravity is not available for [image generation](settings.md#existing-antigravity-image-settings).
+- [Image generation](settings.md#antigravity-cli) uses a separate ACP session. Generating an image and attaching an
+  image to a conversation are separate features.
 - You can't attach images to an Antigravity conversation. Use [`visionFallback`](settings.md#visionfallback) to inspect
   images through another model.
 - The Session shows Antigravity's commands, file edits, and results as they happen. After a reload, it shows only the

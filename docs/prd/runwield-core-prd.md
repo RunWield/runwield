@@ -1920,21 +1920,21 @@ access to their own attachments. **Target:** deleting a Session also removes its
 
 ### Image generation
 
-**Scope and maturity:** Current through OpenRouter and Codex. The OpenCode Responses route is experimental.
-Antigravity ACP image output, Google SDK integration, graphical image settings, and remote generation are deferred. [Provider notes](../research/image-generation-provider-proof.md) hold historical test results.
+**Scope and maturity:** Current through OpenRouter, Codex, and Antigravity ACP. The OpenCode Responses route is
+experimental. Google SDK integration, graphical image settings, and remote generation are deferred. [Provider notes](../research/image-generation-provider-proof.md) hold historical test results.
 
 **Requirement: Generate images with a user-selected model.** Users set `imageGeneration.model`, with optional supported
 `thinkingLevel` and `temperature`, globally, per project, or in a model preset. The conversation model can be any
 model.
 
 - **Pi image models** use the existing provider configuration and authentication.
+- **`agy-cli/<model>`** uses a separate Antigravity ACP session, the installed CLI’s sign-in, and Antigravity’s image model.
 - **`codex-cli/<model>`** and **`openai-codex/<model>`** use the local Codex runtime's ChatGPT sign-in. RunWield finds
   Codex on PATH or in the ChatGPT desktop app on macOS.
 - **`opencode/<model>`** uses a Responses model with hosted image-tool access.
 
 Each request uses the configured provider and billing route. Unsupported controls are reported. A model change starts
-from that model's own controls. An existing `agy-cli/<model>` image setting remains readable, but an image request with
-that setting explains that generation is unavailable and does not start Antigravity or charge a different provider.
+from that model's own controls. Antigravity image generation does not fall back to print mode or a different provider.
 
 **Requirement: Produce a reusable project image with truthful success.** `create_image` takes a prompt, a required new
 output path, and optional project or Session image references. File-writing Agents, write-capable delegates, Agents
@@ -2444,8 +2444,8 @@ provider support documented in terms of current configuration.
 - Given an Antigravity Engineer turn, it runs an allowed test command and creates a file in the execution workspace
   after any required approval.
 - Given an Antigravity turn that ends before its required completion tool runs, the workflow remains incomplete.
-- Given saved Antigravity image settings, an image request explains that generation is unavailable without spawning the
-  old CLI path or silently choosing another provider.
+- Given saved Antigravity image settings, generation uses ACP and accepts only a completed tool call with one valid
+  image from the active session. An invalid or unavailable result creates no destination file and makes no fallback call.
 - Given Argon, Hydrogen, or Carbon selected through the model controls or Agent settings, a turn requests that family
   with the mapped effort. Verified history and resume retain the selected family, original thinking level, and backend
   effort without changing the Session or workflow. A returned wrong family or concrete effort is rejected.

@@ -371,11 +371,12 @@ including Claude CLI.
 
 Supported providers:
 
-| Provider   | `model` format             | Sign-in                                       |
-| ---------- | -------------------------- | --------------------------------------------- |
-| OpenRouter | `openrouter/<image model>` | OpenRouter credentials through `/login`       |
-| OpenCode   | `opencode/<model>`         | OpenCode credentials through `/login`         |
-| Codex      | `codex-cli/<model>`        | Codex CLI signed in with your ChatGPT account |
+| Provider        | `model` format             | Sign-in                                       |
+| --------------- | -------------------------- | --------------------------------------------- |
+| OpenRouter      | `openrouter/<image model>` | OpenRouter credentials through `/login`       |
+| OpenCode        | `opencode/<model>`         | OpenCode credentials through `/login`         |
+| Codex           | `codex-cli/<model>`        | Codex CLI signed in with your ChatGPT account |
+| Antigravity CLI | `agy-cli/<model>`          | Antigravity CLI with ACP support and sign-in  |
 
 See [Login commands](providers.md#login-commands) for `/login`.
 
@@ -432,12 +433,22 @@ The model must appear in your Codex model list. `thinkingLevel` accepts the reas
 model; `off` means none. `temperature` is not supported. Codex picks the image model itself. `openai-codex/<model>` is
 an accepted alias for `codex-cli/<model>`.
 
-#### Existing Antigravity image settings
+#### Antigravity CLI
 
-Antigravity conversation models still work through [Antigravity ACP](providers.md#antigravity-cli), but
-`agy-cli/<model>` is no longer available for `imageGeneration`. If you have that setting, choose one of the image
-providers above or disable image generation. RunWield does not change the saved model or bill another provider
-automatically.
+```jsonc
+{
+    "imageGeneration": {
+        "model": "agy-cli/gemini-4-argon",
+        "thinkingLevel": "low",
+    },
+}
+```
+
+This uses a separate Antigravity ACP session. Choose a supervising model from the
+[Antigravity CLI families](providers.md#antigravity-cli). Antigravity chooses the image model. Image access depends on
+your CLI version and account; a listed chat model does not guarantee a generated image. `thinkingLevel` uses the
+same effort mapping as chat. `temperature` is not supported. If generation fails, RunWield reports the failure
+without switching providers or falling back to print mode.
 
 #### Where to set it
 
